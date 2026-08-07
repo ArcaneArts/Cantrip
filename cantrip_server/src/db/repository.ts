@@ -34,7 +34,7 @@ import type {
   WorkerHeartbeat,
   WorkerSummary,
 } from "@cantrip/protocol";
-import { and, asc, desc, eq, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, lte, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -163,6 +163,7 @@ function toTerminalSummary(
     position: terminal.position,
     status: terminal.status as TerminalSummary["status"],
     activeWorkerId: terminal.activeWorkerId,
+    linkedChatId: terminal.linkedChatId,
     createdAt: toISOString(terminal.createdAt),
     updatedAt: toISOString(terminal.updatedAt),
   };
@@ -965,6 +966,51 @@ export class ServerRepository {
     return toTerminalSummary(firstOrThrow(result, "creating a terminal"));
   }
 
+  async getOrCreateChatConsole(
+    ownerId: string,
+    chatId: string,
+  ): Promise<TerminalSummary | null> {
+    const rows = await this.database
+      .select({ chat: schema.chats, source: schema.projectSources })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .innerJoin(
+        schema.projectSources,
+        eq(schema.projectSources.projectId, schema.projects.id),
+      )
+      .where(eq(schema.chats.id, chatId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+
+    const existing = await this.database
+      .select()
+      .from(schema.terminals)
+      .where(eq(schema.terminals.linkedChatId, chatId))
+      .limit(1);
+    if (existing[0]) return toTerminalSummary(existing[0]);
+
+    const result = await this.database
+      .insert(schema.terminals)
+      .values({
+        id: randomUUID(),
+        projectId: row.chat.projectId,
+        title: "Codex console",
+        position: row.chat.position,
+        status: "running",
+        activeWorkerId: row.source.workerId,
+        linkedChatId: row.chat.id,
+      })
+      .returning();
+    return toTerminalSummary(firstOrThrow(result, "creating a chat console"));
+  }
+
   async updateTerminal(
     ownerId: string,
     terminalId: string,
@@ -1487,7 +1533,12 @@ export class ServerRepository {
               eq(schema.projects.ownerId, ownerId),
             ),
           )
-          .where(eq(schema.terminals.projectId, projectId)),
+          .where(
+            and(
+              eq(schema.terminals.projectId, projectId),
+              isNull(schema.terminals.linkedChatId),
+            ),
+          ),
         this.database
           .select({ id: schema.explorers.id })
           .from(schema.explorers)

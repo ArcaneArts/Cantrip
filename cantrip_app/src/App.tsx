@@ -71,6 +71,7 @@ import {
 import {
   createBrowser,
   createChat,
+  createChatConsole,
   createExplorer,
   createGithubProject,
   createTerminal,
@@ -106,6 +107,11 @@ import { cn } from "@/lib/utils";
 const TerminalView = lazy(() =>
   import("@/components/terminal/terminal-view").then((module) => ({
     default: module.TerminalView,
+  })),
+);
+const ChatConsoleView = lazy(() =>
+  import("@/components/terminal/chat-console-view").then((module) => ({
+    default: module.ChatConsoleView,
   })),
 );
 const ExplorerView = lazy(() =>
@@ -891,6 +897,19 @@ export function App() {
       });
     },
   });
+  const openChatConsole = useMutation({
+    mutationFn: (chatId: string) => createChatConsole(chatId),
+    onSuccess: (terminal) => {
+      queryClient.setQueryData<TerminalSummary[]>(
+        ["terminals", terminal.projectId],
+        (current = []) => [
+          ...current.filter((item) => item.id !== terminal.id),
+          terminal,
+        ],
+      );
+      openCreatedTab(terminal.projectId, "terminal", terminal.id);
+    },
+  });
   const newExplorer = useMutation({
     mutationFn: (projectId: string) => createExplorer(projectId, "Explorer"),
     onSuccess: (explorer) => {
@@ -1182,12 +1201,25 @@ export function App() {
   const selectedTerminal = terminals.data?.find(
     (terminal) => terminal.id === selectedTerminalId,
   );
+  const linkedConsoleChat = selectedTerminal?.linkedChatId
+    ? chats.data?.find((chat) => chat.id === selectedTerminal.linkedChatId)
+    : undefined;
   const selectedExplorer = explorers.data?.find(
     (explorer) => explorer.id === selectedExplorerId,
   );
   const selectedBrowser = browsers.data?.find(
     (browser) => browser.id === selectedBrowserId,
   );
+  const showChatConsole = (chat: ChatSummary) => {
+    const existing = terminals.data?.find(
+      (terminal) => terminal.linkedChatId === chat.id,
+    );
+    if (existing) {
+      openCreatedTab(chat.projectId, "terminal", existing.id);
+    } else {
+      openChatConsole.mutate(chat.id);
+    }
+  };
   useEffect(() => {
     const preference = settings.data?.preferences.theme ?? "system";
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -1244,11 +1276,17 @@ export function App() {
         kind: "chat",
         position: chat.position,
       })),
-      ...terminals.data.map((terminal) => ({
-        id: terminal.id,
-        kind: "terminal",
-        position: terminal.position,
-      })),
+      ...terminals.data.flatMap((terminal) =>
+        terminal.linkedChatId
+          ? []
+          : [
+              {
+                id: terminal.id,
+                kind: "terminal",
+                position: terminal.position,
+              },
+            ],
+      ),
       ...explorers.data.map((explorer) => ({
         id: explorer.id,
         kind: "explorer",
@@ -1457,9 +1495,13 @@ export function App() {
                       : selectedExplorer
                         ? selectedExplorer.title
                         : selectedTerminal
-                          ? selectedTerminal.title
-                          : (selectedProject?.github?.nameWithOwner ??
-                            "Cantrip")}
+                          ? selectedTerminal.linkedChatId
+                            ? "Codex console"
+                            : selectedTerminal.title
+                          : selectedChat
+                            ? selectedChat.title
+                            : (selectedProject?.github?.nameWithOwner ??
+                              "Cantrip")}
             </p>
             <p className="truncate text-xs text-muted-foreground">
               {showImporter
@@ -1474,9 +1516,14 @@ export function App() {
                       : selectedExplorer
                         ? (selectedProject?.source?.displayPath ?? "Explorer")
                         : selectedTerminal
-                          ? (selectedProject?.source?.displayPath ?? "Terminal")
-                          : (selectedProject?.source?.displayPath ??
-                            "Choose a project to begin")}
+                          ? selectedTerminal.linkedChatId
+                            ? (linkedConsoleChat?.title ?? "Linked chat")
+                            : (selectedProject?.source?.displayPath ??
+                              "Terminal")
+                          : selectedChat
+                            ? (selectedProject?.source?.displayPath ?? "Chat")
+                            : (selectedProject?.source?.displayPath ??
+                              "Choose a project to begin")}
             </p>
           </div>
           <div className="flex items-center gap-2 md:hidden">
@@ -1488,6 +1535,33 @@ export function App() {
               <PanelLeft className="size-4" />
               <span className="sr-only">Open projects and chats</span>
             </Button>
+            {selectedChat && !showImporter && !showSettings ? (
+              <Button
+                size="icon"
+                variant="ghost"
+                disabled={openChatConsole.isPending}
+                onClick={() => showChatConsole(selectedChat)}
+              >
+                <SquareTerminal className="size-4" />
+                <span className="sr-only">Open linked Codex console</span>
+              </Button>
+            ) : null}
+            {linkedConsoleChat && !showImporter && !showSettings ? (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() =>
+                  openCreatedTab(
+                    linkedConsoleChat.projectId,
+                    "chat",
+                    linkedConsoleChat.id,
+                  )
+                }
+              >
+                <MessageSquare className="size-4" />
+                <span className="sr-only">Return to chat</span>
+              </Button>
+            ) : null}
             <Button
               size="icon"
               variant="ghost"
@@ -1511,12 +1585,47 @@ export function App() {
               Project
             </Button>
           </div>
-          {!showImporter && !showSettings && selectedProject ? (
-            <Badge variant="outline" className="hidden gap-2 sm:flex">
-              <StatusDot online={Boolean(onlineWorker)} />
-              {onlineWorker?.name ?? "Worker offline"}
-            </Badge>
-          ) : null}
+          <div className="ml-auto hidden items-center gap-2 md:flex">
+            {selectedChat && !showImporter && !showSettings ? (
+              <Button
+                size="icon"
+                variant="ghost"
+                disabled={openChatConsole.isPending}
+                onClick={() => showChatConsole(selectedChat)}
+                title="Open linked Codex console"
+              >
+                {openChatConsole.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <SquareTerminal className="size-4" />
+                )}
+                <span className="sr-only">Open linked Codex console</span>
+              </Button>
+            ) : null}
+            {linkedConsoleChat && !showImporter && !showSettings ? (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() =>
+                  openCreatedTab(
+                    linkedConsoleChat.projectId,
+                    "chat",
+                    linkedConsoleChat.id,
+                  )
+                }
+                title="Return to chat"
+              >
+                <MessageSquare className="size-4" />
+                <span className="sr-only">Return to chat</span>
+              </Button>
+            ) : null}
+            {!showImporter && !showSettings && selectedProject ? (
+              <Badge variant="outline" className="gap-2">
+                <StatusDot online={Boolean(onlineWorker)} />
+                {onlineWorker?.name ?? "Worker offline"}
+              </Badge>
+            ) : null}
+          </div>
         </header>
 
         {showSettings ? (
@@ -1576,7 +1685,32 @@ export function App() {
               </div>
             }
           >
-            <TerminalView terminal={selectedTerminal} />
+            {linkedConsoleChat ? (
+              <ChatConsoleView
+                terminal={selectedTerminal}
+                chat={linkedConsoleChat}
+                settings={settings.data}
+                onClosed={() => {
+                  queryClient.setQueryData<TerminalSummary[]>(
+                    ["terminals", linkedConsoleChat.projectId],
+                    (current = []) =>
+                      current.filter(
+                        (terminal) => terminal.id !== selectedTerminal.id,
+                      ),
+                  );
+                  openCreatedTab(
+                    linkedConsoleChat.projectId,
+                    "chat",
+                    linkedConsoleChat.id,
+                  );
+                  void queryClient.invalidateQueries({
+                    queryKey: ["terminals", linkedConsoleChat.projectId],
+                  });
+                }}
+              />
+            ) : (
+              <TerminalView terminal={selectedTerminal} />
+            )}
           </Suspense>
         ) : selectedChat ? (
           <ChatTranscript

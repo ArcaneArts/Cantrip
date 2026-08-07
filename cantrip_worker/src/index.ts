@@ -50,7 +50,10 @@ async function start(): Promise<void> {
   };
 
   const runtimeFor = (
-    command: Extract<WorkerCommand, { type: "chat.turn" | "chat.compact" }>,
+    command: Extract<
+      WorkerCommand,
+      { type: "chat.turn" | "chat.compact" | "chat.interrupt" }
+    >,
   ) => {
     const runtimeId = `${command.provider.id}:${command.model.id}`;
     let runtime = codexRuntimes.get(runtimeId);
@@ -137,6 +140,8 @@ async function start(): Promise<void> {
           provider: command.provider,
           threadId: command.threadId,
         });
+      case "chat.interrupt":
+        return runtimeFor(command).interruptThread(command.threadId);
     }
   };
   const commandConnection = new WorkerConnection(config, handleCommand);

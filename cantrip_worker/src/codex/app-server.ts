@@ -369,6 +369,15 @@ export class CodexAppServer {
     return { accepted: true };
   }
 
+  async interruptThread(threadId: string): Promise<{ interrupted: boolean }> {
+    const active = [...this.#activeTurns.entries()].find(
+      ([, turn]) => turn.threadId === threadId,
+    );
+    if (!active) return { interrupted: false };
+    await this.request("turn/interrupt", { threadId, turnId: active[0] });
+    return { interrupted: true };
+  }
+
   close(): void {
     this.handleExit(new Error("Codex app-server stopped."));
     this.#child?.kill("SIGTERM");

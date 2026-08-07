@@ -64,6 +64,23 @@ describe("Cantrip protocol", () => {
     ).toBe("chat.compact");
   });
 
+  it("validates worker-backed chat interruption", () => {
+    const compact = workerCommandSchema.parse({
+      type: "chat.interrupt",
+      chatId: "chat-1",
+      threadId: "thread-1",
+      model: { id: "model-1", name: "gpt-test", reasoningEffort: null },
+      provider: {
+        id: "provider-1",
+        name: "ChatGPT",
+        kind: "chatgpt",
+        baseUrl: "https://api.openai.com/v1",
+        apiKey: null,
+      },
+    });
+    expect(compact.type).toBe("chat.interrupt");
+  });
+
   it("normalizes Responses provider URLs to their API root", () => {
     expect(
       normalizeResponsesBaseUrl(

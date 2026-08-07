@@ -282,6 +282,7 @@ export const terminalSummarySchema = z.object({
   position: z.number().int().nonnegative(),
   status: z.enum(["idle", "running", "exited", "offline", "failed"]),
   activeWorkerId: z.string().min(1),
+  linkedChatId: z.string().min(1).nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -466,6 +467,10 @@ export const chatCompactAcceptedSchema = z.object({
   accepted: z.literal(true),
 });
 
+export const chatInterruptAcceptedSchema = z.object({
+  interrupted: z.boolean(),
+});
+
 export const githubWorkerRepositorySchema = githubRepositorySchema.omit({
   imported: true,
 });
@@ -624,6 +629,23 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       apiKey: z.string().min(1).nullable(),
     }),
   }),
+  z.object({
+    type: z.literal("chat.interrupt"),
+    chatId: z.string().min(1),
+    threadId: z.string().min(1),
+    model: z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      reasoningEffort: reasoningEffortSchema.nullable(),
+    }),
+    provider: z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      kind: modelProviderKindSchema,
+      baseUrl: z.url(),
+      apiKey: z.string().min(1).nullable(),
+    }),
+  }),
 ]);
 
 export const workerRequestEnvelopeSchema = z.object({
@@ -725,6 +747,7 @@ export type ChatMessage = z.infer<typeof chatMessageSchema>;
 export type ChatTurnCreate = z.infer<typeof chatTurnCreateSchema>;
 export type ChatModelUpdate = z.infer<typeof chatModelUpdateSchema>;
 export type ChatCompactAccepted = z.infer<typeof chatCompactAcceptedSchema>;
+export type ChatInterruptAccepted = z.infer<typeof chatInterruptAcceptedSchema>;
 export type AgentTurnResult = z.infer<typeof agentTurnResultSchema>;
 export type AgentActivity = z.infer<typeof agentActivitySchema>;
 export type WorkerCommand = z.infer<typeof workerCommandSchema>;

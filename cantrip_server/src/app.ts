@@ -11,6 +11,7 @@ import {
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   chatCompactAcceptedSchema,
+  chatInterruptAcceptedSchema,
   chatCreateSchema,
   chatForkSchema,
   chatListSchema,
@@ -691,6 +692,19 @@ export async function buildApp({
     },
   );
 
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/console",
+    async (request, reply) => {
+      const terminal = await repository.getOrCreateChatConsole(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      return terminal
+        ? reply.code(201).send(terminalSummarySchema.parse(terminal))
+        : reply.code(404).send({ error: "Chat source not found." });
+    },
+  );
+
   app.get<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/terminals",
     async (request, reply) => {
@@ -1175,6 +1189,43 @@ export async function buildApp({
     },
   );
 
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/interrupt",
+    async (request, reply) => {
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      if (!context.threadId || context.status !== "running") {
+        return reply.send(
+          chatInterruptAcceptedSchema.parse({ interrupted: false }),
+        );
+      }
+      const modelId =
+        context.modelId ??
+        (await repository.getSettings(LOCAL_USER_ID)).preferences
+          .defaultModelId;
+      if (!modelId) {
+        return reply.code(409).send({ error: "The chat has no active model." });
+      }
+      const runtime = await repository.getModelRuntime(LOCAL_USER_ID, modelId);
+      if (!runtime) {
+        return reply.code(400).send({ error: "Selected model was not found." });
+      }
+      const result = await bridge.request(context.workerId, {
+        type: "chat.interrupt",
+        chatId: context.chatId,
+        threadId: context.threadId,
+        model: runtime.model,
+        provider: runtime.provider,
+      });
+      return reply.send(chatInterruptAcceptedSchema.parse(result));
+    },
+  );
+
   app.get<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/messages",
     async (request, reply) => {
@@ -1334,6 +1385,7 @@ export async function buildApp({
           await repository.setChatStatus(context.chatId, "idle");
         })
         .catch(async (error: unknown) => {
+          const interrupted = /interrupted/i.test(errorMessage(error));
           app.log.error(
             { chatId: context.chatId, err: error },
             "Agent turn failed",
@@ -1341,11 +1393,19 @@ export async function buildApp({
           await repository.appendMessage(LOCAL_USER_ID, context.chatId, {
             role: "system",
             content: [
-              { type: "text", text: `Agent failed: ${errorMessage(error)}` },
+              {
+                type: "text",
+                text: interrupted
+                  ? "Turn interrupted."
+                  : `Agent failed: ${errorMessage(error)}`,
+              },
             ],
             idempotencyKey: `error:${userMessage.id}`,
           });
-          await repository.setChatStatus(context.chatId, "failed");
+          await repository.setChatStatus(
+            context.chatId,
+            interrupted ? "idle" : "failed",
+          );
         });
 
       return reply.code(202).send(

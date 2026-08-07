@@ -207,6 +207,8 @@ const workerBridge = {
       case "chat.compact":
         compactRequests += 1;
         return { accepted: true };
+      case "chat.interrupt":
+        return { interrupted: false };
     }
   },
 } satisfies WorkerCommandBus;
@@ -747,6 +749,35 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toMatchObject([{ id: browser.id, position: 2 }]);
+    const linkedConsole = terminalSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/chats/${chat.id}/console`,
+        })
+      ).json(),
+    );
+    expect(linkedConsole).toMatchObject({
+      linkedChatId: chat.id,
+      projectId: project.id,
+      title: "Codex console",
+    });
+    expect(
+      terminalSummarySchema.parse(
+        (
+          await firstApp.inject({
+            method: "POST",
+            url: `/api/chats/${chat.id}/console`,
+          })
+        ).json(),
+      ).id,
+    ).toBe(linkedConsole.id);
+    expect(
+      await firstApp.inject({
+        method: "DELETE",
+        url: `/api/terminals/${linkedConsole.id}`,
+      }),
+    ).toMatchObject({ statusCode: 204 });
     expect(
       await firstApp.inject({
         method: "DELETE",

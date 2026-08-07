@@ -207,6 +207,9 @@ export const terminals = pgTable("terminals", {
   activeWorkerId: text("active_worker_id")
     .notNull()
     .references(() => workers.id, { onDelete: "cascade" }),
+  linkedChatId: text("linked_chat_id")
+    .unique()
+    .references(() => chats.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

@@ -7,6 +7,7 @@ import {
   chatMessageListSchema,
   chatSummarySchema,
   chatCompactAcceptedSchema,
+  chatInterruptAcceptedSchema,
   chatTurnAcceptedSchema,
   explorerDirectorySchema,
   explorerFileSchema,
@@ -390,6 +391,18 @@ export async function forkChat(chatId: string, messageId?: string) {
 export async function compactChat(chatId: string) {
   return chatCompactAcceptedSchema.parse(
     await post(`/api/chats/${encodeURIComponent(chatId)}/compact`, {}),
+  );
+}
+
+export async function createChatConsole(chatId: string) {
+  return terminalSummarySchema.parse(
+    await post(`/api/chats/${encodeURIComponent(chatId)}/console`, {}),
+  );
+}
+
+export async function interruptChat(chatId: string) {
+  return chatInterruptAcceptedSchema.parse(
+    await post(`/api/chats/${encodeURIComponent(chatId)}/interrupt`, {}),
   );
 }
 

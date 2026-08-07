@@ -281,6 +281,31 @@ function TerminalTab({
   );
 }
 
+function LinkedConsoleTab({
+  active,
+  onSelect,
+  terminal,
+}: {
+  active: boolean;
+  onSelect(): void;
+  terminal: TerminalSummary;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "ml-8 flex w-[calc(100%_-_2rem)] min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
+        active && "bg-muted text-foreground",
+      )}
+      onClick={onSelect}
+    >
+      <SquareTerminal className="size-3.5 shrink-0" />
+      <span className="truncate">Codex console</span>
+      <span className="ml-auto size-1.5 shrink-0 rounded-full bg-emerald-500" />
+    </button>
+  );
+}
+
 function ExplorerTab({
   active,
   editing,
@@ -762,6 +787,9 @@ export function ProjectChatList({
   const [removeProjectTarget, setRemoveProjectTarget] =
     useState<ProjectSummary | null>(null);
   const [deleteLocalFiles, setDeleteLocalFiles] = useState(false);
+  const standaloneTerminals = terminals.filter(
+    (terminal) => terminal.linkedChatId === null,
+  );
   const tabs: Array<
     | { id: string; kind: "chat"; chat: ChatSummary; position: number }
     | {
@@ -789,7 +817,7 @@ export function ProjectChatList({
       chat,
       position: chat.position,
     })),
-    ...terminals.map((terminal) => ({
+    ...standaloneTerminals.map((terminal) => ({
       id: terminalId(terminal.id),
       kind: "terminal" as const,
       terminal,
@@ -897,7 +925,7 @@ export function ProjectChatList({
     (project) => projectId(project.id) === activeDrag,
   );
   const draggedChat = chats.find((chat) => chatId(chat.id) === activeDrag);
-  const draggedTerminal = terminals.find(
+  const draggedTerminal = standaloneTerminals.find(
     (terminal) => terminalId(terminal.id) === activeDrag,
   );
   const draggedExplorer = explorers.find(
@@ -951,19 +979,33 @@ export function ProjectChatList({
                     >
                       {tabs.map((tab) =>
                         tab.kind === "chat" ? (
-                          <SortableChat
-                            key={tab.id}
-                            chat={tab.chat}
-                            active={tab.chat.id === selectedChatId}
-                            editing={editingChatId === tab.chat.id}
-                            renameValue={renameValue}
-                            setRenameValue={setRenameValue}
-                            submitRename={() => finishRename(tab.chat)}
-                            onSelect={() => onSelectChat(tab.chat.id)}
-                            onRename={() => beginRename(tab.chat)}
-                            onDuplicate={() => onDuplicateChat(tab.chat.id)}
-                            onDelete={() => setDeleteTarget(tab.chat)}
-                          />
+                          <div key={tab.id}>
+                            <SortableChat
+                              chat={tab.chat}
+                              active={tab.chat.id === selectedChatId}
+                              editing={editingChatId === tab.chat.id}
+                              renameValue={renameValue}
+                              setRenameValue={setRenameValue}
+                              submitRename={() => finishRename(tab.chat)}
+                              onSelect={() => onSelectChat(tab.chat.id)}
+                              onRename={() => beginRename(tab.chat)}
+                              onDuplicate={() => onDuplicateChat(tab.chat.id)}
+                              onDelete={() => setDeleteTarget(tab.chat)}
+                            />
+                            {terminals
+                              .filter(
+                                (terminal) =>
+                                  terminal.linkedChatId === tab.chat.id,
+                              )
+                              .map((terminal) => (
+                                <LinkedConsoleTab
+                                  key={terminal.id}
+                                  terminal={terminal}
+                                  active={terminal.id === selectedTerminalId}
+                                  onSelect={() => onSelectTerminal(terminal.id)}
+                                />
+                              ))}
+                          </div>
                         ) : tab.kind === "terminal" ? (
                           <TerminalTab
                             key={tab.id}
