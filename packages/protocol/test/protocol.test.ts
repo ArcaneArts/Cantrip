@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   serverBootstrapSchema,
   systemHealthSchema,
+  workerEventEnvelopeSchema,
   workerHeartbeatSchema,
 } from "../src/index.js";
 
@@ -54,6 +55,7 @@ describe("Cantrip protocol", () => {
         directWorkerConnections: false,
       },
       storage: { conversations: "server", files: "worker" },
+      agent: { model: "gemma4:26b", modelProvider: "ollama" },
       capabilities: {
         accounts: false,
         passwordProtection: false,
@@ -71,5 +73,23 @@ describe("Cantrip protocol", () => {
       conversations: "server",
       files: "worker",
     });
+  });
+
+  it("accepts correlated agent activity from a worker", () => {
+    const event = workerEventEnvelopeSchema.parse({
+      kind: "event",
+      requestId: "request-1",
+      event: {
+        type: "agent.activity",
+        activity: {
+          type: "fileChange",
+          id: "change-1",
+          status: "completed",
+          changes: [{ path: "src/App.tsx", kind: "update" }],
+        },
+      },
+    });
+
+    expect(event.event.activity.type).toBe("fileChange");
   });
 });

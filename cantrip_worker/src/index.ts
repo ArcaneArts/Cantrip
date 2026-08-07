@@ -1,6 +1,14 @@
+import { createHash } from "node:crypto";
+import path from "node:path";
+
+import type { WorkerCommand, WorkerEvent } from "@cantrip/protocol";
+
+import { CodexAppServer } from "./codex/app-server.js";
 import { discoverCodexVersion } from "./codex/discovery.js";
 import { readWorkerConfig } from "./config.js";
+import { GithubClient } from "./github.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
+import { WorkerConnection } from "./transport.js";
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
 
@@ -15,6 +23,50 @@ async function start(): Promise<void> {
   let connected = false;
   let lastConnectionError: string | null = null;
   let stopping = false;
+  const github = new GithubClient(config.dataDirectory);
+  const codexRuntimes = new Map<string, CodexAppServer>();
+
+  const runtimeFor = (
+    command: Extract<WorkerCommand, { type: "chat.turn" }>,
+  ) => {
+    const runtimeId = `${command.provider.id}:${command.model.id}`;
+    let runtime = codexRuntimes.get(runtimeId);
+    if (!runtime) {
+      const directoryName = createHash("sha256")
+        .update(runtimeId)
+        .digest("hex");
+      runtime = new CodexAppServer(
+        config.codexBinary,
+        path.join(config.dataDirectory, "codex-runtimes", directoryName),
+      );
+      codexRuntimes.set(runtimeId, runtime);
+    }
+    return runtime;
+  };
+
+  const handleCommand = async (
+    command: WorkerCommand,
+    emit: (event: WorkerEvent) => void,
+  ): Promise<unknown> => {
+    switch (command.type) {
+      case "github.auth.status":
+        return github.authStatus();
+      case "github.repositories.list":
+        return github.listRepositories();
+      case "project.clone":
+        return github.cloneRepository(command.repository.nameWithOwner);
+      case "chat.turn":
+        return runtimeFor(command).runTurn({
+          cwd: command.cwd,
+          model: command.model,
+          provider: command.provider,
+          prompt: command.prompt,
+          threadId: command.threadId,
+          onActivity: (activity) => emit({ type: "agent.activity", activity }),
+        });
+    }
+  };
+  const commandConnection = new WorkerConnection(config, handleCommand);
 
   console.log(
     `[cantrip_worker] Starting ${heartbeat.name} (${heartbeat.workerId}); Codex: ${codexVersion ?? "not found"}`,
@@ -39,6 +91,7 @@ async function start(): Promise<void> {
   };
 
   await publish();
+  commandConnection.start();
   const heartbeatTimer = setInterval(
     () => void publish(),
     HEARTBEAT_INTERVAL_MS,
@@ -52,6 +105,10 @@ async function start(): Promise<void> {
 
       stopping = true;
       clearInterval(heartbeatTimer);
+      commandConnection.close();
+      for (const runtime of codexRuntimes.values()) {
+        runtime.close();
+      }
       console.log(`[cantrip_worker] Received ${signal}; stopped.`);
       resolve();
     };

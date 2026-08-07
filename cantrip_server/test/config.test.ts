@@ -13,10 +13,13 @@ describe("server configuration safety", () => {
     vi.stubEnv("CANTRIP_AUTH_MODE", "none");
 
     expect(readServerConfig()).toMatchObject({
+      agentModel: "gemma4:26b",
+      agentModelProvider: "ollama",
       authMode: "none",
       bootstrapMode: "pnpm-dev",
       deploymentMode: "local",
       host: "127.0.0.1",
+      ollamaBaseUrl: "http://127.0.0.1:11434/v1",
     });
   });
 

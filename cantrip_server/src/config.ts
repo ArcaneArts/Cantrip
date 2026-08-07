@@ -28,6 +28,9 @@ export interface ServerConfig {
   dataDirectory: string;
   databaseUrl?: string;
   deploymentMode: DeploymentMode;
+  agentModel: string;
+  agentModelProvider: string;
+  ollamaBaseUrl: string;
   host: string;
   port: number;
   workerToken: string;
@@ -81,6 +84,10 @@ export function readServerConfig(): ServerConfig {
     ),
     databaseUrl: process.env.DATABASE_URL,
     deploymentMode,
+    agentModel: process.env.CANTRIP_AGENT_MODEL ?? "gemma4:26b",
+    agentModelProvider: process.env.CANTRIP_AGENT_MODEL_PROVIDER ?? "ollama",
+    ollamaBaseUrl:
+      process.env.CANTRIP_OLLAMA_BASE_URL ?? "http://127.0.0.1:11434/v1",
     host,
     port: readPort(process.env.CANTRIP_SERVER_PORT),
     workerToken,

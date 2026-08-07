@@ -37,6 +37,10 @@ export const serverBootstrapSchema = z.object({
     conversations: z.literal("server"),
     files: z.literal("worker"),
   }),
+  agent: z.object({
+    model: z.string().min(1),
+    modelProvider: z.string().min(1),
+  }),
   capabilities: z.object({
     accounts: z.boolean(),
     passwordProtection: z.boolean(),
@@ -77,13 +81,109 @@ export const systemHealthSchema = z.object({
   timestamp: z.string().datetime(),
 });
 
-export const projectCreateSchema = z.object({
-  name: z.string().trim().min(1).max(120),
+export const themePreferenceSchema = z.enum(["system", "light", "dark"]);
+export const modelProviderKindSchema = z.enum(["ollama", "openai-compatible"]);
+export const reasoningEffortSchema = z.enum([
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+]);
+
+export const modelProviderCreateSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  kind: modelProviderKindSchema,
+  baseUrl: z.url(),
+  apiKey: z.string().trim().min(1).max(10_000).nullable().optional(),
+});
+
+export const modelProviderSummarySchema = modelProviderCreateSchema
+  .omit({ apiKey: true })
+  .extend({
+    id: z.string().min(1),
+    hasApiKey: z.boolean(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  });
+
+export const modelProviderListSchema = z.array(modelProviderSummarySchema);
+
+export const modelProfileCreateSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  providerId: z.string().min(1),
+  reasoningEffort: reasoningEffortSchema.nullable().optional(),
+});
+
+export const modelProfileSummarySchema = modelProfileCreateSchema.extend({
+  id: z.string().min(1),
+  reasoningEffort: reasoningEffortSchema.nullable(),
+  providerName: z.string().min(1),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const modelProfileListSchema = z.array(modelProfileSummarySchema);
+
+export const userSettingsSchema = z.object({
+  theme: themePreferenceSchema,
+  defaultModelId: z.string().min(1).nullable(),
+});
+
+export const userSettingsUpdateSchema = userSettingsSchema.partial();
+
+export const settingsBundleSchema = z.object({
+  preferences: userSettingsSchema,
+  providers: modelProviderListSchema,
+  models: modelProfileListSchema,
+});
+
+export const githubAuthStatusSchema = z.object({
+  authenticated: z.boolean(),
+  login: z.string().min(1).nullable(),
+  source: z.enum(["gh-cli", "token", "none"]),
+});
+
+export const githubRepositorySchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  nameWithOwner: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
+  description: z.string().nullable(),
+  isPrivate: z.boolean(),
+  isFork: z.boolean(),
+  url: z.url(),
+  defaultBranch: z.string().min(1),
+  updatedAt: z.string().datetime(),
+  imported: z.boolean().default(false),
+});
+
+export const githubRepositoryListSchema = z.array(githubRepositorySchema);
+
+export const githubProjectCreateSchema = z.object({
+  workerId: z.string().min(1),
+  repositoryId: z.string().min(1),
+  nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
+  url: z.url(),
+});
+
+export const projectSourceSummarySchema = z.object({
+  id: z.string().min(1),
+  workerId: z.string().min(1),
+  path: z.string().min(1),
+  displayPath: z.string().min(1),
 });
 
 export const projectSummarySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
+  github: z
+    .object({
+      repositoryId: z.string().min(1),
+      nameWithOwner: z.string().min(1),
+      url: z.url(),
+    })
+    .nullable(),
+  source: projectSourceSummarySchema.nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -92,7 +192,6 @@ export const projectListSchema = z.array(projectSummarySchema);
 
 export const chatCreateSchema = z.object({
   title: z.string().trim().min(1).max(200).default("New chat"),
-  workerId: z.string().min(1).nullable().optional(),
 });
 
 export const chatSummarySchema = z.object({
@@ -101,6 +200,8 @@ export const chatSummarySchema = z.object({
   title: z.string().min(1),
   status: z.enum(["idle", "running", "offline", "failed"]),
   activeWorkerId: z.string().min(1).nullable(),
+  modelId: z.string().min(1).nullable(),
+  modelLocked: z.boolean(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -108,11 +209,43 @@ export const chatSummarySchema = z.object({
 export const chatListSchema = z.array(chatSummarySchema);
 
 export const chatMessageRoleSchema = z.enum(["user", "assistant", "system"]);
+export const agentActivityStatusSchema = z.enum([
+  "running",
+  "completed",
+  "failed",
+  "declined",
+]);
+export const agentActivitySchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("command"),
+    id: z.string().min(1),
+    command: z.string().min(1),
+    cwd: z.string().min(1),
+    status: agentActivityStatusSchema,
+    exitCode: z.number().int().nullable(),
+    output: z.string().nullable(),
+  }),
+  z.object({
+    type: z.literal("fileChange"),
+    id: z.string().min(1),
+    status: agentActivityStatusSchema,
+    changes: z.array(
+      z.object({
+        path: z.string().min(1),
+        kind: z.enum(["add", "delete", "update"]),
+      }),
+    ),
+  }),
+]);
 export const chatMessageContentSchema = z.array(
   z.discriminatedUnion("type", [
     z.object({
       type: z.literal("text"),
       text: z.string().min(1),
+    }),
+    z.object({
+      type: z.literal("activity"),
+      activity: agentActivitySchema,
     }),
   ]),
 );
@@ -134,6 +267,102 @@ export const chatMessageSchema = chatMessageCreateSchema
 
 export const chatMessageListSchema = z.array(chatMessageSchema);
 
+export const chatTurnCreateSchema = z.object({
+  text: z.string().trim().min(1).max(100_000),
+  idempotencyKey: z.string().min(1).max(200),
+  modelId: z.string().min(1).optional(),
+});
+
+export const chatModelUpdateSchema = z.object({
+  modelId: z.string().min(1),
+});
+
+export const chatTurnAcceptedSchema = z.object({
+  accepted: z.literal(true),
+  message: chatMessageSchema,
+});
+
+export const githubWorkerRepositorySchema = githubRepositorySchema.omit({
+  imported: true,
+});
+
+export const githubWorkerRepositoryListSchema = z.array(
+  githubWorkerRepositorySchema,
+);
+
+export const projectCloneResultSchema = z.object({
+  path: z.string().min(1),
+  displayPath: z.string().min(1),
+});
+
+export const agentTurnResultSchema = z.object({
+  threadId: z.string().min(1),
+  text: z.string(),
+  status: z.literal("completed"),
+});
+
+export const workerCommandSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("github.auth.status") }),
+  z.object({ type: z.literal("github.repositories.list") }),
+  z.object({
+    type: z.literal("project.clone"),
+    repository: z.object({
+      nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
+    }),
+  }),
+  z.object({
+    type: z.literal("chat.turn"),
+    chatId: z.string().min(1),
+    cwd: z.string().min(1),
+    threadId: z.string().min(1).nullable(),
+    prompt: z.string().min(1),
+    model: z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      reasoningEffort: reasoningEffortSchema.nullable(),
+    }),
+    provider: z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      kind: modelProviderKindSchema,
+      baseUrl: z.url(),
+      apiKey: z.string().min(1).nullable(),
+    }),
+  }),
+]);
+
+export const workerRequestEnvelopeSchema = z.object({
+  kind: z.literal("request"),
+  requestId: z.string().min(1),
+  command: workerCommandSchema,
+});
+
+export const workerResponseEnvelopeSchema = z.discriminatedUnion("ok", [
+  z.object({
+    kind: z.literal("response"),
+    requestId: z.string().min(1),
+    ok: z.literal(true),
+    result: z.unknown(),
+  }),
+  z.object({
+    kind: z.literal("response"),
+    requestId: z.string().min(1),
+    ok: z.literal(false),
+    error: z.object({ message: z.string().min(1) }),
+  }),
+]);
+
+export const workerEventSchema = z.object({
+  type: z.literal("agent.activity"),
+  activity: agentActivitySchema,
+});
+
+export const workerEventEnvelopeSchema = z.object({
+  kind: z.literal("event"),
+  requestId: z.string().min(1),
+  event: workerEventSchema,
+});
+
 export type DatabaseEngine = z.infer<typeof databaseEngineSchema>;
 export type DeploymentMode = z.infer<typeof deploymentModeSchema>;
 export type BootstrapMode = z.infer<typeof bootstrapModeSchema>;
@@ -143,10 +372,37 @@ export type ServerBootstrap = z.infer<typeof serverBootstrapSchema>;
 export type WorkerHeartbeat = z.infer<typeof workerHeartbeatSchema>;
 export type WorkerSummary = z.infer<typeof workerSummarySchema>;
 export type SystemHealth = z.infer<typeof systemHealthSchema>;
-export type ProjectCreate = z.infer<typeof projectCreateSchema>;
+export type ThemePreference = z.infer<typeof themePreferenceSchema>;
+export type ModelProviderKind = z.infer<typeof modelProviderKindSchema>;
+export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>;
+export type ModelProviderCreate = z.infer<typeof modelProviderCreateSchema>;
+export type ModelProviderSummary = z.infer<typeof modelProviderSummarySchema>;
+export type ModelProfileCreate = z.infer<typeof modelProfileCreateSchema>;
+export type ModelProfileSummary = z.infer<typeof modelProfileSummarySchema>;
+export type UserSettings = z.infer<typeof userSettingsSchema>;
+export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
+export type SettingsBundle = z.infer<typeof settingsBundleSchema>;
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
+export type GithubAuthStatus = z.infer<typeof githubAuthStatusSchema>;
+export type GithubRepository = z.infer<typeof githubRepositorySchema>;
+export type GithubWorkerRepository = z.infer<
+  typeof githubWorkerRepositorySchema
+>;
+export type GithubProjectCreate = z.infer<typeof githubProjectCreateSchema>;
+export type ProjectCloneResult = z.infer<typeof projectCloneResultSchema>;
 export type ChatCreate = z.infer<typeof chatCreateSchema>;
 export type ChatSummary = z.infer<typeof chatSummarySchema>;
 export type ChatMessageContent = z.infer<typeof chatMessageContentSchema>;
 export type ChatMessageCreate = z.infer<typeof chatMessageCreateSchema>;
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
+export type ChatTurnCreate = z.infer<typeof chatTurnCreateSchema>;
+export type ChatModelUpdate = z.infer<typeof chatModelUpdateSchema>;
+export type AgentTurnResult = z.infer<typeof agentTurnResultSchema>;
+export type AgentActivity = z.infer<typeof agentActivitySchema>;
+export type WorkerCommand = z.infer<typeof workerCommandSchema>;
+export type WorkerEvent = z.infer<typeof workerEventSchema>;
+export type WorkerRequestEnvelope = z.infer<typeof workerRequestEnvelopeSchema>;
+export type WorkerResponseEnvelope = z.infer<
+  typeof workerResponseEnvelopeSchema
+>;
+export type WorkerEventEnvelope = z.infer<typeof workerEventEnvelopeSchema>;

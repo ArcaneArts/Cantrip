@@ -8,7 +8,7 @@
 
 ## 1. Product vision
 
-Cantrip is a self-hostable, multi-device coding-agent client inspired by the Codex desktop experience. The immediate product is deliberately local: one `pnpm dev` command runs the browser app, server, embedded database, and one worker on the same computer. A user opens the app without signing in, links a local source folder, and uses Codex against that folder. The boundaries must nevertheless support a browser, Tauri desktop app, or Capacitor mobile app connecting to a remote server and one or more workers later.
+Cantrip is a self-hostable, multi-device coding-agent client inspired by the Codex desktop experience. The immediate product is deliberately local: one `pnpm dev` command runs the browser app, server, embedded database, and one worker on the same computer. A user opens the app without signing in, chooses an accessible GitHub repository, and Cantrip clones it into one worker-owned source folder for that project. The boundaries must nevertheless support a browser, Tauri desktop app, or Capacitor mobile app connecting to a remote server and one or more workers later.
 
 The server is the configuration and routing authority. It announces its deployment mode, authentication mode, current user, supported features, and storage/routing rules to every app. It also owns durable Cantrip product state and conversation history. The worker owns machine access: it runs the open-source Codex CLI, reads and writes source files, manages terminals, and enforces local permissions. The app is a control surface that connects only to the server and never assumes project files exist on the device rendering the UI.
 
@@ -21,7 +21,7 @@ Cantrip should support these deployment shapes without maintaining separate prod
 
 ## 2. Goals
 
-- Organize chats inside projects linked to real source folders on workers.
+- Organize chats inside projects, where each MVP project represents one GitHub repository and one worker-owned source folder.
 - Run the open-source Codex CLI through its app-server interface rather than screen-scraping its terminal UI.
 - Stream agent messages, plans, reasoning summaries, commands, file changes, diffs, approvals, errors, and token usage into a responsive UI.
 - Support interrupting, steering, queued follow-ups, prompt reordering, and explicit context compaction.
@@ -192,7 +192,7 @@ The database is the source of truth for Cantrip entities. Exact columns can evol
 | `workers` | Owner, display name, status, platform, capabilities, protocol version, public key, last seen time. |
 | `worker_credentials` | Hashed/encrypted enrollment material and rotation metadata; never raw provider secrets. |
 | `projects` | Server-owned logical project name, owner, settings, and optional default worker/source binding. |
-| `project_sources` | A worker-scoped canonical path, display path, repository fingerprint, Git metadata, and allowed access policy. |
+| `project_sources` | The single worker-owned folder for an MVP project: canonical path, display path, repository fingerprint, Git metadata, and allowed access policy. Future replicas/worktrees require a separate explicit model. |
 | `chats` | Server-owned logical conversation with project, title, active worker, runtime profile, status, model, and event cursor. |
 | `chat_runtime_sessions` | Mapping from one logical chat to a worker-specific Codex thread/session, source binding, status, and replay/handoff metadata. |
 | `chat_messages` | Ordered server-held conversation history that remains readable independently of worker availability. |
@@ -208,6 +208,12 @@ A project source path is meaningful only on its worker. Two workers may bind the
 The server keeps the ordered transcript and enough normalized events to render a chat while its worker is offline. The worker keeps the Codex rollout/session files required to resume model context. If those files are lost, the transcript remains viewable. A later handoff can attach the logical chat to another worker by creating a new runtime session from server history, provided that worker has a matching source binding. The UI must distinguish a seamless session resume from a history-based handoff.
 
 Git-aware worker synchronization is a later subsystem. It may coordinate repository remotes, commits, revisions, branches, and worktrees so compatible checkouts exist on several workers, but Cantrip must never assume that equal project IDs imply equal files. Uncommitted changes require an explicit transfer strategy and are out of scope for the local foundation.
+
+### 6.1 GitHub-backed project creation
+
+The local MVP does not expose an arbitrary filesystem picker. The app asks the server for repositories available through a selected worker; the worker uses GitHub CLI authentication or a worker-local `GH_TOKEN`, lists repositories accessible to that identity, and clones the selected repository beneath Cantrip's worker data directory. GitHub credentials never enter the app or server database.
+
+The server records the GitHub repository ID and enforces one Cantrip project per `(user, GitHub repository)`. The repository picker marks existing projects and the database unique constraint is the final race-safe guard. The server stores the worker path as routing metadata, while all Git and file operations still execute on the worker.
 
 ## 7. Protocols and state flow
 
@@ -507,7 +513,7 @@ Exit: one root command starts a typed app/server/worker stack, the app renders s
 
 - Supervise Codex app-server over stdio.
 - Bootstrap the loopback-only server, anonymous local user, and worker without a sign-in or connection screen.
-- Register a source folder, create a project, create/resume a Codex thread, and run turns.
+- Discover GitHub repositories through the worker, clone one into its managed data directory, create a project/chat, and create/resume a Codex thread.
 - Stream agent messages, plans, commands, file changes, diffs, errors, and usage.
 - Implement approvals, interruption, steering, durable queueing, and compaction.
 - Persist/replay chat events and resume after process restarts.
@@ -517,7 +523,7 @@ Exit: a developer can use Cantrip locally in the browser for a real repository w
 
 ### Phase 2: runtime profiles and local tools
 
-- Add isolated Codex homes and a runtime process pool.
+- Add isolated Codex homes and a runtime process pool. The initial provider/model process pool, server-owned settings, and first-message chat model lock are implemented in the local vertical slice.
 - Add ChatGPT browser/device login, logout, account display, and rate-limit UI.
 - Add API-key/base-URL and keyless Ollama profiles.
 - Add explicit model capability tests and structured-output probes.
@@ -564,7 +570,7 @@ The first meaningful release is complete when all of the following are true:
 - `pnpm dev` starts app, server, worker, and PGlite locally.
 - The browser app discovers local/no-auth mode from the server and opens as the anonymous local user without a connection screen.
 - The app contains no direct worker origin; every worker interaction routes through the server.
-- A user can choose a worker folder, create a project and chat, and run a real Codex turn.
+- A user can choose an accessible GitHub repository, create a unique single-source project and chat, and run a real Codex turn.
 - The UI accurately streams and restores messages, plans, command output, file changes, diffs, approvals, errors, and completion state.
 - Steering targets the active turn; queued prompts survive restart and run in the chosen order.
 - Interrupt and explicit context compaction work and leave the chat resumable.
@@ -606,9 +612,9 @@ These decisions should become short ADRs before implementation spreads their ass
 The first engineering pass should follow one end-to-end path rather than building all layers in isolation:
 
 1. Complete the current foundation: local process supervision, server bootstrap, anonymous identity, database-backed workers/projects/chats/messages, and the shadcn status UI.
-2. Add worker source registration and folder selection through the server, storing paths only as worker-scoped metadata.
-3. Implement a fake Codex runtime and show a persisted, streamed fake chat in the shadcn UI.
-4. Replace the fake runtime inside the worker with supervised Codex app-server stdio.
+2. Add worker-side GitHub authentication discovery, repository listing, and managed cloning through the server. (Implemented for GitHub CLI or `GH_TOKEN`.)
+3. Add the project/chat sidebar and persisted chat composer, initially polling for completed agent messages. (Implemented.)
+4. Supervise Codex app-server over stdio and run local Ollama/Gemma turns. Persist Markdown responses, command lifecycle activity, and turn-level workspace file changes. (Initial implementation complete.)
 5. Persist inputs, turns, normalized events, queue state, and cursors; complete one reconnect-safe real turn.
 6. Add approvals and interrupt, then steering and the durable queue, then compaction.
 7. Add runtime profiles and ChatGPT device/browser login.

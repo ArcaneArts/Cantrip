@@ -9,6 +9,12 @@
     />
     <meta name="theme-color" content="#0a0a0a" />
     <title>Cantrip</title>
+    <script>
+      if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        document.documentElement.classList.add("dark");
+        document.documentElement.style.colorScheme = "dark";
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

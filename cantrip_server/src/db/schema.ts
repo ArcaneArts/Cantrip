@@ -30,6 +30,76 @@ export const users = pgTable("users", {
     .defaultNow(),
 });
 
+export const modelProviders = pgTable(
+  "model_providers",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    kind: text("kind").notNull(),
+    baseUrl: text("base_url").notNull(),
+    apiKey: text("api_key"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("model_providers_owner_name_unique").on(
+      table.ownerId,
+      table.name,
+    ),
+  ],
+);
+
+export const modelProfiles = pgTable(
+  "model_profiles",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    providerId: text("provider_id")
+      .notNull()
+      .references(() => modelProviders.id, { onDelete: "restrict" }),
+    name: text("name").notNull(),
+    reasoningEffort: text("reasoning_effort"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("model_profiles_owner_provider_name_unique").on(
+      table.ownerId,
+      table.providerId,
+      table.name,
+    ),
+  ],
+);
+
+export const userSettings = pgTable("user_settings", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  theme: text("theme").notNull().default("system"),
+  defaultModelId: text("default_model_id").references(() => modelProfiles.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export const workers = pgTable("workers", {
   id: text("id").primaryKey(),
   ownerId: text("owner_id")
@@ -49,19 +119,31 @@ export const workers = pgTable("workers", {
     .defaultNow(),
 });
 
-export const projects = pgTable("projects", {
-  id: text("id").primaryKey(),
-  ownerId: text("owner_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const projects = pgTable(
+  "projects",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    githubRepositoryId: text("github_repository_id"),
+    githubRepositoryFullName: text("github_repository_full_name"),
+    githubRepositoryUrl: text("github_repository_url"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("projects_owner_github_repository_unique").on(
+      table.ownerId,
+      table.githubRepositoryId,
+    ),
+  ],
+);
 
 export const projectSources = pgTable(
   "project_sources",
@@ -84,10 +166,7 @@ export const projectSources = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("project_sources_project_worker_unique").on(
-      table.projectId,
-      table.workerId,
-    ),
+    uniqueIndex("project_sources_project_unique").on(table.projectId),
   ],
 );
 
@@ -101,6 +180,10 @@ export const chats = pgTable("chats", {
   activeWorkerId: text("active_worker_id").references(() => workers.id, {
     onDelete: "set null",
   }),
+  modelId: text("model_id").references(() => modelProfiles.id, {
+    onDelete: "restrict",
+  }),
+  modelLockedAt: timestamp("model_locked_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

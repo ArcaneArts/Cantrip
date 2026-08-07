@@ -15,6 +15,20 @@
       "when": 1786107983593,
       "tag": "0001_silent_groot",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786109629764,
+      "tag": "0002_narrow_jasper_sitwell",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786111966233,
+      "tag": "0003_fluffy_hedge_knight",
+      "breakpoints": true
     }
   ]
 }
