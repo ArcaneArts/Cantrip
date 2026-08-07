@@ -4,6 +4,8 @@ import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import {
   agentTurnResultSchema,
+  codexAuthStatusSchema,
+  codexDeviceLoginSchema,
   chatCreateSchema,
   chatForkSchema,
   chatListSchema,
@@ -180,6 +182,69 @@ export async function buildApp({
     const workers = await repository.listWorkers(LOCAL_USER_ID);
     return reply.send(workerListSchema.parse(workers));
   });
+
+  app.get<{ Querystring: { workerId?: string } }>(
+    "/api/codex/auth/status",
+    async (request, reply) => {
+      if (!request.query.workerId) {
+        return reply.code(400).send({ error: "workerId is required" });
+      }
+      try {
+        return reply.send(
+          codexAuthStatusSchema.parse(
+            await bridge.request(request.query.workerId, {
+              type: "codex.auth.status",
+            }),
+          ),
+        );
+      } catch (error) {
+        return reply
+          .code(error instanceof WorkerUnavailableError ? 503 : 502)
+          .send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Body: { workerId?: string } }>(
+    "/api/codex/auth/device-login",
+    async (request, reply) => {
+      if (!request.body?.workerId) {
+        return reply.code(400).send({ error: "workerId is required" });
+      }
+      try {
+        return reply.send(
+          codexDeviceLoginSchema.parse(
+            await bridge.request(request.body.workerId, {
+              type: "codex.auth.login.start",
+            }),
+          ),
+        );
+      } catch (error) {
+        return reply
+          .code(error instanceof WorkerUnavailableError ? 503 : 502)
+          .send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Body: { workerId?: string } }>(
+    "/api/codex/auth/logout",
+    async (request, reply) => {
+      if (!request.body?.workerId) {
+        return reply.code(400).send({ error: "workerId is required" });
+      }
+      try {
+        await bridge.request(request.body.workerId, {
+          type: "codex.auth.logout",
+        });
+        return reply.code(204).send();
+      } catch (error) {
+        return reply
+          .code(error instanceof WorkerUnavailableError ? 503 : 502)
+          .send({ error: errorMessage(error) });
+      }
+    },
+  );
 
   app.get("/api/settings", async (_request, reply) => {
     return reply.send(

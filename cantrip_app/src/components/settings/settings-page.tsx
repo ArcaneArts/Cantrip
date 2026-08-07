@@ -1,4 +1,5 @@
 import type {
+  CodexDeviceLogin,
   ModelProfileSummary,
   ModelProviderKind,
   ModelProviderSummary,
@@ -8,8 +9,10 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Cpu,
+  ExternalLink,
   KeyRound,
   Loader2,
+  LogOut,
   Monitor,
   Moon,
   Pencil,
@@ -45,6 +48,10 @@ import {
   deleteModelProfile,
   deleteModelProvider,
   getSettings,
+  getCodexAuthStatus,
+  getWorkers,
+  logoutCodex,
+  startCodexDeviceLogin,
   updateModelProfile,
   updateModelProvider,
   updateSettings,
@@ -78,6 +85,15 @@ const inputClass =
 export function SettingsPage({ onClose }: { onClose(): void }) {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
+  const workers = useQuery({ queryFn: getWorkers, queryKey: ["workers"] });
+  const worker = workers.data?.find((item) => item.online) ?? null;
+  const codexAuth = useQuery({
+    enabled: Boolean(worker),
+    queryFn: () => getCodexAuthStatus(worker!.workerId),
+    queryKey: ["codex-auth", worker?.workerId],
+    refetchInterval: 2_000,
+  });
+  const [deviceLogin, setDeviceLogin] = useState<CodexDeviceLogin | null>(null);
   const [providerDialogOpen, setProviderDialogOpen] = useState(false);
   const [editingProvider, setEditingProvider] =
     useState<ModelProviderSummary | null>(null);
@@ -107,14 +123,17 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
       const input = {
         name: providerName,
         kind: providerKind,
-        baseUrl,
-        ...(editingProvider
-          ? removeApiKey
-            ? { apiKey: null }
-            : apiKey.trim()
-              ? { apiKey: apiKey.trim() }
-              : {}
-          : { apiKey: apiKey.trim() || null }),
+        baseUrl:
+          providerKind === "chatgpt" ? "https://api.openai.com/v1" : baseUrl,
+        ...(providerKind === "chatgpt"
+          ? { apiKey: null }
+          : editingProvider
+            ? removeApiKey
+              ? { apiKey: null }
+              : apiKey.trim()
+                ? { apiKey: apiKey.trim() }
+                : {}
+            : { apiKey: apiKey.trim() || null }),
       };
       return editingProvider
         ? updateModelProvider(editingProvider.id, input)
@@ -148,6 +167,20 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
   const removeModel = useMutation({
     mutationFn: deleteModelProfile,
     onSuccess: refresh,
+  });
+  const beginCodexLogin = useMutation({
+    mutationFn: () => startCodexDeviceLogin(worker!.workerId),
+    onSuccess: (login) => {
+      setDeviceLogin(login);
+      window.open(login.verificationUrl, "_blank", "noopener,noreferrer");
+    },
+  });
+  const signOutCodex = useMutation({
+    mutationFn: () => logoutCodex(worker!.workerId),
+    onSuccess: async () => {
+      setDeviceLogin(null);
+      await codexAuth.refetch();
+    },
   });
 
   const openProviderDialog = (provider: ModelProviderSummary | null) => {
@@ -234,6 +267,101 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                   </Button>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Codex account</CardTitle>
+              <CardDescription>
+                Sign in on the worker to use Codex through your eligible ChatGPT
+                plan. Credentials stay in the worker’s Codex home.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              {!worker ? (
+                <p className="text-sm text-muted-foreground">
+                  Connect a worker to manage its Codex account.
+                </p>
+              ) : codexAuth.isLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" /> Checking Codex
+                  authentication…
+                </div>
+              ) : codexAuth.data?.authMode === "chatgpt" ? (
+                <div className="flex items-center gap-3 rounded-lg border p-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">
+                      Signed in with ChatGPT
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {codexAuth.data.email ?? "ChatGPT account"}
+                      {codexAuth.data.planType
+                        ? ` · ${codexAuth.data.planType} plan`
+                        : ""}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    disabled={signOutCodex.isPending}
+                    onClick={() => signOutCodex.mutate()}
+                  >
+                    <LogOut className="size-4" /> Sign out
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  <Button
+                    className="w-fit"
+                    disabled={beginCodexLogin.isPending}
+                    onClick={() => beginCodexLogin.mutate()}
+                  >
+                    {beginCodexLogin.isPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <ExternalLink className="size-4" />
+                    )}
+                    Sign in with ChatGPT
+                  </Button>
+                  {deviceLogin ? (
+                    <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+                      <p>
+                        Enter code{" "}
+                        <button
+                          type="button"
+                          className="font-mono font-semibold underline"
+                          onClick={() =>
+                            navigator.clipboard.writeText(deviceLogin.userCode)
+                          }
+                        >
+                          {deviceLogin.userCode}
+                        </button>{" "}
+                        at{" "}
+                        <a
+                          className="underline"
+                          href={deviceLogin.verificationUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          the OpenAI device page
+                        </a>
+                        . This page will update after authorization.
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+              {codexAuth.isError ||
+              beginCodexLogin.isError ||
+              signOutCodex.isError ? (
+                <p className="text-sm text-destructive">
+                  {errorText(
+                    codexAuth.error ??
+                      beginCodexLogin.error ??
+                      signOutCodex.error,
+                  )}
+                </p>
+              ) : null}
             </CardContent>
           </Card>
 
@@ -430,49 +558,60 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                     setProviderKind(kind);
                     if (!editingProvider) {
                       setBaseUrl(
-                        kind === "ollama"
-                          ? "http://127.0.0.1:11434/v1"
-                          : "https://",
+                        kind === "chatgpt"
+                          ? "https://api.openai.com/v1"
+                          : kind === "ollama"
+                            ? "http://127.0.0.1:11434/v1"
+                            : "https://",
                       );
                     }
                   }}
                   className={inputClass}
                 >
+                  <option value="chatgpt">ChatGPT plan</option>
                   <option value="ollama">Ollama</option>
                   <option value="openai-compatible">OpenAI compatible</option>
                 </select>
               </Field>
-              <Field label="Base URL">
-                <div className="space-y-1.5">
-                  <input
-                    required
-                    type="url"
-                    value={baseUrl}
-                    onChange={(event) => setBaseUrl(event.target.value)}
-                    className={inputClass}
-                    placeholder="https://openrouter.ai/api/v1"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Enter the API root; Cantrip adds /responses. OpenRouter uses
-                    https://openrouter.ai/api/v1.
-                  </p>
+              {providerKind !== "chatgpt" ? (
+                <Field label="Base URL">
+                  <div className="space-y-1.5">
+                    <input
+                      required
+                      type="url"
+                      value={baseUrl}
+                      onChange={(event) => setBaseUrl(event.target.value)}
+                      className={inputClass}
+                      placeholder="https://openrouter.ai/api/v1"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Enter the API root; Cantrip adds /responses. OpenRouter
+                      uses https://openrouter.ai/api/v1.
+                    </p>
+                  </div>
+                </Field>
+              ) : (
+                <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+                  Uses the ChatGPT account signed in on the selected worker.
                 </div>
-              </Field>
-              <Field label="API key (optional)">
-                <input
-                  type="password"
-                  value={apiKey}
-                  disabled={removeApiKey}
-                  onChange={(event) => setApiKey(event.target.value)}
-                  className={inputClass}
-                  autoComplete="off"
-                  placeholder={
-                    editingProvider?.hasApiKey
-                      ? "Leave blank to keep saved key"
-                      : "Not required for local Ollama"
-                  }
-                />
-              </Field>
+              )}
+              {providerKind !== "chatgpt" ? (
+                <Field label="API key (optional)">
+                  <input
+                    type="password"
+                    value={apiKey}
+                    disabled={removeApiKey}
+                    onChange={(event) => setApiKey(event.target.value)}
+                    className={inputClass}
+                    autoComplete="off"
+                    placeholder={
+                      editingProvider?.hasApiKey
+                        ? "Leave blank to keep saved key"
+                        : "Not required for local Ollama"
+                    }
+                  />
+                </Field>
+              ) : null}
             </div>
             {editingProvider?.hasApiKey ? (
               <label className="flex items-center gap-2 text-sm text-muted-foreground">

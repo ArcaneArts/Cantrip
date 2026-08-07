@@ -82,7 +82,24 @@ export const systemHealthSchema = z.object({
 });
 
 export const themePreferenceSchema = z.enum(["system", "light", "dark"]);
-export const modelProviderKindSchema = z.enum(["ollama", "openai-compatible"]);
+export const modelProviderKindSchema = z.enum([
+  "chatgpt",
+  "ollama",
+  "openai-compatible",
+]);
+
+export const codexAuthStatusSchema = z.object({
+  authenticated: z.boolean(),
+  authMode: z.enum(["chatgpt", "apiKey", "other"]).nullable(),
+  email: z.string().nullable(),
+  planType: z.string().nullable(),
+});
+
+export const codexDeviceLoginSchema = z.object({
+  loginId: z.string().min(1),
+  verificationUrl: z.url(),
+  userCode: z.string().min(1),
+});
 
 /**
  * Codex model-provider URLs are API roots. Codex adds the Responses endpoint
@@ -406,6 +423,9 @@ export const agentTurnResultSchema = z.object({
 });
 
 export const workerCommandSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("codex.auth.status") }),
+  z.object({ type: z.literal("codex.auth.login.start") }),
+  z.object({ type: z.literal("codex.auth.logout") }),
   z.object({ type: z.literal("github.auth.status") }),
   z.object({ type: z.literal("github.repositories.list") }),
   z.object({
@@ -517,6 +537,8 @@ export type WorkerSummary = z.infer<typeof workerSummarySchema>;
 export type SystemHealth = z.infer<typeof systemHealthSchema>;
 export type ThemePreference = z.infer<typeof themePreferenceSchema>;
 export type ModelProviderKind = z.infer<typeof modelProviderKindSchema>;
+export type CodexAuthStatus = z.infer<typeof codexAuthStatusSchema>;
+export type CodexDeviceLogin = z.infer<typeof codexDeviceLoginSchema>;
 export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>;
 export type ModelProviderCreate = z.infer<typeof modelProviderCreateSchema>;
 export type ModelProviderUpdate = z.infer<typeof modelProviderUpdateSchema>;

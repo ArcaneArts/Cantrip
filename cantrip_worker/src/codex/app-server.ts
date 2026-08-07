@@ -297,6 +297,7 @@ export class CodexAppServer {
   constructor(
     private readonly codexBinary: string,
     private readonly dataDirectory: string,
+    private readonly codexHome: string = path.join(dataDirectory, "codex-home"),
   ) {}
 
   async runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult> {
@@ -398,28 +399,30 @@ export class CodexAppServer {
     model: RunAgentTurnOptions["model"],
     provider: RunAgentTurnOptions["provider"],
   ): Promise<void> {
-    const codexHome = path.join(this.dataDirectory, "codex-home");
-    await mkdir(codexHome, { recursive: true });
+    await mkdir(this.codexHome, { recursive: true });
+    const providerArguments =
+      provider.kind === "chatgpt"
+        ? ['model_provider="openai"']
+        : [
+            'model_provider="cantrip_runtime"',
+            `model_providers.cantrip_runtime.name=${JSON.stringify(provider.name)}`,
+            `model_providers.cantrip_runtime.base_url=${JSON.stringify(normalizeResponsesBaseUrl(provider.baseUrl))}`,
+            'model_providers.cantrip_runtime.wire_api="responses"',
+            ...(provider.apiKey
+              ? [
+                  'model_providers.cantrip_runtime.env_key="CANTRIP_PROVIDER_API_KEY"',
+                ]
+              : []),
+          ];
     const child = spawn(
       this.codexBinary,
       [
         "app-server",
         "-c",
-        'model_provider="cantrip_runtime"',
+        'cli_auth_credentials_store="file"',
+        ...providerArguments.flatMap((argument) => ["-c", argument]),
         "-c",
         `model=${JSON.stringify(model.name)}`,
-        "-c",
-        `model_providers.cantrip_runtime.name=${JSON.stringify(provider.name)}`,
-        "-c",
-        `model_providers.cantrip_runtime.base_url=${JSON.stringify(normalizeResponsesBaseUrl(provider.baseUrl))}`,
-        "-c",
-        'model_providers.cantrip_runtime.wire_api="responses"',
-        ...(provider.apiKey
-          ? [
-              "-c",
-              'model_providers.cantrip_runtime.env_key="CANTRIP_PROVIDER_API_KEY"',
-            ]
-          : []),
         ...(model.reasoningEffort
           ? [
               "-c",
@@ -430,7 +433,7 @@ export class CodexAppServer {
       {
         env: {
           ...process.env,
-          CODEX_HOME: codexHome,
+          CODEX_HOME: this.codexHome,
           ...(provider.apiKey
             ? { CANTRIP_PROVIDER_API_KEY: provider.apiKey }
             : {}),

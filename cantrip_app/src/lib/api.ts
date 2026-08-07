@@ -1,5 +1,7 @@
 import {
   chatListSchema,
+  codexAuthStatusSchema,
+  codexDeviceLoginSchema,
   chatMessageListSchema,
   chatSummarySchema,
   chatTurnAcceptedSchema,
@@ -81,6 +83,24 @@ export async function getServerBootstrap() {
 
 export async function getWorkers() {
   return workerListSchema.parse(await request("/api/workers"));
+}
+
+export async function getCodexAuthStatus(workerId: string) {
+  return codexAuthStatusSchema.parse(
+    await request(
+      `/api/codex/auth/status?workerId=${encodeURIComponent(workerId)}`,
+    ),
+  );
+}
+
+export async function startCodexDeviceLogin(workerId: string) {
+  return codexDeviceLoginSchema.parse(
+    await post("/api/codex/auth/device-login", { workerId }),
+  );
+}
+
+export async function logoutCodex(workerId: string) {
+  await post("/api/codex/auth/logout", { workerId });
 }
 
 export async function getSettings() {

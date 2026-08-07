@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  codexAuthStatusSchema,
+  codexDeviceLoginSchema,
   normalizeResponsesBaseUrl,
   serverBootstrapSchema,
   systemHealthSchema,
@@ -11,6 +13,24 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("accepts non-secret Codex account and device login state", () => {
+    expect(
+      codexAuthStatusSchema.parse({
+        authenticated: true,
+        authMode: "chatgpt",
+        email: "user@example.com",
+        planType: "plus",
+      }).planType,
+    ).toBe("plus");
+    expect(
+      codexDeviceLoginSchema.parse({
+        loginId: "login-1",
+        verificationUrl: "https://auth.openai.com/codex/device",
+        userCode: "ABCD-1234",
+      }).userCode,
+    ).toBe("ABCD-1234");
+  });
+
   it("normalizes Responses provider URLs to their API root", () => {
     expect(
       normalizeResponsesBaseUrl(

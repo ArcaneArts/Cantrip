@@ -4,6 +4,7 @@ import path from "node:path";
 import type { WorkerCommand, WorkerEvent } from "@cantrip/protocol";
 
 import { CodexAppServer } from "./codex/app-server.js";
+import { CodexAuthClient } from "./codex/auth-client.js";
 import { discoverCodexVersion } from "./codex/discovery.js";
 import { readWorkerConfig } from "./config.js";
 import { GithubClient } from "./github.js";
@@ -26,6 +27,8 @@ async function start(): Promise<void> {
   let lastConnectionError: string | null = null;
   let stopping = false;
   const github = new GithubClient(config.dataDirectory);
+  const codexHome = path.join(config.dataDirectory, "codex-home");
+  const codexAuth = new CodexAuthClient(config.codexBinary, codexHome);
   const codexRuntimes = new Map<string, CodexAppServer>();
   const terminals = new TerminalManager();
 
@@ -41,6 +44,7 @@ async function start(): Promise<void> {
       runtime = new CodexAppServer(
         config.codexBinary,
         path.join(config.dataDirectory, "codex-runtimes", directoryName),
+        codexHome,
       );
       codexRuntimes.set(runtimeId, runtime);
     }
@@ -52,6 +56,15 @@ async function start(): Promise<void> {
     emit: (event: WorkerEvent) => void,
   ): Promise<unknown> => {
     switch (command.type) {
+      case "codex.auth.status":
+        return codexAuth.status();
+      case "codex.auth.login.start":
+        return codexAuth.startDeviceLogin();
+      case "codex.auth.logout":
+        await codexAuth.logout();
+        for (const runtime of codexRuntimes.values()) runtime.close();
+        codexRuntimes.clear();
+        return { accepted: true };
       case "github.auth.status":
         return github.authStatus();
       case "github.repositories.list":
@@ -131,6 +144,7 @@ async function start(): Promise<void> {
       stopping = true;
       clearInterval(heartbeatTimer);
       commandConnection.close();
+      codexAuth.close();
       terminals.closeAll();
       for (const runtime of codexRuntimes.values()) {
         runtime.close();

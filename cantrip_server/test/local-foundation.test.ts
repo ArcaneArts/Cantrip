@@ -54,6 +54,21 @@ const workerBridge = {
   },
   async request(_workerId, command, options) {
     switch (command.type) {
+      case "codex.auth.status":
+        return {
+          authenticated: true,
+          authMode: "chatgpt",
+          email: "test@example.com",
+          planType: "plus",
+        };
+      case "codex.auth.login.start":
+        return {
+          loginId: "login-1",
+          verificationUrl: "https://auth.openai.com/codex/device",
+          userCode: "TEST-CODE",
+        };
+      case "codex.auth.logout":
+        return { accepted: true };
       case "github.auth.status":
         return { authenticated: true, login: "cantrip-test", source: "gh-cli" };
       case "github.repositories.list":
@@ -265,6 +280,30 @@ describe("local server foundation", () => {
       },
     });
     expect(heartbeatResponse.statusCode).toBe(202);
+    expect(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: "/api/codex/auth/status?workerId=test-worker",
+        })
+      ).json(),
+    ).toMatchObject({ authMode: "chatgpt", planType: "plus" });
+    expect(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: "/api/codex/auth/device-login",
+          payload: { workerId: "test-worker" },
+        })
+      ).json(),
+    ).toMatchObject({ userCode: "TEST-CODE" });
+    expect(
+      await firstApp.inject({
+        method: "POST",
+        url: "/api/codex/auth/logout",
+        payload: { workerId: "test-worker" },
+      }),
+    ).toMatchObject({ statusCode: 204 });
 
     const projectResponse = await firstApp.inject({
       method: "POST",
