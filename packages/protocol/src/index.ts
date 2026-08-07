@@ -93,6 +93,12 @@ export const codexAuthStatusSchema = z.object({
   authMode: z.enum(["chatgpt", "apiKey", "other"]).nullable(),
   email: z.string().nullable(),
   planType: z.string().nullable(),
+  weeklyUsage: z
+    .object({
+      usedPercent: z.number().min(0).max(100),
+      resetsAt: z.number().int().nullable(),
+    })
+    .nullable(),
 });
 
 export const codexDeviceLoginSchema = z.object({

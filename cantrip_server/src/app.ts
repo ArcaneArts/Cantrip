@@ -190,13 +190,15 @@ export async function buildApp({
         return reply.code(400).send({ error: "workerId is required" });
       }
       try {
-        return reply.send(
-          codexAuthStatusSchema.parse(
-            await bridge.request(request.query.workerId, {
-              type: "codex.auth.status",
-            }),
-          ),
+        const status = codexAuthStatusSchema.parse(
+          await bridge.request(request.query.workerId, {
+            type: "codex.auth.status",
+          }),
         );
+        if (status.authMode === "chatgpt") {
+          await repository.ensureChatGptProvider(LOCAL_USER_ID);
+        }
+        return reply.send(status);
       } catch (error) {
         return reply
           .code(error instanceof WorkerUnavailableError ? 503 : 502)

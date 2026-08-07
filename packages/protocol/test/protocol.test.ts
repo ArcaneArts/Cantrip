@@ -20,6 +20,7 @@ describe("Cantrip protocol", () => {
         authMode: "chatgpt",
         email: "user@example.com",
         planType: "plus",
+        weeklyUsage: { usedPercent: 42, resetsAt: 1_786_665_600 },
       }).planType,
     ).toBe("plus");
     expect(

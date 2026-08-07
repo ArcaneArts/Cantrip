@@ -60,6 +60,7 @@ const workerBridge = {
           authMode: "chatgpt",
           email: "test@example.com",
           planType: "plus",
+          weeklyUsage: { usedPercent: 37, resetsAt: 1_786_665_600 },
         };
       case "codex.auth.login.start":
         return {
@@ -287,7 +288,19 @@ describe("local server foundation", () => {
           url: "/api/codex/auth/status?workerId=test-worker",
         })
       ).json(),
-    ).toMatchObject({ authMode: "chatgpt", planType: "plus" });
+    ).toMatchObject({
+      authMode: "chatgpt",
+      planType: "plus",
+      weeklyUsage: { usedPercent: 37 },
+    });
+    const settingsAfterCodexLogin = settingsBundleSchema.parse(
+      (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),
+    );
+    expect(
+      settingsAfterCodexLogin.providers.filter(
+        (provider) => provider.kind === "chatgpt",
+      ),
+    ).toMatchObject([{ name: "ChatGPT", hasApiKey: false }]);
     expect(
       (
         await firstApp.inject({

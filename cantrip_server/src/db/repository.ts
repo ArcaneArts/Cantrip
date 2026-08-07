@@ -281,6 +281,46 @@ export class ServerRepository {
     `);
   }
 
+  async ensureChatGptProvider(ownerId: string): Promise<ModelProviderSummary> {
+    const existing = await this.database
+      .select()
+      .from(schema.modelProviders)
+      .where(
+        and(
+          eq(schema.modelProviders.ownerId, ownerId),
+          eq(schema.modelProviders.kind, "chatgpt"),
+        ),
+      )
+      .limit(1);
+    if (existing[0]) return toProviderSummary(existing[0]);
+
+    await this.database
+      .insert(schema.modelProviders)
+      .values({
+        id: randomUUID(),
+        ownerId,
+        name: "ChatGPT",
+        kind: "chatgpt",
+        baseUrl: "https://api.openai.com/v1",
+      })
+      .onConflictDoNothing({
+        target: [schema.modelProviders.ownerId, schema.modelProviders.name],
+      });
+    const created = await this.database
+      .select()
+      .from(schema.modelProviders)
+      .where(
+        and(
+          eq(schema.modelProviders.ownerId, ownerId),
+          eq(schema.modelProviders.name, "ChatGPT"),
+        ),
+      )
+      .limit(1);
+    return toProviderSummary(
+      firstOrThrow(created, "provisioning the ChatGPT provider"),
+    );
+  }
+
   async getSettings(ownerId: string): Promise<SettingsBundle> {
     const [settingsRows, providerRows, modelRows] = await Promise.all([
       this.database

@@ -8,6 +8,7 @@ import type {
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Check,
   Cpu,
   ExternalLink,
   KeyRound,
@@ -22,7 +23,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -85,15 +86,16 @@ const inputClass =
 export function SettingsPage({ onClose }: { onClose(): void }) {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
+  const [deviceLogin, setDeviceLogin] = useState<CodexDeviceLogin | null>(null);
+  const [deviceCodeCopied, setDeviceCodeCopied] = useState(false);
   const workers = useQuery({ queryFn: getWorkers, queryKey: ["workers"] });
   const worker = workers.data?.find((item) => item.online) ?? null;
   const codexAuth = useQuery({
     enabled: Boolean(worker),
     queryFn: () => getCodexAuthStatus(worker!.workerId),
     queryKey: ["codex-auth", worker?.workerId],
-    refetchInterval: 2_000,
+    refetchInterval: 10_000,
   });
-  const [deviceLogin, setDeviceLogin] = useState<CodexDeviceLogin | null>(null);
   const [providerDialogOpen, setProviderDialogOpen] = useState(false);
   const [editingProvider, setEditingProvider] =
     useState<ModelProviderSummary | null>(null);
@@ -182,6 +184,12 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
       await codexAuth.refetch();
     },
   });
+
+  useEffect(() => {
+    if (codexAuth.data?.authMode !== "chatgpt") return;
+    setDeviceLogin(null);
+    void queryClient.invalidateQueries({ queryKey: ["settings"] });
+  }, [codexAuth.data?.authMode, queryClient]);
 
   const openProviderDialog = (provider: ModelProviderSummary | null) => {
     saveProvider.reset();
@@ -289,25 +297,53 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                   authentication…
                 </div>
               ) : codexAuth.data?.authMode === "chatgpt" ? (
-                <div className="flex items-center gap-3 rounded-lg border p-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">
-                      Signed in with ChatGPT
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {codexAuth.data.email ?? "ChatGPT account"}
-                      {codexAuth.data.planType
-                        ? ` · ${codexAuth.data.planType} plan`
-                        : ""}
-                    </p>
+                <div className="grid gap-3 rounded-lg border p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">
+                        Signed in with ChatGPT
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {codexAuth.data.email ?? "ChatGPT account"}
+                        {codexAuth.data.planType
+                          ? ` · ${codexAuth.data.planType} plan`
+                          : ""}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      disabled={signOutCodex.isPending}
+                      onClick={() => signOutCodex.mutate()}
+                    >
+                      <LogOut className="size-4" /> Sign out
+                    </Button>
                   </div>
-                  <Button
-                    variant="outline"
-                    disabled={signOutCodex.isPending}
-                    onClick={() => signOutCodex.mutate()}
-                  >
-                    <LogOut className="size-4" /> Sign out
-                  </Button>
+                  {codexAuth.data.weeklyUsage ? (
+                    <div className="grid gap-1.5 border-t pt-3">
+                      <div className="flex justify-between text-xs">
+                        <span>7-day usage</span>
+                        <span className="font-medium">
+                          {Math.round(codexAuth.data.weeklyUsage.usedPercent)}%
+                        </span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-primary transition-[width]"
+                          style={{
+                            width: `${codexAuth.data.weeklyUsage.usedPercent}%`,
+                          }}
+                        />
+                      </div>
+                      {codexAuth.data.weeklyUsage.resetsAt ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          Resets{" "}
+                          {new Date(
+                            codexAuth.data.weeklyUsage.resetsAt * 1_000,
+                          ).toLocaleString()}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <div className="grid gap-3">
@@ -329,11 +365,22 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                         Enter code{" "}
                         <button
                           type="button"
-                          className="font-mono font-semibold underline"
-                          onClick={() =>
-                            navigator.clipboard.writeText(deviceLogin.userCode)
-                          }
+                          title="Copy device code"
+                          className="inline-flex items-center gap-1 rounded bg-background px-1.5 py-0.5 font-mono font-semibold underline"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(
+                              deviceLogin.userCode,
+                            );
+                            setDeviceCodeCopied(true);
+                            window.setTimeout(
+                              () => setDeviceCodeCopied(false),
+                              1_500,
+                            );
+                          }}
                         >
+                          {deviceCodeCopied ? (
+                            <Check className="size-3" />
+                          ) : null}
                           {deviceLogin.userCode}
                         </button>{" "}
                         at{" "}
@@ -402,27 +449,33 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                         <KeyRound className="size-3.5 text-muted-foreground" />
                       ) : null}
                     </div>
-                    <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
-                      {provider.baseUrl}
+                    <p className="mt-1 truncate text-[11px] text-muted-foreground">
+                      {provider.kind === "chatgpt"
+                        ? "Uses the Codex account signed in on the worker"
+                        : provider.baseUrl}
                     </p>
                   </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => openProviderDialog(provider)}
-                  >
-                    <Pencil className="size-4" />
-                    <span className="sr-only">Edit {provider.name}</span>
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    disabled={removeProvider.isPending}
-                    onClick={() => removeProvider.mutate(provider.id)}
-                  >
-                    <Trash2 className="size-4" />
-                    <span className="sr-only">Delete {provider.name}</span>
-                  </Button>
+                  {provider.kind !== "chatgpt" ? (
+                    <>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => openProviderDialog(provider)}
+                      >
+                        <Pencil className="size-4" />
+                        <span className="sr-only">Edit {provider.name}</span>
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={removeProvider.isPending}
+                        onClick={() => removeProvider.mutate(provider.id)}
+                      >
+                        <Trash2 className="size-4" />
+                        <span className="sr-only">Delete {provider.name}</span>
+                      </Button>
+                    </>
+                  ) : null}
                 </div>
               ))}
               {removeProvider.isError ? (
@@ -568,7 +621,6 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                   }}
                   className={inputClass}
                 >
-                  <option value="chatgpt">ChatGPT plan</option>
                   <option value="ollama">Ollama</option>
                   <option value="openai-compatible">OpenAI compatible</option>
                 </select>

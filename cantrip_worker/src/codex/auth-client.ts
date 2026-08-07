@@ -26,6 +26,10 @@ export class CodexAuthClient {
   #nextId = 1;
   #pending = new Map<number, PendingRequest>();
   #starting: Promise<void> | null = null;
+  #weeklyUsageCache: {
+    fetchedAt: number;
+    value: { usedPercent: number; resetsAt: number | null } | null;
+  } | null = null;
 
   constructor(
     private readonly codexBinary: string,
@@ -44,6 +48,8 @@ export class CodexAuthClient {
         | null;
     };
     const account = result.account;
+    const weeklyUsage =
+      account?.type === "chatgpt" ? await this.weeklyUsage() : null;
     return codexAuthStatusSchema.parse({
       authenticated: account !== null,
       authMode:
@@ -62,6 +68,7 @@ export class CodexAuthClient {
         account?.type === "chatgpt" && "planType" in account
           ? account.planType
           : null,
+      weeklyUsage,
     });
   }
 
@@ -84,6 +91,49 @@ export class CodexAuthClient {
   async logout(): Promise<void> {
     await this.ensureStarted();
     await this.request("account/logout", undefined);
+    this.#weeklyUsageCache = null;
+  }
+
+  private async weeklyUsage(): Promise<{
+    usedPercent: number;
+    resetsAt: number | null;
+  } | null> {
+    if (
+      this.#weeklyUsageCache &&
+      Date.now() - this.#weeklyUsageCache.fetchedAt < 30_000
+    ) {
+      return this.#weeklyUsageCache.value;
+    }
+    try {
+      const result = (await this.request(
+        "account/rateLimits/read",
+        undefined,
+      )) as {
+        rateLimits?: RateLimitSnapshot;
+        rateLimitsByLimitId?: Record<string, RateLimitSnapshot> | null;
+      };
+      const snapshots = [
+        ...(result.rateLimitsByLimitId
+          ? Object.values(result.rateLimitsByLimitId)
+          : []),
+        ...(result.rateLimits ? [result.rateLimits] : []),
+      ];
+      const windows = snapshots.flatMap((snapshot) =>
+        [snapshot.primary, snapshot.secondary].filter(
+          (window): window is RateLimitWindow => Boolean(window),
+        ),
+      );
+      const weekly = windows.find(
+        (window) => window.windowDurationMins === 7 * 24 * 60,
+      );
+      const value = weekly
+        ? { usedPercent: weekly.usedPercent, resetsAt: weekly.resetsAt }
+        : null;
+      this.#weeklyUsageCache = { fetchedAt: Date.now(), value };
+      return value;
+    } catch {
+      return null;
+    }
   }
 
   close(): void {
@@ -179,4 +229,15 @@ export class CodexAuthClient {
     }
     this.#pending.clear();
   }
+}
+
+interface RateLimitWindow {
+  usedPercent: number;
+  windowDurationMins: number | null;
+  resetsAt: number | null;
+}
+
+interface RateLimitSnapshot {
+  primary: RateLimitWindow | null;
+  secondary: RateLimitWindow | null;
 }
