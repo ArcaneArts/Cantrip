@@ -1,77 +1,178 @@
 # Cantrip
 
-Cantrip is a self-hostable, multi-device coding-agent client powered by the open-source Codex CLI.
+Cantrip is a local-first, self-hostable coding-agent workspace powered by the open-source Codex CLI. It combines Codex chats, real terminals, project files, Git tooling, and lightweight browser tabs in one interface.
 
-## Workspace
+The project is inspired by the Codex desktop experience, but its architecture is designed around a server and independent workers. Today, the supported development path runs the app, server, and one worker on the same computer. The same boundaries are intended to support a hosted server, multiple workers, and browser, desktop, or mobile clients later.
 
-- `cantrip_app` — Vite, React, Tailwind, and shadcn/ui; Tauri and Capacitor stubs are included.
-- `cantrip_server` — Node.js API and durable state using PGlite locally or PostgreSQL through `DATABASE_URL`.
-- `cantrip_worker` — Node.js machine agent that will supervise Codex and own files and terminals.
-- `packages/protocol` — runtime-validated contracts shared by all three apps.
+> Cantrip is under active development. Local single-user mode is the current target; hosted accounts, secure worker enrollment, relays, and production multi-worker switching are not ready yet.
 
-See [docs/PLAN.md](docs/PLAN.md) for the architecture and phased roadmap.
+## What Cantrip does
 
-## Develop
+Cantrip organizes work into GitHub-backed projects. Each project has one source folder owned by a worker and can contain an ordered mix of:
 
-Requirements: Node.js 22 or newer and pnpm.
+- Codex chats with Markdown responses, command/file activity, per-message model selection, steering, prompt queues, compaction commands, forking, renaming, and duplication.
+- Real PTY terminal tabs that run in the project folder on the worker.
+- Read-only Explorer tabs with a source or Markdown preview for supported text files.
+- Browser tabs for project-related web pages.
+- Git history with a branch graph, refs and tags, current checkout state, staged and unstaged changes, commits, branches, pull/push operations, and GitHub issue browsing and management.
+
+Settings are stored by the server for the current Cantrip identity rather than in browser cookies. They include System/Light/Dark appearance, optional high contrast, model providers, models, and the default model. Provider support currently includes:
+
+- Ollama and other worker-local endpoints.
+- OpenAI-compatible APIs such as OpenRouter.
+- Isolated ChatGPT account providers authenticated through Codex, including account status and available usage information when Codex exposes it.
+
+The app can switch between the structured chat view and the linked live Codex console. Ordinary terminal, Explorer, browser, chat, and project tabs can be renamed and reordered together.
+
+## Architecture
+
+Cantrip is split into three deployable applications plus one shared protocol package:
+
+```mermaid
+flowchart LR
+    APP["cantrip_app<br/>React + Vite<br/>Browser / Tauri / Capacitor"]
+    SERVER["cantrip_server<br/>Fastify + PGlite/PostgreSQL<br/>Identity, configuration, history, routing"]
+    WORKER["cantrip_worker<br/>Node.js<br/>Codex, files, Git, PTYs"]
+    CODEX["Codex CLI / app-server"]
+    FILES["Project source folders"]
+
+    APP <-->|"HTTP + WebSocket"| SERVER
+    SERVER <-->|"authenticated worker channel"| WORKER
+    WORKER <-->|"local process protocol"| CODEX
+    WORKER --- FILES
+```
+
+### `cantrip_app`
+
+The React frontend is the control surface. Vite provides the browser development build, Tauri provides the desktop shell, and Capacitor stubs reserve the mobile path. The app knows the server URL but never connects directly to a worker or assumes project files exist on the client device.
+
+### `cantrip_server`
+
+The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings, stores projects and durable conversation history, tracks worker presence, and routes every file, terminal, Git, and Codex operation to the correct worker.
+
+Local development uses embedded PGlite under `.cantrip/dev/`. A PostgreSQL `DATABASE_URL` can be supplied for a standalone database. Source files are not copied into the server database.
+
+### `cantrip_worker`
+
+The worker is the machine that actually performs work. It owns project source folders, clones repositories, runs Git and GitHub CLI operations, provides filesystem access, hosts PTY processes, and supervises Codex runtimes. Provider URLs such as `localhost` are resolved from the worker machine, which is important once the server and worker live on different hosts.
+
+Workers communicate through the server. There is intentionally no app-to-worker connection mode.
+
+### `packages/protocol`
+
+`@cantrip/protocol` contains the Zod-validated contracts shared by the app, server, and worker. It keeps transport and persisted data boundaries explicit as the three applications evolve independently.
+
+## Current deployment model
+
+The current local mode has one anonymous Cantrip user and no Cantrip sign-in screen. `pnpm dev` or `pnpm devtop` starts the server and a local worker together, so the app connects immediately.
+
+The architecture leaves room for a future cloud server to route several outbound-connected workers—for example, a desktop, laptop, and VPS—to web, desktop, and mobile clients. That mode will require real accounts, worker enrollment, secure remote transport, and possibly a relay. Those capabilities should not be inferred from the current local development authentication.
+
+Conversation history and configuration live on the server, so they remain readable when a worker is unavailable. Project files and live runtime state remain on the worker. Moving a conversation to another worker will therefore require a compatible checkout and an explicit handoff rather than pretending that uncommitted files moved automatically.
+
+## Repository layout
+
+```text
+Cantrip/
+├── cantrip_app/       # React/Vite UI, Tauri shell, Capacitor configuration
+├── cantrip_server/    # API, persistence, identity, and worker routing
+├── cantrip_worker/    # Codex runtime, terminals, files, Git, and GitHub access
+├── packages/protocol/ # Shared runtime-validated contracts
+├── docs/PLAN.md       # Product architecture and phased roadmap
+└── package.json       # Root development and verification commands
+```
+
+The canonical domain is `cantrip.art`. Desktop and mobile application identifiers use `art.cantrip`.
+
+## Requirements
+
+For browser development:
+
+- Node.js 22 or newer.
+- pnpm 11 (the exact version is declared in `package.json`).
+- Git.
+- GitHub CLI (`gh`) authenticated with `gh auth login`, or a worker-local `GH_TOKEN`, to list and clone accessible repositories.
+- Codex CLI for Codex-backed chats and ChatGPT account providers.
+- Ollama when testing a local Ollama model.
+
+Desktop development additionally requires the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) for your operating system, including a Rust toolchain and the required macOS, Windows, or Linux system packages.
+
+## Install
+
+From the repository root:
 
 ```shell
 pnpm install
+```
+
+Defaults are suitable for local development. Copy `.env.example` into your preferred environment setup if you need to override ports, data directories, the server origin, or the default local model.
+
+## Browser development with `pnpm dev`
+
+```shell
 pnpm dev
 ```
 
-The app is available at <http://127.0.0.1:5173> and the server at <http://127.0.0.1:4310>. Embedded PGlite data is stored under `.cantrip/dev/`. Press Ctrl+C once to stop every process started by the root command.
+This starts the shared protocol watcher, Cantrip server, local worker, and Vite app. Open:
 
-The current server announces local deployment, anonymous/no-auth identity, server-only worker routing, and split storage through `GET /api/bootstrap`. Worker presence, projects, chats, and conversation messages are persisted in PGlite. Apps only receive a server URL; they never connect to a worker directly, and source files remain exclusively on the worker.
+- App: <http://127.0.0.1:5173>
+- Server: <http://127.0.0.1:4310>
 
-The working vertical slice imports projects from GitHub. Authenticate GitHub on the worker with `gh auth login` or a worker-local `GH_TOKEN`; the app can then list every accessible repository, reject repositories already represented by a project, and clone the selection under `.cantrip/dev/worker/repositories/`. Agent messages render GitHub-flavored Markdown, while command executions and workspace file changes stream from Codex through the worker channel and persist with the conversation.
+Vite hot module replacement updates the app as frontend files change. The Node server and worker also restart automatically when their source changes. Press `Ctrl+C` once in the root terminal to stop every process started by the command.
 
-Projects can also create persistent terminal tabs. The app renders xterm.js, while a real `node-pty` shell runs on the project worker in its source folder. Input, output, resize, reconnect, and close traffic is always relayed through the server; apps never connect directly to workers.
+Local database files and worker-owned repository clones are stored under `.cantrip/dev/` and are ignored by Git.
 
-The Settings page stores appearance, model providers, models, and the default model under the server-owned anonymous account. The browser stores none of these preferences. System appearance is the default and follows the operating system; light and dark overrides are also available. Development starts with an Ollama provider at `http://127.0.0.1:11434/v1` and a `gemma4:26b` model. A provider can instead target a Responses-compatible OpenAI API endpoint and keep its optional API key on the server. Each chat may select a model until its first message; sending that message permanently locks the chat to the resolved selection, using the account default only when the chat has no explicit selection.
+## Desktop development with `pnpm devtop`
 
-Foundation API routes:
+```shell
+pnpm devtop
+```
 
-- `GET /api/bootstrap`, `/api/health`, `/api/workers`, and `/api/projects`
-- `GET /api/github/status` and `/api/github/repositories`
-- `POST /api/projects/from-github`
-- `GET /api/projects/:projectId/git/history`
-- `GET|POST /api/projects/:projectId/chats`
-- `GET|POST /api/projects/:projectId/terminals`
-- `PATCH /api/projects/order` and `/api/projects/:projectId/chats/order`
-- `PATCH|DELETE /api/chats/:chatId` and `POST /api/chats/:chatId/fork`
-- `PATCH|DELETE /api/terminals/:terminalId` and `WS /api/terminals/:terminalId/connect`
-- `GET|POST /api/chats/:chatId/messages`
-- `GET|PATCH /api/settings`
-- `POST|PATCH|DELETE /api/settings/providers` and `/api/settings/models`
-- `PATCH /api/chats/:chatId/model`
-- `POST /api/chats/:chatId/turns`
+`devtop` runs the same protocol, server, and worker development stack, but launches the frontend inside the Tauri desktop window instead of asking you to open the standalone browser app. Tauri still starts Vite internally, so frontend hot module replacement works in the desktop window.
 
-Account, password, link-code, remote enrollment, and multi-worker switching modes are intentionally disabled until their security and transport layers are implemented.
+Do not run `pnpm dev` and `pnpm devtop` simultaneously with the default configuration because both use the same server and Vite ports. Press `Ctrl+C` in the `devtop` terminal to stop the Tauri app and all processes it started.
 
-To use disposable PostgreSQL through Docker instead:
+## Test with Ollama
+
+The development seed includes an Ollama provider at `http://127.0.0.1:11434/v1` and a `gemma4:26b` model entry. Make the configured model available in Ollama, start Ollama, then select that model in Cantrip. Providers and model names can be changed from Settings without storing credentials in the browser.
+
+## PostgreSQL development
+
+PGlite requires no separate database process. To test against disposable PostgreSQL through Docker instead:
 
 ```shell
 pnpm dev:postgres
 ```
 
-Useful checks:
+The example connection settings are documented in `.env.example` and `compose.dev.yml`.
+
+## Verification
+
+Run the complete repository check before committing:
+
+```shell
+pnpm check
+```
+
+That command runs TypeScript checks, all Vitest suites, and the Prettier check. Other useful commands are:
 
 ```shell
 pnpm build
-pnpm check
+pnpm test
+pnpm typecheck
+pnpm format
 pnpm format:check
 ```
 
-## Native shells
-
-The checked-in Tauri 2 stub uses the bundle identifier `art.cantrip` and starts the complete local stack before opening its desktop window:
+To verify only the Tauri Rust shell:
 
 ```shell
-pnpm --filter @cantrip/app tauri:dev
+cargo check --manifest-path cantrip_app/src-tauri/Cargo.toml
 ```
 
-Capacitor 8 is configured with the same app identifier. Native iOS and Android projects are intentionally deferred; generate them when mobile work begins:
+## Mobile and packaged clients
+
+Capacitor is configured with the `art.cantrip` identifier, but native iOS and Android projects are intentionally not checked in yet. They can be generated when mobile work begins:
 
 ```shell
 pnpm --filter @cantrip/app cap:add:ios
@@ -79,4 +180,8 @@ pnpm --filter @cantrip/app cap:add:android
 pnpm --filter @cantrip/app cap:sync
 ```
 
-Packaged clients can set `VITE_CANTRIP_SERVER_URL` to the Cantrip Server origin. Browser development uses Vite's `/api` proxy automatically.
+Browser-only and mobile clients cannot bootstrap a Node server or worker. Packaged remote clients will connect to a separately running Cantrip server using `VITE_CANTRIP_SERVER_URL`. The local Tauri development command currently runs the local stack through the root orchestrator.
+
+## Further design
+
+See [docs/PLAN.md](docs/PLAN.md) for the security model, durable chat design, worker protocol, future account and pairing flows, multi-worker handoff constraints, and phased roadmap.
