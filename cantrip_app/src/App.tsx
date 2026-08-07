@@ -58,20 +58,12 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
 
-function MessageContent({
-  inverse,
-  message,
-}: {
-  inverse?: boolean;
-  message: ChatMessage;
-}) {
+function MessageContent({ message }: { message: ChatMessage }) {
   return (
     <div className="min-w-0 max-w-full space-y-3">
       {message.content.map((item, index) =>
         item.type === "text" ? (
-          <Markdown key={`text:${index}`} inverse={inverse}>
-            {item.text}
-          </Markdown>
+          <Markdown key={`text:${index}`}>{item.text}</Markdown>
         ) : (
           <Activity
             key={`activity:${item.activity.id}`}
@@ -382,13 +374,13 @@ function ChatTranscript({
                   className={cn(
                     "min-w-0",
                     user &&
-                      "max-w-[85%] overflow-hidden rounded-2xl bg-primary px-4 py-3 text-primary-foreground sm:max-w-[42rem]",
+                      "max-w-[85%] overflow-hidden rounded-2xl bg-muted/80 px-4 py-3 text-foreground sm:max-w-[42rem]",
                     !user && !system && "flex-1 py-1",
                     system &&
                       "max-w-[85%] overflow-hidden rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-destructive",
                   )}
                 >
-                  <MessageContent inverse={user} message={message} />
+                  <MessageContent message={message} />
                 </div>
                 {user ? (
                   <div className="mt-1 grid size-7 shrink-0 place-items-center rounded-lg bg-muted">
