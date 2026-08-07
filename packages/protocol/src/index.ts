@@ -254,7 +254,6 @@ export const chatSummarySchema = z.object({
   status: z.enum(["idle", "running", "offline", "failed"]),
   activeWorkerId: z.string().min(1).nullable(),
   modelId: z.string().min(1).nullable(),
-  modelLocked: z.boolean(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

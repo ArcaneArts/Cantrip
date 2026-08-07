@@ -358,6 +358,7 @@ export class CodexAppServer {
     const response = (await this.request("turn/start", {
       threadId,
       input: [{ type: "text", text: options.prompt, text_elements: [] }],
+      model: options.model.name,
     })) as TurnStartResponse;
     if (!activeTurn) {
       throw new Error("Could not initialize the Codex turn.");

@@ -1,0 +1,1 @@
+ALTER TABLE "chats" DROP COLUMN "model_locked_at";

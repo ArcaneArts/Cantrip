@@ -401,7 +401,6 @@ describe("local server foundation", () => {
     );
     expect(selectedChat).toMatchObject({
       modelId: selectedModel.id,
-      modelLocked: false,
     });
 
     const messagePayload = {
@@ -575,12 +574,30 @@ describe("local server foundation", () => {
         payload: { ids: [project.id] },
       }),
     ).toMatchObject({ statusCode: 204 });
-    const lockedModelResponse = await firstApp.inject({
+    const changedModelResponse = await firstApp.inject({
       method: "PATCH",
       url: `/api/chats/${chat.id}/model`,
       payload: { modelId: initialSettings.preferences.defaultModelId },
     });
-    expect(lockedModelResponse.statusCode).toBe(409);
+    expect(changedModelResponse.statusCode).toBe(200);
+    expect(chatSummarySchema.parse(changedModelResponse.json()).modelId).toBe(
+      initialSettings.preferences.defaultModelId,
+    );
+    expect(
+      await firstApp.inject({
+        method: "POST",
+        url: `/api/chats/${chat.id}/turns`,
+        payload: {
+          text: "Use the newly selected model.",
+          idempotencyKey: "dynamic-model-turn",
+          modelId: initialSettings.preferences.defaultModelId,
+        },
+      }),
+    ).toMatchObject({ statusCode: 202 });
+    await vi.waitFor(() => expect(turnModelIds).toHaveLength(3));
+    expect(turnModelIds.at(-1)).toBe(
+      initialSettings.preferences.defaultModelId,
+    );
 
     await firstApp.close();
 
@@ -612,7 +629,7 @@ describe("local server foundation", () => {
 
     expect(projects).toHaveLength(1);
     expect(workers).toHaveLength(1);
-    expect(messages).toMatchObject([
+    expect(messages.slice(0, 4)).toMatchObject([
       firstMessage,
       {
         role: "assistant",

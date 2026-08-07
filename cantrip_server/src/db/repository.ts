@@ -50,7 +50,6 @@ export interface ChatExecutionContext {
   cwd: string;
   status: ChatSummary["status"];
   modelId: string | null;
-  modelLocked: boolean;
   threadId: string | null;
   workerId: string;
 }
@@ -131,7 +130,6 @@ function toChatSummary(chat: typeof schema.chats.$inferSelect): ChatSummary {
     status: chat.status as ChatSummary["status"],
     activeWorkerId: chat.activeWorkerId,
     modelId: chat.modelId,
-    modelLocked: chat.modelLockedAt !== null,
     createdAt: toISOString(chat.createdAt),
     updatedAt: toISOString(chat.updatedAt),
   };
@@ -273,7 +271,7 @@ export class ServerRepository {
       .onConflictDoNothing({ target: schema.userSettings.userId });
     await this.database.execute(sql`
       update ${schema.chats}
-      set model_id = ${DEFAULT_MODEL_ID}, model_locked_at = now()
+      set model_id = ${DEFAULT_MODEL_ID}
       where model_id is null
         and exists (
           select 1 from ${schema.chatMessages}
@@ -1039,11 +1037,6 @@ export class ServerRepository {
             ) + 1,
           activeWorkerId: row.source.workerId,
           modelId: row.chat.modelId,
-          modelLockedAt: sourceMessages.some(
-            (message) => message.role === "user",
-          )
-            ? row.chat.modelLockedAt
-            : null,
         })
         .returning();
       const fork = firstOrThrow(chatResult, "forking a chat");
@@ -1152,7 +1145,7 @@ export class ServerRepository {
     ownerId: string,
     chatId: string,
     input: ChatModelUpdate,
-  ): Promise<ChatSummary | "locked" | null> {
+  ): Promise<ChatSummary | null> {
     const model = await this.getModelRuntime(ownerId, input.modelId);
     if (!model) {
       return null;
@@ -1173,26 +1166,12 @@ export class ServerRepository {
     if (!chat) {
       return null;
     }
-    if (chat.modelLockedAt) {
-      return "locked";
-    }
     const result = await this.database
       .update(schema.chats)
       .set({ modelId: input.modelId, updatedAt: new Date() })
       .where(eq(schema.chats.id, chatId))
       .returning();
     return toChatSummary(firstOrThrow(result, "selecting a chat model"));
-  }
-
-  async lockChatModel(chatId: string, modelId: string): Promise<void> {
-    await this.database
-      .update(schema.chats)
-      .set({
-        modelId,
-        modelLockedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.chats.id, chatId));
   }
 
   async getChatExecutionContext(
@@ -1237,7 +1216,6 @@ export class ServerRepository {
       chatId: row.chat.id,
       cwd: row.source.absolutePath,
       modelId: row.chat.modelId,
-      modelLocked: row.chat.modelLockedAt !== null,
       status: row.chat.status as ChatSummary["status"],
       threadId: row.runtime?.codexThreadId ?? null,
       workerId: row.source.workerId,

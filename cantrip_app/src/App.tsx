@@ -16,7 +16,6 @@ import {
   GitBranch,
   Loader2,
   Lock,
-  LockKeyhole,
   MessageSquare,
   PanelLeft,
   Plus,
@@ -535,11 +534,7 @@ function ChatTranscript({
                 <select
                   aria-label="Chat model"
                   value={selectedModelId}
-                  disabled={
-                    chat.modelLocked ||
-                    chat.status === "running" ||
-                    selectModel.isPending
-                  }
+                  disabled={chat.status === "running" || selectModel.isPending}
                   onChange={(event) => selectModel.mutate(event.target.value)}
                   className="min-w-0 max-w-64 truncate rounded-md bg-transparent px-1 py-1 text-xs font-medium outline-none disabled:cursor-not-allowed"
                 >
@@ -552,15 +547,9 @@ function ChatTranscript({
                     </option>
                   ))}
                 </select>
-                {chat.modelLocked ? (
-                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                    <LockKeyhole className="size-3" /> Locked
-                  </span>
-                ) : (
-                  <span className="text-[11px] text-muted-foreground">
-                    Locks on first message
-                  </span>
-                )}
+                <span className="text-[11px] text-muted-foreground">
+                  Applies to the next message
+                </span>
               </div>
             </div>
             <Button

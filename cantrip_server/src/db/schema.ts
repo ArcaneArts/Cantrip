@@ -186,7 +186,6 @@ export const chats = pgTable("chats", {
   modelId: text("model_id").references(() => modelProfiles.id, {
     onDelete: "restrict",
   }),
-  modelLockedAt: timestamp("model_locked_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

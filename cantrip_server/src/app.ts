@@ -353,7 +353,7 @@ export async function buildApp({
           : reply.code(404).send({ error: "Model not found." });
       } catch {
         return reply.code(409).send({
-          error: "This model is the default or is locked to an existing chat.",
+          error: "This model is the default or selected by an existing chat.",
         });
       }
     },
@@ -878,11 +878,6 @@ export async function buildApp({
         request.params.chatId,
         input.data,
       );
-      if (result === "locked") {
-        return reply
-          .code(409)
-          .send({ error: "This chat's model is locked after its first turn." });
-      }
       if (!result) {
         return reply.code(404).send({ error: "Chat or model not found." });
       }
@@ -921,22 +916,11 @@ export async function buildApp({
         return reply.code(503).send({ error: "Project worker is offline." });
       }
 
-      if (
-        context.modelLocked &&
-        input.data.modelId &&
-        input.data.modelId !== context.modelId
-      ) {
-        return reply
-          .code(409)
-          .send({ error: "This chat's model is locked after its first turn." });
-      }
       const defaultModelId = context.modelId
         ? null
         : (await repository.getSettings(LOCAL_USER_ID)).preferences
             .defaultModelId;
-      const modelId = context.modelLocked
-        ? context.modelId
-        : (input.data.modelId ?? context.modelId ?? defaultModelId);
+      const modelId = input.data.modelId ?? context.modelId ?? defaultModelId;
       if (!modelId) {
         return reply.code(409).send({
           error: "Choose a model or configure a default model in Settings.",
@@ -963,7 +947,7 @@ export async function buildApp({
       if (!userMessage) {
         return reply.code(404).send({ error: "Chat not found" });
       }
-      await repository.lockChatModel(context.chatId, modelId);
+      await repository.setChatModel(LOCAL_USER_ID, context.chatId, { modelId });
       await repository.setChatStatus(context.chatId, "running");
 
       void bridge

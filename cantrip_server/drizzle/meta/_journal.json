@@ -50,6 +50,13 @@
       "when": 1786119046000,
       "tag": "0006_unified_project_tabs",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786119608772,
+      "tag": "0007_pink_bishop",
+      "breakpoints": true
     }
   ]
 }

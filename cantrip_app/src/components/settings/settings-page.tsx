@@ -521,8 +521,8 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
           </Card>
 
           <p className="pb-4 text-xs text-muted-foreground">
-            Changing the default affects only chats that have not sent their
-            first message. A chat locks its selected model on that first turn.
+            The default initializes new chats. You can change a chat’s model at
+            any time; the selected model applies to its next message.
           </p>
         </div>
       </div>
