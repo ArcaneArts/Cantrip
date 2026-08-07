@@ -205,6 +205,54 @@ export const githubRepositorySchema = z.object({
 
 export const githubRepositoryListSchema = z.array(githubRepositorySchema);
 
+export const githubIssueStateSchema = z.enum(["open", "closed"]);
+
+export const githubIssueLabelSchema = z.object({
+  name: z.string().min(1),
+  color: z.string().regex(/^[0-9a-fA-F]{6}$/),
+});
+
+export const githubIssueSummarySchema = z.object({
+  number: z.number().int().positive(),
+  title: z.string().min(1),
+  state: githubIssueStateSchema,
+  url: z.url(),
+  author: z.string().min(1),
+  commentCount: z.number().int().nonnegative(),
+  labels: z.array(githubIssueLabelSchema),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  closedAt: z.string().datetime().nullable(),
+});
+
+export const githubIssueListSchema = z.object({
+  state: githubIssueStateSchema,
+  total: z.number().int().nonnegative(),
+  issues: z.array(githubIssueSummarySchema),
+});
+
+export const githubIssueCommentSchema = z.object({
+  id: z.string().min(1),
+  author: z.string().min(1),
+  body: z.string(),
+  url: z.url(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const githubIssueDetailSchema = githubIssueSummarySchema.extend({
+  body: z.string().nullable(),
+  comments: z.array(githubIssueCommentSchema),
+});
+
+export const githubIssueCommentCreateSchema = z.object({
+  body: z.string().trim().min(1).max(65_536),
+});
+
+export const githubIssueCloseSchema = z.object({
+  comment: z.string().trim().min(1).max(65_536).nullable().default(null),
+});
+
 export const githubProjectCreateSchema = z.object({
   workerId: z.string().min(1),
   repositoryId: z.string().min(1),
@@ -552,6 +600,7 @@ export const gitCommitSchema = z.object({
 export const gitHistorySchema = z.object({
   branch: z.string(),
   head: z.string().nullable(),
+  totalCount: z.number().int().nonnegative(),
   commits: z.array(gitCommitSchema),
   hasMore: z.boolean(),
   nextCursor: z.number().int().nonnegative().nullable(),
@@ -670,6 +719,28 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     login: z.string().min(1),
   }),
   z.object({ type: z.literal("github.repositories.list") }),
+  z.object({
+    type: z.literal("github.issues.list"),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+    state: githubIssueStateSchema,
+  }),
+  z.object({
+    type: z.literal("github.issue.get"),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+    number: z.number().int().positive(),
+  }),
+  z.object({
+    type: z.literal("github.issue.comment"),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+    number: z.number().int().positive(),
+    body: z.string().trim().min(1).max(65_536),
+  }),
+  z.object({
+    type: z.literal("github.issue.close"),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+    number: z.number().int().positive(),
+    comment: z.string().trim().min(1).max(65_536).nullable(),
+  }),
   z.object({
     type: z.literal("project.clone"),
     repository: z.object({
@@ -909,6 +980,11 @@ export type SettingsBundle = z.infer<typeof settingsBundleSchema>;
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
 export type GithubAuthStatus = z.infer<typeof githubAuthStatusSchema>;
 export type GithubRepository = z.infer<typeof githubRepositorySchema>;
+export type GithubIssueState = z.infer<typeof githubIssueStateSchema>;
+export type GithubIssueSummary = z.infer<typeof githubIssueSummarySchema>;
+export type GithubIssueList = z.infer<typeof githubIssueListSchema>;
+export type GithubIssueComment = z.infer<typeof githubIssueCommentSchema>;
+export type GithubIssueDetail = z.infer<typeof githubIssueDetailSchema>;
 export type GithubWorkerRepository = z.infer<
   typeof githubWorkerRepositorySchema
 >;

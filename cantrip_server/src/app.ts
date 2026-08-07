@@ -32,6 +32,11 @@ import {
   explorerSummarySchema,
   explorerUpdateSchema,
   githubAuthStatusSchema,
+  githubIssueCloseSchema,
+  githubIssueCommentCreateSchema,
+  githubIssueDetailSchema,
+  githubIssueListSchema,
+  githubIssueStateSchema,
   githubProjectCreateSchema,
   githubRepositoryListSchema,
   githubWorkerRepositoryListSchema,
@@ -742,6 +747,130 @@ export async function buildApp({
       return reply.code(status).send({ error: errorMessage(error) });
     }
   });
+
+  app.get<{
+    Params: { projectId: string };
+    Querystring: { state?: string };
+  }>("/api/projects/:projectId/github/issues", async (request, reply) => {
+    const state = githubIssueStateSchema.safeParse(
+      request.query.state ?? "open",
+    );
+    if (!state.success) {
+      return reply.code(400).send({ error: "state must be open or closed" });
+    }
+    const context = await repository.getGithubProjectExecutionContext(
+      LOCAL_USER_ID,
+      request.params.projectId,
+    );
+    if (!context) {
+      return reply.code(404).send({ error: "GitHub project not found." });
+    }
+    try {
+      const issues = await bridge.request(context.workerId, {
+        type: "github.issues.list",
+        repository: context.nameWithOwner,
+        state: state.data,
+      });
+      return reply.send(githubIssueListSchema.parse(issues));
+    } catch (error) {
+      const status = error instanceof WorkerUnavailableError ? 503 : 502;
+      return reply.code(status).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.get<{ Params: { issueNumber: string; projectId: string } }>(
+    "/api/projects/:projectId/github/issues/:issueNumber",
+    async (request, reply) => {
+      const issueNumber = Number.parseInt(request.params.issueNumber, 10);
+      if (!Number.isInteger(issueNumber) || issueNumber < 1) {
+        return reply.code(400).send({ error: "Invalid issue number." });
+      }
+      const context = await repository.getGithubProjectExecutionContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "GitHub project not found." });
+      }
+      try {
+        const issue = await bridge.request(context.workerId, {
+          type: "github.issue.get",
+          repository: context.nameWithOwner,
+          number: issueNumber,
+        });
+        return reply.send(githubIssueDetailSchema.parse(issue));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { issueNumber: string; projectId: string } }>(
+    "/api/projects/:projectId/github/issues/:issueNumber/comments",
+    async (request, reply) => {
+      const issueNumber = Number.parseInt(request.params.issueNumber, 10);
+      const input = githubIssueCommentCreateSchema.safeParse(request.body);
+      if (!Number.isInteger(issueNumber) || issueNumber < 1) {
+        return reply.code(400).send({ error: "Invalid issue number." });
+      }
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getGithubProjectExecutionContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "GitHub project not found." });
+      }
+      try {
+        const issue = await bridge.request(context.workerId, {
+          type: "github.issue.comment",
+          repository: context.nameWithOwner,
+          number: issueNumber,
+          body: input.data.body,
+        });
+        return reply.send(githubIssueDetailSchema.parse(issue));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { issueNumber: string; projectId: string } }>(
+    "/api/projects/:projectId/github/issues/:issueNumber/close",
+    async (request, reply) => {
+      const issueNumber = Number.parseInt(request.params.issueNumber, 10);
+      const input = githubIssueCloseSchema.safeParse(request.body ?? {});
+      if (!Number.isInteger(issueNumber) || issueNumber < 1) {
+        return reply.code(400).send({ error: "Invalid issue number." });
+      }
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getGithubProjectExecutionContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "GitHub project not found." });
+      }
+      try {
+        const issue = await bridge.request(context.workerId, {
+          type: "github.issue.close",
+          repository: context.nameWithOwner,
+          number: issueNumber,
+          comment: input.data.comment,
+        });
+        return reply.send(githubIssueDetailSchema.parse(issue));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
 
   app.get<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/git/status",

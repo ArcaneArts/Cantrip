@@ -16,6 +16,8 @@ import {
   explorerListSchema,
   explorerSummarySchema,
   githubAuthStatusSchema,
+  githubIssueDetailSchema,
+  githubIssueListSchema,
   githubRepositoryListSchema,
   gitActionResultSchema,
   gitHistorySchema,
@@ -40,6 +42,7 @@ import {
 } from "@cantrip/protocol";
 import type {
   GitAction,
+  GithubIssueState,
   ModelProfileCreate,
   ModelProfileUpdate,
   ModelProviderCreate,
@@ -220,6 +223,51 @@ export async function getGitHistory(projectId: string, cursor = 0) {
   return gitHistorySchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/git/history?limit=100&cursor=${cursor}`,
+    ),
+  );
+}
+
+export async function getGithubIssues(
+  projectId: string,
+  state: GithubIssueState,
+) {
+  return githubIssueListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/github/issues?state=${encodeURIComponent(state)}`,
+    ),
+  );
+}
+
+export async function getGithubIssue(projectId: string, issueNumber: number) {
+  return githubIssueDetailSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/github/issues/${issueNumber}`,
+    ),
+  );
+}
+
+export async function commentOnGithubIssue(
+  projectId: string,
+  issueNumber: number,
+  body: string,
+) {
+  return githubIssueDetailSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/github/issues/${issueNumber}/comments`,
+      { body },
+    ),
+  );
+}
+
+export async function closeGithubIssue(
+  projectId: string,
+  issueNumber: number,
+  comment: string | null,
+) {
+  return githubIssueDetailSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/github/issues/${issueNumber}/close`,
+      { comment },
     ),
   );
 }

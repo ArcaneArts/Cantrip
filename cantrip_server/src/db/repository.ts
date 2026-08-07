@@ -78,6 +78,12 @@ export interface ProjectRemovalContext {
   workerId: string;
 }
 
+export interface GithubProjectExecutionContext {
+  nameWithOwner: string;
+  url: string;
+  workerId: string;
+}
+
 export interface ExplorerExecutionContext {
   explorerId: string;
   root: string;
@@ -709,6 +715,38 @@ export class ServerRepository {
       )
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  async getGithubProjectExecutionContext(
+    ownerId: string,
+    projectId: string,
+  ): Promise<GithubProjectExecutionContext | null> {
+    const rows = await this.database
+      .select({
+        nameWithOwner: schema.projects.githubRepositoryFullName,
+        url: schema.projects.githubRepositoryUrl,
+        workerId: schema.projectSources.workerId,
+      })
+      .from(schema.projects)
+      .innerJoin(
+        schema.projectSources,
+        eq(schema.projectSources.projectId, schema.projects.id),
+      )
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    return row?.nameWithOwner && row.url
+      ? {
+          nameWithOwner: row.nameWithOwner,
+          url: row.url,
+          workerId: row.workerId,
+        }
+      : null;
   }
 
   async hasGithubProject(ownerId: string, repositoryId: string) {

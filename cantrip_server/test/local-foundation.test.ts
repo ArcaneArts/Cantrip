@@ -18,6 +18,8 @@ import {
   gitHistorySchema,
   gitStatusSchema,
   githubRepositoryListSchema,
+  githubIssueDetailSchema,
+  githubIssueListSchema,
   modelProfileSummarySchema,
   modelProviderSummarySchema,
   projectListSchema,
@@ -62,6 +64,8 @@ const turnPrompts: string[] = [];
 const deletedProjectPaths: string[] = [];
 const authProviderIds: string[] = [];
 const steeredPrompts: string[] = [];
+const issueComments: string[] = [];
+const closedIssues: Array<{ comment: string | null; number: number }> = [];
 let releaseHeldTurn: (() => void) | null = null;
 const workerBridge = {
   attach() {},
@@ -107,6 +111,63 @@ const workerBridge = {
             updatedAt: "2026-08-07T12:00:00.000Z",
           },
         ];
+      case "github.issues.list":
+        return {
+          state: command.state,
+          total: 1,
+          issues: [
+            {
+              number: 42,
+              title: "Test the GitHub issue view",
+              state: command.state,
+              url: "https://github.com/ArcaneArts/Cantrip/issues/42",
+              author: "cantrip-test",
+              commentCount: 1,
+              labels: [{ name: "feature", color: "22d3ee" }],
+              createdAt: "2026-08-07T12:00:00.000Z",
+              updatedAt: "2026-08-07T13:00:00.000Z",
+              closedAt:
+                command.state === "closed" ? "2026-08-07T14:00:00.000Z" : null,
+            },
+          ],
+        };
+      case "github.issue.get":
+      case "github.issue.comment":
+      case "github.issue.close": {
+        if (command.type === "github.issue.comment") {
+          issueComments.push(command.body);
+        }
+        if (command.type === "github.issue.close") {
+          closedIssues.push({
+            number: command.number,
+            comment: command.comment,
+          });
+        }
+        const closed = command.type === "github.issue.close";
+        return {
+          number: command.number,
+          title: "Test the GitHub issue view",
+          state: closed ? "closed" : "open",
+          url: `https://github.com/ArcaneArts/Cantrip/issues/${command.number}`,
+          author: "cantrip-test",
+          commentCount: 1,
+          labels: [{ name: "feature", color: "22d3ee" }],
+          createdAt: "2026-08-07T12:00:00.000Z",
+          updatedAt: "2026-08-07T13:00:00.000Z",
+          closedAt: closed ? "2026-08-07T14:00:00.000Z" : null,
+          body: "Issue details",
+          comments: [
+            {
+              id: "comment-1",
+              author: "reviewer",
+              body: "Looks good",
+              url: `https://github.com/ArcaneArts/Cantrip/issues/${command.number}#issuecomment-1`,
+              createdAt: "2026-08-07T12:30:00.000Z",
+              updatedAt: "2026-08-07T12:30:00.000Z",
+            },
+          ],
+        };
+      }
       case "project.clone":
         return {
           path: path.join(dataDirectory, "repositories", "Cantrip"),
@@ -122,6 +183,7 @@ const workerBridge = {
         return {
           branch: "main",
           head: "0123456789abcdef",
+          totalCount: 1,
           commits: [
             {
               hash: "0123456789abcdef",
@@ -510,6 +572,47 @@ describe("local server foundation", () => {
       },
     });
     const project = projectSummarySchema.parse(projectResponse.json());
+    expect(
+      githubIssueListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/github/issues?state=open`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject({ total: 1, issues: [{ number: 42, state: "open" }] });
+    expect(
+      githubIssueDetailSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/github/issues/42`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject({ number: 42, body: "Issue details" });
+    await firstApp.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/github/issues/42/comments`,
+      payload: { body: "Comment from Cantrip" },
+    });
+    expect(issueComments).toContain("Comment from Cantrip");
+    expect(
+      githubIssueDetailSchema.parse(
+        (
+          await firstApp.inject({
+            method: "POST",
+            url: `/api/projects/${project.id}/github/issues/42/close`,
+            payload: { comment: "Closing from Cantrip" },
+          })
+        ).json(),
+      ).state,
+    ).toBe("closed");
+    expect(closedIssues).toContainEqual({
+      number: 42,
+      comment: "Closing from Cantrip",
+    });
     const history = gitHistorySchema.parse(
       (
         await firstApp.inject({

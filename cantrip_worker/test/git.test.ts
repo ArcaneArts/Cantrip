@@ -51,6 +51,7 @@ describe("Git history", () => {
     const history = await readGitHistory(directory, 20);
     expect(history.branch).toBe("main");
     expect(history.head).toBe(history.commits[0]?.hash);
+    expect(history.totalCount).toBe(1);
     expect(history.hasMore).toBe(false);
     expect(history.commits[0]).toMatchObject({
       subject: "Initial history",
@@ -100,6 +101,8 @@ describe("Git history", () => {
       firstPage.nextCursor!,
     );
     expect(firstPage.hasMore).toBe(true);
+    expect(firstPage.totalCount).toBe(2);
+    expect(secondPage.totalCount).toBe(2);
     expect(firstPage.nextCursor).toBe(1);
     expect(
       [...firstPage.commits, ...secondPage.commits].map(

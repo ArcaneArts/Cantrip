@@ -1775,12 +1775,16 @@ export function App() {
                   {gitHistoryProject.github?.nameWithOwner ??
                     gitHistoryProject.name}
                   {gitHistoryHeader ? (
-                    <>
-                      <span className="sm:hidden">
-                        {` · ${gitHistoryHeader.branch || "detached HEAD"}${gitHistoryHeader.head ? ` @ ${gitHistoryHeader.head.slice(0, 8)}` : ""}`}
-                      </span>
-                      {` · ${gitHistoryHeader.commitsLoaded} commits loaded`}
-                    </>
+                    gitHistoryHeader.activeView === "issues" ? (
+                      ` · ${gitHistoryHeader.issueCount ?? "…"} ${gitHistoryHeader.issueState} issues`
+                    ) : (
+                      <>
+                        <span className="sm:hidden">
+                          {` · ${gitHistoryHeader.branch || "detached HEAD"}${gitHistoryHeader.head ? ` @ ${gitHistoryHeader.head.slice(0, 8)}` : ""}`}
+                        </span>
+                        {` · ${gitHistoryHeader.commitsLoaded} commits loaded`}
+                      </>
+                    )
                   ) : null}
                 </>
               ) : selectedBrowser ? (
@@ -1810,7 +1814,7 @@ export function App() {
               <PanelLeft className="size-4" />
               <span className="sr-only">Open projects and chats</span>
             </Button>
-            {gitHistoryProject && gitHistoryHeader ? (
+            {gitHistoryProject && gitHistoryHeader?.activeView === "commits" ? (
               <>
                 <Button
                   size="icon"
@@ -1890,7 +1894,7 @@ export function App() {
             </Button>
           </div>
           <div className="ml-auto hidden items-center gap-2 md:flex">
-            {gitHistoryProject && gitHistoryHeader ? (
+            {gitHistoryProject && gitHistoryHeader?.activeView === "commits" ? (
               <>
                 <Button
                   size="sm"

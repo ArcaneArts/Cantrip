@@ -94,6 +94,22 @@ async function start(): Promise<void> {
         return github.cachedRepositories(command.login);
       case "github.repositories.list":
         return github.listRepositories();
+      case "github.issues.list":
+        return github.listIssues(command.repository, command.state);
+      case "github.issue.get":
+        return github.getIssue(command.repository, command.number);
+      case "github.issue.comment":
+        return github.commentOnIssue(
+          command.repository,
+          command.number,
+          command.body,
+        );
+      case "github.issue.close":
+        return github.closeIssue(
+          command.repository,
+          command.number,
+          command.comment,
+        );
       case "project.clone":
         return github.cloneRepository(command.repository.nameWithOwner);
       case "project.files.delete":

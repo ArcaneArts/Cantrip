@@ -118,10 +118,11 @@ export async function readGitHistory(
   limit: number,
   cursor = 0,
 ): Promise<GitHistory> {
-  const [branch, head, remotes] = await Promise.all([
+  const [branch, head, remotes, totalCountText] = await Promise.all([
     gitOutput(cwd, ["branch", "--show-current"]),
     gitOutput(cwd, ["rev-parse", "--verify", "HEAD"]).catch(() => ""),
     gitOutput(cwd, ["remote"]).catch(() => ""),
+    gitOutput(cwd, ["rev-list", "--all", "--count"]).catch(() => "0"),
   ]);
   const remoteNames = new Set(remotes.split("\n").filter(Boolean));
   let logOutput = "";
@@ -173,6 +174,7 @@ export async function readGitHistory(
   return gitHistorySchema.parse({
     branch,
     head: head || null,
+    totalCount: Number.parseInt(totalCountText, 10) || 0,
     commits,
     hasMore,
     nextCursor: hasMore ? cursor + commits.length : null,

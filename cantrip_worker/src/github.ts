@@ -13,9 +13,15 @@ import { promisify } from "node:util";
 
 import {
   githubAuthStatusSchema,
+  githubIssueDetailSchema,
+  githubIssueListSchema,
   githubWorkerRepositoryListSchema,
   projectCloneResultSchema,
   type GithubAuthStatus,
+  type GithubIssueDetail,
+  type GithubIssueList,
+  type GithubIssueState,
+  type GithubIssueSummary,
   type GithubWorkerRepository,
   type ProjectCloneResult,
 } from "@cantrip/protocol";
@@ -33,6 +39,30 @@ interface GithubApiRepository {
   name?: unknown;
   private?: unknown;
   updated_at?: unknown;
+}
+
+interface GithubApiIssue {
+  body?: unknown;
+  closed_at?: unknown;
+  comments?: unknown;
+  created_at?: unknown;
+  html_url?: unknown;
+  labels?: unknown;
+  number?: unknown;
+  pull_request?: unknown;
+  state?: unknown;
+  title?: unknown;
+  updated_at?: unknown;
+  user?: unknown;
+}
+
+interface GithubApiIssueComment {
+  body?: unknown;
+  created_at?: unknown;
+  html_url?: unknown;
+  id?: unknown;
+  updated_at?: unknown;
+  user?: unknown;
 }
 
 interface RepositoryCache {
@@ -72,6 +102,54 @@ function parseRepository(value: GithubApiRepository): GithubWorkerRepository {
   };
 }
 
+function githubLogin(value: unknown): string {
+  if (
+    value &&
+    typeof value === "object" &&
+    "login" in value &&
+    typeof value.login === "string"
+  ) {
+    return value.login;
+  }
+  return "ghost";
+}
+
+function parseIssue(value: GithubApiIssue): GithubIssueSummary {
+  const labels = Array.isArray(value.labels)
+    ? value.labels.flatMap((label) => {
+        if (!label || typeof label !== "object") return [];
+        const name = "name" in label ? label.name : null;
+        const color = "color" in label ? label.color : null;
+        return typeof name === "string" && typeof color === "string"
+          ? [{ name, color }]
+          : [];
+      })
+    : [];
+  return {
+    number: Number(value.number),
+    title: String(value.title),
+    state: value.state === "closed" ? "closed" : "open",
+    url: String(value.html_url),
+    author: githubLogin(value.user),
+    commentCount: Number(value.comments) || 0,
+    labels,
+    createdAt: String(value.created_at),
+    updatedAt: String(value.updated_at),
+    closedAt: typeof value.closed_at === "string" ? value.closed_at : null,
+  };
+}
+
+function parseIssueComment(value: GithubApiIssueComment) {
+  return {
+    id: String(value.id),
+    author: githubLogin(value.user),
+    body: typeof value.body === "string" ? value.body : "",
+    url: String(value.html_url),
+    createdAt: String(value.created_at),
+    updatedAt: String(value.updated_at),
+  };
+}
+
 export class GithubClient {
   constructor(private readonly dataDirectory: string) {}
 
@@ -81,6 +159,18 @@ export class GithubClient {
 
   private repositoryCachePath(): string {
     return path.join(this.dataDirectory, "github", "repositories.json");
+  }
+
+  private repositoryApiPath(nameWithOwner: string): string {
+    const [owner, repository] = repositorySegments(nameWithOwner);
+    return `repos/${owner}/${repository}`;
+  }
+
+  private async api(pathname: string, args: string[] = []): Promise<unknown> {
+    const { stdout } = await execFileAsync("gh", ["api", pathname, ...args], {
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    return JSON.parse(stdout);
   }
 
   async cachedRepositories(login: string): Promise<GithubWorkerRepository[]> {
@@ -192,6 +282,90 @@ export class GithubClient {
       await rm(temporaryPath, { force: true }).catch(() => undefined);
     }
     return repositories;
+  }
+
+  async listIssues(
+    nameWithOwner: string,
+    state: GithubIssueState,
+  ): Promise<GithubIssueList> {
+    const pages = (await this.api(
+      `${this.repositoryApiPath(nameWithOwner)}/issues`,
+      [
+        "--method",
+        "GET",
+        "--paginate",
+        "--slurp",
+        "-f",
+        "per_page=100",
+        "-f",
+        `state=${state}`,
+        "-f",
+        "sort=updated",
+        "-f",
+        "direction=desc",
+      ],
+    )) as GithubApiIssue[][];
+    const issues = pages
+      .flat()
+      .filter((issue) => !issue.pull_request)
+      .map(parseIssue);
+    return githubIssueListSchema.parse({ state, total: issues.length, issues });
+  }
+
+  async getIssue(
+    nameWithOwner: string,
+    issueNumber: number,
+  ): Promise<GithubIssueDetail> {
+    const issuePath = `${this.repositoryApiPath(nameWithOwner)}/issues/${issueNumber}`;
+    const [rawIssue, commentPages] = await Promise.all([
+      this.api(issuePath) as Promise<GithubApiIssue>,
+      this.api(`${issuePath}/comments`, [
+        "--method",
+        "GET",
+        "--paginate",
+        "--slurp",
+        "-f",
+        "per_page=100",
+      ]) as Promise<GithubApiIssueComment[][]>,
+    ]);
+    return githubIssueDetailSchema.parse({
+      ...parseIssue(rawIssue),
+      body: typeof rawIssue.body === "string" ? rawIssue.body : null,
+      comments: commentPages.flat().map(parseIssueComment),
+    });
+  }
+
+  async commentOnIssue(
+    nameWithOwner: string,
+    issueNumber: number,
+    body: string,
+  ): Promise<GithubIssueDetail> {
+    const issuePath = `${this.repositoryApiPath(nameWithOwner)}/issues/${issueNumber}`;
+    await this.api(`${issuePath}/comments`, [
+      "--method",
+      "POST",
+      "-f",
+      `body=${body}`,
+    ]);
+    return this.getIssue(nameWithOwner, issueNumber);
+  }
+
+  async closeIssue(
+    nameWithOwner: string,
+    issueNumber: number,
+    comment: string | null,
+  ): Promise<GithubIssueDetail> {
+    const issuePath = `${this.repositoryApiPath(nameWithOwner)}/issues/${issueNumber}`;
+    if (comment) {
+      await this.api(`${issuePath}/comments`, [
+        "--method",
+        "POST",
+        "-f",
+        `body=${comment}`,
+      ]);
+    }
+    await this.api(issuePath, ["--method", "PATCH", "-f", "state=closed"]);
+    return this.getIssue(nameWithOwner, issueNumber);
   }
 
   async cloneRepository(nameWithOwner: string): Promise<ProjectCloneResult> {
