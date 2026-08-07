@@ -11,6 +11,7 @@ import {
   modelProviderCreateSchema,
   modelProviderSummarySchema,
   modelProviderUpdateSchema,
+  orderedIdsSchema,
   projectListSchema,
   projectSummarySchema,
   serverBootstrapSchema,
@@ -186,6 +187,43 @@ export async function createChat(projectId: string, title: string) {
       title,
     }),
   );
+}
+
+export async function renameChat(chatId: string, title: string) {
+  return chatSummarySchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    }),
+  );
+}
+
+export async function deleteChat(chatId: string) {
+  await request(`/api/chats/${encodeURIComponent(chatId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function forkChat(chatId: string, messageId?: string) {
+  return chatSummarySchema.parse(
+    await post(`/api/chats/${encodeURIComponent(chatId)}/fork`, {
+      ...(messageId ? { messageId } : {}),
+    }),
+  );
+}
+
+export async function reorderProjects(ids: string[]) {
+  await request("/api/projects/order", {
+    method: "PATCH",
+    body: JSON.stringify(orderedIdsSchema.parse({ ids })),
+  });
+}
+
+export async function reorderChats(projectId: string, ids: string[]) {
+  await request(`/api/projects/${encodeURIComponent(projectId)}/chats/order`, {
+    method: "PATCH",
+    body: JSON.stringify(orderedIdsSchema.parse({ ids })),
+  });
 }
 
 export async function getMessages(chatId: string) {

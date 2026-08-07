@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bot,
   Check,
+  Copy,
   FolderGit2,
   GitFork,
   GitBranch,
@@ -16,6 +17,7 @@ import {
   Lock,
   LockKeyhole,
   MessageSquare,
+  PanelLeft,
   Plus,
   RefreshCw,
   Send,
@@ -29,6 +31,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Activity, ActivityGroup } from "@/components/chat/activity";
 import { Markdown } from "@/components/chat/markdown";
 import { buildChatTimeline } from "@/components/chat/timeline";
+import { ProjectChatList } from "@/components/sidebar/project-chat-list";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,8 +43,17 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   createChat,
   createGithubProject,
+  deleteChat,
+  forkChat,
   getChats,
   getGithubRepositories,
   getGithubStatus,
@@ -50,6 +62,9 @@ import {
   getServerBootstrap,
   getSettings,
   getWorkers,
+  renameChat,
+  reorderChats,
+  reorderProjects,
   startTurn,
   updateChatModel,
 } from "@/lib/api";
@@ -287,13 +302,16 @@ function RepositoryImporter({
 
 function ChatTranscript({
   chat,
+  onForked,
   settings,
 }: {
   chat: ChatSummary;
+  onForked(chat: ChatSummary): void;
   settings: SettingsBundle | undefined;
 }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const selectedModelId =
     chat.modelId ?? settings?.preferences.defaultModelId ?? "";
   const messages = useQuery({
@@ -321,6 +339,15 @@ function ChatTranscript({
       await queryClient.invalidateQueries({
         queryKey: ["chats", chat.projectId],
       });
+    },
+  });
+  const fork = useMutation({
+    mutationFn: (messageId: string) => forkChat(chat.id, messageId),
+    onSuccess: async (forked) => {
+      await queryClient.invalidateQueries({
+        queryKey: ["chats", chat.projectId],
+      });
+      onForked(forked);
     },
   });
 
@@ -371,6 +398,14 @@ function ChatTranscript({
             const message = entry.message;
             const user = message.role === "user";
             const system = message.role === "system";
+            const assistantText =
+              message.role === "assistant"
+                ? message.content
+                    .flatMap((item) =>
+                      item.type === "text" ? [item.text] : [],
+                    )
+                    .join("\n\n")
+                : "";
             return (
               <div
                 key={message.id}
@@ -397,6 +432,44 @@ function ChatTranscript({
                   )}
                 >
                   <MessageContent message={message} />
+                  {assistantText ? (
+                    <div className="mt-2 flex items-center gap-1 text-muted-foreground">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-7"
+                        title="Copy response"
+                        onClick={async () => {
+                          await navigator.clipboard.writeText(assistantText);
+                          setCopiedMessageId(message.id);
+                          window.setTimeout(
+                            () => setCopiedMessageId(null),
+                            1_500,
+                          );
+                        }}
+                      >
+                        {copiedMessageId === message.id ? (
+                          <Check className="size-3.5" />
+                        ) : (
+                          <Copy className="size-3.5" />
+                        )}
+                        <span className="sr-only">Copy response</span>
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-7"
+                        title="Fork chat from this response"
+                        disabled={fork.isPending}
+                        onClick={() => fork.mutate(message.id)}
+                      >
+                        <GitFork className="size-3.5" />
+                        <span className="sr-only">
+                          Fork chat from this response
+                        </span>
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
                 {user ? (
                   <div className="mt-1 grid size-7 shrink-0 place-items-center rounded-lg bg-muted">
@@ -509,6 +582,7 @@ export function App() {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [showImporter, setShowImporter] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
 
   const bootstrap = useQuery({
     queryFn: getServerBootstrap,
@@ -535,6 +609,72 @@ export function App() {
       });
       setSelectedChatId(chat.id);
     },
+  });
+  const renameChatMutation = useMutation({
+    mutationFn: ({ chatId, title }: { chatId: string; title: string }) =>
+      renameChat(chatId, title),
+    onSuccess: (renamed) =>
+      queryClient.setQueryData<ChatSummary[]>(
+        ["chats", renamed.projectId],
+        (current = []) =>
+          current.map((chat) => (chat.id === renamed.id ? renamed : chat)),
+      ),
+  });
+  const forkChatMutation = useMutation({
+    mutationFn: (chatId: string) => forkChat(chatId),
+    onSuccess: async (forked) => {
+      await queryClient.invalidateQueries({
+        queryKey: ["chats", forked.projectId],
+      });
+      setSelectedProjectId(forked.projectId);
+      setSelectedChatId(forked.id);
+    },
+  });
+  const deleteChatMutation = useMutation({
+    mutationFn: deleteChat,
+    onSuccess: async (_value, deletedId) => {
+      if (selectedChatId === deletedId) setSelectedChatId(null);
+      await queryClient.invalidateQueries({
+        queryKey: ["chats", selectedProjectId],
+      });
+    },
+  });
+  const reorderProjectsMutation = useMutation({
+    mutationFn: (ids: string[]) => reorderProjects(ids),
+    onMutate: async (ids) => {
+      await queryClient.cancelQueries({ queryKey: ["projects"] });
+      const previous = queryClient.getQueryData<ProjectSummary[]>(["projects"]);
+      queryClient.setQueryData<ProjectSummary[]>(["projects"], (current = []) =>
+        ids.flatMap((id, position) => {
+          const project = current.find((item) => item.id === id);
+          return project ? [{ ...project, position }] : [];
+        }),
+      );
+      return { previous };
+    },
+    onError: (_error, _ids, context) =>
+      queryClient.setQueryData(["projects"], context?.previous),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
+  });
+  const reorderChatsMutation = useMutation({
+    mutationFn: ({ projectId, ids }: { projectId: string; ids: string[] }) =>
+      reorderChats(projectId, ids),
+    onMutate: async ({ projectId, ids }) => {
+      await queryClient.cancelQueries({ queryKey: ["chats", projectId] });
+      const key = ["chats", projectId] as const;
+      const previous = queryClient.getQueryData<ChatSummary[]>(key);
+      queryClient.setQueryData<ChatSummary[]>(key, (current = []) =>
+        ids.flatMap((id, position) => {
+          const chat = current.find((item) => item.id === id);
+          return chat ? [{ ...chat, position }] : [];
+        }),
+      );
+      return { key, previous };
+    },
+    onError: (_error, _input, context) =>
+      queryClient.setQueryData(context?.key ?? [], context?.previous),
+    onSettled: (_data, _error, input) =>
+      queryClient.invalidateQueries({ queryKey: ["chats", input.projectId] }),
   });
 
   const onlineWorker = workers.data?.find((worker) => worker.online) ?? null;
@@ -621,61 +761,34 @@ export function App() {
         </div>
 
         <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-          {(projects.data ?? []).map((project) => {
-            const active = project.id === selectedProjectId;
-            return (
-              <div key={project.id} className="mb-1">
-                <button
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted",
-                    active && "bg-muted font-medium",
-                  )}
-                  onClick={() => {
-                    setSelectedProjectId(project.id);
-                    setSelectedChatId(null);
-                    setShowImporter(false);
-                    setShowSettings(false);
-                  }}
-                >
-                  <FolderGit2 className="size-4 shrink-0" />
-                  <span className="truncate">{project.name}</span>
-                </button>
-                {active ? (
-                  <div className="ml-5 mt-1 border-l pl-2">
-                    {(chats.data ?? []).map((chat) => (
-                      <button
-                        key={chat.id}
-                        className={cn(
-                          "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
-                          chat.id === selectedChatId &&
-                            "bg-muted text-foreground",
-                        )}
-                        onClick={() => {
-                          setSelectedChatId(chat.id);
-                          setShowImporter(false);
-                          setShowSettings(false);
-                        }}
-                      >
-                        <MessageSquare className="size-3.5 shrink-0" />
-                        <span className="truncate">{chat.title}</span>
-                        {chat.status === "running" ? (
-                          <Loader2 className="ml-auto size-3 animate-spin" />
-                        ) : null}
-                      </button>
-                    ))}
-                    <button
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-                      disabled={newChat.isPending || !project.source}
-                      onClick={() => newChat.mutate(project.id)}
-                    >
-                      <Plus className="size-3.5" />
-                      New chat
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
+          <ProjectChatList
+            projects={projects.data ?? []}
+            chats={chats.data ?? []}
+            selectedProjectId={selectedProjectId}
+            selectedChatId={selectedChatId}
+            creatingChat={newChat.isPending}
+            onCreateChat={(projectId) => newChat.mutate(projectId)}
+            onRenameChat={(chatId, title) =>
+              renameChatMutation.mutate({ chatId, title })
+            }
+            onDuplicateChat={(chatId) => forkChatMutation.mutate(chatId)}
+            onDeleteChat={(chatId) => deleteChatMutation.mutate(chatId)}
+            onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
+            onReorderChats={(projectId, ids) =>
+              reorderChatsMutation.mutate({ projectId, ids })
+            }
+            onSelectProject={(projectId) => {
+              setSelectedProjectId(projectId);
+              setSelectedChatId(null);
+              setShowImporter(false);
+              setShowSettings(false);
+            }}
+            onSelectChat={(chatId) => {
+              setSelectedChatId(chatId);
+              setShowImporter(false);
+              setShowSettings(false);
+            }}
+          />
         </nav>
 
         <div className="border-t p-3">
@@ -728,6 +841,14 @@ export function App() {
             <Button
               size="icon"
               variant="ghost"
+              onClick={() => setMobileNavigationOpen(true)}
+            >
+              <PanelLeft className="size-4" />
+              <span className="sr-only">Open projects and chats</span>
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
               onClick={() => {
                 setShowSettings(true);
                 setShowImporter(false);
@@ -770,7 +891,14 @@ export function App() {
             }}
           />
         ) : selectedChat ? (
-          <ChatTranscript chat={selectedChat} settings={settings.data} />
+          <ChatTranscript
+            chat={selectedChat}
+            settings={settings.data}
+            onForked={(forked) => {
+              setSelectedProjectId(forked.projectId);
+              setSelectedChatId(forked.id);
+            }}
+          />
         ) : selectedProject ? (
           <div className="grid flex-1 place-items-center p-6 text-center">
             <div>
@@ -825,6 +953,49 @@ export function App() {
           </div>
         )}
       </section>
+
+      <Dialog
+        open={mobileNavigationOpen}
+        onOpenChange={setMobileNavigationOpen}
+      >
+        <DialogContent className="max-h-[calc(100svh-2rem)] p-4 md:hidden">
+          <DialogHeader>
+            <DialogTitle>Projects and chats</DialogTitle>
+            <DialogDescription>
+              Tap and hold a chat for actions, or use its menu button.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 overflow-y-auto">
+            <ProjectChatList
+              projects={projects.data ?? []}
+              chats={chats.data ?? []}
+              selectedProjectId={selectedProjectId}
+              selectedChatId={selectedChatId}
+              creatingChat={newChat.isPending}
+              onCreateChat={(projectId) => newChat.mutate(projectId)}
+              onRenameChat={(chatId, title) =>
+                renameChatMutation.mutate({ chatId, title })
+              }
+              onDuplicateChat={(chatId) => forkChatMutation.mutate(chatId)}
+              onDeleteChat={(chatId) => deleteChatMutation.mutate(chatId)}
+              onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
+              onReorderChats={(projectId, ids) =>
+                reorderChatsMutation.mutate({ projectId, ids })
+              }
+              onSelectProject={(projectId) => {
+                setSelectedProjectId(projectId);
+                setSelectedChatId(null);
+              }}
+              onSelectChat={(chatId) => {
+                setSelectedChatId(chatId);
+                setMobileNavigationOpen(false);
+                setShowImporter(false);
+                setShowSettings(false);
+              }}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

@@ -34,6 +34,8 @@ Foundation API routes:
 - `GET /api/github/status` and `/api/github/repositories`
 - `POST /api/projects/from-github`
 - `GET|POST /api/projects/:projectId/chats`
+- `PATCH /api/projects/order` and `/api/projects/:projectId/chats/order`
+- `PATCH|DELETE /api/chats/:chatId` and `POST /api/chats/:chatId/fork`
 - `GET|POST /api/chats/:chatId/messages`
 - `GET|PATCH /api/settings`
 - `POST|PATCH|DELETE /api/settings/providers` and `/api/settings/models`

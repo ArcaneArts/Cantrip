@@ -6,6 +6,7 @@ import type {
   ChatMessage,
   ChatMessageCreate,
   ChatSummary,
+  ChatUpdate,
   GithubProjectCreate,
   ModelProfileCreate,
   ModelProfileSummary,
@@ -13,6 +14,7 @@ import type {
   ModelProviderCreate,
   ModelProviderSummary,
   ModelProviderUpdate,
+  OrderedIds,
   ProjectCloneResult,
   ProjectSummary,
   SettingsBundle,
@@ -22,7 +24,7 @@ import type {
   WorkerHeartbeat,
   WorkerSummary,
 } from "@cantrip/protocol";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, lte, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -94,6 +96,7 @@ function toProjectSummary(
   return {
     id: project.id,
     name: project.name,
+    position: project.position,
     github,
     source: source
       ? {
@@ -113,6 +116,7 @@ function toChatSummary(chat: typeof schema.chats.$inferSelect): ChatSummary {
     id: chat.id,
     projectId: chat.projectId,
     title: chat.title,
+    position: chat.position,
     status: chat.status as ChatSummary["status"],
     activeWorkerId: chat.activeWorkerId,
     modelId: chat.modelId,
@@ -572,7 +576,7 @@ export class ServerRepository {
         eq(schema.projectSources.projectId, schema.projects.id),
       )
       .where(eq(schema.projects.ownerId, ownerId))
-      .orderBy(desc(schema.projects.updatedAt));
+      .orderBy(asc(schema.projects.position), asc(schema.projects.createdAt));
     return rows.map(({ project, source }) => toProjectSummary(project, source));
   }
 
@@ -608,12 +612,19 @@ export class ServerRepository {
     clone: ProjectCloneResult,
   ): Promise<ProjectSummary> {
     return this.database.transaction(async (transaction) => {
+      const lastProjects = await transaction
+        .select({ position: schema.projects.position })
+        .from(schema.projects)
+        .where(eq(schema.projects.ownerId, ownerId))
+        .orderBy(desc(schema.projects.position))
+        .limit(1);
       const projectResult = await transaction
         .insert(schema.projects)
         .values({
           id: randomUUID(),
           ownerId,
           name: input.nameWithOwner.split("/")[1] ?? input.nameWithOwner,
+          position: (lastProjects[0]?.position ?? -1) + 1,
           githubRepositoryId: input.repositoryId,
           githubRepositoryFullName: input.nameWithOwner,
           githubRepositoryUrl: input.url,
@@ -648,7 +659,7 @@ export class ServerRepository {
         ),
       )
       .where(eq(schema.chats.projectId, projectId))
-      .orderBy(desc(schema.chats.updatedAt));
+      .orderBy(asc(schema.chats.position), asc(schema.chats.createdAt));
     return rows.map(({ chat }) => toChatSummary(chat));
   }
 
@@ -676,12 +687,19 @@ export class ServerRepository {
       return null;
     }
 
+    const lastChats = await this.database
+      .select({ position: schema.chats.position })
+      .from(schema.chats)
+      .where(eq(schema.chats.projectId, projectId))
+      .orderBy(desc(schema.chats.position))
+      .limit(1);
     const result = await this.database
       .insert(schema.chats)
       .values({
         id: randomUUID(),
         projectId,
         title: input.title,
+        position: (lastChats[0]?.position ?? -1) + 1,
         activeWorkerId: source.workerId,
       })
       .returning();
@@ -692,6 +710,203 @@ export class ServerRepository {
       workerId: source.workerId,
     });
     return toChatSummary(chat);
+  }
+
+  async updateChat(
+    ownerId: string,
+    chatId: string,
+    input: ChatUpdate,
+  ): Promise<ChatSummary | null> {
+    const owned = await this.database
+      .select({ id: schema.chats.id })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.chats.id, chatId))
+      .limit(1);
+    if (!owned[0]) return null;
+    const result = await this.database
+      .update(schema.chats)
+      .set({ title: input.title, updatedAt: new Date() })
+      .where(eq(schema.chats.id, chatId))
+      .returning();
+    return result[0] ? toChatSummary(result[0]) : null;
+  }
+
+  async deleteChat(
+    ownerId: string,
+    chatId: string,
+  ): Promise<boolean | "running"> {
+    const rows = await this.database
+      .select({ chat: schema.chats })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.chats.id, chatId))
+      .limit(1);
+    const chat = rows[0]?.chat;
+    if (!chat) return false;
+    if (chat.status === "running") return "running";
+    await this.database.delete(schema.chats).where(eq(schema.chats.id, chatId));
+    return true;
+  }
+
+  async forkChat(
+    ownerId: string,
+    chatId: string,
+    messageId?: string,
+  ): Promise<ChatSummary | null> {
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select({ chat: schema.chats, source: schema.projectSources })
+        .from(schema.chats)
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.chats.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .innerJoin(
+          schema.projectSources,
+          eq(schema.projectSources.projectId, schema.projects.id),
+        )
+        .where(eq(schema.chats.id, chatId))
+        .limit(1);
+      const row = rows[0];
+      if (!row) return null;
+
+      let throughSequence: number | null = null;
+      if (messageId) {
+        const selected = await transaction
+          .select({ sequence: schema.chatMessages.sequence })
+          .from(schema.chatMessages)
+          .where(
+            and(
+              eq(schema.chatMessages.id, messageId),
+              eq(schema.chatMessages.chatId, chatId),
+            ),
+          )
+          .limit(1);
+        if (!selected[0]) return null;
+        throughSequence = selected[0].sequence;
+      }
+      const sourceMessages = await transaction
+        .select()
+        .from(schema.chatMessages)
+        .where(
+          throughSequence === null
+            ? eq(schema.chatMessages.chatId, chatId)
+            : and(
+                eq(schema.chatMessages.chatId, chatId),
+                lte(schema.chatMessages.sequence, throughSequence),
+              ),
+        )
+        .orderBy(asc(schema.chatMessages.sequence));
+      const lastChats = await transaction
+        .select({ position: schema.chats.position })
+        .from(schema.chats)
+        .where(eq(schema.chats.projectId, row.chat.projectId))
+        .orderBy(desc(schema.chats.position))
+        .limit(1);
+      const chatResult = await transaction
+        .insert(schema.chats)
+        .values({
+          id: randomUUID(),
+          projectId: row.chat.projectId,
+          title: `${row.chat.title} (fork)`,
+          position: (lastChats[0]?.position ?? -1) + 1,
+          activeWorkerId: row.source.workerId,
+          modelId: row.chat.modelId,
+          modelLockedAt: sourceMessages.some(
+            (message) => message.role === "user",
+          )
+            ? row.chat.modelLockedAt
+            : null,
+        })
+        .returning();
+      const fork = firstOrThrow(chatResult, "forking a chat");
+      await transaction.insert(schema.chatRuntimeSessions).values({
+        id: randomUUID(),
+        chatId: fork.id,
+        workerId: row.source.workerId,
+      });
+      if (sourceMessages.length > 0) {
+        await transaction.insert(schema.chatMessages).values(
+          sourceMessages.map((message) => ({
+            id: randomUUID(),
+            chatId: fork.id,
+            role: message.role,
+            content: message.content,
+            createdAt: message.createdAt,
+          })),
+        );
+      }
+      return toChatSummary(fork);
+    });
+  }
+
+  async reorderProjects(ownerId: string, input: OrderedIds): Promise<boolean> {
+    const rows = await this.database
+      .select({ id: schema.projects.id })
+      .from(schema.projects)
+      .where(eq(schema.projects.ownerId, ownerId));
+    if (
+      rows.length !== input.ids.length ||
+      rows.some(({ id }) => !input.ids.includes(id))
+    )
+      return false;
+    await this.database.transaction(async (transaction) => {
+      for (const [position, id] of input.ids.entries()) {
+        await transaction
+          .update(schema.projects)
+          .set({ position })
+          .where(eq(schema.projects.id, id));
+      }
+    });
+    return true;
+  }
+
+  async reorderChats(
+    ownerId: string,
+    projectId: string,
+    input: OrderedIds,
+  ): Promise<boolean> {
+    const rows = await this.database
+      .select({ id: schema.chats.id })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.chats.projectId, projectId));
+    if (
+      rows.length !== input.ids.length ||
+      rows.some(({ id }) => !input.ids.includes(id))
+    )
+      return false;
+    await this.database.transaction(async (transaction) => {
+      for (const [position, id] of input.ids.entries()) {
+        await transaction
+          .update(schema.chats)
+          .set({ position })
+          .where(eq(schema.chats.id, id));
+      }
+    });
+    return true;
   }
 
   async setChatModel(

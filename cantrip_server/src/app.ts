@@ -3,6 +3,7 @@ import websocket from "@fastify/websocket";
 import {
   agentTurnResultSchema,
   chatCreateSchema,
+  chatForkSchema,
   chatListSchema,
   chatMessageCreateSchema,
   chatMessageListSchema,
@@ -11,6 +12,7 @@ import {
   chatSummarySchema,
   chatTurnAcceptedSchema,
   chatTurnCreateSchema,
+  chatUpdateSchema,
   githubAuthStatusSchema,
   githubProjectCreateSchema,
   githubRepositoryListSchema,
@@ -21,6 +23,7 @@ import {
   modelProviderCreateSchema,
   modelProviderSummarySchema,
   modelProviderUpdateSchema,
+  orderedIdsSchema,
   projectCloneResultSchema,
   projectListSchema,
   projectSummarySchema,
@@ -32,6 +35,7 @@ import {
   workerListSchema,
 } from "@cantrip/protocol";
 import Fastify from "fastify";
+import type { ChatMessage } from "@cantrip/protocol";
 
 import type { ServerConfig } from "./config.js";
 import type { DatabaseConnection } from "./db/index.js";
@@ -55,6 +59,28 @@ function invalidBody(issues: unknown) {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function continuationPrompt(messages: ChatMessage[], prompt: string): string {
+  if (messages.length === 0) return prompt;
+  const transcript = messages
+    .slice(-100)
+    .map((message) => {
+      const content = message.content
+        .flatMap((item) => {
+          if (item.type === "text") return [item.text];
+          if (item.activity.type === "command") {
+            return [`[command: ${item.activity.command}]`];
+          }
+          return [
+            `[files: ${item.activity.changes.map((change) => change.path).join(", ")}]`,
+          ];
+        })
+        .join("\n");
+      return `${message.role.toUpperCase()}: ${content}`;
+    })
+    .join("\n\n");
+  return `Continue this existing Cantrip conversation. The server-owned history follows:\n\n${transcript}\n\nUSER: ${prompt}`;
 }
 
 export async function buildApp({
@@ -334,6 +360,16 @@ export async function buildApp({
     return reply.send(projectListSchema.parse(projects));
   });
 
+  app.patch("/api/projects/order", async (request, reply) => {
+    const input = orderedIdsSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    return (await repository.reorderProjects(LOCAL_USER_ID, input.data))
+      ? reply.code(204).send()
+      : reply.code(400).send({ error: "Project order did not match." });
+  });
+
   app.post("/api/projects/from-github", async (request, reply) => {
     const input = githubProjectCreateSchema.safeParse(request.body);
     if (!input.success) {
@@ -420,6 +456,75 @@ export async function buildApp({
         return reply.code(404).send({ error: "Project source not found" });
       }
       return reply.code(201).send(chatSummarySchema.parse(chat));
+    },
+  );
+
+  app.patch<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/chats/order",
+    async (request, reply) => {
+      const input = orderedIdsSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      return (await repository.reorderChats(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        input.data,
+      ))
+        ? reply.code(204).send()
+        : reply.code(400).send({ error: "Chat order did not match." });
+    },
+  );
+
+  app.patch<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId",
+    async (request, reply) => {
+      const input = chatUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const chat = await repository.updateChat(
+        LOCAL_USER_ID,
+        request.params.chatId,
+        input.data,
+      );
+      return chat
+        ? reply.send(chatSummarySchema.parse(chat))
+        : reply.code(404).send({ error: "Chat not found." });
+    },
+  );
+
+  app.delete<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId",
+    async (request, reply) => {
+      const result = await repository.deleteChat(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (result === "running") {
+        return reply.code(409).send({ error: "Stop the running chat first." });
+      }
+      return result
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "Chat not found." });
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/fork",
+    async (request, reply) => {
+      const input = chatForkSchema.safeParse(request.body ?? {});
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const chat = await repository.forkChat(
+        LOCAL_USER_ID,
+        request.params.chatId,
+        input.data.messageId,
+      );
+      return chat
+        ? reply.code(201).send(chatSummarySchema.parse(chat))
+        : reply.code(404).send({ error: "Chat or message not found." });
     },
   );
 
@@ -533,6 +638,10 @@ export async function buildApp({
       if (!runtime) {
         return reply.code(400).send({ error: "Selected model was not found." });
       }
+      const priorMessages = context.threadId
+        ? []
+        : await repository.listMessages(LOCAL_USER_ID, context.chatId);
+      const workerPrompt = continuationPrompt(priorMessages, input.data.text);
 
       const userMessage = await repository.appendMessage(
         LOCAL_USER_ID,
@@ -557,7 +666,7 @@ export async function buildApp({
             chatId: context.chatId,
             cwd: context.cwd,
             threadId: context.threadId,
-            prompt: input.data.text,
+            prompt: workerPrompt,
             model: runtime.model,
             provider: runtime.provider,
           },

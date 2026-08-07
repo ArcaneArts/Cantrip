@@ -1,6 +1,7 @@
 import type { ChatMessageContent } from "@cantrip/protocol";
 import {
   bigserial,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -127,6 +128,7 @@ export const projects = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    position: integer("position").notNull().default(0),
     githubRepositoryId: text("github_repository_id"),
     githubRepositoryFullName: text("github_repository_full_name"),
     githubRepositoryUrl: text("github_repository_url"),
@@ -176,6 +178,7 @@ export const chats = pgTable("chats", {
     .notNull()
     .references(() => projects.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
+  position: integer("position").notNull().default(0),
   status: text("status").notNull().default("idle"),
   activeWorkerId: text("active_worker_id").references(() => workers.id, {
     onDelete: "set null",

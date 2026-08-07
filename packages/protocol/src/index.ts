@@ -180,6 +180,7 @@ export const projectSourceSummarySchema = z.object({
 export const projectSummarySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
+  position: z.number().int().nonnegative(),
   github: z
     .object({
       repositoryId: z.string().min(1),
@@ -198,10 +199,23 @@ export const chatCreateSchema = z.object({
   title: z.string().trim().min(1).max(200).default("New chat"),
 });
 
+export const chatUpdateSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+});
+
+export const chatForkSchema = z.object({
+  messageId: z.string().min(1).optional(),
+});
+
+export const orderedIdsSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1),
+});
+
 export const chatSummarySchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
   title: z.string().min(1),
+  position: z.number().int().nonnegative(),
   status: z.enum(["idle", "running", "offline", "failed"]),
   activeWorkerId: z.string().min(1).nullable(),
   modelId: z.string().min(1).nullable(),
@@ -397,6 +411,9 @@ export type GithubWorkerRepository = z.infer<
 export type GithubProjectCreate = z.infer<typeof githubProjectCreateSchema>;
 export type ProjectCloneResult = z.infer<typeof projectCloneResultSchema>;
 export type ChatCreate = z.infer<typeof chatCreateSchema>;
+export type ChatUpdate = z.infer<typeof chatUpdateSchema>;
+export type ChatFork = z.infer<typeof chatForkSchema>;
+export type OrderedIds = z.infer<typeof orderedIdsSchema>;
 export type ChatSummary = z.infer<typeof chatSummarySchema>;
 export type ChatMessageContent = z.infer<typeof chatMessageContentSchema>;
 export type ChatMessageCreate = z.infer<typeof chatMessageCreateSchema>;

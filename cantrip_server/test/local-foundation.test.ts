@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  chatListSchema,
   chatMessageListSchema,
   chatMessageSchema,
   chatSummarySchema,
@@ -41,6 +42,7 @@ const config: ServerConfig = {
 
 let turnRequests = 0;
 const turnModelIds: string[] = [];
+const turnPrompts: string[] = [];
 const workerBridge = {
   attach() {},
   close() {},
@@ -73,6 +75,7 @@ const workerBridge = {
       case "chat.turn":
         turnRequests += 1;
         turnModelIds.push(command.model.id);
+        turnPrompts.push(command.prompt);
         await options?.onEvent?.({
           type: "agent.activity",
           activity: {
@@ -318,6 +321,112 @@ describe("local server foundation", () => {
     });
     expect(turnRequests).toBe(1);
     expect(turnModelIds).toContain(selectedModel.id);
+    const completedMessages = chatMessageListSchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/chats/${chat.id}/messages`,
+        })
+      ).json(),
+    );
+    const renamedChat = chatSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/chats/${chat.id}`,
+          payload: { title: "Renamed foundation" },
+        })
+      ).json(),
+    );
+    expect(renamedChat.title).toBe("Renamed foundation");
+    const forkedChat = chatSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/chats/${chat.id}/fork`,
+          payload: {
+            messageId: completedMessages.at(-1)?.id,
+          },
+        })
+      ).json(),
+    );
+    const duplicatedChat = chatSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/chats/${chat.id}/fork`,
+          payload: {},
+        })
+      ).json(),
+    );
+    expect(
+      chatMessageListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${forkedChat.id}/messages`,
+          })
+        ).json(),
+      ),
+    ).toHaveLength(completedMessages.length);
+    expect(
+      await firstApp.inject({
+        method: "POST",
+        url: `/api/chats/${forkedChat.id}/turns`,
+        payload: {
+          text: "Continue from the fork.",
+          idempotencyKey: "fork-follow-up",
+        },
+      }),
+    ).toMatchObject({ statusCode: 202 });
+    await vi.waitFor(() => expect(turnPrompts).toHaveLength(2));
+    expect(turnPrompts[1]).toContain(
+      "Continue this existing Cantrip conversation",
+    );
+    expect(turnPrompts[1]).toContain("The local agent replied.");
+    await vi.waitFor(async () => {
+      const forkMessages = chatMessageListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${forkedChat.id}/messages`,
+          })
+        ).json(),
+      );
+      expect(forkMessages).toHaveLength(completedMessages.length + 4);
+    });
+    expect(
+      await firstApp.inject({
+        method: "PATCH",
+        url: `/api/projects/${project.id}/chats/order`,
+        payload: { ids: [duplicatedChat.id, forkedChat.id, chat.id] },
+      }),
+    ).toMatchObject({ statusCode: 204 });
+    expect(
+      chatListSchema
+        .parse(
+          (
+            await firstApp.inject({
+              method: "GET",
+              url: `/api/projects/${project.id}/chats`,
+            })
+          ).json(),
+        )
+        .map((item) => item.id),
+    ).toEqual([duplicatedChat.id, forkedChat.id, chat.id]);
+    expect(
+      await firstApp.inject({
+        method: "DELETE",
+        url: `/api/chats/${duplicatedChat.id}`,
+      }),
+    ).toMatchObject({ statusCode: 204 });
+    expect(
+      await firstApp.inject({
+        method: "PATCH",
+        url: "/api/projects/order",
+        payload: { ids: [project.id] },
+      }),
+    ).toMatchObject({ statusCode: 204 });
     const lockedModelResponse = await firstApp.inject({
       method: "PATCH",
       url: `/api/chats/${chat.id}/model`,
