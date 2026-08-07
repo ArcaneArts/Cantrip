@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  browserListSchema,
+  browserSummarySchema,
   chatListSchema,
   chatMessageListSchema,
   chatMessageSchema,
@@ -627,6 +629,26 @@ describe("local server foundation", () => {
         ).json(),
       ).title,
     ).toBe("Source browser");
+    const browser = browserSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/browsers`,
+          payload: { title: "Project web" },
+        })
+      ).json(),
+    );
+    expect(
+      browserSummarySchema.parse(
+        (
+          await firstApp.inject({
+            method: "PATCH",
+            url: `/api/browsers/${browser.id}`,
+            payload: { title: "Docs", url: "https://example.com/docs" },
+          })
+        ).json(),
+      ),
+    ).toMatchObject({ title: "Docs", url: "https://example.com/docs" });
     expect(
       await firstApp.inject({
         method: "PATCH",
@@ -635,6 +657,7 @@ describe("local server foundation", () => {
           ids: [
             `chat:${duplicatedChat.id}`,
             `terminal:${reorderedTerminal.id}`,
+            `browser:${browser.id}`,
             `explorer:${explorer.id}`,
             `chat:${forkedChat.id}`,
             `chat:${chat.id}`,
@@ -654,8 +677,8 @@ describe("local server foundation", () => {
       reorderedChats.map(({ id, position }) => ({ id, position })),
     ).toEqual([
       { id: duplicatedChat.id, position: 0 },
-      { id: forkedChat.id, position: 3 },
-      { id: chat.id, position: 4 },
+      { id: forkedChat.id, position: 4 },
+      { id: chat.id, position: 5 },
     ]);
     expect(
       terminalListSchema.parse(
@@ -676,7 +699,17 @@ describe("local server foundation", () => {
           })
         ).json(),
       ),
-    ).toMatchObject([{ id: explorer.id, position: 2 }]);
+    ).toMatchObject([{ id: explorer.id, position: 3 }]);
+    expect(
+      browserListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/browsers`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject([{ id: browser.id, position: 2 }]);
     expect(
       await firstApp.inject({
         method: "DELETE",
@@ -790,6 +823,24 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toMatchObject([{ id: explorer.id, title: "Source browser" }]);
+    expect(
+      browserListSchema.parse(
+        (
+          await secondApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/browsers`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject([
+      { id: browser.id, title: "Docs", url: "https://example.com/docs" },
+    ]);
+    expect(
+      await secondApp.inject({
+        method: "DELETE",
+        url: `/api/browsers/${browser.id}`,
+      }),
+    ).toMatchObject({ statusCode: 204 });
     expect(
       await secondApp.inject({
         method: "DELETE",

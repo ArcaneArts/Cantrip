@@ -4,6 +4,10 @@ import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import {
   agentTurnResultSchema,
+  browserCreateSchema,
+  browserListSchema,
+  browserSummarySchema,
+  browserUpdateSchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   chatCreateSchema,
@@ -712,6 +716,63 @@ export async function buildApp({
       );
       return reply.send(explorerListSchema.parse(explorers));
     },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/browsers",
+    async (request, reply) =>
+      reply.send(
+        browserListSchema.parse(
+          await repository.listBrowsers(
+            LOCAL_USER_ID,
+            request.params.projectId,
+          ),
+        ),
+      ),
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/browsers",
+    async (request, reply) => {
+      const input = browserCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const browser = await repository.createBrowser(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        input.data,
+      );
+      return browser
+        ? reply.code(201).send(browserSummarySchema.parse(browser))
+        : reply.code(404).send({ error: "Project source not found." });
+    },
+  );
+
+  app.patch<{ Params: { browserId: string } }>(
+    "/api/browsers/:browserId",
+    async (request, reply) => {
+      const input = browserUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const browser = await repository.updateBrowser(
+        LOCAL_USER_ID,
+        request.params.browserId,
+        input.data,
+      );
+      return browser
+        ? reply.send(browserSummarySchema.parse(browser))
+        : reply.code(404).send({ error: "Browser not found." });
+    },
+  );
+
+  app.delete<{ Params: { browserId: string } }>(
+    "/api/browsers/:browserId",
+    async (request, reply) =>
+      (await repository.deleteBrowser(LOCAL_USER_ID, request.params.browserId))
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "Browser not found." }),
   );
 
   app.post<{ Params: { projectId: string } }>(

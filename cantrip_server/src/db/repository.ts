@@ -2,6 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import { normalizeResponsesBaseUrl } from "@cantrip/protocol";
 import type {
+  BrowserCreate,
+  BrowserSummary,
+  BrowserUpdate,
   ChatCreate,
   ChatModelUpdate,
   ChatMessage,
@@ -176,6 +179,20 @@ function toExplorerSummary(
     activeWorkerId: explorer.activeWorkerId,
     createdAt: toISOString(explorer.createdAt),
     updatedAt: toISOString(explorer.updatedAt),
+  };
+}
+
+function toBrowserSummary(
+  browser: typeof schema.browsers.$inferSelect,
+): BrowserSummary {
+  return {
+    id: browser.id,
+    projectId: browser.projectId,
+    title: browser.title,
+    position: browser.position,
+    url: browser.url,
+    createdAt: toISOString(browser.createdAt),
+    updatedAt: toISOString(browser.updatedAt),
   };
 }
 
@@ -830,26 +847,33 @@ export class ServerRepository {
       return null;
     }
 
-    const [lastChats, lastTerminals, lastExplorers] = await Promise.all([
-      this.database
-        .select({ position: schema.chats.position })
-        .from(schema.chats)
-        .where(eq(schema.chats.projectId, projectId))
-        .orderBy(desc(schema.chats.position))
-        .limit(1),
-      this.database
-        .select({ position: schema.explorers.position })
-        .from(schema.explorers)
-        .where(eq(schema.explorers.projectId, projectId))
-        .orderBy(desc(schema.explorers.position))
-        .limit(1),
-      this.database
-        .select({ position: schema.terminals.position })
-        .from(schema.terminals)
-        .where(eq(schema.terminals.projectId, projectId))
-        .orderBy(desc(schema.terminals.position))
-        .limit(1),
-    ]);
+    const [lastChats, lastTerminals, lastExplorers, lastBrowsers] =
+      await Promise.all([
+        this.database
+          .select({ position: schema.chats.position })
+          .from(schema.chats)
+          .where(eq(schema.chats.projectId, projectId))
+          .orderBy(desc(schema.chats.position))
+          .limit(1),
+        this.database
+          .select({ position: schema.explorers.position })
+          .from(schema.explorers)
+          .where(eq(schema.explorers.projectId, projectId))
+          .orderBy(desc(schema.explorers.position))
+          .limit(1),
+        this.database
+          .select({ position: schema.terminals.position })
+          .from(schema.terminals)
+          .where(eq(schema.terminals.projectId, projectId))
+          .orderBy(desc(schema.terminals.position))
+          .limit(1),
+        this.database
+          .select({ position: schema.browsers.position })
+          .from(schema.browsers)
+          .where(eq(schema.browsers.projectId, projectId))
+          .orderBy(desc(schema.browsers.position))
+          .limit(1),
+      ]);
     const result = await this.database
       .insert(schema.chats)
       .values({
@@ -861,6 +885,7 @@ export class ServerRepository {
             lastChats[0]?.position ?? -1,
             lastTerminals[0]?.position ?? -1,
             lastExplorers[0]?.position ?? -1,
+            lastBrowsers[0]?.position ?? -1,
           ) + 1,
         activeWorkerId: source.workerId,
       })
@@ -915,26 +940,33 @@ export class ServerRepository {
     const source = rows[0]?.source;
     if (!source) return null;
 
-    const [lastChats, lastTerminals, lastExplorers] = await Promise.all([
-      this.database
-        .select({ position: schema.chats.position })
-        .from(schema.chats)
-        .where(eq(schema.chats.projectId, projectId))
-        .orderBy(desc(schema.chats.position))
-        .limit(1),
-      this.database
-        .select({ position: schema.explorers.position })
-        .from(schema.explorers)
-        .where(eq(schema.explorers.projectId, projectId))
-        .orderBy(desc(schema.explorers.position))
-        .limit(1),
-      this.database
-        .select({ position: schema.terminals.position })
-        .from(schema.terminals)
-        .where(eq(schema.terminals.projectId, projectId))
-        .orderBy(desc(schema.terminals.position))
-        .limit(1),
-    ]);
+    const [lastChats, lastTerminals, lastExplorers, lastBrowsers] =
+      await Promise.all([
+        this.database
+          .select({ position: schema.chats.position })
+          .from(schema.chats)
+          .where(eq(schema.chats.projectId, projectId))
+          .orderBy(desc(schema.chats.position))
+          .limit(1),
+        this.database
+          .select({ position: schema.explorers.position })
+          .from(schema.explorers)
+          .where(eq(schema.explorers.projectId, projectId))
+          .orderBy(desc(schema.explorers.position))
+          .limit(1),
+        this.database
+          .select({ position: schema.terminals.position })
+          .from(schema.terminals)
+          .where(eq(schema.terminals.projectId, projectId))
+          .orderBy(desc(schema.terminals.position))
+          .limit(1),
+        this.database
+          .select({ position: schema.browsers.position })
+          .from(schema.browsers)
+          .where(eq(schema.browsers.projectId, projectId))
+          .orderBy(desc(schema.browsers.position))
+          .limit(1),
+      ]);
     const result = await this.database
       .insert(schema.terminals)
       .values({
@@ -946,6 +978,7 @@ export class ServerRepository {
             lastChats[0]?.position ?? -1,
             lastTerminals[0]?.position ?? -1,
             lastExplorers[0]?.position ?? -1,
+            lastBrowsers[0]?.position ?? -1,
           ) + 1,
         activeWorkerId: source.workerId,
       })
@@ -994,26 +1027,33 @@ export class ServerRepository {
   ): Promise<ExplorerSummary | null> {
     const source = await this.getProjectSource(ownerId, projectId);
     if (!source) return null;
-    const [lastChats, lastTerminals, lastExplorers] = await Promise.all([
-      this.database
-        .select({ position: schema.chats.position })
-        .from(schema.chats)
-        .where(eq(schema.chats.projectId, projectId))
-        .orderBy(desc(schema.chats.position))
-        .limit(1),
-      this.database
-        .select({ position: schema.terminals.position })
-        .from(schema.terminals)
-        .where(eq(schema.terminals.projectId, projectId))
-        .orderBy(desc(schema.terminals.position))
-        .limit(1),
-      this.database
-        .select({ position: schema.explorers.position })
-        .from(schema.explorers)
-        .where(eq(schema.explorers.projectId, projectId))
-        .orderBy(desc(schema.explorers.position))
-        .limit(1),
-    ]);
+    const [lastChats, lastTerminals, lastExplorers, lastBrowsers] =
+      await Promise.all([
+        this.database
+          .select({ position: schema.chats.position })
+          .from(schema.chats)
+          .where(eq(schema.chats.projectId, projectId))
+          .orderBy(desc(schema.chats.position))
+          .limit(1),
+        this.database
+          .select({ position: schema.terminals.position })
+          .from(schema.terminals)
+          .where(eq(schema.terminals.projectId, projectId))
+          .orderBy(desc(schema.terminals.position))
+          .limit(1),
+        this.database
+          .select({ position: schema.explorers.position })
+          .from(schema.explorers)
+          .where(eq(schema.explorers.projectId, projectId))
+          .orderBy(desc(schema.explorers.position))
+          .limit(1),
+        this.database
+          .select({ position: schema.browsers.position })
+          .from(schema.browsers)
+          .where(eq(schema.browsers.projectId, projectId))
+          .orderBy(desc(schema.browsers.position))
+          .limit(1),
+      ]);
     const result = await this.database
       .insert(schema.explorers)
       .values({
@@ -1025,6 +1065,7 @@ export class ServerRepository {
             lastChats[0]?.position ?? -1,
             lastTerminals[0]?.position ?? -1,
             lastExplorers[0]?.position ?? -1,
+            lastBrowsers[0]?.position ?? -1,
           ) + 1,
         activeWorkerId: source.workerId,
       })
@@ -1085,6 +1126,118 @@ export class ServerRepository {
       .where(eq(schema.explorers.id, explorerId))
       .returning({ id: schema.explorers.id });
     return result.length === 1;
+  }
+
+  async listBrowsers(
+    ownerId: string,
+    projectId: string,
+  ): Promise<BrowserSummary[]> {
+    const rows = await this.database
+      .select({ browser: schema.browsers })
+      .from(schema.browsers)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.browsers.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.browsers.projectId, projectId))
+      .orderBy(asc(schema.browsers.position), asc(schema.browsers.createdAt));
+    return rows.map(({ browser }) => toBrowserSummary(browser));
+  }
+
+  async createBrowser(
+    ownerId: string,
+    projectId: string,
+    input: BrowserCreate,
+  ): Promise<BrowserSummary | null> {
+    if (!(await this.getProjectSource(ownerId, projectId))) return null;
+    const [lastChats, lastTerminals, lastExplorers, lastBrowsers] =
+      await Promise.all([
+        this.database
+          .select({ position: schema.chats.position })
+          .from(schema.chats)
+          .where(eq(schema.chats.projectId, projectId))
+          .orderBy(desc(schema.chats.position))
+          .limit(1),
+        this.database
+          .select({ position: schema.terminals.position })
+          .from(schema.terminals)
+          .where(eq(schema.terminals.projectId, projectId))
+          .orderBy(desc(schema.terminals.position))
+          .limit(1),
+        this.database
+          .select({ position: schema.explorers.position })
+          .from(schema.explorers)
+          .where(eq(schema.explorers.projectId, projectId))
+          .orderBy(desc(schema.explorers.position))
+          .limit(1),
+        this.database
+          .select({ position: schema.browsers.position })
+          .from(schema.browsers)
+          .where(eq(schema.browsers.projectId, projectId))
+          .orderBy(desc(schema.browsers.position))
+          .limit(1),
+      ]);
+    const result = await this.database
+      .insert(schema.browsers)
+      .values({
+        id: randomUUID(),
+        projectId,
+        title: input.title,
+        position:
+          Math.max(
+            lastChats[0]?.position ?? -1,
+            lastTerminals[0]?.position ?? -1,
+            lastExplorers[0]?.position ?? -1,
+            lastBrowsers[0]?.position ?? -1,
+          ) + 1,
+      })
+      .returning();
+    return toBrowserSummary(firstOrThrow(result, "creating a browser"));
+  }
+
+  async updateBrowser(
+    ownerId: string,
+    browserId: string,
+    input: BrowserUpdate,
+  ): Promise<BrowserSummary | null> {
+    if (!(await this.browserIsOwnedBy(ownerId, browserId))) return null;
+    const result = await this.database
+      .update(schema.browsers)
+      .set({ ...input, updatedAt: new Date() })
+      .where(eq(schema.browsers.id, browserId))
+      .returning();
+    return result[0] ? toBrowserSummary(result[0]) : null;
+  }
+
+  async deleteBrowser(ownerId: string, browserId: string): Promise<boolean> {
+    if (!(await this.browserIsOwnedBy(ownerId, browserId))) return false;
+    const result = await this.database
+      .delete(schema.browsers)
+      .where(eq(schema.browsers.id, browserId))
+      .returning({ id: schema.browsers.id });
+    return result.length === 1;
+  }
+
+  private async browserIsOwnedBy(
+    ownerId: string,
+    browserId: string,
+  ): Promise<boolean> {
+    const rows = await this.database
+      .select({ id: schema.browsers.id })
+      .from(schema.browsers)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.browsers.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.browsers.id, browserId))
+      .limit(1);
+    return rows.length === 1;
   }
 
   async deleteTerminal(
@@ -1241,26 +1394,33 @@ export class ServerRepository {
               ),
         )
         .orderBy(asc(schema.chatMessages.sequence));
-      const [lastChats, lastTerminals, lastExplorers] = await Promise.all([
-        transaction
-          .select({ position: schema.chats.position })
-          .from(schema.chats)
-          .where(eq(schema.chats.projectId, row.chat.projectId))
-          .orderBy(desc(schema.chats.position))
-          .limit(1),
-        transaction
-          .select({ position: schema.explorers.position })
-          .from(schema.explorers)
-          .where(eq(schema.explorers.projectId, row.chat.projectId))
-          .orderBy(desc(schema.explorers.position))
-          .limit(1),
-        transaction
-          .select({ position: schema.terminals.position })
-          .from(schema.terminals)
-          .where(eq(schema.terminals.projectId, row.chat.projectId))
-          .orderBy(desc(schema.terminals.position))
-          .limit(1),
-      ]);
+      const [lastChats, lastTerminals, lastExplorers, lastBrowsers] =
+        await Promise.all([
+          transaction
+            .select({ position: schema.chats.position })
+            .from(schema.chats)
+            .where(eq(schema.chats.projectId, row.chat.projectId))
+            .orderBy(desc(schema.chats.position))
+            .limit(1),
+          transaction
+            .select({ position: schema.explorers.position })
+            .from(schema.explorers)
+            .where(eq(schema.explorers.projectId, row.chat.projectId))
+            .orderBy(desc(schema.explorers.position))
+            .limit(1),
+          transaction
+            .select({ position: schema.terminals.position })
+            .from(schema.terminals)
+            .where(eq(schema.terminals.projectId, row.chat.projectId))
+            .orderBy(desc(schema.terminals.position))
+            .limit(1),
+          transaction
+            .select({ position: schema.browsers.position })
+            .from(schema.browsers)
+            .where(eq(schema.browsers.projectId, row.chat.projectId))
+            .orderBy(desc(schema.browsers.position))
+            .limit(1),
+        ]);
       const chatResult = await transaction
         .insert(schema.chats)
         .values({
@@ -1272,6 +1432,7 @@ export class ServerRepository {
               lastChats[0]?.position ?? -1,
               lastTerminals[0]?.position ?? -1,
               lastExplorers[0]?.position ?? -1,
+              lastBrowsers[0]?.position ?? -1,
             ) + 1,
           activeWorkerId: row.source.workerId,
           modelId: row.chat.modelId,
@@ -1324,45 +1485,58 @@ export class ServerRepository {
     projectId: string,
     input: OrderedIds,
   ): Promise<boolean> {
-    const [chatRows, terminalRows, explorerRows] = await Promise.all([
-      this.database
-        .select({ id: schema.chats.id })
-        .from(schema.chats)
-        .innerJoin(
-          schema.projects,
-          and(
-            eq(schema.projects.id, projectId),
-            eq(schema.projects.ownerId, ownerId),
-          ),
-        )
-        .where(eq(schema.chats.projectId, projectId)),
-      this.database
-        .select({ id: schema.terminals.id })
-        .from(schema.terminals)
-        .innerJoin(
-          schema.projects,
-          and(
-            eq(schema.projects.id, projectId),
-            eq(schema.projects.ownerId, ownerId),
-          ),
-        )
-        .where(eq(schema.terminals.projectId, projectId)),
-      this.database
-        .select({ id: schema.explorers.id })
-        .from(schema.explorers)
-        .innerJoin(
-          schema.projects,
-          and(
-            eq(schema.projects.id, projectId),
-            eq(schema.projects.ownerId, ownerId),
-          ),
-        )
-        .where(eq(schema.explorers.projectId, projectId)),
-    ]);
+    const [chatRows, terminalRows, explorerRows, browserRows] =
+      await Promise.all([
+        this.database
+          .select({ id: schema.chats.id })
+          .from(schema.chats)
+          .innerJoin(
+            schema.projects,
+            and(
+              eq(schema.projects.id, projectId),
+              eq(schema.projects.ownerId, ownerId),
+            ),
+          )
+          .where(eq(schema.chats.projectId, projectId)),
+        this.database
+          .select({ id: schema.terminals.id })
+          .from(schema.terminals)
+          .innerJoin(
+            schema.projects,
+            and(
+              eq(schema.projects.id, projectId),
+              eq(schema.projects.ownerId, ownerId),
+            ),
+          )
+          .where(eq(schema.terminals.projectId, projectId)),
+        this.database
+          .select({ id: schema.explorers.id })
+          .from(schema.explorers)
+          .innerJoin(
+            schema.projects,
+            and(
+              eq(schema.projects.id, projectId),
+              eq(schema.projects.ownerId, ownerId),
+            ),
+          )
+          .where(eq(schema.explorers.projectId, projectId)),
+        this.database
+          .select({ id: schema.browsers.id })
+          .from(schema.browsers)
+          .innerJoin(
+            schema.projects,
+            and(
+              eq(schema.projects.id, projectId),
+              eq(schema.projects.ownerId, ownerId),
+            ),
+          )
+          .where(eq(schema.browsers.projectId, projectId)),
+      ]);
     const expected = new Set([
       ...chatRows.map(({ id }) => `chat:${id}`),
       ...terminalRows.map(({ id }) => `terminal:${id}`),
       ...explorerRows.map(({ id }) => `explorer:${id}`),
+      ...browserRows.map(({ id }) => `browser:${id}`),
     ]);
     if (
       expected.size !== input.ids.length ||
@@ -1385,11 +1559,16 @@ export class ServerRepository {
             .update(schema.terminals)
             .set({ position })
             .where(eq(schema.terminals.id, id));
-        } else {
+        } else if (kind === "explorer") {
           await transaction
             .update(schema.explorers)
             .set({ position })
             .where(eq(schema.explorers.id, id));
+        } else {
+          await transaction
+            .update(schema.browsers)
+            .set({ position })
+            .where(eq(schema.browsers.id, id));
         }
       }
     });

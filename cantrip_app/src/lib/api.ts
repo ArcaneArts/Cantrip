@@ -1,4 +1,6 @@
 import {
+  browserListSchema,
+  browserSummarySchema,
   chatListSchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
@@ -288,6 +290,38 @@ export async function renameExplorer(explorerId: string, title: string) {
 
 export async function deleteExplorer(explorerId: string) {
   await request(`/api/explorers/${encodeURIComponent(explorerId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getBrowsers(projectId: string) {
+  return browserListSchema.parse(
+    await request(`/api/projects/${encodeURIComponent(projectId)}/browsers`),
+  );
+}
+
+export async function createBrowser(projectId: string, title: string) {
+  return browserSummarySchema.parse(
+    await post(`/api/projects/${encodeURIComponent(projectId)}/browsers`, {
+      title,
+    }),
+  );
+}
+
+export async function updateBrowser(
+  browserId: string,
+  input: { title?: string; url?: string },
+) {
+  return browserSummarySchema.parse(
+    await request(`/api/browsers/${encodeURIComponent(browserId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function deleteBrowser(browserId: string) {
+  await request(`/api/browsers/${encodeURIComponent(browserId)}`, {
     method: "DELETE",
   });
 }

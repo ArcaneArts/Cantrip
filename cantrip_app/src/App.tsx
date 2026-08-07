@@ -1,4 +1,5 @@
 import type {
+  BrowserSummary,
   ChatMessage,
   ChatSummary,
   ExplorerSummary,
@@ -16,6 +17,7 @@ import {
   FolderTree,
   GitFork,
   GitBranch,
+  Globe2,
   Loader2,
   Lock,
   MessageSquare,
@@ -61,15 +63,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  createBrowser,
   createChat,
   createExplorer,
   createGithubProject,
   createTerminal,
   deleteChat,
+  deleteBrowser,
   deleteExplorer,
   deleteTerminal,
   forkChat,
   getChats,
+  getBrowsers,
   getExplorers,
   getGithubRepositories,
   getGithubStatus,
@@ -87,6 +92,7 @@ import {
   reorderProjects,
   startTurn,
   updateChatModel,
+  updateBrowser,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -98,6 +104,11 @@ const TerminalView = lazy(() =>
 const ExplorerView = lazy(() =>
   import("@/components/explorer/explorer-view").then((module) => ({
     default: module.ExplorerView,
+  })),
+);
+const BrowserView = lazy(() =>
+  import("@/components/browser/browser-view").then((module) => ({
+    default: module.BrowserView,
   })),
 );
 
@@ -604,6 +615,9 @@ export function App() {
     null,
   );
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [selectedBrowserId, setSelectedBrowserId] = useState<string | null>(
+    null,
+  );
   const [selectedExplorerId, setSelectedExplorerId] = useState<string | null>(
     null,
   );
@@ -646,6 +660,12 @@ export function App() {
     queryKey: ["explorers", selectedProjectId],
     refetchInterval: 1_000,
   });
+  const browsers = useQuery({
+    enabled: Boolean(selectedProjectId),
+    queryFn: () => getBrowsers(selectedProjectId!),
+    queryKey: ["browsers", selectedProjectId],
+    refetchInterval: 1_000,
+  });
   const newChat = useMutation({
     mutationFn: (projectId: string) => createChat(projectId, "New chat"),
     onSuccess: async (chat) => {
@@ -654,6 +674,7 @@ export function App() {
       });
       setSelectedTerminalId(null);
       setSelectedExplorerId(null);
+      setSelectedBrowserId(null);
       setSelectedChatId(chat.id);
     },
   });
@@ -666,6 +687,7 @@ export function App() {
       setSelectedProjectId(terminal.projectId);
       setSelectedChatId(null);
       setSelectedExplorerId(null);
+      setSelectedBrowserId(null);
       setSelectedTerminalId(terminal.id);
       setGitHistoryProjectId(null);
       setShowImporter(false);
@@ -685,12 +707,36 @@ export function App() {
       setSelectedProjectId(explorer.projectId);
       setSelectedChatId(null);
       setSelectedTerminalId(null);
+      setSelectedBrowserId(null);
       setSelectedExplorerId(explorer.id);
       setGitHistoryProjectId(null);
       setShowImporter(false);
       setShowSettings(false);
       void queryClient.invalidateQueries({
         queryKey: ["explorers", explorer.projectId],
+      });
+    },
+  });
+  const newBrowser = useMutation({
+    mutationFn: (projectId: string) => createBrowser(projectId, "Browser"),
+    onSuccess: (browser) => {
+      queryClient.setQueryData<BrowserSummary[]>(
+        ["browsers", browser.projectId],
+        (current = []) =>
+          [...current.filter((item) => item.id !== browser.id), browser].sort(
+            (left, right) => left.position - right.position,
+          ),
+      );
+      setSelectedProjectId(browser.projectId);
+      setSelectedChatId(null);
+      setSelectedTerminalId(null);
+      setSelectedExplorerId(null);
+      setSelectedBrowserId(browser.id);
+      setGitHistoryProjectId(null);
+      setShowImporter(false);
+      setShowSettings(false);
+      void queryClient.invalidateQueries({
+        queryKey: ["browsers", browser.projectId],
       });
     },
   });
@@ -713,6 +759,7 @@ export function App() {
       setSelectedProjectId(forked.projectId);
       setSelectedTerminalId(null);
       setSelectedExplorerId(null);
+      setSelectedBrowserId(null);
       setSelectedChatId(forked.id);
     },
   });
@@ -777,6 +824,32 @@ export function App() {
       });
     },
   });
+  const updateBrowserMutation = useMutation({
+    mutationFn: ({
+      browserId,
+      input,
+    }: {
+      browserId: string;
+      input: { title?: string; url?: string };
+    }) => updateBrowser(browserId, input),
+    onSuccess: (updated) =>
+      queryClient.setQueryData<BrowserSummary[]>(
+        ["browsers", updated.projectId],
+        (current = []) =>
+          current.map((browser) =>
+            browser.id === updated.id ? updated : browser,
+          ),
+      ),
+  });
+  const deleteBrowserMutation = useMutation({
+    mutationFn: deleteBrowser,
+    onSuccess: async (_value, deletedId) => {
+      if (selectedBrowserId === deletedId) setSelectedBrowserId(null);
+      await queryClient.invalidateQueries({
+        queryKey: ["browsers", selectedProjectId],
+      });
+    },
+  });
   const removeProjectMutation = useMutation({
     mutationFn: ({
       projectId,
@@ -791,6 +864,7 @@ export function App() {
         setSelectedChatId(null);
         setSelectedTerminalId(null);
         setSelectedExplorerId(null);
+        setSelectedBrowserId(null);
       }
       if (gitHistoryProjectId === projectId) setGitHistoryProjectId(null);
       await Promise.all([
@@ -823,16 +897,20 @@ export function App() {
       const chatKey = ["chats", projectId] as const;
       const terminalKey = ["terminals", projectId] as const;
       const explorerKey = ["explorers", projectId] as const;
+      const browserKey = ["browsers", projectId] as const;
       await Promise.all([
         queryClient.cancelQueries({ queryKey: chatKey }),
         queryClient.cancelQueries({ queryKey: terminalKey }),
         queryClient.cancelQueries({ queryKey: explorerKey }),
+        queryClient.cancelQueries({ queryKey: browserKey }),
       ]);
       const previousChats = queryClient.getQueryData<ChatSummary[]>(chatKey);
       const previousTerminals =
         queryClient.getQueryData<TerminalSummary[]>(terminalKey);
       const previousExplorers =
         queryClient.getQueryData<ExplorerSummary[]>(explorerKey);
+      const previousBrowsers =
+        queryClient.getQueryData<BrowserSummary[]>(browserKey);
       const positions = new Map(ids.map((id, position) => [id, position]));
       queryClient.setQueryData<ChatSummary[]>(chatKey, (current = []) =>
         current
@@ -860,11 +938,22 @@ export function App() {
           }))
           .sort((a, b) => a.position - b.position),
       );
+      queryClient.setQueryData<BrowserSummary[]>(browserKey, (current = []) =>
+        current
+          .map((browser) => ({
+            ...browser,
+            position:
+              positions.get(`browser:${browser.id}`) ?? browser.position,
+          }))
+          .sort((a, b) => a.position - b.position),
+      );
       return {
+        browserKey,
         chatKey,
         explorerKey,
         terminalKey,
         previousChats,
+        previousBrowsers,
         previousExplorers,
         previousTerminals,
       };
@@ -879,6 +968,10 @@ export function App() {
         context?.explorerKey ?? [],
         context?.previousExplorers,
       );
+      queryClient.setQueryData(
+        context?.browserKey ?? [],
+        context?.previousBrowsers,
+      );
     },
     onSettled: (_data, _error, input) =>
       Promise.all([
@@ -888,6 +981,9 @@ export function App() {
         }),
         queryClient.invalidateQueries({
           queryKey: ["explorers", input.projectId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["browsers", input.projectId],
         }),
       ]),
   });
@@ -905,6 +1001,9 @@ export function App() {
   );
   const selectedExplorer = explorers.data?.find(
     (explorer) => explorer.id === selectedExplorerId,
+  );
+  const selectedBrowser = browsers.data?.find(
+    (browser) => browser.id === selectedBrowserId,
   );
   useEffect(() => {
     const preference = settings.data?.preferences.theme ?? "system";
@@ -940,11 +1039,14 @@ export function App() {
   }, [projects.data, selectedProjectId]);
 
   useEffect(() => {
-    if (!chats.data || !terminals.data || !explorers.data) return;
+    if (!chats.data || !terminals.data || !explorers.data || !browsers.data)
+      return;
     if (chats.data.some((chat) => chat.id === selectedChatId)) return;
     if (terminals.data.some((terminal) => terminal.id === selectedTerminalId))
       return;
     if (explorers.data.some((explorer) => explorer.id === selectedExplorerId))
+      return;
+    if (browsers.data.some((browser) => browser.id === selectedBrowserId))
       return;
     const first = [
       ...chats.data.map((chat) => ({
@@ -962,14 +1064,22 @@ export function App() {
         kind: "explorer",
         position: explorer.position,
       })),
+      ...browsers.data.map((browser) => ({
+        id: browser.id,
+        kind: "browser",
+        position: browser.position,
+      })),
     ].sort((left, right) => left.position - right.position)[0];
     setSelectedChatId(first?.kind === "chat" ? first.id : null);
     setSelectedTerminalId(first?.kind === "terminal" ? first.id : null);
     setSelectedExplorerId(first?.kind === "explorer" ? first.id : null);
+    setSelectedBrowserId(first?.kind === "browser" ? first.id : null);
   }, [
+    browsers.data,
     chats.data,
     explorers.data,
     selectedChatId,
+    selectedBrowserId,
     selectedExplorerId,
     selectedTerminalId,
     terminals.data,
@@ -1008,19 +1118,23 @@ export function App() {
 
         <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
           <ProjectChatList
+            browsers={browsers.data ?? []}
             projects={projects.data ?? []}
             chats={chats.data ?? []}
             explorers={explorers.data ?? []}
             terminals={terminals.data ?? []}
             selectedProjectId={selectedProjectId}
+            selectedBrowserId={selectedBrowserId}
             selectedChatId={selectedChatId}
             selectedExplorerId={selectedExplorerId}
             selectedTerminalId={selectedTerminalId}
             gitHistoryProjectId={gitHistoryProjectId}
             creatingChat={newChat.isPending}
+            creatingBrowser={newBrowser.isPending}
             creatingExplorer={newExplorer.isPending}
             creatingTerminal={newTerminal.isPending}
             onCreateChat={(projectId) => newChat.mutate(projectId)}
+            onCreateBrowser={(projectId) => newBrowser.mutate(projectId)}
             onCreateExplorer={(projectId) => newExplorer.mutate(projectId)}
             onCreateTerminal={(projectId) => newTerminal.mutate(projectId)}
             onRenameChat={(chatId, title) =>
@@ -1028,6 +1142,12 @@ export function App() {
             }
             onDuplicateChat={(chatId) => forkChatMutation.mutate(chatId)}
             onDeleteChat={(chatId) => deleteChatMutation.mutate(chatId)}
+            onRenameBrowser={(browserId, title) =>
+              updateBrowserMutation.mutate({ browserId, input: { title } })
+            }
+            onDeleteBrowser={(browserId) =>
+              deleteBrowserMutation.mutate(browserId)
+            }
             onRenameExplorer={(explorerId, title) =>
               renameExplorerMutation.mutate({ explorerId, title })
             }
@@ -1059,6 +1179,7 @@ export function App() {
               setSelectedChatId(null);
               setSelectedTerminalId(null);
               setSelectedExplorerId(null);
+              setSelectedBrowserId(null);
               setShowImporter(false);
               setShowSettings(false);
             }}
@@ -1066,6 +1187,7 @@ export function App() {
               setGitHistoryProjectId(null);
               setSelectedTerminalId(null);
               setSelectedExplorerId(null);
+              setSelectedBrowserId(null);
               setSelectedChatId(chatId);
               setShowImporter(false);
               setShowSettings(false);
@@ -1074,6 +1196,7 @@ export function App() {
               setGitHistoryProjectId(null);
               setSelectedChatId(null);
               setSelectedExplorerId(null);
+              setSelectedBrowserId(null);
               setSelectedTerminalId(terminalId);
               setShowImporter(false);
               setShowSettings(false);
@@ -1082,7 +1205,17 @@ export function App() {
               setGitHistoryProjectId(null);
               setSelectedChatId(null);
               setSelectedTerminalId(null);
+              setSelectedBrowserId(null);
               setSelectedExplorerId(explorerId);
+              setShowImporter(false);
+              setShowSettings(false);
+            }}
+            onSelectBrowser={(browserId) => {
+              setGitHistoryProjectId(null);
+              setSelectedChatId(null);
+              setSelectedTerminalId(null);
+              setSelectedExplorerId(null);
+              setSelectedBrowserId(browserId);
               setShowImporter(false);
               setShowSettings(false);
             }}
@@ -1126,11 +1259,14 @@ export function App() {
                   ? "Settings"
                   : gitHistoryProject
                     ? "Git history"
-                    : selectedExplorer
-                      ? selectedExplorer.title
-                      : selectedTerminal
-                        ? selectedTerminal.title
-                        : (selectedProject?.github?.nameWithOwner ?? "Cantrip")}
+                    : selectedBrowser
+                      ? selectedBrowser.title
+                      : selectedExplorer
+                        ? selectedExplorer.title
+                        : selectedTerminal
+                          ? selectedTerminal.title
+                          : (selectedProject?.github?.nameWithOwner ??
+                            "Cantrip")}
             </p>
             <p className="truncate text-xs text-muted-foreground">
               {showImporter
@@ -1140,12 +1276,14 @@ export function App() {
                   : gitHistoryProject
                     ? (gitHistoryProject.github?.nameWithOwner ??
                       gitHistoryProject.name)
-                    : selectedExplorer
-                      ? (selectedProject?.source?.displayPath ?? "Explorer")
-                      : selectedTerminal
-                        ? (selectedProject?.source?.displayPath ?? "Terminal")
-                        : (selectedProject?.source?.displayPath ??
-                          "Choose a project to begin")}
+                    : selectedBrowser
+                      ? selectedBrowser.url
+                      : selectedExplorer
+                        ? (selectedProject?.source?.displayPath ?? "Explorer")
+                        : selectedTerminal
+                          ? (selectedProject?.source?.displayPath ?? "Terminal")
+                          : (selectedProject?.source?.displayPath ??
+                            "Choose a project to begin")}
             </p>
           </div>
           <div className="flex items-center gap-2 md:hidden">
@@ -1199,6 +1337,7 @@ export function App() {
               setSelectedChatId(null);
               setSelectedTerminalId(null);
               setSelectedExplorerId(null);
+              setSelectedBrowserId(null);
               setShowImporter(false);
               setShowSettings(false);
             }}
@@ -1208,6 +1347,24 @@ export function App() {
             project={gitHistoryProject}
             onClose={() => setGitHistoryProjectId(null)}
           />
+        ) : selectedBrowser ? (
+          <Suspense
+            fallback={
+              <div className="grid flex-1 place-items-center text-muted-foreground">
+                <Loader2 className="size-5 animate-spin" />
+              </div>
+            }
+          >
+            <BrowserView
+              browser={selectedBrowser}
+              onNavigate={(url) =>
+                updateBrowserMutation.mutate({
+                  browserId: selectedBrowser.id,
+                  input: { url },
+                })
+              }
+            />
+          </Suspense>
         ) : selectedExplorer ? (
           <Suspense
             fallback={
@@ -1236,6 +1393,7 @@ export function App() {
               setSelectedProjectId(forked.projectId);
               setSelectedTerminalId(null);
               setSelectedExplorerId(null);
+              setSelectedBrowserId(null);
               setSelectedChatId(forked.id);
             }}
           />
@@ -1247,7 +1405,7 @@ export function App() {
               </div>
               <h1 className="mt-4 font-semibold">No tabs yet</h1>
               <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
-                Start a Codex chat, shell, or file explorer rooted in{" "}
+                Start a Codex chat, shell, file explorer, or browser in{" "}
                 {selectedProject.name}.
               </p>
               <div className="mt-5 flex justify-center gap-2">
@@ -1285,6 +1443,18 @@ export function App() {
                     <FolderTree className="size-4" />
                   )}
                   Explorer
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={newBrowser.isPending || !selectedProject.source}
+                  onClick={() => newBrowser.mutate(selectedProject.id)}
+                >
+                  {newBrowser.isPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Globe2 className="size-4" />
+                  )}
+                  Browser
                 </Button>
               </div>
               {newChat.isError ? (
@@ -1333,19 +1503,23 @@ export function App() {
           </DialogHeader>
           <div className="min-h-0 overflow-y-auto">
             <ProjectChatList
+              browsers={browsers.data ?? []}
               projects={projects.data ?? []}
               chats={chats.data ?? []}
               explorers={explorers.data ?? []}
               terminals={terminals.data ?? []}
               selectedProjectId={selectedProjectId}
+              selectedBrowserId={selectedBrowserId}
               selectedChatId={selectedChatId}
               selectedExplorerId={selectedExplorerId}
               selectedTerminalId={selectedTerminalId}
               gitHistoryProjectId={gitHistoryProjectId}
               creatingChat={newChat.isPending}
+              creatingBrowser={newBrowser.isPending}
               creatingExplorer={newExplorer.isPending}
               creatingTerminal={newTerminal.isPending}
               onCreateChat={(projectId) => newChat.mutate(projectId)}
+              onCreateBrowser={(projectId) => newBrowser.mutate(projectId)}
               onCreateExplorer={(projectId) => newExplorer.mutate(projectId)}
               onCreateTerminal={(projectId) => newTerminal.mutate(projectId)}
               onRenameChat={(chatId, title) =>
@@ -1353,6 +1527,12 @@ export function App() {
               }
               onDuplicateChat={(chatId) => forkChatMutation.mutate(chatId)}
               onDeleteChat={(chatId) => deleteChatMutation.mutate(chatId)}
+              onRenameBrowser={(browserId, title) =>
+                updateBrowserMutation.mutate({ browserId, input: { title } })
+              }
+              onDeleteBrowser={(browserId) =>
+                deleteBrowserMutation.mutate(browserId)
+              }
               onRenameExplorer={(explorerId, title) =>
                 renameExplorerMutation.mutate({ explorerId, title })
               }
@@ -1386,11 +1566,13 @@ export function App() {
                 setSelectedChatId(null);
                 setSelectedTerminalId(null);
                 setSelectedExplorerId(null);
+                setSelectedBrowserId(null);
               }}
               onSelectChat={(chatId) => {
                 setGitHistoryProjectId(null);
                 setSelectedTerminalId(null);
                 setSelectedExplorerId(null);
+                setSelectedBrowserId(null);
                 setSelectedChatId(chatId);
                 setMobileNavigationOpen(false);
                 setShowImporter(false);
@@ -1400,6 +1582,7 @@ export function App() {
                 setGitHistoryProjectId(null);
                 setSelectedChatId(null);
                 setSelectedExplorerId(null);
+                setSelectedBrowserId(null);
                 setSelectedTerminalId(terminalId);
                 setMobileNavigationOpen(false);
                 setShowImporter(false);
@@ -1409,7 +1592,18 @@ export function App() {
                 setGitHistoryProjectId(null);
                 setSelectedChatId(null);
                 setSelectedTerminalId(null);
+                setSelectedBrowserId(null);
                 setSelectedExplorerId(explorerId);
+                setMobileNavigationOpen(false);
+                setShowImporter(false);
+                setShowSettings(false);
+              }}
+              onSelectBrowser={(browserId) => {
+                setGitHistoryProjectId(null);
+                setSelectedChatId(null);
+                setSelectedTerminalId(null);
+                setSelectedExplorerId(null);
+                setSelectedBrowserId(browserId);
                 setMobileNavigationOpen(false);
                 setShowImporter(false);
                 setShowSettings(false);

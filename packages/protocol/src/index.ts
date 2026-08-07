@@ -307,6 +307,31 @@ export const explorerSummarySchema = z.object({
 
 export const explorerListSchema = z.array(explorerSummarySchema);
 
+export const browserCreateSchema = z.object({
+  title: z.string().trim().min(1).max(200).default("Browser"),
+});
+
+export const browserUpdateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    url: z.string().url().max(4_096).optional(),
+  })
+  .refine((input) => input.title !== undefined || input.url !== undefined, {
+    message: "At least one browser field is required.",
+  });
+
+export const browserSummarySchema = z.object({
+  id: z.string().min(1),
+  projectId: z.string().min(1),
+  title: z.string().min(1),
+  position: z.number().int().nonnegative(),
+  url: z.string().url(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const browserListSchema = z.array(browserSummarySchema);
+
 export const explorerEntrySchema = z.object({
   name: z.string().min(1),
   path: z.string(),
@@ -653,6 +678,9 @@ export type TerminalSummary = z.infer<typeof terminalSummarySchema>;
 export type ExplorerCreate = z.infer<typeof explorerCreateSchema>;
 export type ExplorerUpdate = z.infer<typeof explorerUpdateSchema>;
 export type ExplorerSummary = z.infer<typeof explorerSummarySchema>;
+export type BrowserCreate = z.infer<typeof browserCreateSchema>;
+export type BrowserUpdate = z.infer<typeof browserUpdateSchema>;
+export type BrowserSummary = z.infer<typeof browserSummarySchema>;
 export type ExplorerEntry = z.infer<typeof explorerEntrySchema>;
 export type ExplorerDirectory = z.infer<typeof explorerDirectorySchema>;
 export type ExplorerFile = z.infer<typeof explorerFileSchema>;
