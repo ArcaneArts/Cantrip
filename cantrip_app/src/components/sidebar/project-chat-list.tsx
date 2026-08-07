@@ -15,6 +15,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import type { ChatSummary, ProjectSummary } from "@cantrip/protocol";
 import {
   FolderGit2,
@@ -41,6 +42,10 @@ import { cn } from "@/lib/utils";
 
 const projectId = (id: string) => `project:${id}`;
 const chatId = (id: string) => `chat:${id}`;
+const menuContentClass =
+  "z-50 min-w-36 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
+const menuItemClass =
+  "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
 
 function DragHandle({
   listeners,
@@ -148,14 +153,18 @@ function SortableChat({
 function SortableProject({
   active,
   children,
+  creatingChat,
   historyActive,
+  onCreateChat,
   onOpenHistory,
   onSelect,
   project,
 }: {
   active: boolean;
   children?: ReactNode;
+  creatingChat: boolean;
   historyActive: boolean;
+  onCreateChat(): void;
   onOpenHistory(): void;
   onSelect(): void;
   project: ProjectSummary;
@@ -202,6 +211,35 @@ function SortableProject({
           <GitBranch className="size-3.5" />
           <span className="sr-only">Git history for {project.name}</span>
         </button>
+        <DropdownMenuPrimitive.Root>
+          <DropdownMenuPrimitive.Trigger asChild>
+            <button
+              type="button"
+              title={`Add to ${project.name}`}
+              disabled={!project.source}
+              onClick={(event) => event.stopPropagation()}
+              className="mr-1 grid size-7 shrink-0 place-items-center rounded text-muted-foreground hover:bg-background hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Plus className="size-3.5" />
+              <span className="sr-only">Add to {project.name}</span>
+            </button>
+          </DropdownMenuPrimitive.Trigger>
+          <DropdownMenuPrimitive.Portal>
+            <DropdownMenuPrimitive.Content
+              align="end"
+              sideOffset={4}
+              className={menuContentClass}
+            >
+              <DropdownMenuPrimitive.Item
+                className={menuItemClass}
+                disabled={creatingChat}
+                onSelect={onCreateChat}
+              >
+                <Plus className="size-4" /> Chat
+              </DropdownMenuPrimitive.Item>
+            </DropdownMenuPrimitive.Content>
+          </DropdownMenuPrimitive.Portal>
+        </DropdownMenuPrimitive.Root>
       </div>
       {children}
     </div>
@@ -319,7 +357,9 @@ export function ProjectChatList({
                 key={project.id}
                 project={project}
                 active={active}
+                creatingChat={creatingChat}
                 historyActive={gitHistoryProjectId === project.id}
+                onCreateChat={() => onCreateChat(project.id)}
                 onSelect={() => onSelectProject(project.id)}
                 onOpenHistory={() => onOpenGitHistory(project.id)}
               >
@@ -345,13 +385,6 @@ export function ProjectChatList({
                         />
                       ))}
                     </SortableContext>
-                    <button
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-                      disabled={creatingChat || !project.source}
-                      onClick={() => onCreateChat(project.id)}
-                    >
-                      <Plus className="size-3.5" /> New chat
-                    </button>
                   </div>
                 ) : null}
               </SortableProject>
