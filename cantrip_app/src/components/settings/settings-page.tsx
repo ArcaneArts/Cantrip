@@ -223,8 +223,8 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex items-center justify-between gap-4 border-b px-5 py-4 sm:px-8">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <header className="flex shrink-0 items-center justify-between gap-4 border-b px-5 py-4 sm:px-8">
         <div>
           <h1 className="font-semibold tracking-tight">Settings</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -237,7 +237,7 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
         </Button>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-5 sm:p-8">
+      <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-8">
         <div className="mx-auto grid max-w-4xl gap-6">
           <Card>
             <CardHeader>
@@ -413,7 +413,7 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
           </Card>
 
           <Card>
-            <CardHeader className="flex-row items-start justify-between gap-4">
+            <CardHeader className="grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
               <div className="grid gap-1.5">
                 <CardTitle>Providers</CardTitle>
                 <CardDescription>
@@ -487,7 +487,7 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
           </Card>
 
           <Card>
-            <CardHeader className="flex-row items-start justify-between gap-4">
+            <CardHeader className="grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
               <div className="grid gap-1.5">
                 <CardTitle>Models</CardTitle>
                 <CardDescription>
