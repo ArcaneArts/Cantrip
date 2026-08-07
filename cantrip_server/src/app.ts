@@ -215,21 +215,31 @@ export async function buildApp({
     return reply.send(workerListSchema.parse(workers));
   });
 
-  app.get<{ Querystring: { workerId?: string } }>(
+  app.get<{ Querystring: { providerId?: string; workerId?: string } }>(
     "/api/codex/auth/status",
     async (request, reply) => {
-      if (!request.query.workerId) {
-        return reply.code(400).send({ error: "workerId is required" });
+      const { providerId, workerId } = request.query;
+      if (!workerId || !providerId) {
+        return reply
+          .code(400)
+          .send({ error: "workerId and providerId are required" });
+      }
+      const provider = await repository.getModelProvider(
+        LOCAL_USER_ID,
+        providerId,
+      );
+      if (provider?.kind !== "chatgpt") {
+        return reply
+          .code(404)
+          .send({ error: "ChatGPT account provider not found." });
       }
       try {
         const status = codexAuthStatusSchema.parse(
-          await bridge.request(request.query.workerId, {
+          await bridge.request(workerId, {
             type: "codex.auth.status",
+            providerId,
           }),
         );
-        if (status.authMode === "chatgpt") {
-          await repository.ensureChatGptProvider(LOCAL_USER_ID);
-        }
         return reply.send(status);
       } catch (error) {
         return reply
@@ -239,17 +249,30 @@ export async function buildApp({
     },
   );
 
-  app.post<{ Body: { workerId?: string } }>(
+  app.post<{ Body: { providerId?: string; workerId?: string } }>(
     "/api/codex/auth/device-login",
     async (request, reply) => {
-      if (!request.body?.workerId) {
-        return reply.code(400).send({ error: "workerId is required" });
+      const { providerId, workerId } = request.body ?? {};
+      if (!workerId || !providerId) {
+        return reply
+          .code(400)
+          .send({ error: "workerId and providerId are required" });
+      }
+      const provider = await repository.getModelProvider(
+        LOCAL_USER_ID,
+        providerId,
+      );
+      if (provider?.kind !== "chatgpt") {
+        return reply
+          .code(404)
+          .send({ error: "ChatGPT account provider not found." });
       }
       try {
         return reply.send(
           codexDeviceLoginSchema.parse(
-            await bridge.request(request.body.workerId, {
+            await bridge.request(workerId, {
               type: "codex.auth.login.start",
+              providerId,
             }),
           ),
         );
@@ -261,15 +284,28 @@ export async function buildApp({
     },
   );
 
-  app.post<{ Body: { workerId?: string } }>(
+  app.post<{ Body: { providerId?: string; workerId?: string } }>(
     "/api/codex/auth/logout",
     async (request, reply) => {
-      if (!request.body?.workerId) {
-        return reply.code(400).send({ error: "workerId is required" });
+      const { providerId, workerId } = request.body ?? {};
+      if (!workerId || !providerId) {
+        return reply
+          .code(400)
+          .send({ error: "workerId and providerId are required" });
+      }
+      const provider = await repository.getModelProvider(
+        LOCAL_USER_ID,
+        providerId,
+      );
+      if (provider?.kind !== "chatgpt") {
+        return reply
+          .code(404)
+          .send({ error: "ChatGPT account provider not found." });
       }
       try {
-        await bridge.request(request.body.workerId, {
+        await bridge.request(workerId, {
           type: "codex.auth.logout",
+          providerId,
         });
         return reply.code(204).send();
       } catch (error) {

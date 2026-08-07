@@ -8,6 +8,7 @@ import {
   systemHealthSchema,
   terminalClientMessageSchema,
   terminalServerMessageSchema,
+  workerCommandSchema,
   workerEventEnvelopeSchema,
   workerHeartbeatSchema,
 } from "../src/index.js";
@@ -30,6 +31,18 @@ describe("Cantrip protocol", () => {
         userCode: "ABCD-1234",
       }).userCode,
     ).toBe("ABCD-1234");
+  });
+
+  it("scopes Codex authentication commands to a provider", () => {
+    expect(
+      workerCommandSchema.parse({
+        type: "codex.auth.status",
+        providerId: "chatgpt-provider-1",
+      }),
+    ).toMatchObject({ providerId: "chatgpt-provider-1" });
+    expect(
+      workerCommandSchema.safeParse({ type: "codex.auth.status" }).success,
+    ).toBe(false);
   });
 
   it("normalizes Responses provider URLs to their API root", () => {

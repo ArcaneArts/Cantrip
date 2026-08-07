@@ -3,6 +3,7 @@ import path from "node:path";
 
 import type { WorkerCommand, WorkerEvent } from "@cantrip/protocol";
 
+import { codexAccountHome } from "./codex/account-home.js";
 import { CodexAppServer } from "./codex/app-server.js";
 import { CodexAuthClient } from "./codex/auth-client.js";
 import { discoverCodexVersion } from "./codex/discovery.js";
@@ -29,9 +30,24 @@ async function start(): Promise<void> {
   let stopping = false;
   const github = new GithubClient(config.dataDirectory);
   const codexHome = path.join(config.dataDirectory, "codex-home");
-  const codexAuth = new CodexAuthClient(config.codexBinary, codexHome);
+  const codexAuthClients = new Map<string, CodexAuthClient>();
   const codexRuntimes = new Map<string, CodexAppServer>();
   const terminals = new TerminalManager();
+
+  const accountHomeFor = (providerId: string) =>
+    codexAccountHome(config.dataDirectory, providerId);
+
+  const authFor = (providerId: string) => {
+    let client = codexAuthClients.get(providerId);
+    if (!client) {
+      client = new CodexAuthClient(
+        config.codexBinary,
+        accountHomeFor(providerId),
+      );
+      codexAuthClients.set(providerId, client);
+    }
+    return client;
+  };
 
   const runtimeFor = (
     command: Extract<WorkerCommand, { type: "chat.turn" }>,
@@ -45,7 +61,9 @@ async function start(): Promise<void> {
       runtime = new CodexAppServer(
         config.codexBinary,
         path.join(config.dataDirectory, "codex-runtimes", directoryName),
-        codexHome,
+        command.provider.kind === "chatgpt"
+          ? accountHomeFor(command.provider.id)
+          : codexHome,
       );
       codexRuntimes.set(runtimeId, runtime);
     }
@@ -58,13 +76,16 @@ async function start(): Promise<void> {
   ): Promise<unknown> => {
     switch (command.type) {
       case "codex.auth.status":
-        return codexAuth.status();
+        return authFor(command.providerId).status();
       case "codex.auth.login.start":
-        return codexAuth.startDeviceLogin();
+        return authFor(command.providerId).startDeviceLogin();
       case "codex.auth.logout":
-        await codexAuth.logout();
-        for (const runtime of codexRuntimes.values()) runtime.close();
-        codexRuntimes.clear();
+        await authFor(command.providerId).logout();
+        for (const [runtimeId, runtime] of codexRuntimes) {
+          if (!runtimeId.startsWith(`${command.providerId}:`)) continue;
+          runtime.close();
+          codexRuntimes.delete(runtimeId);
+        }
         return { accepted: true };
       case "github.auth.status":
         return github.authStatus();
@@ -151,7 +172,7 @@ async function start(): Promise<void> {
       stopping = true;
       clearInterval(heartbeatTimer);
       commandConnection.close();
-      codexAuth.close();
+      for (const client of codexAuthClients.values()) client.close();
       terminals.closeAll();
       for (const runtime of codexRuntimes.values()) {
         runtime.close();

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { changedFiles } from "../src/codex/app-server.js";
+import {
+  changedFiles,
+  codexModelProviderName,
+} from "../src/codex/app-server.js";
 
 describe("changedFiles", () => {
   it("summarizes added, updated, and deleted files from a turn diff", () => {
@@ -23,5 +26,19 @@ describe("changedFiles", () => {
       { path: "src/new.ts", kind: "add" },
       { path: "old.ts", kind: "delete" },
     ]);
+  });
+});
+
+describe("codexModelProviderName", () => {
+  it("uses Codex's built-in OpenAI provider for ChatGPT accounts", () => {
+    expect(
+      codexModelProviderName({
+        id: "personal-chatgpt",
+        name: "Personal ChatGPT",
+        kind: "chatgpt",
+        baseUrl: "https://api.openai.com/v1",
+        apiKey: null,
+      }),
+    ).toBe("openai");
   });
 });

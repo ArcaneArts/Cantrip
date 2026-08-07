@@ -90,12 +90,6 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
   const [deviceCodeCopied, setDeviceCodeCopied] = useState(false);
   const workers = useQuery({ queryFn: getWorkers, queryKey: ["workers"] });
   const worker = workers.data?.find((item) => item.online) ?? null;
-  const codexAuth = useQuery({
-    enabled: Boolean(worker),
-    queryFn: () => getCodexAuthStatus(worker!.workerId),
-    queryKey: ["codex-auth", worker?.workerId],
-    refetchInterval: 10_000,
-  });
   const [providerDialogOpen, setProviderDialogOpen] = useState(false);
   const [editingProvider, setEditingProvider] =
     useState<ModelProviderSummary | null>(null);
@@ -113,6 +107,14 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | "">(
     "",
   );
+  const chatGptProvider =
+    editingProvider?.kind === "chatgpt" ? editingProvider : null;
+  const codexAuth = useQuery({
+    enabled: Boolean(worker && providerDialogOpen && chatGptProvider),
+    queryFn: () => getCodexAuthStatus(worker!.workerId, chatGptProvider!.id),
+    queryKey: ["codex-auth", worker?.workerId, chatGptProvider?.id],
+    refetchInterval: 10_000,
+  });
 
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ["settings"] });
@@ -141,9 +143,16 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
         ? updateModelProvider(editingProvider.id, input)
         : createModelProvider(input);
     },
-    onSuccess: async () => {
-      setProviderDialogOpen(false);
+    onSuccess: async (provider) => {
       await refresh();
+      if (provider.kind === "chatgpt" && editingProvider?.kind !== "chatgpt") {
+        setEditingProvider(provider);
+        setProviderName(provider.name);
+        setProviderKind(provider.kind);
+        setBaseUrl(provider.baseUrl);
+        return;
+      }
+      setProviderDialogOpen(false);
     },
   });
   const removeProvider = useMutation({
@@ -171,14 +180,15 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
     onSuccess: refresh,
   });
   const beginCodexLogin = useMutation({
-    mutationFn: () => startCodexDeviceLogin(worker!.workerId),
+    mutationFn: () =>
+      startCodexDeviceLogin(worker!.workerId, chatGptProvider!.id),
     onSuccess: (login) => {
       setDeviceLogin(login);
       window.open(login.verificationUrl, "_blank", "noopener,noreferrer");
     },
   });
   const signOutCodex = useMutation({
-    mutationFn: () => logoutCodex(worker!.workerId),
+    mutationFn: () => logoutCodex(worker!.workerId, chatGptProvider!.id),
     onSuccess: async () => {
       setDeviceLogin(null);
       await codexAuth.refetch();
@@ -188,17 +198,20 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
   useEffect(() => {
     if (codexAuth.data?.authMode !== "chatgpt") return;
     setDeviceLogin(null);
-    void queryClient.invalidateQueries({ queryKey: ["settings"] });
-  }, [codexAuth.data?.authMode, queryClient]);
+  }, [codexAuth.data?.authMode]);
 
   const openProviderDialog = (provider: ModelProviderSummary | null) => {
     saveProvider.reset();
+    beginCodexLogin.reset();
+    signOutCodex.reset();
     setEditingProvider(provider);
     setProviderName(provider?.name ?? "");
     setProviderKind(provider?.kind ?? "ollama");
     setBaseUrl(provider?.baseUrl ?? "http://127.0.0.1:11434/v1");
     setApiKey("");
     setRemoveApiKey(false);
+    setDeviceLogin(null);
+    setDeviceCodeCopied(false);
     setProviderDialogOpen(true);
   };
 
@@ -298,146 +311,12 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Codex account</CardTitle>
-              <CardDescription>
-                Sign in on the worker to use Codex through your eligible ChatGPT
-                plan. Credentials stay in the worker’s Codex home.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4">
-              {!worker ? (
-                <p className="text-sm text-muted-foreground">
-                  Connect a worker to manage its Codex account.
-                </p>
-              ) : codexAuth.isLoading ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" /> Checking Codex
-                  authentication…
-                </div>
-              ) : codexAuth.data?.authMode === "chatgpt" ? (
-                <div className="grid gap-3 rounded-lg border p-3">
-                  <div className="flex items-center gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">
-                        Signed in with ChatGPT
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {codexAuth.data.email ?? "ChatGPT account"}
-                        {codexAuth.data.planType
-                          ? ` · ${codexAuth.data.planType} plan`
-                          : ""}
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      disabled={signOutCodex.isPending}
-                      onClick={() => signOutCodex.mutate()}
-                    >
-                      <LogOut className="size-4" /> Sign out
-                    </Button>
-                  </div>
-                  {codexAuth.data.weeklyUsage ? (
-                    <div className="grid gap-1.5 border-t pt-3">
-                      <div className="flex justify-between text-xs">
-                        <span>7-day usage</span>
-                        <span className="font-medium">
-                          {Math.round(codexAuth.data.weeklyUsage.usedPercent)}%
-                        </span>
-                      </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                        <div
-                          className="h-full rounded-full bg-primary transition-[width]"
-                          style={{
-                            width: `${codexAuth.data.weeklyUsage.usedPercent}%`,
-                          }}
-                        />
-                      </div>
-                      {codexAuth.data.weeklyUsage.resetsAt ? (
-                        <p className="text-[11px] text-muted-foreground">
-                          Resets{" "}
-                          {new Date(
-                            codexAuth.data.weeklyUsage.resetsAt * 1_000,
-                          ).toLocaleString()}
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="grid gap-3">
-                  <Button
-                    className="w-fit"
-                    disabled={beginCodexLogin.isPending}
-                    onClick={() => beginCodexLogin.mutate()}
-                  >
-                    {beginCodexLogin.isPending ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <ExternalLink className="size-4" />
-                    )}
-                    Sign in with ChatGPT
-                  </Button>
-                  {deviceLogin ? (
-                    <div className="rounded-lg border bg-muted/40 p-3 text-sm">
-                      <p>
-                        Enter code{" "}
-                        <button
-                          type="button"
-                          title="Copy device code"
-                          className="inline-flex items-center gap-1 rounded bg-background px-1.5 py-0.5 font-mono font-semibold underline"
-                          onClick={async () => {
-                            await navigator.clipboard.writeText(
-                              deviceLogin.userCode,
-                            );
-                            setDeviceCodeCopied(true);
-                            window.setTimeout(
-                              () => setDeviceCodeCopied(false),
-                              1_500,
-                            );
-                          }}
-                        >
-                          {deviceCodeCopied ? (
-                            <Check className="size-3" />
-                          ) : null}
-                          {deviceLogin.userCode}
-                        </button>{" "}
-                        at{" "}
-                        <a
-                          className="underline"
-                          href={deviceLogin.verificationUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          the OpenAI device page
-                        </a>
-                        . This page will update after authorization.
-                      </p>
-                    </div>
-                  ) : null}
-                </div>
-              )}
-              {codexAuth.isError ||
-              beginCodexLogin.isError ||
-              signOutCodex.isError ? (
-                <p className="text-sm text-destructive">
-                  {errorText(
-                    codexAuth.error ??
-                      beginCodexLogin.error ??
-                      signOutCodex.error,
-                  )}
-                </p>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          <Card>
             <CardHeader className="grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
               <div className="grid gap-1.5">
                 <CardTitle>Providers</CardTitle>
                 <CardDescription>
-                  Responses-compatible endpoints used by Codex. API keys are
-                  never returned to the app.
+                  Configure Ollama, compatible APIs, or isolated ChatGPT
+                  accounts. Secrets stay on the server or worker.
                 </CardDescription>
               </div>
               <Button
@@ -471,31 +350,27 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                     </div>
                     <p className="mt-1 truncate text-[11px] text-muted-foreground">
                       {provider.kind === "chatgpt"
-                        ? "Uses the Codex account signed in on the worker"
+                        ? "ChatGPT account · open to manage sign-in"
                         : provider.baseUrl}
                     </p>
                   </div>
-                  {provider.kind !== "chatgpt" ? (
-                    <>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => openProviderDialog(provider)}
-                      >
-                        <Pencil className="size-4" />
-                        <span className="sr-only">Edit {provider.name}</span>
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        disabled={removeProvider.isPending}
-                        onClick={() => removeProvider.mutate(provider.id)}
-                      >
-                        <Trash2 className="size-4" />
-                        <span className="sr-only">Delete {provider.name}</span>
-                      </Button>
-                    </>
-                  ) : null}
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => openProviderDialog(provider)}
+                  >
+                    <Pencil className="size-4" />
+                    <span className="sr-only">Edit {provider.name}</span>
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    disabled={removeProvider.isPending}
+                    onClick={() => removeProvider.mutate(provider.id)}
+                  >
+                    <Trash2 className="size-4" />
+                    <span className="sr-only">Delete {provider.name}</span>
+                  </Button>
                 </div>
               ))}
               {removeProvider.isError ? (
@@ -609,8 +484,8 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                 {editingProvider ? "Edit provider" : "Add provider"}
               </DialogTitle>
               <DialogDescription>
-                Configure the Responses-compatible endpoint used by this
-                account.
+                Configure an API endpoint or a ChatGPT account used through
+                Codex.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -644,6 +519,7 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                 >
                   <option value="ollama">Ollama</option>
                   <option value="openai-compatible">OpenAI compatible</option>
+                  <option value="chatgpt">ChatGPT Account</option>
                 </select>
               </Field>
               {providerKind !== "chatgpt" ? (
@@ -665,7 +541,8 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                 </Field>
               ) : (
                 <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
-                  Uses the ChatGPT account signed in on the selected worker.
+                  This provider keeps its own ChatGPT sign-in on the selected
+                  worker.
                 </div>
               )}
               {providerKind !== "chatgpt" ? (
@@ -686,7 +563,7 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                 </Field>
               ) : null}
             </div>
-            {editingProvider?.hasApiKey ? (
+            {providerKind !== "chatgpt" && editingProvider?.hasApiKey ? (
               <label className="flex items-center gap-2 text-sm text-muted-foreground">
                 <input
                   type="checkbox"
@@ -695,6 +572,133 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                 />
                 Remove the saved API key
               </label>
+            ) : null}
+            {providerKind === "chatgpt" ? (
+              !chatGptProvider ? (
+                <p className="rounded-lg border bg-muted/35 p-3 text-sm text-muted-foreground">
+                  Add this provider to continue to ChatGPT device sign-in.
+                </p>
+              ) : !worker ? (
+                <p className="rounded-lg border bg-muted/35 p-3 text-sm text-muted-foreground">
+                  Connect a worker to manage this ChatGPT account.
+                </p>
+              ) : codexAuth.isLoading ? (
+                <div className="flex items-center gap-2 rounded-lg border p-3 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" /> Checking ChatGPT
+                  authentication…
+                </div>
+              ) : codexAuth.data?.authMode === "chatgpt" ? (
+                <div className="grid gap-3 rounded-lg border p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">
+                        Signed in with ChatGPT
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {codexAuth.data.email ?? "ChatGPT account"}
+                        {codexAuth.data.planType
+                          ? ` · ${codexAuth.data.planType} plan`
+                          : ""}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={signOutCodex.isPending}
+                      onClick={() => signOutCodex.mutate()}
+                    >
+                      <LogOut className="size-4" /> Sign out
+                    </Button>
+                  </div>
+                  {codexAuth.data.weeklyUsage ? (
+                    <div className="grid gap-1.5 border-t pt-3">
+                      <div className="flex justify-between text-xs">
+                        <span>7-day usage</span>
+                        <span className="font-medium">
+                          {Math.round(codexAuth.data.weeklyUsage.usedPercent)}%
+                        </span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-primary transition-[width]"
+                          style={{
+                            width: `${codexAuth.data.weeklyUsage.usedPercent}%`,
+                          }}
+                        />
+                      </div>
+                      {codexAuth.data.weeklyUsage.resetsAt ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          Resets{" "}
+                          {new Date(
+                            codexAuth.data.weeklyUsage.resetsAt * 1_000,
+                          ).toLocaleString()}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="grid gap-3 rounded-lg border p-3">
+                  <Button
+                    type="button"
+                    className="w-fit"
+                    disabled={beginCodexLogin.isPending}
+                    onClick={() => beginCodexLogin.mutate()}
+                  >
+                    {beginCodexLogin.isPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <ExternalLink className="size-4" />
+                    )}
+                    Sign in with ChatGPT
+                  </Button>
+                  {deviceLogin ? (
+                    <div className="rounded-lg bg-muted/40 p-3 text-sm">
+                      Enter code{" "}
+                      <button
+                        type="button"
+                        title="Copy device code"
+                        className="inline-flex items-center gap-1 rounded bg-background px-1.5 py-0.5 font-mono font-semibold underline"
+                        onClick={async () => {
+                          await navigator.clipboard.writeText(
+                            deviceLogin.userCode,
+                          );
+                          setDeviceCodeCopied(true);
+                          window.setTimeout(
+                            () => setDeviceCodeCopied(false),
+                            1_500,
+                          );
+                        }}
+                      >
+                        {deviceCodeCopied ? <Check className="size-3" /> : null}
+                        {deviceLogin.userCode}
+                      </button>{" "}
+                      at{" "}
+                      <a
+                        className="underline"
+                        href={deviceLogin.verificationUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        the OpenAI device page
+                      </a>
+                      . This page updates after authorization.
+                    </div>
+                  ) : null}
+                </div>
+              )
+            ) : null}
+            {providerKind === "chatgpt" &&
+            (codexAuth.isError ||
+              beginCodexLogin.isError ||
+              signOutCodex.isError) ? (
+              <p className="text-sm text-destructive">
+                {errorText(
+                  codexAuth.error ??
+                    beginCodexLogin.error ??
+                    signOutCodex.error,
+                )}
+              </p>
             ) : null}
             {saveProvider.isError ? (
               <p className="text-sm text-destructive">

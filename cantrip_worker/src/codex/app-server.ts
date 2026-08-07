@@ -127,6 +127,12 @@ export interface RunAgentTurnOptions {
   onActivity?: (activity: AgentActivity) => void;
 }
 
+export function codexModelProviderName(
+  provider: RunAgentTurnOptions["provider"],
+): "cantrip_runtime" | "openai" {
+  return provider.kind === "chatgpt" ? "openai" : "cantrip_runtime";
+}
+
 function activityStatus(
   status: CommandExecutionItem["status"],
 ): AgentActivity["status"] {
@@ -303,6 +309,7 @@ export class CodexAppServer {
   async runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult> {
     await this.ensureStarted(options.model, options.provider);
     const baseline = await workspaceSnapshot(options.cwd);
+    const modelProvider = codexModelProviderName(options.provider);
 
     let threadId = options.threadId;
     if (threadId && !this.#loadedThreads.has(threadId)) {
@@ -310,7 +317,7 @@ export class CodexAppServer {
         const resumed = (await this.request("thread/resume", {
           threadId,
           model: options.model.name,
-          modelProvider: "cantrip_runtime",
+          modelProvider,
           cwd: options.cwd,
           approvalPolicy: "never",
           sandbox: "workspace-write",
@@ -327,7 +334,7 @@ export class CodexAppServer {
     if (!threadId) {
       const started = (await this.request("thread/start", {
         model: options.model.name,
-        modelProvider: "cantrip_runtime",
+        modelProvider,
         cwd: options.cwd,
         approvalPolicy: "never",
         sandbox: "workspace-write",

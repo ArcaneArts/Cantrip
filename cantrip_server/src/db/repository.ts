@@ -328,46 +328,6 @@ export class ServerRepository {
     `);
   }
 
-  async ensureChatGptProvider(ownerId: string): Promise<ModelProviderSummary> {
-    const existing = await this.database
-      .select()
-      .from(schema.modelProviders)
-      .where(
-        and(
-          eq(schema.modelProviders.ownerId, ownerId),
-          eq(schema.modelProviders.kind, "chatgpt"),
-        ),
-      )
-      .limit(1);
-    if (existing[0]) return toProviderSummary(existing[0]);
-
-    await this.database
-      .insert(schema.modelProviders)
-      .values({
-        id: randomUUID(),
-        ownerId,
-        name: "ChatGPT",
-        kind: "chatgpt",
-        baseUrl: "https://api.openai.com/v1",
-      })
-      .onConflictDoNothing({
-        target: [schema.modelProviders.ownerId, schema.modelProviders.name],
-      });
-    const created = await this.database
-      .select()
-      .from(schema.modelProviders)
-      .where(
-        and(
-          eq(schema.modelProviders.ownerId, ownerId),
-          eq(schema.modelProviders.name, "ChatGPT"),
-        ),
-      )
-      .limit(1);
-    return toProviderSummary(
-      firstOrThrow(created, "provisioning the ChatGPT provider"),
-    );
-  }
-
   async getSettings(ownerId: string): Promise<SettingsBundle> {
     const [settingsRows, providerRows, modelRows] = await Promise.all([
       this.database
@@ -440,6 +400,23 @@ export class ServerRepository {
       })
       .returning();
     return toProviderSummary(firstOrThrow(result, "creating a model provider"));
+  }
+
+  async getModelProvider(
+    ownerId: string,
+    providerId: string,
+  ): Promise<ModelProviderSummary | null> {
+    const rows = await this.database
+      .select()
+      .from(schema.modelProviders)
+      .where(
+        and(
+          eq(schema.modelProviders.id, providerId),
+          eq(schema.modelProviders.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? toProviderSummary(rows[0]) : null;
   }
 
   async deleteModelProvider(ownerId: string, providerId: string) {

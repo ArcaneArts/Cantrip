@@ -53,6 +53,7 @@ let turnRequests = 0;
 const turnModelIds: string[] = [];
 const turnPrompts: string[] = [];
 const deletedProjectPaths: string[] = [];
+const authProviderIds: string[] = [];
 const workerBridge = {
   attach() {},
   close() {},
@@ -62,6 +63,7 @@ const workerBridge = {
   async request(_workerId, command, options) {
     switch (command.type) {
       case "codex.auth.status":
+        authProviderIds.push(command.providerId);
         return {
           authenticated: true,
           authMode: "chatgpt",
@@ -70,12 +72,14 @@ const workerBridge = {
           weeklyUsage: { usedPercent: 37, resetsAt: 1_786_665_600 },
         };
       case "codex.auth.login.start":
+        authProviderIds.push(command.providerId);
         return {
           loginId: "login-1",
           verificationUrl: "https://auth.openai.com/codex/device",
           userCode: "TEST-CODE",
         };
       case "codex.auth.logout":
+        authProviderIds.push(command.providerId);
         return { accepted: true };
       case "github.auth.status":
         return { authenticated: true, login: "cantrip-test", source: "gh-cli" };
@@ -316,6 +320,19 @@ describe("local server foundation", () => {
       highContrast: true,
       defaultModelId: selectedModel.id,
     });
+    const chatGptProvider = modelProviderSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: "/api/settings/providers",
+          payload: {
+            name: "Personal ChatGPT",
+            kind: "chatgpt",
+            baseUrl: "https://api.openai.com/v1",
+          },
+        })
+      ).json(),
+    );
 
     const heartbeatResponse = await firstApp.inject({
       method: "POST",
@@ -335,7 +352,7 @@ describe("local server foundation", () => {
       (
         await firstApp.inject({
           method: "GET",
-          url: "/api/codex/auth/status?workerId=test-worker",
+          url: `/api/codex/auth/status?workerId=test-worker&providerId=${chatGptProvider.id}`,
         })
       ).json(),
     ).toMatchObject({
@@ -343,20 +360,15 @@ describe("local server foundation", () => {
       planType: "plus",
       weeklyUsage: { usedPercent: 37 },
     });
-    const settingsAfterCodexLogin = settingsBundleSchema.parse(
-      (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),
-    );
-    expect(
-      settingsAfterCodexLogin.providers.filter(
-        (provider) => provider.kind === "chatgpt",
-      ),
-    ).toMatchObject([{ name: "ChatGPT", hasApiKey: false }]);
     expect(
       (
         await firstApp.inject({
           method: "POST",
           url: "/api/codex/auth/device-login",
-          payload: { workerId: "test-worker" },
+          payload: {
+            workerId: "test-worker",
+            providerId: chatGptProvider.id,
+          },
         })
       ).json(),
     ).toMatchObject({ userCode: "TEST-CODE" });
@@ -364,9 +376,17 @@ describe("local server foundation", () => {
       await firstApp.inject({
         method: "POST",
         url: "/api/codex/auth/logout",
-        payload: { workerId: "test-worker" },
+        payload: {
+          workerId: "test-worker",
+          providerId: chatGptProvider.id,
+        },
       }),
     ).toMatchObject({ statusCode: 204 });
+    expect(authProviderIds).toEqual([
+      chatGptProvider.id,
+      chatGptProvider.id,
+      chatGptProvider.id,
+    ]);
 
     const projectResponse = await firstApp.inject({
       method: "POST",

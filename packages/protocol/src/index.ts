@@ -515,9 +515,18 @@ export const agentTurnResultSchema = z.object({
 });
 
 export const workerCommandSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("codex.auth.status") }),
-  z.object({ type: z.literal("codex.auth.login.start") }),
-  z.object({ type: z.literal("codex.auth.logout") }),
+  z.object({
+    type: z.literal("codex.auth.status"),
+    providerId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("codex.auth.login.start"),
+    providerId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("codex.auth.logout"),
+    providerId: z.string().min(1),
+  }),
   z.object({ type: z.literal("github.auth.status") }),
   z.object({ type: z.literal("github.repositories.list") }),
   z.object({
