@@ -1,10 +1,12 @@
 import type { GitCommit, GitRef, ProjectSummary } from "@cantrip/protocol";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { GitBranch, GitCommitHorizontal, Loader2, Tag } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { getGitHistory } from "@/lib/api";
+import { getGitHistory, getGitStatus } from "@/lib/api";
 import { cn } from "@/lib/utils";
+
+import { GitChangesPanel } from "./git-changes-panel";
 
 const laneColors = [
   "#22d3ee",
@@ -172,10 +174,13 @@ function CommitGraph({ row, width }: { row: GraphRow; width: number }) {
 
 export interface GitHistoryHeaderState {
   branch: string;
+  changesCount: number;
+  changesOpen: boolean;
   commitsLoaded: number;
   head: string | null;
   isFetching: boolean;
   refresh(): void;
+  toggleChanges(): void;
 }
 
 export function GitHistoryView({
@@ -186,11 +191,17 @@ export function GitHistoryView({
   project: ProjectSummary;
 }) {
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const [changesOpen, setChangesOpen] = useState(false);
   const history = useInfiniteQuery({
     initialPageParam: 0,
     queryFn: ({ pageParam }) => getGitHistory(project.id, pageParam),
     queryKey: ["git-history", project.id],
     getNextPageParam: (page) => page.nextCursor ?? undefined,
+  });
+  const status = useQuery({
+    queryFn: () => getGitStatus(project.id),
+    queryKey: ["git-status", project.id],
+    refetchInterval: 2_000,
   });
   const commits = useMemo(
     () => history.data?.pages.flatMap((page) => page.commits) ?? [],
@@ -206,17 +217,26 @@ export function GitHistoryView({
     if (!firstPage) return;
     onHeaderChange({
       branch: firstPage.branch,
+      changesCount: status.data?.files.length ?? 0,
+      changesOpen,
       commitsLoaded: commits.length,
       head: firstPage.head,
       isFetching: history.isFetching,
-      refresh: () => void history.refetch(),
+      refresh: () => {
+        void history.refetch();
+        void status.refetch();
+      },
+      toggleChanges: () => setChangesOpen((open) => !open),
     });
   }, [
+    changesOpen,
     commits.length,
     firstPage,
     history.isFetching,
     history.refetch,
     onHeaderChange,
+    status.data?.files.length,
+    status.refetch,
   ]);
 
   useEffect(() => {
@@ -239,8 +259,8 @@ export function GitHistoryView({
   }, [history.fetchNextPage, history.hasNextPage, history.isFetchingNextPage]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-auto">
+    <div className="relative flex min-h-0 flex-1">
+      <div className="min-h-0 min-w-0 flex-1 overflow-auto">
         {history.isLoading ? (
           <div className="grid min-h-64 place-items-center text-muted-foreground">
             <Loader2 className="size-5 animate-spin" />
@@ -342,6 +362,27 @@ export function GitHistoryView({
           </div>
         )}
       </div>
+      {changesOpen ? (
+        status.data ? (
+          <GitChangesPanel
+            projectId={project.id}
+            status={status.data}
+            onClose={() => setChangesOpen(false)}
+          />
+        ) : (
+          <aside className="absolute inset-y-0 right-0 z-20 grid w-full max-w-sm place-items-center border-l bg-background text-sm text-muted-foreground shadow-2xl md:relative md:z-auto md:w-96 md:shadow-none">
+            {status.isError ? (
+              <p className="p-6 text-center">
+                {status.error instanceof Error
+                  ? status.error.message
+                  : "Git status could not be loaded."}
+              </p>
+            ) : (
+              <Loader2 className="size-5 animate-spin" />
+            )}
+          </aside>
+        )
+      ) : null}
     </div>
   );
 }

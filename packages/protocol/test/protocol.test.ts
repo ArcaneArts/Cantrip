@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
+  gitActionSchema,
   normalizeResponsesBaseUrl,
   serverBootstrapSchema,
   systemHealthSchema,
@@ -79,6 +80,19 @@ describe("Cantrip protocol", () => {
       },
     });
     expect(compact.type).toBe("chat.interrupt");
+  });
+
+  it("validates worker-backed Git actions", () => {
+    expect(
+      gitActionSchema.parse({
+        type: "commit",
+        message: "feat: add Git controls",
+        all: true,
+      }),
+    ).toMatchObject({ type: "commit", all: true });
+    expect(
+      gitActionSchema.safeParse({ type: "stage", paths: [] }).success,
+    ).toBe(false);
   });
 
   it("normalizes Responses provider URLs to their API root", () => {

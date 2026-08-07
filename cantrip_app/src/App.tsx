@@ -13,6 +13,7 @@ import {
   Bot,
   Check,
   Copy,
+  FileDiff,
   FolderGit2,
   FolderTree,
   GitFork,
@@ -1573,20 +1574,32 @@ export function App() {
               <span className="sr-only">Open projects and chats</span>
             </Button>
             {gitHistoryProject && gitHistoryHeader ? (
-              <Button
-                size="icon"
-                variant="ghost"
-                disabled={gitHistoryHeader.isFetching}
-                onClick={gitHistoryHeader.refresh}
-              >
-                <RefreshCw
-                  className={cn(
-                    "size-4",
-                    gitHistoryHeader.isFetching && "animate-spin",
-                  )}
-                />
-                <span className="sr-only">Refresh Git history</span>
-              </Button>
+              <>
+                <Button
+                  size="icon"
+                  variant={gitHistoryHeader.changesOpen ? "outline" : "ghost"}
+                  onClick={gitHistoryHeader.toggleChanges}
+                >
+                  <FileDiff className="size-4" />
+                  <span className="sr-only">
+                    Show {gitHistoryHeader.changesCount} working changes
+                  </span>
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  disabled={gitHistoryHeader.isFetching}
+                  onClick={gitHistoryHeader.refresh}
+                >
+                  <RefreshCw
+                    className={cn(
+                      "size-4",
+                      gitHistoryHeader.isFetching && "animate-spin",
+                    )}
+                  />
+                  <span className="sr-only">Refresh Git history</span>
+                </Button>
+              </>
             ) : null}
             {activeChat && !showImporter && !showSettings ? (
               <Button
@@ -1641,21 +1654,32 @@ export function App() {
           </div>
           <div className="ml-auto hidden items-center gap-2 md:flex">
             {gitHistoryProject && gitHistoryHeader ? (
-              <Button
-                size="icon"
-                variant="ghost"
-                disabled={gitHistoryHeader.isFetching}
-                onClick={gitHistoryHeader.refresh}
-                title="Refresh Git history"
-              >
-                <RefreshCw
-                  className={cn(
-                    "size-4",
-                    gitHistoryHeader.isFetching && "animate-spin",
-                  )}
-                />
-                <span className="sr-only">Refresh Git history</span>
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant={gitHistoryHeader.changesOpen ? "outline" : "ghost"}
+                  onClick={gitHistoryHeader.toggleChanges}
+                  title="Show working changes"
+                >
+                  <FileDiff className="size-4" />
+                  {gitHistoryHeader.changesCount} changes
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  disabled={gitHistoryHeader.isFetching}
+                  onClick={gitHistoryHeader.refresh}
+                  title="Refresh Git history"
+                >
+                  <RefreshCw
+                    className={cn(
+                      "size-4",
+                      gitHistoryHeader.isFetching && "animate-spin",
+                    )}
+                  />
+                  <span className="sr-only">Refresh Git history</span>
+                </Button>
+              </>
             ) : null}
             {activeChat && !showImporter && !showSettings ? (
               <Button

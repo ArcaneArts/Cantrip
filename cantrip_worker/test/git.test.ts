@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { readGitHistory } from "../src/git.js";
+import { readGitHistory, readGitStatus, runGitAction } from "../src/git.js";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
@@ -106,5 +106,104 @@ describe("Git history", () => {
         (commit) => commit.subject,
       ),
     ).toEqual(["Feature", "First"]);
+  });
+
+  it("stages, unstages, commits, and switches branches", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "README.md"), "initial\n");
+    await execFileAsync("git", ["-C", directory, "add", "README.md"]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Initial"]);
+
+    await writeFile(path.join(directory, "README.md"), "changed\n");
+    await writeFile(path.join(directory, "new.txt"), "new\n");
+    let status = await readGitStatus(directory);
+    expect(status.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "README.md", unstaged: true }),
+        expect.objectContaining({ path: "new.txt", unstaged: true }),
+      ]),
+    );
+
+    status = (
+      await runGitAction(directory, { type: "stage", paths: ["new.txt"] })
+    ).status;
+    expect(status.files.find((file) => file.path === "new.txt")?.staged).toBe(
+      true,
+    );
+    status = (
+      await runGitAction(directory, { type: "unstage", paths: ["new.txt"] })
+    ).status;
+    expect(status.files.find((file) => file.path === "new.txt")?.staged).toBe(
+      false,
+    );
+
+    status = (
+      await runGitAction(directory, {
+        type: "commit",
+        message: "Save workspace",
+        all: true,
+      })
+    ).status;
+    expect(status.files).toHaveLength(0);
+    expect((await readGitHistory(directory, 1)).commits[0]?.subject).toBe(
+      "Save workspace",
+    );
+
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "remote",
+      "add",
+      "origin",
+      "https://example.com/cantrip.git",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "update-ref",
+      "refs/remotes/origin/remote-feature",
+      "HEAD",
+    ]);
+    status = (
+      await runGitAction(directory, {
+        type: "checkout",
+        branch: "origin/remote-feature",
+      })
+    ).status;
+    expect(status.branch).toBe("remote-feature");
+    status = (
+      await runGitAction(directory, { type: "checkout", branch: "main" })
+    ).status;
+    expect(status.branch).toBe("main");
+
+    status = (
+      await runGitAction(directory, { type: "createBranch", name: "feature" })
+    ).status;
+    expect(status.branch).toBe("feature");
+    expect(status.branches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "feature", current: true }),
+      ]),
+    );
+    status = (
+      await runGitAction(directory, { type: "checkout", branch: "main" })
+    ).status;
+    expect(status.branch).toBe("main");
   });
 });

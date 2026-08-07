@@ -13,7 +13,9 @@ import {
   explorerFileSchema,
   explorerListSchema,
   explorerSummarySchema,
+  gitActionResultSchema,
   gitHistorySchema,
+  gitStatusSchema,
   modelProfileSummarySchema,
   modelProviderSummarySchema,
   projectListSchema,
@@ -131,6 +133,57 @@ const workerBridge = {
           ],
           hasMore: false,
           nextCursor: null,
+        };
+      case "git.status":
+        return {
+          branch: "main",
+          head: "0123456789abcdef",
+          upstream: "origin/main",
+          ahead: 1,
+          behind: 0,
+          files: [
+            {
+              path: "README.md",
+              originalPath: null,
+              indexStatus: " ",
+              worktreeStatus: "M",
+              staged: false,
+              unstaged: true,
+            },
+          ],
+          branches: [
+            {
+              name: "main",
+              kind: "local",
+              current: true,
+              hash: "0123456789abcdef",
+              upstream: "origin/main",
+            },
+          ],
+        };
+      case "git.action":
+        return {
+          status: {
+            branch:
+              command.action.type === "createBranch"
+                ? command.action.name
+                : "main",
+            head: "0123456789abcdef",
+            upstream: "origin/main",
+            ahead: 0,
+            behind: 0,
+            files: [],
+            branches: [
+              {
+                name: "main",
+                kind: "local",
+                current: command.action.type !== "createBranch",
+                hash: "0123456789abcdef",
+                upstream: "origin/main",
+              },
+            ],
+          },
+          output: "Git action complete",
         };
       case "explorer.directory.list":
         return {
@@ -416,6 +469,32 @@ describe("local server foundation", () => {
     expect(history).toMatchObject({
       branch: "main",
       commits: [{ subject: "feat: test history" }],
+    });
+    const gitStatus = gitStatusSchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/git/status`,
+        })
+      ).json(),
+    );
+    expect(gitStatus).toMatchObject({
+      branch: "main",
+      ahead: 1,
+      files: [{ path: "README.md", unstaged: true }],
+    });
+    const gitAction = gitActionResultSchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/git/actions`,
+          payload: { type: "stageAll" },
+        })
+      ).json(),
+    );
+    expect(gitAction).toMatchObject({
+      output: "Git action complete",
+      status: { files: [] },
     });
     const terminal = terminalSummarySchema.parse(
       (

@@ -15,7 +15,9 @@ import {
   explorerSummarySchema,
   githubAuthStatusSchema,
   githubRepositoryListSchema,
+  gitActionResultSchema,
   gitHistorySchema,
+  gitStatusSchema,
   modelProfileCreateSchema,
   modelProfileSummarySchema,
   modelProfileUpdateSchema,
@@ -33,6 +35,7 @@ import {
   workerListSchema,
 } from "@cantrip/protocol";
 import type {
+  GitAction,
   ModelProfileCreate,
   ModelProfileUpdate,
   ModelProviderCreate,
@@ -202,6 +205,21 @@ export async function getGitHistory(projectId: string, cursor = 0) {
   return gitHistorySchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/git/history?limit=100&cursor=${cursor}`,
+    ),
+  );
+}
+
+export async function getGitStatus(projectId: string) {
+  return gitStatusSchema.parse(
+    await request(`/api/projects/${encodeURIComponent(projectId)}/git/status`),
+  );
+}
+
+export async function runGitAction(projectId: string, action: GitAction) {
+  return gitActionResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/git/actions`,
+      action,
     ),
   );
 }

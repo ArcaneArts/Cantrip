@@ -517,6 +517,61 @@ export const gitHistorySchema = z.object({
   nextCursor: z.number().int().nonnegative().nullable(),
 });
 
+export const gitFileChangeSchema = z.object({
+  path: z.string().min(1),
+  originalPath: z.string().min(1).nullable(),
+  indexStatus: z.string().length(1),
+  worktreeStatus: z.string().length(1),
+  staged: z.boolean(),
+  unstaged: z.boolean(),
+});
+
+export const gitBranchSchema = z.object({
+  name: z.string().min(1),
+  kind: z.enum(["local", "remote"]),
+  current: z.boolean(),
+  hash: z.string().min(1),
+  upstream: z.string().min(1).nullable(),
+});
+
+export const gitStatusSchema = z.object({
+  branch: z.string(),
+  head: z.string().nullable(),
+  upstream: z.string().min(1).nullable(),
+  ahead: z.number().int().nonnegative(),
+  behind: z.number().int().nonnegative(),
+  files: z.array(gitFileChangeSchema),
+  branches: z.array(gitBranchSchema),
+});
+
+const gitPathsSchema = z.array(z.string().min(1).max(4_096)).min(1).max(1_000);
+export const gitActionSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("stage"), paths: gitPathsSchema }),
+  z.object({ type: z.literal("unstage"), paths: gitPathsSchema }),
+  z.object({ type: z.literal("stageAll") }),
+  z.object({ type: z.literal("unstageAll") }),
+  z.object({
+    type: z.literal("commit"),
+    message: z.string().trim().min(1).max(10_000),
+    all: z.boolean().default(false),
+  }),
+  z.object({ type: z.literal("pull") }),
+  z.object({ type: z.literal("push") }),
+  z.object({
+    type: z.literal("checkout"),
+    branch: z.string().trim().min(1).max(255),
+  }),
+  z.object({
+    type: z.literal("createBranch"),
+    name: z.string().trim().min(1).max(255),
+  }),
+]);
+
+export const gitActionResultSchema = z.object({
+  status: gitStatusSchema,
+  output: z.string(),
+});
+
 export const agentTurnResultSchema = z.object({
   threadId: z.string().min(1),
   text: z.string(),
@@ -553,6 +608,15 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     cwd: z.string().min(1),
     cursor: z.number().int().nonnegative().default(0),
     limit: z.number().int().min(1).max(100).default(100),
+  }),
+  z.object({
+    type: z.literal("git.status"),
+    cwd: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("git.action"),
+    cwd: z.string().min(1),
+    action: gitActionSchema,
   }),
   z.object({
     type: z.literal("explorer.directory.list"),
@@ -721,6 +785,11 @@ export type ProjectRemove = z.infer<typeof projectRemoveSchema>;
 export type GitRef = z.infer<typeof gitRefSchema>;
 export type GitCommit = z.infer<typeof gitCommitSchema>;
 export type GitHistory = z.infer<typeof gitHistorySchema>;
+export type GitFileChange = z.infer<typeof gitFileChangeSchema>;
+export type GitBranch = z.infer<typeof gitBranchSchema>;
+export type GitStatus = z.infer<typeof gitStatusSchema>;
+export type GitAction = z.infer<typeof gitActionSchema>;
+export type GitActionResult = z.infer<typeof gitActionResultSchema>;
 export type ChatCreate = z.infer<typeof chatCreateSchema>;
 export type ChatUpdate = z.infer<typeof chatUpdateSchema>;
 export type ChatFork = z.infer<typeof chatForkSchema>;

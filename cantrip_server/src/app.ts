@@ -33,7 +33,10 @@ import {
   githubProjectCreateSchema,
   githubRepositoryListSchema,
   githubWorkerRepositoryListSchema,
+  gitActionResultSchema,
+  gitActionSchema,
   gitHistorySchema,
+  gitStatusSchema,
   modelProfileCreateSchema,
   modelProfileSummarySchema,
   modelProfileUpdateSchema,
@@ -539,6 +542,57 @@ export async function buildApp({
       return reply.code(status).send({ error: errorMessage(error) });
     }
   });
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/git/status",
+    async (request, reply) => {
+      const source = await repository.getProjectSource(
+        LOCAL_USER_ID,
+        request.params.projectId,
+      );
+      if (!source) {
+        return reply.code(404).send({ error: "Project source not found." });
+      }
+      try {
+        const status = await bridge.request(source.workerId, {
+          type: "git.status",
+          cwd: source.cwd,
+        });
+        return reply.send(gitStatusSchema.parse(status));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/git/actions",
+    async (request, reply) => {
+      const input = gitActionSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const source = await repository.getProjectSource(
+        LOCAL_USER_ID,
+        request.params.projectId,
+      );
+      if (!source) {
+        return reply.code(404).send({ error: "Project source not found." });
+      }
+      try {
+        const result = await bridge.request(source.workerId, {
+          type: "git.action",
+          cwd: source.cwd,
+          action: input.data,
+        });
+        return reply.send(gitActionResultSchema.parse(result));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
 
   app.patch("/api/projects/order", async (request, reply) => {
     const input = orderedIdsSchema.safeParse(request.body);

@@ -10,7 +10,7 @@ import { discoverCodexVersion } from "./codex/discovery.js";
 import { readWorkerConfig } from "./config.js";
 import { listExplorerDirectory, readExplorerFile } from "./explorer.js";
 import { GithubClient } from "./github.js";
-import { readGitHistory } from "./git.js";
+import { readGitHistory, readGitStatus, runGitAction } from "./git.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
 import { TerminalManager } from "./terminal-manager.js";
 import { WorkerConnection } from "./transport.js";
@@ -100,6 +100,10 @@ async function start(): Promise<void> {
         return github.deleteRepository(command.path);
       case "git.history":
         return readGitHistory(command.cwd, command.limit, command.cursor);
+      case "git.status":
+        return readGitStatus(command.cwd);
+      case "git.action":
+        return runGitAction(command.cwd, command.action);
       case "explorer.directory.list":
         return listExplorerDirectory(command.root, command.path);
       case "explorer.file.read":
