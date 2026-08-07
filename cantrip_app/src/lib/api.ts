@@ -8,7 +8,8 @@ import {
   chatSummarySchema,
   chatCompactAcceptedSchema,
   chatInterruptAcceptedSchema,
-  chatTurnAcceptedSchema,
+  chatPromptSteerResultSchema,
+  chatPromptSubmitResultSchema,
   explorerDirectorySchema,
   explorerFileSchema,
   explorerListSchema,
@@ -27,6 +28,8 @@ import {
   orderedIdsSchema,
   projectListSchema,
   projectSummarySchema,
+  queuedPromptListSchema,
+  queuedPromptSchema,
   serverBootstrapSchema,
   settingsBundleSchema,
   systemHealthSchema,
@@ -454,11 +457,48 @@ export async function updateChatModel(chatId: string, modelId: string) {
 }
 
 export async function startTurn(chatId: string, text: string, modelId: string) {
-  return chatTurnAcceptedSchema.parse(
+  return chatPromptSubmitResultSchema.parse(
     await post(`/api/chats/${encodeURIComponent(chatId)}/turns`, {
       text,
       modelId,
       idempotencyKey: crypto.randomUUID(),
     }),
+  );
+}
+
+export async function getQueuedPrompts(chatId: string) {
+  return queuedPromptListSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/queue`),
+  );
+}
+
+export async function updateQueuedPrompt(
+  promptId: string,
+  input: { text?: string; frozen?: boolean },
+) {
+  return queuedPromptSchema.parse(
+    await request(`/api/queued-prompts/${encodeURIComponent(promptId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function deleteQueuedPrompt(promptId: string) {
+  await request(`/api/queued-prompts/${encodeURIComponent(promptId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function reorderQueuedPrompts(chatId: string, ids: string[]) {
+  await request(`/api/chats/${encodeURIComponent(chatId)}/queue/order`, {
+    method: "PATCH",
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export async function steerQueuedPrompt(promptId: string) {
+  return chatPromptSteerResultSchema.parse(
+    await post(`/api/queued-prompts/${encodeURIComponent(promptId)}/steer`, {}),
   );
 }

@@ -38,6 +38,7 @@ interface PendingRpcRequest {
 
 interface ActiveTurn {
   baseline: WorkspaceSnapshot;
+  chatId: string;
   cwd: string;
   delta: string;
   diffChanges: Array<{ kind: "add" | "delete" | "update"; path: string }>;
@@ -119,6 +120,7 @@ interface TurnDiffUpdatedParams {
 }
 
 export interface RunAgentTurnOptions {
+  chatId: string;
   cwd: string;
   model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
   provider: Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
@@ -129,7 +131,7 @@ export interface RunAgentTurnOptions {
 
 export type CompactAgentThreadOptions = Omit<
   RunAgentTurnOptions,
-  "onActivity" | "prompt"
+  "chatId" | "onActivity" | "prompt"
 > & {
   threadId: string;
 };
@@ -329,6 +331,7 @@ export class CodexAppServer {
     const completion = new Promise<AgentTurnResult>((resolve, reject) => {
       activeTurn = {
         baseline,
+        chatId: options.chatId,
         cwd: options.cwd,
         delta: "",
         diffChanges: [],
@@ -376,6 +379,27 @@ export class CodexAppServer {
     if (!active) return { interrupted: false };
     await this.request("turn/interrupt", { threadId, turnId: active[0] });
     return { interrupted: true };
+  }
+
+  async steerThread(
+    chatId: string,
+    threadId: string | null,
+    prompt: string,
+  ): Promise<{ steered: true; turnId: string }> {
+    const active = [...this.#activeTurns.entries()].find(
+      ([, turn]) =>
+        (threadId && turn.threadId === threadId) || turn.chatId === chatId,
+    );
+    if (!active) {
+      throw new Error("The Codex thread does not have an active turn.");
+    }
+    const activeThreadId = active[1].threadId;
+    const result = (await this.request("turn/steer", {
+      threadId: activeThreadId,
+      input: [{ type: "text", text: prompt, text_elements: [] }],
+      expectedTurnId: active[0],
+    })) as { turnId: string };
+    return { steered: true, turnId: result.turnId };
   }
 
   close(): void {

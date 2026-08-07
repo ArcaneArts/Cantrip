@@ -22,6 +22,10 @@ import type {
   ModelProviderSummary,
   ModelProviderUpdate,
   OrderedIds,
+  QueuedPrompt,
+  QueuedPromptCreate,
+  QueuedPromptOrder,
+  QueuedPromptUpdate,
   ProjectCloneResult,
   ProjectSummary,
   SettingsBundle,
@@ -253,6 +257,21 @@ function toChatMessage(
     role: message.role as ChatMessage["role"],
     content: message.content,
     createdAt: toISOString(message.createdAt),
+  };
+}
+
+function toQueuedPrompt(
+  prompt: typeof schema.queuedPrompts.$inferSelect,
+): QueuedPrompt {
+  return {
+    id: prompt.id,
+    chatId: prompt.chatId,
+    text: prompt.text,
+    modelId: prompt.modelId,
+    position: prompt.position,
+    frozen: prompt.frozen,
+    createdAt: toISOString(prompt.createdAt),
+    updatedAt: toISOString(prompt.updatedAt),
   };
 }
 
@@ -1740,6 +1759,176 @@ export class ServerRepository {
       .where(eq(schema.chatMessages.chatId, chatId))
       .orderBy(asc(schema.chatMessages.sequence));
     return rows.map(({ message }) => toChatMessage(message));
+  }
+
+  async listQueuedPrompts(
+    ownerId: string,
+    chatId: string,
+  ): Promise<QueuedPrompt[]> {
+    const rows = await this.database
+      .select({ prompt: schema.queuedPrompts })
+      .from(schema.queuedPrompts)
+      .innerJoin(schema.chats, eq(schema.chats.id, schema.queuedPrompts.chatId))
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.queuedPrompts.chatId, chatId))
+      .orderBy(
+        asc(schema.queuedPrompts.position),
+        asc(schema.queuedPrompts.createdAt),
+      );
+    return rows.map(({ prompt }) => toQueuedPrompt(prompt));
+  }
+
+  async getQueuedPrompt(
+    ownerId: string,
+    promptId: string,
+  ): Promise<QueuedPrompt | null> {
+    const rows = await this.database
+      .select({ prompt: schema.queuedPrompts })
+      .from(schema.queuedPrompts)
+      .innerJoin(schema.chats, eq(schema.chats.id, schema.queuedPrompts.chatId))
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.queuedPrompts.id, promptId))
+      .limit(1);
+    return rows[0] ? toQueuedPrompt(rows[0].prompt) : null;
+  }
+
+  async createQueuedPrompt(
+    ownerId: string,
+    chatId: string,
+    input: QueuedPromptCreate,
+    modelId: string,
+  ): Promise<QueuedPrompt | null> {
+    const chat = await this.database
+      .select({ id: schema.chats.id })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.chats.id, chatId))
+      .limit(1);
+    if (!chat[0]) return null;
+
+    const existing = await this.database
+      .select()
+      .from(schema.queuedPrompts)
+      .where(
+        and(
+          eq(schema.queuedPrompts.chatId, chatId),
+          eq(schema.queuedPrompts.idempotencyKey, input.idempotencyKey),
+        ),
+      )
+      .limit(1);
+    if (existing[0]) return toQueuedPrompt(existing[0]);
+
+    const last = await this.database
+      .select({ position: schema.queuedPrompts.position })
+      .from(schema.queuedPrompts)
+      .where(eq(schema.queuedPrompts.chatId, chatId))
+      .orderBy(desc(schema.queuedPrompts.position))
+      .limit(1);
+    const result = await this.database
+      .insert(schema.queuedPrompts)
+      .values({
+        id: randomUUID(),
+        chatId,
+        text: input.text,
+        modelId,
+        position: (last[0]?.position ?? -1) + 1,
+        frozen: input.frozen,
+        idempotencyKey: input.idempotencyKey,
+      })
+      .returning();
+    return toQueuedPrompt(firstOrThrow(result, "queueing a prompt"));
+  }
+
+  async updateQueuedPrompt(
+    ownerId: string,
+    promptId: string,
+    input: QueuedPromptUpdate,
+  ): Promise<QueuedPrompt | null> {
+    const owned = await this.database
+      .select({ id: schema.queuedPrompts.id })
+      .from(schema.queuedPrompts)
+      .innerJoin(schema.chats, eq(schema.chats.id, schema.queuedPrompts.chatId))
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.queuedPrompts.id, promptId))
+      .limit(1);
+    if (!owned[0]) return null;
+    const result = await this.database
+      .update(schema.queuedPrompts)
+      .set({ ...input, updatedAt: new Date() })
+      .where(eq(schema.queuedPrompts.id, promptId))
+      .returning();
+    return result[0] ? toQueuedPrompt(result[0]) : null;
+  }
+
+  async deleteQueuedPrompt(
+    ownerId: string,
+    promptId: string,
+  ): Promise<QueuedPrompt | null> {
+    const owned = await this.database
+      .select({ prompt: schema.queuedPrompts })
+      .from(schema.queuedPrompts)
+      .innerJoin(schema.chats, eq(schema.chats.id, schema.queuedPrompts.chatId))
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.queuedPrompts.id, promptId))
+      .limit(1);
+    if (!owned[0]) return null;
+    await this.database
+      .delete(schema.queuedPrompts)
+      .where(eq(schema.queuedPrompts.id, promptId));
+    return toQueuedPrompt(owned[0].prompt);
+  }
+
+  async reorderQueuedPrompts(
+    ownerId: string,
+    chatId: string,
+    input: QueuedPromptOrder,
+  ): Promise<boolean> {
+    const prompts = await this.listQueuedPrompts(ownerId, chatId);
+    if (
+      prompts.length !== input.ids.length ||
+      prompts.some(({ id }) => !input.ids.includes(id))
+    ) {
+      return false;
+    }
+    await this.database.transaction(async (transaction) => {
+      for (const [position, id] of input.ids.entries()) {
+        await transaction
+          .update(schema.queuedPrompts)
+          .set({ position, updatedAt: new Date() })
+          .where(eq(schema.queuedPrompts.id, id));
+      }
+    });
+    return true;
   }
 
   async appendMessage(

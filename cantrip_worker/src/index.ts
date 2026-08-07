@@ -52,7 +52,7 @@ async function start(): Promise<void> {
   const runtimeFor = (
     command: Extract<
       WorkerCommand,
-      { type: "chat.turn" | "chat.compact" | "chat.interrupt" }
+      { type: "chat.turn" | "chat.compact" | "chat.interrupt" | "chat.steer" }
     >,
   ) => {
     const runtimeId = `${command.provider.id}:${command.model.id}`;
@@ -140,6 +140,7 @@ async function start(): Promise<void> {
         return { accepted: true };
       case "chat.turn":
         return runtimeFor(command).runTurn({
+          chatId: command.chatId,
           cwd: command.cwd,
           model: command.model,
           provider: command.provider,
@@ -156,6 +157,12 @@ async function start(): Promise<void> {
         });
       case "chat.interrupt":
         return runtimeFor(command).interruptThread(command.threadId);
+      case "chat.steer":
+        return runtimeFor(command).steerThread(
+          command.chatId,
+          command.threadId,
+          command.prompt,
+        );
     }
   };
   const commandConnection = new WorkerConnection(config, handleCommand);

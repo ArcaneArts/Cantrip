@@ -5,6 +5,7 @@ import type {
   ExplorerSummary,
   GithubRepository,
   ProjectSummary,
+  QueuedPrompt,
   SettingsBundle,
   TerminalSummary,
 } from "@cantrip/protocol";
@@ -44,6 +45,7 @@ import {
 
 import { Activity, ActivityGroup } from "@/components/chat/activity";
 import { Markdown } from "@/components/chat/markdown";
+import { PromptQueue } from "@/components/chat/prompt-queue";
 import { buildChatTimeline } from "@/components/chat/timeline";
 import {
   filterSlashCommands,
@@ -84,6 +86,7 @@ import {
   deleteBrowser,
   deleteExplorer,
   deleteTerminal,
+  deleteQueuedPrompt,
   forkChat,
   getChats,
   getBrowsers,
@@ -92,6 +95,7 @@ import {
   getGithubStatus,
   getMessages,
   getProjects,
+  getQueuedPrompts,
   getServerBootstrap,
   getSettings,
   getTerminals,
@@ -102,9 +106,12 @@ import {
   removeProject,
   reorderProjectTabs,
   reorderProjects,
+  reorderQueuedPrompts,
   startTurn,
+  steerQueuedPrompt,
   updateChatModel,
   updateBrowser,
+  updateQueuedPrompt,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -371,6 +378,10 @@ function ChatTranscript({
 }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
+  const [editingPrompt, setEditingPrompt] = useState<{
+    id: string;
+    frozen: boolean;
+  } | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [commandNotice, setCommandNotice] = useState<string | null>(null);
   const [slashMenuDismissed, setSlashMenuDismissed] = useState(false);
@@ -384,6 +395,11 @@ function ChatTranscript({
   const messages = useQuery({
     queryFn: () => getMessages(chat.id),
     queryKey: ["messages", chat.id],
+    refetchInterval: chat.status === "running" ? 750 : 3_000,
+  });
+  const queuedPrompts = useQuery({
+    queryFn: () => getQueuedPrompts(chat.id),
+    queryKey: ["prompt-queue", chat.id],
     refetchInterval: chat.status === "running" ? 750 : 3_000,
   });
   const timeline = useMemo(
@@ -413,8 +429,44 @@ function ChatTranscript({
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
         queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
       ]);
     },
+  });
+  const updatePrompt = useMutation({
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: { text?: string; frozen?: boolean };
+    }) => updateQueuedPrompt(id, input),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
+        queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
+      ]);
+    },
+  });
+  const removePrompt = useMutation({
+    mutationFn: (id: string) => deleteQueuedPrompt(id),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
+  });
+  const steerPrompt = useMutation({
+    mutationFn: (id: string) => steerQueuedPrompt(id),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
+        queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
+        queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
+      ]);
+    },
+  });
+  const reorderPrompts = useMutation({
+    mutationFn: (ids: string[]) => reorderQueuedPrompts(chat.id, ids),
+    onError: () =>
+      queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
   });
   const selectModel = useMutation({
     mutationFn: (modelId: string) => updateChatModel(chat.id, modelId),
@@ -459,8 +511,23 @@ function ChatTranscript({
       !selectedModelId ||
       send.isPending ||
       selectModel.isPending ||
-      chat.status === "running"
+      updatePrompt.isPending
     ) {
+      return;
+    }
+    if (editingPrompt) {
+      updatePrompt.mutate(
+        {
+          id: editingPrompt.id,
+          input: { text, frozen: editingPrompt.frozen },
+        },
+        {
+          onSuccess: () => {
+            setEditingPrompt(null);
+            setDraft("");
+          },
+        },
+      );
       return;
     }
     send.mutate(text);
@@ -510,7 +577,7 @@ function ChatTranscript({
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex-1 overflow-y-auto px-4 pb-48 pt-6 sm:px-8">
+      <div className="flex-1 overflow-y-auto px-4 pb-72 pt-6 sm:px-8">
         <div className="mx-auto flex max-w-3xl flex-col gap-5">
           {messages.data?.length === 0 ? (
             <div className="grid min-h-[45vh] place-items-center text-center">
@@ -678,6 +745,46 @@ function ChatTranscript({
               ))}
             </div>
           ) : null}
+          <PromptQueue
+            prompts={queuedPrompts.data ?? []}
+            editingPromptId={editingPrompt?.id ?? null}
+            disabled={
+              updatePrompt.isPending ||
+              removePrompt.isPending ||
+              steerPrompt.isPending ||
+              reorderPrompts.isPending
+            }
+            onDelete={(prompt) => removePrompt.mutate(prompt.id)}
+            onEdit={(prompt) => {
+              setEditingPrompt({ id: prompt.id, frozen: prompt.frozen });
+              setDraft(prompt.text);
+              updatePrompt.mutate({
+                id: prompt.id,
+                input: { frozen: true },
+              });
+            }}
+            onFreeze={(prompt) =>
+              updatePrompt.mutate({
+                id: prompt.id,
+                input: { frozen: !prompt.frozen },
+              })
+            }
+            onSteer={(prompt) => steerPrompt.mutate(prompt.id)}
+            onReorder={(ids) => {
+              const current = queuedPrompts.data ?? [];
+              const byId = new Map(
+                current.map((prompt) => [prompt.id, prompt]),
+              );
+              queryClient.setQueryData<QueuedPrompt[]>(
+                ["prompt-queue", chat.id],
+                ids.flatMap((id, position) => {
+                  const prompt = byId.get(id);
+                  return prompt ? [{ ...prompt, position }] : [];
+                }),
+              );
+              reorderPrompts.mutate(ids);
+            }}
+          />
           <div className="chat-composer-surface flex items-end gap-2 rounded-2xl border p-2 shadow-xl shadow-background/20 focus-within:ring-2 focus-within:ring-ring">
             <div className="min-w-0 flex-1">
               <textarea
@@ -728,7 +835,13 @@ function ChatTranscript({
                     submit();
                   }
                 }}
-                placeholder="Ask Cantrip to work on this repository…"
+                placeholder={
+                  editingPrompt
+                    ? "Edit queued prompt…"
+                    : chat.status === "running"
+                      ? "Queue a follow-up…"
+                      : "Ask Cantrip to work on this repository…"
+                }
                 className="max-h-48 min-h-10 w-full resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-muted-foreground"
               />
               <div className="flex min-w-0 items-center gap-2 border-t px-1 pt-2">
@@ -761,7 +874,7 @@ function ChatTranscript({
                 !selectedModelId ||
                 send.isPending ||
                 selectModel.isPending ||
-                chat.status === "running"
+                updatePrompt.isPending
               }
             >
               {send.isPending ? (
@@ -772,9 +885,27 @@ function ChatTranscript({
               <span className="sr-only">Send prompt</span>
             </Button>
           </div>
-          {send.isError || selectModel.isError || compact.isError ? (
+          {send.isError ||
+          selectModel.isError ||
+          compact.isError ||
+          updatePrompt.isError ||
+          removePrompt.isError ||
+          steerPrompt.isError ||
+          reorderPrompts.isError ? (
             <p className="mt-2 text-xs text-destructive">
-              {errorText(send.error ?? selectModel.error ?? compact.error)}
+              {errorText(
+                send.error ??
+                  selectModel.error ??
+                  compact.error ??
+                  updatePrompt.error ??
+                  removePrompt.error ??
+                  steerPrompt.error ??
+                  reorderPrompts.error,
+              )}
+            </p>
+          ) : editingPrompt ? (
+            <p className="mt-2 text-center text-[11px] text-muted-foreground">
+              Enter re-queues this prompt in its original position
             </p>
           ) : commandNotice ? (
             <p className="mt-2 text-center text-[11px] text-muted-foreground">

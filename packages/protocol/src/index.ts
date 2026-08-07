@@ -454,12 +454,52 @@ export const chatTurnCreateSchema = z.object({
   modelId: z.string().min(1).optional(),
 });
 
+export const queuedPromptSchema = z.object({
+  id: z.string().min(1),
+  chatId: z.string().min(1),
+  text: z.string().trim().min(1).max(100_000),
+  modelId: z.string().min(1),
+  position: z.number().int().nonnegative(),
+  frozen: z.boolean(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const queuedPromptListSchema = z.array(queuedPromptSchema);
+
+export const queuedPromptCreateSchema = chatTurnCreateSchema.extend({
+  frozen: z.boolean().default(false),
+});
+
+export const queuedPromptUpdateSchema = z
+  .object({
+    text: z.string().trim().min(1).max(100_000).optional(),
+    frozen: z.boolean().optional(),
+  })
+  .refine((value) => value.text !== undefined || value.frozen !== undefined, {
+    message: "At least one queued prompt field is required.",
+  });
+
+export const queuedPromptOrderSchema = z.object({
+  ids: z.array(z.string().min(1)).max(1_000),
+});
+
 export const chatModelUpdateSchema = z.object({
   modelId: z.string().min(1),
 });
 
 export const chatTurnAcceptedSchema = z.object({
   accepted: z.literal(true),
+  message: chatMessageSchema,
+});
+
+export const chatPromptSubmitResultSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("started"), message: chatMessageSchema }),
+  z.object({ status: z.literal("queued"), prompt: queuedPromptSchema }),
+]);
+
+export const chatPromptSteerResultSchema = z.object({
+  steered: z.literal(true),
   message: chatMessageSchema,
 });
 
@@ -729,6 +769,24 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       apiKey: z.string().min(1).nullable(),
     }),
   }),
+  z.object({
+    type: z.literal("chat.steer"),
+    chatId: z.string().min(1),
+    threadId: z.string().min(1).nullable(),
+    prompt: z.string().trim().min(1).max(100_000),
+    model: z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      reasoningEffort: reasoningEffortSchema.nullable(),
+    }),
+    provider: z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      kind: modelProviderKindSchema,
+      baseUrl: z.url(),
+      apiKey: z.string().min(1).nullable(),
+    }),
+  }),
 ]);
 
 export const workerRequestEnvelopeSchema = z.object({
@@ -833,6 +891,10 @@ export type ChatMessageContent = z.infer<typeof chatMessageContentSchema>;
 export type ChatMessageCreate = z.infer<typeof chatMessageCreateSchema>;
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 export type ChatTurnCreate = z.infer<typeof chatTurnCreateSchema>;
+export type QueuedPrompt = z.infer<typeof queuedPromptSchema>;
+export type QueuedPromptCreate = z.infer<typeof queuedPromptCreateSchema>;
+export type QueuedPromptUpdate = z.infer<typeof queuedPromptUpdateSchema>;
+export type QueuedPromptOrder = z.infer<typeof queuedPromptOrderSchema>;
 export type ChatModelUpdate = z.infer<typeof chatModelUpdateSchema>;
 export type ChatCompactAccepted = z.infer<typeof chatCompactAcceptedSchema>;
 export type ChatInterruptAccepted = z.infer<typeof chatInterruptAcceptedSchema>;

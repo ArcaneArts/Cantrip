@@ -19,8 +19,9 @@ import {
   chatMessageListSchema,
   chatMessageSchema,
   chatModelUpdateSchema,
+  chatPromptSteerResultSchema,
+  chatPromptSubmitResultSchema,
   chatSummarySchema,
-  chatTurnAcceptedSchema,
   chatTurnCreateSchema,
   chatUpdateSchema,
   explorerCreateSchema,
@@ -48,6 +49,11 @@ import {
   projectListSchema,
   projectRemoveSchema,
   projectSummarySchema,
+  queuedPromptCreateSchema,
+  queuedPromptListSchema,
+  queuedPromptOrderSchema,
+  queuedPromptSchema,
+  queuedPromptUpdateSchema,
   serverBootstrapSchema,
   settingsBundleSchema,
   systemHealthSchema,
@@ -63,12 +69,16 @@ import {
   workerListSchema,
 } from "@cantrip/protocol";
 import Fastify from "fastify";
-import type { ChatMessage } from "@cantrip/protocol";
+import type { ChatMessage, ChatTurnCreate } from "@cantrip/protocol";
 
 import { fetchBrowserPage } from "./browser-proxy.js";
 import type { ServerConfig } from "./config.js";
 import type { DatabaseConnection } from "./db/index.js";
-import { LOCAL_USER_ID, type ModelRuntime } from "./db/repository.js";
+import {
+  LOCAL_USER_ID,
+  type ChatExecutionContext,
+  type ModelRuntime,
+} from "./db/repository.js";
 import {
   WorkerBridge,
   type WorkerCommandBus,
@@ -136,6 +146,160 @@ export async function buildApp({
     origin: config.appOrigins,
   });
   await app.register(websocket);
+
+  const dispatchingChats = new Set<string>();
+  const pendingQueueDispatches = new Set<string>();
+
+  const resolveModelId = async (
+    context: ChatExecutionContext,
+    requestedModelId?: string,
+  ): Promise<string> => {
+    const defaultModelId = context.modelId
+      ? null
+      : (await repository.getSettings(LOCAL_USER_ID)).preferences
+          .defaultModelId;
+    const modelId = requestedModelId ?? context.modelId ?? defaultModelId;
+    if (!modelId) {
+      throw new Error(
+        "Choose a model or configure a default model in Settings.",
+      );
+    }
+    return modelId;
+  };
+
+  const dispatchNextQueuedPrompt = async (chatId: string): Promise<void> => {
+    if (dispatchingChats.has(chatId)) {
+      pendingQueueDispatches.add(chatId);
+      return;
+    }
+    dispatchingChats.add(chatId);
+    try {
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        chatId,
+      );
+      if (!context || context.status === "running") return;
+      const prompt = (
+        await repository.listQueuedPrompts(LOCAL_USER_ID, chatId)
+      ).find((candidate) => !candidate.frozen);
+      if (!prompt) return;
+      await beginTurn(context, {
+        text: prompt.text,
+        modelId: prompt.modelId,
+        idempotencyKey: `queue:${prompt.id}`,
+      });
+      await repository.deleteQueuedPrompt(LOCAL_USER_ID, prompt.id);
+    } catch (error) {
+      app.log.error({ chatId, err: error }, "Queued prompt dispatch failed");
+    } finally {
+      dispatchingChats.delete(chatId);
+      if (pendingQueueDispatches.delete(chatId)) {
+        void dispatchNextQueuedPrompt(chatId);
+      }
+    }
+  };
+
+  async function beginTurn(
+    context: ChatExecutionContext,
+    input: ChatTurnCreate,
+  ): Promise<ChatMessage> {
+    if (!bridge.isConnected(context.workerId)) {
+      throw new Error("Project worker is offline.");
+    }
+    const modelId = await resolveModelId(context, input.modelId);
+    const runtime = await repository.getModelRuntime(LOCAL_USER_ID, modelId);
+    if (!runtime) {
+      throw new Error("Selected model was not found.");
+    }
+    const priorMessages = context.threadId
+      ? []
+      : await repository.listMessages(LOCAL_USER_ID, context.chatId);
+    const workerPrompt = continuationPrompt(priorMessages, input.text);
+    const userMessage = await repository.appendMessage(
+      LOCAL_USER_ID,
+      context.chatId,
+      {
+        role: "user",
+        content: [{ type: "text", text: input.text }],
+        idempotencyKey: input.idempotencyKey,
+      },
+    );
+    if (!userMessage) {
+      throw new Error("Chat not found.");
+    }
+    await repository.setChatModel(LOCAL_USER_ID, context.chatId, { modelId });
+    await repository.setChatStatus(context.chatId, "running");
+
+    void bridge
+      .request(
+        context.workerId,
+        {
+          type: "chat.turn",
+          chatId: context.chatId,
+          cwd: context.cwd,
+          threadId: context.threadId,
+          prompt: workerPrompt,
+          model: runtime.model,
+          provider: runtime.provider,
+        },
+        {
+          onEvent: async (event) => {
+            if (event.type !== "agent.activity") return;
+            await repository.upsertMessage(LOCAL_USER_ID, context.chatId, {
+              role: "assistant",
+              content: [{ type: "activity", activity: event.activity }],
+              idempotencyKey: `activity:${userMessage.id}:${event.activity.id}`,
+            });
+          },
+        },
+      )
+      .then(async (rawResult) => {
+        const result = agentTurnResultSchema.parse(rawResult);
+        await repository.updateChatRuntime(
+          context.chatId,
+          context.workerId,
+          result.threadId,
+        );
+        await repository.appendMessage(LOCAL_USER_ID, context.chatId, {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: result.text || "The agent completed without a message.",
+            },
+          ],
+          idempotencyKey: `assistant:${userMessage.id}`,
+        });
+        await repository.setChatStatus(context.chatId, "idle");
+        void dispatchNextQueuedPrompt(context.chatId);
+      })
+      .catch(async (error: unknown) => {
+        const interrupted = /interrupted/i.test(errorMessage(error));
+        app.log.error(
+          { chatId: context.chatId, err: error },
+          "Agent turn failed",
+        );
+        await repository.appendMessage(LOCAL_USER_ID, context.chatId, {
+          role: "system",
+          content: [
+            {
+              type: "text",
+              text: interrupted
+                ? "Turn interrupted."
+                : `Agent failed: ${errorMessage(error)}`,
+            },
+          ],
+          idempotencyKey: `error:${userMessage.id}`,
+        });
+        await repository.setChatStatus(
+          context.chatId,
+          interrupted ? "idle" : "failed",
+        );
+        void dispatchNextQueuedPrompt(context.chatId);
+      });
+
+    return userMessage;
+  }
 
   app.get("/api", async () => ({
     name: "cantrip_server",
@@ -1362,6 +1526,165 @@ export async function buildApp({
     },
   );
 
+  app.get<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/queue",
+    async (request, reply) => {
+      return reply.send(
+        queuedPromptListSchema.parse(
+          await repository.listQueuedPrompts(
+            LOCAL_USER_ID,
+            request.params.chatId,
+          ),
+        ),
+      );
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/queue",
+    async (request, reply) => {
+      const input = queuedPromptCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) return reply.code(404).send({ error: "Chat not found." });
+      let modelId: string;
+      try {
+        modelId = await resolveModelId(context, input.data.modelId);
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+      const prompt = await repository.createQueuedPrompt(
+        LOCAL_USER_ID,
+        context.chatId,
+        input.data,
+        modelId,
+      );
+      if (!prompt) return reply.code(404).send({ error: "Chat not found." });
+      if (!prompt.frozen) void dispatchNextQueuedPrompt(context.chatId);
+      return reply.code(201).send(queuedPromptSchema.parse(prompt));
+    },
+  );
+
+  app.patch<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/queue/order",
+    async (request, reply) => {
+      const input = queuedPromptOrderSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const reordered = await repository.reorderQueuedPrompts(
+        LOCAL_USER_ID,
+        request.params.chatId,
+        input.data,
+      );
+      return reordered
+        ? reply.code(204).send()
+        : reply.code(400).send({ error: "Queued prompt order is invalid." });
+    },
+  );
+
+  app.patch<{ Params: { promptId: string } }>(
+    "/api/queued-prompts/:promptId",
+    async (request, reply) => {
+      const input = queuedPromptUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const prompt = await repository.updateQueuedPrompt(
+        LOCAL_USER_ID,
+        request.params.promptId,
+        input.data,
+      );
+      if (!prompt) {
+        return reply.code(404).send({ error: "Queued prompt not found." });
+      }
+      if (!prompt.frozen) void dispatchNextQueuedPrompt(prompt.chatId);
+      return reply.send(queuedPromptSchema.parse(prompt));
+    },
+  );
+
+  app.delete<{ Params: { promptId: string } }>(
+    "/api/queued-prompts/:promptId",
+    async (request, reply) => {
+      const prompt = await repository.deleteQueuedPrompt(
+        LOCAL_USER_ID,
+        request.params.promptId,
+      );
+      return prompt
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "Queued prompt not found." });
+    },
+  );
+
+  app.post<{ Params: { promptId: string } }>(
+    "/api/queued-prompts/:promptId/steer",
+    async (request, reply) => {
+      const queued = await repository.getQueuedPrompt(
+        LOCAL_USER_ID,
+        request.params.promptId,
+      );
+      if (!queued) {
+        return reply.code(404).send({ error: "Queued prompt not found." });
+      }
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        queued.chatId,
+      );
+      if (!context) return reply.code(404).send({ error: "Chat not found." });
+
+      try {
+        let message: ChatMessage;
+        if (context.status === "running") {
+          if (!bridge.isConnected(context.workerId)) {
+            throw new Error("The active Codex thread is unavailable.");
+          }
+          const modelId = await resolveModelId(context);
+          const runtime = await repository.getModelRuntime(
+            LOCAL_USER_ID,
+            modelId,
+          );
+          if (!runtime) throw new Error("Selected model was not found.");
+          await bridge.request(context.workerId, {
+            type: "chat.steer",
+            chatId: context.chatId,
+            threadId: context.threadId,
+            prompt: queued.text,
+            model: runtime.model,
+            provider: runtime.provider,
+          });
+          const appended = await repository.appendMessage(
+            LOCAL_USER_ID,
+            context.chatId,
+            {
+              role: "user",
+              content: [{ type: "text", text: queued.text }],
+              idempotencyKey: `steer:${queued.id}`,
+            },
+          );
+          if (!appended) throw new Error("Chat not found.");
+          message = appended;
+        } else {
+          message = await beginTurn(context, {
+            text: queued.text,
+            modelId: queued.modelId,
+            idempotencyKey: `queue:${queued.id}`,
+          });
+        }
+        await repository.deleteQueuedPrompt(LOCAL_USER_ID, queued.id);
+        return reply.send(
+          chatPromptSteerResultSchema.parse({ steered: true, message }),
+        );
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/turns",
     async (request, reply) => {
@@ -1383,124 +1706,52 @@ export async function buildApp({
       );
       if (existing) {
         return reply.send(
-          chatTurnAcceptedSchema.parse({ accepted: true, message: existing }),
+          chatPromptSubmitResultSchema.parse({
+            status: "started",
+            message: existing,
+          }),
         );
       }
       if (context.status === "running") {
-        return reply.code(409).send({ error: "A turn is already running." });
-      }
-      if (!bridge.isConnected(context.workerId)) {
-        return reply.code(503).send({ error: "Project worker is offline." });
+        let modelId: string;
+        try {
+          modelId = await resolveModelId(context, input.data.modelId);
+        } catch (error) {
+          return reply.code(409).send({ error: errorMessage(error) });
+        }
+        const prompt = await repository.createQueuedPrompt(
+          LOCAL_USER_ID,
+          context.chatId,
+          { ...input.data, modelId, frozen: false },
+          modelId,
+        );
+        return prompt
+          ? reply.code(202).send(
+              chatPromptSubmitResultSchema.parse({
+                status: "queued",
+                prompt,
+              }),
+            )
+          : reply.code(404).send({ error: "Chat not found." });
       }
 
-      const defaultModelId = context.modelId
-        ? null
-        : (await repository.getSettings(LOCAL_USER_ID)).preferences
-            .defaultModelId;
-      const modelId = input.data.modelId ?? context.modelId ?? defaultModelId;
-      if (!modelId) {
-        return reply.code(409).send({
-          error: "Choose a model or configure a default model in Settings.",
-        });
+      try {
+        const message = await beginTurn(context, input.data);
+        return reply.code(202).send(
+          chatPromptSubmitResultSchema.parse({
+            status: "started",
+            message,
+          }),
+        );
+      } catch (error) {
+        const message = errorMessage(error);
+        const status = message.includes("offline")
+          ? 503
+          : message.includes("model") || message.includes("Model")
+            ? 409
+            : 400;
+        return reply.code(status).send({ error: message });
       }
-      const runtime = await repository.getModelRuntime(LOCAL_USER_ID, modelId);
-      if (!runtime) {
-        return reply.code(400).send({ error: "Selected model was not found." });
-      }
-      const priorMessages = context.threadId
-        ? []
-        : await repository.listMessages(LOCAL_USER_ID, context.chatId);
-      const workerPrompt = continuationPrompt(priorMessages, input.data.text);
-
-      const userMessage = await repository.appendMessage(
-        LOCAL_USER_ID,
-        context.chatId,
-        {
-          role: "user",
-          content: [{ type: "text", text: input.data.text }],
-          idempotencyKey: input.data.idempotencyKey,
-        },
-      );
-      if (!userMessage) {
-        return reply.code(404).send({ error: "Chat not found" });
-      }
-      await repository.setChatModel(LOCAL_USER_ID, context.chatId, { modelId });
-      await repository.setChatStatus(context.chatId, "running");
-
-      void bridge
-        .request(
-          context.workerId,
-          {
-            type: "chat.turn",
-            chatId: context.chatId,
-            cwd: context.cwd,
-            threadId: context.threadId,
-            prompt: workerPrompt,
-            model: runtime.model,
-            provider: runtime.provider,
-          },
-          {
-            onEvent: async (event) => {
-              if (event.type !== "agent.activity") {
-                return;
-              }
-              await repository.upsertMessage(LOCAL_USER_ID, context.chatId, {
-                role: "assistant",
-                content: [{ type: "activity", activity: event.activity }],
-                idempotencyKey: `activity:${userMessage.id}:${event.activity.id}`,
-              });
-            },
-          },
-        )
-        .then(async (rawResult) => {
-          const result = agentTurnResultSchema.parse(rawResult);
-          await repository.updateChatRuntime(
-            context.chatId,
-            context.workerId,
-            result.threadId,
-          );
-          await repository.appendMessage(LOCAL_USER_ID, context.chatId, {
-            role: "assistant",
-            content: [
-              {
-                type: "text",
-                text: result.text || "The agent completed without a message.",
-              },
-            ],
-            idempotencyKey: `assistant:${userMessage.id}`,
-          });
-          await repository.setChatStatus(context.chatId, "idle");
-        })
-        .catch(async (error: unknown) => {
-          const interrupted = /interrupted/i.test(errorMessage(error));
-          app.log.error(
-            { chatId: context.chatId, err: error },
-            "Agent turn failed",
-          );
-          await repository.appendMessage(LOCAL_USER_ID, context.chatId, {
-            role: "system",
-            content: [
-              {
-                type: "text",
-                text: interrupted
-                  ? "Turn interrupted."
-                  : `Agent failed: ${errorMessage(error)}`,
-              },
-            ],
-            idempotencyKey: `error:${userMessage.id}`,
-          });
-          await repository.setChatStatus(
-            context.chatId,
-            interrupted ? "idle" : "failed",
-          );
-        });
-
-      return reply.code(202).send(
-        chatTurnAcceptedSchema.parse({
-          accepted: true,
-          message: userMessage,
-        }),
-      );
     },
   );
 

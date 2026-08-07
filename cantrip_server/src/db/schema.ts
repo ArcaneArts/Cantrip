@@ -301,3 +301,32 @@ export const chatMessages = pgTable(
     ),
   ],
 );
+
+export const queuedPrompts = pgTable(
+  "queued_prompts",
+  {
+    id: text("id").primaryKey(),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    text: text("text").notNull(),
+    modelId: text("model_id")
+      .notNull()
+      .references(() => modelProfiles.id, { onDelete: "restrict" }),
+    position: integer("position").notNull().default(0),
+    frozen: boolean("frozen").notNull().default(false),
+    idempotencyKey: text("idempotency_key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("queued_prompts_chat_idempotency_unique").on(
+      table.chatId,
+      table.idempotencyKey,
+    ),
+  ],
+);

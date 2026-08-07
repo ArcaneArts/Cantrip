@@ -5,6 +5,7 @@ import {
   codexDeviceLoginSchema,
   gitActionSchema,
   normalizeResponsesBaseUrl,
+  queuedPromptSchema,
   serverBootstrapSchema,
   systemHealthSchema,
   terminalClientMessageSchema,
@@ -237,5 +238,40 @@ describe("Cantrip protocol", () => {
         },
       }).launch.type,
     ).toBe("codex");
+  });
+
+  it("validates persisted prompt queues and live steering", () => {
+    expect(
+      queuedPromptSchema.parse({
+        id: "prompt-1",
+        chatId: "chat-1",
+        text: "Focus on the failing test.",
+        modelId: "model-1",
+        position: 0,
+        frozen: true,
+        createdAt: "2026-08-07T12:00:00.000Z",
+        updatedAt: "2026-08-07T12:00:00.000Z",
+      }).frozen,
+    ).toBe(true);
+    expect(
+      workerCommandSchema.parse({
+        type: "chat.steer",
+        chatId: "chat-1",
+        threadId: null,
+        prompt: "Focus on the failing test.",
+        model: {
+          id: "model-1",
+          name: "gpt-5.6-sol",
+          reasoningEffort: "high",
+        },
+        provider: {
+          id: "provider-1",
+          name: "ChatGPT",
+          kind: "chatgpt",
+          baseUrl: "https://api.openai.com/v1",
+          apiKey: null,
+        },
+      }).type,
+    ).toBe("chat.steer");
   });
 });

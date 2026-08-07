@@ -20,6 +20,8 @@ import {
   modelProviderSummarySchema,
   projectListSchema,
   projectSummarySchema,
+  queuedPromptListSchema,
+  queuedPromptSchema,
   serverBootstrapSchema,
   settingsBundleSchema,
   terminalListSchema,
@@ -57,6 +59,8 @@ const turnModelIds: string[] = [];
 const turnPrompts: string[] = [];
 const deletedProjectPaths: string[] = [];
 const authProviderIds: string[] = [];
+const steeredPrompts: string[] = [];
+let releaseHeldTurn: (() => void) | null = null;
 const workerBridge = {
   attach() {},
   close() {},
@@ -252,6 +256,11 @@ const workerBridge = {
             changes: [{ path: "README.md", kind: "update" }],
           },
         });
+        if (command.prompt.includes("Hold queue open.")) {
+          await new Promise<void>((resolve) => {
+            releaseHeldTurn = resolve;
+          });
+        }
         return {
           threadId: command.threadId ?? "codex-thread-1",
           text: "The local agent replied.",
@@ -262,6 +271,9 @@ const workerBridge = {
         return { accepted: true };
       case "chat.interrupt":
         return { interrupted: false };
+      case "chat.steer":
+        steeredPrompts.push(command.prompt);
+        return { steered: true, turnId: "turn-held" };
     }
   },
 } satisfies WorkerCommandBus;
@@ -894,6 +906,120 @@ describe("local server foundation", () => {
     expect(turnModelIds.at(-1)).toBe(
       initialSettings.preferences.defaultModelId,
     );
+
+    const queueChat = chatSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/chats`,
+          payload: { title: "Prompt queue" },
+        })
+      ).json(),
+    );
+    await firstApp.inject({
+      method: "PATCH",
+      url: `/api/chats/${queueChat.id}/model`,
+      payload: { modelId: selectedModel.id },
+    });
+    await firstApp.inject({
+      method: "POST",
+      url: `/api/chats/${queueChat.id}/turns`,
+      payload: { text: "Hold queue open.", idempotencyKey: "queue-running" },
+    });
+    await vi.waitFor(() => expect(releaseHeldTurn).not.toBeNull());
+
+    const firstQueued = queuedPromptSchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/chats/${queueChat.id}/turns`,
+          payload: { text: "First follow-up", idempotencyKey: "queued-first" },
+        })
+      ).json().prompt,
+    );
+    const secondQueued = queuedPromptSchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/chats/${queueChat.id}/turns`,
+          payload: {
+            text: "Second follow-up",
+            idempotencyKey: "queued-second",
+          },
+        })
+      ).json().prompt,
+    );
+    expect(
+      queuedPromptListSchema
+        .parse(
+          (
+            await firstApp.inject({
+              method: "GET",
+              url: `/api/chats/${queueChat.id}/queue`,
+            })
+          ).json(),
+        )
+        .map(({ id }) => id),
+    ).toEqual([firstQueued.id, secondQueued.id]);
+    expect(
+      await firstApp.inject({
+        method: "PATCH",
+        url: `/api/chats/${queueChat.id}/queue/order`,
+        payload: { ids: [secondQueued.id, firstQueued.id] },
+      }),
+    ).toMatchObject({ statusCode: 204 });
+    const editedQueued = queuedPromptSchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/queued-prompts/${secondQueued.id}`,
+          payload: { text: "Edited second follow-up", frozen: true },
+        })
+      ).json(),
+    );
+    expect(editedQueued).toMatchObject({
+      id: secondQueued.id,
+      position: 0,
+      frozen: true,
+      text: "Edited second follow-up",
+    });
+    await firstApp.inject({
+      method: "PATCH",
+      url: `/api/queued-prompts/${firstQueued.id}`,
+      payload: { frozen: true },
+    });
+    expect(
+      await firstApp.inject({
+        method: "POST",
+        url: `/api/queued-prompts/${firstQueued.id}/steer`,
+      }),
+    ).toMatchObject({ statusCode: 200 });
+    expect(steeredPrompts).toContain("First follow-up");
+
+    const turnsBeforeRelease = turnRequests;
+    releaseHeldTurn?.();
+    releaseHeldTurn = null;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(turnRequests).toBe(turnsBeforeRelease);
+    await firstApp.inject({
+      method: "PATCH",
+      url: `/api/queued-prompts/${secondQueued.id}`,
+      payload: { frozen: false },
+    });
+    await vi.waitFor(() =>
+      expect(turnPrompts).toContain("Edited second follow-up"),
+    );
+    await vi.waitFor(async () => {
+      const remaining = queuedPromptListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${queueChat.id}/queue`,
+          })
+        ).json(),
+      );
+      expect(remaining).toHaveLength(0);
+    });
 
     await firstApp.close();
 
