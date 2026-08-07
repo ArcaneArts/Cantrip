@@ -462,6 +462,10 @@ export const chatTurnAcceptedSchema = z.object({
   message: chatMessageSchema,
 });
 
+export const chatCompactAcceptedSchema = z.object({
+  accepted: z.literal(true),
+});
+
 export const githubWorkerRepositorySchema = githubRepositorySchema.omit({
   imported: true,
 });
@@ -602,6 +606,24 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       apiKey: z.string().min(1).nullable(),
     }),
   }),
+  z.object({
+    type: z.literal("chat.compact"),
+    chatId: z.string().min(1),
+    cwd: z.string().min(1),
+    threadId: z.string().min(1),
+    model: z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      reasoningEffort: reasoningEffortSchema.nullable(),
+    }),
+    provider: z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      kind: modelProviderKindSchema,
+      baseUrl: z.url(),
+      apiKey: z.string().min(1).nullable(),
+    }),
+  }),
 ]);
 
 export const workerRequestEnvelopeSchema = z.object({
@@ -702,6 +724,7 @@ export type ChatMessageCreate = z.infer<typeof chatMessageCreateSchema>;
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 export type ChatTurnCreate = z.infer<typeof chatTurnCreateSchema>;
 export type ChatModelUpdate = z.infer<typeof chatModelUpdateSchema>;
+export type ChatCompactAccepted = z.infer<typeof chatCompactAcceptedSchema>;
 export type AgentTurnResult = z.infer<typeof agentTurnResultSchema>;
 export type AgentActivity = z.infer<typeof agentActivitySchema>;
 export type WorkerCommand = z.infer<typeof workerCommandSchema>;

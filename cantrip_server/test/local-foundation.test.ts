@@ -50,6 +50,7 @@ const config: ServerConfig = {
 };
 
 let turnRequests = 0;
+let compactRequests = 0;
 const turnModelIds: string[] = [];
 const turnPrompts: string[] = [];
 const deletedProjectPaths: string[] = [];
@@ -203,6 +204,9 @@ const workerBridge = {
           text: "The local agent replied.",
           status: "completed",
         };
+      case "chat.compact":
+        compactRequests += 1;
+        return { accepted: true };
     }
   },
 } satisfies WorkerCommandBus;
@@ -522,6 +526,13 @@ describe("local server foundation", () => {
     });
     expect(turnRequests).toBe(1);
     expect(turnModelIds).toContain(selectedModel.id);
+    expect(
+      await firstApp.inject({
+        method: "POST",
+        url: `/api/chats/${chat.id}/compact`,
+      }),
+    ).toMatchObject({ statusCode: 200 });
+    expect(compactRequests).toBe(1);
     const completedMessages = chatMessageListSchema.parse(
       (
         await firstApp.inject({

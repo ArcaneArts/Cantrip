@@ -127,6 +127,13 @@ export interface RunAgentTurnOptions {
   onActivity?: (activity: AgentActivity) => void;
 }
 
+export type CompactAgentThreadOptions = Omit<
+  RunAgentTurnOptions,
+  "onActivity" | "prompt"
+> & {
+  threadId: string;
+};
+
 export function codexModelProviderName(
   provider: RunAgentTurnOptions["provider"],
 ): "cantrip_runtime" | "openai" {
@@ -309,41 +316,12 @@ export class CodexAppServer {
   async runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult> {
     await this.ensureStarted(options.model, options.provider);
     const baseline = await workspaceSnapshot(options.cwd);
-    const modelProvider = codexModelProviderName(options.provider);
-
-    let threadId = options.threadId;
-    if (threadId && !this.#loadedThreads.has(threadId)) {
-      try {
-        const resumed = (await this.request("thread/resume", {
-          threadId,
-          model: options.model.name,
-          modelProvider,
-          cwd: options.cwd,
-          approvalPolicy: "never",
-          sandbox: "workspace-write",
-        })) as ThreadResponse;
-        threadId = resumed.thread.id;
-        this.#loadedThreads.add(threadId);
-      } catch {
-        // The server owns conversation history, while Codex thread state is local
-        // to a worker/runtime. A replacement worker can safely begin a new thread.
-        threadId = null;
-      }
-    }
-
+    const threadId = await this.loadThread(options);
     if (!threadId) {
-      const started = (await this.request("thread/start", {
-        model: options.model.name,
-        modelProvider,
-        cwd: options.cwd,
-        approvalPolicy: "never",
-        sandbox: "workspace-write",
-      })) as ThreadResponse;
-      threadId = started.thread.id;
-      this.#loadedThreads.add(threadId);
+      throw new Error("Could not start a Codex thread.");
     }
 
-    if (this.#activeTurns.has(threadId)) {
+    if (this.hasActiveThread(threadId)) {
       throw new Error(`Codex thread ${threadId} already has an active turn.`);
     }
 
@@ -374,6 +352,23 @@ export class CodexAppServer {
     return completion;
   }
 
+  async compactThread(
+    options: CompactAgentThreadOptions,
+  ): Promise<{ accepted: true }> {
+    await this.ensureStarted(options.model, options.provider);
+    const threadId = await this.loadThread(options, false);
+    if (!threadId) {
+      throw new Error(
+        "The Codex thread is no longer available on this worker.",
+      );
+    }
+    if (this.hasActiveThread(threadId)) {
+      throw new Error(`Codex thread ${threadId} already has an active turn.`);
+    }
+    await this.request("thread/compact/start", { threadId });
+    return { accepted: true };
+  }
+
   close(): void {
     this.handleExit(new Error("Codex app-server stopped."));
     this.#child?.kill("SIGTERM");
@@ -401,6 +396,53 @@ export class CodexAppServer {
     this.#runtimeId = runtimeId;
     this.#starting ??= this.start(model, provider);
     await this.#starting;
+  }
+
+  private async loadThread(
+    options: Pick<
+      RunAgentTurnOptions,
+      "cwd" | "model" | "provider" | "threadId"
+    >,
+    create = true,
+  ): Promise<string | null> {
+    const modelProvider = codexModelProviderName(options.provider);
+    let threadId = options.threadId;
+    if (threadId && !this.#loadedThreads.has(threadId)) {
+      try {
+        const resumed = (await this.request("thread/resume", {
+          threadId,
+          model: options.model.name,
+          modelProvider,
+          cwd: options.cwd,
+          approvalPolicy: "never",
+          sandbox: "workspace-write",
+        })) as ThreadResponse;
+        threadId = resumed.thread.id;
+        this.#loadedThreads.add(threadId);
+      } catch {
+        // Codex thread state is local to its worker/runtime. A normal turn can
+        // recover from replacement by starting a new thread; compaction cannot.
+        threadId = null;
+      }
+    }
+    if (!threadId && create) {
+      const started = (await this.request("thread/start", {
+        model: options.model.name,
+        modelProvider,
+        cwd: options.cwd,
+        approvalPolicy: "never",
+        sandbox: "workspace-write",
+      })) as ThreadResponse;
+      threadId = started.thread.id;
+      this.#loadedThreads.add(threadId);
+    }
+    return threadId;
+  }
+
+  private hasActiveThread(threadId: string): boolean {
+    return [...this.#activeTurns.values()].some(
+      (active) => active.threadId === threadId,
+    );
   }
 
   private async start(

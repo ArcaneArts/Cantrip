@@ -10,6 +10,7 @@ import {
   browserUpdateSchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
+  chatCompactAcceptedSchema,
   chatCreateSchema,
   chatForkSchema,
   chatListSchema,
@@ -1123,6 +1124,54 @@ export async function buildApp({
       return chat
         ? reply.code(201).send(chatSummarySchema.parse(chat))
         : reply.code(404).send({ error: "Chat or message not found." });
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/compact",
+    async (request, reply) => {
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      if (context.status === "running") {
+        return reply
+          .code(409)
+          .send({ error: "Wait for the active turn to finish." });
+      }
+      if (!context.threadId) {
+        return reply
+          .code(409)
+          .send({ error: "Send a message before compacting this chat." });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      const modelId =
+        context.modelId ??
+        (await repository.getSettings(LOCAL_USER_ID)).preferences
+          .defaultModelId;
+      if (!modelId) {
+        return reply
+          .code(409)
+          .send({ error: "Choose a model before compacting this chat." });
+      }
+      const runtime = await repository.getModelRuntime(LOCAL_USER_ID, modelId);
+      if (!runtime) {
+        return reply.code(400).send({ error: "Selected model was not found." });
+      }
+      const result = await bridge.request(context.workerId, {
+        type: "chat.compact",
+        chatId: context.chatId,
+        cwd: context.cwd,
+        threadId: context.threadId,
+        model: runtime.model,
+        provider: runtime.provider,
+      });
+      return reply.send(chatCompactAcceptedSchema.parse(result));
     },
   );
 

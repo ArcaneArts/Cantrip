@@ -36,6 +36,7 @@ import {
   Suspense,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -43,6 +44,11 @@ import {
 import { Activity, ActivityGroup } from "@/components/chat/activity";
 import { Markdown } from "@/components/chat/markdown";
 import { buildChatTimeline } from "@/components/chat/timeline";
+import {
+  filterSlashCommands,
+  slashCommandQuery,
+  type SlashCommandSuggestion,
+} from "@/components/chat/slash-commands";
 import { GitHistoryView } from "@/components/git/git-history";
 import { ProjectChatList } from "@/components/sidebar/project-chat-list";
 import { SettingsPage } from "@/components/settings/settings-page";
@@ -68,6 +74,7 @@ import {
   createExplorer,
   createGithubProject,
   createTerminal,
+  compactChat,
   deleteChat,
   deleteBrowser,
   deleteExplorer,
@@ -344,16 +351,26 @@ function RepositoryImporter({
 
 function ChatTranscript({
   chat,
+  onCreateChat,
+  onDelete,
   onForked,
+  onRename,
   settings,
 }: {
   chat: ChatSummary;
+  onCreateChat(): void;
+  onDelete(): void;
   onForked(chat: ChatSummary): void;
+  onRename(title: string): void;
   settings: SettingsBundle | undefined;
 }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [commandNotice, setCommandNotice] = useState<string | null>(null);
+  const [slashMenuDismissed, setSlashMenuDismissed] = useState(false);
+  const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
+  const commandListRef = useRef<HTMLDivElement>(null);
   const selectedModelId =
     chat.modelId ?? settings?.preferences.defaultModelId ?? "";
   const selectedModel = settings?.models.find(
@@ -366,6 +383,22 @@ function ChatTranscript({
   });
   const timeline = useMemo(
     () => buildChatTimeline(messages.data ?? []),
+    [messages.data],
+  );
+  const slashQuery = slashCommandQuery(draft);
+  const slashSuggestions = useMemo(
+    () => (slashQuery === null ? [] : filterSlashCommands(slashQuery)),
+    [slashQuery],
+  );
+  const slashMenuOpen =
+    !slashMenuDismissed && slashQuery !== null && slashSuggestions.length > 0;
+  const latestAssistantText = useMemo(
+    () =>
+      [...(messages.data ?? [])]
+        .reverse()
+        .find((message) => message.role === "assistant")
+        ?.content.flatMap((item) => (item.type === "text" ? [item.text] : []))
+        .join("\n\n") ?? "",
     [messages.data],
   );
   const send = useMutation({
@@ -387,7 +420,7 @@ function ChatTranscript({
     },
   });
   const fork = useMutation({
-    mutationFn: (messageId: string) => forkChat(chat.id, messageId),
+    mutationFn: (messageId?: string) => forkChat(chat.id, messageId),
     onSuccess: async (forked) => {
       await queryClient.invalidateQueries({
         queryKey: ["chats", chat.projectId],
@@ -395,6 +428,23 @@ function ChatTranscript({
       onForked(forked);
     },
   });
+  const compact = useMutation({
+    mutationFn: () => compactChat(chat.id),
+    onSuccess: () => setCommandNotice("Conversation context compacted."),
+  });
+
+  useEffect(() => {
+    setSelectedCommandIndex(0);
+  }, [slashQuery]);
+
+  useEffect(() => {
+    if (!slashMenuOpen) return;
+    commandListRef.current
+      ?.querySelector<HTMLElement>(
+        `[data-command-index="${selectedCommandIndex}"]`,
+      )
+      ?.scrollIntoView({ block: "nearest" });
+  }, [selectedCommandIndex, slashMenuOpen]);
 
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
@@ -409,6 +459,48 @@ function ChatTranscript({
       return;
     }
     send.mutate(text);
+  };
+
+  const executeSlashCommand = async ({ command }: SlashCommandSuggestion) => {
+    const name = command.name;
+    setDraft("");
+    setSlashMenuDismissed(true);
+    setCommandNotice(null);
+
+    if (name === "compact") {
+      compact.mutate();
+    } else if (name === "copy") {
+      if (!latestAssistantText) {
+        setCommandNotice("There is no completed response to copy yet.");
+      } else {
+        await navigator.clipboard.writeText(latestAssistantText);
+        setCommandNotice("Latest response copied.");
+      }
+    } else if (name === "fork") {
+      fork.mutate(undefined);
+    } else if (name === "new" || name === "clear") {
+      onCreateChat();
+    } else if (name === "rename") {
+      const title = window.prompt("Rename chat", chat.title)?.trim();
+      if (title) onRename(title);
+    } else if (name === "delete") {
+      if (window.confirm(`Delete “${chat.title}”? This cannot be undone.`)) {
+        onDelete();
+      }
+    } else if (name === "status") {
+      setCommandNotice(
+        `${selectedModel ? `${selectedModel.providerName} / ${selectedModel.name}` : "No model selected"} · ${chat.status}`,
+      );
+    } else {
+      const prompts: Record<string, string> = {
+        diff: "Inspect the current Git working-tree diff and summarize every change. Do not modify files.",
+        init: "Create an AGENTS.md scaffold for this repository, based on its existing conventions.",
+        review:
+          "Review the current working tree for defects, regressions, and missing tests. Do not modify files.",
+      };
+      const prompt = prompts[name];
+      if (prompt) send.mutate(prompt);
+    }
   };
 
   return (
@@ -544,14 +636,88 @@ function ChatTranscript({
         onSubmit={submit}
         className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-3 sm:px-8 sm:pb-4"
       >
-        <div className="pointer-events-auto mx-auto max-w-3xl">
+        <div className="pointer-events-auto relative mx-auto max-w-3xl">
+          {slashMenuOpen ? (
+            <div
+              id="slash-command-menu"
+              ref={commandListRef}
+              role="listbox"
+              aria-label="Slash commands"
+              className="chat-composer-surface absolute inset-x-0 bottom-[calc(100%+0.5rem)] max-h-72 overflow-y-auto rounded-xl border p-1.5 shadow-2xl"
+            >
+              {slashSuggestions.map((suggestion, index) => (
+                <button
+                  key={suggestion.invocation}
+                  id={`slash-command-${index}`}
+                  data-command-index={index}
+                  role="option"
+                  aria-selected={index === selectedCommandIndex}
+                  type="button"
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left",
+                    index === selectedCommandIndex
+                      ? "bg-accent text-accent-foreground"
+                      : "text-foreground hover:bg-accent/60",
+                  )}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setSelectedCommandIndex(index)}
+                  onClick={() => void executeSlashCommand(suggestion)}
+                >
+                  <span className="w-36 shrink-0 font-mono text-sm font-medium">
+                    {suggestion.invocation}
+                  </span>
+                  <span className="min-w-0 truncate text-xs text-muted-foreground">
+                    {suggestion.command.description}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
           <div className="chat-composer-surface flex items-end gap-2 rounded-2xl border p-2 shadow-xl shadow-background/20 focus-within:ring-2 focus-within:ring-ring">
             <div className="min-w-0 flex-1">
               <textarea
                 rows={1}
                 value={draft}
-                onChange={(event) => setDraft(event.target.value)}
+                aria-autocomplete="list"
+                aria-controls={slashMenuOpen ? "slash-command-menu" : undefined}
+                aria-activedescendant={
+                  slashMenuOpen
+                    ? `slash-command-${selectedCommandIndex}`
+                    : undefined
+                }
+                onChange={(event) => {
+                  setDraft(event.target.value);
+                  setSlashMenuDismissed(false);
+                  setCommandNotice(null);
+                }}
                 onKeyDown={(event) => {
+                  if (slashMenuOpen && event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setSelectedCommandIndex((index) =>
+                      Math.min(index + 1, slashSuggestions.length - 1),
+                    );
+                    return;
+                  }
+                  if (slashMenuOpen && event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setSelectedCommandIndex((index) => Math.max(index - 1, 0));
+                    return;
+                  }
+                  if (slashMenuOpen && event.key === "Escape") {
+                    event.preventDefault();
+                    setSlashMenuDismissed(true);
+                    return;
+                  }
+                  if (
+                    slashMenuOpen &&
+                    (event.key === "Tab" ||
+                      (event.key === "Enter" && !event.shiftKey))
+                  ) {
+                    event.preventDefault();
+                    const suggestion = slashSuggestions[selectedCommandIndex];
+                    if (suggestion) void executeSlashCommand(suggestion);
+                    return;
+                  }
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
                     submit();
@@ -601,13 +767,17 @@ function ChatTranscript({
               <span className="sr-only">Send prompt</span>
             </Button>
           </div>
-          {send.isError || selectModel.isError ? (
+          {send.isError || selectModel.isError || compact.isError ? (
             <p className="mt-2 text-xs text-destructive">
-              {errorText(send.error ?? selectModel.error)}
+              {errorText(send.error ?? selectModel.error ?? compact.error)}
+            </p>
+          ) : commandNotice ? (
+            <p className="mt-2 text-center text-[11px] text-muted-foreground">
+              {commandNotice}
             </p>
           ) : (
             <p className="mt-2 text-center text-[11px] text-muted-foreground">
-              Enter to send · Shift+Enter for a new line
+              Enter to send · Shift+Enter for a new line · / for commands
             </p>
           )}
         </div>
@@ -1412,6 +1582,8 @@ export function App() {
           <ChatTranscript
             chat={selectedChat}
             settings={settings.data}
+            onCreateChat={() => newChat.mutate(selectedChat.projectId)}
+            onDelete={() => deleteChatMutation.mutate(selectedChat.id)}
             onForked={(forked) => {
               setSelectedProjectId(forked.projectId);
               setSelectedTerminalId(null);
@@ -1419,6 +1591,9 @@ export function App() {
               setSelectedBrowserId(null);
               setSelectedChatId(forked.id);
             }}
+            onRename={(title) =>
+              renameChatMutation.mutate({ chatId: selectedChat.id, title })
+            }
           />
         ) : selectedProject ? (
           <div className="grid flex-1 place-items-center p-6 text-center">

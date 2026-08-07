@@ -50,7 +50,7 @@ async function start(): Promise<void> {
   };
 
   const runtimeFor = (
-    command: Extract<WorkerCommand, { type: "chat.turn" }>,
+    command: Extract<WorkerCommand, { type: "chat.turn" | "chat.compact" }>,
   ) => {
     const runtimeId = `${command.provider.id}:${command.model.id}`;
     let runtime = codexRuntimes.get(runtimeId);
@@ -129,6 +129,13 @@ async function start(): Promise<void> {
           prompt: command.prompt,
           threadId: command.threadId,
           onActivity: (activity) => emit({ type: "agent.activity", activity }),
+        });
+      case "chat.compact":
+        return runtimeFor(command).compactThread({
+          cwd: command.cwd,
+          model: command.model,
+          provider: command.provider,
+          threadId: command.threadId,
         });
     }
   };

@@ -6,6 +6,7 @@ import {
   codexDeviceLoginSchema,
   chatMessageListSchema,
   chatSummarySchema,
+  chatCompactAcceptedSchema,
   chatTurnAcceptedSchema,
   explorerDirectorySchema,
   explorerFileSchema,
@@ -383,6 +384,12 @@ export async function forkChat(chatId: string, messageId?: string) {
     await post(`/api/chats/${encodeURIComponent(chatId)}/fork`, {
       ...(messageId ? { messageId } : {}),
     }),
+  );
+}
+
+export async function compactChat(chatId: string) {
+  return chatCompactAcceptedSchema.parse(
+    await post(`/api/chats/${encodeURIComponent(chatId)}/compact`, {}),
   );
 }
 

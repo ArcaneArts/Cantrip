@@ -45,6 +45,25 @@ describe("Cantrip protocol", () => {
     ).toBe(false);
   });
 
+  it("validates worker-backed chat compaction", () => {
+    expect(
+      workerCommandSchema.parse({
+        type: "chat.compact",
+        chatId: "chat-1",
+        cwd: "/workspace",
+        threadId: "thread-1",
+        model: { id: "model-1", name: "gpt-test", reasoningEffort: null },
+        provider: {
+          id: "provider-1",
+          name: "ChatGPT",
+          kind: "chatgpt",
+          baseUrl: "https://api.openai.com/v1",
+          apiKey: null,
+        },
+      }).type,
+    ).toBe("chat.compact");
+  });
+
   it("normalizes Responses provider URLs to their API root", () => {
     expect(
       normalizeResponsesBaseUrl(
