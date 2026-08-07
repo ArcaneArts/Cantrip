@@ -36,6 +36,7 @@ const relativeTime = new Intl.RelativeTimeFormat(undefined, {
 interface GraphRow {
   commit: GitCommit;
   edges: Array<{ color: string; from: number; to: number }>;
+  introduced: boolean;
   lane: number;
   nodeColor: string;
   passthrough: Array<{ color: string; from: number; to: number }>;
@@ -60,7 +61,8 @@ function graphRows(commits: GitCommit[]): {
 
   const rows = commits.map((commit) => {
     let lane = lanes.indexOf(commit.hash);
-    if (lane < 0) {
+    const introduced = lane < 0;
+    if (introduced) {
       lane = lanes.length;
       lanes.push(commit.hash);
     }
@@ -84,7 +86,7 @@ function graphRows(commits: GitCommit[]): {
     }));
     lanes = next;
     maxLanes = Math.max(maxLanes, before.length, next.length);
-    return { commit, edges, lane, nodeColor, passthrough };
+    return { commit, edges, introduced, lane, nodeColor, passthrough };
   });
   return { maxLanes, rows };
 }
@@ -104,7 +106,7 @@ function RefLabel({ gitRef }: { gitRef: GitRef }) {
   return (
     <span
       className={cn(
-        "inline-flex h-5 max-w-52 items-center gap-1 rounded px-1.5 text-[10px] font-medium",
+        "inline-flex h-4 max-w-24 items-center gap-0.5 rounded px-1 text-[9px] font-medium",
         gitRef.kind === "head" &&
           "bg-cyan-500/20 text-cyan-600 dark:text-cyan-300",
         gitRef.kind === "local" &&
@@ -136,10 +138,18 @@ function CommitGraph({ row, width }: { row: GraphRow; width: number }) {
       className="block overflow-visible"
       aria-hidden="true"
     >
+      {!row.introduced ? (
+        <path
+          d={`M ${x(row.lane)} -1 L ${x(row.lane)} 16`}
+          fill="none"
+          stroke={row.nodeColor}
+          strokeWidth="2"
+        />
+      ) : null}
       {row.passthrough.map((edge, index) => (
         <path
           key={`p:${index}`}
-          d={`M ${x(edge.from)} 0 C ${x(edge.from)} 12, ${x(edge.to)} 20, ${x(edge.to)} 32`}
+          d={`M ${x(edge.from)} -1 C ${x(edge.from)} 12, ${x(edge.to)} 20, ${x(edge.to)} 33`}
           fill="none"
           stroke={edge.color}
           strokeWidth="2"
@@ -148,7 +158,7 @@ function CommitGraph({ row, width }: { row: GraphRow; width: number }) {
       {row.edges.map((edge, index) => (
         <path
           key={`e:${index}`}
-          d={`M ${x(edge.from)} 16 C ${x(edge.from)} 23, ${x(edge.to)} 24, ${x(edge.to)} 32`}
+          d={`M ${x(edge.from)} 16 C ${x(edge.from)} 23, ${x(edge.to)} 24, ${x(edge.to)} 33`}
           fill="none"
           stroke={edge.color}
           strokeWidth="2"
@@ -189,6 +199,8 @@ export function GitHistoryView({
   );
   const graph = useMemo(() => graphRows(commits), [commits]);
   const graphWidth = Math.max(42, graph.maxLanes * 16 + 12);
+  const graphAreaWidth = Math.min(220, Math.max(150, graphWidth + 108));
+  const historyColumns = `${graphAreaWidth}px minmax(320px, 1fr) 150px 82px`;
   const firstPage = history.data?.pages[0];
 
   useEffect(() => {
@@ -271,9 +283,11 @@ export function GitHistoryView({
           </div>
         ) : (
           <div className="min-w-[760px] py-2 text-xs">
-            <div className="sticky top-0 z-10 grid h-7 grid-cols-[240px_auto_minmax(320px,1fr)_160px_90px] items-center border-y bg-muted/95 px-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur">
-              <span>Branch / tag</span>
-              <span style={{ width: graphWidth }}>Graph</span>
+            <div
+              className="sticky top-0 z-10 grid h-7 items-center border-y bg-muted/95 px-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur"
+              style={{ gridTemplateColumns: historyColumns }}
+            >
+              <span>Graph / refs</span>
               <span>Commit message</span>
               <span>Author</span>
               <span className="text-right">When</span>
@@ -287,25 +301,34 @@ export function GitHistoryView({
                 <div
                   key={row.commit.hash}
                   className={cn(
-                    "grid h-8 grid-cols-[240px_auto_minmax(320px,1fr)_160px_90px] items-center border-b border-border/50 px-4 hover:bg-muted/50",
+                    "grid h-8 items-center border-b border-border/50 px-4 hover:bg-muted/50",
                     row.commit.isHead &&
                       "bg-cyan-500/[0.07] shadow-[inset_2px_0_0_0_rgb(6_182_212)]",
                   )}
+                  style={{ gridTemplateColumns: historyColumns }}
                   title={`${row.commit.subject}\n${row.commit.hash}\n${fullDateFormatter.format(new Date(row.commit.authoredAt))}`}
                 >
-                  <div className="flex min-w-0 items-center gap-1 overflow-hidden pr-2">
+                  <div className="relative h-8 min-w-0 overflow-visible">
+                    <div className="absolute inset-y-0 left-0 z-[1] flex items-center">
+                      <CommitGraph row={row} width={graphWidth} />
+                    </div>
                     {row.commit.refs.length ? (
-                      row.commit.refs.map((gitRef) => (
-                        <RefLabel
-                          key={`${gitRef.kind}:${gitRef.name}`}
-                          gitRef={gitRef}
-                        />
-                      ))
-                    ) : (
-                      <span />
-                    )}
+                      <div
+                        className="absolute inset-y-0 z-[2] flex min-w-0 items-center gap-0.5 overflow-hidden pr-1"
+                        style={{
+                          left: Math.max(28, graphWidth - 4),
+                          width: Math.max(48, graphAreaWidth - graphWidth + 4),
+                        }}
+                      >
+                        {row.commit.refs.map((gitRef) => (
+                          <RefLabel
+                            key={`${gitRef.kind}:${gitRef.name}`}
+                            gitRef={gitRef}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                  <CommitGraph row={row} width={graphWidth} />
                   <div className="flex min-w-0 items-center gap-2 pr-4">
                     <span className="truncate font-medium">
                       {row.commit.subject}
