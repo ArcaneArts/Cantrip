@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  agentThreadSyncSchema,
   browserListSchema,
   browserSummarySchema,
   chatListSchema,
@@ -274,6 +275,33 @@ const workerBridge = {
       case "chat.steer":
         steeredPrompts.push(command.prompt);
         return { steered: true, turnId: "turn-held" };
+      case "chat.sync":
+        return {
+          threadId: command.threadId,
+          status: "idle",
+          turns: [
+            {
+              id: "console-turn-1",
+              status: "completed",
+              startedAt: 1_786_134_300,
+              completedAt: 1_786_134_302,
+              durationMs: 2_000,
+              items: [
+                {
+                  type: "userMessage",
+                  id: "console-user-1",
+                  text: "What is 4+4?",
+                },
+                {
+                  type: "agentMessage",
+                  id: "console-agent-1",
+                  text: "8",
+                  phase: null,
+                },
+              ],
+            },
+          ],
+        };
     }
   },
 } satisfies WorkerCommandBus;
@@ -626,6 +654,19 @@ describe("local server foundation", () => {
       }),
     ).toMatchObject({ statusCode: 200 });
     expect(compactRequests).toBe(1);
+    const firstSync = agentThreadSyncSchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/chats/${chat.id}/sync`,
+        })
+      ).json(),
+    );
+    expect(firstSync.turns).toHaveLength(1);
+    await firstApp.inject({
+      method: "POST",
+      url: `/api/chats/${chat.id}/sync`,
+    });
     const completedMessages = chatMessageListSchema.parse(
       (
         await firstApp.inject({
@@ -634,6 +675,10 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
+    expect(completedMessages.slice(-2)).toMatchObject([
+      { role: "user", content: [{ type: "text", text: "What is 4+4?" }] },
+      { role: "assistant", content: [{ type: "text", text: "8" }] },
+    ]);
     const renamedChat = chatSummarySchema.parse(
       (
         await firstApp.inject({

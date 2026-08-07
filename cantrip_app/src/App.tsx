@@ -109,6 +109,7 @@ import {
   reorderQueuedPrompts,
   startTurn,
   steerQueuedPrompt,
+  syncChat,
   updateChatModel,
   updateBrowser,
   updateQueuedPrompt,
@@ -368,6 +369,7 @@ function ChatTranscript({
   onForked,
   onRename,
   settings,
+  syncEnabled,
 }: {
   chat: ChatSummary;
   onCreateChat(): void;
@@ -375,6 +377,7 @@ function ChatTranscript({
   onForked(chat: ChatSummary): void;
   onRename(title: string): void;
   settings: SettingsBundle | undefined;
+  syncEnabled: boolean;
 }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
@@ -396,6 +399,24 @@ function ChatTranscript({
     queryFn: () => getMessages(chat.id),
     queryKey: ["messages", chat.id],
     refetchInterval: chat.status === "running" ? 750 : 3_000,
+  });
+  useQuery({
+    enabled: syncEnabled,
+    queryFn: async () => {
+      const result = await syncChat(chat.id);
+      if (result.turns.length > 0) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
+          queryClient.invalidateQueries({
+            queryKey: ["chats", chat.projectId],
+          }),
+        ]);
+      }
+      return result;
+    },
+    queryKey: ["chat-sync", chat.id],
+    refetchInterval: 750,
+    retry: false,
   });
   const queuedPrompts = useQuery({
     queryFn: () => getQueuedPrompts(chat.id),
@@ -1921,6 +1942,11 @@ export function App() {
           <ChatTranscript
             chat={selectedChat}
             settings={settings.data}
+            syncEnabled={
+              terminals.data?.some(
+                (terminal) => terminal.linkedChatId === selectedChat.id,
+              ) ?? false
+            }
             onCreateChat={() => newChat.mutate(selectedChat.projectId)}
             onDelete={() => deleteChatMutation.mutate(selectedChat.id)}
             onForked={(forked) => {

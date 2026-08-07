@@ -1,6 +1,7 @@
 import {
   browserListSchema,
   browserSummarySchema,
+  agentThreadSyncSchema,
   chatListSchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
@@ -412,6 +413,12 @@ export async function forkChat(chatId: string, messageId?: string) {
 export async function compactChat(chatId: string) {
   return chatCompactAcceptedSchema.parse(
     await post(`/api/chats/${encodeURIComponent(chatId)}/compact`, {}),
+  );
+}
+
+export async function syncChat(chatId: string) {
+  return agentThreadSyncSchema.parse(
+    await post(`/api/chats/${encodeURIComponent(chatId)}/sync`, {}),
   );
 }
 

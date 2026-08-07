@@ -106,6 +106,7 @@ describe("TerminalManager", () => {
           type: "codex",
           binary: fakeCodex,
           codexHome,
+          remoteUrl: "ws://127.0.0.1:4500",
           threadId: "019fdc2c-e848-7552-b2ea-6fc7ef09e9f2",
           model: {
             id: "model-1",
@@ -130,6 +131,7 @@ describe("TerminalManager", () => {
         exitCode: 0,
       });
       expect(output).toContain("resume 019fdc2c-e848-7552-b2ea-6fc7ef09e9f2");
+      expect(output).toContain("--remote ws://127.0.0.1:4500");
       expect(output).toContain('model="openai/gpt-5.6-sol"');
       expect(output).toContain(
         'model_providers.cantrip_runtime.base_url="https://openrouter.ai/api/v1"',

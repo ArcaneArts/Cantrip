@@ -10,12 +10,16 @@ import { promisify } from "node:util";
 
 import {
   agentActivitySchema,
+  agentThreadSyncSchema,
   agentTurnResultSchema,
   normalizeResponsesBaseUrl,
   type AgentActivity,
+  type AgentThreadSync,
+  type AgentThreadSyncItem,
   type AgentTurnResult,
   type WorkerCommand,
 } from "@cantrip/protocol";
+import WebSocket, { type RawData } from "ws";
 
 interface RpcError {
   code: number;
@@ -47,6 +51,34 @@ interface ActiveTurn {
   reject(error: Error): void;
   resolve(result: AgentTurnResult): void;
   threadId: string;
+}
+
+interface ThreadTurn {
+  completedAt: number | null;
+  durationMs: number | null;
+  error: { message: string } | null;
+  id: string;
+  items: Array<
+    | (AgentMessageItem & { id: string })
+    | CommandExecutionItem
+    | FileChangeItem
+    | {
+        clientId: string | null;
+        content: Array<{ type: string; text?: string }>;
+        id: string;
+        type: "userMessage";
+      }
+  >;
+  startedAt: number | null;
+  status: "completed" | "failed" | "interrupted" | "inProgress";
+}
+
+interface ThreadReadResponse {
+  thread: {
+    id: string;
+    status: { type: "active" | "idle" | "notLoaded" | "systemError" };
+    turns: ThreadTurn[];
+  };
 }
 
 interface WorkspaceFileState {
@@ -121,6 +153,7 @@ interface TurnDiffUpdatedParams {
 
 export interface RunAgentTurnOptions {
   chatId: string;
+  clientMessageId: string;
   cwd: string;
   model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
   provider: Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
@@ -131,7 +164,7 @@ export interface RunAgentTurnOptions {
 
 export type CompactAgentThreadOptions = Omit<
   RunAgentTurnOptions,
-  "chatId" | "onActivity" | "prompt"
+  "chatId" | "clientMessageId" | "onActivity" | "prompt"
 > & {
   threadId: string;
 };
@@ -302,11 +335,14 @@ function toActivity(
 
 export class CodexAppServer {
   readonly #activeTurns = new Map<string, ActiveTurn>();
+  readonly #externalTurnBaselines = new Map<string, Set<string>>();
   readonly #loadedThreads = new Set<string>();
   readonly #pending = new Map<number, PendingRpcRequest>();
   #child: ChildProcessWithoutNullStreams | null = null;
+  #remoteUrl: string | null = null;
   #runtimeId: string | null = null;
   #nextId = 1;
+  #socket: WebSocket | null = null;
   #starting: Promise<void> | null = null;
 
   constructor(
@@ -345,6 +381,7 @@ export class CodexAppServer {
 
     const response = (await this.request("turn/start", {
       threadId,
+      clientUserMessageId: `cantrip:${options.clientMessageId}`,
       input: [{ type: "text", text: options.prompt, text_elements: [] }],
       model: options.model.name,
     })) as TurnStartResponse;
@@ -353,6 +390,79 @@ export class CodexAppServer {
     }
     this.#activeTurns.set(response.turn.id, activeTurn);
     return completion;
+  }
+
+  async remoteEndpoint(
+    model: RunAgentTurnOptions["model"],
+    provider: RunAgentTurnOptions["provider"],
+  ): Promise<string> {
+    await this.ensureStarted(model, provider);
+    if (!this.#remoteUrl) {
+      throw new Error("Codex app-server did not announce a remote endpoint.");
+    }
+    return this.#remoteUrl;
+  }
+
+  async syncThread(
+    options: Pick<
+      RunAgentTurnOptions,
+      "cwd" | "model" | "provider" | "threadId"
+    > & { threadId: string },
+  ): Promise<AgentThreadSync> {
+    await this.ensureStarted(options.model, options.provider);
+    const response = (await this.request("thread/read", {
+      threadId: options.threadId,
+      includeTurns: true,
+    })) as ThreadReadResponse;
+    const baseline = this.#externalTurnBaselines.get(options.threadId);
+    const turns = response.thread.turns
+      .filter((turn) => (baseline ? !baseline.has(turn.id) : false))
+      .filter(
+        (turn) =>
+          !turn.items.some(
+            (item) =>
+              item.type === "userMessage" &&
+              item.clientId?.startsWith("cantrip:"),
+          ),
+      )
+      .map((turn) => this.syncTurn(turn, options.cwd));
+    for (const turn of turns) {
+      if (turn.status !== "inProgress") baseline?.add(turn.id);
+    }
+    const status = turns.some((turn) => turn.status === "inProgress")
+      ? "running"
+      : turns.some((turn) => turn.status === "failed")
+        ? "failed"
+        : "idle";
+    return agentThreadSyncSchema.parse({
+      threadId: response.thread.id,
+      status,
+      turns,
+    });
+  }
+
+  async prepareExternalSync(
+    options: Pick<
+      RunAgentTurnOptions,
+      "cwd" | "model" | "provider" | "threadId"
+    > & { threadId: string },
+  ): Promise<void> {
+    await this.ensureStarted(options.model, options.provider);
+    let response: ThreadReadResponse;
+    try {
+      response = (await this.request("thread/read", {
+        threadId: options.threadId,
+        includeTurns: true,
+      })) as ThreadReadResponse;
+    } catch (error) {
+      if (!/not materialized yet/i.test(String(error))) throw error;
+      this.#externalTurnBaselines.set(options.threadId, new Set());
+      return;
+    }
+    this.#externalTurnBaselines.set(
+      options.threadId,
+      new Set(response.thread.turns.map((turn) => turn.id)),
+    );
   }
 
   async compactThread(
@@ -404,10 +514,15 @@ export class CodexAppServer {
 
   close(): void {
     this.handleExit(new Error("Codex app-server stopped."));
-    this.#child?.kill("SIGTERM");
+    this.#socket?.close();
+    this.#socket = null;
+    this.#child?.kill("SIGINT");
     this.#child = null;
+    this.#remoteUrl = null;
     this.#runtimeId = null;
     this.#starting = null;
+    this.#loadedThreads.clear();
+    this.#externalTurnBaselines.clear();
   }
 
   private async ensureStarted(
@@ -478,6 +593,45 @@ export class CodexAppServer {
     );
   }
 
+  private syncTurn(turn: ThreadTurn, cwd: string) {
+    const items = turn.items.flatMap((item): AgentThreadSyncItem[] => {
+      if (item.type === "userMessage") {
+        const text = item.content
+          .flatMap((content) =>
+            content.type === "text" && content.text ? [content.text] : [],
+          )
+          .join("\n\n")
+          .trim();
+        return text ? [{ type: "userMessage", id: item.id, text }] : [];
+      }
+      if (item.type === "agentMessage") {
+        const text = item.text?.trim();
+        return text
+          ? [
+              {
+                type: "agentMessage",
+                id: item.id,
+                text,
+                phase: item.phase ?? null,
+              },
+            ]
+          : [];
+      }
+      if (item.type === "commandExecution" || item.type === "fileChange") {
+        return [{ type: "activity", activity: toActivity(item, cwd) }];
+      }
+      return [];
+    });
+    return {
+      id: turn.id,
+      status: turn.status,
+      startedAt: turn.startedAt,
+      completedAt: turn.completedAt,
+      durationMs: turn.durationMs,
+      items,
+    };
+  }
+
   private async start(
     model: RunAgentTurnOptions["model"],
     provider: RunAgentTurnOptions["provider"],
@@ -512,6 +666,8 @@ export class CodexAppServer {
               `model_reasoning_effort=${JSON.stringify(model.reasoningEffort)}`,
             ]
           : []),
+        "--listen",
+        "ws://127.0.0.1:0",
       ],
       {
         env: {
@@ -526,13 +682,72 @@ export class CodexAppServer {
     );
     this.#child = child;
 
-    const lines = readline.createInterface({ input: child.stdout });
-    lines.on("line", (line) => {
-      this.handleLine(line);
+    const stdoutLines = readline.createInterface({ input: child.stdout });
+    const stderrLines = readline.createInterface({ input: child.stderr });
+    const remoteUrl = await new Promise<string>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error("Codex app-server endpoint timed out.")),
+        15_000,
+      );
+      const inspectLine = (line: string) => {
+        const match = /^\s*listening on:\s+(ws:\/\/\S+)\s*$/.exec(line);
+        if (match?.[1]) {
+          clearTimeout(timeout);
+          resolve(match[1]);
+        }
+      };
+      stdoutLines.on("line", inspectLine);
+      stderrLines.on("line", inspectLine);
+      child.once("error", (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+      child.once("exit", (code, signal) => {
+        clearTimeout(timeout);
+        reject(
+          new Error(
+            `Codex app-server exited before listening (${signal ?? `code ${String(code)}`}).`,
+          ),
+        );
+      });
     });
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk: string) => {
-      process.stderr.write(`[codex] ${chunk}`);
+    this.#remoteUrl = remoteUrl;
+    const socket = new WebSocket(remoteUrl);
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error("Codex app-server WebSocket timed out.")),
+        15_000,
+      );
+      socket.once("open", () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+      socket.once("error", (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+    });
+    this.#socket = socket;
+    socket.on("message", (data: RawData) => this.handleMessage(data));
+    socket.on("error", (error) => {
+      this.handleExit(error);
+    });
+    socket.on("close", () => {
+      if (this.#socket !== socket) return;
+      this.handleExit(new Error("Codex app-server WebSocket closed."));
+      this.#socket = null;
+      this.#remoteUrl = null;
+      this.#runtimeId = null;
+      this.#starting = null;
+      this.#loadedThreads.clear();
+      this.#externalTurnBaselines.clear();
+      this.#child?.kill("SIGINT");
+      this.#child = null;
+    });
+    stderrLines.on("line", (line) => {
+      if (!line.trimStart().startsWith("listening on:")) {
+        process.stderr.write(`[codex] ${line}\n`);
+      }
     });
     child.once("exit", (code, signal) => {
       this.handleExit(
@@ -541,9 +756,12 @@ export class CodexAppServer {
         ),
       );
       this.#child = null;
+      this.#socket = null;
+      this.#remoteUrl = null;
       this.#runtimeId = null;
       this.#starting = null;
       this.#loadedThreads.clear();
+      this.#externalTurnBaselines.clear();
     });
 
     await this.request("initialize", {
@@ -566,16 +784,16 @@ export class CodexAppServer {
   }
 
   private send(message: RpcMessage): void {
-    if (!this.#child?.stdin.writable) {
+    if (!this.#socket || this.#socket.readyState !== WebSocket.OPEN) {
       throw new Error("Codex app-server is not writable.");
     }
-    this.#child.stdin.write(`${JSON.stringify(message)}\n`);
+    this.#socket.send(JSON.stringify(message));
   }
 
-  private handleLine(line: string): void {
+  private handleMessage(data: RawData): void {
     let message: RpcMessage;
     try {
-      message = JSON.parse(line) as RpcMessage;
+      message = JSON.parse(data.toString()) as RpcMessage;
     } catch {
       return;
     }

@@ -49,12 +49,10 @@ async function start(): Promise<void> {
     return client;
   };
 
-  const runtimeFor = (
-    command: Extract<
-      WorkerCommand,
-      { type: "chat.turn" | "chat.compact" | "chat.interrupt" | "chat.steer" }
-    >,
-  ) => {
+  const runtimeFor = (command: {
+    model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
+    provider: Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
+  }) => {
     const runtimeId = `${command.provider.id}:${command.model.id}`;
     let runtime = codexRuntimes.get(runtimeId);
     if (!runtime) {
@@ -109,22 +107,47 @@ async function start(): Promise<void> {
       case "explorer.file.read":
         return readExplorerFile(command.root, command.path);
       case "terminal.open":
+        if (command.launch.type === "codex") {
+          const runtime = runtimeFor(command.launch);
+          if (
+            command.launch.threadId &&
+            !terminals.hasLiveSession(command.terminalId)
+          ) {
+            await runtime.prepareExternalSync({
+              cwd: command.cwd,
+              model: command.launch.model,
+              provider: command.launch.provider,
+              threadId: command.launch.threadId,
+            });
+          }
+          return terminals.open(
+            command.terminalId,
+            command.attachmentId,
+            command.cwd,
+            command.cols,
+            command.rows,
+            {
+              ...command.launch,
+              binary: config.codexBinary,
+              codexHome:
+                command.launch.provider.kind === "chatgpt"
+                  ? accountHomeFor(command.launch.provider.id)
+                  : codexHome,
+              remoteUrl: await runtime.remoteEndpoint(
+                command.launch.model,
+                command.launch.provider,
+              ),
+            },
+            emit,
+          );
+        }
         return terminals.open(
           command.terminalId,
           command.attachmentId,
           command.cwd,
           command.cols,
           command.rows,
-          command.launch.type === "codex"
-            ? {
-                ...command.launch,
-                binary: config.codexBinary,
-                codexHome:
-                  command.launch.provider.kind === "chatgpt"
-                    ? accountHomeFor(command.launch.provider.id)
-                    : codexHome,
-              }
-            : command.launch,
+          command.launch,
           emit,
         );
       case "terminal.detach":
@@ -141,6 +164,7 @@ async function start(): Promise<void> {
       case "chat.turn":
         return runtimeFor(command).runTurn({
           chatId: command.chatId,
+          clientMessageId: command.clientMessageId,
           cwd: command.cwd,
           model: command.model,
           provider: command.provider,
@@ -163,6 +187,13 @@ async function start(): Promise<void> {
           command.threadId,
           command.prompt,
         );
+      case "chat.sync":
+        return runtimeFor(command).syncThread({
+          cwd: command.cwd,
+          model: command.model,
+          provider: command.provider,
+          threadId: command.threadId,
+        });
     }
   };
   const commandConnection = new WorkerConnection(config, handleCommand);

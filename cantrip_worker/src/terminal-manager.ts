@@ -60,6 +60,7 @@ export type TerminalLaunch =
   | (Extract<CodexLaunchCommand, { type: "codex" }> & {
       binary: string;
       codexHome: string;
+      remoteUrl: string;
     });
 
 function shellCommand(): string {
@@ -102,6 +103,8 @@ function codexLaunch(
             : []),
         ];
   const args = [
+    "--remote",
+    launch.remoteUrl,
     "-c",
     'cli_auth_credentials_store="file"',
     ...providerArguments.flatMap((argument) => ["-c", argument]),
@@ -136,6 +139,11 @@ function codexLaunch(
 
 export class TerminalManager {
   readonly #sessions = new Map<string, TerminalSession>();
+
+  hasLiveSession(terminalId: string): boolean {
+    const session = this.#sessions.get(terminalId);
+    return Boolean(session && !session.exited);
+  }
 
   open(
     terminalId: string,

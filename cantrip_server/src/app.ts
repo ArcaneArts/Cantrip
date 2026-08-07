@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import {
+  agentThreadSyncSchema,
   agentTurnResultSchema,
   browserCreateSchema,
   browserListSchema,
@@ -236,6 +237,7 @@ export async function buildApp({
         {
           type: "chat.turn",
           chatId: context.chatId,
+          clientMessageId: userMessage.id,
           cwd: context.cwd,
           threadId: context.threadId,
           prompt: workerPrompt,
@@ -1474,6 +1476,99 @@ export async function buildApp({
         provider: runtime.provider,
       });
       return reply.send(chatInterruptAcceptedSchema.parse(result));
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/sync",
+    async (request, reply) => {
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      if (!context.threadId) {
+        return reply.send(
+          agentThreadSyncSchema.parse({
+            threadId: "unavailable",
+            status: "idle",
+            turns: [],
+          }),
+        );
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      const modelId =
+        context.modelId ??
+        (await repository.getSettings(LOCAL_USER_ID)).preferences
+          .defaultModelId;
+      if (!modelId) {
+        return reply.code(409).send({ error: "The chat has no active model." });
+      }
+      const runtime = await repository.getModelRuntime(LOCAL_USER_ID, modelId);
+      if (!runtime) {
+        return reply.code(400).send({ error: "Selected model was not found." });
+      }
+      const sync = agentThreadSyncSchema.parse(
+        await bridge.request(context.workerId, {
+          type: "chat.sync",
+          chatId: context.chatId,
+          cwd: context.cwd,
+          threadId: context.threadId,
+          model: runtime.model,
+          provider: runtime.provider,
+        }),
+      );
+      for (const turn of sync.turns) {
+        for (const item of turn.items) {
+          if (item.type === "userMessage") {
+            await repository.upsertMessage(LOCAL_USER_ID, context.chatId, {
+              role: "user",
+              content: [{ type: "text", text: item.text }],
+              idempotencyKey: `codex-sync:${turn.id}:${item.id}`,
+            });
+          } else if (
+            item.type === "agentMessage" &&
+            item.phase !== "commentary"
+          ) {
+            await repository.upsertMessage(LOCAL_USER_ID, context.chatId, {
+              role: "assistant",
+              content: [{ type: "text", text: item.text }],
+              idempotencyKey: `codex-sync:${turn.id}:${item.id}`,
+            });
+          } else if (item.type === "activity") {
+            await repository.upsertMessage(LOCAL_USER_ID, context.chatId, {
+              role: "assistant",
+              content: [{ type: "activity", activity: item.activity }],
+              idempotencyKey: `codex-sync:${turn.id}:${item.activity.id}`,
+            });
+          }
+        }
+        if (turn.status === "failed" || turn.status === "interrupted") {
+          await repository.upsertMessage(LOCAL_USER_ID, context.chatId, {
+            role: "system",
+            content: [
+              {
+                type: "text",
+                text:
+                  turn.status === "interrupted"
+                    ? "Turn interrupted in the Codex console."
+                    : "The Codex console turn failed.",
+              },
+            ],
+            idempotencyKey: `codex-sync:${turn.id}:status`,
+          });
+        }
+      }
+      if (sync.turns.length > 0) {
+        await repository.setChatStatus(context.chatId, sync.status);
+        if (sync.status === "idle")
+          void dispatchNextQueuedPrompt(context.chatId);
+      }
+      return reply.send(sync);
     },
   );
 

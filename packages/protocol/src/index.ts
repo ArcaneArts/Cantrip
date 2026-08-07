@@ -618,6 +618,39 @@ export const agentTurnResultSchema = z.object({
   status: z.literal("completed"),
 });
 
+export const agentThreadSyncItemSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("userMessage"),
+    id: z.string().min(1),
+    text: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("agentMessage"),
+    id: z.string().min(1),
+    text: z.string().min(1),
+    phase: z.enum(["commentary", "final_answer"]).nullable(),
+  }),
+  z.object({
+    type: z.literal("activity"),
+    activity: agentActivitySchema,
+  }),
+]);
+
+export const agentThreadSyncSchema = z.object({
+  threadId: z.string().min(1),
+  status: z.enum(["idle", "running", "failed"]),
+  turns: z.array(
+    z.object({
+      id: z.string().min(1),
+      status: z.enum(["completed", "failed", "interrupted", "inProgress"]),
+      startedAt: z.number().int().nonnegative().nullable(),
+      completedAt: z.number().int().nonnegative().nullable(),
+      durationMs: z.number().int().nonnegative().nullable(),
+      items: z.array(agentThreadSyncItemSchema),
+    }),
+  ),
+});
+
 export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("codex.auth.status"),
@@ -718,6 +751,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("chat.turn"),
     chatId: z.string().min(1),
+    clientMessageId: z.string().min(1),
     cwd: z.string().min(1),
     threadId: z.string().min(1).nullable(),
     prompt: z.string().min(1),
@@ -774,6 +808,24 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     chatId: z.string().min(1),
     threadId: z.string().min(1).nullable(),
     prompt: z.string().trim().min(1).max(100_000),
+    model: z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      reasoningEffort: reasoningEffortSchema.nullable(),
+    }),
+    provider: z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      kind: modelProviderKindSchema,
+      baseUrl: z.url(),
+      apiKey: z.string().min(1).nullable(),
+    }),
+  }),
+  z.object({
+    type: z.literal("chat.sync"),
+    chatId: z.string().min(1),
+    cwd: z.string().min(1),
+    threadId: z.string().min(1),
     model: z.object({
       id: z.string().min(1),
       name: z.string().min(1),
@@ -900,6 +952,8 @@ export type ChatCompactAccepted = z.infer<typeof chatCompactAcceptedSchema>;
 export type ChatInterruptAccepted = z.infer<typeof chatInterruptAcceptedSchema>;
 export type AgentTurnResult = z.infer<typeof agentTurnResultSchema>;
 export type AgentActivity = z.infer<typeof agentActivitySchema>;
+export type AgentThreadSync = z.infer<typeof agentThreadSyncSchema>;
+export type AgentThreadSyncItem = z.infer<typeof agentThreadSyncItemSchema>;
 export type WorkerCommand = z.infer<typeof workerCommandSchema>;
 export type WorkerEvent = z.infer<typeof workerEventSchema>;
 export type WorkerRequestEnvelope = z.infer<typeof workerRequestEnvelopeSchema>;
