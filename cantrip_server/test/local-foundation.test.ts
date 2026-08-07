@@ -17,6 +17,7 @@ import {
   gitActionResultSchema,
   gitHistorySchema,
   gitStatusSchema,
+  githubRepositoryListSchema,
   modelProfileSummarySchema,
   modelProviderSummarySchema,
   projectListSchema,
@@ -91,6 +92,7 @@ const workerBridge = {
         return { accepted: true };
       case "github.auth.status":
         return { authenticated: true, login: "cantrip-test", source: "gh-cli" };
+      case "github.repositories.cached":
       case "github.repositories.list":
         return [
           {
@@ -486,6 +488,16 @@ describe("local server foundation", () => {
       chatGptProvider.id,
       chatGptProvider.id,
     ]);
+    expect(
+      githubRepositoryListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: "/api/github/repositories/cache?workerId=test-worker&login=cantrip-test",
+          })
+        ).json(),
+      ),
+    ).toMatchObject([{ nameWithOwner: "ArcaneArts/Cantrip", imported: false }]);
 
     const projectResponse = await firstApp.inject({
       method: "POST",

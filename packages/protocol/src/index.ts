@@ -665,6 +665,10 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     providerId: z.string().min(1),
   }),
   z.object({ type: z.literal("github.auth.status") }),
+  z.object({
+    type: z.literal("github.repositories.cached"),
+    login: z.string().min(1),
+  }),
   z.object({ type: z.literal("github.repositories.list") }),
   z.object({
     type: z.literal("project.clone"),

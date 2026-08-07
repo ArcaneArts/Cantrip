@@ -31,7 +31,6 @@ import {
   SquareTerminal,
   User,
   WandSparkles,
-  X,
 } from "lucide-react";
 import {
   lazy,
@@ -90,6 +89,7 @@ import {
   forkChat,
   getChats,
   getBrowsers,
+  getCachedGithubRepositories,
   getExplorers,
   getGithubRepositories,
   getGithubStatus,
@@ -165,11 +165,9 @@ function StatusDot({ online }: { online: boolean }) {
 }
 
 function RepositoryImporter({
-  onClose,
   onImported,
   workerId,
 }: {
-  onClose(): void;
   onImported(project: ProjectSummary): void;
   workerId: string | null;
 }) {
@@ -185,6 +183,14 @@ function RepositoryImporter({
     queryFn: () => getGithubRepositories(workerId!),
     queryKey: ["github-repositories", workerId],
   });
+  const cachedRepositories = useQuery({
+    enabled: Boolean(
+      workerId && github.data?.authenticated && github.data.login,
+    ),
+    queryFn: () => getCachedGithubRepositories(workerId!, github.data!.login!),
+    queryKey: ["github-repositories-cache", workerId, github.data?.login],
+    staleTime: 30_000,
+  });
   const importProject = useMutation({
     mutationFn: (repository: GithubRepository) =>
       createGithubProject({
@@ -199,6 +205,9 @@ function RepositoryImporter({
         queryClient.invalidateQueries({
           queryKey: ["github-repositories", workerId],
         }),
+        queryClient.invalidateQueries({
+          queryKey: ["github-repositories-cache", workerId],
+        }),
       ]);
       onImported(project);
     },
@@ -206,32 +215,22 @@ function RepositoryImporter({
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return (repositories.data ?? []).filter((repository) =>
-      needle
-        ? `${repository.nameWithOwner} ${repository.description ?? ""}`
-            .toLowerCase()
-            .includes(needle)
-        : true,
+    return (repositories.data ?? cachedRepositories.data ?? []).filter(
+      (repository) =>
+        needle
+          ? `${repository.nameWithOwner} ${repository.description ?? ""}`
+              .toLowerCase()
+              .includes(needle)
+          : true,
     );
-  }, [repositories.data, search]);
-  const visibleRepositories = filtered.slice(0, 100);
+  }, [cachedRepositories.data, repositories.data, search]);
+  const hasRepositoryData = Boolean(
+    repositories.data || cachedRepositories.data?.length,
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex items-center justify-between gap-4 border-b px-5 py-4 sm:px-8">
-        <div>
-          <h1 className="font-semibold tracking-tight">Add from GitHub</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Cantrip clones one repository into a worker-owned source folder.
-          </p>
-        </div>
-        <Button size="icon" variant="ghost" onClick={onClose}>
-          <X className="size-4" />
-          <span className="sr-only">Close repository picker</span>
-        </Button>
-      </header>
-
-      <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-5 overflow-hidden p-5 sm:p-8">
+      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 overflow-hidden p-5 sm:p-8">
         {!workerId ? (
           <Card>
             <CardHeader>
@@ -241,7 +240,7 @@ function RepositoryImporter({
               </CardDescription>
             </CardHeader>
           </Card>
-        ) : github.isLoading ? (
+        ) : github.isLoading && !github.data ? (
           <div className="grid flex-1 place-items-center text-muted-foreground">
             <Loader2 className="size-5 animate-spin" />
           </div>
@@ -281,74 +280,165 @@ function RepositoryImporter({
                   className="h-10 w-full rounded-md border bg-background pl-10 pr-3 text-sm outline-none ring-ring focus:ring-2"
                 />
               </div>
-              <Badge variant="secondary" className="w-fit gap-2 px-3 py-2">
-                <StatusDot online />@{github.data.login}
-              </Badge>
+              <div className="flex items-center justify-between gap-2 sm:justify-end">
+                <Badge variant="secondary" className="gap-2 px-3 py-2">
+                  <StatusDot online />@{github.data.login}
+                </Badge>
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {filtered.length} repositories
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={repositories.isFetching}
+                  onClick={() => void repositories.refetch()}
+                >
+                  <RefreshCw
+                    className={cn(
+                      "size-4",
+                      repositories.isFetching && "animate-spin",
+                    )}
+                  />
+                  {repositories.isFetching ? "Refreshing" : "Refresh"}
+                </Button>
+              </div>
             </div>
 
-            {repositories.isLoading ? (
+            {!hasRepositoryData &&
+            (repositories.isLoading || cachedRepositories.isLoading) ? (
               <div className="grid flex-1 place-items-center text-muted-foreground">
-                <Loader2 className="size-5 animate-spin" />
+                <div className="flex items-center gap-2 text-sm">
+                  <Loader2 className="size-4 animate-spin" />
+                  Loading repositories…
+                </div>
               </div>
-            ) : repositories.isError ? (
+            ) : repositories.isError && !hasRepositoryData ? (
               <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
                 {errorText(repositories.error)}
               </p>
             ) : (
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-                {visibleRepositories.map((repository) => (
-                  <div
-                    key={repository.id}
-                    className="flex items-center gap-4 rounded-xl border bg-card p-4"
-                  >
-                    <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted">
-                      {repository.isPrivate ? (
-                        <Lock className="size-4" />
-                      ) : repository.isFork ? (
-                        <GitFork className="size-4" />
-                      ) : (
-                        <FolderGit2 className="size-4" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">
-                        {repository.nameWithOwner}
-                      </p>
-                      <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-                        {repository.description ?? "No description"}
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant={repository.imported ? "outline" : "default"}
-                      disabled={repository.imported || importProject.isPending}
-                      onClick={() => importProject.mutate(repository)}
-                    >
-                      {repository.imported ? (
-                        <Check className="size-4" />
-                      ) : importProject.isPending &&
-                        importProject.variables?.id === repository.id ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Plus className="size-4" />
-                      )}
-                      {repository.imported ? "Added" : "Add"}
-                    </Button>
-                  </div>
-                ))}
+              <div className="min-h-0 flex-1 overflow-auto rounded-xl border bg-card/20">
+                <table className="w-full table-fixed border-collapse text-left text-sm">
+                  <thead className="sticky top-0 z-10 bg-background/95 text-[11px] uppercase tracking-wide text-muted-foreground backdrop-blur-xl">
+                    <tr className="border-b">
+                      <th className="w-[42%] px-3 py-2 font-medium sm:w-[34%]">
+                        Repository
+                      </th>
+                      <th className="hidden w-[34%] px-3 py-2 font-medium md:table-cell">
+                        Description
+                      </th>
+                      <th className="hidden w-24 px-3 py-2 font-medium sm:table-cell">
+                        Type
+                      </th>
+                      <th className="hidden w-28 px-3 py-2 font-medium lg:table-cell">
+                        Updated
+                      </th>
+                      <th className="w-24 px-3 py-2 text-right font-medium">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((repository) => {
+                      const importing =
+                        importProject.isPending &&
+                        importProject.variables?.id === repository.id;
+                      const disabled =
+                        repository.imported || importProject.isPending;
+                      return (
+                        <tr
+                          key={repository.id}
+                          role="button"
+                          tabIndex={disabled ? -1 : 0}
+                          aria-disabled={disabled}
+                          onClick={() => {
+                            if (!disabled) importProject.mutate(repository);
+                          }}
+                          onKeyDown={(event) => {
+                            if (
+                              !disabled &&
+                              (event.key === "Enter" || event.key === " ")
+                            ) {
+                              event.preventDefault();
+                              importProject.mutate(repository);
+                            }
+                          }}
+                          className={cn(
+                            "h-10 outline-none odd:bg-muted/[0.035] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                            disabled
+                              ? "cursor-default text-muted-foreground"
+                              : "cursor-pointer hover:bg-muted/40",
+                          )}
+                        >
+                          <td className="px-3 py-1.5">
+                            <div className="flex min-w-0 items-center gap-2">
+                              {repository.isPrivate ? (
+                                <Lock className="size-3.5 shrink-0" />
+                              ) : repository.isFork ? (
+                                <GitFork className="size-3.5 shrink-0" />
+                              ) : (
+                                <FolderGit2 className="size-3.5 shrink-0" />
+                              )}
+                              <span className="truncate font-medium">
+                                {repository.nameWithOwner}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="hidden truncate px-3 py-1.5 text-xs text-muted-foreground md:table-cell">
+                            {repository.description ?? "No description"}
+                          </td>
+                          <td className="hidden px-3 py-1.5 text-xs text-muted-foreground sm:table-cell">
+                            {repository.isPrivate
+                              ? "Private"
+                              : repository.isFork
+                                ? "Fork"
+                                : "Public"}
+                          </td>
+                          <td className="hidden whitespace-nowrap px-3 py-1.5 text-xs text-muted-foreground lg:table-cell">
+                            {new Date(repository.updatedAt).toLocaleDateString(
+                              undefined,
+                              {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              },
+                            )}
+                          </td>
+                          <td className="px-3 py-1.5 text-right text-xs">
+                            <span className="inline-flex items-center justify-end gap-1.5">
+                              {repository.imported ? (
+                                <Check className="size-3.5" />
+                              ) : importing ? (
+                                <Loader2 className="size-3.5 animate-spin" />
+                              ) : (
+                                <Plus className="size-3.5" />
+                              )}
+                              {repository.imported
+                                ? "Added"
+                                : importing
+                                  ? "Adding"
+                                  : "Add"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
                 {filtered.length === 0 ? (
-                  <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                  <div className="grid min-h-40 place-items-center p-8 text-center text-sm text-muted-foreground">
                     No matching repositories.
-                  </p>
-                ) : null}
-                {filtered.length > visibleRepositories.length ? (
-                  <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-                    Showing the first {visibleRepositories.length} of{" "}
-                    {filtered.length} repositories. Search to narrow the list.
-                  </p>
+                  </div>
                 ) : null}
               </div>
             )}
+
+            {repositories.isError && hasRepositoryData ? (
+              <p className="text-xs text-destructive">
+                Refresh failed; showing the last cached repository list.{" "}
+                {errorText(repositories.error)}
+              </p>
+            ) : null}
 
             {importProject.isError ? (
               <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
@@ -1871,7 +1961,6 @@ export function App() {
         ) : showImporter ? (
           <RepositoryImporter
             workerId={onlineWorker?.workerId ?? null}
-            onClose={() => setShowImporter(false)}
             onImported={(project) => {
               setSelectedProjectId(project.id);
               setSelectedChatId(null);

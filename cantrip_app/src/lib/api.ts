@@ -201,6 +201,17 @@ export async function getGithubRepositories(workerId: string) {
   );
 }
 
+export async function getCachedGithubRepositories(
+  workerId: string,
+  login: string,
+) {
+  return githubRepositoryListSchema.parse(
+    await request(
+      `/api/github/repositories/cache?workerId=${encodeURIComponent(workerId)}&login=${encodeURIComponent(login)}`,
+    ),
+  );
+}
+
 export async function getProjects() {
   return projectListSchema.parse(await request("/api/projects"));
 }

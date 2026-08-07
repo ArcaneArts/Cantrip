@@ -90,6 +90,8 @@ async function start(): Promise<void> {
         return { accepted: true };
       case "github.auth.status":
         return github.authStatus();
+      case "github.repositories.cached":
+        return github.cachedRepositories(command.login);
       case "github.repositories.list":
         return github.listRepositories();
       case "project.clone":

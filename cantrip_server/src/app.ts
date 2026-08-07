@@ -641,6 +641,40 @@ export async function buildApp({
     },
   );
 
+  app.get<{ Querystring: { login?: string; workerId?: string } }>(
+    "/api/github/repositories/cache",
+    async (request, reply) => {
+      const workerId = request.query.workerId;
+      const login = request.query.login;
+      if (!workerId || !login) {
+        return reply
+          .code(400)
+          .send({ error: "workerId and login are required" });
+      }
+      try {
+        const workerRepositories = githubWorkerRepositoryListSchema.parse(
+          await bridge.request(workerId, {
+            type: "github.repositories.cached",
+            login,
+          }),
+        );
+        const imported =
+          await repository.listGithubRepositoryIds(LOCAL_USER_ID);
+        return reply.send(
+          githubRepositoryListSchema.parse(
+            workerRepositories.map((item) => ({
+              ...item,
+              imported: imported.has(item.id),
+            })),
+          ),
+        );
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
   app.get<{ Querystring: { workerId?: string } }>(
     "/api/github/repositories",
     async (request, reply) => {

@@ -1,5 +1,13 @@
 import { execFile } from "node:child_process";
-import { access, lstat, mkdir, rm } from "node:fs/promises";
+import {
+  access,
+  lstat,
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -25,6 +33,12 @@ interface GithubApiRepository {
   name?: unknown;
   private?: unknown;
   updated_at?: unknown;
+}
+
+interface RepositoryCache {
+  login: string;
+  repositories: GithubWorkerRepository[];
+  updatedAt: string;
 }
 
 function repositorySegments(nameWithOwner: string): [string, string] {
@@ -63,6 +77,22 @@ export class GithubClient {
 
   private repositoriesRoot(): string {
     return path.resolve(this.dataDirectory, "repositories");
+  }
+
+  private repositoryCachePath(): string {
+    return path.join(this.dataDirectory, "github", "repositories.json");
+  }
+
+  async cachedRepositories(login: string): Promise<GithubWorkerRepository[]> {
+    try {
+      const cache = JSON.parse(
+        await readFile(this.repositoryCachePath(), "utf8"),
+      ) as RepositoryCache;
+      if (cache.login !== login) return [];
+      return githubWorkerRepositoryListSchema.parse(cache.repositories);
+    } catch {
+      return [];
+    }
   }
 
   async deleteRepository(
@@ -113,7 +143,7 @@ export class GithubClient {
 
   async listRepositories(): Promise<GithubWorkerRepository[]> {
     const status = await this.authStatus();
-    if (!status.authenticated) {
+    if (!status.authenticated || !status.login) {
       throw new Error(
         "GitHub is not authenticated on this worker. Run `gh auth login` or set GH_TOKEN.",
       );
@@ -138,12 +168,30 @@ export class GithubClient {
       { maxBuffer: 32 * 1024 * 1024 },
     );
     const pages = JSON.parse(stdout) as GithubApiRepository[][];
-    return githubWorkerRepositoryListSchema.parse(
+    const repositories = githubWorkerRepositoryListSchema.parse(
       pages
         .flat()
         .map(parseRepository)
         .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
     );
+    const cachePath = this.repositoryCachePath();
+    const temporaryPath = `${cachePath}.${process.pid}.${Date.now()}.tmp`;
+    try {
+      await mkdir(path.dirname(cachePath), { recursive: true, mode: 0o700 });
+      await writeFile(
+        temporaryPath,
+        JSON.stringify({
+          login: status.login,
+          repositories,
+          updatedAt: new Date().toISOString(),
+        } satisfies RepositoryCache),
+        { encoding: "utf8", mode: 0o600 },
+      );
+      await rename(temporaryPath, cachePath);
+    } catch {
+      await rm(temporaryPath, { force: true }).catch(() => undefined);
+    }
+    return repositories;
   }
 
   async cloneRepository(nameWithOwner: string): Promise<ProjectCloneResult> {
