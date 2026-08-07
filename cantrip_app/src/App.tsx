@@ -538,14 +538,14 @@ function ChatTranscript({
 
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-44 bg-gradient-to-t from-background/50 via-background/25 to-transparent"
+        className="chat-composer-fade pointer-events-none absolute inset-x-0 bottom-0 z-10 h-56"
       />
       <form
         onSubmit={submit}
         className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-3 sm:px-8 sm:pb-4"
       >
         <div className="pointer-events-auto mx-auto max-w-3xl">
-          <div className="flex items-end gap-2 rounded-2xl border bg-background/60 p-2 shadow-xl shadow-background/20 backdrop-blur-3xl backdrop-saturate-150 focus-within:ring-2 focus-within:ring-ring">
+          <div className="chat-composer-surface flex items-end gap-2 rounded-2xl border p-2 shadow-xl shadow-background/20 focus-within:ring-2 focus-within:ring-ring">
             <div className="min-w-0 flex-1">
               <textarea
                 rows={1}

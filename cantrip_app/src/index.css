@@ -167,3 +167,41 @@
     background: color-mix(in oklab, cyan 8%, var(--background));
   }
 }
+
+.chat-composer-fade {
+  background: linear-gradient(
+    to top,
+    var(--background) 0%,
+    var(--background) 32%,
+    color-mix(in oklab, var(--background) 94%, transparent) 52%,
+    color-mix(in oklab, var(--background) 68%, transparent) 72%,
+    transparent 100%
+  );
+}
+
+.chat-composer-fade::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  -webkit-backdrop-filter: blur(7px);
+  backdrop-filter: blur(7px);
+  -webkit-mask-image: linear-gradient(
+    to top,
+    black 0%,
+    black 48%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(to top, black 0%, black 48%, transparent 100%);
+}
+
+.chat-composer-surface {
+  background: color-mix(in oklab, var(--background) 66%, transparent);
+  -webkit-backdrop-filter: blur(32px) saturate(150%);
+  backdrop-filter: blur(32px) saturate(150%);
+}
+
+.high-contrast .chat-composer-surface {
+  background: color-mix(in oklab, var(--background) 58%, transparent);
+  -webkit-backdrop-filter: blur(40px) saturate(125%);
+  backdrop-filter: blur(40px) saturate(125%);
+}
