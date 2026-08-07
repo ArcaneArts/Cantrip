@@ -2,10 +2,9 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import type { TerminalServerMessage, TerminalSummary } from "@cantrip/protocol";
 import { terminalServerMessageSchema } from "@cantrip/protocol";
-import { CircleAlert, Loader2, RotateCw } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import { terminalWebSocketUrl } from "@/lib/api";
 
 import "@xterm/xterm/css/xterm.css";
@@ -22,8 +21,10 @@ function terminalTheme() {
 
 export function TerminalView({ terminal }: { terminal: TerminalSummary }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const reconnectAttemptRef = useRef(0);
+  const terminalIdRef = useRef(terminal.id);
   const [connectionKey, setConnectionKey] = useState(0);
-  const [state, setState] = useState<"connecting" | "ready" | "closed">(
+  const [state, setState] = useState<"connecting" | "reconnecting" | "ready">(
     "connecting",
   );
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +32,11 @@ export function TerminalView({ terminal }: { terminal: TerminalSummary }) {
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    setState("connecting");
+    if (terminalIdRef.current !== terminal.id) {
+      terminalIdRef.current = terminal.id;
+      reconnectAttemptRef.current = 0;
+    }
+    setState(reconnectAttemptRef.current === 0 ? "connecting" : "reconnecting");
     setError(null);
 
     const xterm = new Terminal({
@@ -49,7 +54,18 @@ export function TerminalView({ terminal }: { terminal: TerminalSummary }) {
 
     const socket = new WebSocket(terminalWebSocketUrl(terminal.id));
     let ready = false;
-    let ended = false;
+    let disposed = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleReconnect = () => {
+      if (disposed || reconnectTimer) return;
+      const delay = Math.min(500 * 2 ** reconnectAttemptRef.current, 5_000);
+      reconnectAttemptRef.current += 1;
+      setState("reconnecting");
+      reconnectTimer = setTimeout(
+        () => setConnectionKey((key) => key + 1),
+        delay,
+      );
+    };
     const sendSize = () => {
       if (!ready || socket.readyState !== WebSocket.OPEN) return;
       socket.send(
@@ -89,6 +105,7 @@ export function TerminalView({ terminal }: { terminal: TerminalSummary }) {
       }
       if (message.type === "ready") {
         ready = true;
+        reconnectAttemptRef.current = 0;
         setState("ready");
         requestAnimationFrame(() => {
           resize();
@@ -98,31 +115,32 @@ export function TerminalView({ terminal }: { terminal: TerminalSummary }) {
         xterm.write(message.data);
       } else if (message.type === "exit") {
         ready = false;
-        ended = true;
-        setState("closed");
         xterm.write(
           `\r\n\x1b[90m[Process exited ${message.exitCode}]\x1b[0m\r\n`,
         );
+        scheduleReconnect();
         socket.close(1000, "Terminal process exited");
       } else {
         ready = false;
-        setState("closed");
         setError(message.message);
+        scheduleReconnect();
       }
     });
     socket.addEventListener("close", () => {
       ready = false;
-      setState((current) => (current === "ready" ? "closed" : current));
+      if (disposed) return;
+      scheduleReconnect();
     });
     socket.addEventListener("error", () => {
-      if (ended) return;
+      if (disposed) return;
       setError("Could not connect to the terminal session.");
-      setState("closed");
+      scheduleReconnect();
     });
 
     return () => {
       ready = false;
-      ended = true;
+      disposed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       input.dispose();
       resizeObserver.disconnect();
       themeObserver.disconnect();
@@ -134,25 +152,14 @@ export function TerminalView({ terminal }: { terminal: TerminalSummary }) {
   return (
     <div className="relative flex min-h-0 flex-1 bg-background">
       <div ref={containerRef} className="min-h-0 min-w-0 flex-1 p-3" />
-      {state === "connecting" ? (
+      {state !== "ready" ? (
         <div className="pointer-events-none absolute right-4 top-3 flex items-center gap-2 rounded-md bg-muted/90 px-2 py-1 text-xs text-muted-foreground">
-          <Loader2 className="size-3 animate-spin" /> Connecting
-        </div>
-      ) : null}
-      {state === "closed" ? (
-        <div className="absolute right-4 top-3 flex items-center gap-2 rounded-lg border bg-popover p-2 text-xs shadow-lg">
-          {error ? <CircleAlert className="size-3.5 text-destructive" /> : null}
-          <span className="max-w-72 truncate text-muted-foreground">
-            {error ?? "Terminal session ended"}
-          </span>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7"
-            onClick={() => setConnectionKey((key) => key + 1)}
-          >
-            <RotateCw className="size-3" /> Reconnect
-          </Button>
+          <Loader2 className="size-3 animate-spin" />
+          {state === "connecting"
+            ? "Connecting"
+            : error
+              ? `${error} Retrying…`
+              : "Reconnecting…"}
         </div>
       ) : null}
     </div>
