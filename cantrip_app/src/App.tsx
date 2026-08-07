@@ -77,7 +77,7 @@ import {
   getWorkers,
   renameChat,
   renameTerminal,
-  reorderChats,
+  reorderProjectTabs,
   reorderProjects,
   startTurn,
   updateChatModel,
@@ -733,25 +733,53 @@ export function App() {
       queryClient.setQueryData(["projects"], context?.previous),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
   });
-  const reorderChatsMutation = useMutation({
+  const reorderTabsMutation = useMutation({
     mutationFn: ({ projectId, ids }: { projectId: string; ids: string[] }) =>
-      reorderChats(projectId, ids),
+      reorderProjectTabs(projectId, ids),
     onMutate: async ({ projectId, ids }) => {
-      await queryClient.cancelQueries({ queryKey: ["chats", projectId] });
-      const key = ["chats", projectId] as const;
-      const previous = queryClient.getQueryData<ChatSummary[]>(key);
-      queryClient.setQueryData<ChatSummary[]>(key, (current = []) =>
-        ids.flatMap((id, position) => {
-          const chat = current.find((item) => item.id === id);
-          return chat ? [{ ...chat, position }] : [];
-        }),
+      const chatKey = ["chats", projectId] as const;
+      const terminalKey = ["terminals", projectId] as const;
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: chatKey }),
+        queryClient.cancelQueries({ queryKey: terminalKey }),
+      ]);
+      const previousChats = queryClient.getQueryData<ChatSummary[]>(chatKey);
+      const previousTerminals =
+        queryClient.getQueryData<TerminalSummary[]>(terminalKey);
+      const positions = new Map(ids.map((id, position) => [id, position]));
+      queryClient.setQueryData<ChatSummary[]>(chatKey, (current = []) =>
+        current
+          .map((chat) => ({
+            ...chat,
+            position: positions.get(`chat:${chat.id}`) ?? chat.position,
+          }))
+          .sort((a, b) => a.position - b.position),
       );
-      return { key, previous };
+      queryClient.setQueryData<TerminalSummary[]>(terminalKey, (current = []) =>
+        current
+          .map((terminal) => ({
+            ...terminal,
+            position:
+              positions.get(`terminal:${terminal.id}`) ?? terminal.position,
+          }))
+          .sort((a, b) => a.position - b.position),
+      );
+      return { chatKey, terminalKey, previousChats, previousTerminals };
     },
-    onError: (_error, _input, context) =>
-      queryClient.setQueryData(context?.key ?? [], context?.previous),
+    onError: (_error, _input, context) => {
+      queryClient.setQueryData(context?.chatKey ?? [], context?.previousChats);
+      queryClient.setQueryData(
+        context?.terminalKey ?? [],
+        context?.previousTerminals,
+      );
+    },
     onSettled: (_data, _error, input) =>
-      queryClient.invalidateQueries({ queryKey: ["chats", input.projectId] }),
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["chats", input.projectId] }),
+        queryClient.invalidateQueries({
+          queryKey: ["terminals", input.projectId],
+        }),
+      ]),
   });
 
   const onlineWorker = workers.data?.find((worker) => worker.online) ?? null;
@@ -871,8 +899,8 @@ export function App() {
               setShowSettings(false);
             }}
             onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
-            onReorderChats={(projectId, ids) =>
-              reorderChatsMutation.mutate({ projectId, ids })
+            onReorderTabs={(projectId, ids) =>
+              reorderTabsMutation.mutate({ projectId, ids })
             }
             onSelectProject={(projectId) => {
               setGitHistoryProjectId(null);
@@ -1143,8 +1171,8 @@ export function App() {
                 setShowSettings(false);
               }}
               onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
-              onReorderChats={(projectId, ids) =>
-                reorderChatsMutation.mutate({ projectId, ids })
+              onReorderTabs={(projectId, ids) =>
+                reorderTabsMutation.mutate({ projectId, ids })
               }
               onSelectProject={(projectId) => {
                 setGitHistoryProjectId(null);

@@ -475,25 +475,54 @@ describe("local server foundation", () => {
       );
       expect(forkMessages).toHaveLength(completedMessages.length + 4);
     });
+    const reorderedTerminal = terminalSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/terminals`,
+          payload: { title: "Sortable shell" },
+        })
+      ).json(),
+    );
     expect(
       await firstApp.inject({
         method: "PATCH",
-        url: `/api/projects/${project.id}/chats/order`,
-        payload: { ids: [duplicatedChat.id, forkedChat.id, chat.id] },
+        url: `/api/projects/${project.id}/tabs/order`,
+        payload: {
+          ids: [
+            `chat:${duplicatedChat.id}`,
+            `terminal:${reorderedTerminal.id}`,
+            `chat:${forkedChat.id}`,
+            `chat:${chat.id}`,
+          ],
+        },
       }),
     ).toMatchObject({ statusCode: 204 });
+    const reorderedChats = chatListSchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/chats`,
+        })
+      ).json(),
+    );
     expect(
-      chatListSchema
-        .parse(
-          (
-            await firstApp.inject({
-              method: "GET",
-              url: `/api/projects/${project.id}/chats`,
-            })
-          ).json(),
-        )
-        .map((item) => item.id),
-    ).toEqual([duplicatedChat.id, forkedChat.id, chat.id]);
+      reorderedChats.map(({ id, position }) => ({ id, position })),
+    ).toEqual([
+      { id: duplicatedChat.id, position: 0 },
+      { id: forkedChat.id, position: 2 },
+      { id: chat.id, position: 3 },
+    ]);
+    expect(
+      terminalListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/terminals`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject([{ id: reorderedTerminal.id, position: 1 }]);
     expect(
       await firstApp.inject({
         method: "DELETE",

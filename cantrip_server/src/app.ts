@@ -703,19 +703,19 @@ export async function buildApp({
   );
 
   app.patch<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/chats/order",
+    "/api/projects/:projectId/tabs/order",
     async (request, reply) => {
       const input = orderedIdsSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      return (await repository.reorderChats(
+      return (await repository.reorderProjectTabs(
         LOCAL_USER_ID,
         request.params.projectId,
         input.data,
       ))
         ? reply.code(204).send()
-        : reply.code(400).send({ error: "Chat order did not match." });
+        : reply.code(400).send({ error: "Tab order did not match." });
     },
   );
 

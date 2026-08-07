@@ -734,19 +734,31 @@ export class ServerRepository {
       return null;
     }
 
-    const lastChats = await this.database
-      .select({ position: schema.chats.position })
-      .from(schema.chats)
-      .where(eq(schema.chats.projectId, projectId))
-      .orderBy(desc(schema.chats.position))
-      .limit(1);
+    const [lastChats, lastTerminals] = await Promise.all([
+      this.database
+        .select({ position: schema.chats.position })
+        .from(schema.chats)
+        .where(eq(schema.chats.projectId, projectId))
+        .orderBy(desc(schema.chats.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.terminals.position })
+        .from(schema.terminals)
+        .where(eq(schema.terminals.projectId, projectId))
+        .orderBy(desc(schema.terminals.position))
+        .limit(1),
+    ]);
     const result = await this.database
       .insert(schema.chats)
       .values({
         id: randomUUID(),
         projectId,
         title: input.title,
-        position: (lastChats[0]?.position ?? -1) + 1,
+        position:
+          Math.max(
+            lastChats[0]?.position ?? -1,
+            lastTerminals[0]?.position ?? -1,
+          ) + 1,
         activeWorkerId: source.workerId,
       })
       .returning();
@@ -800,19 +812,31 @@ export class ServerRepository {
     const source = rows[0]?.source;
     if (!source) return null;
 
-    const last = await this.database
-      .select({ position: schema.terminals.position })
-      .from(schema.terminals)
-      .where(eq(schema.terminals.projectId, projectId))
-      .orderBy(desc(schema.terminals.position))
-      .limit(1);
+    const [lastChats, lastTerminals] = await Promise.all([
+      this.database
+        .select({ position: schema.chats.position })
+        .from(schema.chats)
+        .where(eq(schema.chats.projectId, projectId))
+        .orderBy(desc(schema.chats.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.terminals.position })
+        .from(schema.terminals)
+        .where(eq(schema.terminals.projectId, projectId))
+        .orderBy(desc(schema.terminals.position))
+        .limit(1),
+    ]);
     const result = await this.database
       .insert(schema.terminals)
       .values({
         id: randomUUID(),
         projectId,
         title: input.title,
-        position: (last[0]?.position ?? -1) + 1,
+        position:
+          Math.max(
+            lastChats[0]?.position ?? -1,
+            lastTerminals[0]?.position ?? -1,
+          ) + 1,
         activeWorkerId: source.workerId,
       })
       .returning();
@@ -988,19 +1012,31 @@ export class ServerRepository {
               ),
         )
         .orderBy(asc(schema.chatMessages.sequence));
-      const lastChats = await transaction
-        .select({ position: schema.chats.position })
-        .from(schema.chats)
-        .where(eq(schema.chats.projectId, row.chat.projectId))
-        .orderBy(desc(schema.chats.position))
-        .limit(1);
+      const [lastChats, lastTerminals] = await Promise.all([
+        transaction
+          .select({ position: schema.chats.position })
+          .from(schema.chats)
+          .where(eq(schema.chats.projectId, row.chat.projectId))
+          .orderBy(desc(schema.chats.position))
+          .limit(1),
+        transaction
+          .select({ position: schema.terminals.position })
+          .from(schema.terminals)
+          .where(eq(schema.terminals.projectId, row.chat.projectId))
+          .orderBy(desc(schema.terminals.position))
+          .limit(1),
+      ]);
       const chatResult = await transaction
         .insert(schema.chats)
         .values({
           id: randomUUID(),
           projectId: row.chat.projectId,
           title: `${row.chat.title} (fork)`,
-          position: (lastChats[0]?.position ?? -1) + 1,
+          position:
+            Math.max(
+              lastChats[0]?.position ?? -1,
+              lastTerminals[0]?.position ?? -1,
+            ) + 1,
           activeWorkerId: row.source.workerId,
           modelId: row.chat.modelId,
           modelLockedAt: sourceMessages.some(
@@ -1052,33 +1088,61 @@ export class ServerRepository {
     return true;
   }
 
-  async reorderChats(
+  async reorderProjectTabs(
     ownerId: string,
     projectId: string,
     input: OrderedIds,
   ): Promise<boolean> {
-    const rows = await this.database
-      .select({ id: schema.chats.id })
-      .from(schema.chats)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(eq(schema.chats.projectId, projectId));
+    const [chatRows, terminalRows] = await Promise.all([
+      this.database
+        .select({ id: schema.chats.id })
+        .from(schema.chats)
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.chats.projectId, projectId)),
+      this.database
+        .select({ id: schema.terminals.id })
+        .from(schema.terminals)
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.terminals.projectId, projectId)),
+    ]);
+    const expected = new Set([
+      ...chatRows.map(({ id }) => `chat:${id}`),
+      ...terminalRows.map(({ id }) => `terminal:${id}`),
+    ]);
     if (
-      rows.length !== input.ids.length ||
-      rows.some(({ id }) => !input.ids.includes(id))
-    )
+      expected.size !== input.ids.length ||
+      input.ids.some((id) => !expected.has(id))
+    ) {
       return false;
+    }
     await this.database.transaction(async (transaction) => {
-      for (const [position, id] of input.ids.entries()) {
-        await transaction
-          .update(schema.chats)
-          .set({ position })
-          .where(eq(schema.chats.id, id));
+      for (const [position, taggedId] of input.ids.entries()) {
+        const separator = taggedId.indexOf(":");
+        const kind = taggedId.slice(0, separator);
+        const id = taggedId.slice(separator + 1);
+        if (kind === "chat") {
+          await transaction
+            .update(schema.chats)
+            .set({ position })
+            .where(eq(schema.chats.id, id));
+        } else {
+          await transaction
+            .update(schema.terminals)
+            .set({ position })
+            .where(eq(schema.terminals.id, id));
+        }
       }
     });
     return true;

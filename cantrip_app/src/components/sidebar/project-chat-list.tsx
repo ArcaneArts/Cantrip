@@ -50,6 +50,7 @@ import { cn } from "@/lib/utils";
 
 const projectId = (id: string) => `project:${id}`;
 const chatId = (id: string) => `chat:${id}`;
+const terminalId = (id: string) => `terminal:${id}`;
 const menuContentClass =
   "z-50 min-w-36 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
 const menuItemClass =
@@ -179,14 +180,26 @@ function TerminalTab({
   submitRename(): void;
   terminal: TerminalSummary;
 }) {
+  const sortable = useSortable({ id: terminalId(terminal.id) });
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(sortable.transform),
+    transition: sortable.transition,
+    opacity: sortable.isDragging ? 0.25 : 1,
+    zIndex: sortable.isDragging ? 10 : undefined,
+  };
   return (
     <div
+      ref={sortable.setNodeRef}
+      style={style}
       className={cn(
         "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
         active && "bg-muted text-foreground",
       )}
     >
-      <span className="size-6 shrink-0" />
+      <DragHandle
+        attributes={sortable.attributes}
+        listeners={sortable.listeners}
+      />
       {editing ? (
         <input
           autoFocus
@@ -382,7 +395,7 @@ export function ProjectChatList({
   onOpenGitHistory,
   onRenameChat,
   onRenameTerminal,
-  onReorderChats,
+  onReorderTabs,
   onReorderProjects,
   onSelectChat,
   onSelectTerminal,
@@ -404,7 +417,7 @@ export function ProjectChatList({
   onOpenGitHistory(projectId: string): void;
   onRenameChat(chatId: string, title: string): void;
   onRenameTerminal(terminalId: string, title: string): void;
-  onReorderChats(projectId: string, ids: string[]): void;
+  onReorderTabs(projectId: string, ids: string[]): void;
   onReorderProjects(ids: string[]): void;
   onSelectChat(chatId: string): void;
   onSelectTerminal(terminalId: string): void;
@@ -428,6 +441,28 @@ export function ProjectChatList({
   const [deleteTarget, setDeleteTarget] = useState<ChatSummary | null>(null);
   const [deleteTerminalTarget, setDeleteTerminalTarget] =
     useState<TerminalSummary | null>(null);
+  const tabs: Array<
+    | { id: string; kind: "chat"; chat: ChatSummary; position: number }
+    | {
+        id: string;
+        kind: "terminal";
+        terminal: TerminalSummary;
+        position: number;
+      }
+  > = [
+    ...chats.map((chat) => ({
+      id: chatId(chat.id),
+      kind: "chat" as const,
+      chat,
+      position: chat.position,
+    })),
+    ...terminals.map((terminal) => ({
+      id: terminalId(terminal.id),
+      kind: "terminal" as const,
+      terminal,
+      position: terminal.position,
+    })),
+  ].sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
 
   const beginRename = (chat: ChatSummary) => {
     if (editingChatId === chat.id) {
@@ -475,15 +510,15 @@ export function ProjectChatList({
     }
     if (
       selectedProjectId &&
-      activeId.startsWith("chat:") &&
-      overId.startsWith("chat:")
+      !activeId.startsWith("project:") &&
+      !overId.startsWith("project:")
     ) {
-      const from = chats.findIndex((chat) => chatId(chat.id) === activeId);
-      const to = chats.findIndex((chat) => chatId(chat.id) === overId);
+      const from = tabs.findIndex((tab) => tab.id === activeId);
+      const to = tabs.findIndex((tab) => tab.id === overId);
       if (from >= 0 && to >= 0)
-        onReorderChats(
+        onReorderTabs(
           selectedProjectId,
-          arrayMove(chats, from, to).map((item) => item.id),
+          arrayMove(tabs, from, to).map((tab) => tab.id),
         );
     }
   };
@@ -491,6 +526,9 @@ export function ProjectChatList({
     (project) => projectId(project.id) === activeDrag,
   );
   const draggedChat = chats.find((chat) => chatId(chat.id) === activeDrag);
+  const draggedTerminal = terminals.find(
+    (terminal) => terminalId(terminal.id) === activeDrag,
+  );
 
   return (
     <>
@@ -523,39 +561,44 @@ export function ProjectChatList({
                 {active ? (
                   <div className="ml-5 mt-1 border-l pl-2">
                     <SortableContext
-                      items={chats.map((chat) => chatId(chat.id))}
+                      items={tabs.map((tab) => tab.id)}
                       strategy={verticalListSortingStrategy}
                     >
-                      {chats.map((chat) => (
-                        <SortableChat
-                          key={chat.id}
-                          chat={chat}
-                          active={chat.id === selectedChatId}
-                          editing={editingChatId === chat.id}
-                          renameValue={renameValue}
-                          setRenameValue={setRenameValue}
-                          submitRename={() => finishRename(chat)}
-                          onSelect={() => onSelectChat(chat.id)}
-                          onRename={() => beginRename(chat)}
-                          onDuplicate={() => onDuplicateChat(chat.id)}
-                          onDelete={() => setDeleteTarget(chat)}
-                        />
-                      ))}
+                      {tabs.map((tab) =>
+                        tab.kind === "chat" ? (
+                          <SortableChat
+                            key={tab.id}
+                            chat={tab.chat}
+                            active={tab.chat.id === selectedChatId}
+                            editing={editingChatId === tab.chat.id}
+                            renameValue={renameValue}
+                            setRenameValue={setRenameValue}
+                            submitRename={() => finishRename(tab.chat)}
+                            onSelect={() => onSelectChat(tab.chat.id)}
+                            onRename={() => beginRename(tab.chat)}
+                            onDuplicate={() => onDuplicateChat(tab.chat.id)}
+                            onDelete={() => setDeleteTarget(tab.chat)}
+                          />
+                        ) : (
+                          <TerminalTab
+                            key={tab.id}
+                            terminal={tab.terminal}
+                            active={tab.terminal.id === selectedTerminalId}
+                            editing={editingTerminalId === tab.terminal.id}
+                            renameValue={renameValue}
+                            setRenameValue={setRenameValue}
+                            submitRename={() =>
+                              finishTerminalRename(tab.terminal)
+                            }
+                            onSelect={() => onSelectTerminal(tab.terminal.id)}
+                            onRename={() => beginTerminalRename(tab.terminal)}
+                            onDelete={() =>
+                              setDeleteTerminalTarget(tab.terminal)
+                            }
+                          />
+                        ),
+                      )}
                     </SortableContext>
-                    {terminals.map((terminal) => (
-                      <TerminalTab
-                        key={terminal.id}
-                        terminal={terminal}
-                        active={terminal.id === selectedTerminalId}
-                        editing={editingTerminalId === terminal.id}
-                        renameValue={renameValue}
-                        setRenameValue={setRenameValue}
-                        submitRename={() => finishTerminalRename(terminal)}
-                        onSelect={() => onSelectTerminal(terminal.id)}
-                        onRename={() => beginTerminalRename(terminal)}
-                        onDelete={() => setDeleteTerminalTarget(terminal)}
-                      />
-                    ))}
                   </div>
                 ) : null}
               </SortableProject>
@@ -572,6 +615,11 @@ export function ProjectChatList({
             <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
               <MessageSquare className="size-3.5" />
               <span className="truncate">{draggedChat.title}</span>
+            </div>
+          ) : draggedTerminal ? (
+            <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
+              <SquareTerminal className="size-3.5" />
+              <span className="truncate">{draggedTerminal.title}</span>
             </div>
           ) : null}
         </DragOverlay>
