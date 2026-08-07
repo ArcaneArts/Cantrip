@@ -57,6 +57,13 @@
       "when": 1786119608772,
       "tag": "0007_pink_bishop",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786124133910,
+      "tag": "0008_small_deadpool",
+      "breakpoints": true
     }
   ]
 }

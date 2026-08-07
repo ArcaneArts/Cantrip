@@ -17,6 +17,12 @@ import {
   chatTurnAcceptedSchema,
   chatTurnCreateSchema,
   chatUpdateSchema,
+  explorerCreateSchema,
+  explorerDirectorySchema,
+  explorerFileSchema,
+  explorerListSchema,
+  explorerSummarySchema,
+  explorerUpdateSchema,
   githubAuthStatusSchema,
   githubProjectCreateSchema,
   githubRepositoryListSchema,
@@ -696,6 +702,111 @@ export async function buildApp({
       return reply.code(204).send();
     },
   );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/explorers",
+    async (request, reply) => {
+      const explorers = await repository.listExplorers(
+        LOCAL_USER_ID,
+        request.params.projectId,
+      );
+      return reply.send(explorerListSchema.parse(explorers));
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/explorers",
+    async (request, reply) => {
+      const input = explorerCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const explorer = await repository.createExplorer(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        input.data,
+      );
+      return explorer
+        ? reply.code(201).send(explorerSummarySchema.parse(explorer))
+        : reply.code(404).send({ error: "Project source not found." });
+    },
+  );
+
+  app.patch<{ Params: { explorerId: string } }>(
+    "/api/explorers/:explorerId",
+    async (request, reply) => {
+      const input = explorerUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const explorer = await repository.updateExplorer(
+        LOCAL_USER_ID,
+        request.params.explorerId,
+        input.data,
+      );
+      return explorer
+        ? reply.send(explorerSummarySchema.parse(explorer))
+        : reply.code(404).send({ error: "Explorer not found." });
+    },
+  );
+
+  app.delete<{ Params: { explorerId: string } }>(
+    "/api/explorers/:explorerId",
+    async (request, reply) =>
+      (await repository.deleteExplorer(
+        LOCAL_USER_ID,
+        request.params.explorerId,
+      ))
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "Explorer not found." }),
+  );
+
+  app.get<{
+    Params: { explorerId: string };
+    Querystring: { path?: string };
+  }>("/api/explorers/:explorerId/directory", async (request, reply) => {
+    const context = await repository.getExplorerExecutionContext(
+      LOCAL_USER_ID,
+      request.params.explorerId,
+    );
+    if (!context) return reply.code(404).send({ error: "Explorer not found." });
+    try {
+      const directory = await bridge.request(context.workerId, {
+        type: "explorer.directory.list",
+        root: context.root,
+        path: request.query.path ?? "",
+      });
+      return reply.send(explorerDirectorySchema.parse(directory));
+    } catch (error) {
+      const status = error instanceof WorkerUnavailableError ? 503 : 502;
+      return reply.code(status).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.get<{
+    Params: { explorerId: string };
+    Querystring: { path?: string };
+  }>("/api/explorers/:explorerId/file", async (request, reply) => {
+    if (!request.query.path) {
+      return reply.code(400).send({ error: "A file path is required." });
+    }
+    const context = await repository.getExplorerExecutionContext(
+      LOCAL_USER_ID,
+      request.params.explorerId,
+    );
+    if (!context) return reply.code(404).send({ error: "Explorer not found." });
+    try {
+      const file = await bridge.request(context.workerId, {
+        type: "explorer.file.read",
+        root: context.root,
+        path: request.query.path,
+      });
+      return reply.send(explorerFileSchema.parse(file));
+    } catch (error) {
+      const status = error instanceof WorkerUnavailableError ? 503 : 502;
+      return reply.code(status).send({ error: errorMessage(error) });
+    }
+  });
 
   app.get<{ Params: { terminalId: string } }>(
     "/api/terminals/:terminalId/connect",

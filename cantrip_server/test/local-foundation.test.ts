@@ -7,6 +7,10 @@ import {
   chatMessageListSchema,
   chatMessageSchema,
   chatSummarySchema,
+  explorerDirectorySchema,
+  explorerFileSchema,
+  explorerListSchema,
+  explorerSummarySchema,
   gitHistorySchema,
   modelProfileSummarySchema,
   modelProviderSummarySchema,
@@ -120,6 +124,29 @@ const workerBridge = {
           ],
           hasMore: false,
           nextCursor: null,
+        };
+      case "explorer.directory.list":
+        return {
+          path: command.path,
+          entries: [
+            {
+              name: "README.md",
+              path: "README.md",
+              kind: "file",
+              size: 18,
+              modifiedAt: "2026-08-07T12:00:00.000Z",
+              viewable: true,
+              markdown: true,
+            },
+          ],
+          truncated: false,
+        };
+      case "explorer.file.read":
+        return {
+          path: command.path,
+          content: "# Cantrip explorer\n",
+          size: 18,
+          markdown: true,
         };
       case "terminal.open":
         return { status: "detached" };
@@ -550,6 +577,56 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
+    const explorer = explorerSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/explorers`,
+          payload: { title: "Project files" },
+        })
+      ).json(),
+    );
+    expect(
+      explorerListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/explorers`,
+          })
+        ).json(),
+      ),
+    ).toHaveLength(1);
+    expect(
+      explorerDirectorySchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/explorers/${explorer.id}/directory?path=`,
+          })
+        ).json(),
+      ).entries[0],
+    ).toMatchObject({ name: "README.md", markdown: true });
+    expect(
+      explorerFileSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/explorers/${explorer.id}/file?path=README.md`,
+          })
+        ).json(),
+      ).content,
+    ).toContain("Cantrip explorer");
+    expect(
+      explorerSummarySchema.parse(
+        (
+          await firstApp.inject({
+            method: "PATCH",
+            url: `/api/explorers/${explorer.id}`,
+            payload: { title: "Source browser" },
+          })
+        ).json(),
+      ).title,
+    ).toBe("Source browser");
     expect(
       await firstApp.inject({
         method: "PATCH",
@@ -558,6 +635,7 @@ describe("local server foundation", () => {
           ids: [
             `chat:${duplicatedChat.id}`,
             `terminal:${reorderedTerminal.id}`,
+            `explorer:${explorer.id}`,
             `chat:${forkedChat.id}`,
             `chat:${chat.id}`,
           ],
@@ -576,8 +654,8 @@ describe("local server foundation", () => {
       reorderedChats.map(({ id, position }) => ({ id, position })),
     ).toEqual([
       { id: duplicatedChat.id, position: 0 },
-      { id: forkedChat.id, position: 2 },
-      { id: chat.id, position: 3 },
+      { id: forkedChat.id, position: 3 },
+      { id: chat.id, position: 4 },
     ]);
     expect(
       terminalListSchema.parse(
@@ -589,6 +667,16 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toMatchObject([{ id: reorderedTerminal.id, position: 1 }]);
+    expect(
+      explorerListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/explorers`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject([{ id: explorer.id, position: 2 }]);
     expect(
       await firstApp.inject({
         method: "DELETE",
@@ -692,6 +780,22 @@ describe("local server foundation", () => {
       theme: "dark",
       defaultModelId: selectedModel.id,
     });
+    expect(
+      explorerListSchema.parse(
+        (
+          await secondApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/explorers`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject([{ id: explorer.id, title: "Source browser" }]);
+    expect(
+      await secondApp.inject({
+        method: "DELETE",
+        url: `/api/explorers/${explorer.id}`,
+      }),
+    ).toMatchObject({ statusCode: 204 });
 
     const unlinkResponse = await secondApp.inject({
       method: "DELETE",

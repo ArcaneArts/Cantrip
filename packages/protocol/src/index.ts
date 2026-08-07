@@ -287,6 +287,49 @@ export const terminalSummarySchema = z.object({
 
 export const terminalListSchema = z.array(terminalSummarySchema);
 
+export const explorerCreateSchema = z.object({
+  title: z.string().trim().min(1).max(200).default("Explorer"),
+});
+
+export const explorerUpdateSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+});
+
+export const explorerSummarySchema = z.object({
+  id: z.string().min(1),
+  projectId: z.string().min(1),
+  title: z.string().min(1),
+  position: z.number().int().nonnegative(),
+  activeWorkerId: z.string().min(1),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const explorerListSchema = z.array(explorerSummarySchema);
+
+export const explorerEntrySchema = z.object({
+  name: z.string().min(1),
+  path: z.string(),
+  kind: z.enum(["directory", "file", "other"]),
+  size: z.number().int().nonnegative().nullable(),
+  modifiedAt: z.string().datetime(),
+  viewable: z.boolean(),
+  markdown: z.boolean(),
+});
+
+export const explorerDirectorySchema = z.object({
+  path: z.string(),
+  entries: z.array(explorerEntrySchema).max(1_000),
+  truncated: z.boolean(),
+});
+
+export const explorerFileSchema = z.object({
+  path: z.string().min(1),
+  content: z.string(),
+  size: z.number().int().nonnegative(),
+  markdown: z.boolean(),
+});
+
 export const terminalClientMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("input"),
@@ -468,6 +511,16 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     limit: z.number().int().min(1).max(100).default(100),
   }),
   z.object({
+    type: z.literal("explorer.directory.list"),
+    root: z.string().min(1),
+    path: z.string(),
+  }),
+  z.object({
+    type: z.literal("explorer.file.read"),
+    root: z.string().min(1),
+    path: z.string().min(1),
+  }),
+  z.object({
     type: z.literal("terminal.open"),
     terminalId: z.string().min(1),
     attachmentId: z.string().min(1),
@@ -597,6 +650,12 @@ export type ChatSummary = z.infer<typeof chatSummarySchema>;
 export type TerminalCreate = z.infer<typeof terminalCreateSchema>;
 export type TerminalUpdate = z.infer<typeof terminalUpdateSchema>;
 export type TerminalSummary = z.infer<typeof terminalSummarySchema>;
+export type ExplorerCreate = z.infer<typeof explorerCreateSchema>;
+export type ExplorerUpdate = z.infer<typeof explorerUpdateSchema>;
+export type ExplorerSummary = z.infer<typeof explorerSummarySchema>;
+export type ExplorerEntry = z.infer<typeof explorerEntrySchema>;
+export type ExplorerDirectory = z.infer<typeof explorerDirectorySchema>;
+export type ExplorerFile = z.infer<typeof explorerFileSchema>;
 export type TerminalClientMessage = z.infer<typeof terminalClientMessageSchema>;
 export type TerminalServerMessage = z.infer<typeof terminalServerMessageSchema>;
 export type TerminalOpenResult = z.infer<typeof terminalOpenResultSchema>;

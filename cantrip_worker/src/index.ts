@@ -7,6 +7,7 @@ import { CodexAppServer } from "./codex/app-server.js";
 import { CodexAuthClient } from "./codex/auth-client.js";
 import { discoverCodexVersion } from "./codex/discovery.js";
 import { readWorkerConfig } from "./config.js";
+import { listExplorerDirectory, readExplorerFile } from "./explorer.js";
 import { GithubClient } from "./github.js";
 import { readGitHistory } from "./git.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
@@ -75,6 +76,10 @@ async function start(): Promise<void> {
         return github.deleteRepository(command.path);
       case "git.history":
         return readGitHistory(command.cwd, command.limit, command.cursor);
+      case "explorer.directory.list":
+        return listExplorerDirectory(command.root, command.path);
+      case "explorer.file.read":
+        return readExplorerFile(command.root, command.path);
       case "terminal.open":
         return terminals.open(
           command.terminalId,

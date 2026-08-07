@@ -5,6 +5,10 @@ import {
   chatMessageListSchema,
   chatSummarySchema,
   chatTurnAcceptedSchema,
+  explorerDirectorySchema,
+  explorerFileSchema,
+  explorerListSchema,
+  explorerSummarySchema,
   githubAuthStatusSchema,
   githubRepositoryListSchema,
   gitHistorySchema,
@@ -257,6 +261,51 @@ export async function deleteTerminal(terminalId: string) {
   await request(`/api/terminals/${encodeURIComponent(terminalId)}`, {
     method: "DELETE",
   });
+}
+
+export async function getExplorers(projectId: string) {
+  return explorerListSchema.parse(
+    await request(`/api/projects/${encodeURIComponent(projectId)}/explorers`),
+  );
+}
+
+export async function createExplorer(projectId: string, title: string) {
+  return explorerSummarySchema.parse(
+    await post(`/api/projects/${encodeURIComponent(projectId)}/explorers`, {
+      title,
+    }),
+  );
+}
+
+export async function renameExplorer(explorerId: string, title: string) {
+  return explorerSummarySchema.parse(
+    await request(`/api/explorers/${encodeURIComponent(explorerId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    }),
+  );
+}
+
+export async function deleteExplorer(explorerId: string) {
+  await request(`/api/explorers/${encodeURIComponent(explorerId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getExplorerDirectory(explorerId: string, path: string) {
+  return explorerDirectorySchema.parse(
+    await request(
+      `/api/explorers/${encodeURIComponent(explorerId)}/directory?path=${encodeURIComponent(path)}`,
+    ),
+  );
+}
+
+export async function getExplorerFile(explorerId: string, path: string) {
+  return explorerFileSchema.parse(
+    await request(
+      `/api/explorers/${encodeURIComponent(explorerId)}/file?path=${encodeURIComponent(path)}`,
+    ),
+  );
 }
 
 export function terminalWebSocketUrl(terminalId: string): string {

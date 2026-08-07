@@ -1,6 +1,7 @@
 import type {
   ChatMessage,
   ChatSummary,
+  ExplorerSummary,
   GithubRepository,
   ProjectSummary,
   SettingsBundle,
@@ -12,6 +13,7 @@ import {
   Check,
   Copy,
   FolderGit2,
+  FolderTree,
   GitFork,
   GitBranch,
   Loader2,
@@ -60,12 +62,15 @@ import {
 } from "@/components/ui/dialog";
 import {
   createChat,
+  createExplorer,
   createGithubProject,
   createTerminal,
   deleteChat,
+  deleteExplorer,
   deleteTerminal,
   forkChat,
   getChats,
+  getExplorers,
   getGithubRepositories,
   getGithubStatus,
   getMessages,
@@ -75,6 +80,7 @@ import {
   getTerminals,
   getWorkers,
   renameChat,
+  renameExplorer,
   renameTerminal,
   removeProject,
   reorderProjectTabs,
@@ -87,6 +93,11 @@ import { cn } from "@/lib/utils";
 const TerminalView = lazy(() =>
   import("@/components/terminal/terminal-view").then((module) => ({
     default: module.TerminalView,
+  })),
+);
+const ExplorerView = lazy(() =>
+  import("@/components/explorer/explorer-view").then((module) => ({
+    default: module.ExplorerView,
   })),
 );
 
@@ -593,6 +604,9 @@ export function App() {
     null,
   );
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [selectedExplorerId, setSelectedExplorerId] = useState<string | null>(
+    null,
+  );
   const [selectedTerminalId, setSelectedTerminalId] = useState<string | null>(
     null,
   );
@@ -626,6 +640,12 @@ export function App() {
     queryKey: ["terminals", selectedProjectId],
     refetchInterval: 1_000,
   });
+  const explorers = useQuery({
+    enabled: Boolean(selectedProjectId),
+    queryFn: () => getExplorers(selectedProjectId!),
+    queryKey: ["explorers", selectedProjectId],
+    refetchInterval: 1_000,
+  });
   const newChat = useMutation({
     mutationFn: (projectId: string) => createChat(projectId, "New chat"),
     onSuccess: async (chat) => {
@@ -633,6 +653,7 @@ export function App() {
         queryKey: ["chats", chat.projectId],
       });
       setSelectedTerminalId(null);
+      setSelectedExplorerId(null);
       setSelectedChatId(chat.id);
     },
   });
@@ -644,10 +665,33 @@ export function App() {
       });
       setSelectedProjectId(terminal.projectId);
       setSelectedChatId(null);
+      setSelectedExplorerId(null);
       setSelectedTerminalId(terminal.id);
       setGitHistoryProjectId(null);
       setShowImporter(false);
       setShowSettings(false);
+    },
+  });
+  const newExplorer = useMutation({
+    mutationFn: (projectId: string) => createExplorer(projectId, "Explorer"),
+    onSuccess: (explorer) => {
+      queryClient.setQueryData<ExplorerSummary[]>(
+        ["explorers", explorer.projectId],
+        (current = []) =>
+          [...current.filter((item) => item.id !== explorer.id), explorer].sort(
+            (left, right) => left.position - right.position,
+          ),
+      );
+      setSelectedProjectId(explorer.projectId);
+      setSelectedChatId(null);
+      setSelectedTerminalId(null);
+      setSelectedExplorerId(explorer.id);
+      setGitHistoryProjectId(null);
+      setShowImporter(false);
+      setShowSettings(false);
+      void queryClient.invalidateQueries({
+        queryKey: ["explorers", explorer.projectId],
+      });
     },
   });
   const renameChatMutation = useMutation({
@@ -668,6 +712,7 @@ export function App() {
       });
       setSelectedProjectId(forked.projectId);
       setSelectedTerminalId(null);
+      setSelectedExplorerId(null);
       setSelectedChatId(forked.id);
     },
   });
@@ -706,6 +751,32 @@ export function App() {
       });
     },
   });
+  const renameExplorerMutation = useMutation({
+    mutationFn: ({
+      explorerId,
+      title,
+    }: {
+      explorerId: string;
+      title: string;
+    }) => renameExplorer(explorerId, title),
+    onSuccess: (renamed) =>
+      queryClient.setQueryData<ExplorerSummary[]>(
+        ["explorers", renamed.projectId],
+        (current = []) =>
+          current.map((explorer) =>
+            explorer.id === renamed.id ? renamed : explorer,
+          ),
+      ),
+  });
+  const deleteExplorerMutation = useMutation({
+    mutationFn: deleteExplorer,
+    onSuccess: async (_value, deletedId) => {
+      if (selectedExplorerId === deletedId) setSelectedExplorerId(null);
+      await queryClient.invalidateQueries({
+        queryKey: ["explorers", selectedProjectId],
+      });
+    },
+  });
   const removeProjectMutation = useMutation({
     mutationFn: ({
       projectId,
@@ -719,6 +790,7 @@ export function App() {
         setSelectedProjectId(null);
         setSelectedChatId(null);
         setSelectedTerminalId(null);
+        setSelectedExplorerId(null);
       }
       if (gitHistoryProjectId === projectId) setGitHistoryProjectId(null);
       await Promise.all([
@@ -750,13 +822,17 @@ export function App() {
     onMutate: async ({ projectId, ids }) => {
       const chatKey = ["chats", projectId] as const;
       const terminalKey = ["terminals", projectId] as const;
+      const explorerKey = ["explorers", projectId] as const;
       await Promise.all([
         queryClient.cancelQueries({ queryKey: chatKey }),
         queryClient.cancelQueries({ queryKey: terminalKey }),
+        queryClient.cancelQueries({ queryKey: explorerKey }),
       ]);
       const previousChats = queryClient.getQueryData<ChatSummary[]>(chatKey);
       const previousTerminals =
         queryClient.getQueryData<TerminalSummary[]>(terminalKey);
+      const previousExplorers =
+        queryClient.getQueryData<ExplorerSummary[]>(explorerKey);
       const positions = new Map(ids.map((id, position) => [id, position]));
       queryClient.setQueryData<ChatSummary[]>(chatKey, (current = []) =>
         current
@@ -775,7 +851,23 @@ export function App() {
           }))
           .sort((a, b) => a.position - b.position),
       );
-      return { chatKey, terminalKey, previousChats, previousTerminals };
+      queryClient.setQueryData<ExplorerSummary[]>(explorerKey, (current = []) =>
+        current
+          .map((explorer) => ({
+            ...explorer,
+            position:
+              positions.get(`explorer:${explorer.id}`) ?? explorer.position,
+          }))
+          .sort((a, b) => a.position - b.position),
+      );
+      return {
+        chatKey,
+        explorerKey,
+        terminalKey,
+        previousChats,
+        previousExplorers,
+        previousTerminals,
+      };
     },
     onError: (_error, _input, context) => {
       queryClient.setQueryData(context?.chatKey ?? [], context?.previousChats);
@@ -783,12 +875,19 @@ export function App() {
         context?.terminalKey ?? [],
         context?.previousTerminals,
       );
+      queryClient.setQueryData(
+        context?.explorerKey ?? [],
+        context?.previousExplorers,
+      );
     },
     onSettled: (_data, _error, input) =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: ["chats", input.projectId] }),
         queryClient.invalidateQueries({
           queryKey: ["terminals", input.projectId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["explorers", input.projectId],
         }),
       ]),
   });
@@ -803,6 +902,9 @@ export function App() {
   const selectedChat = chats.data?.find((chat) => chat.id === selectedChatId);
   const selectedTerminal = terminals.data?.find(
     (terminal) => terminal.id === selectedTerminalId,
+  );
+  const selectedExplorer = explorers.data?.find(
+    (explorer) => explorer.id === selectedExplorerId,
   );
   useEffect(() => {
     const preference = settings.data?.preferences.theme ?? "system";
@@ -838,15 +940,40 @@ export function App() {
   }, [projects.data, selectedProjectId]);
 
   useEffect(() => {
-    if (!chats.data || !terminals.data) return;
+    if (!chats.data || !terminals.data || !explorers.data) return;
     if (chats.data.some((chat) => chat.id === selectedChatId)) return;
     if (terminals.data.some((terminal) => terminal.id === selectedTerminalId))
       return;
-    setSelectedChatId(chats.data[0]?.id ?? null);
-    setSelectedTerminalId(
-      chats.data[0] ? null : (terminals.data[0]?.id ?? null),
-    );
-  }, [chats.data, selectedChatId, selectedTerminalId, terminals.data]);
+    if (explorers.data.some((explorer) => explorer.id === selectedExplorerId))
+      return;
+    const first = [
+      ...chats.data.map((chat) => ({
+        id: chat.id,
+        kind: "chat",
+        position: chat.position,
+      })),
+      ...terminals.data.map((terminal) => ({
+        id: terminal.id,
+        kind: "terminal",
+        position: terminal.position,
+      })),
+      ...explorers.data.map((explorer) => ({
+        id: explorer.id,
+        kind: "explorer",
+        position: explorer.position,
+      })),
+    ].sort((left, right) => left.position - right.position)[0];
+    setSelectedChatId(first?.kind === "chat" ? first.id : null);
+    setSelectedTerminalId(first?.kind === "terminal" ? first.id : null);
+    setSelectedExplorerId(first?.kind === "explorer" ? first.id : null);
+  }, [
+    chats.data,
+    explorers.data,
+    selectedChatId,
+    selectedExplorerId,
+    selectedTerminalId,
+    terminals.data,
+  ]);
 
   return (
     <main className="flex h-svh overflow-hidden bg-background text-foreground">
@@ -883,20 +1010,30 @@ export function App() {
           <ProjectChatList
             projects={projects.data ?? []}
             chats={chats.data ?? []}
+            explorers={explorers.data ?? []}
             terminals={terminals.data ?? []}
             selectedProjectId={selectedProjectId}
             selectedChatId={selectedChatId}
+            selectedExplorerId={selectedExplorerId}
             selectedTerminalId={selectedTerminalId}
             gitHistoryProjectId={gitHistoryProjectId}
             creatingChat={newChat.isPending}
+            creatingExplorer={newExplorer.isPending}
             creatingTerminal={newTerminal.isPending}
             onCreateChat={(projectId) => newChat.mutate(projectId)}
+            onCreateExplorer={(projectId) => newExplorer.mutate(projectId)}
             onCreateTerminal={(projectId) => newTerminal.mutate(projectId)}
             onRenameChat={(chatId, title) =>
               renameChatMutation.mutate({ chatId, title })
             }
             onDuplicateChat={(chatId) => forkChatMutation.mutate(chatId)}
             onDeleteChat={(chatId) => deleteChatMutation.mutate(chatId)}
+            onRenameExplorer={(explorerId, title) =>
+              renameExplorerMutation.mutate({ explorerId, title })
+            }
+            onDeleteExplorer={(explorerId) =>
+              deleteExplorerMutation.mutate(explorerId)
+            }
             onRenameTerminal={(terminalId, title) =>
               renameTerminalMutation.mutate({ terminalId, title })
             }
@@ -921,12 +1058,14 @@ export function App() {
               setSelectedProjectId(projectId);
               setSelectedChatId(null);
               setSelectedTerminalId(null);
+              setSelectedExplorerId(null);
               setShowImporter(false);
               setShowSettings(false);
             }}
             onSelectChat={(chatId) => {
               setGitHistoryProjectId(null);
               setSelectedTerminalId(null);
+              setSelectedExplorerId(null);
               setSelectedChatId(chatId);
               setShowImporter(false);
               setShowSettings(false);
@@ -934,7 +1073,16 @@ export function App() {
             onSelectTerminal={(terminalId) => {
               setGitHistoryProjectId(null);
               setSelectedChatId(null);
+              setSelectedExplorerId(null);
               setSelectedTerminalId(terminalId);
+              setShowImporter(false);
+              setShowSettings(false);
+            }}
+            onSelectExplorer={(explorerId) => {
+              setGitHistoryProjectId(null);
+              setSelectedChatId(null);
+              setSelectedTerminalId(null);
+              setSelectedExplorerId(explorerId);
               setShowImporter(false);
               setShowSettings(false);
             }}
@@ -978,9 +1126,11 @@ export function App() {
                   ? "Settings"
                   : gitHistoryProject
                     ? "Git history"
-                    : selectedTerminal
-                      ? selectedTerminal.title
-                      : (selectedProject?.github?.nameWithOwner ?? "Cantrip")}
+                    : selectedExplorer
+                      ? selectedExplorer.title
+                      : selectedTerminal
+                        ? selectedTerminal.title
+                        : (selectedProject?.github?.nameWithOwner ?? "Cantrip")}
             </p>
             <p className="truncate text-xs text-muted-foreground">
               {showImporter
@@ -990,10 +1140,12 @@ export function App() {
                   : gitHistoryProject
                     ? (gitHistoryProject.github?.nameWithOwner ??
                       gitHistoryProject.name)
-                    : selectedTerminal
-                      ? (selectedProject?.source?.displayPath ?? "Terminal")
-                      : (selectedProject?.source?.displayPath ??
-                        "Choose a project to begin")}
+                    : selectedExplorer
+                      ? (selectedProject?.source?.displayPath ?? "Explorer")
+                      : selectedTerminal
+                        ? (selectedProject?.source?.displayPath ?? "Terminal")
+                        : (selectedProject?.source?.displayPath ??
+                          "Choose a project to begin")}
             </p>
           </div>
           <div className="flex items-center gap-2 md:hidden">
@@ -1045,6 +1197,8 @@ export function App() {
             onImported={(project) => {
               setSelectedProjectId(project.id);
               setSelectedChatId(null);
+              setSelectedTerminalId(null);
+              setSelectedExplorerId(null);
               setShowImporter(false);
               setShowSettings(false);
             }}
@@ -1054,6 +1208,16 @@ export function App() {
             project={gitHistoryProject}
             onClose={() => setGitHistoryProjectId(null)}
           />
+        ) : selectedExplorer ? (
+          <Suspense
+            fallback={
+              <div className="grid flex-1 place-items-center text-muted-foreground">
+                <Loader2 className="size-5 animate-spin" />
+              </div>
+            }
+          >
+            <ExplorerView explorer={selectedExplorer} />
+          </Suspense>
         ) : selectedTerminal ? (
           <Suspense
             fallback={
@@ -1071,6 +1235,7 @@ export function App() {
             onForked={(forked) => {
               setSelectedProjectId(forked.projectId);
               setSelectedTerminalId(null);
+              setSelectedExplorerId(null);
               setSelectedChatId(forked.id);
             }}
           />
@@ -1082,7 +1247,8 @@ export function App() {
               </div>
               <h1 className="mt-4 font-semibold">No tabs yet</h1>
               <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
-                Start a Codex chat or a shell rooted in {selectedProject.name}.
+                Start a Codex chat, shell, or file explorer rooted in{" "}
+                {selectedProject.name}.
               </p>
               <div className="mt-5 flex justify-center gap-2">
                 <Button
@@ -1107,6 +1273,18 @@ export function App() {
                     <Plus className="size-4" />
                   )}
                   Terminal
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={newExplorer.isPending || !selectedProject.source}
+                  onClick={() => newExplorer.mutate(selectedProject.id)}
+                >
+                  {newExplorer.isPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <FolderTree className="size-4" />
+                  )}
+                  Explorer
                 </Button>
               </div>
               {newChat.isError ? (
@@ -1157,20 +1335,30 @@ export function App() {
             <ProjectChatList
               projects={projects.data ?? []}
               chats={chats.data ?? []}
+              explorers={explorers.data ?? []}
               terminals={terminals.data ?? []}
               selectedProjectId={selectedProjectId}
               selectedChatId={selectedChatId}
+              selectedExplorerId={selectedExplorerId}
               selectedTerminalId={selectedTerminalId}
               gitHistoryProjectId={gitHistoryProjectId}
               creatingChat={newChat.isPending}
+              creatingExplorer={newExplorer.isPending}
               creatingTerminal={newTerminal.isPending}
               onCreateChat={(projectId) => newChat.mutate(projectId)}
+              onCreateExplorer={(projectId) => newExplorer.mutate(projectId)}
               onCreateTerminal={(projectId) => newTerminal.mutate(projectId)}
               onRenameChat={(chatId, title) =>
                 renameChatMutation.mutate({ chatId, title })
               }
               onDuplicateChat={(chatId) => forkChatMutation.mutate(chatId)}
               onDeleteChat={(chatId) => deleteChatMutation.mutate(chatId)}
+              onRenameExplorer={(explorerId, title) =>
+                renameExplorerMutation.mutate({ explorerId, title })
+              }
+              onDeleteExplorer={(explorerId) =>
+                deleteExplorerMutation.mutate(explorerId)
+              }
               onRenameTerminal={(terminalId, title) =>
                 renameTerminalMutation.mutate({ terminalId, title })
               }
@@ -1197,10 +1385,12 @@ export function App() {
                 setSelectedProjectId(projectId);
                 setSelectedChatId(null);
                 setSelectedTerminalId(null);
+                setSelectedExplorerId(null);
               }}
               onSelectChat={(chatId) => {
                 setGitHistoryProjectId(null);
                 setSelectedTerminalId(null);
+                setSelectedExplorerId(null);
                 setSelectedChatId(chatId);
                 setMobileNavigationOpen(false);
                 setShowImporter(false);
@@ -1209,7 +1399,17 @@ export function App() {
               onSelectTerminal={(terminalId) => {
                 setGitHistoryProjectId(null);
                 setSelectedChatId(null);
+                setSelectedExplorerId(null);
                 setSelectedTerminalId(terminalId);
+                setMobileNavigationOpen(false);
+                setShowImporter(false);
+                setShowSettings(false);
+              }}
+              onSelectExplorer={(explorerId) => {
+                setGitHistoryProjectId(null);
+                setSelectedChatId(null);
+                setSelectedTerminalId(null);
+                setSelectedExplorerId(explorerId);
                 setMobileNavigationOpen(false);
                 setShowImporter(false);
                 setShowSettings(false);

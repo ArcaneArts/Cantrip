@@ -8,6 +8,9 @@ import type {
   ChatMessageCreate,
   ChatSummary,
   ChatUpdate,
+  ExplorerCreate,
+  ExplorerSummary,
+  ExplorerUpdate,
   GithubProjectCreate,
   ModelProfileCreate,
   ModelProfileSummary,
@@ -64,6 +67,12 @@ export interface TerminalExecutionContext {
 export interface ProjectRemovalContext {
   cwd: string;
   terminalIds: string[];
+  workerId: string;
+}
+
+export interface ExplorerExecutionContext {
+  explorerId: string;
+  root: string;
   workerId: string;
 }
 
@@ -153,6 +162,20 @@ function toTerminalSummary(
     activeWorkerId: terminal.activeWorkerId,
     createdAt: toISOString(terminal.createdAt),
     updatedAt: toISOString(terminal.updatedAt),
+  };
+}
+
+function toExplorerSummary(
+  explorer: typeof schema.explorers.$inferSelect,
+): ExplorerSummary {
+  return {
+    id: explorer.id,
+    projectId: explorer.projectId,
+    title: explorer.title,
+    position: explorer.position,
+    activeWorkerId: explorer.activeWorkerId,
+    createdAt: toISOString(explorer.createdAt),
+    updatedAt: toISOString(explorer.updatedAt),
   };
 }
 
@@ -807,12 +830,18 @@ export class ServerRepository {
       return null;
     }
 
-    const [lastChats, lastTerminals] = await Promise.all([
+    const [lastChats, lastTerminals, lastExplorers] = await Promise.all([
       this.database
         .select({ position: schema.chats.position })
         .from(schema.chats)
         .where(eq(schema.chats.projectId, projectId))
         .orderBy(desc(schema.chats.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.explorers.position })
+        .from(schema.explorers)
+        .where(eq(schema.explorers.projectId, projectId))
+        .orderBy(desc(schema.explorers.position))
         .limit(1),
       this.database
         .select({ position: schema.terminals.position })
@@ -831,6 +860,7 @@ export class ServerRepository {
           Math.max(
             lastChats[0]?.position ?? -1,
             lastTerminals[0]?.position ?? -1,
+            lastExplorers[0]?.position ?? -1,
           ) + 1,
         activeWorkerId: source.workerId,
       })
@@ -885,12 +915,18 @@ export class ServerRepository {
     const source = rows[0]?.source;
     if (!source) return null;
 
-    const [lastChats, lastTerminals] = await Promise.all([
+    const [lastChats, lastTerminals, lastExplorers] = await Promise.all([
       this.database
         .select({ position: schema.chats.position })
         .from(schema.chats)
         .where(eq(schema.chats.projectId, projectId))
         .orderBy(desc(schema.chats.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.explorers.position })
+        .from(schema.explorers)
+        .where(eq(schema.explorers.projectId, projectId))
+        .orderBy(desc(schema.explorers.position))
         .limit(1),
       this.database
         .select({ position: schema.terminals.position })
@@ -909,6 +945,7 @@ export class ServerRepository {
           Math.max(
             lastChats[0]?.position ?? -1,
             lastTerminals[0]?.position ?? -1,
+            lastExplorers[0]?.position ?? -1,
           ) + 1,
         activeWorkerId: source.workerId,
       })
@@ -929,6 +966,125 @@ export class ServerRepository {
       .where(eq(schema.terminals.id, terminalId))
       .returning();
     return result[0] ? toTerminalSummary(result[0]) : null;
+  }
+
+  async listExplorers(
+    ownerId: string,
+    projectId: string,
+  ): Promise<ExplorerSummary[]> {
+    const rows = await this.database
+      .select({ explorer: schema.explorers })
+      .from(schema.explorers)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.explorers.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.explorers.projectId, projectId))
+      .orderBy(asc(schema.explorers.position), asc(schema.explorers.createdAt));
+    return rows.map(({ explorer }) => toExplorerSummary(explorer));
+  }
+
+  async createExplorer(
+    ownerId: string,
+    projectId: string,
+    input: ExplorerCreate,
+  ): Promise<ExplorerSummary | null> {
+    const source = await this.getProjectSource(ownerId, projectId);
+    if (!source) return null;
+    const [lastChats, lastTerminals, lastExplorers] = await Promise.all([
+      this.database
+        .select({ position: schema.chats.position })
+        .from(schema.chats)
+        .where(eq(schema.chats.projectId, projectId))
+        .orderBy(desc(schema.chats.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.terminals.position })
+        .from(schema.terminals)
+        .where(eq(schema.terminals.projectId, projectId))
+        .orderBy(desc(schema.terminals.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.explorers.position })
+        .from(schema.explorers)
+        .where(eq(schema.explorers.projectId, projectId))
+        .orderBy(desc(schema.explorers.position))
+        .limit(1),
+    ]);
+    const result = await this.database
+      .insert(schema.explorers)
+      .values({
+        id: randomUUID(),
+        projectId,
+        title: input.title,
+        position:
+          Math.max(
+            lastChats[0]?.position ?? -1,
+            lastTerminals[0]?.position ?? -1,
+            lastExplorers[0]?.position ?? -1,
+          ) + 1,
+        activeWorkerId: source.workerId,
+      })
+      .returning();
+    return toExplorerSummary(firstOrThrow(result, "creating an explorer"));
+  }
+
+  async getExplorerExecutionContext(
+    ownerId: string,
+    explorerId: string,
+  ): Promise<ExplorerExecutionContext | null> {
+    const rows = await this.database
+      .select({ explorer: schema.explorers, source: schema.projectSources })
+      .from(schema.explorers)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.explorers.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .innerJoin(
+        schema.projectSources,
+        eq(schema.projectSources.projectId, schema.projects.id),
+      )
+      .where(eq(schema.explorers.id, explorerId))
+      .limit(1);
+    const row = rows[0];
+    return row
+      ? {
+          explorerId: row.explorer.id,
+          root: row.source.absolutePath,
+          workerId: row.explorer.activeWorkerId,
+        }
+      : null;
+  }
+
+  async updateExplorer(
+    ownerId: string,
+    explorerId: string,
+    input: ExplorerUpdate,
+  ): Promise<ExplorerSummary | null> {
+    if (!(await this.getExplorerExecutionContext(ownerId, explorerId)))
+      return null;
+    const result = await this.database
+      .update(schema.explorers)
+      .set({ title: input.title, updatedAt: new Date() })
+      .where(eq(schema.explorers.id, explorerId))
+      .returning();
+    return result[0] ? toExplorerSummary(result[0]) : null;
+  }
+
+  async deleteExplorer(ownerId: string, explorerId: string): Promise<boolean> {
+    if (!(await this.getExplorerExecutionContext(ownerId, explorerId)))
+      return false;
+    const result = await this.database
+      .delete(schema.explorers)
+      .where(eq(schema.explorers.id, explorerId))
+      .returning({ id: schema.explorers.id });
+    return result.length === 1;
   }
 
   async deleteTerminal(
@@ -1085,12 +1241,18 @@ export class ServerRepository {
               ),
         )
         .orderBy(asc(schema.chatMessages.sequence));
-      const [lastChats, lastTerminals] = await Promise.all([
+      const [lastChats, lastTerminals, lastExplorers] = await Promise.all([
         transaction
           .select({ position: schema.chats.position })
           .from(schema.chats)
           .where(eq(schema.chats.projectId, row.chat.projectId))
           .orderBy(desc(schema.chats.position))
+          .limit(1),
+        transaction
+          .select({ position: schema.explorers.position })
+          .from(schema.explorers)
+          .where(eq(schema.explorers.projectId, row.chat.projectId))
+          .orderBy(desc(schema.explorers.position))
           .limit(1),
         transaction
           .select({ position: schema.terminals.position })
@@ -1109,6 +1271,7 @@ export class ServerRepository {
             Math.max(
               lastChats[0]?.position ?? -1,
               lastTerminals[0]?.position ?? -1,
+              lastExplorers[0]?.position ?? -1,
             ) + 1,
           activeWorkerId: row.source.workerId,
           modelId: row.chat.modelId,
@@ -1161,7 +1324,7 @@ export class ServerRepository {
     projectId: string,
     input: OrderedIds,
   ): Promise<boolean> {
-    const [chatRows, terminalRows] = await Promise.all([
+    const [chatRows, terminalRows, explorerRows] = await Promise.all([
       this.database
         .select({ id: schema.chats.id })
         .from(schema.chats)
@@ -1184,10 +1347,22 @@ export class ServerRepository {
           ),
         )
         .where(eq(schema.terminals.projectId, projectId)),
+      this.database
+        .select({ id: schema.explorers.id })
+        .from(schema.explorers)
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.explorers.projectId, projectId)),
     ]);
     const expected = new Set([
       ...chatRows.map(({ id }) => `chat:${id}`),
       ...terminalRows.map(({ id }) => `terminal:${id}`),
+      ...explorerRows.map(({ id }) => `explorer:${id}`),
     ]);
     if (
       expected.size !== input.ids.length ||
@@ -1205,11 +1380,16 @@ export class ServerRepository {
             .update(schema.chats)
             .set({ position })
             .where(eq(schema.chats.id, id));
-        } else {
+        } else if (kind === "terminal") {
           await transaction
             .update(schema.terminals)
             .set({ position })
             .where(eq(schema.terminals.id, id));
+        } else {
+          await transaction
+            .update(schema.explorers)
+            .set({ position })
+            .where(eq(schema.explorers.id, id));
         }
       }
     });

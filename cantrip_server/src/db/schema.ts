@@ -213,6 +213,24 @@ export const terminals = pgTable("terminals", {
     .defaultNow(),
 });
 
+export const explorers = pgTable("explorers", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  position: integer("position").notNull().default(0),
+  activeWorkerId: text("active_worker_id")
+    .notNull()
+    .references(() => workers.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export const chatRuntimeSessions = pgTable(
   "chat_runtime_sessions",
   {

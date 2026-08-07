@@ -91,6 +91,9 @@ importers:
       lucide-react:
         specifier: ^1.29.0
         version: 1.29.0(react@19.2.8)
+      prism-react-renderer:
+        specifier: ^2.4.1
+        version: 2.4.1(react@19.2.8)
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -2317,6 +2320,12 @@ packages:
     resolution:
       {
         integrity: sha512-Vu4a5UFA9rIIFJ7rB/Vaafh9lrCQszopTCx6KjFboXTGQbPNasehVR5TEiithSDGyd1DEiUByggTZsg8jukeIg==,
+      }
+
+  "@types/prismjs@1.26.6":
+    resolution:
+      {
+        integrity: sha512-vqlvI7qlMvcCBbVe0AKAb4f97//Hy0EBTaiW8AalRnG/xAN5zOiWWyrNqNXeq8+KAuvRewjCVY1+IPxk4RdNYw==,
       }
 
   "@types/react-dom@19.2.4":
@@ -5291,6 +5300,14 @@ packages:
       }
     engines: { node: ">=18" }
 
+  prism-react-renderer@2.4.1:
+    resolution:
+      {
+        integrity: sha512-ey8Ls/+Di31eqzUxC46h8MksNuGx/n0AAC8uKpwFau4RPDYLuE3EXTp8N8G2vX2N7UC/+IXeNUnlWBGGcAG+Ig==,
+      }
+    peerDependencies:
+      react: ">=16.0.0"
+
   process-warning@4.0.1:
     resolution:
       {
@@ -7744,6 +7761,8 @@ snapshots:
     dependencies:
       undici-types: 8.3.0
 
+  "@types/prismjs@1.26.6": {}
+
   "@types/react-dom@19.2.4(@types/react@19.2.18)":
     dependencies:
       "@types/react": 19.2.18
@@ -9487,6 +9506,12 @@ snapshots:
   pretty-ms@9.3.0:
     dependencies:
       parse-ms: 4.0.0
+
+  prism-react-renderer@2.4.1(react@19.2.8):
+    dependencies:
+      "@types/prismjs": 1.26.6
+      clsx: 2.1.1
+      react: 19.2.8
 
   process-warning@4.0.1: {}
 

@@ -18,11 +18,13 @@ import { CSS } from "@dnd-kit/utilities";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import type {
   ChatSummary,
+  ExplorerSummary,
   ProjectSummary,
   TerminalSummary,
 } from "@cantrip/protocol";
 import {
   FolderGit2,
+  FolderTree,
   GitBranch,
   GripVertical,
   Loader2,
@@ -51,6 +53,7 @@ import { cn } from "@/lib/utils";
 const projectId = (id: string) => `project:${id}`;
 const chatId = (id: string) => `chat:${id}`;
 const terminalId = (id: string) => `terminal:${id}`;
+const explorerId = (id: string) => `explorer:${id}`;
 const menuContentClass =
   "z-50 min-w-36 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
 const menuItemClass =
@@ -275,13 +278,124 @@ function TerminalTab({
   );
 }
 
+function ExplorerTab({
+  active,
+  editing,
+  explorer,
+  onDelete,
+  onRename,
+  onSelect,
+  renameValue,
+  setRenameValue,
+  submitRename,
+}: {
+  active: boolean;
+  editing: boolean;
+  explorer: ExplorerSummary;
+  onDelete(): void;
+  onRename(): void;
+  onSelect(): void;
+  renameValue: string;
+  setRenameValue(value: string): void;
+  submitRename(): void;
+}) {
+  const sortable = useSortable({ id: explorerId(explorer.id) });
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(sortable.transform),
+    transition: sortable.transition,
+    opacity: sortable.isDragging ? 0.25 : 1,
+    zIndex: sortable.isDragging ? 10 : undefined,
+  };
+  return (
+    <div
+      ref={sortable.setNodeRef}
+      style={style}
+      className={cn(
+        "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
+        active && "bg-muted text-foreground",
+      )}
+    >
+      <DragHandle
+        attributes={sortable.attributes}
+        listeners={sortable.listeners}
+      />
+      {editing ? (
+        <input
+          autoFocus
+          value={renameValue}
+          onChange={(event) => setRenameValue(event.target.value)}
+          onBlur={submitRename}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") submitRename();
+            if (event.key === "Escape") onRename();
+          }}
+          className="h-7 min-w-0 flex-1 rounded border bg-background px-2 text-xs text-foreground outline-none ring-ring focus:ring-2"
+          aria-label={`Rename ${explorer.title}`}
+        />
+      ) : (
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
+          onClick={onSelect}
+          onDoubleClick={(event) => {
+            event.preventDefault();
+            onRename();
+          }}
+        >
+          <FolderTree className="size-3.5 shrink-0" />
+          <span className="truncate">{explorer.title}</span>
+        </button>
+      )}
+      {!editing ? (
+        <DropdownMenuPrimitive.Root>
+          <DropdownMenuPrimitive.Trigger asChild>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
+            >
+              <MoreHorizontal className="size-3.5" />
+              <span className="sr-only">Actions for {explorer.title}</span>
+            </Button>
+          </DropdownMenuPrimitive.Trigger>
+          <DropdownMenuPrimitive.Portal>
+            <DropdownMenuPrimitive.Content
+              align="start"
+              className={menuContentClass}
+            >
+              <DropdownMenuPrimitive.Item
+                className={menuItemClass}
+                onSelect={onRename}
+              >
+                <Pencil className="size-4" /> Rename
+              </DropdownMenuPrimitive.Item>
+              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+              <DropdownMenuPrimitive.Item
+                className={cn(
+                  menuItemClass,
+                  "text-destructive focus:bg-destructive/10",
+                )}
+                onSelect={onDelete}
+              >
+                <Trash2 className="size-4" /> Delete
+              </DropdownMenuPrimitive.Item>
+            </DropdownMenuPrimitive.Content>
+          </DropdownMenuPrimitive.Portal>
+        </DropdownMenuPrimitive.Root>
+      ) : null}
+    </div>
+  );
+}
+
 function SortableProject({
   active,
   children,
   creatingChat,
+  creatingExplorer,
   creatingTerminal,
   historyActive,
   onCreateChat,
+  onCreateExplorer,
   onCreateTerminal,
   onOpenHistory,
   onRemove,
@@ -291,9 +405,11 @@ function SortableProject({
   active: boolean;
   children?: ReactNode;
   creatingChat: boolean;
+  creatingExplorer: boolean;
   creatingTerminal: boolean;
   historyActive: boolean;
   onCreateChat(): void;
+  onCreateExplorer(): void;
   onCreateTerminal(): void;
   onOpenHistory(): void;
   onRemove(): void;
@@ -375,6 +491,13 @@ function SortableProject({
               >
                 <Plus className="size-4" /> Terminal
               </DropdownMenuPrimitive.Item>
+              <DropdownMenuPrimitive.Item
+                className={menuItemClass}
+                disabled={creatingExplorer}
+                onSelect={onCreateExplorer}
+              >
+                <Plus className="size-4" /> Explorer
+              </DropdownMenuPrimitive.Item>
             </DropdownMenuPrimitive.Content>
           </DropdownMenuPrimitive.Portal>
         </DropdownMenuPrimitive.Root>
@@ -419,47 +542,61 @@ function SortableProject({
 export function ProjectChatList({
   chats,
   creatingChat,
+  creatingExplorer,
   creatingTerminal,
+  explorers,
   gitHistoryProjectId,
   onCreateChat,
+  onCreateExplorer,
   onDeleteChat,
+  onDeleteExplorer,
   onDuplicateChat,
   onCreateTerminal,
   onDeleteTerminal,
   onOpenGitHistory,
   onRemoveProject,
   onRenameChat,
+  onRenameExplorer,
   onRenameTerminal,
   onReorderTabs,
   onReorderProjects,
   onSelectChat,
+  onSelectExplorer,
   onSelectTerminal,
   onSelectProject,
   projects,
   selectedChatId,
+  selectedExplorerId,
   selectedProjectId,
   selectedTerminalId,
   terminals,
 }: {
   chats: ChatSummary[];
   creatingChat: boolean;
+  creatingExplorer: boolean;
   creatingTerminal: boolean;
+  explorers: ExplorerSummary[];
   onCreateChat(projectId: string): void;
+  onCreateExplorer(projectId: string): void;
   onDeleteChat(chatId: string): void;
+  onDeleteExplorer(explorerId: string): void;
   onDuplicateChat(chatId: string): void;
   onCreateTerminal(projectId: string): void;
   onDeleteTerminal(terminalId: string): void;
   onOpenGitHistory(projectId: string): void;
   onRemoveProject(projectId: string, deleteLocalFiles: boolean): void;
   onRenameChat(chatId: string, title: string): void;
+  onRenameExplorer(explorerId: string, title: string): void;
   onRenameTerminal(terminalId: string, title: string): void;
   onReorderTabs(projectId: string, ids: string[]): void;
   onReorderProjects(ids: string[]): void;
   onSelectChat(chatId: string): void;
+  onSelectExplorer(explorerId: string): void;
   onSelectTerminal(terminalId: string): void;
   onSelectProject(projectId: string): void;
   projects: ProjectSummary[];
   selectedChatId: string | null;
+  selectedExplorerId: string | null;
   selectedProjectId: string | null;
   selectedTerminalId: string | null;
   terminals: TerminalSummary[];
@@ -470,11 +607,16 @@ export function ProjectChatList({
   );
   const [activeDrag, setActiveDrag] = useState<string | null>(null);
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
+  const [editingExplorerId, setEditingExplorerId] = useState<string | null>(
+    null,
+  );
   const [editingTerminalId, setEditingTerminalId] = useState<string | null>(
     null,
   );
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ChatSummary | null>(null);
+  const [deleteExplorerTarget, setDeleteExplorerTarget] =
+    useState<ExplorerSummary | null>(null);
   const [deleteTerminalTarget, setDeleteTerminalTarget] =
     useState<TerminalSummary | null>(null);
   const [removeProjectTarget, setRemoveProjectTarget] =
@@ -486,6 +628,12 @@ export function ProjectChatList({
         id: string;
         kind: "terminal";
         terminal: TerminalSummary;
+        position: number;
+      }
+    | {
+        id: string;
+        kind: "explorer";
+        explorer: ExplorerSummary;
         position: number;
       }
   > = [
@@ -500,6 +648,12 @@ export function ProjectChatList({
       kind: "terminal" as const,
       terminal,
       position: terminal.position,
+    })),
+    ...explorers.map((explorer) => ({
+      id: explorerId(explorer.id),
+      kind: "explorer" as const,
+      explorer,
+      position: explorer.position,
     })),
   ].sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
 
@@ -528,6 +682,19 @@ export function ProjectChatList({
     const title = renameValue.trim();
     setEditingTerminalId(null);
     if (title && title !== terminal.title) onRenameTerminal(terminal.id, title);
+  };
+  const beginExplorerRename = (explorer: ExplorerSummary) => {
+    if (editingExplorerId === explorer.id) {
+      setEditingExplorerId(null);
+      return;
+    }
+    setEditingExplorerId(explorer.id);
+    setRenameValue(explorer.title);
+  };
+  const finishExplorerRename = (explorer: ExplorerSummary) => {
+    const title = renameValue.trim();
+    setEditingExplorerId(null);
+    if (title && title !== explorer.title) onRenameExplorer(explorer.id, title);
   };
   const handleDragStart = (event: DragStartEvent) => {
     setActiveDrag(String(event.active.id));
@@ -568,6 +735,9 @@ export function ProjectChatList({
   const draggedTerminal = terminals.find(
     (terminal) => terminalId(terminal.id) === activeDrag,
   );
+  const draggedExplorer = explorers.find(
+    (explorer) => explorerId(explorer.id) === activeDrag,
+  );
 
   return (
     <>
@@ -590,9 +760,11 @@ export function ProjectChatList({
                 project={project}
                 active={active}
                 creatingChat={creatingChat}
+                creatingExplorer={creatingExplorer}
                 creatingTerminal={creatingTerminal}
                 historyActive={gitHistoryProjectId === project.id}
                 onCreateChat={() => onCreateChat(project.id)}
+                onCreateExplorer={() => onCreateExplorer(project.id)}
                 onCreateTerminal={() => onCreateTerminal(project.id)}
                 onSelect={() => onSelectProject(project.id)}
                 onOpenHistory={() => onOpenGitHistory(project.id)}
@@ -622,7 +794,7 @@ export function ProjectChatList({
                             onDuplicate={() => onDuplicateChat(tab.chat.id)}
                             onDelete={() => setDeleteTarget(tab.chat)}
                           />
-                        ) : (
+                        ) : tab.kind === "terminal" ? (
                           <TerminalTab
                             key={tab.id}
                             terminal={tab.terminal}
@@ -637,6 +809,23 @@ export function ProjectChatList({
                             onRename={() => beginTerminalRename(tab.terminal)}
                             onDelete={() =>
                               setDeleteTerminalTarget(tab.terminal)
+                            }
+                          />
+                        ) : (
+                          <ExplorerTab
+                            key={tab.id}
+                            explorer={tab.explorer}
+                            active={tab.explorer.id === selectedExplorerId}
+                            editing={editingExplorerId === tab.explorer.id}
+                            renameValue={renameValue}
+                            setRenameValue={setRenameValue}
+                            submitRename={() =>
+                              finishExplorerRename(tab.explorer)
+                            }
+                            onSelect={() => onSelectExplorer(tab.explorer.id)}
+                            onRename={() => beginExplorerRename(tab.explorer)}
+                            onDelete={() =>
+                              setDeleteExplorerTarget(tab.explorer)
                             }
                           />
                         ),
@@ -663,6 +852,11 @@ export function ProjectChatList({
             <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
               <SquareTerminal className="size-3.5" />
               <span className="truncate">{draggedTerminal.title}</span>
+            </div>
+          ) : draggedExplorer ? (
+            <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
+              <FolderTree className="size-3.5" />
+              <span className="truncate">{draggedExplorer.title}</span>
             </div>
           ) : null}
         </DragOverlay>
@@ -772,6 +966,35 @@ export function ProjectChatList({
                 if (deleteTerminalTarget)
                   onDeleteTerminal(deleteTerminalTarget.id);
                 setDeleteTerminalTarget(null);
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(deleteExplorerTarget)}
+        onOpenChange={(open) => !open && setDeleteExplorerTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete explorer?</DialogTitle>
+            <DialogDescription>
+              “{deleteExplorerTarget?.title}” will be removed. Project files are
+              not changed.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteExplorerTarget)
+                  onDeleteExplorer(deleteExplorerTarget.id);
+                setDeleteExplorerTarget(null);
               }}
             >
               Delete
