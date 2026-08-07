@@ -1,0 +1,12 @@
+packages:
+  - cantrip_app
+  - cantrip_server
+  - cantrip_worker
+  - packages/*
+
+allowBuilds:
+  esbuild: true
+
+engineStrict: true
+saveWorkspaceProtocol: rolling
+sharedWorkspaceLockfile: true

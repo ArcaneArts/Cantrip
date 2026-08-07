@@ -1,0 +1,9 @@
+.cantrip/
+**/dist/
+**/node_modules/
+cantrip_app/android/
+cantrip_app/ios/
+cantrip_app/src-tauri/target/
+
+# Keep the previously committed architecture plan's compact tables unchanged.
+docs/PLAN.md

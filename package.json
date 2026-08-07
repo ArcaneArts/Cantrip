@@ -1,0 +1,29 @@
+{
+  "name": "cantrip",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.15.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:prepare": "pnpm --filter @cantrip/protocol build",
+    "dev": "pnpm run dev:prepare && concurrently --kill-others --names protocol,server,worker,app --prefix-colors gray,blue,magenta,green \"pnpm --filter @cantrip/protocol dev\" \"pnpm --filter @cantrip/server dev\" \"pnpm --filter @cantrip/worker dev\" \"pnpm --filter @cantrip/app dev\"",
+    "dev:postgres": "pnpm run dev:prepare && cross-env DATABASE_URL=postgresql://cantrip:cantrip@127.0.0.1:54329/cantrip concurrently --kill-others --names database,protocol,server,worker,app --prefix-colors yellow,gray,blue,magenta,green \"docker compose -f compose.dev.yml up\" \"pnpm --filter @cantrip/protocol dev\" \"pnpm --filter @cantrip/server dev\" \"pnpm --filter @cantrip/worker dev\" \"pnpm --filter @cantrip/app dev\"",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r --if-present test",
+    "check": "pnpm typecheck && pnpm test && pnpm format:check",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "concurrently": "^10.0.4",
+    "cross-env": "^10.1.0",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.9",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

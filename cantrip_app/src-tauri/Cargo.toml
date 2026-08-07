@@ -1,0 +1,19 @@
+[package]
+name = "cantrip-app"
+version = "0.0.0"
+description = "Cantrip desktop client"
+authors = ["Cantrip"]
+edition = "2021"
+
+[lib]
+name = "cantrip_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"

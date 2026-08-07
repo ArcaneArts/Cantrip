@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.cantrip/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+coverage/
+*.tsbuildinfo
+
+# Generated Capacitor projects are added when native work begins.
+cantrip_app/android/
+cantrip_app/ios/
+
+# Rust/Tauri build output.
+cantrip_app/src-tauri/target/
+cantrip_app/src-tauri/gen/

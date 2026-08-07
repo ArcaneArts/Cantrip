@@ -1,0 +1,17 @@
+{
+  "name": "@cantrip/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "pnpm --filter @cantrip/protocol build && vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@cantrip/protocol": "workspace:*"
+  },
+  "devDependencies": {}
+}

@@ -1,6 +1,6 @@
 # Cantrip Project Plan
 
-- Status: initial architecture plan
+- Status: foundation in progress; local-only vertical slice is the active target
 - Canonical domain: `cantrip.art`
 - Desktop/mobile application identifier: `art.cantrip`
 - Package manager: pnpm workspaces
@@ -8,16 +8,16 @@
 
 ## 1. Product vision
 
-Cantrip is a self-hostable, multi-device coding-agent client inspired by the Codex desktop experience. A user should be able to run the entire system on one computer, open the browser UI, link a source folder, and use Codex against that folder. The same protocol should also support a browser, Tauri desktop app, or Capacitor mobile app connecting to a remote server and one or more workers.
+Cantrip is a self-hostable, multi-device coding-agent client inspired by the Codex desktop experience. The immediate product is deliberately local: one `pnpm dev` command runs the browser app, server, embedded database, and one worker on the same computer. A user opens the app without signing in, links a local source folder, and uses Codex against that folder. The boundaries must nevertheless support a browser, Tauri desktop app, or Capacitor mobile app connecting to a remote server and one or more workers later.
 
-The worker owns machine access. It runs the open-source Codex CLI, reads and writes source files, manages terminals, and enforces local permissions. The server owns durable product state, routing, synchronization, and remote access. The app is a control surface and never assumes that project files exist on the device rendering the UI.
+The server is the configuration and routing authority. It announces its deployment mode, authentication mode, current user, supported features, and storage/routing rules to every app. It also owns durable Cantrip product state and conversation history. The worker owns machine access: it runs the open-source Codex CLI, reads and writes source files, manages terminals, and enforces local permissions. The app is a control surface that connects only to the server and never assumes project files exist on the device rendering the UI.
 
 Cantrip should support these deployment shapes without maintaining separate products:
 
 1. **Local development:** app, server, worker, PGlite, and Codex all run on one machine.
 2. **Personal cloud control plane:** the server runs on a public host while one or more workers connect outbound from private machines.
 3. **Fully hosted:** the server and workers run in cloud infrastructure, while the app runs in a browser, Tauri, or Capacitor.
-4. **Multi-worker:** a project has a default worker, and each chat is pinned to the worker and source binding on which its Codex thread runs.
+4. **Multi-worker:** a server account can own workers on a laptop, desktop, and VPS. A logical chat has an active worker runtime, but its server-held transcript remains available when that worker is offline and can later be handed to another compatible worker.
 
 ## 2. Goals
 
@@ -26,7 +26,10 @@ Cantrip should support these deployment shapes without maintaining separate prod
 - Stream agent messages, plans, reasoning summaries, commands, file changes, diffs, approvals, errors, and token usage into a responsive UI.
 - Support interrupting, steering, queued follow-ups, prompt reordering, and explicit context compaction.
 - Resume durable chats after app, server, worker, or Codex process restarts.
+- Keep conversation history readable from the server while a worker is offline.
 - Allow a project or a new chat to select from multiple connected workers.
+- Support a future idle-chat handoff to another worker when that worker has a compatible source checkout; do not promise migration of opaque live Codex state.
+- Support an anonymous, zero-sign-in loopback mode and a separate hosted account mode with email/password identities.
 - Support Codex-managed ChatGPT sign-in and its Codex quota reporting.
 - Support OpenAI-compatible provider profiles with a model, base URL, API key, structured-output capability, tool calling, and reasoning capability metadata.
 - Support worker-local providers such as Ollama, where `localhost` refers to the worker rather than the server or UI device.
@@ -37,7 +40,7 @@ Cantrip should support these deployment shapes without maintaining separate prod
 
 - Reimplementing the Codex agent loop, tools, sandbox, or model context manager.
 - Guaranteeing that every model exposed by every OpenAI-compatible provider behaves correctly. Compatibility must be measured per model.
-- Moving a live chat between workers. A chat is pinned to its worker in the first release; changing a project's default worker affects new chats.
+- Moving an active turn or opaque Codex runtime state between workers. A future handoff occurs only at a safe idle boundary and creates or resumes a worker-specific runtime session.
 - Multi-user access to one operating-system worker account. Initial workers have one owner and one trust boundary.
 - Real-time collaborative editing of project files.
 - Building a proprietary relay before the cloud-server and bring-your-own-tunnel paths are proven.
@@ -65,14 +68,14 @@ The worker will:
 - resume known Codex thread IDs from durable mappings; and
 - expose clear incompatibility errors instead of silently dropping unknown events.
 
-Cantrip must not reconstruct Codex's model context from UI messages. Codex's rollout/session data on the worker remains authoritative for agent continuation. The Cantrip database stores a replayable UI projection, routing metadata, queue state, and audit data.
+Cantrip must distinguish a logical conversation from a worker runtime session. The server's ordered conversation/event history is authoritative for rendering, queueing, audit, offline access, and future worker handoff. A worker's Codex rollout/session data remains authoritative for continuing that particular runtime session. When handing a chat to another worker, Cantrip may replay or summarize server history into a new Codex session, but it must disclose that opaque context, tool state, and uncommitted files do not migrate automatically.
 
 ### 4.2 Three product layers
 
 ```mermaid
 flowchart LR
     UI["cantrip_app<br/>Browser / Tauri / Capacitor"]
-    API["cantrip_server<br/>API, auth, database, routing"]
+    API["cantrip_server<br/>configuration, identity, history, routing"]
     W1["cantrip_worker<br/>Laptop"]
     W2["cantrip_worker<br/>Cloud VM"]
     C1["Codex app-server<br/>isolated CODEX_HOME"]
@@ -89,9 +92,24 @@ flowchart LR
     W2 --- FS2
 ```
 
-The server is always the rendezvous point from the app's perspective. Workers initiate outbound connections, so a cloud-hosted server does not require opening an inbound port on a laptop. When the server itself is local and a phone needs remote access, the first supported solution should be a documented reverse proxy, VPN, or tunnel. A Cantrip relay can be designed after this flow is working.
+The server is always the rendezvous point. There is no app-to-worker connection mode: worker listing, files, terminals, commands, Codex events, and presence all travel through the server. Workers initiate outbound connections, so a cloud-hosted server does not require an inbound port on a laptop. When a local server eventually needs to reach a phone, a documented reverse proxy, VPN, tunnel, link code, or Cantrip relay can be evaluated after loopback use is complete.
 
-### 4.3 Technology choices
+### 4.3 Server authority and client bootstrap
+
+An app starts with only a server origin. Its first request is the server bootstrap document, which includes:
+
+- a stable server ID and protocol version;
+- deployment and bootstrap modes (`local`, `hosted`, `pnpm-dev`, `tauri`, and related modes);
+- the authentication mode and current Cantrip principal;
+- the invariant that workers are server-routed and files are worker-owned;
+- server-owned capabilities such as accounts, pairing/link codes, multiple workers, worker switching, Git sync, and worktrees; and
+- API/live-transport compatibility information as those protocols mature.
+
+Clients must use this document rather than compile-time assumptions about whether the server is embedded, on loopback, or in the cloud. Unsupported secure modes fail closed at server startup; the foundation must not advertise account or password security before it exists.
+
+In the current local mode, the server binds to loopback, uses one stable anonymous local user, requires no sign-in or connection screen, and is started with the worker and Vite app by `pnpm dev`. Tauri will eventually supervise the same local processes directly or through containers. Browser-only and Capacitor builds are clients and never bootstrap Node.js services.
+
+### 4.4 Technology choices
 
 | Area | Initial choice | Rationale |
 | --- | --- | --- |
@@ -169,13 +187,15 @@ The database is the source of truth for Cantrip entities. Exact columns can evol
 
 | Entity | Purpose and important fields |
 | --- | --- |
-| `users` | Cantrip identity. Separate from any ChatGPT or model-provider identity. |
+| `users` | Cantrip identity. Local mode has one stable anonymous user; hosted mode later adds email/password accounts. Separate from ChatGPT/model-provider identity. |
 | `sessions` | Browser/mobile/desktop sessions and revocation metadata. |
 | `workers` | Owner, display name, status, platform, capabilities, protocol version, public key, last seen time. |
 | `worker_credentials` | Hashed/encrypted enrollment material and rotation metadata; never raw provider secrets. |
-| `projects` | Logical project name, owner, settings, and optional default worker/source binding. |
+| `projects` | Server-owned logical project name, owner, settings, and optional default worker/source binding. |
 | `project_sources` | A worker-scoped canonical path, display path, repository fingerprint, Git metadata, and allowed access policy. |
-| `chats` | Project, pinned worker/source, runtime profile, Codex thread ID, status, title, model, and event cursor. |
+| `chats` | Server-owned logical conversation with project, title, active worker, runtime profile, status, model, and event cursor. |
+| `chat_runtime_sessions` | Mapping from one logical chat to a worker-specific Codex thread/session, source binding, status, and replay/handoff metadata. |
+| `chat_messages` | Ordered server-held conversation history that remains readable independently of worker availability. |
 | `turns` | Cantrip projection of Codex turns, status, timestamps, usage, and error summary. |
 | `chat_inputs` | Durable prompt queue with mode, ordering key, idempotency key, delivery state, and optional expected turn ID. |
 | `chat_events` | Append-only normalized event log with per-chat ordering, raw payload, and deduplication key. |
@@ -183,16 +203,19 @@ The database is the source of truth for Cantrip entities. Exact columns can evol
 | `runtime_profiles` | Provider type, model defaults, worker placement, capability metadata, and secret references. |
 | `audit_events` | Security-sensitive operations such as pairing, terminal creation, approvals, policy changes, and secret updates. |
 
-A project source path is meaningful only on its worker. Two workers may bind the same logical project to different clones and different absolute paths. A chat records an immutable worker/source binding in V1 so that a later change to the project default cannot accidentally resume a Codex thread against the wrong checkout.
+A project source path is meaningful only on its worker. Two workers may bind the same logical project to different clones and different absolute paths. The server stores only source metadata and paths needed for routing; it does not mirror the working tree or file contents. File reads, edits, Git operations, and terminals always execute on the selected worker.
 
-The server keeps enough normalized events to render a chat while its worker is offline. The worker keeps the Codex rollout/session files required to resume model context. If those worker files are lost, the transcript remains viewable but the chat becomes detached; recovery or cross-worker import is a later feature.
+The server keeps the ordered transcript and enough normalized events to render a chat while its worker is offline. The worker keeps the Codex rollout/session files required to resume model context. If those files are lost, the transcript remains viewable. A later handoff can attach the logical chat to another worker by creating a new runtime session from server history, provided that worker has a matching source binding. The UI must distinguish a seamless session resume from a history-based handoff.
+
+Git-aware worker synchronization is a later subsystem. It may coordinate repository remotes, commits, revisions, branches, and worktrees so compatible checkouts exist on several workers, but Cantrip must never assume that equal project IDs imply equal files. Uncommitted changes require an explicit transfer strategy and are out of scope for the local foundation.
 
 ## 7. Protocols and state flow
 
 ### 7.1 App-to-server API
 
-Use ordinary versioned HTTP endpoints for snapshots and mutations, plus one authenticated WebSocket for live events. Initial endpoint groups should include:
+Use ordinary versioned HTTP endpoints for snapshots and mutations, plus one authenticated WebSocket for live events. During the foundation the paths use `/api`; they will move behind a stable `/v1` compatibility boundary before remote clients ship. Initial endpoint groups should include:
 
+- `/api/bootstrap` for server-announced deployment, identity, routing, storage, and capability configuration;
 - `/v1/session/*` for Cantrip authentication;
 - `/v1/workers/*` for pairing, listing, status, and capabilities;
 - `/v1/projects/*` and `/v1/project-sources/*` for logical projects and worker paths;
@@ -298,9 +321,13 @@ Do not silently reuse or modify the user's default `~/.codex` directory. A later
 
 Cantrip authentication controls who may access the server and workers. Codex/ChatGPT authentication controls model access from a runtime profile. These are separate identities with separate logout, revocation, and audit behavior.
 
-Local development should still use a random bootstrap secret and secure session cookie instead of an unauthenticated loopback API; otherwise a malicious website can target local endpoints. Remote/cloud mode adds normal account sessions, CSRF/origin checks, revocation, and worker ownership enforcement.
+The first local-only product intentionally has no account, sign-in, connection, or pairing flow. A loopback server exposes one stable anonymous local principal and the app enters it immediately. This mode is permitted only while bound to loopback and must use strict origin checks, JSON-only mutation bodies, and browser hardening so unrelated websites cannot silently drive the API. Binding publicly or enabling a remote client must require an explicit transition to a protected mode.
+
+Later personal-server protection may add a password and a short-lived link code that grants a revocable device token. Hosted mode adds email/password accounts, password hashing, secure sessions, CSRF protection, revocation, rate limits, ownership checks, recovery, and eventually stronger sign-in methods. These modes are server-announced. Until they are implemented the server rejects their configuration at startup rather than running a cosmetic or partial auth layer.
 
 Workers pair using a short-lived, single-use token generated by the server. On success, the worker stores a rotatable long-lived credential locally. Provider credentials never become worker enrollment credentials.
+
+For `pnpm dev`, server and worker share a development-only worker token through process configuration. It is bootstrap plumbing, not a design for remote enrollment. The app never receives this token.
 
 ### 9.2 Sign in with ChatGPT
 
@@ -359,7 +386,9 @@ Primary surfaces:
 
 Desktop layout can use three resizable panes. Mobile uses the transcript as the primary screen, with projects, queue, files, and terminals in full-height sheets. The app should never require the source tree to exist locally, which keeps the same component model valid on phones.
 
-The Tauri milestone adds native notifications, secure storage for the Cantrip session, deep links, updater configuration, and optional management of a local server/worker process. The Capacitor milestone adds secure session storage, deep links, push notifications, background reconnect behavior, and mobile-safe approval/terminal UX. Both use `art.cantrip` as the application identifier.
+The Tauri milestone adds native notifications, secure storage for any remote Cantrip session, deep links, updater configuration, and management of the local server/worker process tree. Opening the desktop app in local mode should start or attach to the server and worker, wait for readiness, open the UI, and terminate owned child processes cleanly. Packaging may use directly supervised processes or containers after distribution constraints are measured.
+
+The Capacitor milestone adds secure session storage, deep links, push notifications, background reconnect behavior, and mobile-safe approval/terminal UX. Capacitor and ordinary browser builds only connect to an already running server; they cannot bootstrap the Node.js server or worker. Both native shells use `art.cantrip` as the application identifier.
 
 ## 11. Security model
 
@@ -401,13 +430,14 @@ Suggested local defaults:
 - Vite app: `http://localhost:5173`;
 - server/API: `http://localhost:4310`;
 - PGlite data and all generated local state: `.cantrip/dev/`, gitignored;
+- server mode: local deployment, `pnpm-dev` bootstrap, no authentication, one anonymous local user;
 - worker connects to the local server and retries until it is ready;
-- browser launches through a one-time local bootstrap URL; and
+- app learns deployment and capability details from `/api/bootstrap` and contains no worker address; and
 - the worker detects `codex` from configuration or `PATH` and prints an actionable install/version error.
 
 Use pnpm's recursive/parallel scripts before adding a monorepo task orchestrator. Add caching/orchestration only when build timings justify the extra layer.
 
-Configuration uses validated environment variables and config files with documented precedence. Production refuses insecure combinations such as a non-loopback listener without authentication or TLS termination awareness.
+Configuration uses validated environment variables and config files with documented precedence. The current server refuses hosted or account/password modes because they are not implemented. Before remote access ships, production must also refuse insecure combinations such as a non-loopback listener without authentication or TLS termination awareness.
 
 ## 13. Testing strategy
 
@@ -440,12 +470,12 @@ Configuration uses validated environment variables and config files with documen
 
 ### End-to-end tests
 
-- local bootstrap and worker pairing;
+- zero-sign-in local bootstrap and server-announced configuration;
 - create a project from a worker folder and start a chat;
 - stream a command and file diff, respond to approval, and finish the turn;
 - steer a running turn and reorder queued prompts;
 - compact and resume after a full stack restart;
-- switch a project's default worker and confirm existing chats remain pinned;
+- keep history readable with a worker offline, then hand an idle logical chat to a compatible worker-specific runtime session;
 - configure ChatGPT, API-key, and keyless local profiles using fake providers; and
 - cover desktop and phone-sized layouts in Playwright.
 
@@ -461,19 +491,22 @@ For PostgreSQL deployments, document migrations, backups, point-in-time recovery
 
 ### Phase 0: foundation and contracts
 
-- Scaffold the pnpm workspace and three deployables.
-- Add shared TypeScript, lint, formatting, test, and build configuration.
-- Add `@cantrip/protocol`, configuration validation, and versioned envelopes.
-- Establish PGlite/PostgreSQL migrations and repository conventions.
+- Scaffold the pnpm workspace and three deployables. (Implemented.)
+- Add shared TypeScript, formatting, test, and build configuration. (Implemented; lint follows when source volume warrants it.)
+- Make `pnpm dev` supervise PGlite, server, worker, and Vite with clean Ctrl+C teardown. (Implemented.)
+- Add server-announced bootstrap configuration and the anonymous local principal. (Implemented.)
+- Establish PGlite/PostgreSQL migrations for users, workers, projects, worker source bindings, logical chats, worker runtime sessions, and server-held messages. (Initial schema implemented.)
+- Persist worker heartbeats and expose initial project/chat/message HTTP contracts through `@cantrip/protocol`. (Implemented.)
+- Extend `@cantrip/protocol` with versioned command/event envelopes and live transport negotiation.
 - Build a fake worker and fake Codex runtime before UI work depends on the real CLI.
 - Record architecture decisions for protocol versioning, auth, event storage, and secret handling.
 
-Exit: one root command starts a typed empty app/server/worker stack, and CI runs checks and database migrations.
+Exit: one root command starts a typed app/server/worker stack, the app renders server-announced configuration and persisted worker presence, initial server-owned history survives restart, and CI runs checks and database migrations.
 
 ### Phase 1: local vertical slice
 
 - Supervise Codex app-server over stdio.
-- Bootstrap a local authenticated server and worker.
+- Bootstrap the loopback-only server, anonymous local user, and worker without a sign-in or connection screen.
 - Register a source folder, create a project, create/resume a Codex thread, and run turns.
 - Stream agent messages, plans, commands, file changes, diffs, errors, and usage.
 - Implement approvals, interruption, steering, durable queueing, and compaction.
@@ -495,9 +528,11 @@ Exit: one local worker can safely switch between verified ChatGPT, API/proxy, an
 
 ### Phase 3: cloud server and multiple workers
 
-- Add production Cantrip user authentication and session revocation.
+- Add email/password accounts, protected personal-server modes, sessions, and revocation.
 - Add secure worker enrollment, credential rotation, ownership, and outbound WSS.
-- Route projects and new chats to selected workers.
+- Route projects and chats to selected account-owned workers through the server only.
+- Add idle-chat handoff using worker-specific runtime sessions and explicit history replay/summarization semantics.
+- Require a compatible project source binding and surface Git/revision differences before handoff.
 - Add durable worker commands, leases, outbox replay, and offline UI.
 - Test PostgreSQL deployments, backups, and server restart recovery.
 - Harden all authorization, path, approval, terminal, and secret boundaries.
@@ -507,7 +542,7 @@ Exit: a public Cantrip server can coordinate multiple private workers without in
 ### Phase 4: packaged apps and remote-local access
 
 - Package the Vite UI with Tauri using identifier `art.cantrip`.
-- Add optional local server/worker lifecycle management to the desktop shell.
+- Make Tauri bootstrap and supervise the local server/worker lifecycle while retaining the same server bootstrap contract.
 - Package the same UI with Capacitor and add push notifications/deep links.
 - Document reverse-proxy, VPN, and tunnel setups for a local server.
 - Evaluate a `relay.cantrip.art` outbound tunnel only after the threat model, cost model, and existing tunnel UX are measured.
@@ -517,8 +552,9 @@ Exit: browser, desktop, and mobile clients share the same protocol and can recon
 ### Phase 5: hardening and advanced workflows
 
 - Add organization roles only with a complete tenancy model.
-- Add chat fork/branch, export/import, and an explicit worker handoff design.
-- Add worktree workflows, richer file previews, plugins/skills controls, and scheduled tasks as demand warrants.
+- Add chat fork/branch and export/import.
+- Add Git-assisted cross-worker synchronization, worktree workflows, and explicit handling for uncommitted changes.
+- Add richer file previews, plugins/skills controls, and scheduled tasks as demand warrants.
 - Add protocol compatibility matrices, upgrade tooling, load tests, and disaster-recovery exercises.
 
 ## 16. MVP acceptance criteria
@@ -526,14 +562,16 @@ Exit: browser, desktop, and mobile clients share the same protocol and can recon
 The first meaningful release is complete when all of the following are true:
 
 - `pnpm dev` starts app, server, worker, and PGlite locally.
+- The browser app discovers local/no-auth mode from the server and opens as the anonymous local user without a connection screen.
+- The app contains no direct worker origin; every worker interaction routes through the server.
 - A user can choose a worker folder, create a project and chat, and run a real Codex turn.
 - The UI accurately streams and restores messages, plans, command output, file changes, diffs, approvals, errors, and completion state.
 - Steering targets the active turn; queued prompts survive restart and run in the chosen order.
 - Interrupt and explicit context compaction work and leave the chat resumable.
 - Restarting the browser, server, worker, or Codex runtime does not duplicate completed inputs or lose accepted queued inputs.
+- Conversation history remains readable from PGlite when the worker is stopped; files remain worker-only.
 - ChatGPT login is completed on the worker, quota state is visible, and raw tokens never enter the server database.
 - A tested OpenAI-compatible profile and a worker-local Ollama profile can run, with unsupported capabilities visibly disabled.
-- A project can select a different default worker for new chats while existing chats remain bound to their original worker.
 - Security tests cover unauthorized chat access, forged worker events, replayed commands, path traversal, symlink escape, secret leakage, and approval spoofing.
 
 ## 17. Major risks and mitigations
@@ -543,9 +581,9 @@ The first meaningful release is complete when all of the following are true:
 | Codex app-server evolves quickly. | Pin a tested range, generate schemas from the installed CLI, isolate it behind `CodexRuntime`, preserve unknown events, and run compatibility CI. |
 | Arbitrary provider/model compatibility is uneven. | Require Responses compatibility, probe capabilities per model, label unverified models, and avoid claiming universal support. |
 | A server compromise can become worker RCE. | Outbound authenticated workers, strict ownership, sandbox defaults, source scoping, approval UX, secret isolation, audit logs, and focused security testing. |
-| Server and Codex histories diverge. | Treat Codex rollout as context authority and Cantrip's append-only event log as UI/routing authority; reconcile by stable IDs and cursors. |
+| Server and Codex histories diverge. | Treat the server log as logical conversation/UI authority and each worker's Codex rollout as runtime-continuation authority; reconcile by stable IDs/cursors and label history-based handoffs. |
 | Disconnects duplicate prompts or events. | Durable idempotency keys, command leases, worker sequence numbers, acknowledgements, and replay tests. |
-| Chat migration is mistaken for project routing. | Pin chats immutably in V1 and make worker handoff a separate export/import feature. |
+| Chat handoff is mistaken for seamless runtime migration. | Keep worker-specific runtime-session records, permit handoff only while idle, verify source compatibility, and clearly disclose replay/summarization and non-migrated state. |
 | PGlite hides production concurrency problems. | Run the integration suite against PostgreSQL from the beginning and use Postgres for public/multi-instance deployments. |
 | Mobile backgrounding drops sockets. | Persist all accepted state on the server, reconnect by cursor, and use push notifications only as hints. |
 | Bundling Codex creates update or licensing obligations. | Complete license/distribution review, expose the runtime version, and provide a controlled upgrade/compatibility policy before packaging. |
@@ -554,7 +592,7 @@ The first meaningful release is complete when all of the following are true:
 
 These decisions should become short ADRs before implementation spreads their assumptions:
 
-1. Exact local and remote Cantrip authentication mechanism, including passkey/OIDC support.
+1. Exact password, link-code/device-token, recovery, and hosted authentication design beyond the fixed loopback anonymous mode.
 2. Worker credential format, rotation, and public-key scheme for end-to-end provider-secret provisioning.
 3. Event retention, transcript export, raw-payload retention, and privacy defaults.
 4. Supported Codex CLI version policy and whether packaged apps download or bundle the binary.
@@ -567,16 +605,16 @@ These decisions should become short ADRs before implementation spreads their ass
 
 The first engineering pass should follow one end-to-end path rather than building all layers in isolation:
 
-1. Scaffold workspaces, shared protocol, configuration, tests, PGlite, and one root `dev` command.
-2. Implement a fake worker connection and show a streamed fake chat in the shadcn UI.
-3. Replace the fake runtime inside the worker with supervised Codex app-server stdio.
-4. Persist projects, worker-scoped source bindings, chats, inputs, turns, and event cursors.
-5. Complete one real turn with reconnect-safe streaming.
+1. Complete the current foundation: local process supervision, server bootstrap, anonymous identity, database-backed workers/projects/chats/messages, and the shadcn status UI.
+2. Add worker source registration and folder selection through the server, storing paths only as worker-scoped metadata.
+3. Implement a fake Codex runtime and show a persisted, streamed fake chat in the shadcn UI.
+4. Replace the fake runtime inside the worker with supervised Codex app-server stdio.
+5. Persist inputs, turns, normalized events, queue state, and cursors; complete one reconnect-safe real turn.
 6. Add approvals and interrupt, then steering and the durable queue, then compaction.
 7. Add runtime profiles and ChatGPT device/browser login.
 8. Add custom-provider secret handling and capability probes.
 9. Add file browsing/diffs and terminal sessions.
-10. Run restart, duplicate-message, path-security, and PostgreSQL parity tests before beginning cloud deployment.
+10. Run restart, duplicate-message, path-security, and PostgreSQL parity tests before beginning cloud deployment, accounts, or multi-worker routing.
 
 ## 20. Codex references used by this plan
 

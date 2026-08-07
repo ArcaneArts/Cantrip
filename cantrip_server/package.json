@@ -1,0 +1,25 @@
+{
+  "name": "@cantrip/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "pnpm --filter @cantrip/protocol build && vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@cantrip/protocol": "workspace:*",
+    "@electric-sql/pglite": "^0.5.4",
+    "@fastify/cors": "^11.3.0",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.11.2",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.10"
+  }
+}
