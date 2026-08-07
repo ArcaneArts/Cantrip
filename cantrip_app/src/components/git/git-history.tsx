@@ -1,17 +1,8 @@
 import type { GitCommit, GitRef, ProjectSummary } from "@cantrip/protocol";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import {
-  GitBranch,
-  GitCommitHorizontal,
-  Loader2,
-  RefreshCw,
-  Tag,
-  X,
-} from "lucide-react";
+import { GitBranch, GitCommitHorizontal, Loader2, Tag } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { getGitHistory } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -179,11 +170,19 @@ function CommitGraph({ row, width }: { row: GraphRow; width: number }) {
   );
 }
 
+export interface GitHistoryHeaderState {
+  branch: string;
+  commitsLoaded: number;
+  head: string | null;
+  isFetching: boolean;
+  refresh(): void;
+}
+
 export function GitHistoryView({
-  onClose,
+  onHeaderChange,
   project,
 }: {
-  onClose(): void;
+  onHeaderChange(state: GitHistoryHeaderState | null): void;
   project: ProjectSummary;
 }) {
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -204,6 +203,27 @@ export function GitHistoryView({
   const firstPage = history.data?.pages[0];
 
   useEffect(() => {
+    if (!firstPage) return;
+    onHeaderChange({
+      branch: firstPage.branch,
+      commitsLoaded: commits.length,
+      head: firstPage.head,
+      isFetching: history.isFetching,
+      refresh: () => void history.refetch(),
+    });
+  }, [
+    commits.length,
+    firstPage,
+    history.isFetching,
+    history.refetch,
+    onHeaderChange,
+  ]);
+
+  useEffect(() => {
+    return () => onHeaderChange(null);
+  }, [onHeaderChange, project.id]);
+
+  useEffect(() => {
     const node = loadMoreRef.current;
     if (!node || !history.hasNextPage) return;
     const observer = new IntersectionObserver(
@@ -220,49 +240,6 @@ export function GitHistoryView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex shrink-0 items-center justify-between gap-4 border-b px-5 py-3 sm:px-8">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h1 className="font-semibold tracking-tight">Git history</h1>
-            {firstPage ? (
-              <Badge
-                variant="secondary"
-                className="gap-1 font-mono font-normal"
-              >
-                <GitBranch className="size-3" />
-                {firstPage.branch || "detached HEAD"}
-              </Badge>
-            ) : null}
-            {firstPage?.head ? (
-              <code className="text-[11px] text-muted-foreground">
-                @ {firstPage.head.slice(0, 8)}
-              </code>
-            ) : null}
-          </div>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {project.github?.nameWithOwner ?? project.name} · {commits.length}{" "}
-            commits loaded
-          </p>
-        </div>
-        <div className="flex items-center gap-1">
-          <Button
-            size="icon"
-            variant="ghost"
-            disabled={history.isFetching}
-            onClick={() => history.refetch()}
-          >
-            <RefreshCw
-              className={history.isFetching ? "size-4 animate-spin" : "size-4"}
-            />
-            <span className="sr-only">Refresh Git history</span>
-          </Button>
-          <Button size="icon" variant="ghost" onClick={onClose}>
-            <X className="size-4" />
-            <span className="sr-only">Close Git history</span>
-          </Button>
-        </div>
-      </header>
-
       <div className="min-h-0 flex-1 overflow-auto">
         {history.isLoading ? (
           <div className="grid min-h-64 place-items-center text-muted-foreground">

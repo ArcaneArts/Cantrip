@@ -49,7 +49,10 @@ import {
   slashCommandQuery,
   type SlashCommandSuggestion,
 } from "@/components/chat/slash-commands";
-import { GitHistoryView } from "@/components/git/git-history";
+import {
+  GitHistoryView,
+  type GitHistoryHeaderState,
+} from "@/components/git/git-history";
 import { ProjectChatList } from "@/components/sidebar/project-chat-list";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { Badge } from "@/components/ui/badge";
@@ -813,6 +816,8 @@ export function App() {
   const [gitHistoryProjectId, setGitHistoryProjectId] = useState<string | null>(
     null,
   );
+  const [gitHistoryHeader, setGitHistoryHeader] =
+    useState<GitHistoryHeaderState | null>(null);
 
   const openCreatedTab = (
     projectId: string,
@@ -1483,47 +1488,78 @@ export function App() {
       <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b px-4 sm:px-6">
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium">
-              {showImporter
-                ? "GitHub repositories"
-                : showSettings
-                  ? "Settings"
-                  : gitHistoryProject
-                    ? "Git history"
-                    : selectedBrowser
-                      ? selectedBrowser.title
-                      : selectedExplorer
-                        ? selectedExplorer.title
-                        : selectedTerminal
-                          ? selectedTerminal.linkedChatId
-                            ? "Codex console"
-                            : selectedTerminal.title
-                          : selectedChat
-                            ? selectedChat.title
-                            : (selectedProject?.github?.nameWithOwner ??
-                              "Cantrip")}
-            </p>
+            <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
+              <span className="truncate">
+                {showImporter
+                  ? "GitHub repositories"
+                  : showSettings
+                    ? "Settings"
+                    : gitHistoryProject
+                      ? "Git history"
+                      : selectedBrowser
+                        ? selectedBrowser.title
+                        : selectedExplorer
+                          ? selectedExplorer.title
+                          : selectedTerminal
+                            ? selectedTerminal.linkedChatId
+                              ? "Codex console"
+                              : selectedTerminal.title
+                            : selectedChat
+                              ? selectedChat.title
+                              : (selectedProject?.github?.nameWithOwner ??
+                                "Cantrip")}
+              </span>
+              {gitHistoryProject && gitHistoryHeader ? (
+                <>
+                  <Badge
+                    variant="secondary"
+                    className="hidden shrink-0 gap-1 font-mono font-normal sm:flex"
+                  >
+                    <GitBranch className="size-3" />
+                    {gitHistoryHeader.branch || "detached HEAD"}
+                  </Badge>
+                  {gitHistoryHeader.head ? (
+                    <code className="hidden shrink-0 text-[11px] font-normal text-muted-foreground sm:block">
+                      @ {gitHistoryHeader.head.slice(0, 8)}
+                    </code>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
             <p className="truncate text-xs text-muted-foreground">
-              {showImporter
-                ? "Add a worker-owned source"
-                : showSettings
-                  ? "Account preferences"
-                  : gitHistoryProject
-                    ? (gitHistoryProject.github?.nameWithOwner ??
-                      gitHistoryProject.name)
-                    : selectedBrowser
-                      ? selectedBrowser.url
-                      : selectedExplorer
-                        ? (selectedProject?.source?.displayPath ?? "Explorer")
-                        : selectedTerminal
-                          ? selectedTerminal.linkedChatId
-                            ? (linkedConsoleChat?.title ?? "Linked chat")
-                            : (selectedProject?.source?.displayPath ??
-                              "Terminal")
-                          : selectedChat
-                            ? (selectedProject?.source?.displayPath ?? "Chat")
-                            : (selectedProject?.source?.displayPath ??
-                              "Choose a project to begin")}
+              {showImporter ? (
+                "Add a worker-owned source"
+              ) : showSettings ? (
+                "Account preferences"
+              ) : gitHistoryProject ? (
+                <>
+                  {gitHistoryProject.github?.nameWithOwner ??
+                    gitHistoryProject.name}
+                  {gitHistoryHeader ? (
+                    <>
+                      <span className="sm:hidden">
+                        {` · ${gitHistoryHeader.branch || "detached HEAD"}${gitHistoryHeader.head ? ` @ ${gitHistoryHeader.head.slice(0, 8)}` : ""}`}
+                      </span>
+                      {` · ${gitHistoryHeader.commitsLoaded} commits loaded`}
+                    </>
+                  ) : null}
+                </>
+              ) : selectedBrowser ? (
+                selectedBrowser.url
+              ) : selectedExplorer ? (
+                (selectedProject?.source?.displayPath ?? "Explorer")
+              ) : selectedTerminal ? (
+                selectedTerminal.linkedChatId ? (
+                  (linkedConsoleChat?.title ?? "Linked chat")
+                ) : (
+                  (selectedProject?.source?.displayPath ?? "Terminal")
+                )
+              ) : selectedChat ? (
+                (selectedProject?.source?.displayPath ?? "Chat")
+              ) : (
+                (selectedProject?.source?.displayPath ??
+                "Choose a project to begin")
+              )}
             </p>
           </div>
           <div className="flex items-center gap-2 md:hidden">
@@ -1535,6 +1571,22 @@ export function App() {
               <PanelLeft className="size-4" />
               <span className="sr-only">Open projects and chats</span>
             </Button>
+            {gitHistoryProject && gitHistoryHeader ? (
+              <Button
+                size="icon"
+                variant="ghost"
+                disabled={gitHistoryHeader.isFetching}
+                onClick={gitHistoryHeader.refresh}
+              >
+                <RefreshCw
+                  className={cn(
+                    "size-4",
+                    gitHistoryHeader.isFetching && "animate-spin",
+                  )}
+                />
+                <span className="sr-only">Refresh Git history</span>
+              </Button>
+            ) : null}
             {selectedChat && !showImporter && !showSettings ? (
               <Button
                 size="icon"
@@ -1586,6 +1638,23 @@ export function App() {
             </Button>
           </div>
           <div className="ml-auto hidden items-center gap-2 md:flex">
+            {gitHistoryProject && gitHistoryHeader ? (
+              <Button
+                size="icon"
+                variant="ghost"
+                disabled={gitHistoryHeader.isFetching}
+                onClick={gitHistoryHeader.refresh}
+                title="Refresh Git history"
+              >
+                <RefreshCw
+                  className={cn(
+                    "size-4",
+                    gitHistoryHeader.isFetching && "animate-spin",
+                  )}
+                />
+                <span className="sr-only">Refresh Git history</span>
+              </Button>
+            ) : null}
             {selectedChat && !showImporter && !showSettings ? (
               <Button
                 size="icon"
@@ -1647,7 +1716,7 @@ export function App() {
         ) : gitHistoryProject ? (
           <GitHistoryView
             project={gitHistoryProject}
-            onClose={() => setGitHistoryProjectId(null)}
+            onHeaderChange={setGitHistoryHeader}
           />
         ) : selectedBrowser ? (
           <Suspense
