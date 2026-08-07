@@ -46,6 +46,7 @@ const config: ServerConfig = {
 let turnRequests = 0;
 const turnModelIds: string[] = [];
 const turnPrompts: string[] = [];
+const deletedProjectPaths: string[] = [];
 const workerBridge = {
   attach() {},
   close() {},
@@ -90,21 +91,35 @@ const workerBridge = {
         return {
           path: path.join(dataDirectory, "repositories", "Cantrip"),
           displayPath: "ArcaneArts/Cantrip",
+          reused: false,
+          updated: false,
+          warning: null,
         };
+      case "project.files.delete":
+        deletedProjectPaths.push(command.path);
+        return { deleted: true };
       case "git.history":
         return {
           branch: "main",
+          head: "0123456789abcdef",
           commits: [
             {
               hash: "0123456789abcdef",
               shortHash: "0123456",
+              parents: [],
               subject: "feat: test history",
               authorName: "Cantrip Test",
               authorEmail: "test@cantrip.art",
               authoredAt: "2026-08-07T12:00:00.000Z",
-              refs: ["HEAD -> main"],
+              refs: [
+                { name: "HEAD", kind: "head", current: true },
+                { name: "main", kind: "local", current: true },
+              ],
+              isHead: true,
             },
           ],
+          hasMore: false,
+          nextCursor: null,
         };
       case "terminal.open":
         return { status: "detached" };
@@ -677,6 +692,46 @@ describe("local server foundation", () => {
       theme: "dark",
       defaultModelId: selectedModel.id,
     });
+
+    const unlinkResponse = await secondApp.inject({
+      method: "DELETE",
+      url: `/api/projects/${project.id}`,
+      payload: { deleteLocalFiles: false },
+    });
+    expect(unlinkResponse.statusCode).toBe(204);
+    expect(deletedProjectPaths).toEqual([]);
+    expect(
+      projectListSchema.parse(
+        (
+          await secondApp.inject({ method: "GET", url: "/api/projects" })
+        ).json(),
+      ),
+    ).toEqual([]);
+
+    const relinked = projectSummarySchema.parse(
+      (
+        await secondApp.inject({
+          method: "POST",
+          url: "/api/projects/from-github",
+          payload: {
+            workerId: "test-worker",
+            repositoryId: "github-repository-1",
+            nameWithOwner: "ArcaneArts/Cantrip",
+            url: "https://github.com/ArcaneArts/Cantrip",
+          },
+        })
+      ).json(),
+    );
+    expect(
+      await secondApp.inject({
+        method: "DELETE",
+        url: `/api/projects/${relinked.id}`,
+        payload: { deleteLocalFiles: true },
+      }),
+    ).toMatchObject({ statusCode: 204 });
+    expect(deletedProjectPaths).toEqual([
+      path.join(dataDirectory, "repositories", "Cantrip"),
+    ]);
 
     await secondApp.close();
   });

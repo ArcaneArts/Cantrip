@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access, mkdir } from "node:fs/promises";
+import { access, lstat, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -60,6 +60,33 @@ function parseRepository(value: GithubApiRepository): GithubWorkerRepository {
 
 export class GithubClient {
   constructor(private readonly dataDirectory: string) {}
+
+  private repositoriesRoot(): string {
+    return path.resolve(this.dataDirectory, "repositories");
+  }
+
+  async deleteRepository(
+    repositoryPath: string,
+  ): Promise<{ deleted: boolean }> {
+    const root = this.repositoriesRoot();
+    const target = path.resolve(repositoryPath);
+    if (!target.startsWith(`${root}${path.sep}`) || target === root) {
+      throw new Error("Cantrip will only delete repositories it manages.");
+    }
+    try {
+      const entry = await lstat(target);
+      if (!entry.isDirectory() || entry.isSymbolicLink()) {
+        throw new Error("The project source is not a managed directory.");
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return { deleted: false };
+      }
+      throw error;
+    }
+    await rm(target, { recursive: true, force: false });
+    return { deleted: true };
+  }
 
   async authStatus(): Promise<GithubAuthStatus> {
     try {
@@ -129,8 +156,12 @@ export class GithubClient {
     const target = path.join(repositoriesDirectory, repository);
     await mkdir(repositoriesDirectory, { recursive: true });
 
+    let reused = false;
+    let updated = false;
+    let warning: string | null = null;
     try {
       await access(target);
+      reused = true;
       const { stdout } = await execFileAsync(
         "git",
         ["-C", target, "remote", "get-url", "origin"],
@@ -145,6 +176,39 @@ export class GithubClient {
           `Clone destination already exists for a different repository: ${target}`,
         );
       }
+      try {
+        await execFileAsync(
+          "git",
+          ["-C", target, "fetch", "--all", "--prune"],
+          {
+            maxBuffer: 32 * 1024 * 1024,
+          },
+        );
+        const { stdout: status } = await execFileAsync(
+          "git",
+          ["-C", target, "status", "--porcelain"],
+          { maxBuffer: 4 * 1024 * 1024 },
+        );
+        const { stdout: branch } = await execFileAsync(
+          "git",
+          ["-C", target, "branch", "--show-current"],
+          { maxBuffer: 1024 * 1024 },
+        );
+        if (status.trim()) {
+          warning =
+            "Existing repository was re-linked but not pulled because it has local changes.";
+        } else if (branch.trim()) {
+          await execFileAsync("git", ["-C", target, "pull", "--ff-only"], {
+            maxBuffer: 32 * 1024 * 1024,
+          });
+          updated = true;
+        } else {
+          warning =
+            "Existing repository was re-linked at a detached HEAD; fetched without pulling.";
+        }
+      } catch (error) {
+        warning = `Existing repository was re-linked, but could not be updated: ${(error as Error).message}`;
+      }
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "ENOENT") {
@@ -158,6 +222,9 @@ export class GithubClient {
     return projectCloneResultSchema.parse({
       path: target,
       displayPath: `${owner}/${repository}`,
+      reused,
+      updated,
+      warning,
     });
   }
 }

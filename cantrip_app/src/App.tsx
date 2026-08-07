@@ -76,6 +76,7 @@ import {
   getWorkers,
   renameChat,
   renameTerminal,
+  removeProject,
   reorderProjectTabs,
   reorderProjects,
   startTurn,
@@ -705,6 +706,27 @@ export function App() {
       });
     },
   });
+  const removeProjectMutation = useMutation({
+    mutationFn: ({
+      projectId,
+      deleteLocalFiles,
+    }: {
+      projectId: string;
+      deleteLocalFiles: boolean;
+    }) => removeProject(projectId, deleteLocalFiles),
+    onSuccess: async (_value, { projectId }) => {
+      if (selectedProjectId === projectId) {
+        setSelectedProjectId(null);
+        setSelectedChatId(null);
+        setSelectedTerminalId(null);
+      }
+      if (gitHistoryProjectId === projectId) setGitHistoryProjectId(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["projects"] }),
+        queryClient.invalidateQueries({ queryKey: ["github-repositories"] }),
+      ]);
+    },
+  });
   const reorderProjectsMutation = useMutation({
     mutationFn: (ids: string[]) => reorderProjects(ids),
     onMutate: async (ids) => {
@@ -887,6 +909,9 @@ export function App() {
               setShowImporter(false);
               setShowSettings(false);
             }}
+            onRemoveProject={(projectId, deleteLocalFiles) =>
+              removeProjectMutation.mutate({ projectId, deleteLocalFiles })
+            }
             onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
             onReorderTabs={(projectId, ids) =>
               reorderTabsMutation.mutate({ projectId, ids })
@@ -1158,6 +1183,10 @@ export function App() {
                 setMobileNavigationOpen(false);
                 setShowImporter(false);
                 setShowSettings(false);
+              }}
+              onRemoveProject={(projectId, deleteLocalFiles) => {
+                removeProjectMutation.mutate({ projectId, deleteLocalFiles });
+                setMobileNavigationOpen(false);
               }}
               onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
               onReorderTabs={(projectId, ids) =>

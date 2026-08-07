@@ -31,6 +31,7 @@ import {
   orderedIdsSchema,
   projectCloneResultSchema,
   projectListSchema,
+  projectRemoveSchema,
   projectSummarySchema,
   serverBootstrapSchema,
   settingsBundleSchema,
@@ -437,33 +438,38 @@ export async function buildApp({
     return reply.send(projectListSchema.parse(projects));
   });
 
-  app.get<{ Params: { projectId: string }; Querystring: { limit?: string } }>(
-    "/api/projects/:projectId/git/history",
-    async (request, reply) => {
-      const source = await repository.getProjectSource(
-        LOCAL_USER_ID,
-        request.params.projectId,
-      );
-      if (!source) {
-        return reply.code(404).send({ error: "Project source not found." });
-      }
-      const parsedLimit = Number.parseInt(request.query.limit ?? "100", 10);
-      const limit = Number.isFinite(parsedLimit)
-        ? Math.min(500, Math.max(1, parsedLimit))
-        : 100;
-      try {
-        const history = await bridge.request(source.workerId, {
-          type: "git.history",
-          cwd: source.cwd,
-          limit,
-        });
-        return reply.send(gitHistorySchema.parse(history));
-      } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
-        return reply.code(status).send({ error: errorMessage(error) });
-      }
-    },
-  );
+  app.get<{
+    Params: { projectId: string };
+    Querystring: { cursor?: string; limit?: string };
+  }>("/api/projects/:projectId/git/history", async (request, reply) => {
+    const source = await repository.getProjectSource(
+      LOCAL_USER_ID,
+      request.params.projectId,
+    );
+    if (!source) {
+      return reply.code(404).send({ error: "Project source not found." });
+    }
+    const parsedLimit = Number.parseInt(request.query.limit ?? "100", 10);
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.min(100, Math.max(1, parsedLimit))
+      : 100;
+    const parsedCursor = Number.parseInt(request.query.cursor ?? "0", 10);
+    const cursor = Number.isFinite(parsedCursor)
+      ? Math.max(0, parsedCursor)
+      : 0;
+    try {
+      const history = await bridge.request(source.workerId, {
+        type: "git.history",
+        cwd: source.cwd,
+        cursor,
+        limit,
+      });
+      return reply.send(gitHistorySchema.parse(history));
+    } catch (error) {
+      const status = error instanceof WorkerUnavailableError ? 503 : 502;
+      return reply.code(status).send({ error: errorMessage(error) });
+    }
+  });
 
   app.patch("/api/projects/order", async (request, reply) => {
     const input = orderedIdsSchema.safeParse(request.body);
@@ -474,6 +480,59 @@ export async function buildApp({
       ? reply.code(204).send()
       : reply.code(400).send({ error: "Project order did not match." });
   });
+
+  app.delete<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId",
+    async (request, reply) => {
+      const input = projectRemoveSchema.safeParse(request.body ?? {});
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getProjectRemovalContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
+
+      try {
+        if (input.data.deleteLocalFiles) {
+          await Promise.all(
+            context.terminalIds.map((terminalId) =>
+              bridge.request(context.workerId, {
+                type: "terminal.close",
+                terminalId,
+              }),
+            ),
+          );
+          await bridge.request(context.workerId, {
+            type: "project.files.delete",
+            path: context.cwd,
+          });
+        } else if (bridge.isConnected(context.workerId)) {
+          for (const terminalId of context.terminalIds) {
+            void bridge
+              .request(context.workerId, {
+                type: "terminal.close",
+                terminalId,
+              })
+              .catch(() => undefined);
+          }
+        }
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+
+      return (await repository.deleteProject(
+        LOCAL_USER_ID,
+        request.params.projectId,
+      ))
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "Project not found." });
+    },
+  );
 
   app.post("/api/projects/from-github", async (request, reply) => {
     const input = githubProjectCreateSchema.safeParse(request.body);

@@ -71,8 +71,10 @@ async function start(): Promise<void> {
         return github.listRepositories();
       case "project.clone":
         return github.cloneRepository(command.repository.nameWithOwner);
+      case "project.files.delete":
+        return github.deleteRepository(command.path);
       case "git.history":
-        return readGitHistory(command.cwd, command.limit);
+        return readGitHistory(command.cwd, command.limit, command.cursor);
       case "terminal.open":
         return terminals.open(
           command.terminalId,

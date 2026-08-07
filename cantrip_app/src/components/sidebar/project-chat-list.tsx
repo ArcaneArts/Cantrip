@@ -284,6 +284,7 @@ function SortableProject({
   onCreateChat,
   onCreateTerminal,
   onOpenHistory,
+  onRemove,
   onSelect,
   project,
 }: {
@@ -295,6 +296,7 @@ function SortableProject({
   onCreateChat(): void;
   onCreateTerminal(): void;
   onOpenHistory(): void;
+  onRemove(): void;
   onSelect(): void;
   project: ProjectSummary;
 }) {
@@ -376,6 +378,38 @@ function SortableProject({
             </DropdownMenuPrimitive.Content>
           </DropdownMenuPrimitive.Portal>
         </DropdownMenuPrimitive.Root>
+        <DropdownMenuPrimitive.Root>
+          <DropdownMenuPrimitive.Trigger asChild>
+            <button
+              type="button"
+              title={`Project actions for ${project.name}`}
+              onClick={(event) => event.stopPropagation()}
+              className="mr-1 grid size-7 shrink-0 place-items-center rounded text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100 focus:opacity-100 [@media(pointer:coarse)]:opacity-100"
+            >
+              <MoreHorizontal className="size-3.5" />
+              <span className="sr-only">
+                Project actions for {project.name}
+              </span>
+            </button>
+          </DropdownMenuPrimitive.Trigger>
+          <DropdownMenuPrimitive.Portal>
+            <DropdownMenuPrimitive.Content
+              align="end"
+              sideOffset={4}
+              className={menuContentClass}
+            >
+              <DropdownMenuPrimitive.Item
+                className={cn(
+                  menuItemClass,
+                  "text-destructive focus:bg-destructive/10",
+                )}
+                onSelect={onRemove}
+              >
+                <Trash2 className="size-4" /> Remove project
+              </DropdownMenuPrimitive.Item>
+            </DropdownMenuPrimitive.Content>
+          </DropdownMenuPrimitive.Portal>
+        </DropdownMenuPrimitive.Root>
       </div>
       {children}
     </div>
@@ -393,6 +427,7 @@ export function ProjectChatList({
   onCreateTerminal,
   onDeleteTerminal,
   onOpenGitHistory,
+  onRemoveProject,
   onRenameChat,
   onRenameTerminal,
   onReorderTabs,
@@ -415,6 +450,7 @@ export function ProjectChatList({
   onCreateTerminal(projectId: string): void;
   onDeleteTerminal(terminalId: string): void;
   onOpenGitHistory(projectId: string): void;
+  onRemoveProject(projectId: string, deleteLocalFiles: boolean): void;
   onRenameChat(chatId: string, title: string): void;
   onRenameTerminal(terminalId: string, title: string): void;
   onReorderTabs(projectId: string, ids: string[]): void;
@@ -441,6 +477,9 @@ export function ProjectChatList({
   const [deleteTarget, setDeleteTarget] = useState<ChatSummary | null>(null);
   const [deleteTerminalTarget, setDeleteTerminalTarget] =
     useState<TerminalSummary | null>(null);
+  const [removeProjectTarget, setRemoveProjectTarget] =
+    useState<ProjectSummary | null>(null);
+  const [deleteLocalFiles, setDeleteLocalFiles] = useState(false);
   const tabs: Array<
     | { id: string; kind: "chat"; chat: ChatSummary; position: number }
     | {
@@ -557,6 +596,10 @@ export function ProjectChatList({
                 onCreateTerminal={() => onCreateTerminal(project.id)}
                 onSelect={() => onSelectProject(project.id)}
                 onOpenHistory={() => onOpenGitHistory(project.id)}
+                onRemove={() => {
+                  setDeleteLocalFiles(false);
+                  setRemoveProjectTarget(project);
+                }}
               >
                 {active ? (
                   <div className="ml-5 mt-1 border-l pl-2">
@@ -649,6 +692,60 @@ export function ProjectChatList({
               }}
             >
               Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(removeProjectTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRemoveProjectTarget(null);
+            setDeleteLocalFiles(false);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove project?</DialogTitle>
+            <DialogDescription>
+              “{removeProjectTarget?.name}” will be unlinked from Cantrip. Its
+              repository remains on the worker and can be re-linked later.
+            </DialogDescription>
+          </DialogHeader>
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 accent-destructive"
+              checked={deleteLocalFiles}
+              onChange={(event) => setDeleteLocalFiles(event.target.checked)}
+            />
+            <span>
+              <span className="font-medium">Also delete local files</span>
+              <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                Permanently removes the checked-out repository from the worker.
+                This cannot be undone by Cantrip.
+              </span>
+            </span>
+          </label>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button
+              className={cn(
+                deleteLocalFiles &&
+                  "bg-destructive text-white hover:bg-destructive/90",
+              )}
+              onClick={() => {
+                if (removeProjectTarget) {
+                  onRemoveProject(removeProjectTarget.id, deleteLocalFiles);
+                }
+                setRemoveProjectTarget(null);
+                setDeleteLocalFiles(false);
+              }}
+            >
+              {deleteLocalFiles ? "Delete files and remove" : "Unlink project"}
             </Button>
           </DialogFooter>
         </DialogContent>

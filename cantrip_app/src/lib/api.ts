@@ -187,10 +187,22 @@ export async function getProjects() {
   return projectListSchema.parse(await request("/api/projects"));
 }
 
-export async function getGitHistory(projectId: string) {
+export async function getGitHistory(projectId: string, cursor = 0) {
   return gitHistorySchema.parse(
-    await request(`/api/projects/${encodeURIComponent(projectId)}/git/history`),
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/git/history?limit=100&cursor=${cursor}`,
+    ),
   );
+}
+
+export async function removeProject(
+  projectId: string,
+  deleteLocalFiles: boolean,
+) {
+  await request(`/api/projects/${encodeURIComponent(projectId)}`, {
+    method: "DELETE",
+    body: JSON.stringify({ deleteLocalFiles }),
+  });
 }
 
 export async function createGithubProject(input: {

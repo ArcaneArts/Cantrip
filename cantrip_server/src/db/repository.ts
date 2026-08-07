@@ -61,6 +61,12 @@ export interface TerminalExecutionContext {
   workerId: string;
 }
 
+export interface ProjectRemovalContext {
+  cwd: string;
+  terminalIds: string[];
+  workerId: string;
+}
+
 export interface ModelRuntime {
   model: {
     id: string;
@@ -730,6 +736,35 @@ export class ServerRepository {
       const source = firstOrThrow(sourceResult, "recording a project source");
       return toProjectSummary(project, source);
     });
+  }
+
+  async getProjectRemovalContext(
+    ownerId: string,
+    projectId: string,
+  ): Promise<ProjectRemovalContext | null> {
+    const source = await this.getProjectSource(ownerId, projectId);
+    if (!source) return null;
+    const terminals = await this.database
+      .select({ id: schema.terminals.id })
+      .from(schema.terminals)
+      .where(eq(schema.terminals.projectId, projectId));
+    return {
+      ...source,
+      terminalIds: terminals.map(({ id }) => id),
+    };
+  }
+
+  async deleteProject(ownerId: string, projectId: string): Promise<boolean> {
+    const deleted = await this.database
+      .delete(schema.projects)
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .returning({ id: schema.projects.id });
+    return deleted.length === 1;
   }
 
   async listChats(ownerId: string, projectId: string): Promise<ChatSummary[]> {

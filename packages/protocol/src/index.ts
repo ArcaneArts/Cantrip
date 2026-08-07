@@ -404,21 +404,39 @@ export const githubWorkerRepositoryListSchema = z.array(
 export const projectCloneResultSchema = z.object({
   path: z.string().min(1),
   displayPath: z.string().min(1),
+  reused: z.boolean().default(false),
+  updated: z.boolean().default(false),
+  warning: z.string().min(1).nullable().default(null),
+});
+
+export const projectRemoveSchema = z.object({
+  deleteLocalFiles: z.boolean().default(false),
+});
+
+export const gitRefSchema = z.object({
+  name: z.string().min(1),
+  kind: z.enum(["head", "local", "remote", "tag"]),
+  current: z.boolean(),
 });
 
 export const gitCommitSchema = z.object({
   hash: z.string().min(1),
   shortHash: z.string().min(1),
+  parents: z.array(z.string().min(1)),
   subject: z.string(),
   authorName: z.string().min(1),
   authorEmail: z.string(),
   authoredAt: z.string().datetime({ offset: true }),
-  refs: z.array(z.string()),
+  refs: z.array(gitRefSchema),
+  isHead: z.boolean(),
 });
 
 export const gitHistorySchema = z.object({
   branch: z.string(),
+  head: z.string().nullable(),
   commits: z.array(gitCommitSchema),
+  hasMore: z.boolean(),
+  nextCursor: z.number().int().nonnegative().nullable(),
 });
 
 export const agentTurnResultSchema = z.object({
@@ -440,9 +458,14 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     }),
   }),
   z.object({
+    type: z.literal("project.files.delete"),
+    path: z.string().min(1),
+  }),
+  z.object({
     type: z.literal("git.history"),
     cwd: z.string().min(1),
-    limit: z.number().int().min(1).max(500).default(100),
+    cursor: z.number().int().nonnegative().default(0),
+    limit: z.number().int().min(1).max(100).default(100),
   }),
   z.object({
     type: z.literal("terminal.open"),
@@ -562,6 +585,8 @@ export type GithubWorkerRepository = z.infer<
 >;
 export type GithubProjectCreate = z.infer<typeof githubProjectCreateSchema>;
 export type ProjectCloneResult = z.infer<typeof projectCloneResultSchema>;
+export type ProjectRemove = z.infer<typeof projectRemoveSchema>;
+export type GitRef = z.infer<typeof gitRefSchema>;
 export type GitCommit = z.infer<typeof gitCommitSchema>;
 export type GitHistory = z.infer<typeof gitHistorySchema>;
 export type ChatCreate = z.infer<typeof chatCreateSchema>;
