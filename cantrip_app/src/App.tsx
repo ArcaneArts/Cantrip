@@ -638,6 +638,22 @@ export function App() {
     null,
   );
 
+  const openCreatedTab = (
+    projectId: string,
+    kind: "browser" | "chat" | "explorer" | "terminal",
+    tabId: string,
+  ) => {
+    setSelectedProjectId(projectId);
+    setSelectedChatId(kind === "chat" ? tabId : null);
+    setSelectedTerminalId(kind === "terminal" ? tabId : null);
+    setSelectedExplorerId(kind === "explorer" ? tabId : null);
+    setSelectedBrowserId(kind === "browser" ? tabId : null);
+    setGitHistoryProjectId(null);
+    setShowImporter(false);
+    setShowSettings(false);
+    setMobileNavigationOpen(false);
+  };
+
   const bootstrap = useQuery({
     queryFn: getServerBootstrap,
     queryKey: ["server-bootstrap"],
@@ -675,30 +691,34 @@ export function App() {
   });
   const newChat = useMutation({
     mutationFn: (projectId: string) => createChat(projectId, "New chat"),
-    onSuccess: async (chat) => {
-      await queryClient.invalidateQueries({
+    onSuccess: (chat) => {
+      queryClient.setQueryData<ChatSummary[]>(
+        ["chats", chat.projectId],
+        (current = []) =>
+          [...current.filter((item) => item.id !== chat.id), chat].sort(
+            (left, right) => left.position - right.position,
+          ),
+      );
+      openCreatedTab(chat.projectId, "chat", chat.id);
+      void queryClient.invalidateQueries({
         queryKey: ["chats", chat.projectId],
       });
-      setSelectedTerminalId(null);
-      setSelectedExplorerId(null);
-      setSelectedBrowserId(null);
-      setSelectedChatId(chat.id);
     },
   });
   const newTerminal = useMutation({
     mutationFn: (projectId: string) => createTerminal(projectId, "Terminal"),
-    onSuccess: async (terminal) => {
-      await queryClient.invalidateQueries({
+    onSuccess: (terminal) => {
+      queryClient.setQueryData<TerminalSummary[]>(
+        ["terminals", terminal.projectId],
+        (current = []) =>
+          [...current.filter((item) => item.id !== terminal.id), terminal].sort(
+            (left, right) => left.position - right.position,
+          ),
+      );
+      openCreatedTab(terminal.projectId, "terminal", terminal.id);
+      void queryClient.invalidateQueries({
         queryKey: ["terminals", terminal.projectId],
       });
-      setSelectedProjectId(terminal.projectId);
-      setSelectedChatId(null);
-      setSelectedExplorerId(null);
-      setSelectedBrowserId(null);
-      setSelectedTerminalId(terminal.id);
-      setGitHistoryProjectId(null);
-      setShowImporter(false);
-      setShowSettings(false);
     },
   });
   const newExplorer = useMutation({
@@ -711,14 +731,7 @@ export function App() {
             (left, right) => left.position - right.position,
           ),
       );
-      setSelectedProjectId(explorer.projectId);
-      setSelectedChatId(null);
-      setSelectedTerminalId(null);
-      setSelectedBrowserId(null);
-      setSelectedExplorerId(explorer.id);
-      setGitHistoryProjectId(null);
-      setShowImporter(false);
-      setShowSettings(false);
+      openCreatedTab(explorer.projectId, "explorer", explorer.id);
       void queryClient.invalidateQueries({
         queryKey: ["explorers", explorer.projectId],
       });
@@ -734,14 +747,7 @@ export function App() {
             (left, right) => left.position - right.position,
           ),
       );
-      setSelectedProjectId(browser.projectId);
-      setSelectedChatId(null);
-      setSelectedTerminalId(null);
-      setSelectedExplorerId(null);
-      setSelectedBrowserId(browser.id);
-      setGitHistoryProjectId(null);
-      setShowImporter(false);
-      setShowSettings(false);
+      openCreatedTab(browser.projectId, "browser", browser.id);
       void queryClient.invalidateQueries({
         queryKey: ["browsers", browser.projectId],
       });
