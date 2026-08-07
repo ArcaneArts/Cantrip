@@ -1,19 +1,10 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import type {
-  ChatSummary,
-  SettingsBundle,
-  TerminalSummary,
-} from "@cantrip/protocol";
+import type { ChatSummary, SettingsBundle } from "@cantrip/protocol";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 
-import {
-  deleteTerminal,
-  getMessages,
-  interruptChat,
-  startTurn,
-} from "@/lib/api";
+import { getMessages, interruptChat, startTurn } from "@/lib/api";
 
 import "@xterm/xterm/css/xterm.css";
 
@@ -48,20 +39,21 @@ function consoleTheme() {
 
 export function ChatConsoleView({
   chat,
-  onClosed,
+  onReturnToChat,
   settings,
-  terminal,
 }: {
   chat: ChatSummary;
-  onClosed(): void;
+  onReturnToChat(): void;
   settings: SettingsBundle | undefined;
-  terminal: TerminalSummary;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const lineRef = useRef("");
   const renderedRef = useRef(new Map<string, string>());
-  const closingRef = useRef(false);
+  const interruptingRef = useRef(false);
+  const interruptedTurnRef = useRef(false);
+  const returningRef = useRef(false);
+  const statusRef = useRef(chat.status);
   const selectedModelId =
     chat.modelId ?? settings?.preferences.defaultModelId ?? "";
   const messages = useQuery({
@@ -72,19 +64,20 @@ export function ChatConsoleView({
   const send = useMutation({
     mutationFn: (text: string) => startTurn(chat.id, text, selectedModelId),
     onError: (error) => {
+      statusRef.current = "idle";
       xtermRef.current?.write(
         `\r\n\x1b[91m${error instanceof Error ? error.message : "Could not start the turn."}\x1b[0m\r\n`,
       );
     },
   });
-  const statusRef = useRef(chat.status);
   const modelIdRef = useRef(selectedModelId);
   const sendRef = useRef(send.mutate);
-  const onClosedRef = useRef(onClosed);
+  const onReturnToChatRef = useRef(onReturnToChat);
+  if (chat.status !== "running") interruptedTurnRef.current = false;
   statusRef.current = chat.status;
   modelIdRef.current = selectedModelId;
   sendRef.current = send.mutate;
-  onClosedRef.current = onClosed;
+  onReturnToChatRef.current = onReturnToChat;
 
   useEffect(() => {
     const xterm = xtermRef.current;
@@ -115,23 +108,43 @@ export function ChatConsoleView({
     xterm.open(container);
     xtermRef.current = xterm;
     xterm.write(
-      `\x1b[1mCantrip Codex console\x1b[0m · linked to ${chat.title}\r\n\x1b[90mMessages entered here use the same Codex thread. Ctrl+C closes this console.\x1b[0m\r\n`,
+      `\x1b[1mCantrip Codex console\x1b[0m · linked to ${chat.title}\r\n\x1b[90mMessages use the same Codex thread. Ctrl+C returns to chat, interrupting active work first.\x1b[0m\r\n`,
     );
     for (const message of messages.data ?? []) {
       renderedRef.current.set(message.id, JSON.stringify(message.content));
       xterm.write(formatConsoleMessage(message));
     }
     xterm.write("\r\n› ");
+    let disposed = false;
 
-    const closeConsole = async () => {
-      if (closingRef.current) return;
-      closingRef.current = true;
-      xterm.write("^C\r\n\x1b[90mClosing linked console…\x1b[0m\r\n");
+    const interruptOrReturn = async () => {
+      if (statusRef.current !== "running" || interruptedTurnRef.current) {
+        if (returningRef.current) return;
+        returningRef.current = true;
+        onReturnToChatRef.current();
+        return;
+      }
+      if (interruptingRef.current) return;
+      interruptingRef.current = true;
+      interruptedTurnRef.current = true;
+      xterm.write("^C\r\n\x1b[93mInterrupting active turn…\x1b[0m\r\n");
       try {
         await interruptChat(chat.id);
+        statusRef.current = "idle";
+        if (!disposed) {
+          xterm.write(
+            "\x1b[90mTurn interrupted. Press Ctrl+C again to return to chat.\x1b[0m\r\n› ",
+          );
+        }
+      } catch (error) {
+        interruptedTurnRef.current = false;
+        if (!disposed) {
+          xterm.write(
+            `\x1b[91m${error instanceof Error ? error.message : "Could not interrupt the turn."}\x1b[0m\r\n› `,
+          );
+        }
       } finally {
-        await deleteTerminal(terminal.id).catch(() => undefined);
-        onClosedRef.current();
+        interruptingRef.current = false;
       }
     };
     xterm.attachCustomKeyEventHandler((event) => {
@@ -140,7 +153,7 @@ export function ChatConsoleView({
         event.ctrlKey &&
         event.key.toLowerCase() === "c"
       ) {
-        void closeConsole();
+        void interruptOrReturn();
         return false;
       }
       return true;
@@ -149,16 +162,16 @@ export function ChatConsoleView({
       if (event.ctrlKey && event.key.toLowerCase() === "c") {
         event.preventDefault();
         event.stopPropagation();
-        void closeConsole();
+        void interruptOrReturn();
       }
     };
     window.addEventListener("keydown", interceptInterrupt, true);
     const input = xterm.onData((data) => {
       if (data === "\x03") {
-        void closeConsole();
+        void interruptOrReturn();
         return;
       }
-      if (closingRef.current || data.startsWith("\x1b")) return;
+      if (interruptingRef.current || data.startsWith("\x1b")) return;
       for (const character of data) {
         if (character === "\r" || character === "\n") {
           const text = lineRef.current.trim();
@@ -171,6 +184,8 @@ export function ChatConsoleView({
           } else if (statusRef.current === "running") {
             xterm.write("\x1b[93mCodex is already working.\x1b[0m\r\n› ");
           } else {
+            statusRef.current = "running";
+            interruptedTurnRef.current = false;
             sendRef.current(text);
             xterm.write("\x1b[90mQueued…\x1b[0m\r\n› ");
           }
@@ -207,6 +222,7 @@ export function ChatConsoleView({
     });
 
     return () => {
+      disposed = true;
       input.dispose();
       window.removeEventListener("keydown", interceptInterrupt, true);
       resizeObserver.disconnect();
@@ -214,7 +230,7 @@ export function ChatConsoleView({
       xtermRef.current = null;
       xterm.dispose();
     };
-  }, [chat.id, chat.title, terminal.id]);
+  }, [chat.id, chat.title]);
 
   return (
     <div className="relative flex min-h-0 flex-1 bg-background">

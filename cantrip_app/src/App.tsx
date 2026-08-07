@@ -1209,6 +1209,7 @@ export function App() {
   const linkedConsoleChat = selectedTerminal?.linkedChatId
     ? chats.data?.find((chat) => chat.id === selectedTerminal.linkedChatId)
     : undefined;
+  const activeChat = selectedChat ?? linkedConsoleChat;
   const selectedExplorer = explorers.data?.find(
     (explorer) => explorer.id === selectedExplorerId,
   );
@@ -1502,7 +1503,7 @@ export function App() {
                           ? selectedExplorer.title
                           : selectedTerminal
                             ? selectedTerminal.linkedChatId
-                              ? "Codex console"
+                              ? (linkedConsoleChat?.title ?? "Chat")
                               : selectedTerminal.title
                             : selectedChat
                               ? selectedChat.title
@@ -1550,7 +1551,7 @@ export function App() {
                 (selectedProject?.source?.displayPath ?? "Explorer")
               ) : selectedTerminal ? (
                 selectedTerminal.linkedChatId ? (
-                  (linkedConsoleChat?.title ?? "Linked chat")
+                  (selectedProject?.source?.displayPath ?? "Chat")
                 ) : (
                   (selectedProject?.source?.displayPath ?? "Terminal")
                 )
@@ -1587,31 +1588,32 @@ export function App() {
                 <span className="sr-only">Refresh Git history</span>
               </Button>
             ) : null}
-            {selectedChat && !showImporter && !showSettings ? (
+            {activeChat && !showImporter && !showSettings ? (
               <Button
                 size="icon"
                 variant="ghost"
-                disabled={openChatConsole.isPending}
-                onClick={() => showChatConsole(selectedChat)}
-              >
-                <SquareTerminal className="size-4" />
-                <span className="sr-only">Open linked Codex console</span>
-              </Button>
-            ) : null}
-            {linkedConsoleChat && !showImporter && !showSettings ? (
-              <Button
-                size="icon"
-                variant="ghost"
+                aria-pressed={Boolean(linkedConsoleChat)}
+                disabled={!linkedConsoleChat && openChatConsole.isPending}
                 onClick={() =>
-                  openCreatedTab(
-                    linkedConsoleChat.projectId,
-                    "chat",
-                    linkedConsoleChat.id,
-                  )
+                  linkedConsoleChat
+                    ? openCreatedTab(
+                        linkedConsoleChat.projectId,
+                        "chat",
+                        linkedConsoleChat.id,
+                      )
+                    : showChatConsole(activeChat)
                 }
               >
-                <MessageSquare className="size-4" />
-                <span className="sr-only">Return to chat</span>
+                {linkedConsoleChat ? (
+                  <MessageSquare className="size-4" />
+                ) : openChatConsole.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <SquareTerminal className="size-4" />
+                )}
+                <span className="sr-only">
+                  {linkedConsoleChat ? "Show chat" : "Show Codex console"}
+                </span>
               </Button>
             ) : null}
             <Button
@@ -1655,37 +1657,33 @@ export function App() {
                 <span className="sr-only">Refresh Git history</span>
               </Button>
             ) : null}
-            {selectedChat && !showImporter && !showSettings ? (
+            {activeChat && !showImporter && !showSettings ? (
               <Button
                 size="icon"
                 variant="ghost"
-                disabled={openChatConsole.isPending}
-                onClick={() => showChatConsole(selectedChat)}
-                title="Open linked Codex console"
+                aria-pressed={Boolean(linkedConsoleChat)}
+                disabled={!linkedConsoleChat && openChatConsole.isPending}
+                onClick={() =>
+                  linkedConsoleChat
+                    ? openCreatedTab(
+                        linkedConsoleChat.projectId,
+                        "chat",
+                        linkedConsoleChat.id,
+                      )
+                    : showChatConsole(activeChat)
+                }
+                title={linkedConsoleChat ? "Show chat" : "Show Codex console"}
               >
-                {openChatConsole.isPending ? (
+                {linkedConsoleChat ? (
+                  <MessageSquare className="size-4" />
+                ) : openChatConsole.isPending ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (
                   <SquareTerminal className="size-4" />
                 )}
-                <span className="sr-only">Open linked Codex console</span>
-              </Button>
-            ) : null}
-            {linkedConsoleChat && !showImporter && !showSettings ? (
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() =>
-                  openCreatedTab(
-                    linkedConsoleChat.projectId,
-                    "chat",
-                    linkedConsoleChat.id,
-                  )
-                }
-                title="Return to chat"
-              >
-                <MessageSquare className="size-4" />
-                <span className="sr-only">Return to chat</span>
+                <span className="sr-only">
+                  {linkedConsoleChat ? "Show chat" : "Show Codex console"}
+                </span>
               </Button>
             ) : null}
             {!showImporter && !showSettings && selectedProject ? (
@@ -1756,25 +1754,14 @@ export function App() {
           >
             {linkedConsoleChat ? (
               <ChatConsoleView
-                terminal={selectedTerminal}
                 chat={linkedConsoleChat}
                 settings={settings.data}
-                onClosed={() => {
-                  queryClient.setQueryData<TerminalSummary[]>(
-                    ["terminals", linkedConsoleChat.projectId],
-                    (current = []) =>
-                      current.filter(
-                        (terminal) => terminal.id !== selectedTerminal.id,
-                      ),
-                  );
+                onReturnToChat={() => {
                   openCreatedTab(
                     linkedConsoleChat.projectId,
                     "chat",
                     linkedConsoleChat.id,
                   );
-                  void queryClient.invalidateQueries({
-                    queryKey: ["terminals", linkedConsoleChat.projectId],
-                  });
                 }}
               />
             ) : (
