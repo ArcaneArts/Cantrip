@@ -21,7 +21,6 @@ import {
   Server,
   Sun,
   Trash2,
-  X,
 } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
@@ -83,7 +82,102 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
 const inputClass =
   "h-10 w-full rounded-md border bg-background px-3 text-sm outline-none ring-ring focus:ring-2";
 
-export function SettingsPage({ onClose }: { onClose(): void }) {
+function ProviderRow({
+  provider,
+  workerId,
+  removing,
+  onEdit,
+  onRemove,
+}: {
+  provider: ModelProviderSummary;
+  workerId: string | null;
+  removing: boolean;
+  onEdit(): void;
+  onRemove(): void;
+}) {
+  const auth = useQuery({
+    enabled: provider.kind === "chatgpt" && Boolean(workerId),
+    queryFn: () => getCodexAuthStatus(workerId!, provider.id),
+    queryKey: ["codex-auth", workerId, provider.id],
+    refetchInterval: 10_000,
+  });
+  const signedIn = auth.data?.authenticated && auth.data.authMode === "chatgpt";
+  const weeklyRemaining = auth.data?.weeklyUsage
+    ? Math.max(0, 100 - auth.data.weeklyUsage.usedPercent)
+    : null;
+
+  return (
+    <div
+      data-high-contrast-row
+      className="flex min-w-0 items-center gap-3 rounded-lg border p-3"
+    >
+      <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted">
+        <Server className="size-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="truncate text-sm font-medium">{provider.name}</p>
+          <Badge variant="secondary">{provider.kind}</Badge>
+          {provider.hasApiKey ? (
+            <KeyRound className="size-3.5 text-muted-foreground" />
+          ) : null}
+        </div>
+        {provider.kind === "chatgpt" ? (
+          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[11px] text-muted-foreground">
+            {!workerId ? (
+              <span>Worker offline · sign-in status unavailable</span>
+            ) : auth.isLoading ? (
+              <span>Checking sign-in…</span>
+            ) : auth.isError ? (
+              <span className="text-destructive">
+                Could not check sign-in status
+              </span>
+            ) : signedIn ? (
+              <>
+                <span className="inline-flex items-center gap-1 text-emerald-500">
+                  <span className="size-1.5 rounded-full bg-current" /> Signed
+                  in
+                </span>
+                <span>·</span>
+                <span>{auth.data?.email ?? "ChatGPT account"}</span>
+                <span>·</span>
+                <span className="font-medium text-foreground">
+                  {weeklyRemaining === null
+                    ? "7-day usage unavailable"
+                    : `${Math.round(weeklyRemaining)}% 7-day usage left`}
+                </span>
+              </>
+            ) : (
+              <span className="inline-flex items-center gap-1">
+                <span className="size-1.5 rounded-full bg-muted-foreground" />
+                Not signed in
+              </span>
+            )}
+          </p>
+        ) : (
+          <p className="mt-1 truncate text-[11px] text-muted-foreground">
+            {provider.baseUrl}
+          </p>
+        )}
+      </div>
+      <Button size="icon" variant="ghost" onClick={onEdit}>
+        <Pencil className="size-4" />
+        <span className="sr-only">Edit {provider.name}</span>
+      </Button>
+      <Button
+        size="icon"
+        variant="ghost"
+        disabled={removing}
+        onClick={onRemove}
+      >
+        <Trash2 className="size-4" />
+        <span className="sr-only">Delete {provider.name}</span>
+      </Button>
+    </div>
+  );
+}
+
+export function SettingsPage() {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
   const [deviceLogin, setDeviceLogin] = useState<CodexDeviceLogin | null>(null);
@@ -239,19 +333,6 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <header className="flex shrink-0 items-center justify-between gap-4 border-b px-5 py-4 sm:px-8">
-        <div>
-          <h1 className="font-semibold tracking-tight">Settings</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Saved for this Cantrip account on the server.
-          </p>
-        </div>
-        <Button size="icon" variant="ghost" onClick={onClose}>
-          <X className="size-4" />
-          <span className="sr-only">Close settings</span>
-        </Button>
-      </header>
-
       <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-8">
         <div className="mx-auto grid max-w-4xl gap-6">
           <Card>
@@ -332,48 +413,14 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
             </CardHeader>
             <CardContent className="grid gap-3">
               {(settings.data?.providers ?? []).map((provider) => (
-                <div
+                <ProviderRow
                   key={provider.id}
-                  data-high-contrast-row
-                  className="flex min-w-0 items-center gap-3 rounded-lg border p-3"
-                >
-                  <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted">
-                    <Server className="size-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-medium">
-                        {provider.name}
-                      </p>
-                      <Badge variant="secondary">{provider.kind}</Badge>
-                      {provider.hasApiKey ? (
-                        <KeyRound className="size-3.5 text-muted-foreground" />
-                      ) : null}
-                    </div>
-                    <p className="mt-1 truncate text-[11px] text-muted-foreground">
-                      {provider.kind === "chatgpt"
-                        ? "ChatGPT account · open to manage sign-in"
-                        : provider.baseUrl}
-                    </p>
-                  </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => openProviderDialog(provider)}
-                  >
-                    <Pencil className="size-4" />
-                    <span className="sr-only">Edit {provider.name}</span>
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    disabled={removeProvider.isPending}
-                    onClick={() => removeProvider.mutate(provider.id)}
-                  >
-                    <Trash2 className="size-4" />
-                    <span className="sr-only">Delete {provider.name}</span>
-                  </Button>
-                </div>
+                  provider={provider}
+                  workerId={worker?.workerId ?? null}
+                  removing={removeProvider.isPending}
+                  onEdit={() => openProviderDialog(provider)}
+                  onRemove={() => removeProvider.mutate(provider.id)}
+                />
               ))}
               {removeProvider.isError ? (
                 <p className="text-sm text-destructive">

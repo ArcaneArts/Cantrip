@@ -1344,7 +1344,7 @@ export function App() {
         </header>
 
         {showSettings ? (
-          <SettingsPage onClose={() => setShowSettings(false)} />
+          <SettingsPage />
         ) : showImporter ? (
           <RepositoryImporter
             workerId={onlineWorker?.workerId ?? null}
