@@ -250,6 +250,7 @@ export async function buildApp({
           provider: runtime.provider,
         },
         {
+          timeoutMs: null,
           onEvent: async (event) => {
             if (event.type !== "agent.activity") return;
             await repository.upsertMessage(LOCAL_USER_ID, context.chatId, {
@@ -1412,12 +1413,10 @@ export async function buildApp({
           socket.close(1013, "Worker offline");
           return;
         }
-        await repository.setTerminalStatus(terminalId, "running");
         if (closed) {
           await repository.setTerminalStatus(terminalId, "idle");
           return;
         }
-        send({ type: "ready" });
         try {
           let launch:
             | { type: "shell" }
@@ -1465,8 +1464,19 @@ export async function buildApp({
               },
               {
                 timeoutMs: null,
-                onEvent: (event) => {
-                  if (event.type === "terminal.output") {
+                onEvent: async (event) => {
+                  if (event.type === "terminal.ready") {
+                    if (closed) {
+                      await bridge.request(workerId!, {
+                        type: "terminal.detach",
+                        terminalId: terminalId!,
+                        attachmentId,
+                      });
+                      return;
+                    }
+                    await repository.setTerminalStatus(terminalId!, "running");
+                    send({ type: "ready" });
+                  } else if (event.type === "terminal.output") {
                     send({ type: "output", data: event.data });
                   }
                 },

@@ -213,6 +213,13 @@ describe("Cantrip protocol", () => {
       }).type,
     ).toBe("output");
     expect(
+      workerEventEnvelopeSchema.parse({
+        kind: "event",
+        requestId: "terminal-request-1",
+        event: { type: "terminal.ready" },
+      }).event.type,
+    ).toBe("terminal.ready");
+    expect(
       workerCommandSchema.parse({
         type: "terminal.open",
         terminalId: "terminal-1",

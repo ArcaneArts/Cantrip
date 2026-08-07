@@ -942,6 +942,7 @@ export const workerEventSchema = z.discriminatedUnion("type", [
     type: z.literal("agent.activity"),
     activity: agentActivitySchema,
   }),
+  z.object({ type: z.literal("terminal.ready") }),
   z.object({
     type: z.literal("terminal.output"),
     data: z.string(),

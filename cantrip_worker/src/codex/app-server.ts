@@ -6,7 +6,7 @@ import {
 import { lstat, mkdir } from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
-import { promisify } from "node:util";
+import { promisify, stripVTControlCharacters } from "node:util";
 
 import {
   agentActivitySchema,
@@ -89,6 +89,13 @@ interface WorkspaceFileState {
 type WorkspaceSnapshot = Map<string, WorkspaceFileState>;
 
 const execFileAsync = promisify(execFile);
+const CODEX_STARTUP_TIMEOUT_MS = 2 * 60_000;
+const CODEX_RPC_TIMEOUT_MS = 2 * 60_000;
+
+export function codexEndpointFromLine(line: string): string | null {
+  const plainText = stripVTControlCharacters(line);
+  return /^\s*listening on:\s+(ws:\/\/\S+)\s*$/.exec(plainText)?.[1] ?? null;
+}
 
 interface ThreadResponse {
   thread: { id: string };
@@ -542,8 +549,31 @@ export class CodexAppServer {
       return;
     }
     this.#runtimeId = runtimeId;
-    this.#starting ??= this.start(model, provider);
-    await this.#starting;
+    const starting = this.start(model, provider);
+    this.#starting = starting;
+    try {
+      await starting;
+    } catch (error) {
+      if (this.#starting === starting) {
+        this.stopFailedStart();
+      }
+      throw error;
+    } finally {
+      if (this.#starting === starting) this.#starting = null;
+    }
+  }
+
+  private stopFailedStart(): void {
+    const socket = this.#socket;
+    const child = this.#child;
+    this.#socket = null;
+    this.#child = null;
+    this.#remoteUrl = null;
+    this.#runtimeId = null;
+    this.#loadedThreads.clear();
+    this.#externalTurnBaselines.clear();
+    socket?.close();
+    child?.kill("SIGINT");
   }
 
   private async loadThread(
@@ -686,14 +716,19 @@ export class CodexAppServer {
     const stderrLines = readline.createInterface({ input: child.stderr });
     const remoteUrl = await new Promise<string>((resolve, reject) => {
       const timeout = setTimeout(
-        () => reject(new Error("Codex app-server endpoint timed out.")),
-        15_000,
+        () =>
+          reject(
+            new Error(
+              "Codex app-server did not announce an endpoint within 120 seconds.",
+            ),
+          ),
+        CODEX_STARTUP_TIMEOUT_MS,
       );
       const inspectLine = (line: string) => {
-        const match = /^\s*listening on:\s+(ws:\/\/\S+)\s*$/.exec(line);
-        if (match?.[1]) {
+        const endpoint = codexEndpointFromLine(line);
+        if (endpoint) {
           clearTimeout(timeout);
-          resolve(match[1]);
+          resolve(endpoint);
         }
       };
       stdoutLines.on("line", inspectLine);
@@ -715,8 +750,13 @@ export class CodexAppServer {
     const socket = new WebSocket(remoteUrl);
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(
-        () => reject(new Error("Codex app-server WebSocket timed out.")),
-        15_000,
+        () =>
+          reject(
+            new Error(
+              "Codex app-server WebSocket did not connect within 120 seconds.",
+            ),
+          ),
+        CODEX_STARTUP_TIMEOUT_MS,
       );
       socket.once("open", () => {
         clearTimeout(timeout);
@@ -777,7 +817,7 @@ export class CodexAppServer {
       const timeout = setTimeout(() => {
         this.#pending.delete(id);
         reject(new Error(`Codex request ${method} timed out.`));
-      }, 30_000);
+      }, CODEX_RPC_TIMEOUT_MS);
       this.#pending.set(id, { reject, resolve, timeout });
       this.send({ id, method, params });
     });

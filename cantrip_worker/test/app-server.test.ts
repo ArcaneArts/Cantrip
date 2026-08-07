@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   changedFiles,
+  codexEndpointFromLine,
   codexModelProviderName,
 } from "../src/codex/app-server.js";
 
@@ -40,5 +41,18 @@ describe("codexModelProviderName", () => {
         apiKey: null,
       }),
     ).toBe("openai");
+  });
+});
+
+describe("codexEndpointFromLine", () => {
+  it("recognizes both plain and colored Codex endpoint announcements", () => {
+    expect(codexEndpointFromLine("  listening on: ws://127.0.0.1:54321")).toBe(
+      "ws://127.0.0.1:54321",
+    );
+    expect(
+      codexEndpointFromLine(
+        "  \u001b[2mlistening on:\u001b[0m \u001b[32mws://127.0.0.1:54321\u001b[0m",
+      ),
+    ).toBe("ws://127.0.0.1:54321");
   });
 });

@@ -61,6 +61,7 @@ let turnRequests = 0;
 let compactRequests = 0;
 const turnModelIds: string[] = [];
 const turnPrompts: string[] = [];
+const turnTimeouts: Array<number | null | undefined> = [];
 const deletedProjectPaths: string[] = [];
 const authProviderIds: string[] = [];
 const steeredPrompts: string[] = [];
@@ -288,6 +289,7 @@ const workerBridge = {
         turnRequests += 1;
         turnModelIds.push(command.model.id);
         turnPrompts.push(command.prompt);
+        turnTimeouts.push(options?.timeoutMs);
         await options?.onEvent?.({
           type: "agent.activity",
           activity: {
@@ -761,6 +763,7 @@ describe("local server foundation", () => {
       expect(messages).toHaveLength(4);
     });
     expect(turnRequests).toBe(1);
+    expect(turnTimeouts).toEqual([null]);
     expect(turnModelIds).toContain(selectedModel.id);
     expect(
       await firstApp.inject({

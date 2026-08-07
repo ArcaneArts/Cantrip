@@ -22,6 +22,7 @@ describe("TerminalManager", () => {
     directories.push(directory);
     const manager = new TerminalManager();
     let output = "";
+    const events: string[] = [];
     const exited = manager.open(
       "terminal-1",
       "attachment-1",
@@ -30,10 +31,12 @@ describe("TerminalManager", () => {
       24,
       { type: "shell" },
       (event) => {
+        events.push(event.type);
         if (event.type === "terminal.output") output += event.data;
       },
     );
 
+    expect(events[0]).toBe("terminal.ready");
     manager.input(
       "terminal-1",
       process.platform === "win32"

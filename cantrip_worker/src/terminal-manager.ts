@@ -208,10 +208,11 @@ export class TerminalManager {
       throw new Error("Terminal session belongs to a different source folder.");
     }
 
-    if (session.buffer) emit({ type: "terminal.output", data: session.buffer });
     if (session.exited) return Promise.resolve(session.exited);
     session.process.resize(cols, rows);
     session.subscribers.set(attachmentId, emit);
+    emit({ type: "terminal.ready" });
+    if (session.buffer) emit({ type: "terminal.output", data: session.buffer });
     return new Promise((resolve) =>
       session!.waiters.set(attachmentId, resolve),
     );
