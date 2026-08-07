@@ -51,6 +51,7 @@
   --border: oklch(0.9 0.008 264);
   --input: oklch(0.9 0.008 264);
   --ring: oklch(0.64 0.04 264);
+  --row-alternate: oklch(0.97 0.002 264);
 }
 
 .dark {
@@ -72,6 +73,49 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.58 0.03 264);
+  --row-alternate: oklch(0.18 0.006 264);
+}
+
+:root.high-contrast:not(.dark) {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0 0 0);
+  --primary: oklch(0 0 0);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.965 0 0);
+  --secondary-foreground: oklch(0 0 0);
+  --muted: oklch(0.965 0 0);
+  --muted-foreground: oklch(0.4 0 0);
+  --accent: oklch(0.94 0 0);
+  --accent-foreground: oklch(0 0 0);
+  --border: oklch(0 0 0 / 24%);
+  --input: oklch(0 0 0 / 28%);
+  --ring: oklch(0.35 0 0);
+  --row-alternate: oklch(0.975 0 0);
+}
+
+:root.dark.high-contrast {
+  --background: oklch(0 0 0);
+  --foreground: oklch(1 0 0);
+  --card: oklch(0 0 0);
+  --card-foreground: oklch(1 0 0);
+  --popover: oklch(0 0 0);
+  --popover-foreground: oklch(1 0 0);
+  --primary: oklch(1 0 0);
+  --primary-foreground: oklch(0 0 0);
+  --secondary: oklch(0.12 0 0);
+  --secondary-foreground: oklch(1 0 0);
+  --muted: oklch(0.12 0 0);
+  --muted-foreground: oklch(0.72 0 0);
+  --accent: oklch(0.16 0 0);
+  --accent-foreground: oklch(1 0 0);
+  --border: oklch(1 0 0 / 24%);
+  --input: oklch(1 0 0 / 28%);
+  --ring: oklch(0.72 0 0);
+  --row-alternate: oklch(0.075 0 0);
 }
 
 @layer base {
@@ -99,5 +143,27 @@
   button,
   a {
     -webkit-tap-highlight-color: transparent;
+  }
+
+  .high-contrast [data-slot="card"] {
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .high-contrast [data-slot="app-sidebar"] {
+    border-right-color: transparent;
+    background: var(--background);
+  }
+
+  .high-contrast [data-high-contrast-row] {
+    border-color: transparent;
+  }
+
+  .high-contrast [data-high-contrast-row]:nth-child(even) {
+    background: var(--row-alternate);
+  }
+
+  .high-contrast [data-high-contrast-row][data-current="true"] {
+    background: color-mix(in oklab, cyan 8%, var(--background));
   }
 }

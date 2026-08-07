@@ -275,6 +275,25 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                   </Button>
                 ))}
               </div>
+              <label className="mt-4 flex cursor-pointer items-center justify-between gap-4 rounded-lg bg-muted/35 px-3 py-2.5">
+                <span>
+                  <span className="block text-sm font-medium">
+                    High Contrast
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    Use pure black or white surfaces with restrained outlines.
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  className="size-4 accent-primary"
+                  checked={settings.data?.preferences.highContrast ?? false}
+                  disabled={preferences.isPending}
+                  onChange={(event) =>
+                    preferences.mutate({ highContrast: event.target.checked })
+                  }
+                />
+              </label>
             </CardContent>
           </Card>
 
@@ -434,6 +453,7 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
               {(settings.data?.providers ?? []).map((provider) => (
                 <div
                   key={provider.id}
+                  data-high-contrast-row
                   className="flex min-w-0 items-center gap-3 rounded-lg border p-3"
                 >
                   <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted">
@@ -526,6 +546,7 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                 {(settings.data?.models ?? []).map((model) => (
                   <div
                     key={model.id}
+                    data-high-contrast-row
                     className="flex min-w-0 items-center gap-3 rounded-lg border p-3"
                   >
                     <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted">

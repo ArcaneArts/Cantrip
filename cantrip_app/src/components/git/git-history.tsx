@@ -300,6 +300,8 @@ export function GitHistoryView({
               return (
                 <div
                   key={row.commit.hash}
+                  data-high-contrast-row
+                  data-current={row.commit.isHead}
                   className={cn(
                     "grid h-8 items-center border-b border-border/50 px-4 hover:bg-muted/50",
                     row.commit.isHead &&

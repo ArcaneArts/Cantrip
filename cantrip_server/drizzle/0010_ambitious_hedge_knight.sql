@@ -1,0 +1,1 @@
+ALTER TABLE "user_settings" ADD COLUMN "high_contrast" boolean DEFAULT false NOT NULL;

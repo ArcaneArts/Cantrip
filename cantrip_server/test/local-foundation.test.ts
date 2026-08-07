@@ -231,6 +231,7 @@ describe("local server foundation", () => {
     );
     expect(initialSettings.preferences).toMatchObject({
       theme: "system",
+      highContrast: false,
       defaultModelId: expect.any(String),
     });
     const provider = modelProviderSummarySchema.parse(
@@ -302,12 +303,17 @@ describe("local server foundation", () => {
         await firstApp.inject({
           method: "PATCH",
           url: "/api/settings",
-          payload: { theme: "dark", defaultModelId: selectedModel.id },
+          payload: {
+            theme: "dark",
+            highContrast: true,
+            defaultModelId: selectedModel.id,
+          },
         })
       ).json(),
     );
     expect(updatedSettings.preferences).toEqual({
       theme: "dark",
+      highContrast: true,
       defaultModelId: selectedModel.id,
     });
 
@@ -811,6 +817,7 @@ describe("local server foundation", () => {
     ]);
     expect(restoredSettings.preferences).toEqual({
       theme: "dark",
+      highContrast: true,
       defaultModelId: selectedModel.id,
     });
     expect(

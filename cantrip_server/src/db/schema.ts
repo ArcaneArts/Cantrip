@@ -1,6 +1,7 @@
 import type { ChatMessageContent } from "@cantrip/protocol";
 import {
   bigserial,
+  boolean,
   integer,
   jsonb,
   pgTable,
@@ -90,6 +91,7 @@ export const userSettings = pgTable("user_settings", {
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
   theme: text("theme").notNull().default("system"),
+  highContrast: boolean("high_contrast").notNull().default(false),
   defaultModelId: text("default_model_id").references(() => modelProfiles.id, {
     onDelete: "set null",
   }),

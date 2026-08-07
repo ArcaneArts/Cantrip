@@ -172,6 +172,7 @@ export const modelProfileListSchema = z.array(modelProfileSummarySchema);
 
 export const userSettingsSchema = z.object({
   theme: themePreferenceSchema,
+  highContrast: z.boolean(),
   defaultModelId: z.string().min(1).nullable(),
 });
 

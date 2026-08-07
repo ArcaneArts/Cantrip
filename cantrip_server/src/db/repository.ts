@@ -312,6 +312,7 @@ export class ServerRepository {
       .values({
         userId: ownerId,
         theme: "system",
+        highContrast: false,
         defaultModelId: DEFAULT_MODEL_ID,
       })
       .onConflictDoNothing({ target: schema.userSettings.userId });
@@ -396,6 +397,7 @@ export class ServerRepository {
     return {
       preferences: {
         theme: settings.theme as ThemePreference,
+        highContrast: settings.highContrast,
         defaultModelId: settings.defaultModelId,
       },
       providers: providerRows.map(toProviderSummary),

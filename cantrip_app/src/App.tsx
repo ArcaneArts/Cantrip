@@ -412,8 +412,8 @@ function ChatTranscript({
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-8">
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex-1 overflow-y-auto px-4 pb-48 pt-6 sm:px-8">
         <div className="mx-auto flex max-w-3xl flex-col gap-5">
           {messages.data?.length === 0 ? (
             <div className="grid min-h-[45vh] place-items-center text-center">
@@ -536,9 +536,16 @@ function ChatTranscript({
         </div>
       </div>
 
-      <form onSubmit={submit} className="border-t bg-background p-4 sm:px-8">
-        <div className="mx-auto max-w-3xl">
-          <div className="flex items-end gap-2 rounded-xl border bg-card p-2 shadow-sm focus-within:ring-2 focus-within:ring-ring">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-44 bg-gradient-to-t from-background/50 via-background/25 to-transparent"
+      />
+      <form
+        onSubmit={submit}
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-3 sm:px-8 sm:pb-4"
+      >
+        <div className="pointer-events-auto mx-auto max-w-3xl">
+          <div className="flex items-end gap-2 rounded-2xl border bg-background/60 p-2 shadow-xl shadow-background/20 backdrop-blur-3xl backdrop-saturate-150 focus-within:ring-2 focus-within:ring-ring">
             <div className="min-w-0 flex-1">
               <textarea
                 rows={1}
@@ -1012,6 +1019,10 @@ export function App() {
       const dark =
         preference === "dark" || (preference === "system" && media.matches);
       document.documentElement.classList.toggle("dark", dark);
+      document.documentElement.classList.toggle(
+        "high-contrast",
+        settings.data?.preferences.highContrast ?? false,
+      );
       document.documentElement.style.colorScheme = dark ? "dark" : "light";
     };
     apply();
@@ -1019,7 +1030,10 @@ export function App() {
       media.addEventListener("change", apply);
       return () => media.removeEventListener("change", apply);
     }
-  }, [settings.data?.preferences.theme]);
+  }, [
+    settings.data?.preferences.highContrast,
+    settings.data?.preferences.theme,
+  ]);
 
   useEffect(() => {
     if (showImporter || showSettings) setGitHistoryProjectId(null);
@@ -1087,7 +1101,10 @@ export function App() {
 
   return (
     <main className="flex h-svh overflow-hidden bg-background text-foreground">
-      <aside className="hidden w-72 shrink-0 flex-col border-r bg-card/40 md:flex">
+      <aside
+        data-slot="app-sidebar"
+        className="hidden w-72 shrink-0 flex-col border-r bg-card/40 md:flex"
+      >
         <div className="flex h-16 items-center gap-3 border-b px-4">
           <div className="grid size-9 place-items-center rounded-xl border bg-background shadow-sm">
             <WandSparkles className="size-4" />
