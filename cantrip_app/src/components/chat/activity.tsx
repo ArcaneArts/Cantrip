@@ -1,15 +1,19 @@
 import type { AgentActivity } from "@cantrip/protocol";
 import {
   Check,
+  ChevronDown,
   ChevronRight,
   CircleX,
   FileDiff,
   Loader2,
   Terminal,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+
+import { formatElapsedTime } from "./timeline";
 
 function ActivityState({ activity }: { activity: AgentActivity }) {
   if (activity.status === "running") {
@@ -30,7 +34,7 @@ function changeLabel(kind: "add" | "delete" | "update") {
 export function Activity({ activity }: { activity: AgentActivity }) {
   if (activity.type === "fileChange") {
     return (
-      <div className="min-w-0 border-l-2 border-border py-1 pl-4 text-sm">
+      <div className="min-w-0 py-1 text-sm">
         <div className="flex min-w-0 items-center gap-2 font-medium">
           <FileDiff className="size-4 shrink-0 text-muted-foreground" />
           <span className="truncate">
@@ -70,7 +74,7 @@ export function Activity({ activity }: { activity: AgentActivity }) {
   const hasDetails = Boolean(activity.output || activity.cwd);
   return (
     <details
-      className="group min-w-0 border-l-2 border-border py-1 pl-4 text-sm"
+      className="group min-w-0 py-1 text-sm"
       open={activity.status === "failed" ? true : undefined}
     >
       <summary
@@ -109,5 +113,55 @@ export function Activity({ activity }: { activity: AgentActivity }) {
         </div>
       ) : null}
     </details>
+  );
+}
+
+export function ActivityGroup({
+  activities,
+  endedAt,
+  startedAt,
+}: {
+  activities: AgentActivity[];
+  endedAt: string | null;
+  startedAt: string;
+}) {
+  const completed = endedAt !== null;
+  const [open, setOpen] = useState(!completed);
+
+  useEffect(() => {
+    setOpen(!completed);
+  }, [completed]);
+
+  if (!completed) {
+    return (
+      <div className="grid min-w-0 gap-0">
+        {activities.map((activity) => (
+          <Activity key={activity.id} activity={activity} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-w-0">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center gap-1.5 border-b py-2 text-left text-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+      >
+        <span>Worked for {formatElapsedTime(startedAt, endedAt)}</span>
+        <ChevronDown
+          className={cn("size-3.5 transition-transform", !open && "-rotate-90")}
+        />
+      </button>
+      {open ? (
+        <div className="grid min-w-0 gap-0 py-1">
+          {activities.map((activity) => (
+            <Activity key={activity.id} activity={activity} />
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }

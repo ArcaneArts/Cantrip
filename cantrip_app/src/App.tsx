@@ -26,8 +26,9 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
-import { Activity } from "@/components/chat/activity";
+import { Activity, ActivityGroup } from "@/components/chat/activity";
 import { Markdown } from "@/components/chat/markdown";
+import { buildChatTimeline } from "@/components/chat/timeline";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -300,6 +301,10 @@ function ChatTranscript({
     queryKey: ["messages", chat.id],
     refetchInterval: chat.status === "running" ? 750 : 3_000,
   });
+  const timeline = useMemo(
+    () => buildChatTimeline(messages.data ?? []),
+    [messages.data],
+  );
   const send = useMutation({
     mutationFn: (text: string) => startTurn(chat.id, text, selectedModelId),
     onSuccess: async () => {
@@ -352,7 +357,18 @@ function ChatTranscript({
             </div>
           ) : null}
 
-          {(messages.data ?? []).map((message) => {
+          {timeline.map((entry) => {
+            if (entry.type === "activityGroup") {
+              return (
+                <ActivityGroup
+                  key={entry.key}
+                  activities={entry.activities}
+                  startedAt={entry.startedAt}
+                  endedAt={entry.endedAt}
+                />
+              );
+            }
+            const message = entry.message;
             const user = message.role === "user";
             const system = message.role === "system";
             return (

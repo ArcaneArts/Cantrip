@@ -1,13 +1,47 @@
+# Dependencies and package-manager state.
 node_modules/
+.pnpm-store/
+
+# Build output and tool caches.
 dist/
+build/
+out/
+.cache/
+.vite/
+.turbo/
+*.tsbuildinfo
+
+# Cantrip runtime state. This includes PGlite, Codex homes, worker clones,
+# conversation/runtime logs, and other machine-local data.
 .cantrip/
+
+# Databases and local PostgreSQL data directories outside .cantrip.
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+pgdata/
+postgres-data/
+.postgres/
+
+# Local configuration and secrets.
 .env
 .env.*
 !.env.example
+.envrc
+
+# Logs, coverage, and test artifacts.
 *.log
-.DS_Store
+*.log.*
+logs/
 coverage/
-*.tsbuildinfo
+test-results/
+playwright-report/
+
+# Operating-system metadata.
+.DS_Store
 
 # Generated Capacitor projects are added when native work begins.
 cantrip_app/android/
