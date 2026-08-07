@@ -527,7 +527,7 @@ Exit: a developer can use Cantrip locally in the browser for a real repository w
 - Add ChatGPT browser/device login, logout, account display, and rate-limit UI.
 - Add API-key/base-URL and keyless Ollama profiles.
 - Add explicit model capability tests and structured-output probes.
-- Add the worker-backed file browser, Git status/diff, and PTY terminal.
+- Add the worker-backed file browser and Git status/diff. The initial server-routed, worker-owned PTY terminal is implemented; idle expiration, backpressure, and remote opt-in hardening remain.
 - Add worker resource limits, crash recovery, and compatibility reporting.
 
 Exit: one local worker can safely switch between verified ChatGPT, API/proxy, and local-model profiles.

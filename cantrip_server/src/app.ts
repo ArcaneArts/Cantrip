@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import {
@@ -31,6 +33,13 @@ import {
   serverBootstrapSchema,
   settingsBundleSchema,
   systemHealthSchema,
+  terminalClientMessageSchema,
+  terminalCreateSchema,
+  terminalListSchema,
+  terminalOpenResultSchema,
+  terminalServerMessageSchema,
+  terminalSummarySchema,
+  terminalUpdateSchema,
   userSettingsUpdateSchema,
   workerHeartbeatSchema,
   workerListSchema,
@@ -485,6 +494,211 @@ export async function buildApp({
         return reply.code(404).send({ error: "Project source not found" });
       }
       return reply.code(201).send(chatSummarySchema.parse(chat));
+    },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/terminals",
+    async (request, reply) => {
+      const terminals = await repository.listTerminals(
+        LOCAL_USER_ID,
+        request.params.projectId,
+      );
+      return reply.send(terminalListSchema.parse(terminals));
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/terminals",
+    async (request, reply) => {
+      const input = terminalCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const terminal = await repository.createTerminal(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        input.data,
+      );
+      return terminal
+        ? reply.code(201).send(terminalSummarySchema.parse(terminal))
+        : reply.code(404).send({ error: "Project source not found." });
+    },
+  );
+
+  app.patch<{ Params: { terminalId: string } }>(
+    "/api/terminals/:terminalId",
+    async (request, reply) => {
+      const input = terminalUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const terminal = await repository.updateTerminal(
+        LOCAL_USER_ID,
+        request.params.terminalId,
+        input.data,
+      );
+      return terminal
+        ? reply.send(terminalSummarySchema.parse(terminal))
+        : reply.code(404).send({ error: "Terminal not found." });
+    },
+  );
+
+  app.delete<{ Params: { terminalId: string } }>(
+    "/api/terminals/:terminalId",
+    async (request, reply) => {
+      const context = await repository.deleteTerminal(
+        LOCAL_USER_ID,
+        request.params.terminalId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Terminal not found." });
+      }
+      if (bridge.isConnected(context.workerId)) {
+        void bridge
+          .request(context.workerId, {
+            type: "terminal.close",
+            terminalId: context.terminalId,
+          })
+          .catch((error: unknown) =>
+            app.log.warn(
+              { err: error, terminalId: context.terminalId },
+              "Could not close deleted terminal",
+            ),
+          );
+      }
+      return reply.code(204).send();
+    },
+  );
+
+  app.get<{ Params: { terminalId: string } }>(
+    "/api/terminals/:terminalId/connect",
+    { websocket: true },
+    (socket, request) => {
+      if (
+        !request.headers.origin ||
+        !config.appOrigins.includes(request.headers.origin)
+      ) {
+        socket.close(1008, "Origin not allowed");
+        return;
+      }
+      const attachmentId = randomUUID();
+      let terminalId: string | null = null;
+      let workerId: string | null = null;
+      let closed = false;
+      const send = (message: unknown) => {
+        if (socket.readyState === 1) {
+          socket.send(
+            JSON.stringify(terminalServerMessageSchema.parse(message)),
+          );
+        }
+      };
+
+      socket.on("close", () => {
+        closed = true;
+        if (!terminalId || !workerId || !bridge.isConnected(workerId)) return;
+        void bridge
+          .request(workerId, {
+            type: "terminal.detach",
+            terminalId,
+            attachmentId,
+          })
+          .catch(() => undefined);
+      });
+
+      socket.on("message", (raw) => {
+        if (!terminalId || !workerId) return;
+        let value: unknown;
+        try {
+          value = JSON.parse(raw.toString());
+        } catch {
+          send({ type: "error", message: "Invalid terminal message." });
+          return;
+        }
+        const message = terminalClientMessageSchema.safeParse(value);
+        if (!message.success) {
+          send({ type: "error", message: "Invalid terminal message." });
+          return;
+        }
+        const command =
+          message.data.type === "input"
+            ? {
+                type: "terminal.input" as const,
+                terminalId,
+                data: message.data.data,
+              }
+            : {
+                type: "terminal.resize" as const,
+                terminalId,
+                cols: message.data.cols,
+                rows: message.data.rows,
+              };
+        void bridge
+          .request(workerId, command, { timeoutMs: 30_000 })
+          .catch((error: unknown) => {
+            send({ type: "error", message: errorMessage(error) });
+          });
+      });
+
+      void (async () => {
+        const context = await repository.getTerminalExecutionContext(
+          LOCAL_USER_ID,
+          request.params.terminalId,
+        );
+        if (!context) {
+          send({ type: "error", message: "Terminal not found." });
+          socket.close(1008, "Terminal not found");
+          return;
+        }
+        if (closed) return;
+        terminalId = context.terminalId;
+        workerId = context.workerId;
+        if (!bridge.isConnected(workerId)) {
+          await repository.setTerminalStatus(terminalId, "offline");
+          send({ type: "error", message: "Project worker is offline." });
+          socket.close(1013, "Worker offline");
+          return;
+        }
+        await repository.setTerminalStatus(terminalId, "running");
+        if (closed) {
+          await repository.setTerminalStatus(terminalId, "idle");
+          return;
+        }
+        send({ type: "ready" });
+        try {
+          const result = terminalOpenResultSchema.parse(
+            await bridge.request(
+              workerId,
+              {
+                type: "terminal.open",
+                terminalId,
+                attachmentId,
+                cwd: context.cwd,
+                cols: 80,
+                rows: 24,
+              },
+              {
+                timeoutMs: null,
+                onEvent: (event) => {
+                  if (event.type === "terminal.output") {
+                    send({ type: "output", data: event.data });
+                  }
+                },
+              },
+            ),
+          );
+          if (result.status === "exited") {
+            await repository.setTerminalStatus(terminalId, "exited");
+            if (!closed) send({ type: "exit", ...result });
+          }
+        } catch (error) {
+          await repository.setTerminalStatus(
+            terminalId,
+            error instanceof WorkerUnavailableError ? "offline" : "failed",
+          );
+          if (!closed) send({ type: "error", message: errorMessage(error) });
+        }
+      })();
     },
   );
 

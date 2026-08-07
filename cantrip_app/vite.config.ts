@@ -21,6 +21,7 @@ export default defineConfig({
       "/api": {
         changeOrigin: true,
         target: "http://127.0.0.1:4310",
+        ws: true,
       },
     },
     strictPort: true,

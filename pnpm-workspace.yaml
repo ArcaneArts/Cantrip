@@ -6,6 +6,7 @@ packages:
 
 allowBuilds:
   esbuild: true
+  node-pty: true
 
 engineStrict: true
 saveWorkspaceProtocol: rolling

@@ -226,6 +226,59 @@ export const chatSummarySchema = z.object({
 
 export const chatListSchema = z.array(chatSummarySchema);
 
+export const terminalCreateSchema = z.object({
+  title: z.string().trim().min(1).max(200).default("Terminal"),
+});
+
+export const terminalUpdateSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+});
+
+export const terminalSummarySchema = z.object({
+  id: z.string().min(1),
+  projectId: z.string().min(1),
+  title: z.string().min(1),
+  position: z.number().int().nonnegative(),
+  status: z.enum(["idle", "running", "exited", "offline", "failed"]),
+  activeWorkerId: z.string().min(1),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const terminalListSchema = z.array(terminalSummarySchema);
+
+export const terminalClientMessageSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("input"),
+    data: z.string().max(100_000),
+  }),
+  z.object({
+    type: z.literal("resize"),
+    cols: z.number().int().min(1).max(1_000),
+    rows: z.number().int().min(1).max(1_000),
+  }),
+]);
+
+export const terminalServerMessageSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("ready") }),
+  z.object({ type: z.literal("output"), data: z.string() }),
+  z.object({
+    type: z.literal("exit"),
+    exitCode: z.number().int(),
+    signal: z.number().int().nullable(),
+  }),
+  z.object({ type: z.literal("error"), message: z.string().min(1) }),
+]);
+
+export const terminalOpenResultSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("detached") }),
+  z.object({
+    status: z.literal("exited"),
+    exitCode: z.number().int(),
+    signal: z.number().int().nullable(),
+  }),
+]);
+
 export const chatMessageRoleSchema = z.enum(["user", "assistant", "system"]);
 export const agentActivityStatusSchema = z.enum([
   "running",
@@ -349,6 +402,34 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     limit: z.number().int().min(1).max(500).default(100),
   }),
   z.object({
+    type: z.literal("terminal.open"),
+    terminalId: z.string().min(1),
+    attachmentId: z.string().min(1),
+    cwd: z.string().min(1),
+    cols: z.number().int().min(1).max(1_000),
+    rows: z.number().int().min(1).max(1_000),
+  }),
+  z.object({
+    type: z.literal("terminal.detach"),
+    terminalId: z.string().min(1),
+    attachmentId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("terminal.input"),
+    terminalId: z.string().min(1),
+    data: z.string().max(100_000),
+  }),
+  z.object({
+    type: z.literal("terminal.resize"),
+    terminalId: z.string().min(1),
+    cols: z.number().int().min(1).max(1_000),
+    rows: z.number().int().min(1).max(1_000),
+  }),
+  z.object({
+    type: z.literal("terminal.close"),
+    terminalId: z.string().min(1),
+  }),
+  z.object({
     type: z.literal("chat.turn"),
     chatId: z.string().min(1),
     cwd: z.string().min(1),
@@ -390,10 +471,16 @@ export const workerResponseEnvelopeSchema = z.discriminatedUnion("ok", [
   }),
 ]);
 
-export const workerEventSchema = z.object({
-  type: z.literal("agent.activity"),
-  activity: agentActivitySchema,
-});
+export const workerEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("agent.activity"),
+    activity: agentActivitySchema,
+  }),
+  z.object({
+    type: z.literal("terminal.output"),
+    data: z.string(),
+  }),
+]);
 
 export const workerEventEnvelopeSchema = z.object({
   kind: z.literal("event"),
@@ -437,6 +524,12 @@ export type ChatUpdate = z.infer<typeof chatUpdateSchema>;
 export type ChatFork = z.infer<typeof chatForkSchema>;
 export type OrderedIds = z.infer<typeof orderedIdsSchema>;
 export type ChatSummary = z.infer<typeof chatSummarySchema>;
+export type TerminalCreate = z.infer<typeof terminalCreateSchema>;
+export type TerminalUpdate = z.infer<typeof terminalUpdateSchema>;
+export type TerminalSummary = z.infer<typeof terminalSummarySchema>;
+export type TerminalClientMessage = z.infer<typeof terminalClientMessageSchema>;
+export type TerminalServerMessage = z.infer<typeof terminalServerMessageSchema>;
+export type TerminalOpenResult = z.infer<typeof terminalOpenResultSchema>;
 export type ChatMessageContent = z.infer<typeof chatMessageContentSchema>;
 export type ChatMessageCreate = z.infer<typeof chatMessageCreateSchema>;
 export type ChatMessage = z.infer<typeof chatMessageSchema>;

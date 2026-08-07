@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   serverBootstrapSchema,
   systemHealthSchema,
+  terminalClientMessageSchema,
+  terminalServerMessageSchema,
   workerEventEnvelopeSchema,
   workerHeartbeatSchema,
 } from "../src/index.js";
@@ -91,5 +93,21 @@ describe("Cantrip protocol", () => {
     });
 
     expect(event.event.activity.type).toBe("fileChange");
+  });
+
+  it("validates interactive terminal frames", () => {
+    expect(
+      terminalClientMessageSchema.parse({
+        type: "resize",
+        cols: 120,
+        rows: 40,
+      }),
+    ).toEqual({ type: "resize", cols: 120, rows: 40 });
+    expect(
+      terminalServerMessageSchema.parse({
+        type: "output",
+        data: "\u001b[32mready\u001b[0m",
+      }).type,
+    ).toBe("output");
   });
 });

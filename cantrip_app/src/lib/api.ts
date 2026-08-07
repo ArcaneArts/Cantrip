@@ -18,6 +18,8 @@ import {
   serverBootstrapSchema,
   settingsBundleSchema,
   systemHealthSchema,
+  terminalListSchema,
+  terminalSummarySchema,
   workerListSchema,
 } from "@cantrip/protocol";
 import type {
@@ -194,6 +196,44 @@ export async function createChat(projectId: string, title: string) {
       title,
     }),
   );
+}
+
+export async function getTerminals(projectId: string) {
+  return terminalListSchema.parse(
+    await request(`/api/projects/${encodeURIComponent(projectId)}/terminals`),
+  );
+}
+
+export async function createTerminal(projectId: string, title: string) {
+  return terminalSummarySchema.parse(
+    await post(`/api/projects/${encodeURIComponent(projectId)}/terminals`, {
+      title,
+    }),
+  );
+}
+
+export async function renameTerminal(terminalId: string, title: string) {
+  return terminalSummarySchema.parse(
+    await request(`/api/terminals/${encodeURIComponent(terminalId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    }),
+  );
+}
+
+export async function deleteTerminal(terminalId: string) {
+  await request(`/api/terminals/${encodeURIComponent(terminalId)}`, {
+    method: "DELETE",
+  });
+}
+
+export function terminalWebSocketUrl(terminalId: string): string {
+  const url = new URL(
+    `/api/terminals/${encodeURIComponent(terminalId)}/connect`,
+    serverUrl || window.location.origin,
+  );
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
 }
 
 export async function renameChat(chatId: string, title: string) {

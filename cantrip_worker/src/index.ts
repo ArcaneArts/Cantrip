@@ -9,6 +9,7 @@ import { readWorkerConfig } from "./config.js";
 import { GithubClient } from "./github.js";
 import { readGitHistory } from "./git.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
+import { TerminalManager } from "./terminal-manager.js";
 import { WorkerConnection } from "./transport.js";
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
@@ -26,6 +27,7 @@ async function start(): Promise<void> {
   let stopping = false;
   const github = new GithubClient(config.dataDirectory);
   const codexRuntimes = new Map<string, CodexAppServer>();
+  const terminals = new TerminalManager();
 
   const runtimeFor = (
     command: Extract<WorkerCommand, { type: "chat.turn" }>,
@@ -58,6 +60,26 @@ async function start(): Promise<void> {
         return github.cloneRepository(command.repository.nameWithOwner);
       case "git.history":
         return readGitHistory(command.cwd, command.limit);
+      case "terminal.open":
+        return terminals.open(
+          command.terminalId,
+          command.attachmentId,
+          command.cwd,
+          command.cols,
+          command.rows,
+          emit,
+        );
+      case "terminal.detach":
+        return terminals.detach(command.terminalId, command.attachmentId);
+      case "terminal.input":
+        terminals.input(command.terminalId, command.data);
+        return { accepted: true };
+      case "terminal.resize":
+        terminals.resize(command.terminalId, command.cols, command.rows);
+        return { accepted: true };
+      case "terminal.close":
+        terminals.close(command.terminalId);
+        return { accepted: true };
       case "chat.turn":
         return runtimeFor(command).runTurn({
           cwd: command.cwd,
@@ -109,6 +131,7 @@ async function start(): Promise<void> {
       stopping = true;
       clearInterval(heartbeatTimer);
       commandConnection.close();
+      terminals.closeAll();
       for (const runtime of codexRuntimes.values()) {
         runtime.close();
       }

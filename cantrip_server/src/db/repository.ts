@@ -18,6 +18,9 @@ import type {
   ProjectCloneResult,
   ProjectSummary,
   SettingsBundle,
+  TerminalCreate,
+  TerminalSummary,
+  TerminalUpdate,
   ThemePreference,
   UserSettingsUpdate,
   UserSummary,
@@ -48,6 +51,13 @@ export interface ChatExecutionContext {
   modelId: string | null;
   modelLocked: boolean;
   threadId: string | null;
+  workerId: string;
+}
+
+export interface TerminalExecutionContext {
+  cwd: string;
+  status: TerminalSummary["status"];
+  terminalId: string;
   workerId: string;
 }
 
@@ -123,6 +133,21 @@ function toChatSummary(chat: typeof schema.chats.$inferSelect): ChatSummary {
     modelLocked: chat.modelLockedAt !== null,
     createdAt: toISOString(chat.createdAt),
     updatedAt: toISOString(chat.updatedAt),
+  };
+}
+
+function toTerminalSummary(
+  terminal: typeof schema.terminals.$inferSelect,
+): TerminalSummary {
+  return {
+    id: terminal.id,
+    projectId: terminal.projectId,
+    title: terminal.title,
+    position: terminal.position,
+    status: terminal.status as TerminalSummary["status"],
+    activeWorkerId: terminal.activeWorkerId,
+    createdAt: toISOString(terminal.createdAt),
+    updatedAt: toISOString(terminal.updatedAt),
   };
 }
 
@@ -731,6 +756,134 @@ export class ServerRepository {
       workerId: source.workerId,
     });
     return toChatSummary(chat);
+  }
+
+  async listTerminals(
+    ownerId: string,
+    projectId: string,
+  ): Promise<TerminalSummary[]> {
+    const rows = await this.database
+      .select({ terminal: schema.terminals })
+      .from(schema.terminals)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.terminals.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.terminals.projectId, projectId))
+      .orderBy(asc(schema.terminals.position), asc(schema.terminals.createdAt));
+    return rows.map(({ terminal }) => toTerminalSummary(terminal));
+  }
+
+  async createTerminal(
+    ownerId: string,
+    projectId: string,
+    input: TerminalCreate,
+  ): Promise<TerminalSummary | null> {
+    const rows = await this.database
+      .select({ source: schema.projectSources })
+      .from(schema.projects)
+      .innerJoin(
+        schema.projectSources,
+        eq(schema.projectSources.projectId, schema.projects.id),
+      )
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    const source = rows[0]?.source;
+    if (!source) return null;
+
+    const last = await this.database
+      .select({ position: schema.terminals.position })
+      .from(schema.terminals)
+      .where(eq(schema.terminals.projectId, projectId))
+      .orderBy(desc(schema.terminals.position))
+      .limit(1);
+    const result = await this.database
+      .insert(schema.terminals)
+      .values({
+        id: randomUUID(),
+        projectId,
+        title: input.title,
+        position: (last[0]?.position ?? -1) + 1,
+        activeWorkerId: source.workerId,
+      })
+      .returning();
+    return toTerminalSummary(firstOrThrow(result, "creating a terminal"));
+  }
+
+  async updateTerminal(
+    ownerId: string,
+    terminalId: string,
+    input: TerminalUpdate,
+  ): Promise<TerminalSummary | null> {
+    const owned = await this.getTerminalExecutionContext(ownerId, terminalId);
+    if (!owned) return null;
+    const result = await this.database
+      .update(schema.terminals)
+      .set({ title: input.title, updatedAt: new Date() })
+      .where(eq(schema.terminals.id, terminalId))
+      .returning();
+    return result[0] ? toTerminalSummary(result[0]) : null;
+  }
+
+  async deleteTerminal(
+    ownerId: string,
+    terminalId: string,
+  ): Promise<TerminalExecutionContext | null> {
+    const context = await this.getTerminalExecutionContext(ownerId, terminalId);
+    if (!context) return null;
+    await this.database
+      .delete(schema.terminals)
+      .where(eq(schema.terminals.id, terminalId));
+    return context;
+  }
+
+  async getTerminalExecutionContext(
+    ownerId: string,
+    terminalId: string,
+  ): Promise<TerminalExecutionContext | null> {
+    const rows = await this.database
+      .select({ terminal: schema.terminals, source: schema.projectSources })
+      .from(schema.terminals)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.terminals.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .innerJoin(
+        schema.projectSources,
+        eq(schema.projectSources.projectId, schema.projects.id),
+      )
+      .where(eq(schema.terminals.id, terminalId))
+      .limit(1);
+    const row = rows[0];
+    return row
+      ? {
+          terminalId: row.terminal.id,
+          workerId: row.terminal.activeWorkerId,
+          cwd: row.source.absolutePath,
+          status: row.terminal.status as TerminalSummary["status"],
+        }
+      : null;
+  }
+
+  async setTerminalStatus(
+    terminalId: string,
+    status: TerminalSummary["status"],
+  ): Promise<void> {
+    await this.database
+      .update(schema.terminals)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(schema.terminals.id, terminalId));
   }
 
   async updateChat(

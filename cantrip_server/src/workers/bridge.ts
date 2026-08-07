@@ -30,7 +30,7 @@ export interface WorkerCommandBus {
 
 export interface WorkerRequestOptions {
   onEvent?(event: WorkerEvent): Promise<void> | void;
-  timeoutMs?: number;
+  timeoutMs?: number | null;
 }
 
 interface PendingRequest {
@@ -38,7 +38,7 @@ interface PendingRequest {
   onEvent?: WorkerRequestOptions["onEvent"];
   reject(error: Error): void;
   resolve(value: unknown): void;
-  timeout: ReturnType<typeof setTimeout>;
+  timeout: ReturnType<typeof setTimeout> | null;
   workerId: string;
 }
 
@@ -82,7 +82,7 @@ export class WorkerBridge implements WorkerCommandBus {
         return;
       }
       this.#pending.delete(response.data.requestId);
-      clearTimeout(pending.timeout);
+      if (pending.timeout) clearTimeout(pending.timeout);
       void pending.eventQueue.then(
         () => {
           if (response.data.ok) {
@@ -137,13 +137,16 @@ export class WorkerBridge implements WorkerCommandBus {
     });
 
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(
-        () => {
-          this.#pending.delete(requestId);
-          reject(new Error(`Worker command ${command.type} timed out.`));
-        },
-        options.timeoutMs ?? 10 * 60_000,
-      );
+      const timeout =
+        options.timeoutMs === null
+          ? null
+          : setTimeout(
+              () => {
+                this.#pending.delete(requestId);
+                reject(new Error(`Worker command ${command.type} timed out.`));
+              },
+              options.timeoutMs ?? 10 * 60_000,
+            );
       this.#pending.set(requestId, {
         eventQueue: Promise.resolve(),
         onEvent: options.onEvent,
@@ -156,7 +159,7 @@ export class WorkerBridge implements WorkerCommandBus {
       try {
         socket.send(JSON.stringify(envelope));
       } catch (error) {
-        clearTimeout(timeout);
+        if (timeout) clearTimeout(timeout);
         this.#pending.delete(requestId);
         reject(error instanceof Error ? error : new Error(String(error)));
       }
@@ -169,7 +172,7 @@ export class WorkerBridge implements WorkerCommandBus {
     }
     this.#sockets.clear();
     for (const pending of this.#pending.values()) {
-      clearTimeout(pending.timeout);
+      if (pending.timeout) clearTimeout(pending.timeout);
       pending.reject(new WorkerUnavailableError("Server is shutting down."));
     }
     this.#pending.clear();
@@ -180,7 +183,7 @@ export class WorkerBridge implements WorkerCommandBus {
       if (pending.workerId !== workerId) {
         continue;
       }
-      clearTimeout(pending.timeout);
+      if (pending.timeout) clearTimeout(pending.timeout);
       pending.reject(error);
       this.#pending.delete(requestId);
     }

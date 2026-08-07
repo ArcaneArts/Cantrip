@@ -16,14 +16,22 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import type { ChatSummary, ProjectSummary } from "@cantrip/protocol";
+import type {
+  ChatSummary,
+  ProjectSummary,
+  TerminalSummary,
+} from "@cantrip/protocol";
 import {
   FolderGit2,
   GitBranch,
   GripVertical,
   Loader2,
   MessageSquare,
+  MoreHorizontal,
+  Pencil,
   Plus,
+  SquareTerminal,
+  Trash2,
 } from "lucide-react";
 import { useState, type CSSProperties, type ReactNode } from "react";
 
@@ -150,12 +158,118 @@ function SortableChat({
   );
 }
 
+function TerminalTab({
+  active,
+  editing,
+  onDelete,
+  onRename,
+  onSelect,
+  renameValue,
+  setRenameValue,
+  submitRename,
+  terminal,
+}: {
+  active: boolean;
+  editing: boolean;
+  onDelete(): void;
+  onRename(): void;
+  onSelect(): void;
+  renameValue: string;
+  setRenameValue(value: string): void;
+  submitRename(): void;
+  terminal: TerminalSummary;
+}) {
+  return (
+    <div
+      className={cn(
+        "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
+        active && "bg-muted text-foreground",
+      )}
+    >
+      <span className="size-6 shrink-0" />
+      {editing ? (
+        <input
+          autoFocus
+          value={renameValue}
+          onChange={(event) => setRenameValue(event.target.value)}
+          onBlur={submitRename}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") submitRename();
+            if (event.key === "Escape") onRename();
+          }}
+          className="h-7 min-w-0 flex-1 rounded border bg-background px-2 text-xs text-foreground outline-none ring-ring focus:ring-2"
+          aria-label={`Rename ${terminal.title}`}
+        />
+      ) : (
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
+          onClick={onSelect}
+          onDoubleClick={(event) => {
+            event.preventDefault();
+            onRename();
+          }}
+        >
+          <SquareTerminal className="size-3.5 shrink-0" />
+          <span className="truncate">{terminal.title}</span>
+          <span
+            className={cn(
+              "ml-auto size-1.5 rounded-full bg-muted-foreground/40",
+              terminal.status === "running" && "bg-emerald-500",
+              terminal.status === "failed" && "bg-destructive",
+            )}
+          />
+        </button>
+      )}
+      {!editing ? (
+        <DropdownMenuPrimitive.Root>
+          <DropdownMenuPrimitive.Trigger asChild>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
+            >
+              <MoreHorizontal className="size-3.5" />
+              <span className="sr-only">Actions for {terminal.title}</span>
+            </Button>
+          </DropdownMenuPrimitive.Trigger>
+          <DropdownMenuPrimitive.Portal>
+            <DropdownMenuPrimitive.Content
+              align="start"
+              className={menuContentClass}
+            >
+              <DropdownMenuPrimitive.Item
+                className={menuItemClass}
+                onSelect={onRename}
+              >
+                <Pencil className="size-4" /> Rename
+              </DropdownMenuPrimitive.Item>
+              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+              <DropdownMenuPrimitive.Item
+                className={cn(
+                  menuItemClass,
+                  "text-destructive focus:bg-destructive/10",
+                )}
+                onSelect={onDelete}
+              >
+                <Trash2 className="size-4" /> Delete
+              </DropdownMenuPrimitive.Item>
+            </DropdownMenuPrimitive.Content>
+          </DropdownMenuPrimitive.Portal>
+        </DropdownMenuPrimitive.Root>
+      ) : null}
+    </div>
+  );
+}
+
 function SortableProject({
   active,
   children,
   creatingChat,
+  creatingTerminal,
   historyActive,
   onCreateChat,
+  onCreateTerminal,
   onOpenHistory,
   onSelect,
   project,
@@ -163,8 +277,10 @@ function SortableProject({
   active: boolean;
   children?: ReactNode;
   creatingChat: boolean;
+  creatingTerminal: boolean;
   historyActive: boolean;
   onCreateChat(): void;
+  onCreateTerminal(): void;
   onOpenHistory(): void;
   onSelect(): void;
   project: ProjectSummary;
@@ -237,6 +353,13 @@ function SortableProject({
               >
                 <Plus className="size-4" /> Chat
               </DropdownMenuPrimitive.Item>
+              <DropdownMenuPrimitive.Item
+                className={menuItemClass}
+                disabled={creatingTerminal}
+                onSelect={onCreateTerminal}
+              >
+                <Plus className="size-4" /> Terminal
+              </DropdownMenuPrimitive.Item>
             </DropdownMenuPrimitive.Content>
           </DropdownMenuPrimitive.Portal>
         </DropdownMenuPrimitive.Root>
@@ -249,34 +372,48 @@ function SortableProject({
 export function ProjectChatList({
   chats,
   creatingChat,
+  creatingTerminal,
   gitHistoryProjectId,
   onCreateChat,
   onDeleteChat,
   onDuplicateChat,
+  onCreateTerminal,
+  onDeleteTerminal,
   onOpenGitHistory,
   onRenameChat,
+  onRenameTerminal,
   onReorderChats,
   onReorderProjects,
   onSelectChat,
+  onSelectTerminal,
   onSelectProject,
   projects,
   selectedChatId,
   selectedProjectId,
+  selectedTerminalId,
+  terminals,
 }: {
   chats: ChatSummary[];
   creatingChat: boolean;
+  creatingTerminal: boolean;
   onCreateChat(projectId: string): void;
   onDeleteChat(chatId: string): void;
   onDuplicateChat(chatId: string): void;
+  onCreateTerminal(projectId: string): void;
+  onDeleteTerminal(terminalId: string): void;
   onOpenGitHistory(projectId: string): void;
   onRenameChat(chatId: string, title: string): void;
+  onRenameTerminal(terminalId: string, title: string): void;
   onReorderChats(projectId: string, ids: string[]): void;
   onReorderProjects(ids: string[]): void;
   onSelectChat(chatId: string): void;
+  onSelectTerminal(terminalId: string): void;
   onSelectProject(projectId: string): void;
   projects: ProjectSummary[];
   selectedChatId: string | null;
   selectedProjectId: string | null;
+  selectedTerminalId: string | null;
+  terminals: TerminalSummary[];
   gitHistoryProjectId?: string | null;
 }) {
   const sensors = useSensors(
@@ -284,8 +421,13 @@ export function ProjectChatList({
   );
   const [activeDrag, setActiveDrag] = useState<string | null>(null);
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
+  const [editingTerminalId, setEditingTerminalId] = useState<string | null>(
+    null,
+  );
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ChatSummary | null>(null);
+  const [deleteTerminalTarget, setDeleteTerminalTarget] =
+    useState<TerminalSummary | null>(null);
 
   const beginRename = (chat: ChatSummary) => {
     if (editingChatId === chat.id) {
@@ -299,6 +441,19 @@ export function ProjectChatList({
     const title = renameValue.trim();
     setEditingChatId(null);
     if (title && title !== chat.title) onRenameChat(chat.id, title);
+  };
+  const beginTerminalRename = (terminal: TerminalSummary) => {
+    if (editingTerminalId === terminal.id) {
+      setEditingTerminalId(null);
+      return;
+    }
+    setEditingTerminalId(terminal.id);
+    setRenameValue(terminal.title);
+  };
+  const finishTerminalRename = (terminal: TerminalSummary) => {
+    const title = renameValue.trim();
+    setEditingTerminalId(null);
+    if (title && title !== terminal.title) onRenameTerminal(terminal.id, title);
   };
   const handleDragStart = (event: DragStartEvent) => {
     setActiveDrag(String(event.active.id));
@@ -358,8 +513,10 @@ export function ProjectChatList({
                 project={project}
                 active={active}
                 creatingChat={creatingChat}
+                creatingTerminal={creatingTerminal}
                 historyActive={gitHistoryProjectId === project.id}
                 onCreateChat={() => onCreateChat(project.id)}
+                onCreateTerminal={() => onCreateTerminal(project.id)}
                 onSelect={() => onSelectProject(project.id)}
                 onOpenHistory={() => onOpenGitHistory(project.id)}
               >
@@ -385,6 +542,20 @@ export function ProjectChatList({
                         />
                       ))}
                     </SortableContext>
+                    {terminals.map((terminal) => (
+                      <TerminalTab
+                        key={terminal.id}
+                        terminal={terminal}
+                        active={terminal.id === selectedTerminalId}
+                        editing={editingTerminalId === terminal.id}
+                        renameValue={renameValue}
+                        setRenameValue={setRenameValue}
+                        submitRename={() => finishTerminalRename(terminal)}
+                        onSelect={() => onSelectTerminal(terminal.id)}
+                        onRename={() => beginTerminalRename(terminal)}
+                        onDelete={() => setDeleteTerminalTarget(terminal)}
+                      />
+                    ))}
                   </div>
                 ) : null}
               </SortableProject>
@@ -427,6 +598,35 @@ export function ProjectChatList({
               onClick={() => {
                 if (deleteTarget) onDeleteChat(deleteTarget.id);
                 setDeleteTarget(null);
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(deleteTerminalTarget)}
+        onOpenChange={(open) => !open && setDeleteTerminalTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete terminal?</DialogTitle>
+            <DialogDescription>
+              “{deleteTerminalTarget?.title}” will be closed and removed from
+              this project.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteTerminalTarget)
+                  onDeleteTerminal(deleteTerminalTarget.id);
+                setDeleteTerminalTarget(null);
               }}
             >
               Delete

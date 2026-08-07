@@ -14,6 +14,8 @@ import {
   projectSummarySchema,
   serverBootstrapSchema,
   settingsBundleSchema,
+  terminalListSchema,
+  terminalSummarySchema,
   workerListSchema,
 } from "@cantrip/protocol";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -88,6 +90,13 @@ const workerBridge = {
             },
           ],
         };
+      case "terminal.open":
+        return { status: "detached" };
+      case "terminal.detach":
+      case "terminal.input":
+      case "terminal.resize":
+      case "terminal.close":
+        return { accepted: true };
       case "chat.turn":
         turnRequests += 1;
         turnModelIds.push(command.model.id);
@@ -280,6 +289,49 @@ describe("local server foundation", () => {
       branch: "main",
       commits: [{ subject: "feat: test history" }],
     });
+    const terminal = terminalSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/terminals`,
+          payload: { title: "Dev shell" },
+        })
+      ).json(),
+    );
+    expect(terminal).toMatchObject({
+      projectId: project.id,
+      title: "Dev shell",
+      activeWorkerId: "test-worker",
+    });
+    expect(
+      terminalListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/terminals`,
+          })
+        ).json(),
+      ),
+    ).toHaveLength(1);
+    expect(
+      terminalSummarySchema.parse(
+        (
+          await firstApp.inject({
+            method: "PATCH",
+            url: `/api/terminals/${terminal.id}`,
+            payload: { title: "Renamed shell" },
+          })
+        ).json(),
+      ).title,
+    ).toBe("Renamed shell");
+    expect(
+      (
+        await firstApp.inject({
+          method: "DELETE",
+          url: `/api/terminals/${terminal.id}`,
+        })
+      ).statusCode,
+    ).toBe(204);
 
     const duplicateResponse = await firstApp.inject({
       method: "POST",
