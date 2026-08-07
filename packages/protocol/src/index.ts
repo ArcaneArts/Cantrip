@@ -313,6 +313,21 @@ export const projectCloneResultSchema = z.object({
   displayPath: z.string().min(1),
 });
 
+export const gitCommitSchema = z.object({
+  hash: z.string().min(1),
+  shortHash: z.string().min(1),
+  subject: z.string(),
+  authorName: z.string().min(1),
+  authorEmail: z.string(),
+  authoredAt: z.string().datetime({ offset: true }),
+  refs: z.array(z.string()),
+});
+
+export const gitHistorySchema = z.object({
+  branch: z.string(),
+  commits: z.array(gitCommitSchema),
+});
+
 export const agentTurnResultSchema = z.object({
   threadId: z.string().min(1),
   text: z.string(),
@@ -327,6 +342,11 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     repository: z.object({
       nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
     }),
+  }),
+  z.object({
+    type: z.literal("git.history"),
+    cwd: z.string().min(1),
+    limit: z.number().int().min(1).max(500).default(100),
   }),
   z.object({
     type: z.literal("chat.turn"),
@@ -410,6 +430,8 @@ export type GithubWorkerRepository = z.infer<
 >;
 export type GithubProjectCreate = z.infer<typeof githubProjectCreateSchema>;
 export type ProjectCloneResult = z.infer<typeof projectCloneResultSchema>;
+export type GitCommit = z.infer<typeof gitCommitSchema>;
+export type GitHistory = z.infer<typeof gitHistorySchema>;
 export type ChatCreate = z.infer<typeof chatCreateSchema>;
 export type ChatUpdate = z.infer<typeof chatUpdateSchema>;
 export type ChatFork = z.infer<typeof chatForkSchema>;

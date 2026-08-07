@@ -31,6 +31,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Activity, ActivityGroup } from "@/components/chat/activity";
 import { Markdown } from "@/components/chat/markdown";
 import { buildChatTimeline } from "@/components/chat/timeline";
+import { GitHistoryView } from "@/components/git/git-history";
 import { ProjectChatList } from "@/components/sidebar/project-chat-list";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { Badge } from "@/components/ui/badge";
@@ -583,6 +584,9 @@ export function App() {
   const [showImporter, setShowImporter] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const [gitHistoryProjectId, setGitHistoryProjectId] = useState<string | null>(
+    null,
+  );
 
   const bootstrap = useQuery({
     queryFn: getServerBootstrap,
@@ -681,6 +685,9 @@ export function App() {
   const selectedProject = projects.data?.find(
     (project) => project.id === selectedProjectId,
   );
+  const gitHistoryProject = projects.data?.find(
+    (project) => project.id === gitHistoryProjectId,
+  );
   const selectedChat = chats.data?.find((chat) => chat.id === selectedChatId);
   const defaultModel = settings.data?.models.find(
     (model) => model.id === settings.data.preferences.defaultModelId,
@@ -701,6 +708,10 @@ export function App() {
       return () => media.removeEventListener("change", apply);
     }
   }, [settings.data?.preferences.theme]);
+
+  useEffect(() => {
+    if (showImporter || showSettings) setGitHistoryProjectId(null);
+  }, [showImporter, showSettings]);
 
   useEffect(() => {
     if (!projects.data) return;
@@ -766,6 +777,7 @@ export function App() {
             chats={chats.data ?? []}
             selectedProjectId={selectedProjectId}
             selectedChatId={selectedChatId}
+            gitHistoryProjectId={gitHistoryProjectId}
             creatingChat={newChat.isPending}
             onCreateChat={(projectId) => newChat.mutate(projectId)}
             onRenameChat={(chatId, title) =>
@@ -773,17 +785,25 @@ export function App() {
             }
             onDuplicateChat={(chatId) => forkChatMutation.mutate(chatId)}
             onDeleteChat={(chatId) => deleteChatMutation.mutate(chatId)}
+            onOpenGitHistory={(projectId) => {
+              setSelectedProjectId(projectId);
+              setGitHistoryProjectId(projectId);
+              setShowImporter(false);
+              setShowSettings(false);
+            }}
             onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
             onReorderChats={(projectId, ids) =>
               reorderChatsMutation.mutate({ projectId, ids })
             }
             onSelectProject={(projectId) => {
+              setGitHistoryProjectId(null);
               setSelectedProjectId(projectId);
               setSelectedChatId(null);
               setShowImporter(false);
               setShowSettings(false);
             }}
             onSelectChat={(chatId) => {
+              setGitHistoryProjectId(null);
               setSelectedChatId(chatId);
               setShowImporter(false);
               setShowSettings(false);
@@ -826,15 +846,20 @@ export function App() {
                 ? "GitHub repositories"
                 : showSettings
                   ? "Settings"
-                  : (selectedProject?.github?.nameWithOwner ?? "Cantrip")}
+                  : gitHistoryProject
+                    ? "Git history"
+                    : (selectedProject?.github?.nameWithOwner ?? "Cantrip")}
             </p>
             <p className="truncate text-xs text-muted-foreground">
               {showImporter
                 ? "Add a worker-owned source"
                 : showSettings
                   ? "Account preferences"
-                  : (selectedProject?.source?.displayPath ??
-                    "Choose a project to begin")}
+                  : gitHistoryProject
+                    ? (gitHistoryProject.github?.nameWithOwner ??
+                      gitHistoryProject.name)
+                    : (selectedProject?.source?.displayPath ??
+                      "Choose a project to begin")}
             </p>
           </div>
           <div className="flex items-center gap-2 md:hidden">
@@ -889,6 +914,11 @@ export function App() {
               setShowImporter(false);
               setShowSettings(false);
             }}
+          />
+        ) : gitHistoryProject ? (
+          <GitHistoryView
+            project={gitHistoryProject}
+            onClose={() => setGitHistoryProjectId(null)}
           />
         ) : selectedChat ? (
           <ChatTranscript
@@ -971,6 +1001,7 @@ export function App() {
               chats={chats.data ?? []}
               selectedProjectId={selectedProjectId}
               selectedChatId={selectedChatId}
+              gitHistoryProjectId={gitHistoryProjectId}
               creatingChat={newChat.isPending}
               onCreateChat={(projectId) => newChat.mutate(projectId)}
               onRenameChat={(chatId, title) =>
@@ -978,15 +1009,24 @@ export function App() {
               }
               onDuplicateChat={(chatId) => forkChatMutation.mutate(chatId)}
               onDeleteChat={(chatId) => deleteChatMutation.mutate(chatId)}
+              onOpenGitHistory={(projectId) => {
+                setSelectedProjectId(projectId);
+                setGitHistoryProjectId(projectId);
+                setMobileNavigationOpen(false);
+                setShowImporter(false);
+                setShowSettings(false);
+              }}
               onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
               onReorderChats={(projectId, ids) =>
                 reorderChatsMutation.mutate({ projectId, ids })
               }
               onSelectProject={(projectId) => {
+                setGitHistoryProjectId(null);
                 setSelectedProjectId(projectId);
                 setSelectedChatId(null);
               }}
               onSelectChat={(chatId) => {
+                setGitHistoryProjectId(null);
                 setSelectedChatId(chatId);
                 setMobileNavigationOpen(false);
                 setShowImporter(false);

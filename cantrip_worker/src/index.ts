@@ -7,6 +7,7 @@ import { CodexAppServer } from "./codex/app-server.js";
 import { discoverCodexVersion } from "./codex/discovery.js";
 import { readWorkerConfig } from "./config.js";
 import { GithubClient } from "./github.js";
+import { readGitHistory } from "./git.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
 import { WorkerConnection } from "./transport.js";
 
@@ -55,6 +56,8 @@ async function start(): Promise<void> {
         return github.listRepositories();
       case "project.clone":
         return github.cloneRepository(command.repository.nameWithOwner);
+      case "git.history":
+        return readGitHistory(command.cwd, command.limit);
       case "chat.turn":
         return runtimeFor(command).runTurn({
           cwd: command.cwd,

@@ -18,6 +18,7 @@ import { CSS } from "@dnd-kit/utilities";
 import type { ChatSummary, ProjectSummary } from "@cantrip/protocol";
 import {
   FolderGit2,
+  GitBranch,
   GripVertical,
   Loader2,
   MessageSquare,
@@ -147,11 +148,15 @@ function SortableChat({
 function SortableProject({
   active,
   children,
+  historyActive,
+  onOpenHistory,
   onSelect,
   project,
 }: {
   active: boolean;
   children?: ReactNode;
+  historyActive: boolean;
+  onOpenHistory(): void;
   onSelect(): void;
   project: ProjectSummary;
 }) {
@@ -182,6 +187,21 @@ function SortableProject({
           <FolderGit2 className="size-4 shrink-0" />
           <span className="truncate">{project.name}</span>
         </button>
+        <button
+          type="button"
+          title={`Git history for ${project.name}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenHistory();
+          }}
+          className={cn(
+            "mr-1 grid size-7 shrink-0 place-items-center rounded text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100 focus:opacity-100 [@media(pointer:coarse)]:opacity-100",
+            historyActive && "bg-background text-foreground opacity-100",
+          )}
+        >
+          <GitBranch className="size-3.5" />
+          <span className="sr-only">Git history for {project.name}</span>
+        </button>
       </div>
       {children}
     </div>
@@ -191,9 +211,11 @@ function SortableProject({
 export function ProjectChatList({
   chats,
   creatingChat,
+  gitHistoryProjectId,
   onCreateChat,
   onDeleteChat,
   onDuplicateChat,
+  onOpenGitHistory,
   onRenameChat,
   onReorderChats,
   onReorderProjects,
@@ -208,6 +230,7 @@ export function ProjectChatList({
   onCreateChat(projectId: string): void;
   onDeleteChat(chatId: string): void;
   onDuplicateChat(chatId: string): void;
+  onOpenGitHistory(projectId: string): void;
   onRenameChat(chatId: string, title: string): void;
   onReorderChats(projectId: string, ids: string[]): void;
   onReorderProjects(ids: string[]): void;
@@ -216,6 +239,7 @@ export function ProjectChatList({
   projects: ProjectSummary[];
   selectedChatId: string | null;
   selectedProjectId: string | null;
+  gitHistoryProjectId?: string | null;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -295,7 +319,9 @@ export function ProjectChatList({
                 key={project.id}
                 project={project}
                 active={active}
+                historyActive={gitHistoryProjectId === project.id}
                 onSelect={() => onSelectProject(project.id)}
+                onOpenHistory={() => onOpenGitHistory(project.id)}
               >
                 {active ? (
                   <div className="ml-5 mt-1 border-l pl-2">

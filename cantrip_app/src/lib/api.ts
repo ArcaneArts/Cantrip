@@ -5,6 +5,7 @@ import {
   chatTurnAcceptedSchema,
   githubAuthStatusSchema,
   githubRepositoryListSchema,
+  gitHistorySchema,
   modelProfileCreateSchema,
   modelProfileSummarySchema,
   modelProfileUpdateSchema,
@@ -162,6 +163,12 @@ export async function getGithubRepositories(workerId: string) {
 
 export async function getProjects() {
   return projectListSchema.parse(await request("/api/projects"));
+}
+
+export async function getGitHistory(projectId: string) {
+  return gitHistorySchema.parse(
+    await request(`/api/projects/${encodeURIComponent(projectId)}/git/history`),
+  );
 }
 
 export async function createGithubProject(input: {

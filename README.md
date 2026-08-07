@@ -33,6 +33,7 @@ Foundation API routes:
 - `GET /api/bootstrap`, `/api/health`, `/api/workers`, and `/api/projects`
 - `GET /api/github/status` and `/api/github/repositories`
 - `POST /api/projects/from-github`
+- `GET /api/projects/:projectId/git/history`
 - `GET|POST /api/projects/:projectId/chats`
 - `PATCH /api/projects/order` and `/api/projects/:projectId/chats/order`
 - `PATCH|DELETE /api/chats/:chatId` and `POST /api/chats/:chatId/fork`

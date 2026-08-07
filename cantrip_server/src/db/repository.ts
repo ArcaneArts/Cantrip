@@ -580,6 +580,27 @@ export class ServerRepository {
     return rows.map(({ project, source }) => toProjectSummary(project, source));
   }
 
+  async getProjectSource(ownerId: string, projectId: string) {
+    const rows = await this.database
+      .select({
+        workerId: schema.projectSources.workerId,
+        cwd: schema.projectSources.absolutePath,
+      })
+      .from(schema.projects)
+      .innerJoin(
+        schema.projectSources,
+        eq(schema.projectSources.projectId, schema.projects.id),
+      )
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
   async hasGithubProject(ownerId: string, repositoryId: string) {
     const rows = await this.database
       .select({ id: schema.projects.id })

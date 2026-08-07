@@ -7,6 +7,7 @@ import {
   chatMessageListSchema,
   chatMessageSchema,
   chatSummarySchema,
+  gitHistorySchema,
   modelProfileSummarySchema,
   modelProviderSummarySchema,
   projectListSchema,
@@ -71,6 +72,21 @@ const workerBridge = {
         return {
           path: path.join(dataDirectory, "repositories", "Cantrip"),
           displayPath: "ArcaneArts/Cantrip",
+        };
+      case "git.history":
+        return {
+          branch: "main",
+          commits: [
+            {
+              hash: "0123456789abcdef",
+              shortHash: "0123456",
+              subject: "feat: test history",
+              authorName: "Cantrip Test",
+              authorEmail: "test@cantrip.art",
+              authoredAt: "2026-08-07T12:00:00.000Z",
+              refs: ["HEAD -> main"],
+            },
+          ],
         };
       case "chat.turn":
         turnRequests += 1;
@@ -252,6 +268,18 @@ describe("local server foundation", () => {
       },
     });
     const project = projectSummarySchema.parse(projectResponse.json());
+    const history = gitHistorySchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/git/history`,
+        })
+      ).json(),
+    );
+    expect(history).toMatchObject({
+      branch: "main",
+      commits: [{ subject: "feat: test history" }],
+    });
 
     const duplicateResponse = await firstApp.inject({
       method: "POST",

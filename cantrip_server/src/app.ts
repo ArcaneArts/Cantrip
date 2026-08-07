@@ -17,6 +17,7 @@ import {
   githubProjectCreateSchema,
   githubRepositoryListSchema,
   githubWorkerRepositoryListSchema,
+  gitHistorySchema,
   modelProfileCreateSchema,
   modelProfileSummarySchema,
   modelProfileUpdateSchema,
@@ -359,6 +360,34 @@ export async function buildApp({
     const projects = await repository.listProjects(LOCAL_USER_ID);
     return reply.send(projectListSchema.parse(projects));
   });
+
+  app.get<{ Params: { projectId: string }; Querystring: { limit?: string } }>(
+    "/api/projects/:projectId/git/history",
+    async (request, reply) => {
+      const source = await repository.getProjectSource(
+        LOCAL_USER_ID,
+        request.params.projectId,
+      );
+      if (!source) {
+        return reply.code(404).send({ error: "Project source not found." });
+      }
+      const parsedLimit = Number.parseInt(request.query.limit ?? "100", 10);
+      const limit = Number.isFinite(parsedLimit)
+        ? Math.min(500, Math.max(1, parsedLimit))
+        : 100;
+      try {
+        const history = await bridge.request(source.workerId, {
+          type: "git.history",
+          cwd: source.cwd,
+          limit,
+        });
+        return reply.send(gitHistorySchema.parse(history));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
 
   app.patch("/api/projects/order", async (request, reply) => {
     const input = orderedIdsSchema.safeParse(request.body);
