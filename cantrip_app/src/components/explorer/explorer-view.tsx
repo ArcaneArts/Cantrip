@@ -250,12 +250,7 @@ export function ExplorerView({ explorer }: { explorer: ExplorerSummary }) {
                         : `${entry.path} · Preview unavailable`
                     }
                   >
-                    <Icon
-                      className={cn(
-                        "size-4 shrink-0",
-                        entry.kind === "directory" && "text-amber-500",
-                      )}
-                    />
+                    <Icon className="size-4 shrink-0" />
                     <span className="min-w-0 flex-1 truncate">
                       {entry.name}
                     </span>
