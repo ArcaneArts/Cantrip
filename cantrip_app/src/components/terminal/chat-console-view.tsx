@@ -1,7 +1,6 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import type {
-  ChatMessage,
   ChatSummary,
   SettingsBundle,
   TerminalSummary,
@@ -18,52 +17,33 @@ import {
 
 import "@xterm/xterm/css/xterm.css";
 
+import { formatConsoleMessage } from "./chat-console-format";
+
 function consoleTheme() {
   const styles = getComputedStyle(document.documentElement);
+  const dark = document.documentElement.classList.contains("dark");
   return {
     background: styles.getPropertyValue("--background").trim(),
     foreground: styles.getPropertyValue("--foreground").trim(),
     cursor: styles.getPropertyValue("--foreground").trim(),
     selectionBackground: styles.getPropertyValue("--accent").trim(),
+    black: dark ? "#000000" : "#1f2329",
+    red: dark ? "#e06c75" : "#c62828",
+    green: dark ? "#98c379" : "#2e7d32",
+    yellow: dark ? "#e5c07b" : "#9a6700",
+    blue: dark ? "#61afef" : "#1565c0",
+    magenta: dark ? "#c678dd" : "#8e24aa",
+    cyan: dark ? "#56b6c2" : "#007c91",
+    white: dark ? "#d7dae0" : "#4b5563",
+    brightBlack: dark ? "#7f848e" : "#6b7280",
+    brightRed: dark ? "#ff7b86" : "#d32f2f",
+    brightGreen: dark ? "#b3dc8c" : "#388e3c",
+    brightYellow: dark ? "#f1d58a" : "#a86f00",
+    brightBlue: dark ? "#75bfff" : "#1976d2",
+    brightMagenta: dark ? "#dc8aef" : "#9c27b0",
+    brightCyan: dark ? "#67d4df" : "#008ba3",
+    brightWhite: dark ? "#ffffff" : "#111827",
   };
-}
-
-function messageText(message: ChatMessage): string {
-  return message.content
-    .flatMap((item) => (item.type === "text" ? [item.text] : []))
-    .join("\n\n");
-}
-
-function formatMessage(message: ChatMessage): string {
-  const text = messageText(message).replaceAll("\n", "\r\n");
-  if (text) {
-    const color =
-      message.role === "user"
-        ? "\x1b[96m"
-        : message.role === "system"
-          ? "\x1b[91m"
-          : "\x1b[0m";
-    const prefix =
-      message.role === "user" ? "› " : message.role === "system" ? "! " : "";
-    return `\r\n${color}${prefix}${text}\x1b[0m\r\n`;
-  }
-
-  return message.content
-    .flatMap((item) => {
-      if (item.type !== "activity") return [];
-      const activity = item.activity;
-      if (activity.type === "command") {
-        const marker = activity.status === "running" ? "…" : "✓";
-        return [`\r\n\x1b[90m${marker} Ran ${activity.command}\x1b[0m\r\n`];
-      }
-      const files = activity.changes
-        .map((change) => `${change.kind} ${change.path}`)
-        .join(", ");
-      return [
-        `\r\n\x1b[90m${activity.status === "running" ? "…" : "✓"} ${files}\x1b[0m\r\n`,
-      ];
-    })
-    .join("");
 }
 
 export function ChatConsoleView({
@@ -114,7 +94,7 @@ export function ChatConsoleView({
       if (renderedRef.current.get(message.id) === fingerprint) continue;
       renderedRef.current.set(message.id, fingerprint);
       xterm.write("\r\x1b[2K");
-      xterm.write(formatMessage(message));
+      xterm.write(formatConsoleMessage(message));
       xterm.write(`› ${lineRef.current}`);
     }
   }, [messages.data]);
@@ -139,7 +119,7 @@ export function ChatConsoleView({
     );
     for (const message of messages.data ?? []) {
       renderedRef.current.set(message.id, JSON.stringify(message.content));
-      xterm.write(formatMessage(message));
+      xterm.write(formatConsoleMessage(message));
     }
     xterm.write("\r\n› ");
 
