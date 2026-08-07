@@ -11,6 +11,7 @@ import { promisify } from "node:util";
 import {
   agentActivitySchema,
   agentTurnResultSchema,
+  normalizeResponsesBaseUrl,
   type AgentActivity,
   type AgentTurnResult,
   type WorkerCommand,
@@ -410,7 +411,7 @@ export class CodexAppServer {
         "-c",
         `model_providers.cantrip_runtime.name=${JSON.stringify(provider.name)}`,
         "-c",
-        `model_providers.cantrip_runtime.base_url=${JSON.stringify(provider.baseUrl)}`,
+        `model_providers.cantrip_runtime.base_url=${JSON.stringify(normalizeResponsesBaseUrl(provider.baseUrl))}`,
         "-c",
         'model_providers.cantrip_runtime.wire_api="responses"',
         ...(provider.apiKey

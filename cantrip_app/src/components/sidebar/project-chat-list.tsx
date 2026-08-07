@@ -562,7 +562,7 @@ export function ProjectChatList({
             );
           })}
         </SortableContext>
-        <DragOverlay dropAnimation={{ duration: 180, easing: "ease" }}>
+        <DragOverlay dropAnimation={null}>
           {draggedProject ? (
             <div className="flex w-64 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-sm shadow-xl">
               <FolderGit2 className="size-4" />

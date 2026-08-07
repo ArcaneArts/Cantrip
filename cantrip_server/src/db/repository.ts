@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { normalizeResponsesBaseUrl } from "@cantrip/protocol";
 import type {
   ChatCreate,
   ChatModelUpdate,
@@ -348,7 +349,7 @@ export class ServerRepository {
         ownerId,
         name: input.name,
         kind: input.kind,
-        baseUrl: input.baseUrl.replace(/\/$/, ""),
+        baseUrl: normalizeResponsesBaseUrl(input.baseUrl),
         apiKey: input.apiKey ?? null,
       })
       .returning();
@@ -378,7 +379,7 @@ export class ServerRepository {
       .set({
         name: input.name,
         kind: input.kind,
-        baseUrl: input.baseUrl.replace(/\/$/, ""),
+        baseUrl: normalizeResponsesBaseUrl(input.baseUrl),
         ...(input.apiKey !== undefined ? { apiKey: input.apiKey } : {}),
         updatedAt: new Date(),
       })

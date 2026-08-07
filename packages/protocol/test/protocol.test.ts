@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  normalizeResponsesBaseUrl,
   serverBootstrapSchema,
   systemHealthSchema,
   terminalClientMessageSchema,
@@ -10,6 +11,23 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("normalizes Responses provider URLs to their API root", () => {
+    expect(
+      normalizeResponsesBaseUrl(
+        "https://openrouter.ai/api/v1/chat/completions",
+      ),
+    ).toBe("https://openrouter.ai/api/v1");
+    expect(normalizeResponsesBaseUrl("https://openrouter.ai/api/v1/chat")).toBe(
+      "https://openrouter.ai/api/v1",
+    );
+    expect(normalizeResponsesBaseUrl("https://openrouter.ai")).toBe(
+      "https://openrouter.ai/api/v1",
+    );
+    expect(normalizeResponsesBaseUrl("http://127.0.0.1:11434/v1/")).toBe(
+      "http://127.0.0.1:11434/v1",
+    );
+  });
+
   it("accepts a worker heartbeat", () => {
     const heartbeat = workerHeartbeatSchema.parse({
       architecture: "arm64",

@@ -334,6 +334,9 @@ function ChatTranscript({
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const selectedModelId =
     chat.modelId ?? settings?.preferences.defaultModelId ?? "";
+  const selectedModel = settings?.models.find(
+    (model) => model.id === selectedModelId,
+  );
   const messages = useQuery({
     queryFn: () => getMessages(chat.id),
     queryKey: ["messages", chat.id],
@@ -505,7 +508,7 @@ function ChatTranscript({
               <div className="grid size-7 place-items-center rounded-lg border bg-card">
                 <Loader2 className="size-3.5 animate-spin" />
               </div>
-              Gemma is working through Codex…
+              {selectedModel?.name ?? "Agent"} is working through Codex…
             </div>
           ) : null}
         </div>
@@ -762,10 +765,6 @@ export function App() {
   const selectedTerminal = terminals.data?.find(
     (terminal) => terminal.id === selectedTerminalId,
   );
-  const defaultModel = settings.data?.models.find(
-    (model) => model.id === settings.data.preferences.defaultModelId,
-  );
-
   useEffect(() => {
     const preference = settings.data?.preferences.theme ?? "system";
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -819,13 +818,6 @@ export function App() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="font-semibold tracking-tight">Cantrip</p>
-            <p className="truncate text-[11px] text-muted-foreground">
-              {defaultModel
-                ? `${defaultModel.providerName}/${defaultModel.name}`
-                : bootstrap.data
-                  ? `${bootstrap.data.agent.modelProvider}/${bootstrap.data.agent.model}`
-                  : "Connecting…"}
-            </p>
           </div>
           <StatusDot online={Boolean(onlineWorker)} />
         </div>

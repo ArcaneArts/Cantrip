@@ -443,14 +443,20 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                 </select>
               </Field>
               <Field label="Base URL">
-                <input
-                  required
-                  type="url"
-                  value={baseUrl}
-                  onChange={(event) => setBaseUrl(event.target.value)}
-                  className={inputClass}
-                  placeholder="http://127.0.0.1:11434/v1"
-                />
+                <div className="space-y-1.5">
+                  <input
+                    required
+                    type="url"
+                    value={baseUrl}
+                    onChange={(event) => setBaseUrl(event.target.value)}
+                    className={inputClass}
+                    placeholder="https://openrouter.ai/api/v1"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Enter the API root; Cantrip adds /responses. OpenRouter uses
+                    https://openrouter.ai/api/v1.
+                  </p>
+                </div>
               </Field>
               <Field label="API key (optional)">
                 <input

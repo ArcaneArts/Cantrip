@@ -83,6 +83,24 @@ export const systemHealthSchema = z.object({
 
 export const themePreferenceSchema = z.enum(["system", "light", "dark"]);
 export const modelProviderKindSchema = z.enum(["ollama", "openai-compatible"]);
+
+/**
+ * Codex model-provider URLs are API roots. Codex adds the Responses endpoint
+ * itself, so accepting a pasted chat/completions or responses URL would create
+ * invalid paths such as `/chat/completions/responses`.
+ */
+export function normalizeResponsesBaseUrl(value: string): string {
+  const url = new URL(value);
+  url.search = "";
+  url.hash = "";
+  url.pathname = url.pathname
+    .replace(/\/(?:chat\/completions|chat|responses)\/?$/i, "")
+    .replace(/\/+$/, "");
+  if (url.hostname.toLowerCase() === "openrouter.ai" && url.pathname === "/") {
+    url.pathname = "/api/v1";
+  }
+  return url.toString().replace(/\/$/, "");
+}
 export const reasoningEffortSchema = z.enum([
   "minimal",
   "low",
