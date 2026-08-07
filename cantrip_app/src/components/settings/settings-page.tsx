@@ -9,8 +9,8 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
+  Copy,
   Cpu,
-  ExternalLink,
   KeyRound,
   Loader2,
   LogOut,
@@ -88,6 +88,7 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
   const [deviceLogin, setDeviceLogin] = useState<CodexDeviceLogin | null>(null);
   const [deviceCodeCopied, setDeviceCodeCopied] = useState(false);
+  const [deviceLinkCopied, setDeviceLinkCopied] = useState(false);
   const workers = useQuery({ queryFn: getWorkers, queryKey: ["workers"] });
   const worker = workers.data?.find((item) => item.online) ?? null;
   const [providerDialogOpen, setProviderDialogOpen] = useState(false);
@@ -184,7 +185,7 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
       startCodexDeviceLogin(worker!.workerId, chatGptProvider!.id),
     onSuccess: (login) => {
       setDeviceLogin(login);
-      window.open(login.verificationUrl, "_blank", "noopener,noreferrer");
+      setDeviceLinkCopied(false);
     },
   });
   const signOutCodex = useMutation({
@@ -212,6 +213,7 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
     setRemoveApiKey(false);
     setDeviceLogin(null);
     setDeviceCodeCopied(false);
+    setDeviceLinkCopied(false);
     setProviderDialogOpen(true);
   };
 
@@ -648,41 +650,70 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                     {beginCodexLogin.isPending ? (
                       <Loader2 className="size-4 animate-spin" />
                     ) : (
-                      <ExternalLink className="size-4" />
+                      <KeyRound className="size-4" />
                     )}
-                    Sign in with ChatGPT
+                    Get sign-in code
                   </Button>
                   {deviceLogin ? (
-                    <div className="rounded-lg bg-muted/40 p-3 text-sm">
-                      Enter code{" "}
-                      <button
+                    <div className="grid gap-3 rounded-lg bg-muted/40 p-3 text-sm">
+                      <p>
+                        Enter code{" "}
+                        <button
+                          type="button"
+                          title="Copy device code"
+                          className="inline-flex items-center gap-1 rounded bg-background px-1.5 py-0.5 font-mono font-semibold underline"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(
+                              deviceLogin.userCode,
+                            );
+                            setDeviceCodeCopied(true);
+                            window.setTimeout(
+                              () => setDeviceCodeCopied(false),
+                              1_500,
+                            );
+                          }}
+                        >
+                          {deviceCodeCopied ? (
+                            <Check className="size-3" />
+                          ) : null}
+                          {deviceLogin.userCode}
+                        </button>{" "}
+                        at{" "}
+                        <a
+                          className="underline"
+                          href={deviceLogin.verificationUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          the OpenAI device page
+                        </a>
+                        . This page updates after authorization.
+                      </p>
+                      <Button
                         type="button"
-                        title="Copy device code"
-                        className="inline-flex items-center gap-1 rounded bg-background px-1.5 py-0.5 font-mono font-semibold underline"
+                        size="sm"
+                        variant="outline"
+                        className="w-fit"
                         onClick={async () => {
                           await navigator.clipboard.writeText(
-                            deviceLogin.userCode,
+                            deviceLogin.verificationUrl,
                           );
-                          setDeviceCodeCopied(true);
+                          setDeviceLinkCopied(true);
                           window.setTimeout(
-                            () => setDeviceCodeCopied(false),
+                            () => setDeviceLinkCopied(false),
                             1_500,
                           );
                         }}
                       >
-                        {deviceCodeCopied ? <Check className="size-3" /> : null}
-                        {deviceLogin.userCode}
-                      </button>{" "}
-                      at{" "}
-                      <a
-                        className="underline"
-                        href={deviceLogin.verificationUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        the OpenAI device page
-                      </a>
-                      . This page updates after authorization.
+                        {deviceLinkCopied ? (
+                          <Check className="size-3.5" />
+                        ) : (
+                          <Copy className="size-3.5" />
+                        )}
+                        {deviceLinkCopied
+                          ? "Sign-in link copied"
+                          : "Copy sign-in link"}
+                      </Button>
                     </div>
                   ) : null}
                 </div>
