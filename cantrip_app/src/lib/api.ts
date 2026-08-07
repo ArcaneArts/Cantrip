@@ -7,8 +7,10 @@ import {
   githubRepositoryListSchema,
   modelProfileCreateSchema,
   modelProfileSummarySchema,
+  modelProfileUpdateSchema,
   modelProviderCreateSchema,
   modelProviderSummarySchema,
+  modelProviderUpdateSchema,
   projectListSchema,
   projectSummarySchema,
   serverBootstrapSchema,
@@ -18,7 +20,9 @@ import {
 } from "@cantrip/protocol";
 import type {
   ModelProfileCreate,
+  ModelProfileUpdate,
   ModelProviderCreate,
+  ModelProviderUpdate,
   UserSettingsUpdate,
 } from "@cantrip/protocol";
 
@@ -103,6 +107,18 @@ export async function deleteModelProvider(providerId: string) {
   });
 }
 
+export async function updateModelProvider(
+  providerId: string,
+  input: ModelProviderUpdate,
+) {
+  return modelProviderSummarySchema.parse(
+    await request(`/api/settings/providers/${encodeURIComponent(providerId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(modelProviderUpdateSchema.parse(input)),
+    }),
+  );
+}
+
 export async function createModelProfile(input: ModelProfileCreate) {
   return modelProfileSummarySchema.parse(
     await post("/api/settings/models", modelProfileCreateSchema.parse(input)),
@@ -113,6 +129,18 @@ export async function deleteModelProfile(modelId: string) {
   await request(`/api/settings/models/${encodeURIComponent(modelId)}`, {
     method: "DELETE",
   });
+}
+
+export async function updateModelProfile(
+  modelId: string,
+  input: ModelProfileUpdate,
+) {
+  return modelProfileSummarySchema.parse(
+    await request(`/api/settings/models/${encodeURIComponent(modelId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(modelProfileUpdateSchema.parse(input)),
+    }),
+  );
 }
 
 export async function getGithubStatus(workerId: string) {

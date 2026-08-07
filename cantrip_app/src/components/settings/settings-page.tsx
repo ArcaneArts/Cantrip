@@ -1,5 +1,7 @@
 import type {
+  ModelProfileSummary,
   ModelProviderKind,
+  ModelProviderSummary,
   ReasoningEffort,
   ThemePreference,
 } from "@cantrip/protocol";
@@ -10,13 +12,14 @@ import {
   Loader2,
   Monitor,
   Moon,
+  Pencil,
   Plus,
   Server,
   Sun,
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,14 +31,24 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   createModelProfile,
   createModelProvider,
   deleteModelProfile,
   deleteModelProvider,
   getSettings,
+  updateModelProfile,
+  updateModelProvider,
   updateSettings,
 } from "@/lib/api";
-import { cn } from "@/lib/utils";
 
 const reasoningOptions: Array<ReasoningEffort | ""> = [
   "",
@@ -50,13 +63,7 @@ function errorText(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
 
-function Field({
-  children,
-  label,
-}: {
-  children: React.ReactNode;
-  label: string;
-}) {
+function Field({ children, label }: { children: ReactNode; label: string }) {
   return (
     <label className="grid gap-1.5 text-sm">
       <span className="font-medium">{label}</span>
@@ -71,21 +78,23 @@ const inputClass =
 export function SettingsPage({ onClose }: { onClose(): void }) {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
+  const [providerDialogOpen, setProviderDialogOpen] = useState(false);
+  const [editingProvider, setEditingProvider] =
+    useState<ModelProviderSummary | null>(null);
   const [providerName, setProviderName] = useState("");
   const [providerKind, setProviderKind] = useState<ModelProviderKind>("ollama");
   const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:11434/v1");
   const [apiKey, setApiKey] = useState("");
+  const [removeApiKey, setRemoveApiKey] = useState(false);
+  const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  const [editingModel, setEditingModel] = useState<ModelProfileSummary | null>(
+    null,
+  );
   const [modelName, setModelName] = useState("");
   const [modelProviderId, setModelProviderId] = useState("");
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | "">(
     "",
   );
-
-  useEffect(() => {
-    if (!modelProviderId && settings.data?.providers[0]) {
-      setModelProviderId(settings.data.providers[0].id);
-    }
-  }, [modelProviderId, settings.data?.providers]);
 
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ["settings"] });
@@ -93,11 +102,26 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
     mutationFn: updateSettings,
     onSuccess: (value) => queryClient.setQueryData(["settings"], value),
   });
-  const addProvider = useMutation({
-    mutationFn: createModelProvider,
+  const saveProvider = useMutation({
+    mutationFn: async () => {
+      const input = {
+        name: providerName,
+        kind: providerKind,
+        baseUrl,
+        ...(editingProvider
+          ? removeApiKey
+            ? { apiKey: null }
+            : apiKey.trim()
+              ? { apiKey: apiKey.trim() }
+              : {}
+          : { apiKey: apiKey.trim() || null }),
+      };
+      return editingProvider
+        ? updateModelProvider(editingProvider.id, input)
+        : createModelProvider(input);
+    },
     onSuccess: async () => {
-      setProviderName("");
-      setApiKey("");
+      setProviderDialogOpen(false);
       await refresh();
     },
   });
@@ -105,11 +129,19 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
     mutationFn: deleteModelProvider,
     onSuccess: refresh,
   });
-  const addModel = useMutation({
-    mutationFn: createModelProfile,
+  const saveModel = useMutation({
+    mutationFn: async () => {
+      const input = {
+        name: modelName,
+        providerId: modelProviderId,
+        reasoningEffort: reasoningEffort || null,
+      };
+      return editingModel
+        ? updateModelProfile(editingModel.id, input)
+        : createModelProfile(input);
+    },
     onSuccess: async () => {
-      setModelName("");
-      setReasoningEffort("");
+      setModelDialogOpen(false);
       await refresh();
     },
   });
@@ -118,24 +150,35 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
     onSuccess: refresh,
   });
 
+  const openProviderDialog = (provider: ModelProviderSummary | null) => {
+    saveProvider.reset();
+    setEditingProvider(provider);
+    setProviderName(provider?.name ?? "");
+    setProviderKind(provider?.kind ?? "ollama");
+    setBaseUrl(provider?.baseUrl ?? "http://127.0.0.1:11434/v1");
+    setApiKey("");
+    setRemoveApiKey(false);
+    setProviderDialogOpen(true);
+  };
+
+  const openModelDialog = (model: ModelProfileSummary | null) => {
+    const firstProviderId = settings.data?.providers[0]?.id ?? "";
+    saveModel.reset();
+    setEditingModel(model);
+    setModelName(model?.name ?? "");
+    setModelProviderId(model?.providerId ?? firstProviderId);
+    setReasoningEffort(model?.reasoningEffort ?? "");
+    setModelDialogOpen(true);
+  };
+
   const submitProvider = (event: FormEvent) => {
     event.preventDefault();
-    addProvider.mutate({
-      name: providerName,
-      kind: providerKind,
-      baseUrl,
-      apiKey: apiKey.trim() || null,
-    });
+    saveProvider.mutate();
   };
 
   const submitModel = (event: FormEvent) => {
     event.preventDefault();
-    if (!modelProviderId) return;
-    addModel.mutate({
-      name: modelName,
-      providerId: modelProviderId,
-      reasoningEffort: reasoningEffort || null,
-    });
+    if (modelProviderId) saveModel.mutate();
   };
 
   return (
@@ -195,128 +238,90 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Providers</CardTitle>
-              <CardDescription>
-                Providers define the Responses-compatible endpoint Codex uses.
-                API keys stay in the server database and are never returned to
-                the app.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-5">
-              <div className="grid gap-2">
-                {(settings.data?.providers ?? []).map((provider) => (
-                  <div
-                    key={provider.id}
-                    className="flex min-w-0 items-center gap-3 rounded-lg border p-3"
-                  >
-                    <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted">
-                      <Server className="size-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="truncate text-sm font-medium">
-                          {provider.name}
-                        </p>
-                        <Badge variant="secondary">{provider.kind}</Badge>
-                        {provider.hasApiKey ? (
-                          <KeyRound className="size-3.5 text-muted-foreground" />
-                        ) : null}
-                      </div>
-                      <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
-                        {provider.baseUrl}
-                      </p>
-                    </div>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      disabled={removeProvider.isPending}
-                      onClick={() => removeProvider.mutate(provider.id)}
-                    >
-                      <Trash2 className="size-4" />
-                      <span className="sr-only">Delete {provider.name}</span>
-                    </Button>
-                  </div>
-                ))}
+            <CardHeader className="flex-row items-start justify-between gap-4">
+              <div className="grid gap-1.5">
+                <CardTitle>Providers</CardTitle>
+                <CardDescription>
+                  Responses-compatible endpoints used by Codex. API keys are
+                  never returned to the app.
+                </CardDescription>
               </div>
-
-              <form
-                onSubmit={submitProvider}
-                className="grid gap-3 rounded-lg border border-dashed p-4 sm:grid-cols-2"
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={() => openProviderDialog(null)}
               >
-                <Field label="Provider name">
-                  <input
-                    required
-                    value={providerName}
-                    onChange={(event) => setProviderName(event.target.value)}
-                    className={inputClass}
-                    placeholder="My Ollama"
-                  />
-                </Field>
-                <Field label="Provider type">
-                  <select
-                    value={providerKind}
-                    onChange={(event) => {
-                      const kind = event.target.value as ModelProviderKind;
-                      setProviderKind(kind);
-                      setBaseUrl(
-                        kind === "ollama"
-                          ? "http://127.0.0.1:11434/v1"
-                          : "https://",
-                      );
-                    }}
-                    className={inputClass}
+                <Plus className="size-4" />
+                <span className="sr-only">Add provider</span>
+              </Button>
+            </CardHeader>
+            <CardContent className="grid gap-3">
+              {(settings.data?.providers ?? []).map((provider) => (
+                <div
+                  key={provider.id}
+                  className="flex min-w-0 items-center gap-3 rounded-lg border p-3"
+                >
+                  <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted">
+                    <Server className="size-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-medium">
+                        {provider.name}
+                      </p>
+                      <Badge variant="secondary">{provider.kind}</Badge>
+                      {provider.hasApiKey ? (
+                        <KeyRound className="size-3.5 text-muted-foreground" />
+                      ) : null}
+                    </div>
+                    <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+                      {provider.baseUrl}
+                    </p>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => openProviderDialog(provider)}
                   >
-                    <option value="ollama">Ollama</option>
-                    <option value="openai-compatible">OpenAI compatible</option>
-                  </select>
-                </Field>
-                <Field label="Base URL">
-                  <input
-                    required
-                    type="url"
-                    value={baseUrl}
-                    onChange={(event) => setBaseUrl(event.target.value)}
-                    className={inputClass}
-                    placeholder="http://127.0.0.1:11434/v1"
-                  />
-                </Field>
-                <Field label="API key (optional)">
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(event) => setApiKey(event.target.value)}
-                    className={inputClass}
-                    autoComplete="off"
-                    placeholder="Not required for local Ollama"
-                  />
-                </Field>
-                <div className="sm:col-span-2">
-                  <Button type="submit" disabled={addProvider.isPending}>
-                    {addProvider.isPending ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Plus className="size-4" />
-                    )}
-                    Add provider
+                    <Pencil className="size-4" />
+                    <span className="sr-only">Edit {provider.name}</span>
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    disabled={removeProvider.isPending}
+                    onClick={() => removeProvider.mutate(provider.id)}
+                  >
+                    <Trash2 className="size-4" />
+                    <span className="sr-only">Delete {provider.name}</span>
                   </Button>
                 </div>
-              </form>
-              {addProvider.isError || removeProvider.isError ? (
+              ))}
+              {removeProvider.isError ? (
                 <p className="text-sm text-destructive">
-                  {errorText(addProvider.error ?? removeProvider.error)}
+                  {errorText(removeProvider.error)}
                 </p>
               ) : null}
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Models</CardTitle>
-              <CardDescription>
-                A model targets one provider. Reasoning effort is optional
-                because not every model supports it.
-              </CardDescription>
+            <CardHeader className="flex-row items-start justify-between gap-4">
+              <div className="grid gap-1.5">
+                <CardTitle>Models</CardTitle>
+                <CardDescription>
+                  Models target one provider and may set a reasoning effort.
+                </CardDescription>
+              </div>
+              <Button
+                size="icon"
+                variant="outline"
+                disabled={!settings.data?.providers.length}
+                onClick={() => openModelDialog(null)}
+              >
+                <Plus className="size-4" />
+                <span className="sr-only">Add model</span>
+              </Button>
             </CardHeader>
             <CardContent className="grid gap-5">
               <Field label="Default model for the first message">
@@ -336,7 +341,7 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                 </select>
               </Field>
 
-              <div className="grid gap-2">
+              <div className="grid gap-3">
                 {(settings.data?.models ?? []).map((model) => (
                   <div
                     key={model.id}
@@ -362,6 +367,14 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                     <Button
                       size="icon"
                       variant="ghost"
+                      onClick={() => openModelDialog(model)}
+                    >
+                      <Pencil className="size-4" />
+                      <span className="sr-only">Edit {model.name}</span>
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
                       disabled={removeModel.isPending}
                       onClick={() => removeModel.mutate(model.id)}
                     >
@@ -371,79 +384,201 @@ export function SettingsPage({ onClose }: { onClose(): void }) {
                   </div>
                 ))}
               </div>
-
-              <form
-                onSubmit={submitModel}
-                className="grid gap-3 rounded-lg border border-dashed p-4 sm:grid-cols-3"
-              >
-                <Field label="Model name">
-                  <input
-                    required
-                    value={modelName}
-                    onChange={(event) => setModelName(event.target.value)}
-                    className={inputClass}
-                    placeholder="gemma4:26b"
-                  />
-                </Field>
-                <Field label="Provider">
-                  <select
-                    required
-                    value={modelProviderId}
-                    onChange={(event) => setModelProviderId(event.target.value)}
-                    className={inputClass}
-                  >
-                    {(settings.data?.providers ?? []).map((provider) => (
-                      <option key={provider.id} value={provider.id}>
-                        {provider.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Reasoning effort">
-                  <select
-                    value={reasoningEffort}
-                    onChange={(event) =>
-                      setReasoningEffort(
-                        event.target.value as ReasoningEffort | "",
-                      )
-                    }
-                    className={inputClass}
-                  >
-                    {reasoningOptions.map((effort) => (
-                      <option key={effort || "default"} value={effort}>
-                        {effort || "Provider default"}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <div className="sm:col-span-3">
-                  <Button
-                    type="submit"
-                    disabled={!modelProviderId || addModel.isPending}
-                  >
-                    {addModel.isPending ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Plus className="size-4" />
-                    )}
-                    Add model
-                  </Button>
-                </div>
-              </form>
-              {addModel.isError || removeModel.isError ? (
+              {removeModel.isError ? (
                 <p className="text-sm text-destructive">
-                  {errorText(addModel.error ?? removeModel.error)}
+                  {errorText(removeModel.error)}
                 </p>
               ) : null}
             </CardContent>
           </Card>
 
-          <p className={cn("text-xs text-muted-foreground", "pb-4")}>
+          <p className="pb-4 text-xs text-muted-foreground">
             Changing the default affects only chats that have not sent their
             first message. A chat locks its selected model on that first turn.
           </p>
         </div>
       </div>
+
+      <Dialog open={providerDialogOpen} onOpenChange={setProviderDialogOpen}>
+        <DialogContent>
+          <form onSubmit={submitProvider} className="grid gap-5">
+            <DialogHeader>
+              <DialogTitle>
+                {editingProvider ? "Edit provider" : "Add provider"}
+              </DialogTitle>
+              <DialogDescription>
+                Configure the Responses-compatible endpoint used by this
+                account.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Provider name">
+                <input
+                  required
+                  autoFocus
+                  value={providerName}
+                  onChange={(event) => setProviderName(event.target.value)}
+                  className={inputClass}
+                  placeholder="My Ollama"
+                />
+              </Field>
+              <Field label="Provider type">
+                <select
+                  value={providerKind}
+                  onChange={(event) => {
+                    const kind = event.target.value as ModelProviderKind;
+                    setProviderKind(kind);
+                    if (!editingProvider) {
+                      setBaseUrl(
+                        kind === "ollama"
+                          ? "http://127.0.0.1:11434/v1"
+                          : "https://",
+                      );
+                    }
+                  }}
+                  className={inputClass}
+                >
+                  <option value="ollama">Ollama</option>
+                  <option value="openai-compatible">OpenAI compatible</option>
+                </select>
+              </Field>
+              <Field label="Base URL">
+                <input
+                  required
+                  type="url"
+                  value={baseUrl}
+                  onChange={(event) => setBaseUrl(event.target.value)}
+                  className={inputClass}
+                  placeholder="http://127.0.0.1:11434/v1"
+                />
+              </Field>
+              <Field label="API key (optional)">
+                <input
+                  type="password"
+                  value={apiKey}
+                  disabled={removeApiKey}
+                  onChange={(event) => setApiKey(event.target.value)}
+                  className={inputClass}
+                  autoComplete="off"
+                  placeholder={
+                    editingProvider?.hasApiKey
+                      ? "Leave blank to keep saved key"
+                      : "Not required for local Ollama"
+                  }
+                />
+              </Field>
+            </div>
+            {editingProvider?.hasApiKey ? (
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={removeApiKey}
+                  onChange={(event) => setRemoveApiKey(event.target.checked)}
+                />
+                Remove the saved API key
+              </label>
+            ) : null}
+            {saveProvider.isError ? (
+              <p className="text-sm text-destructive">
+                {errorText(saveProvider.error)}
+              </p>
+            ) : null}
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button type="submit" disabled={saveProvider.isPending}>
+                {saveProvider.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : null}
+                {editingProvider ? "Save changes" : "Add provider"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={modelDialogOpen} onOpenChange={setModelDialogOpen}>
+        <DialogContent>
+          <form onSubmit={submitModel} className="grid gap-5">
+            <DialogHeader>
+              <DialogTitle>
+                {editingModel ? "Edit model" : "Add model"}
+              </DialogTitle>
+              <DialogDescription>
+                Choose the provider and optional reasoning effort for this
+                model.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4">
+              <Field label="Model name">
+                <input
+                  required
+                  autoFocus
+                  value={modelName}
+                  onChange={(event) => setModelName(event.target.value)}
+                  className={inputClass}
+                  placeholder="gemma4:26b"
+                />
+              </Field>
+              <Field label="Provider">
+                <select
+                  required
+                  value={modelProviderId}
+                  onChange={(event) => setModelProviderId(event.target.value)}
+                  className={inputClass}
+                >
+                  {(settings.data?.providers ?? []).map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Reasoning effort">
+                <select
+                  value={reasoningEffort}
+                  onChange={(event) =>
+                    setReasoningEffort(
+                      event.target.value as ReasoningEffort | "",
+                    )
+                  }
+                  className={inputClass}
+                >
+                  {reasoningOptions.map((effort) => (
+                    <option key={effort || "default"} value={effort}>
+                      {effort || "Provider default"}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            {saveModel.isError ? (
+              <p className="text-sm text-destructive">
+                {errorText(saveModel.error)}
+              </p>
+            ) : null}
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button
+                type="submit"
+                disabled={!modelProviderId || saveModel.isPending}
+              >
+                {saveModel.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : null}
+                {editingModel ? "Save changes" : "Add model"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -9,8 +9,10 @@ import type {
   GithubProjectCreate,
   ModelProfileCreate,
   ModelProfileSummary,
+  ModelProfileUpdate,
   ModelProviderCreate,
   ModelProviderSummary,
+  ModelProviderUpdate,
   ProjectCloneResult,
   ProjectSummary,
   SettingsBundle,
@@ -337,6 +339,31 @@ export class ServerRepository {
     return Boolean(result[0]);
   }
 
+  async updateModelProvider(
+    ownerId: string,
+    providerId: string,
+    input: ModelProviderUpdate,
+  ): Promise<ModelProviderSummary | null> {
+    const result = await this.database
+      .update(schema.modelProviders)
+      .set({
+        name: input.name,
+        kind: input.kind,
+        baseUrl: input.baseUrl.replace(/\/$/, ""),
+        ...(input.apiKey !== undefined ? { apiKey: input.apiKey } : {}),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.modelProviders.id, providerId),
+          eq(schema.modelProviders.ownerId, ownerId),
+        ),
+      )
+      .returning();
+    const provider = result[0];
+    return provider ? toProviderSummary(provider) : null;
+  }
+
   async createModelProfile(
     ownerId: string,
     input: ModelProfileCreate,
@@ -382,6 +409,43 @@ export class ServerRepository {
       )
       .returning({ id: schema.modelProfiles.id });
     return Boolean(result[0]);
+  }
+
+  async updateModelProfile(
+    ownerId: string,
+    modelId: string,
+    input: ModelProfileUpdate,
+  ): Promise<ModelProfileSummary | null> {
+    const providers = await this.database
+      .select({ name: schema.modelProviders.name })
+      .from(schema.modelProviders)
+      .where(
+        and(
+          eq(schema.modelProviders.id, input.providerId),
+          eq(schema.modelProviders.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    const provider = providers[0];
+    if (!provider) return null;
+
+    const result = await this.database
+      .update(schema.modelProfiles)
+      .set({
+        name: input.name,
+        providerId: input.providerId,
+        reasoningEffort: input.reasoningEffort ?? null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.modelProfiles.id, modelId),
+          eq(schema.modelProfiles.ownerId, ownerId),
+        ),
+      )
+      .returning();
+    const model = result[0];
+    return model ? toModelSummary(model, provider.name) : null;
   }
 
   async getModelRuntime(

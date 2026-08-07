@@ -17,8 +17,10 @@ import {
   githubWorkerRepositoryListSchema,
   modelProfileCreateSchema,
   modelProfileSummarySchema,
+  modelProfileUpdateSchema,
   modelProviderCreateSchema,
   modelProviderSummarySchema,
+  modelProviderUpdateSchema,
   projectCloneResultSchema,
   projectListSchema,
   projectSummarySchema,
@@ -196,6 +198,28 @@ export async function buildApp({
     },
   );
 
+  app.patch<{ Params: { providerId: string } }>(
+    "/api/settings/providers/:providerId",
+    async (request, reply) => {
+      const input = modelProviderUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const provider = await repository.updateModelProvider(
+          LOCAL_USER_ID,
+          request.params.providerId,
+          input.data,
+        );
+        return provider
+          ? reply.send(modelProviderSummarySchema.parse(provider))
+          : reply.code(404).send({ error: "Provider not found." });
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
   app.post("/api/settings/models", async (request, reply) => {
     const input = modelProfileCreateSchema.safeParse(request.body);
     if (!input.success) {
@@ -230,6 +254,28 @@ export async function buildApp({
         return reply.code(409).send({
           error: "This model is the default or is locked to an existing chat.",
         });
+      }
+    },
+  );
+
+  app.patch<{ Params: { modelId: string } }>(
+    "/api/settings/models/:modelId",
+    async (request, reply) => {
+      const input = modelProfileUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const model = await repository.updateModelProfile(
+          LOCAL_USER_ID,
+          request.params.modelId,
+          input.data,
+        );
+        return model
+          ? reply.send(modelProfileSummarySchema.parse(model))
+          : reply.code(404).send({ error: "Model or provider not found." });
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
       }
     },
   );

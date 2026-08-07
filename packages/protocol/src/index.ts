@@ -98,6 +98,8 @@ export const modelProviderCreateSchema = z.object({
   apiKey: z.string().trim().min(1).max(10_000).nullable().optional(),
 });
 
+export const modelProviderUpdateSchema = modelProviderCreateSchema;
+
 export const modelProviderSummarySchema = modelProviderCreateSchema
   .omit({ apiKey: true })
   .extend({
@@ -114,6 +116,8 @@ export const modelProfileCreateSchema = z.object({
   providerId: z.string().min(1),
   reasoningEffort: reasoningEffortSchema.nullable().optional(),
 });
+
+export const modelProfileUpdateSchema = modelProfileCreateSchema;
 
 export const modelProfileSummarySchema = modelProfileCreateSchema.extend({
   id: z.string().min(1),
@@ -376,8 +380,10 @@ export type ThemePreference = z.infer<typeof themePreferenceSchema>;
 export type ModelProviderKind = z.infer<typeof modelProviderKindSchema>;
 export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>;
 export type ModelProviderCreate = z.infer<typeof modelProviderCreateSchema>;
+export type ModelProviderUpdate = z.infer<typeof modelProviderUpdateSchema>;
 export type ModelProviderSummary = z.infer<typeof modelProviderSummarySchema>;
 export type ModelProfileCreate = z.infer<typeof modelProfileCreateSchema>;
+export type ModelProfileUpdate = z.infer<typeof modelProfileUpdateSchema>;
 export type ModelProfileSummary = z.infer<typeof modelProfileSummarySchema>;
 export type UserSettings = z.infer<typeof userSettingsSchema>;
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;

@@ -36,7 +36,7 @@ Foundation API routes:
 - `GET|POST /api/projects/:projectId/chats`
 - `GET|POST /api/chats/:chatId/messages`
 - `GET|PATCH /api/settings`
-- `POST|DELETE /api/settings/providers` and `/api/settings/models`
+- `POST|PATCH|DELETE /api/settings/providers` and `/api/settings/models`
 - `PATCH /api/chats/:chatId/model`
 - `POST /api/chats/:chatId/turns`
 

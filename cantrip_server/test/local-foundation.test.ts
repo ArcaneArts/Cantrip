@@ -160,6 +160,24 @@ describe("local server foundation", () => {
       ).json(),
     );
     expect(provider.hasApiKey).toBe(true);
+    const editedProvider = modelProviderSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/settings/providers/${provider.id}`,
+          payload: {
+            name: "Edited test provider",
+            kind: "openai-compatible",
+            baseUrl: "https://edited-models.example.test/v1/",
+          },
+        })
+      ).json(),
+    );
+    expect(editedProvider).toMatchObject({
+      name: "Edited test provider",
+      baseUrl: "https://edited-models.example.test/v1",
+      hasApiKey: true,
+    });
     const selectedModel = modelProfileSummarySchema.parse(
       (
         await firstApp.inject({
@@ -173,6 +191,24 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
+    const editedModel = modelProfileSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/settings/models/${selectedModel.id}`,
+          payload: {
+            name: "edited-test-model",
+            providerId: provider.id,
+            reasoningEffort: "medium",
+          },
+        })
+      ).json(),
+    );
+    expect(editedModel).toMatchObject({
+      name: "edited-test-model",
+      providerName: "Edited test provider",
+      reasoningEffort: "medium",
+    });
     const updatedSettings = settingsBundleSchema.parse(
       (
         await firstApp.inject({
