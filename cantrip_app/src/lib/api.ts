@@ -351,6 +351,15 @@ export function terminalWebSocketUrl(terminalId: string): string {
   return url.toString();
 }
 
+export function browserProxyUrl(targetUrl: string): string {
+  const url = new URL(
+    "/api/browser/proxy",
+    serverUrl || window.location.origin,
+  );
+  url.searchParams.set("url", targetUrl);
+  return url.toString();
+}
+
 export async function renameChat(chatId: string, title: string) {
   return chatSummarySchema.parse(
     await request(`/api/chats/${encodeURIComponent(chatId)}`, {

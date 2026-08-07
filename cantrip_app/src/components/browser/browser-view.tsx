@@ -6,9 +6,16 @@ import {
   Globe2,
   RotateCw,
 } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 
 import { Button } from "@/components/ui/button";
+import { browserProxyUrl } from "@/lib/api";
 
 function normalizeAddress(value: string): string | null {
   const candidate = /^[a-z][a-z\d+.-]*:/i.test(value.trim())
@@ -24,6 +31,24 @@ function normalizeAddress(value: string): string | null {
   }
 }
 
+export function browserUrlIsLocal(value: string): boolean {
+  const url = new URL(value);
+  const hostname = url.hostname.toLowerCase();
+  if (hostname === "localhost" || hostname.endsWith(".local")) return true;
+  if (hostname === "::1" || hostname === "[::1]") return true;
+  const parts = hostname.split(".").map(Number);
+  const first = parts[0] ?? -1;
+  const second = parts[1] ?? -1;
+  return (
+    parts.length === 4 &&
+    (first === 10 ||
+      first === 127 ||
+      (first === 169 && second === 254) ||
+      (first === 172 && second >= 16 && second <= 31) ||
+      (first === 192 && second === 168))
+  );
+}
+
 export function BrowserView({
   browser,
   onNavigate,
@@ -36,7 +61,10 @@ export function BrowserView({
   const [entryIndex, setEntryIndex] = useState(0);
   const [reloadKey, setReloadKey] = useState(0);
   const [invalidAddress, setInvalidAddress] = useState(false);
+  const frameRef = useRef<HTMLIFrameElement>(null);
   const currentUrl = entries[entryIndex] ?? browser.url;
+  const localFrame = browserUrlIsLocal(currentUrl);
+  const frameUrl = localFrame ? currentUrl : browserProxyUrl(currentUrl);
 
   useEffect(() => {
     setAddress(browser.url);
@@ -45,13 +73,32 @@ export function BrowserView({
     setInvalidAddress(false);
   }, [browser.id]);
 
-  const visit = (url: string) => {
-    setEntries((current) => [...current.slice(0, entryIndex + 1), url]);
-    setEntryIndex((current) => current + 1);
-    setAddress(url);
-    setInvalidAddress(false);
-    onNavigate(url);
-  };
+  const visit = useCallback(
+    (url: string) => {
+      setEntries((current) => [...current.slice(0, entryIndex + 1), url]);
+      setEntryIndex((current) => current + 1);
+      setAddress(url);
+      setInvalidAddress(false);
+      onNavigate(url);
+    },
+    [entryIndex, onNavigate],
+  );
+
+  useEffect(() => {
+    const receiveNavigation = (event: MessageEvent) => {
+      if (event.source !== frameRef.current?.contentWindow) return;
+      const data = event.data as { type?: unknown; url?: unknown } | null;
+      if (
+        data?.type !== "cantrip-browser-navigate" ||
+        typeof data.url !== "string"
+      )
+        return;
+      const normalized = normalizeAddress(data.url);
+      if (normalized) visit(normalized);
+    };
+    window.addEventListener("message", receiveNavigation);
+    return () => window.removeEventListener("message", receiveNavigation);
+  }, [visit]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -149,12 +196,17 @@ export function BrowserView({
       ) : null}
       <div className="relative min-h-0 flex-1 bg-white">
         <iframe
-          key={`${currentUrl}:${reloadKey}`}
+          ref={frameRef}
+          key={`${frameUrl}:${reloadKey}`}
           title={browser.title}
-          src={currentUrl}
+          src={frameUrl}
           className="absolute inset-0 size-full border-0"
           referrerPolicy="strict-origin-when-cross-origin"
-          sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
+          sandbox={
+            localFrame
+              ? "allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
+              : "allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-scripts"
+          }
         />
       </div>
     </div>
