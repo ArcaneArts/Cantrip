@@ -635,6 +635,25 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     cwd: z.string().min(1),
     cols: z.number().int().min(1).max(1_000),
     rows: z.number().int().min(1).max(1_000),
+    launch: z.discriminatedUnion("type", [
+      z.object({ type: z.literal("shell") }),
+      z.object({
+        type: z.literal("codex"),
+        threadId: z.string().min(1).nullable(),
+        model: z.object({
+          id: z.string().min(1),
+          name: z.string().min(1),
+          reasoningEffort: reasoningEffortSchema.nullable(),
+        }),
+        provider: z.object({
+          id: z.string().min(1),
+          name: z.string().min(1),
+          kind: modelProviderKindSchema,
+          baseUrl: z.url(),
+          apiKey: z.string().min(1).nullable(),
+        }),
+      }),
+    ]),
   }),
   z.object({
     type: z.literal("terminal.detach"),

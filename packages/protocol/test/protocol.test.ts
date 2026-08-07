@@ -211,5 +211,31 @@ describe("Cantrip protocol", () => {
         data: "\u001b[32mready\u001b[0m",
       }).type,
     ).toBe("output");
+    expect(
+      workerCommandSchema.parse({
+        type: "terminal.open",
+        terminalId: "terminal-1",
+        attachmentId: "attachment-1",
+        cwd: "/workspace",
+        cols: 120,
+        rows: 40,
+        launch: {
+          type: "codex",
+          threadId: "019fdc2c-e848-7552-b2ea-6fc7ef09e9f2",
+          model: {
+            id: "model-1",
+            name: "gpt-5.6-sol",
+            reasoningEffort: "high",
+          },
+          provider: {
+            id: "provider-1",
+            name: "ChatGPT",
+            kind: "chatgpt",
+            baseUrl: "https://api.openai.com/v1",
+            apiKey: null,
+          },
+        },
+      }).launch.type,
+    ).toBe("codex");
   });
 });

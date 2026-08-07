@@ -3,8 +3,10 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 import {
+  normalizeResponsesBaseUrl,
   terminalOpenResultSchema,
   type TerminalOpenResult,
+  type WorkerCommand,
   type WorkerEvent,
 } from "@cantrip/protocol";
 import * as pty from "node-pty";
@@ -45,6 +47,21 @@ interface TerminalSession {
   waiters: Map<string, (result: TerminalOpenResult) => void>;
 }
 
+type CodexLaunchCommand = Extract<
+  WorkerCommand,
+  { type: "terminal.open" }
+>["launch"] & {
+  binary?: string;
+  codexHome?: string;
+};
+
+export type TerminalLaunch =
+  | { type: "shell" }
+  | (Extract<CodexLaunchCommand, { type: "codex" }> & {
+      binary: string;
+      codexHome: string;
+    });
+
 function shellCommand(): string {
   if (process.platform === "win32") {
     return process.env.COMSPEC || "powershell.exe";
@@ -66,6 +83,57 @@ function terminalEnvironment(): Record<string, string> {
   return environment;
 }
 
+function codexLaunch(
+  launch: Extract<TerminalLaunch, { type: "codex" }>,
+  cwd: string,
+): { command: string; args: string[]; env: Record<string, string> } {
+  const providerArguments =
+    launch.provider.kind === "chatgpt"
+      ? ['model_provider="openai"']
+      : [
+          'model_provider="cantrip_runtime"',
+          `model_providers.cantrip_runtime.name=${JSON.stringify(launch.provider.name)}`,
+          `model_providers.cantrip_runtime.base_url=${JSON.stringify(normalizeResponsesBaseUrl(launch.provider.baseUrl))}`,
+          'model_providers.cantrip_runtime.wire_api="responses"',
+          ...(launch.provider.apiKey
+            ? [
+                'model_providers.cantrip_runtime.env_key="CANTRIP_PROVIDER_API_KEY"',
+              ]
+            : []),
+        ];
+  const args = [
+    "-c",
+    'cli_auth_credentials_store="file"',
+    ...providerArguments.flatMap((argument) => ["-c", argument]),
+    "-c",
+    `model=${JSON.stringify(launch.model.name)}`,
+    ...(launch.model.reasoningEffort
+      ? [
+          "-c",
+          `model_reasoning_effort=${JSON.stringify(launch.model.reasoningEffort)}`,
+        ]
+      : []),
+    "-C",
+    cwd,
+    "-a",
+    "never",
+    "-s",
+    "workspace-write",
+    ...(launch.threadId ? ["resume", launch.threadId] : []),
+  ];
+  return {
+    command: launch.binary,
+    args,
+    env: {
+      ...terminalEnvironment(),
+      CODEX_HOME: launch.codexHome,
+      ...(launch.provider.apiKey
+        ? { CANTRIP_PROVIDER_API_KEY: launch.provider.apiKey }
+        : {}),
+    },
+  };
+}
+
 export class TerminalManager {
   readonly #sessions = new Map<string, TerminalSession>();
 
@@ -75,6 +143,7 @@ export class TerminalManager {
     cwd: string,
     cols: number,
     rows: number,
+    launch: TerminalLaunch,
     emit: (event: WorkerEvent) => void,
   ): Promise<TerminalOpenResult> {
     let session = this.#sessions.get(terminalId);
@@ -84,11 +153,19 @@ export class TerminalManager {
     }
     if (!session) {
       ensureSpawnHelperExecutable();
-      const process = pty.spawn(shellCommand(), [], {
+      const processLaunch =
+        launch.type === "codex"
+          ? codexLaunch(launch, cwd)
+          : {
+              command: shellCommand(),
+              args: [],
+              env: terminalEnvironment(),
+            };
+      const process = pty.spawn(processLaunch.command, processLaunch.args, {
         cols,
         rows,
         cwd,
-        env: terminalEnvironment(),
+        env: processLaunch.env,
         name: "xterm-256color",
       });
       session = {

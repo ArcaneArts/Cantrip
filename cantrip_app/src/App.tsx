@@ -113,11 +113,6 @@ const TerminalView = lazy(() =>
     default: module.TerminalView,
   })),
 );
-const ChatConsoleView = lazy(() =>
-  import("@/components/terminal/chat-console-view").then((module) => ({
-    default: module.ChatConsoleView,
-  })),
-);
 const ExplorerView = lazy(() =>
   import("@/components/explorer/explorer-view").then((module) => ({
     default: module.ExplorerView,
@@ -1777,10 +1772,9 @@ export function App() {
             }
           >
             {linkedConsoleChat ? (
-              <ChatConsoleView
-                chat={linkedConsoleChat}
-                settings={settings.data}
-                onReturnToChat={() => {
+              <TerminalView
+                terminal={selectedTerminal}
+                onExit={() => {
                   openCreatedTab(
                     linkedConsoleChat.projectId,
                     "chat",

@@ -62,6 +62,7 @@ export interface ChatExecutionContext {
 
 export interface TerminalExecutionContext {
   cwd: string;
+  linkedChatId: string | null;
   status: TerminalSummary["status"];
   terminalId: string;
   workerId: string;
@@ -1303,6 +1304,7 @@ export class ServerRepository {
           terminalId: row.terminal.id,
           workerId: row.terminal.activeWorkerId,
           cwd: row.source.absolutePath,
+          linkedChatId: row.terminal.linkedChatId,
           status: row.terminal.status as TerminalSummary["status"],
         }
       : null;

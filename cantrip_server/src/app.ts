@@ -68,7 +68,7 @@ import type { ChatMessage } from "@cantrip/protocol";
 import { fetchBrowserPage } from "./browser-proxy.js";
 import type { ServerConfig } from "./config.js";
 import type { DatabaseConnection } from "./db/index.js";
-import { LOCAL_USER_ID } from "./db/repository.js";
+import { LOCAL_USER_ID, type ModelRuntime } from "./db/repository.js";
 import {
   WorkerBridge,
   type WorkerCommandBus,
@@ -1090,6 +1090,38 @@ export async function buildApp({
         }
         send({ type: "ready" });
         try {
+          let launch:
+            | { type: "shell" }
+            | {
+                type: "codex";
+                threadId: string | null;
+                model: ModelRuntime["model"];
+                provider: ModelRuntime["provider"];
+              } = { type: "shell" };
+          if (context.linkedChatId) {
+            const chat = await repository.getChatExecutionContext(
+              LOCAL_USER_ID,
+              context.linkedChatId,
+            );
+            const modelId =
+              chat?.modelId ??
+              (await repository.getSettings(LOCAL_USER_ID)).preferences
+                .defaultModelId;
+            const runtime = modelId
+              ? await repository.getModelRuntime(LOCAL_USER_ID, modelId)
+              : null;
+            if (!chat || !runtime) {
+              throw new Error(
+                "Choose a model for this chat before opening its Codex console.",
+              );
+            }
+            launch = {
+              type: "codex",
+              threadId: chat.threadId,
+              model: runtime.model,
+              provider: runtime.provider,
+            };
+          }
           const result = terminalOpenResultSchema.parse(
             await bridge.request(
               workerId,
@@ -1100,6 +1132,7 @@ export async function buildApp({
                 cwd: context.cwd,
                 cols: 80,
                 rows: 24,
+                launch,
               },
               {
                 timeoutMs: null,

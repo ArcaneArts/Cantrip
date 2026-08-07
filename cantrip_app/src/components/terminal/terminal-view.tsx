@@ -19,15 +19,23 @@ function terminalTheme() {
   };
 }
 
-export function TerminalView({ terminal }: { terminal: TerminalSummary }) {
+export function TerminalView({
+  terminal,
+  onExit,
+}: {
+  terminal: TerminalSummary;
+  onExit?(): void;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const reconnectAttemptRef = useRef(0);
   const terminalIdRef = useRef(terminal.id);
+  const onExitRef = useRef(onExit);
   const [connectionKey, setConnectionKey] = useState(0);
   const [state, setState] = useState<"connecting" | "reconnecting" | "ready">(
     "connecting",
   );
   const [error, setError] = useState<string | null>(null);
+  onExitRef.current = onExit;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -55,6 +63,7 @@ export function TerminalView({ terminal }: { terminal: TerminalSummary }) {
     const socket = new WebSocket(terminalWebSocketUrl(terminal.id));
     let ready = false;
     let disposed = false;
+    let exited = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleReconnect = () => {
       if (disposed || reconnectTimer) return;
@@ -115,6 +124,12 @@ export function TerminalView({ terminal }: { terminal: TerminalSummary }) {
         xterm.write(message.data);
       } else if (message.type === "exit") {
         ready = false;
+        exited = true;
+        if (onExitRef.current) {
+          onExitRef.current();
+          socket.close(1000, "Terminal process exited");
+          return;
+        }
         xterm.write(
           `\r\n\x1b[90m[Process exited ${message.exitCode}]\x1b[0m\r\n`,
         );
@@ -128,7 +143,7 @@ export function TerminalView({ terminal }: { terminal: TerminalSummary }) {
     });
     socket.addEventListener("close", () => {
       ready = false;
-      if (disposed) return;
+      if (disposed || exited) return;
       scheduleReconnect();
     });
     socket.addEventListener("error", () => {

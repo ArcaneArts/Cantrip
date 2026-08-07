@@ -115,6 +115,16 @@ async function start(): Promise<void> {
           command.cwd,
           command.cols,
           command.rows,
+          command.launch.type === "codex"
+            ? {
+                ...command.launch,
+                binary: config.codexBinary,
+                codexHome:
+                  command.launch.provider.kind === "chatgpt"
+                    ? accountHomeFor(command.launch.provider.id)
+                    : codexHome,
+              }
+            : command.launch,
           emit,
         );
       case "terminal.detach":

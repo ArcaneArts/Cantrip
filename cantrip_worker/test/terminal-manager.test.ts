@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -28,6 +28,7 @@ describe("TerminalManager", () => {
       directory,
       80,
       24,
+      { type: "shell" },
       (event) => {
         if (event.type === "terminal.output") output += event.data;
       },
@@ -56,6 +57,7 @@ describe("TerminalManager", () => {
       directory,
       80,
       24,
+      { type: "shell" },
       (event) => {
         if (event.type === "terminal.output") output += event.data;
       },
@@ -73,4 +75,68 @@ describe("TerminalManager", () => {
     await expect(restarted).resolves.toMatchObject({ status: "exited" });
     manager.closeAll();
   });
+
+  it.skipIf(process.platform === "win32")(
+    "launches a linked Codex terminal with the chat runtime and thread",
+    async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "cantrip-codex-"));
+      directories.push(directory);
+      const fakeCodex = path.join(directory, "fake-codex");
+      const codexHome = path.join(directory, "codex-home");
+      await writeFile(
+        fakeCodex,
+        [
+          "#!/bin/sh",
+          "printf 'ARGS:%s\\n' \"$*\"",
+          "printf 'CODEX_HOME:%s\\n' \"$CODEX_HOME\"",
+          "printf 'API_KEY:%s\\n' \"$CANTRIP_PROVIDER_API_KEY\"",
+        ].join("\n"),
+      );
+      await chmod(fakeCodex, 0o755);
+
+      const manager = new TerminalManager();
+      let output = "";
+      const exited = manager.open(
+        "terminal-codex",
+        "attachment-codex",
+        directory,
+        120,
+        40,
+        {
+          type: "codex",
+          binary: fakeCodex,
+          codexHome,
+          threadId: "019fdc2c-e848-7552-b2ea-6fc7ef09e9f2",
+          model: {
+            id: "model-1",
+            name: "openai/gpt-5.6-sol",
+            reasoningEffort: "high",
+          },
+          provider: {
+            id: "provider-1",
+            name: "OpenRouter",
+            kind: "openai-compatible",
+            baseUrl: "https://openrouter.ai/api/v1/chat/completions",
+            apiKey: "test-key",
+          },
+        },
+        (event) => {
+          if (event.type === "terminal.output") output += event.data;
+        },
+      );
+
+      await expect(exited).resolves.toMatchObject({
+        status: "exited",
+        exitCode: 0,
+      });
+      expect(output).toContain("resume 019fdc2c-e848-7552-b2ea-6fc7ef09e9f2");
+      expect(output).toContain('model="openai/gpt-5.6-sol"');
+      expect(output).toContain(
+        'model_providers.cantrip_runtime.base_url="https://openrouter.ai/api/v1"',
+      );
+      expect(output).toContain(`CODEX_HOME:${codexHome}`);
+      expect(output).toContain("API_KEY:test-key");
+      manager.closeAll();
+    },
+  );
 });
