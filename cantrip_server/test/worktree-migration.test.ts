@@ -151,4 +151,83 @@ describe("worktree persistence migration", () => {
       await database.close();
     }
   });
+
+  it("makes Primary shareable while preserving exclusive secondary leases", async () => {
+    const database = new PGlite();
+    try {
+      await applyMigrations(database, 0, 17);
+      await database.exec(`
+        INSERT INTO users (id, kind, display_name)
+        VALUES ('user-runtime', 'anonymous', 'Runtime User');
+
+        INSERT INTO workers (
+          id, owner_id, name, platform, architecture, started_at, last_seen_at
+        ) VALUES (
+          'worker-runtime', 'user-runtime', 'Runtime Worker', 'darwin', 'arm64', now(), now()
+        );
+
+        INSERT INTO projects (id, owner_id, name)
+        VALUES ('project-runtime', 'user-runtime', 'Cantrip');
+
+        INSERT INTO project_sources (
+          id, project_id, worker_id, absolute_path, display_path
+        ) VALUES (
+          'source-runtime', 'project-runtime', 'worker-runtime', '/repo', 'repo'
+        );
+
+        INSERT INTO project_worktrees (
+          id, project_source_id, worker_id, name, absolute_path, display_path,
+          is_primary, is_default, origin, lifecycle_state
+        ) VALUES
+          ('primary-runtime', 'source-runtime', 'worker-runtime', 'Primary', '/repo', 'repo', true, true, 'cantrip', 'ready'),
+          ('secondary-runtime', 'source-runtime', 'worker-runtime', 'Review', '/worktrees/review', 'review', false, false, 'agent', 'ready');
+
+        INSERT INTO chats (
+          id, project_id, title, active_worker_id, active_worktree_id
+        ) VALUES
+          ('chat-primary-1', 'project-runtime', 'Primary one', 'worker-runtime', 'primary-runtime'),
+          ('chat-primary-2', 'project-runtime', 'Primary two', 'worker-runtime', 'primary-runtime'),
+          ('chat-secondary-1', 'project-runtime', 'Secondary one', 'worker-runtime', 'secondary-runtime'),
+          ('chat-secondary-2', 'project-runtime', 'Secondary two', 'worker-runtime', 'secondary-runtime');
+
+        INSERT INTO chat_execution_lanes (
+          id, chat_id, worktree_id, worker_id, acquiring_actor, state
+        ) VALUES (
+          'lane-primary-1', 'chat-primary-1', 'primary-runtime', 'worker-runtime', 'user', 'suspended'
+        );
+      `);
+
+      await applyMigrations(database, 18, 18);
+
+      const backfilled = await database.query<{ exclusive: boolean }>(`
+        SELECT exclusive FROM chat_execution_lanes WHERE id = 'lane-primary-1'
+      `);
+      expect(backfilled.rows).toEqual([{ exclusive: false }]);
+
+      await database.exec(`
+        INSERT INTO chat_execution_lanes (
+          id, chat_id, worktree_id, worker_id, acquiring_actor, exclusive, state
+        ) VALUES (
+          'lane-primary-2', 'chat-primary-2', 'primary-runtime', 'worker-runtime', 'user', false, 'suspended'
+        );
+        INSERT INTO chat_execution_lanes (
+          id, chat_id, worktree_id, worker_id, acquiring_actor, exclusive, state
+        ) VALUES (
+          'lane-secondary-1', 'chat-secondary-1', 'secondary-runtime', 'worker-runtime', 'user', true, 'suspended'
+        );
+      `);
+
+      await expect(
+        database.exec(`
+          INSERT INTO chat_execution_lanes (
+            id, chat_id, worktree_id, worker_id, acquiring_actor, exclusive, state
+          ) VALUES (
+            'lane-secondary-2', 'chat-secondary-2', 'secondary-runtime', 'worker-runtime', 'user', true, 'suspended'
+          );
+        `),
+      ).rejects.toThrow();
+    } finally {
+      await database.close();
+    }
+  });
 });

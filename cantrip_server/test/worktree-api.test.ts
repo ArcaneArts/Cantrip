@@ -4,15 +4,18 @@ import path from "node:path";
 
 import {
   chatSummarySchema,
+  chatMessageListSchema,
   explorerSummarySchema,
   gitActionResultSchema,
   gitHistorySchema,
   projectViewSummarySchema,
   projectWorktreeListSchema,
   projectWorktreeSummarySchema,
+  queuedPromptSchema,
   terminalSummarySchema,
   worktreeStatusResultSchema,
   type WorkerWorktreeSummary,
+  type WorkerCommand,
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -45,6 +48,8 @@ let connected = true;
 let activeCreates = 0;
 let maximumConcurrentCreates = 0;
 const gitActionPaths: string[] = [];
+const chatTurnCommands: Array<Extract<WorkerCommand, { type: "chat.turn" }>> =
+  [];
 let workerWorktrees: WorkerWorktreeSummary[] = [
   {
     path: primaryPath,
@@ -104,7 +109,7 @@ const workerBridge = {
   subscribeSurfaceFrames() {
     return () => undefined;
   },
-  async request(_workerId, command) {
+  async request(_workerId, command, options) {
     if (!connected) throw new Error("Worker is offline.");
     switch (command.type) {
       case "worktree.list":
@@ -192,6 +197,25 @@ const workerBridge = {
       case "git.action":
         gitActionPaths.push(command.cwd);
         return { status: status(), output: "done" };
+      case "chat.turn":
+        chatTurnCommands.push(command);
+        await options?.onEvent?.({
+          type: "agent.activity",
+          activity: {
+            type: "command",
+            id: `command-${chatTurnCommands.length}`,
+            command: "pwd",
+            cwd: command.cwd,
+            status: "completed",
+            exitCode: 0,
+            output: command.cwd,
+          },
+        });
+        return {
+          threadId: `thread-${command.worktreeId}`,
+          text: "Completed in the selected worktree.",
+          status: "completed",
+        };
       default:
         throw new Error(`Unexpected command: ${command.type}`);
     }
@@ -338,6 +362,224 @@ describe.sequential("server worktree control plane", () => {
     expect(maximumConcurrentCreates).toBe(1);
   });
 
+  it("shares Primary while binding each Codex turn and message to one lane", async () => {
+    const createPrimaryChat = (title: string) =>
+      app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/chats`,
+        payload: { title, worktreeMode: "agent-managed" },
+      });
+    const [firstResponse, secondResponse] = await Promise.all([
+      createPrimaryChat("Primary chat one"),
+      createPrimaryChat("Primary chat two"),
+    ]);
+    expect([firstResponse.statusCode, secondResponse.statusCode]).toEqual([
+      201, 201,
+    ]);
+    const first = chatSummarySchema.parse(firstResponse.json());
+    const second = chatSummarySchema.parse(secondResponse.json());
+    const [firstLanes, secondLanes] = await Promise.all([
+      database.repository.listChatExecutionLanes(LOCAL_USER_ID, first.id),
+      database.repository.listChatExecutionLanes(LOCAL_USER_ID, second.id),
+    ]);
+    expect(firstLanes[0]).toMatchObject({
+      worktreeId: primaryId,
+      exclusive: false,
+      state: "suspended",
+    });
+    expect(secondLanes[0]).toMatchObject({
+      worktreeId: primaryId,
+      exclusive: false,
+      state: "suspended",
+    });
+
+    const started = await app.inject({
+      method: "POST",
+      url: `/api/chats/${first.id}/turns`,
+      payload: { text: "Run pwd", idempotencyKey: "primary-turn-1" },
+    });
+    expect(started.statusCode).toBe(202);
+    await expect
+      .poll(async () => {
+        const context = await database.repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          first.id,
+        );
+        return context?.status;
+      })
+      .toBe("idle");
+
+    const command = chatTurnCommands.at(-1)!;
+    expect(command).toMatchObject({
+      chatId: first.id,
+      cwd: primaryPath,
+      worktreeId: primaryId,
+    });
+    expect(command.executionLaneId).toBeTruthy();
+    const messages = chatMessageListSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/chats/${first.id}/messages`,
+        })
+      ).json(),
+    );
+    expect(messages).toHaveLength(3);
+    expect(
+      messages.every(
+        ({ executionLaneId, worktreeId }) =>
+          executionLaneId === command.executionLaneId &&
+          worktreeId === primaryId,
+      ),
+    ).toBe(true);
+    const context = await database.repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      first.id,
+    );
+    expect(context).toMatchObject({
+      threadId: `thread-${primaryId}`,
+      worktreeId: primaryId,
+    });
+    expect(context?.executionLaneId).toBeNull();
+  });
+
+  it("resolves queued prompts at dispatch time unless explicitly pinned", async () => {
+    const chat = chatSummarySchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/chats`,
+          payload: { title: "Queued routing", worktreeMode: "agent-managed" },
+        })
+      ).json(),
+    );
+    const dispatchFrozenPrompt = async (worktreeId: string | null) => {
+      const before = chatTurnCommands.length;
+      const prompt = queuedPromptSchema.parse(
+        (
+          await app.inject({
+            method: "POST",
+            url: `/api/chats/${chat.id}/queue`,
+            payload: {
+              text: "Queued pwd",
+              idempotencyKey: `queued-${before}`,
+              frozen: true,
+              worktreeId,
+            },
+          })
+        ).json(),
+      );
+      await app.inject({
+        method: "PATCH",
+        url: `/api/queued-prompts/${prompt.id}`,
+        payload: { frozen: false },
+      });
+      await expect.poll(() => chatTurnCommands.length).toBe(before + 1);
+      await expect
+        .poll(
+          async () =>
+            (
+              await database.repository.getChatExecutionContext(
+                LOCAL_USER_ID,
+                chat.id,
+              )
+            )?.status,
+        )
+        .toBe("idle");
+      return chatTurnCommands.at(-1)!;
+    };
+
+    await app.inject({
+      method: "PATCH",
+      url: `/api/chats/${chat.id}/worktree`,
+      payload: { worktreeId: managedIds[0], mode: "agent-managed" },
+    });
+    const dynamic = await dispatchFrozenPrompt(null);
+    expect(dynamic.worktreeId).toBe(managedIds[0]);
+
+    const releaseCurrent = async () => {
+      const lane = (
+        await database.repository.listChatExecutionLanes(LOCAL_USER_ID, chat.id)
+      ).find(
+        ({ state, worktreeId }) =>
+          state !== "released" && worktreeId !== primaryId,
+      )!;
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/chats/${chat.id}/execution-lanes/${lane.id}/release`,
+        payload: {},
+      });
+      expect(response.statusCode).toBe(200);
+    };
+    await releaseCurrent();
+
+    const pinned = await dispatchFrozenPrompt(managedIds[1]!);
+    expect(pinned.worktreeId).toBe(managedIds[1]);
+    await releaseCurrent();
+
+    await app.inject({
+      method: "PATCH",
+      url: `/api/chats/${chat.id}/worktree`,
+      payload: { worktreeId: managedIds[0], mode: "agent-managed" },
+    });
+    expect(
+      await database.repository.getChatExecutionContext(LOCAL_USER_ID, chat.id),
+    ).toMatchObject({
+      threadId: `thread-${managedIds[0]}`,
+      worktreeId: managedIds[0],
+    });
+    await releaseCurrent();
+  });
+
+  it("recovers interrupted executions without losing durable lane metadata", async () => {
+    const chat = chatSummarySchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/chats`,
+          payload: { title: "Restart recovery", worktreeMode: "agent-managed" },
+        })
+      ).json(),
+    );
+    const started = await database.repository.startChatExecutionLane(
+      LOCAL_USER_ID,
+      chat.id,
+      "agent",
+      "Recovery test",
+    );
+    expect(started?.executionLaneId).toBeTruthy();
+    await database.repository.updateChatRuntime(
+      chat.id,
+      started!.workerId,
+      started!.worktreeId,
+      "thread-recovery",
+      "00000000-0000-0000-0000-000000000021",
+      "running",
+    );
+
+    await database.repository.resetInterruptedChatExecutions();
+
+    const recovered = await database.repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chat.id,
+    );
+    expect(recovered).toMatchObject({
+      status: "failed",
+      threadId: "thread-recovery",
+      worktreeId: primaryId,
+    });
+    expect(recovered?.executionLaneId).toBeNull();
+    const lane = (
+      await database.repository.listChatExecutionLanes(LOCAL_USER_ID, chat.id)
+    )[0]!;
+    expect(lane).toMatchObject({
+      id: started!.executionLaneId,
+      state: "suspended",
+      codexThreadId: "thread-recovery",
+      purpose: "Recovery test",
+    });
+  });
+
   it("routes tabs, forks, and chat transitions through explicit worktrees", async () => {
     const [firstId, secondId] = managedIds as [string, string];
     const chatResponse = await app.inject({
@@ -410,9 +652,7 @@ describe.sequential("server worktree control plane", () => {
       url: `/api/chats/${chat.id}/worktree`,
       payload: { worktreeId: secondId, mode: "pinned" },
     });
-    expect(chatSummarySchema.parse(switched.json()).activeWorktreeId).toBe(
-      secondId,
-    );
+    expect(switched.statusCode).toBe(409);
 
     await database.repository.setChatStatus(chat.id, "running");
     const blockedSwitch = await app.inject({
@@ -432,7 +672,7 @@ describe.sequential("server worktree control plane", () => {
       ).json(),
     );
     linkedConsoleId = consoleTab.id;
-    expect(consoleTab.worktreeId).toBe(secondId);
+    expect(consoleTab.worktreeId).toBe(firstId);
   });
 
   it("uses exact worktree paths for status, history, and Git actions", async () => {
@@ -525,6 +765,20 @@ describe.sequential("server worktree control plane", () => {
       ).statusCode,
     ).toBe(409);
     await database.repository.setTerminalStatus(routedTerminalId, "exited");
+    const lane = (
+      await database.repository.listChatExecutionLanes(
+        LOCAL_USER_ID,
+        routedChatId,
+      )
+    ).find(
+      ({ worktreeId, state }) => worktreeId === firstId && state !== "released",
+    )!;
+    const released = await app.inject({
+      method: "POST",
+      url: `/api/chats/${routedChatId}/execution-lanes/${lane.id}/release`,
+      payload: {},
+    });
+    expect(released.statusCode).toBe(200);
     const removed = await app.inject({
       method: "DELETE",
       url: `/api/projects/${projectId}/worktrees/${firstId}`,

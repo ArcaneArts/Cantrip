@@ -127,6 +127,13 @@
       "when": 1786202541855,
       "tag": "0017_slow_maggott",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1786204210128,
+      "tag": "0018_tan_eternity",
+      "breakpoints": true
     }
   ]
 }

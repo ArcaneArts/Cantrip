@@ -4,8 +4,18 @@ import {
   changedFiles,
   codexEndpointFromLine,
   codexModelProviderName,
+  codexWorkspaceContext,
   parseCodexSkills,
 } from "../src/codex/app-server.js";
+
+describe("codexWorkspaceContext", () => {
+  it("binds every app-server operation to one resolved worktree root", () => {
+    expect(codexWorkspaceContext("/tmp/project/../project/worktree")).toEqual({
+      cwd: "/tmp/project/worktree",
+      runtimeWorkspaceRoots: ["/tmp/project/worktree"],
+    });
+  });
+});
 
 describe("changedFiles", () => {
   it("summarizes added, updated, and deleted files from a turn diff", () => {

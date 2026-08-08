@@ -434,6 +434,7 @@ export const chatExecutionLanes = pgTable(
       .notNull()
       .references(() => workers.id, { onDelete: "cascade" }),
     acquiringActor: text("acquiring_actor").notNull(),
+    exclusive: boolean("exclusive").notNull().default(true),
     purpose: text("purpose"),
     state: text("state").notNull(),
     baseRevision: text("base_revision"),
@@ -458,7 +459,7 @@ export const chatExecutionLanes = pgTable(
       .where(sql`${table.state} = 'active'`),
     uniqueIndex("chat_execution_lanes_worktree_reserved_unique")
       .on(table.worktreeId)
-      .where(sql`${table.state} <> 'released'`),
+      .where(sql`${table.exclusive} = true AND ${table.state} <> 'released'`),
   ],
 );
 
@@ -514,6 +515,9 @@ export const queuedPrompts = pgTable(
     modelId: text("model_id")
       .notNull()
       .references(() => modelProfiles.id, { onDelete: "restrict" }),
+    worktreeId: text("worktree_id").references(() => projectWorktrees.id, {
+      onDelete: "restrict",
+    }),
     position: integer("position").notNull().default(0),
     frozen: boolean("frozen").notNull().default(false),
     idempotencyKey: text("idempotency_key").notNull(),

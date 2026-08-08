@@ -98,6 +98,14 @@ export function codexEndpointFromLine(line: string): string | null {
   return /^\s*listening on:\s+(ws:\/\/\S+)\s*$/.exec(plainText)?.[1] ?? null;
 }
 
+export function codexWorkspaceContext(cwd: string): {
+  cwd: string;
+  runtimeWorkspaceRoots: string[];
+} {
+  const resolved = path.resolve(cwd);
+  return { cwd: resolved, runtimeWorkspaceRoots: [resolved] };
+}
+
 interface ThreadResponse {
   thread: { id: string };
 }
@@ -468,6 +476,7 @@ export class CodexAppServer {
     );
     const response = (await this.request("turn/start", {
       threadId,
+      ...codexWorkspaceContext(options.cwd),
       clientUserMessageId: `cantrip:${options.clientMessageId}`,
       input: [
         { type: "text", text: options.prompt, text_elements: [] },
@@ -691,7 +700,7 @@ export class CodexAppServer {
           threadId,
           model: options.model.name,
           modelProvider,
-          cwd: options.cwd,
+          ...codexWorkspaceContext(options.cwd),
           approvalPolicy: "never",
           sandbox: "workspace-write",
         })) as ThreadResponse;
@@ -707,7 +716,7 @@ export class CodexAppServer {
       const started = (await this.request("thread/start", {
         model: options.model.name,
         modelProvider,
-        cwd: options.cwd,
+        ...codexWorkspaceContext(options.cwd),
         approvalPolicy: "never",
         sandbox: "workspace-write",
       })) as ThreadResponse;
