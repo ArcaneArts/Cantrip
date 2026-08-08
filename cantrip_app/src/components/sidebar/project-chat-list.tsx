@@ -25,10 +25,8 @@ import type {
   ProjectViewSummary,
   TerminalSummary,
   WorkerSummary,
-  WorktreePolicy,
 } from "@cantrip/protocol";
 import {
-  Check,
   CircleAlert,
   CircleDot,
   CircleHelp,
@@ -44,6 +42,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Settings,
   SquareTerminal,
   Trash2,
 } from "lucide-react";
@@ -719,8 +718,8 @@ function SortableProject({
   onCreateIssues,
   onCreateRemoteDesktop,
   onCreateTerminal,
+  onOpenSettings,
   onRemove,
-  onSetWorktreePolicy,
   onSelect,
   project,
 }: {
@@ -739,8 +738,8 @@ function SortableProject({
   onCreateIssues(): void;
   onCreateRemoteDesktop(): void;
   onCreateTerminal(): void;
+  onOpenSettings(): void;
   onRemove(): void;
-  onSetWorktreePolicy(policy: WorktreePolicy): void;
   onSelect(): void;
   project: ProjectSummary;
 }) {
@@ -886,44 +885,12 @@ function SortableProject({
                 sideOffset={4}
                 className={menuContentClass}
               >
-                <DropdownMenuPrimitive.Sub>
-                  <DropdownMenuPrimitive.SubTrigger className={menuItemClass}>
-                    <GitCommitHorizontal className="size-4" />
-                    <span className="flex-1">Worktree policy</span>
-                    <span className="text-xs text-muted-foreground">
-                      {project.worktreePolicy === "direct"
-                        ? "Direct"
-                        : project.worktreePolicy === "required-for-writes"
-                          ? "Required"
-                          : "Managed"}
-                    </span>
-                  </DropdownMenuPrimitive.SubTrigger>
-                  <DropdownMenuPrimitive.Portal>
-                    <DropdownMenuPrimitive.SubContent
-                      sideOffset={4}
-                      className={menuContentClass}
-                    >
-                      {(
-                        [
-                          ["agent-managed", "Agent managed"],
-                          ["direct", "Direct"],
-                          ["required-for-writes", "Required for writes"],
-                        ] as const
-                      ).map(([policy, label]) => (
-                        <DropdownMenuPrimitive.Item
-                          key={policy}
-                          className={menuItemClass}
-                          onSelect={() => onSetWorktreePolicy(policy)}
-                        >
-                          <span className="flex-1">{label}</span>
-                          {project.worktreePolicy === policy ? (
-                            <Check className="size-3.5" />
-                          ) : null}
-                        </DropdownMenuPrimitive.Item>
-                      ))}
-                    </DropdownMenuPrimitive.SubContent>
-                  </DropdownMenuPrimitive.Portal>
-                </DropdownMenuPrimitive.Sub>
+                <DropdownMenuPrimitive.Item
+                  className={menuItemClass}
+                  onSelect={onOpenSettings}
+                >
+                  <Settings className="size-4" /> Settings
+                </DropdownMenuPrimitive.Item>
                 <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
                 <DropdownMenuPrimitive.Item
                   className={cn(
@@ -970,10 +937,10 @@ export function ProjectChatList({
   onOpenChatExplorer,
   onOpenChatHistory,
   onOpenChatTerminal,
+  onOpenProjectSettings,
   onCreateTerminal,
   onDeleteTerminal,
   onRemoveProject,
-  onSetProjectWorktreePolicy,
   onRequestChatWorktreeCreate,
   onRenameChat,
   onRenameBrowser,
@@ -1029,10 +996,10 @@ export function ProjectChatList({
   onOpenChatExplorer(chat: ChatSummary): void;
   onOpenChatHistory(chat: ChatSummary): void;
   onOpenChatTerminal(chat: ChatSummary): void;
+  onOpenProjectSettings(projectId: string): void;
   onCreateTerminal(projectId: string): void;
   onDeleteTerminal(terminalId: string): void;
   onRemoveProject(projectId: string, deleteLocalFiles: boolean): void;
-  onSetProjectWorktreePolicy(projectId: string, policy: WorktreePolicy): void;
   onRequestChatWorktreeCreate(chat: ChatSummary): void;
   onRenameChat(chatId: string, title: string): void;
   onRenameBrowser(browserId: string, title: string): void;
@@ -1302,14 +1269,12 @@ export function ProjectChatList({
                 onCreateIssues={() => onCreateIssues(project.id)}
                 onCreateRemoteDesktop={() => onCreateRemoteDesktop(project.id)}
                 onCreateTerminal={() => onCreateTerminal(project.id)}
+                onOpenSettings={() => onOpenProjectSettings(project.id)}
                 onSelect={() => onSelectProject(project.id)}
                 onRemove={() => {
                   setDeleteLocalFiles(false);
                   setRemoveProjectTarget(project);
                 }}
-                onSetWorktreePolicy={(policy) =>
-                  onSetProjectWorktreePolicy(project.id, policy)
-                }
               >
                 {active ? (
                   <div className="ml-5 mt-1 border-l pl-2">

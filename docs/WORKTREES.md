@@ -66,9 +66,16 @@ sandbox rooted at that checkout. Every turn also receives the current project
 policy and chat mode as application context.
 
 The default is `agent-managed`. The API endpoint
-`PATCH /api/projects/:projectId/worktree-policy` accepts a validated policy;
-the project action menu exposes the same three choices and saves the result on
-the server.
+`PATCH /api/projects/:projectId/worktree-policy` accepts a validated policy.
+The project action menu opens Project Settings, where the policy is saved on
+the server alongside the project's source and worktree inventory.
+
+Project Settings lists every Primary, managed, user-created, and discovered
+external worktree with its branch or detached HEAD, lifecycle and dirty state,
+worker, path, and bound tabs. From there a user can reconcile or prune the
+inventory, create a worktree, lock or unlock a secondary worktree, safely
+remove a secondary checkout, or open a Chat, Terminal, Explorer, or History tab
+on a selected checkout.
 
 Repositories may optionally declare their import-time default in
 `.cantrip/project.json`:
@@ -125,7 +132,7 @@ Run the focused automated suites from a clean milestone worktree:
 pnpm --filter @cantrip/protocol test
 pnpm --filter @cantrip/worker test -- worktrees.test.ts app-server.test.ts
 pnpm --filter @cantrip/server test -- worktree-migration.test.ts worktree-api.test.ts
-pnpm --filter @cantrip/app test -- worktree-control.test.ts git-history.test.ts desktop-popout.test.ts
+pnpm --filter @cantrip/app test -- worktree-control.test.ts git-history.test.ts project-settings-page.test.tsx desktop-popout.test.ts
 pnpm check
 pnpm --filter @cantrip/app build
 ```
