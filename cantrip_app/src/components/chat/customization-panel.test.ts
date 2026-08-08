@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   boundedResourceText,
   customizationCapabilityRows,
+  parseSkillRootsDraft,
+  selectableExternalImportIds,
 } from "./customization-panel";
 
 const available = {
@@ -77,5 +79,51 @@ describe("Codex customization inspection", () => {
       text: "01234",
       truncated: true,
     });
+  });
+
+  it("normalizes a process-scoped skill roots draft", () => {
+    expect(
+      parseSkillRootsDraft(
+        "  .agents/skills\nshared/skills\r\n.agents/skills\n\n",
+      ),
+    ).toEqual([".agents/skills", "shared/skills"]);
+  });
+
+  it("only selects external candidates that contain no plugin data", () => {
+    const baseDetails = {
+      skillNames: [],
+      pluginNames: [],
+      mcpServerNames: [],
+      hookNames: [],
+      subagentNames: [],
+      commandNames: [],
+      memoryFiles: [],
+      sessionCount: 0,
+    };
+    expect(
+      selectableExternalImportIds([
+        {
+          id: "commands",
+          itemType: "COMMANDS",
+          description: "Project commands",
+          cwd: null,
+          details: baseDetails,
+        },
+        {
+          id: "plugins",
+          itemType: "PLUGINS",
+          description: "Project plugins",
+          cwd: null,
+          details: { ...baseDetails, pluginNames: ["example"] },
+        },
+        {
+          id: "mixed",
+          itemType: "SKILLS",
+          description: "Skills with plugin metadata",
+          cwd: null,
+          details: { ...baseDetails, pluginNames: ["embedded"] },
+        },
+      ]),
+    ).toEqual(["commands"]);
   });
 });

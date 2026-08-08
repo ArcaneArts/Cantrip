@@ -28,9 +28,19 @@ import {
   chatPromptSteerResultSchema,
   chatPromptSubmitResultSchema,
   codexCustomizationInventorySchema,
+  codexExternalImportApplySchema,
   codexExternalImportPreviewSchema,
+  codexExternalImportStatusSchema,
+  codexMcpOauthStartResultSchema,
+  codexMcpOauthStartSchema,
+  codexMcpOauthStatusSchema,
+  codexMcpReloadResultSchema,
   codexMcpResourceReadRequestSchema,
   codexMcpResourceReadSchema,
+  codexSkillConfigResultSchema,
+  codexSkillConfigUpdateSchema,
+  codexSkillRootsResultSchema,
+  codexSkillRootsUpdateSchema,
   explorerDirectorySchema,
   explorerFileSchema,
   explorerListSchema,
@@ -79,7 +89,11 @@ import type {
   ChatPlanAnswer,
   ChatPlanUpdate,
   ChatTurnMode,
+  CodexExternalImportApply,
+  CodexMcpOauthStart,
   CodexMcpResourceReadRequest,
+  CodexSkillConfigUpdate,
+  CodexSkillRootsUpdate,
   GitAction,
   GithubIssueState,
   ModelProfileCreate,
@@ -957,6 +971,88 @@ export async function readChatMcpResource(
     await post(
       `/api/chats/${encodeURIComponent(chatId)}/customizations/mcp-resource`,
       codexMcpResourceReadRequestSchema.parse(input),
+    ),
+  );
+}
+
+export async function configureChatSkill(
+  chatId: string,
+  input: CodexSkillConfigUpdate,
+) {
+  return codexSkillConfigResultSchema.parse(
+    await request(
+      `/api/chats/${encodeURIComponent(chatId)}/customizations/skill`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(codexSkillConfigUpdateSchema.parse(input)),
+      },
+    ),
+  );
+}
+
+export async function setChatSkillRoots(
+  chatId: string,
+  input: CodexSkillRootsUpdate,
+) {
+  return codexSkillRootsResultSchema.parse(
+    await request(
+      `/api/chats/${encodeURIComponent(chatId)}/customizations/skill-roots`,
+      {
+        method: "PUT",
+        body: JSON.stringify(codexSkillRootsUpdateSchema.parse(input)),
+      },
+    ),
+  );
+}
+
+export async function startChatMcpOauth(
+  chatId: string,
+  input: CodexMcpOauthStart,
+) {
+  return codexMcpOauthStartResultSchema.parse(
+    await post(
+      `/api/chats/${encodeURIComponent(chatId)}/customizations/mcp-oauth`,
+      codexMcpOauthStartSchema.parse(input),
+    ),
+  );
+}
+
+export async function getChatMcpOauthStatus(chatId: string, server: string) {
+  return codexMcpOauthStatusSchema.parse(
+    await request(
+      `/api/chats/${encodeURIComponent(chatId)}/customizations/mcp-oauth/status?server=${encodeURIComponent(server)}`,
+    ),
+  );
+}
+
+export async function reloadChatMcpServers(chatId: string) {
+  return codexMcpReloadResultSchema.parse(
+    await post(
+      `/api/chats/${encodeURIComponent(chatId)}/customizations/mcp-reload`,
+      {},
+    ),
+  );
+}
+
+export async function applyChatExternalImport(
+  chatId: string,
+  input: CodexExternalImportApply,
+) {
+  return codexExternalImportStatusSchema.parse(
+    await post(
+      `/api/chats/${encodeURIComponent(chatId)}/customizations/external-import`,
+      codexExternalImportApplySchema.parse(input),
+    ),
+  );
+}
+
+export async function getChatExternalImportStatus(
+  chatId: string,
+  importId: string,
+) {
+  return codexExternalImportStatusSchema.parse(
+    await request(
+      `/api/chats/${encodeURIComponent(chatId)}/customizations/external-import/status?importId=${encodeURIComponent(importId)}`,
     ),
   );
 }
