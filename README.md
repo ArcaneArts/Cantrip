@@ -123,6 +123,7 @@ Cantrip/
 ├── cantrip_app/       # React/Vite UI, Tauri shell, Capacitor configuration
 ├── cantrip_server/    # API, persistence, identity, and worker routing
 ├── cantrip_worker/    # Codex runtime, terminals, files, Git, and GitHub access
+├── cantrip_codex/     # Pinned upstream Codex source and source manifest
 ├── packages/protocol/ # Shared runtime-validated contracts
 ├── docs/PLAN.md       # Product architecture and phased roadmap
 └── package.json       # Root development and verification commands
@@ -138,7 +139,8 @@ For browser development:
 - pnpm 11 (the exact version is declared in `package.json`).
 - Git.
 - GitHub CLI (`gh`) authenticated with `gh auth login`, or a worker-local `GH_TOKEN`, to list and clone accessible repositories.
-- Codex CLI for Codex-backed chats and ChatGPT account providers.
+- Rustup. Cantrip builds its pinned Codex CLI source with the exact toolchain
+  declared by `cantrip_codex/upstream/codex-rs/rust-toolchain.toml`.
 - A Chromium-family browser for worker-streamed Browser tabs. Cantrip discovers
   Chrome, Chromium, Brave, Edge, and Vivaldi in their conventional install
   locations. Set `CANTRIP_CHROMIUM_EXECUTABLE` to an explicit executable when
@@ -155,7 +157,10 @@ From the repository root:
 pnpm install
 ```
 
-Defaults are suitable for local development. Copy `.env.example` into your preferred environment setup if you need to override ports, data directories, the server origin, or the default local model.
+Defaults are suitable for local development. The first development start builds
+the pinned Codex source; subsequent starts reuse Cargo's cache. Copy
+`.env.example` into your preferred environment setup if you need to override
+ports, data directories, the server origin, or the default local model.
 
 ## Browser development with `pnpm dev`
 

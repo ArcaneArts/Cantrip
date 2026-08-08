@@ -548,7 +548,7 @@ Suggested local defaults:
 - server mode: local deployment, `pnpm-dev` bootstrap, no authentication, one anonymous local user;
 - worker connects to the local server and retries until it is ready;
 - app learns deployment and capability details from `/api/bootstrap` and contains no worker address; and
-- the worker detects `codex` from configuration or `PATH` and prints an actionable install/version error.
+- development builds use the pinned `cantrip_codex` source snapshot, packaged Workers carry the resulting runtime bundle, and an explicit `CANTRIP_CODEX_BIN` or `PATH` lookup remains a development fallback.
 
 Use pnpm's recursive/parallel scripts before adding a monorepo task orchestrator. Add caching/orchestration only when build timings justify the extra layer.
 
@@ -712,7 +712,7 @@ These decisions should become short ADRs before implementation spreads their ass
 1. Exact password, link-code/device-token, recovery, and hosted authentication design beyond the fixed loopback anonymous mode.
 2. Worker credential format, rotation, and public-key scheme for end-to-end provider-secret provisioning.
 3. Event retention, transcript export, raw-payload retention, and privacy defaults.
-4. Supported Codex CLI version policy and whether packaged apps download or bundle the binary.
+4. Codex CLI upgrade policy after the initial bundled-source decision: upgrades are manual Worker releases, with compatibility validation before changing the pin.
 5. Worker local journal implementation and corruption recovery behavior.
 6. Whether terminal access ships in the first public release or remains an opt-in experimental capability.
 7. First officially tested OpenRouter and Ollama model/provider combinations.

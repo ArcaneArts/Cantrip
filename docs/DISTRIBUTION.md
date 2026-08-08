@@ -10,12 +10,12 @@ runtime used to build it.
 Run packaging on the target operating system because the Worker contains
 native PTY, screen capture, and image modules.
 
-| Command                 | Output                                                            | Host requirement                       |
-| ----------------------- | ----------------------------------------------------------------- | -------------------------------------- |
-| `pnpm package:server`   | `artifacts/cantrip-server-<os>-<arch>`                            | Node.js 22+ at runtime                 |
-| `pnpm package:worker`   | `artifacts/cantrip-worker-<os>-<arch>`                            | Node.js 22+, Codex CLI, Git at runtime |
-| `pnpm package:services` | Both service trees                                                | Same as above                          |
-| `pnpm package:app`      | Tauri bundles under `cantrip_app/src-tauri/target/release/bundle` | Tauri build prerequisites              |
+| Command                 | Output                                                            | Host requirement               |
+| ----------------------- | ----------------------------------------------------------------- | ------------------------------ |
+| `pnpm package:server`   | `artifacts/cantrip-server-<os>-<arch>`                            | Node.js 22+ at runtime         |
+| `pnpm package:worker`   | `artifacts/cantrip-worker-<os>-<arch>`                            | Node.js 22+ and Git at runtime |
+| `pnpm package:services` | Both service trees                                                | Same as above                  |
+| `pnpm package:app`      | Tauri bundles under `cantrip_app/src-tauri/target/release/bundle` | Tauri build prerequisites      |
 
 The manual/tag-triggered GitHub Actions workflow runs both packaging jobs on
 macOS, Linux, and Windows and uploads Server, Worker, and Desktop separately.
@@ -42,17 +42,19 @@ network or put an authenticating TLS reverse proxy in front of it.
 
 The worker makes an outbound connection to `CANTRIP_SERVER_URL`. Configure the
 same `CANTRIP_WORKER_TOKEN` as the server, a stable `CANTRIP_WORKER_ID`, a
-display name, and a durable `CANTRIP_WORKER_DATA_DIR`. GitHub CLI, Codex CLI,
-repository files, credentials, terminals, browsers, and worktrees remain on
-the worker machine.
+display name, and a durable `CANTRIP_WORKER_DATA_DIR`. The artifact contains the
+exact Codex CLI compiled from `cantrip_codex/` for its operating system and
+architecture. GitHub CLI, repository files, credentials, terminals, browsers,
+and worktrees remain on the worker machine.
 
 ## Packaged desktop lifecycle
 
 Release builds reserve a free loopback port, start the bundled Server, wait for
 it to accept connections, then start the bundled Worker. Both inherit the
-user's environment so worker-local Git, Codex, Ollama, and browser discovery
-continue to work. Logs and data are written below Tauri's application data
-directory. Both child processes are terminated when the desktop app exits.
+user's environment so worker-local Git, Ollama, and browser discovery continue
+to work. Codex comes from the bundled Worker rather than the user's `PATH`.
+Logs and data are written below Tauri's application data directory. Both child
+processes are terminated when the desktop app exits.
 `CANTRIP_DESKTOP_DATA_DIR` can override that root for portable installations or
 packaging smoke tests.
 

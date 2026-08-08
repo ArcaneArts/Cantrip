@@ -22,6 +22,7 @@ if (!supportedTargets.has(target)) {
 
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const platform = `${process.platform}-${process.arch}`;
+const codexBuild = path.join(root, "cantrip_codex", ".build", platform);
 const artifacts = path.join(root, "artifacts");
 const runtime = path.join(
   root,
@@ -66,6 +67,10 @@ async function packageService(name, destination) {
     path.join(root, "deploy", `${name}.env.example`),
     path.join(destination, ".env.example"),
   );
+  if (name === "worker") {
+    const bin = path.join(destination, "bin");
+    await cp(path.join(codexBuild, "bundle"), bin, { recursive: true });
+  }
   await cp(
     path.join(root, "deploy", `${name}.README.md`),
     path.join(destination, "README.md"),
@@ -79,7 +84,12 @@ async function buildServices() {
   run(pnpm, ["--filter", "@cantrip/worker", "build"]);
 }
 
+function buildCodex() {
+  run(process.execPath, ["scripts/cantrip-codex/build.mjs"]);
+}
+
 async function packageStandalone(selection) {
+  if (selection === "worker" || selection === "services") buildCodex();
   await buildServices();
   if (selection === "server" || selection === "services") {
     await packageService(
@@ -96,6 +106,7 @@ async function packageStandalone(selection) {
 }
 
 async function packageDesktopRuntime() {
+  buildCodex();
   await buildServices();
   await rm(runtime, { force: true, recursive: true });
   await mkdir(runtime, { recursive: true });

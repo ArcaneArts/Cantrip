@@ -1,8 +1,14 @@
 import os from "node:os";
 import path from "node:path";
 
+import {
+  resolveCodexInstallation,
+  type CodexInstallation,
+} from "./codex/bundled-runtime.js";
+
 export interface WorkerConfig {
   codexBinary: string;
+  codexInstallation: CodexInstallation;
   dataDirectory: string;
   name: string;
   serverUrl: string;
@@ -11,8 +17,12 @@ export interface WorkerConfig {
 }
 
 export function readWorkerConfig(): WorkerConfig {
+  const codexInstallation = resolveCodexInstallation({
+    override: process.env.CANTRIP_CODEX_BIN,
+  });
   return {
-    codexBinary: process.env.CANTRIP_CODEX_BIN ?? "codex",
+    codexBinary: codexInstallation.binary,
+    codexInstallation,
     dataDirectory: path.resolve(
       process.cwd(),
       process.env.CANTRIP_WORKER_DATA_DIR ?? "../.cantrip/dev/worker",

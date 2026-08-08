@@ -7,6 +7,7 @@ import { AttachmentStore } from "./attachment-store.js";
 import { codexAccountHome } from "./codex/account-home.js";
 import { CodexAppServer, codexRuntimeId } from "./codex/app-server.js";
 import { CodexAuthClient } from "./codex/auth-client.js";
+import { verifyCodexInstallation } from "./codex/bundled-runtime.js";
 import { discoverCodexRuntime } from "./codex/discovery.js";
 import type { CodexRuntime } from "./codex/runtime.js";
 import { invokeCantripWorktreeTool } from "./codex/worktree-tool-client.js";
@@ -26,11 +27,17 @@ const HEARTBEAT_INTERVAL_MS = 5_000;
 
 async function start(): Promise<void> {
   const config = readWorkerConfig();
+  const bundledCodex = await verifyCodexInstallation(config.codexInstallation);
   const codexHome = path.join(config.dataDirectory, "codex-home");
   const codexRuntime = await discoverCodexRuntime(
     config.codexBinary,
     path.join(config.dataDirectory, "codex-compatibility-probe"),
   );
+  if (bundledCodex && codexRuntime.version?.semantic !== bundledCodex.version) {
+    throw new Error(
+      `Bundled Codex reports ${codexRuntime.version?.semantic ?? "no version"}; manifest expects ${bundledCodex.version}.`,
+    );
+  }
   const browserAdapter = new BrowserRemoteSurfaceAdapter({
     dataDirectory: config.dataDirectory,
   });
@@ -600,7 +607,7 @@ async function start(): Promise<void> {
   );
 
   console.log(
-    `[cantrip_worker] Starting ${heartbeat.name} (${heartbeat.workerId}); Codex: ${codexRuntime.version?.raw ?? "not found"} (${codexRuntime.compatibility}); Browser: ${browserAdapter.executable ?? "Chromium not found"}; Desktop: ${desktopAdapter.available ? `${desktopAdapter.frameBackend} capture ready` : `unavailable (${desktopAdapter.initializationError ?? "unknown error"})`}`,
+    `[cantrip_worker] Starting ${heartbeat.name} (${heartbeat.workerId}); Codex: ${codexRuntime.version?.raw ?? "not found"} (${codexRuntime.compatibility}, ${config.codexInstallation.source}); Browser: ${browserAdapter.executable ?? "Chromium not found"}; Desktop: ${desktopAdapter.available ? `${desktopAdapter.frameBackend} capture ready` : `unavailable (${desktopAdapter.initializationError ?? "unknown error"})`}`,
   );
 
   const publish = async () => {

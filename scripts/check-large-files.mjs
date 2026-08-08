@@ -8,8 +8,9 @@ const limit = 95 * 1024 * 1024;
 const result = spawnSync(
   "git",
   ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-  { cwd: root, encoding: "buffer" },
+  { cwd: root, encoding: "buffer", maxBuffer: 16 * 1024 * 1024 },
 );
+if (result.error) throw result.error;
 if (result.status !== 0) process.exit(result.status ?? 1);
 
 const oversized = [];
