@@ -1,7 +1,7 @@
 import type {
   GithubIssueDetail,
+  GithubIssueKind,
   GithubIssueList,
-  GithubIssueState,
   ProjectSummary,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,7 +10,6 @@ import {
   ExternalLink,
   Loader2,
   MessageSquare,
-  RefreshCw,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -30,7 +29,6 @@ import {
   commentOnGithubIssue,
   getGithubIssue,
 } from "@/lib/api";
-import { cn } from "@/lib/utils";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -43,10 +41,12 @@ function errorText(error: unknown): string {
 
 function IssueDialog({
   issueNumber,
+  kind,
   onOpenChange,
   project,
 }: {
   issueNumber: number | null;
+  kind: GithubIssueKind;
   onOpenChange(open: boolean): void;
   project: ProjectSummary;
 }) {
@@ -60,14 +60,9 @@ function IssueDialog({
   });
   const refreshLists = async (detail: GithubIssueDetail) => {
     queryClient.setQueryData(detailKey, detail);
-    await Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: ["github-issues", project.id, "open"],
-      }),
-      queryClient.invalidateQueries({
-        queryKey: ["github-issues", project.id, "closed"],
-      }),
-    ]);
+    await queryClient.invalidateQueries({
+      queryKey: ["github-issues", project.id],
+    });
   };
   const comment = useMutation({
     mutationFn: (body: string) =>
@@ -103,7 +98,9 @@ function IssueDialog({
         ) : issue.isError || !issue.data ? (
           <div className="p-6">
             <DialogHeader>
-              <DialogTitle>Issue could not be loaded</DialogTitle>
+              <DialogTitle>
+                {`${kind === "pull-request" ? "Pull request" : "Issue"} could not be loaded`}
+              </DialogTitle>
               <DialogDescription>{errorText(issue.error)}</DialogDescription>
             </DialogHeader>
           </div>
@@ -229,7 +226,7 @@ function IssueDialog({
                 </a>
               </Button>
               <div className="flex flex-col-reverse gap-2 sm:flex-row">
-                {issue.data.state === "open" ? (
+                {issue.data.state === "open" && kind === "issue" ? (
                   <Button
                     variant="outline"
                     className="border-destructive/40 text-destructive hover:bg-destructive/10"
@@ -267,31 +264,27 @@ function IssueDialog({
 export function GithubIssuesView({
   error,
   hasNextPage,
-  isFetching,
   isFetchingNextPage,
   isLoading,
   issues,
+  kind,
   onLoadMore,
-  onRefresh,
-  onStateChange,
   project,
-  state,
 }: {
   error: unknown;
   hasNextPage: boolean;
-  isFetching: boolean;
   isFetchingNextPage: boolean;
   isLoading: boolean;
   issues: GithubIssueList | undefined;
+  kind: GithubIssueKind;
   onLoadMore(): void;
-  onRefresh(): void;
-  onStateChange(state: GithubIssueState): void;
   project: ProjectSummary;
-  state: GithubIssueState;
 }) {
   const [selectedIssue, setSelectedIssue] = useState<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const state = issues?.state ?? "open";
+  const itemLabel = kind === "pull-request" ? "pull requests" : "issues";
 
   useEffect(() => {
     const root = listRef.current;
@@ -309,34 +302,6 @@ export function GithubIssuesView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-11 shrink-0 items-center justify-between gap-3 px-4">
-        <div className="flex rounded-lg bg-muted/50 p-0.5">
-          {(["open", "closed"] as const).map((candidate) => (
-            <button
-              key={candidate}
-              type="button"
-              onClick={() => onStateChange(candidate)}
-              className={cn(
-                "rounded-md px-3 py-1.5 text-xs capitalize text-muted-foreground",
-                candidate === state &&
-                  "bg-background font-medium text-foreground shadow-sm",
-              )}
-            >
-              {candidate}
-            </button>
-          ))}
-        </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={isFetching}
-          onClick={onRefresh}
-        >
-          <RefreshCw className={cn("size-4", isFetching && "animate-spin")} />
-          {isFetching ? "Refreshing" : "Refresh"}
-        </Button>
-      </div>
-
       <div ref={listRef} className="min-h-0 flex-1 overflow-auto">
         {isLoading ? (
           <div className="grid min-h-64 place-items-center text-muted-foreground">
@@ -350,13 +315,31 @@ export function GithubIssuesView({
           <div className="grid min-h-64 place-items-center text-center">
             <div>
               <CheckCircle2 className="mx-auto size-6 text-muted-foreground" />
-              <p className="mt-3 font-medium">No {state} issues</p>
+              <p className="mt-3 font-medium">
+                No {state} {itemLabel}
+              </p>
+              {hasNextPage ? (
+                <div ref={loadMoreRef}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-2"
+                    disabled={isFetchingNextPage}
+                    onClick={onLoadMore}
+                  >
+                    {isFetchingNextPage ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : null}
+                    Load more
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </div>
         ) : (
           <div className="min-w-[680px] py-2 text-xs">
             <div className="sticky top-0 z-10 grid h-7 grid-cols-[70px_minmax(320px,1fr)_130px_90px_100px] items-center border-y bg-muted/95 px-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur">
-              <span>Issue</span>
+              <span>{kind === "pull-request" ? "PR" : "Issue"}</span>
               <span>Title</span>
               <span>Author</span>
               <span>Comments</span>
@@ -415,6 +398,7 @@ export function GithubIssuesView({
 
       <IssueDialog
         issueNumber={selectedIssue}
+        kind={kind}
         project={project}
         onOpenChange={(open) => {
           if (!open) setSelectedIssue(null);

@@ -60,7 +60,15 @@ describe("Cantrip protocol", () => {
         repository: "ArcaneArts/Cantrip",
         state: "open",
       }),
-    ).toMatchObject({ page: 1, limit: 100 });
+    ).toMatchObject({ kind: "issue", page: 1, limit: 100 });
+    expect(
+      workerCommandSchema.parse({
+        type: "github.issues.list",
+        repository: "ArcaneArts/Cantrip",
+        kind: "pull-request",
+        state: "closed",
+      }),
+    ).toMatchObject({ kind: "pull-request", state: "closed" });
     expect(() =>
       workerCommandSchema.parse({
         type: "github.issues.list",

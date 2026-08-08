@@ -95,6 +95,7 @@ import type {
   CodexSkillConfigUpdate,
   CodexSkillRootsUpdate,
   GitAction,
+  GithubIssueKind,
   GithubIssueState,
   ModelProfileCreate,
   ModelProfileUpdate,
@@ -394,12 +395,13 @@ export async function getGitHistory(projectId: string, cursor = 0) {
 
 export async function getGithubIssues(
   projectId: string,
+  kind: GithubIssueKind,
   state: GithubIssueState,
   page = 1,
 ) {
   return githubIssueListSchema.parse(
     await request(
-      `/api/projects/${encodeURIComponent(projectId)}/github/issues?state=${encodeURIComponent(state)}&page=${page}&limit=100`,
+      `/api/projects/${encodeURIComponent(projectId)}/github/issues?kind=${encodeURIComponent(kind)}&state=${encodeURIComponent(state)}&page=${page}&limit=100`,
     ),
   );
 }

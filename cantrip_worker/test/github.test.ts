@@ -42,7 +42,7 @@ describe("GitHub project files", () => {
       warning: expect.stringContaining("worktreePolicy is invalid"),
     });
   });
-  it("lists issue-only results and supports issue detail mutations", async () => {
+  it("lists issues and pull requests separately and supports issue detail mutations", async () => {
     const dataDirectory = await mkdtemp(
       path.join(tmpdir(), "cantrip-github-issues-test-"),
     );
@@ -96,10 +96,19 @@ describe("GitHub project files", () => {
 
     const github = new GithubClient(dataDirectory);
     await expect(
-      github.listIssues("ArcaneArts/Cantrip", "open", 2, 50),
+      github.listIssues("ArcaneArts/Cantrip", "issue", "open", 2, 50),
     ).resolves.toMatchObject({
+      kind: "issue",
       total: 1,
       issues: [{ number: 42 }],
+      nextPage: null,
+    });
+    await expect(
+      github.listIssues("ArcaneArts/Cantrip", "pull-request", "open", 2, 50),
+    ).resolves.toMatchObject({
+      kind: "pull-request",
+      total: 1,
+      issues: [{ number: 43 }],
       nextPage: null,
     });
     await expect(

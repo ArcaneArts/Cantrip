@@ -353,7 +353,7 @@ export function WorktreeControl({
                   className={menuItemClass}
                   onSelect={actions.onOpenHistory}
                 >
-                  <History className="size-4" /> Open in History
+                  <History className="size-4" /> Open in Git
                 </DropdownMenuPrimitive.Item>
               ) : null}
             </>

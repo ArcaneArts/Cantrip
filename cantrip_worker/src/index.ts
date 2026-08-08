@@ -127,6 +127,7 @@ async function start(): Promise<void> {
       case "github.issues.list":
         return github.listIssues(
           command.repository,
+          command.kind,
           command.state,
           command.page,
           command.limit,

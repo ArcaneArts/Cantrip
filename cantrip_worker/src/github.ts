@@ -20,6 +20,7 @@ import {
   worktreePolicySchema,
   type GithubAuthStatus,
   type GithubIssueDetail,
+  type GithubIssueKind,
   type GithubIssueList,
   type GithubIssueState,
   type GithubIssueSummary,
@@ -344,6 +345,7 @@ export class GithubClient {
 
   async listIssues(
     nameWithOwner: string,
+    kind: GithubIssueKind,
     state: GithubIssueState,
     page = 1,
     limit = 100,
@@ -366,9 +368,14 @@ export class GithubClient {
       ],
     )) as GithubApiIssue[];
     const issues = values
-      .filter((issue) => !issue.pull_request)
+      .filter((issue) =>
+        kind === "pull-request"
+          ? Boolean(issue.pull_request)
+          : !issue.pull_request,
+      )
       .map(parseIssue);
     return githubIssueListSchema.parse({
+      kind,
       state,
       total: issues.length,
       issues,

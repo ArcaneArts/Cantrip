@@ -219,7 +219,7 @@ export function HistoryWorktreeMarker({
             className={itemClass}
             onSelect={onOpenHistory}
           >
-            <History className="size-4" /> Open another History here
+            <History className="size-4" /> Open another Git tab here
           </DropdownMenuPrimitive.Item>
           {boundChats.map((chat) => (
             <DropdownMenuPrimitive.Item
