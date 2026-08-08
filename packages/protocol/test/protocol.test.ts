@@ -10,6 +10,9 @@ import {
   remoteBrowserClientMessageSchema,
   remoteBrowserCursorMessageSchema,
   remoteBrowserServerMessageSchema,
+  remoteSurfaceConnectionMessageSchema,
+  remoteSurfaceWebRtcConfigurationSchema,
+  remoteSurfaceWebRtcSignalSchema,
   gitActionSchema,
   mentionedSkillNames,
   normalizeResponsesBaseUrl,
@@ -336,6 +339,45 @@ describe("Cantrip protocol", () => {
       channel: "frame",
     });
     expect([...decoded.payload]).toEqual([0, 1, 127, 255]);
+  });
+
+  it("accepts relay-only WebRTC signaling and rejects direct ICE policy", () => {
+    const configuration = remoteSurfaceWebRtcConfigurationSchema.parse({
+      iceServers: [
+        {
+          urls: ["turn:relay.cantrip.art:3478?transport=udp"],
+          username: "123:local-user",
+          credential: "short-lived-credential",
+        },
+      ],
+      iceTransportPolicy: "relay",
+      negotiationTimeoutMs: 8_000,
+    });
+    expect(configuration.iceTransportPolicy).toBe("relay");
+    expect(
+      remoteSurfaceWebRtcConfigurationSchema.safeParse({
+        ...configuration,
+        iceTransportPolicy: "all",
+      }).success,
+    ).toBe(false);
+    expect(
+      remoteSurfaceConnectionMessageSchema.parse({
+        type: "ready",
+        surfaceId: "surface-1",
+        attachmentId: "attachment-1",
+        transport: "webrtc",
+        webrtc: configuration,
+      }).webrtc,
+    ).toEqual(configuration);
+    expect(
+      remoteSurfaceWebRtcSignalSchema.parse({
+        type: "candidate",
+        candidate: "candidate:1 1 UDP 1 relay.example 3478 typ relay",
+        sdpMid: "0",
+        sdpMLineIndex: 0,
+        usernameFragment: null,
+      }).type,
+    ).toBe("candidate");
   });
 
   it("rejects malformed Remote Surface binary envelopes", () => {

@@ -38,6 +38,39 @@ export const remoteSurfaceCapabilitiesSchema = z.object({
   maxSessions: z.number().int().positive(),
 });
 
+export const remoteSurfaceIceServerSchema = z.object({
+  urls: z.array(z.string().min(1)).min(1),
+  username: z.string().min(1).optional(),
+  credential: z.string().min(1).optional(),
+});
+
+export const remoteSurfaceWebRtcConfigurationSchema = z.object({
+  iceServers: z.array(remoteSurfaceIceServerSchema).min(1),
+  iceTransportPolicy: z.literal("relay"),
+  negotiationTimeoutMs: z.number().int().min(1_000).max(30_000),
+});
+
+export const remoteSurfaceWebRtcSignalSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("offer"), sdp: z.string().min(1).max(1_000_000) }),
+  z.object({
+    type: z.literal("answer"),
+    sdp: z.string().min(1).max(1_000_000),
+  }),
+  z.object({
+    type: z.literal("candidate"),
+    candidate: z.string().min(1).max(16_384),
+    sdpMid: z.string().max(1_024).nullable(),
+    sdpMLineIndex: z.number().int().nonnegative().nullable(),
+    usernameFragment: z.string().max(1_024).nullable(),
+  }),
+  z.object({ type: z.literal("end-of-candidates") }),
+  z.object({
+    type: z.literal("transport-state"),
+    state: z.enum(["connected", "failed", "closed"]),
+    message: z.string().max(2_048).nullable(),
+  }),
+]);
+
 function defaultRemoteSurfaceCapabilities(): z.infer<
   typeof remoteSurfaceCapabilitiesSchema
 > {
@@ -593,6 +626,7 @@ export const remoteSurfaceConnectionMessageSchema = z.discriminatedUnion(
       surfaceId: z.string().min(1),
       attachmentId: z.string().min(1),
       transport: remoteSurfaceTransportSchema,
+      webrtc: remoteSurfaceWebRtcConfigurationSchema.nullable().default(null),
     }),
     z.object({
       type: z.literal("error"),
@@ -1483,6 +1517,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     projectId: z.string().min(1),
     configuration: remoteSurfaceConfigurationSchema,
     preferredTransport: remoteSurfaceTransportSchema,
+    webrtc: remoteSurfaceWebRtcConfigurationSchema.nullable().default(null),
     viewport: remoteSurfaceViewportSchema,
   }),
   z.object({
@@ -1694,6 +1729,15 @@ export type RemoteSurfaceSummary = z.infer<typeof remoteSurfaceSummarySchema>;
 export type RemoteSurfaceViewport = z.infer<typeof remoteSurfaceViewportSchema>;
 export type RemoteSurfaceConnectionMessage = z.infer<
   typeof remoteSurfaceConnectionMessageSchema
+>;
+export type RemoteSurfaceIceServer = z.infer<
+  typeof remoteSurfaceIceServerSchema
+>;
+export type RemoteSurfaceWebRtcConfiguration = z.infer<
+  typeof remoteSurfaceWebRtcConfigurationSchema
+>;
+export type RemoteSurfaceWebRtcSignal = z.infer<
+  typeof remoteSurfaceWebRtcSignalSchema
 >;
 export type RemoteSurfaceAttachResult = z.infer<
   typeof remoteSurfaceAttachResultSchema

@@ -52,11 +52,18 @@ the authorized binding, rejects cross-surface frames, ignores stale sequences,
 drops disposable visual frames under pressure, and closes congested reliable
 channels rather than growing memory without bounds.
 
-WebRTC becomes the preferred low-latency data plane after this fallback works.
-Signaling always travels through the server. Hosted configurations use
+WebRTC is the preferred low-latency data plane when TURN is configured.
+Signaling always travels through the server. Configured deployments use
 short-lived TURN credentials and relay-only ICE when direct app-to-worker
 traffic is prohibited. Failure to negotiate WebRTC returns to the authenticated
 WebSocket data plane without changing the durable session.
+
+The server holds the long-lived TURN REST shared secret and derives expiring
+HMAC credentials per authorized attachment. Only the short-lived username and
+credential reach the app and worker. Visual frames use an unordered,
+loss-tolerant data channel; reliable control and input use an ordered channel.
+Both carry the same versioned Remote Surface binary envelope as WebSocket, so
+sequence validation and failover are transport-independent.
 
 ### Browser adapter
 

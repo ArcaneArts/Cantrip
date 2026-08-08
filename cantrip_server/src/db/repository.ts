@@ -30,6 +30,7 @@ import type {
   QueuedPromptCreate,
   QueuedPromptOrder,
   QueuedPromptUpdate,
+  RemoteSurfaceCapabilities,
   RemoteSurfaceCreate,
   RemoteSurfaceStatus,
   RemoteSurfaceSummary,
@@ -150,6 +151,7 @@ export interface ExplorerExecutionContext {
 }
 
 export interface RemoteSurfaceExecutionContext {
+  remoteSurfaceCapabilities: RemoteSurfaceCapabilities;
   surface: RemoteSurfaceSummary;
   workerId: string;
 }
@@ -2630,6 +2632,7 @@ export class ServerRepository {
         workerId: source.workerId,
         kind: "browser",
         title: input.title,
+        preferredTransport: "webrtc",
         configuration: {
           kind: "browser",
           initialUrl: browser.url,
@@ -2731,6 +2734,7 @@ export class ServerRepository {
         workerId,
         kind: "browser",
         title: browser.title,
+        preferredTransport: "webrtc",
         configuration: {
           kind: "browser" as const,
           initialUrl: browser.url,
@@ -2811,7 +2815,10 @@ export class ServerRepository {
     surfaceId: string,
   ): Promise<RemoteSurfaceExecutionContext | null> {
     const rows = await this.database
-      .select({ surface: schema.remoteSurfaces })
+      .select({
+        surface: schema.remoteSurfaces,
+        remoteSurfaceCapabilities: schema.workers.remoteSurfaceCapabilities,
+      })
       .from(schema.remoteSurfaces)
       .innerJoin(
         schema.projects,
@@ -2831,7 +2838,11 @@ export class ServerRepository {
       .limit(1);
     const surface = rows[0]?.surface;
     return surface
-      ? { surface: toRemoteSurfaceSummary(surface), workerId: surface.workerId }
+      ? {
+          remoteSurfaceCapabilities: rows[0]!.remoteSurfaceCapabilities,
+          surface: toRemoteSurfaceSummary(surface),
+          workerId: surface.workerId,
+        }
       : null;
   }
 

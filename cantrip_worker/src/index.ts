@@ -33,7 +33,7 @@ async function start(): Promise<void> {
     {
       browser: browserAdapter.available,
       vnc: false,
-      transports: ["websocket"],
+      transports: ["websocket", "webrtc"],
       maxSessions: 4,
     },
   );

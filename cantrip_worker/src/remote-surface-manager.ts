@@ -6,6 +6,12 @@ import type {
   RemoteSurfaceViewport,
   WorkerCommand,
 } from "@cantrip/protocol";
+import { encodeRemoteSurfaceFrame } from "@cantrip/protocol";
+
+import {
+  WorkerWebRtcAttachment,
+  type WorkerWebRtcAttachmentOptions,
+} from "./remote-surfaces/webrtc.js";
 
 type AttachCommand = Extract<WorkerCommand, { type: "surface.attach" }>;
 
@@ -41,9 +47,19 @@ export interface RemoteSurfaceAdapter {
 }
 
 interface ManagedSession {
-  attachments: Map<string, { lastInboundSequence: number }>;
+  attachments: Map<
+    string,
+    {
+      lastInboundSequence: number;
+      webrtc: WorkerWebRtcAttachment | null;
+    }
+  >;
   session: RemoteSurfaceSession;
 }
+
+export type WorkerWebRtcAttachmentFactory = (
+  options: WorkerWebRtcAttachmentOptions,
+) => WorkerWebRtcAttachment;
 
 export type RemoteSurfaceFrameEmitter = (
   header: RemoteSurfaceFrameHeader,
@@ -63,6 +79,9 @@ export class RemoteSurfaceManager {
       Record<RemoteSurfaceConfiguration["kind"], RemoteSurfaceAdapter>
     > = {},
     private readonly maxSessions = 4,
+    private readonly createWebRtcAttachment: WorkerWebRtcAttachmentFactory = (
+      options,
+    ) => new WorkerWebRtcAttachment(options),
   ) {
     this.#adapters = adapters;
   }
@@ -109,9 +128,29 @@ export class RemoteSurfaceManager {
     };
     managed.attachments.set(command.attachmentId, {
       lastInboundSequence: -1,
+      webrtc: null,
     });
     try {
       await managed.session.attach(attachment);
+      if (command.preferredTransport === "webrtc" && command.webrtc) {
+        const managedAttachment = managed.attachments.get(command.attachmentId);
+        if (managedAttachment) {
+          managedAttachment.webrtc = this.createWebRtcAttachment({
+            attachmentId: command.attachmentId,
+            configuration: command.webrtc,
+            emitSignal: (signal) =>
+              this.emitWebSocket(
+                command.surfaceId,
+                command.attachmentId,
+                "webrtc-signal",
+                new TextEncoder().encode(JSON.stringify(signal)),
+              ),
+            onFrame: (header, payload) =>
+              void this.acceptFrame(header, payload),
+            surfaceId: command.surfaceId,
+          });
+        }
+      }
     } catch (error) {
       managed.attachments.delete(command.attachmentId);
       if (managed.attachments.size === 0) {
@@ -124,12 +163,20 @@ export class RemoteSurfaceManager {
       }
       throw error;
     }
-    return { accepted: true, transport: managed.session.transport };
+    return {
+      accepted: true,
+      transport: managed.attachments.get(command.attachmentId)?.webrtc
+        ? "webrtc"
+        : "websocket",
+    };
   }
 
   async detach(surfaceId: string, attachmentId: string): Promise<void> {
     const managed = this.#sessions.get(surfaceId);
-    if (!managed?.attachments.delete(attachmentId)) return;
+    const attachment = managed?.attachments.get(attachmentId);
+    if (!managed || !attachment) return;
+    managed.attachments.delete(attachmentId);
+    await attachment.webrtc?.close(false);
     this.#outboundSequences.delete(`${surfaceId}:${attachmentId}`);
     await managed.session.detach(attachmentId);
   }
@@ -149,6 +196,11 @@ export class RemoteSurfaceManager {
     for (const attachmentId of managed.attachments.keys()) {
       this.#outboundSequences.delete(`${surfaceId}:${attachmentId}`);
     }
+    await Promise.allSettled(
+      [...managed.attachments.values()].map((attachment) =>
+        attachment.webrtc?.close(false),
+      ),
+    );
     await managed.session.close();
   }
 
@@ -159,6 +211,57 @@ export class RemoteSurfaceManager {
   }
 
   async handleFrame(
+    header: RemoteSurfaceFrameHeader,
+    payload: Uint8Array,
+  ): Promise<void> {
+    const attachment = this.#sessions
+      .get(header.surfaceId)
+      ?.attachments.get(header.attachmentId);
+    if (header.channel === "webrtc-signal" && attachment?.webrtc) {
+      if (header.sequence <= attachment.lastInboundSequence) return;
+      attachment.lastInboundSequence = header.sequence;
+      try {
+        await attachment.webrtc.handleSignal(payload);
+      } catch {
+        await attachment.webrtc.close();
+      }
+      return;
+    }
+    await this.acceptFrame(header, payload);
+  }
+
+  private emit(
+    surfaceId: string,
+    attachmentId: string,
+    channel: RemoteSurfaceChannel,
+    payload: Uint8Array,
+  ): void {
+    const managed = this.#sessions.get(surfaceId);
+    if (!managed?.attachments.has(attachmentId)) return;
+    const key = `${surfaceId}:${attachmentId}`;
+    const sequence = (this.#outboundSequences.get(key) ?? -1) + 1;
+    const header: RemoteSurfaceFrameHeader = {
+      protocolVersion: 1,
+      surfaceId,
+      attachmentId,
+      sequence,
+      channel,
+    };
+    const attachment = managed.attachments.get(attachmentId)!;
+    const rtcResult = attachment.webrtc?.send(
+      channel,
+      encodeRemoteSurfaceFrame(header, payload),
+    );
+    if (rtcResult === "sent" || rtcResult === "dropped") {
+      this.#outboundSequences.set(key, sequence);
+      return;
+    }
+    if (this.#emitFrame(header, payload)) {
+      this.#outboundSequences.set(key, sequence);
+    }
+  }
+
+  private async acceptFrame(
     header: RemoteSurfaceFrameHeader,
     payload: Uint8Array,
   ): Promise<void> {
@@ -174,7 +277,7 @@ export class RemoteSurfaceManager {
     );
   }
 
-  private emit(
+  private emitWebSocket(
     surfaceId: string,
     attachmentId: string,
     channel: RemoteSurfaceChannel,

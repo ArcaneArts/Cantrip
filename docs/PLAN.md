@@ -148,13 +148,15 @@ content render inside the ordinary React tree so the same UI works in Vite,
 Tauri, Capacitor, and popout windows without iframe rewriting or native-webview
 layering.
 
-The WebSocket Browser slice is implemented with worker-side Chromium
+The Browser slice is implemented with worker-side Chromium
 discovery, persistent profiles, automatic crash recovery, CDP navigation and
 loading state, pointer/keyboard/touch input, cursor feedback, explicit
 clipboard actions, responsive viewport updates, and one canvas client shared
 by Vite, Tauri, and popouts. The obsolete iframe proxy and Tauri child-webview
-paths have been removed. WebRTC and configured VNC/RFB remain the next Remote
-Surface delivery slices.
+paths have been removed. WebRTC uses server-minted short-lived TURN REST
+credentials, relay-only ICE, separate visual and reliable control data
+channels, and automatic WebSocket fallback. Configured VNC/RFB is the next
+Remote Surface delivery slice.
 
 ## 5. Monorepo layout
 
