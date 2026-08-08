@@ -160,6 +160,17 @@ import type {
   AgentWorktreeToolCall,
   AgentWorktreeToolResult,
 } from "@cantrip/protocol";
+import {
+  workflowDefinitionCreateSchema,
+  workflowDefinitionDetailSchema,
+  workflowDefinitionListSchema,
+  workflowDefinitionQuerySchema,
+  workflowDefinitionSummarySchema,
+  workflowDefinitionUpdateSchema,
+  workflowRevisionCreateSchema,
+  workflowRevisionListSchema,
+  workflowRevisionSchema,
+} from "@cantrip/protocol/workflows";
 
 import type { ServerConfig } from "./config.js";
 import type { DatabaseConnection } from "./db/index.js";
@@ -170,6 +181,7 @@ import {
   type ChatExecutionContext,
   type ModelRuntime,
 } from "./db/repository.js";
+import { WorkflowConflictError } from "./db/workflows.js";
 import {
   WorkerBridge,
   type WorkerCommandBus,
@@ -2087,6 +2099,133 @@ export async function buildApp({
     const projects = await repository.listProjects(LOCAL_USER_ID);
     return reply.send(projectListSchema.parse(projects));
   });
+
+  app.get<{
+    Querystring: {
+      includeArchived?: string;
+      limit?: string;
+      projectId?: string;
+      scope?: string;
+    };
+  }>("/api/workflows", async (request, reply) => {
+    const query = workflowDefinitionQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.code(400).send(invalidBody(query.error.issues));
+    }
+    return reply.send(
+      workflowDefinitionListSchema.parse(
+        await repository.workflows.listDefinitions(LOCAL_USER_ID, query.data),
+      ),
+    );
+  });
+
+  app.post("/api/workflows", async (request, reply) => {
+    const input = workflowDefinitionCreateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const workflow = await repository.workflows.createDefinition(
+        LOCAL_USER_ID,
+        input.data,
+      );
+      return workflow
+        ? reply.code(201).send(workflowDefinitionDetailSchema.parse(workflow))
+        : reply.code(404).send({ error: "Project not found." });
+    } catch (error) {
+      if (error instanceof WorkflowConflictError) {
+        return reply.code(409).send({ error: error.message });
+      }
+      throw error;
+    }
+  });
+
+  app.get<{ Params: { workflowId: string } }>(
+    "/api/workflows/:workflowId",
+    async (request, reply) => {
+      const workflow = await repository.workflows.getDefinition(
+        LOCAL_USER_ID,
+        request.params.workflowId,
+      );
+      return workflow
+        ? reply.send(workflowDefinitionDetailSchema.parse(workflow))
+        : reply.code(404).send({ error: "Workflow not found." });
+    },
+  );
+
+  app.patch<{ Params: { workflowId: string } }>(
+    "/api/workflows/:workflowId",
+    async (request, reply) => {
+      const input = workflowDefinitionUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const workflow = await repository.workflows.updateDefinition(
+        LOCAL_USER_ID,
+        request.params.workflowId,
+        input.data,
+      );
+      return workflow
+        ? reply.send(workflowDefinitionSummarySchema.parse(workflow))
+        : reply.code(404).send({ error: "Workflow not found." });
+    },
+  );
+
+  app.get<{ Params: { workflowId: string } }>(
+    "/api/workflows/:workflowId/revisions",
+    async (request, reply) => {
+      const revisions = await repository.workflows.listRevisions(
+        LOCAL_USER_ID,
+        request.params.workflowId,
+      );
+      return revisions
+        ? reply.send(workflowRevisionListSchema.parse(revisions))
+        : reply.code(404).send({ error: "Workflow not found." });
+    },
+  );
+
+  app.post<{ Params: { workflowId: string } }>(
+    "/api/workflows/:workflowId/revisions",
+    async (request, reply) => {
+      const input = workflowRevisionCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const revision = await repository.workflows.appendRevision(
+          LOCAL_USER_ID,
+          request.params.workflowId,
+          input.data,
+        );
+        return revision
+          ? reply.send(workflowRevisionSchema.parse(revision))
+          : reply.code(404).send({ error: "Workflow not found." });
+      } catch (error) {
+        if (error instanceof WorkflowConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.get<{ Params: { revision: string; workflowId: string } }>(
+    "/api/workflows/:workflowId/revisions/:revision",
+    async (request, reply) => {
+      const revisionNumber = Number(request.params.revision);
+      if (!Number.isSafeInteger(revisionNumber) || revisionNumber < 1) {
+        return reply.code(400).send({ error: "Invalid workflow revision." });
+      }
+      const revision = await repository.workflows.getRevision(
+        LOCAL_USER_ID,
+        request.params.workflowId,
+        revisionNumber,
+      );
+      return revision
+        ? reply.send(workflowRevisionSchema.parse(revision))
+        : reply.code(404).send({ error: "Workflow revision not found." });
+    },
+  );
 
   app.patch<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/worktree-policy",
