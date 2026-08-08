@@ -27,6 +27,10 @@ import {
   chatPermissionProfileUpdateSchema,
   chatPromptSteerResultSchema,
   chatPromptSubmitResultSchema,
+  codexCustomizationInventorySchema,
+  codexExternalImportPreviewSchema,
+  codexMcpResourceReadRequestSchema,
+  codexMcpResourceReadSchema,
   explorerDirectorySchema,
   explorerFileSchema,
   explorerListSchema,
@@ -75,6 +79,7 @@ import type {
   ChatPlanAnswer,
   ChatPlanUpdate,
   ChatTurnMode,
+  CodexMcpResourceReadRequest,
   GitAction,
   GithubIssueState,
   ModelProfileCreate,
@@ -923,6 +928,35 @@ export async function getMessages(chatId: string) {
 export async function getSkills(chatId: string) {
   return skillListSchema.parse(
     await request(`/api/chats/${encodeURIComponent(chatId)}/skills`),
+  );
+}
+
+export async function getChatCustomizations(chatId: string, refresh = false) {
+  const query = refresh ? "?refresh=true" : "";
+  return codexCustomizationInventorySchema.parse(
+    await request(
+      `/api/chats/${encodeURIComponent(chatId)}/customizations${query}`,
+    ),
+  );
+}
+
+export async function getChatExternalImportPreview(chatId: string) {
+  return codexExternalImportPreviewSchema.parse(
+    await request(
+      `/api/chats/${encodeURIComponent(chatId)}/customizations/external-preview`,
+    ),
+  );
+}
+
+export async function readChatMcpResource(
+  chatId: string,
+  input: CodexMcpResourceReadRequest,
+) {
+  return codexMcpResourceReadSchema.parse(
+    await post(
+      `/api/chats/${encodeURIComponent(chatId)}/customizations/mcp-resource`,
+      codexMcpResourceReadRequestSchema.parse(input),
+    ),
   );
 }
 
