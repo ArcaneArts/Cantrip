@@ -18,21 +18,16 @@ import {
   Moon,
   Pencil,
   Plus,
+  Search,
   Server,
   Sun,
   Trash2,
+  X,
 } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Dialog,
   DialogClose,
@@ -82,6 +77,10 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
 const inputClass =
   "h-10 w-full rounded-md border bg-background px-3 text-sm outline-none ring-ring focus:ring-2";
 
+function matchesSearch(query: string, ...values: Array<string | null>) {
+  return values.some((value) => value?.toLowerCase().includes(query));
+}
+
 function ProviderRow({
   provider,
   workerId,
@@ -109,21 +108,18 @@ function ProviderRow({
   return (
     <div
       data-high-contrast-row
-      className="flex min-w-0 items-center gap-3 rounded-lg border p-3"
+      className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 px-3 py-2.5 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1.7fr)_auto_auto]"
     >
-      <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted">
-        <Server className="size-4" />
+      <div className="flex min-w-0 items-center gap-2.5">
+        <Server className="size-4 shrink-0 text-muted-foreground" />
+        <p className="truncate text-sm font-medium">{provider.name}</p>
+        <Badge className="sm:hidden" variant="secondary">
+          {provider.kind}
+        </Badge>
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="truncate text-sm font-medium">{provider.name}</p>
-          <Badge variant="secondary">{provider.kind}</Badge>
-          {provider.hasApiKey ? (
-            <KeyRound className="size-3.5 text-muted-foreground" />
-          ) : null}
-        </div>
+      <div className="col-span-2 min-w-0 pl-6 sm:col-span-1 sm:pl-0">
         {provider.kind === "chatgpt" ? (
-          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[11px] text-muted-foreground">
+          <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
             {!workerId ? (
               <span>Worker offline · sign-in status unavailable</span>
             ) : auth.isLoading ? (
@@ -134,14 +130,14 @@ function ProviderRow({
               </span>
             ) : signedIn ? (
               <>
-                <span className="inline-flex items-center gap-1 text-emerald-500">
+                <span className="inline-flex shrink-0 items-center gap-1 text-emerald-500">
                   <span className="size-1.5 rounded-full bg-current" /> Signed
                   in
                 </span>
-                <span>·</span>
-                <span>{auth.data?.email ?? "ChatGPT account"}</span>
-                <span>·</span>
-                <span className="font-medium text-foreground">
+                <span className="truncate">
+                  {auth.data?.email ?? "ChatGPT account"}
+                </span>
+                <span className="shrink-0 font-medium text-foreground">
                   {weeklyRemaining === null
                     ? "7-day usage unavailable"
                     : `${Math.round(weeklyRemaining)}% 7-day usage left`}
@@ -155,24 +151,33 @@ function ProviderRow({
             )}
           </p>
         ) : (
-          <p className="mt-1 truncate text-[11px] text-muted-foreground">
+          <p className="truncate font-mono text-xs text-muted-foreground">
             {provider.baseUrl}
           </p>
         )}
       </div>
-      <Button size="icon" variant="ghost" onClick={onEdit}>
-        <Pencil className="size-4" />
-        <span className="sr-only">Edit {provider.name}</span>
-      </Button>
-      <Button
-        size="icon"
-        variant="ghost"
-        disabled={removing}
-        onClick={onRemove}
-      >
-        <Trash2 className="size-4" />
-        <span className="sr-only">Delete {provider.name}</span>
-      </Button>
+      <div className="hidden items-center justify-end gap-1 sm:flex">
+        <Badge variant="secondary">{provider.kind}</Badge>
+        {provider.hasApiKey ? (
+          <KeyRound className="size-3.5 text-muted-foreground" />
+        ) : null}
+      </div>
+      <div className="col-start-2 row-start-1 flex items-center justify-end sm:col-auto sm:row-auto">
+        <Button className="size-8" size="icon" variant="ghost" onClick={onEdit}>
+          <Pencil className="size-3.5" />
+          <span className="sr-only">Edit {provider.name}</span>
+        </Button>
+        <Button
+          className="size-8"
+          size="icon"
+          variant="ghost"
+          disabled={removing}
+          onClick={onRemove}
+        >
+          <Trash2 className="size-3.5" />
+          <span className="sr-only">Delete {provider.name}</span>
+        </Button>
+      </div>
     </div>
   );
 }
@@ -180,6 +185,7 @@ function ProviderRow({
 export function SettingsPage() {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
+  const [searchQuery, setSearchQuery] = useState("");
   const [deviceLogin, setDeviceLogin] = useState<CodexDeviceLogin | null>(null);
   const [deviceCodeCopied, setDeviceCodeCopied] = useState(false);
   const [deviceLinkCopied, setDeviceLinkCopied] = useState(false);
@@ -331,196 +337,348 @@ export function SettingsPage() {
     if (modelProviderId) saveModel.mutate();
   };
 
+  const search = searchQuery.trim().toLowerCase();
+  const providers = settings.data?.providers ?? [];
+  const models = settings.data?.models ?? [];
+  const appearanceMatches =
+    !search ||
+    matchesSearch(
+      search,
+      "appearance theme system light dark high contrast operating system",
+    );
+  const providerSectionMatches =
+    !search ||
+    matchesSearch(
+      search,
+      "providers provider ollama api chatgpt account endpoint key",
+    );
+  const visibleProviders = providerSectionMatches
+    ? providers
+    : providers.filter((provider) =>
+        matchesSearch(
+          search,
+          provider.name,
+          provider.kind,
+          provider.baseUrl,
+          provider.hasApiKey ? "api key" : null,
+        ),
+      );
+  const modelSectionMatches =
+    !search ||
+    matchesSearch(
+      search,
+      "models model default reasoning effort provider new chats",
+    );
+  const visibleModels = modelSectionMatches
+    ? models
+    : models.filter((model) =>
+        matchesSearch(
+          search,
+          model.name,
+          model.providerName,
+          model.reasoningEffort,
+          settings.data?.preferences.defaultModelId === model.id
+            ? "default"
+            : null,
+        ),
+      );
+  const providersMatch = providerSectionMatches || visibleProviders.length > 0;
+  const modelsMatch = modelSectionMatches || visibleModels.length > 0;
+  const hasSearchResults = appearanceMatches || providersMatch || modelsMatch;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-8">
-        <div className="mx-auto grid max-w-4xl gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Appearance</CardTitle>
-              <CardDescription>
-                System follows the operating system and is the default.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-3 gap-2">
-                {(
-                  [
-                    ["system", Monitor],
-                    ["light", Sun],
-                    ["dark", Moon],
-                  ] as const
-                ).map(([theme, Icon]) => (
-                  <Button
-                    key={theme}
-                    type="button"
-                    variant={
-                      settings.data?.preferences.theme === theme
-                        ? "default"
-                        : "outline"
-                    }
-                    disabled={preferences.isPending}
-                    onClick={() =>
-                      preferences.mutate({
-                        theme: theme as ThemePreference,
-                      })
-                    }
-                  >
-                    <Icon className="size-4" />
-                    <span className="capitalize">{theme}</span>
-                  </Button>
-                ))}
-              </div>
-              <label className="mt-4 flex cursor-pointer items-center justify-between gap-4 rounded-lg bg-muted/35 px-3 py-2.5">
-                <span>
-                  <span className="block text-sm font-medium">
-                    High Contrast
-                  </span>
-                  <span className="mt-0.5 block text-xs text-muted-foreground">
-                    Use pure black or white surfaces with restrained outlines.
-                  </span>
-                </span>
-                <input
-                  type="checkbox"
-                  className="size-4 accent-primary"
-                  checked={settings.data?.preferences.highContrast ?? false}
-                  disabled={preferences.isPending}
-                  onChange={(event) =>
-                    preferences.mutate({ highContrast: event.target.checked })
-                  }
-                />
-              </label>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
-              <div className="grid gap-1.5">
-                <CardTitle>Providers</CardTitle>
-                <CardDescription>
-                  Configure Ollama, compatible APIs, or isolated ChatGPT
-                  accounts. Secrets stay on the server or worker.
-                </CardDescription>
-              </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+        <div className="mx-auto grid max-w-6xl gap-5">
+          <div className="relative max-w-xl">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              role="searchbox"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              className="h-9 w-full rounded-md border bg-background pl-9 pr-9 text-sm outline-none ring-ring placeholder:text-muted-foreground focus:ring-2"
+              placeholder="Search settings, providers, and models"
+              aria-label="Search settings"
+            />
+            {searchQuery ? (
               <Button
+                type="button"
                 size="icon"
-                variant="outline"
-                onClick={() => openProviderDialog(null)}
+                variant="ghost"
+                className="absolute right-0.5 top-0.5 size-8"
+                onClick={() => setSearchQuery("")}
               >
-                <Plus className="size-4" />
-                <span className="sr-only">Add provider</span>
+                <X className="size-3.5" />
+                <span className="sr-only">Clear search</span>
               </Button>
-            </CardHeader>
-            <CardContent className="grid gap-3">
-              {(settings.data?.providers ?? []).map((provider) => (
-                <ProviderRow
-                  key={provider.id}
-                  provider={provider}
-                  workerId={worker?.workerId ?? null}
-                  removing={removeProvider.isPending}
-                  onEdit={() => openProviderDialog(provider)}
-                  onRemove={() => removeProvider.mutate(provider.id)}
-                />
-              ))}
+            ) : null}
+          </div>
+
+          {settings.isError ? (
+            <p className="text-sm text-destructive">
+              {errorText(settings.error)}
+            </p>
+          ) : null}
+
+          {appearanceMatches ? (
+            <section className="overflow-hidden rounded-lg border bg-card/30">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
+                <div>
+                  <h2 className="text-sm font-semibold">Appearance</h2>
+                  <p className="text-xs text-muted-foreground">
+                    System follows the operating system.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <div className="flex rounded-md bg-muted/50 p-0.5">
+                    {(
+                      [
+                        ["system", Monitor],
+                        ["light", Sun],
+                        ["dark", Moon],
+                      ] as const
+                    ).map(([theme, Icon]) => (
+                      <Button
+                        key={theme}
+                        type="button"
+                        size="sm"
+                        className="h-7 px-2.5 text-xs"
+                        variant={
+                          settings.data?.preferences.theme === theme
+                            ? "default"
+                            : "ghost"
+                        }
+                        disabled={preferences.isPending}
+                        onClick={() =>
+                          preferences.mutate({
+                            theme: theme as ThemePreference,
+                          })
+                        }
+                      >
+                        <Icon className="size-3.5" />
+                        <span className="capitalize">{theme}</span>
+                      </Button>
+                    ))}
+                  </div>
+                  <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
+                    <input
+                      type="checkbox"
+                      className="size-3.5 accent-primary"
+                      checked={settings.data?.preferences.highContrast ?? false}
+                      disabled={preferences.isPending}
+                      onChange={(event) =>
+                        preferences.mutate({
+                          highContrast: event.target.checked,
+                        })
+                      }
+                    />
+                    High contrast
+                  </label>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {providersMatch ? (
+            <section className="overflow-hidden rounded-lg border bg-card/30">
+              <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+                <div className="min-w-0">
+                  <div className="flex items-baseline gap-2">
+                    <h2 className="text-sm font-semibold">Providers</h2>
+                    <span className="text-xs text-muted-foreground">
+                      {visibleProviders.length}
+                      {search && visibleProviders.length !== providers.length
+                        ? ` of ${providers.length}`
+                        : ""}
+                    </span>
+                  </div>
+                  <p className="truncate text-xs text-muted-foreground">
+                    Ollama, compatible APIs, and isolated ChatGPT accounts.
+                  </p>
+                </div>
+                <Button
+                  className="size-8"
+                  size="icon"
+                  variant="outline"
+                  onClick={() => openProviderDialog(null)}
+                >
+                  <Plus className="size-3.5" />
+                  <span className="sr-only">Add provider</span>
+                </Button>
+              </div>
+              <div className="hidden grid-cols-[minmax(0,1.1fr)_minmax(0,1.7fr)_auto_72px] gap-3 bg-muted/35 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
+                <span>Provider</span>
+                <span>Connection</span>
+                <span>Type</span>
+                <span className="text-right">Actions</span>
+              </div>
+              <div className="[&>[data-high-contrast-row]:nth-child(even)]:bg-muted/20">
+                {visibleProviders.map((provider) => (
+                  <ProviderRow
+                    key={provider.id}
+                    provider={provider}
+                    workerId={worker?.workerId ?? null}
+                    removing={removeProvider.isPending}
+                    onEdit={() => openProviderDialog(provider)}
+                    onRemove={() => removeProvider.mutate(provider.id)}
+                  />
+                ))}
+                {!visibleProviders.length ? (
+                  <p className="px-3 py-5 text-center text-sm text-muted-foreground">
+                    No providers match “{searchQuery.trim()}”.
+                  </p>
+                ) : null}
+              </div>
               {removeProvider.isError ? (
-                <p className="text-sm text-destructive">
+                <p className="px-3 pb-3 text-sm text-destructive">
                   {errorText(removeProvider.error)}
                 </p>
               ) : null}
-            </CardContent>
-          </Card>
+            </section>
+          ) : null}
 
-          <Card>
-            <CardHeader className="grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
-              <div className="grid gap-1.5">
-                <CardTitle>Models</CardTitle>
-                <CardDescription>
-                  Models target one provider and may set a reasoning effort.
-                </CardDescription>
+          {modelsMatch ? (
+            <section className="overflow-hidden rounded-lg border bg-card/30">
+              <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+                <div className="min-w-0">
+                  <div className="flex items-baseline gap-2">
+                    <h2 className="text-sm font-semibold">Models</h2>
+                    <span className="text-xs text-muted-foreground">
+                      {visibleModels.length}
+                      {search && visibleModels.length !== models.length
+                        ? ` of ${models.length}`
+                        : ""}
+                    </span>
+                  </div>
+                  <p className="truncate text-xs text-muted-foreground">
+                    Model names, providers, and optional reasoning effort.
+                  </p>
+                </div>
+                <Button
+                  className="size-8"
+                  size="icon"
+                  variant="outline"
+                  disabled={!providers.length}
+                  onClick={() => openModelDialog(null)}
+                >
+                  <Plus className="size-3.5" />
+                  <span className="sr-only">Add model</span>
+                </Button>
               </div>
-              <Button
-                size="icon"
-                variant="outline"
-                disabled={!settings.data?.providers.length}
-                onClick={() => openModelDialog(null)}
-              >
-                <Plus className="size-4" />
-                <span className="sr-only">Add model</span>
-              </Button>
-            </CardHeader>
-            <CardContent className="grid gap-5">
-              <Field label="Default model for the first message">
+
+              <label className="flex flex-wrap items-center justify-between gap-2 bg-muted/15 px-3 py-2 text-xs">
+                <span className="font-medium">Default for new chats</span>
                 <select
                   value={settings.data?.preferences.defaultModelId ?? ""}
                   onChange={(event) =>
                     preferences.mutate({ defaultModelId: event.target.value })
                   }
-                  className={inputClass}
+                  className="h-8 min-w-0 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2 sm:w-72"
                   disabled={preferences.isPending}
                 >
-                  {(settings.data?.models ?? []).map((model) => (
+                  {models.map((model) => (
                     <option key={model.id} value={model.id}>
                       {model.providerName} / {model.name}
                     </option>
                   ))}
                 </select>
-              </Field>
+              </label>
 
-              <div className="grid gap-3">
-                {(settings.data?.models ?? []).map((model) => (
+              <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_72px] gap-3 bg-muted/35 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
+                <span>Model</span>
+                <span>Provider</span>
+                <span>Configuration</span>
+                <span className="text-right">Actions</span>
+              </div>
+              <div className="[&>[data-high-contrast-row]:nth-child(even)]:bg-muted/20">
+                {visibleModels.map((model) => (
                   <div
                     key={model.id}
                     data-high-contrast-row
-                    className="flex min-w-0 items-center gap-3 rounded-lg border p-3"
+                    className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-2.5 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_72px]"
                   >
-                    <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted">
-                      <Cpu className="size-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <Cpu className="size-4 shrink-0 text-muted-foreground" />
                       <p className="truncate text-sm font-medium">
                         {model.name}
                       </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {model.providerName}
+                      {settings.data?.preferences.defaultModelId ===
+                      model.id ? (
+                        <Badge className="sm:hidden" variant="secondary">
+                          Default
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <p className="col-span-2 truncate pl-6 text-xs text-muted-foreground sm:col-span-1 sm:pl-0">
+                      {model.providerName}
+                      <span className="sm:hidden">
                         {model.reasoningEffort
                           ? ` · ${model.reasoningEffort} reasoning`
                           : " · provider default reasoning"}
-                      </p>
+                      </span>
+                    </p>
+                    <div className="hidden items-center justify-end gap-2 text-xs text-muted-foreground sm:flex">
+                      <span>
+                        {model.reasoningEffort
+                          ? `${model.reasoningEffort} reasoning`
+                          : "Provider default"}
+                      </span>
+                      {settings.data?.preferences.defaultModelId ===
+                      model.id ? (
+                        <Badge variant="secondary">Default</Badge>
+                      ) : null}
                     </div>
-                    {settings.data?.preferences.defaultModelId === model.id ? (
-                      <Badge variant="secondary">Default</Badge>
-                    ) : null}
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => openModelDialog(model)}
-                    >
-                      <Pencil className="size-4" />
-                      <span className="sr-only">Edit {model.name}</span>
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      disabled={removeModel.isPending}
-                      onClick={() => removeModel.mutate(model.id)}
-                    >
-                      <Trash2 className="size-4" />
-                      <span className="sr-only">Delete {model.name}</span>
-                    </Button>
+                    <div className="col-start-2 row-start-1 flex items-center justify-end sm:col-auto sm:row-auto">
+                      <Button
+                        className="size-8"
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => openModelDialog(model)}
+                      >
+                        <Pencil className="size-3.5" />
+                        <span className="sr-only">Edit {model.name}</span>
+                      </Button>
+                      <Button
+                        className="size-8"
+                        size="icon"
+                        variant="ghost"
+                        disabled={removeModel.isPending}
+                        onClick={() => removeModel.mutate(model.id)}
+                      >
+                        <Trash2 className="size-3.5" />
+                        <span className="sr-only">Delete {model.name}</span>
+                      </Button>
+                    </div>
                   </div>
                 ))}
+                {!visibleModels.length ? (
+                  <p className="px-3 py-5 text-center text-sm text-muted-foreground">
+                    No models match “{searchQuery.trim()}”.
+                  </p>
+                ) : null}
               </div>
               {removeModel.isError ? (
-                <p className="text-sm text-destructive">
+                <p className="px-3 pb-3 text-sm text-destructive">
                   {errorText(removeModel.error)}
                 </p>
               ) : null}
-            </CardContent>
-          </Card>
+            </section>
+          ) : null}
 
-          <p className="pb-4 text-xs text-muted-foreground">
-            The default initializes new chats. You can change a chat’s model at
-            any time; the selected model applies to its next message.
+          {!hasSearchResults ? (
+            <div className="py-12 text-center">
+              <Search className="mx-auto mb-3 size-5 text-muted-foreground" />
+              <p className="text-sm font-medium">No settings found</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Try a provider name, model name, theme, or setting.
+              </p>
+            </div>
+          ) : null}
+
+          <p className="pb-2 text-xs text-muted-foreground">
+            The default initializes new chats. A chat’s selected model applies
+            to its next message.
           </p>
         </div>
       </div>
