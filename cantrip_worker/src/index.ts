@@ -288,6 +288,7 @@ async function start(): Promise<void> {
           worktreeMode: command.worktreeMode,
           worktreePolicy: command.worktreePolicy,
           onActivity: (activity) => emit({ type: "agent.activity", activity }),
+          onMessage: (message) => emit({ type: "agent.message", message }),
           onInteractionRequest: (request) =>
             emit({ type: "agent.interaction.requested", request }),
           onInteractionCleared: (requestKey) =>

@@ -236,7 +236,19 @@ function MessageContent({ message }: { message: ChatMessage }) {
     <div className="min-w-0 max-w-full space-y-3">
       {message.content.map((item, index) =>
         item.type === "text" ? (
-          <Markdown key={`text:${index}`}>{item.text}</Markdown>
+          item.phase === "commentary" ? (
+            <div
+              key={`text:${index}`}
+              className="rounded-lg border-l-2 border-muted-foreground/30 bg-muted/30 px-3 py-2 text-muted-foreground"
+            >
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wide">
+                Commentary
+              </p>
+              <Markdown>{item.text}</Markdown>
+            </div>
+          ) : (
+            <Markdown key={`text:${index}`}>{item.text}</Markdown>
+          )
         ) : (
           <Activity
             key={`activity:${item.activity.id}`}

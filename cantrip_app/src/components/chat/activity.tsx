@@ -1,12 +1,25 @@
 import type { AgentActivity } from "@cantrip/protocol";
 import {
+  AlertTriangle,
+  Bot,
+  BrainCircuit,
   Check,
   ChevronDown,
   ChevronRight,
+  CircleGauge,
   CircleX,
+  Clock3,
+  Combine,
+  Eye,
   FileDiff,
   GitBranch,
+  Image,
+  ListChecks,
   Loader2,
+  MessageSquareWarning,
+  Network,
+  Search,
+  ShieldCheck,
   Terminal,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -32,6 +45,295 @@ function changeLabel(kind: "add" | "delete" | "update") {
   return "Updated";
 }
 
+function formatDuration(durationMs: number | null | undefined) {
+  if (durationMs === null || durationMs === undefined) return null;
+  if (durationMs < 1_000) return `${durationMs}ms`;
+  if (durationMs < 60_000) return `${(durationMs / 1_000).toFixed(1)}s`;
+  return `${Math.floor(durationMs / 60_000)}m ${Math.round((durationMs % 60_000) / 1_000)}s`;
+}
+
+function formatReset(resetsAt: number | null) {
+  if (resetsAt === null) return null;
+  return new Date(resetsAt * 1_000).toLocaleString();
+}
+
+function CorrelationDetails({ activity }: { activity: AgentActivity }) {
+  const correlation = activity.correlation;
+  if (!correlation) return null;
+  const identifiers = [
+    correlation.threadId && `thread ${correlation.threadId}`,
+    correlation.turnId && `turn ${correlation.turnId}`,
+    correlation.itemId && `item ${correlation.itemId}`,
+    correlation.diagnosticId && `diagnostic ${correlation.diagnosticId}`,
+  ].filter(Boolean);
+  return (
+    <details className="text-[10px] text-muted-foreground">
+      <summary className="cursor-pointer select-none">Runtime source</summary>
+      <div className="mt-1 break-all font-mono leading-4">
+        <p>{correlation.sourceMethod}</p>
+        {identifiers.map((identifier) => (
+          <p key={identifier}>{identifier}</p>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function RichActivityIcon({ activity }: { activity: AgentActivity }) {
+  const className = "size-4 shrink-0 text-muted-foreground";
+  switch (activity.type) {
+    case "plan":
+      return <ListChecks className={className} />;
+    case "reasoning":
+      return <BrainCircuit className={className} />;
+    case "mcpToolCall":
+      return <Network className={className} />;
+    case "dynamicToolCall":
+      return <Combine className={className} />;
+    case "collabToolCall":
+    case "subAgent":
+      return <Bot className={className} />;
+    case "webSearch":
+      return <Search className={className} />;
+    case "imageView":
+      return <Image className={className} />;
+    case "reviewMode":
+      return <ShieldCheck className={className} />;
+    case "contextCompaction":
+      return <Combine className={className} />;
+    case "notice":
+      return activity.level === "error" ? (
+        <MessageSquareWarning className="size-4 shrink-0 text-destructive" />
+      ) : (
+        <AlertTriangle className="size-4 shrink-0 text-amber-500" />
+      );
+    case "usage":
+    case "rateLimit":
+      return <CircleGauge className={className} />;
+    case "turnSummary":
+      return <Clock3 className={className} />;
+    default:
+      return <Eye className={className} />;
+  }
+}
+
+export function activityLabel(activity: AgentActivity): string {
+  switch (activity.type) {
+    case "plan":
+      return activity.status === "running" ? "Updating plan" : "Updated plan";
+    case "reasoning":
+      return activity.status === "running" ? "Reasoning" : "Reasoned";
+    case "mcpToolCall":
+      return `MCP · ${activity.server}/${activity.tool}`;
+    case "dynamicToolCall":
+      return `Tool · ${activity.namespace ? `${activity.namespace}/` : ""}${activity.tool}`;
+    case "collabToolCall":
+      return `Collaboration · ${activity.tool}`;
+    case "subAgent":
+      return `Subagent · ${activity.agentPath}`;
+    case "webSearch":
+      return activity.query ? `Searched · ${activity.query}` : "Web search";
+    case "imageView":
+      return `Viewed image · ${activity.path}`;
+    case "reviewMode":
+      return `${activity.state === "entered" ? "Entered" : "Exited"} review mode`;
+    case "contextCompaction":
+      return activity.status === "running"
+        ? "Compacting context"
+        : "Compacted context";
+    case "notice":
+      return activity.message;
+    case "usage":
+      return `Used ${activity.last.totalTokens.toLocaleString()} tokens`;
+    case "rateLimit":
+      return activity.primary
+        ? `Rate limit · ${activity.primary.usedPercent.toFixed(0)}% used`
+        : "Rate limit updated";
+    case "turnSummary": {
+      const duration = formatDuration(activity.durationMs);
+      return `Turn ${activity.status}${duration ? ` in ${duration}` : ""}`;
+    }
+    case "worktree":
+      return activity.summary;
+    case "fileChange":
+      return activity.status === "running"
+        ? "Changing files"
+        : `Changed ${activity.changes.length} ${activity.changes.length === 1 ? "file" : "files"}`;
+    case "command":
+      return activity.command;
+  }
+}
+
+function RichActivityDetails({ activity }: { activity: AgentActivity }) {
+  switch (activity.type) {
+    case "plan":
+      return (
+        <div className="space-y-2">
+          {activity.explanation ? <p>{activity.explanation}</p> : null}
+          {activity.text ? (
+            <p className="whitespace-pre-wrap">{activity.text}</p>
+          ) : null}
+          {activity.steps.length > 0 ? (
+            <ul className="space-y-1">
+              {activity.steps.map((step, index) => (
+                <li key={`${index}:${step.step}`} className="flex gap-2">
+                  <span aria-hidden="true">
+                    {step.status === "completed"
+                      ? "✓"
+                      : step.status === "inProgress"
+                        ? "→"
+                        : "·"}
+                  </span>
+                  <span>{step.step}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      );
+    case "reasoning":
+      return activity.summary.length > 0 ? (
+        <div className="space-y-2">
+          {activity.summary.map((part, index) => (
+            <p
+              key={`${index}:${part.slice(0, 24)}`}
+              className="whitespace-pre-wrap"
+            >
+              {part}
+            </p>
+          ))}
+        </div>
+      ) : null;
+    case "mcpToolCall":
+      return (
+        <div className="space-y-1">
+          {activity.error ? (
+            <p className="text-destructive">{activity.error}</p>
+          ) : null}
+          {formatDuration(activity.durationMs) ? (
+            <p>Duration {formatDuration(activity.durationMs)}</p>
+          ) : null}
+        </div>
+      );
+    case "dynamicToolCall":
+      return formatDuration(activity.durationMs) ||
+        activity.success !== null ? (
+        <p>
+          {activity.success === null
+            ? ""
+            : activity.success
+              ? "Succeeded"
+              : "Failed"}
+          {formatDuration(activity.durationMs)
+            ? `${activity.success === null ? "" : " · "}${formatDuration(activity.durationMs)}`
+            : ""}
+        </p>
+      ) : null;
+    case "collabToolCall":
+      return (
+        <div className="space-y-2">
+          {activity.prompt ? (
+            <p className="whitespace-pre-wrap">{activity.prompt}</p>
+          ) : null}
+          {activity.receiverThreadIds.length > 0 ? (
+            <p className="break-all font-mono text-[11px]">
+              Targets: {activity.receiverThreadIds.join(", ")}
+            </p>
+          ) : null}
+          {activity.agentStates.map((agent) => (
+            <p key={agent.threadId}>
+              {agent.threadId}: {agent.status}
+              {agent.message ? ` · ${agent.message}` : ""}
+            </p>
+          ))}
+        </div>
+      );
+    case "subAgent":
+      return <p className="break-all font-mono">{activity.agentThreadId}</p>;
+    case "webSearch":
+      return activity.action ? <p>{activity.action}</p> : null;
+    case "imageView":
+      return <p className="break-all font-mono">{activity.path}</p>;
+    case "reviewMode":
+      return activity.review ? (
+        <p className="whitespace-pre-wrap">{activity.review}</p>
+      ) : null;
+    case "notice":
+      return (
+        <div className="space-y-1">
+          {activity.details ? (
+            <p className="whitespace-pre-wrap">{activity.details}</p>
+          ) : null}
+          {activity.willRetry !== null ? (
+            <p>
+              {activity.willRetry
+                ? "Codex will retry."
+                : "Codex will not retry."}
+            </p>
+          ) : null}
+        </div>
+      );
+    case "usage":
+      return (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 tabular-nums">
+          <span>Input</span>
+          <span>{activity.last.inputTokens.toLocaleString()}</span>
+          <span>Cached input</span>
+          <span>{activity.last.cachedInputTokens.toLocaleString()}</span>
+          <span>Output</span>
+          <span>{activity.last.outputTokens.toLocaleString()}</span>
+          <span>Reasoning output</span>
+          <span>{activity.last.reasoningOutputTokens.toLocaleString()}</span>
+          {activity.contextUsedPercent !== null ? (
+            <>
+              <span>Context used</span>
+              <span>{activity.contextUsedPercent.toFixed(1)}%</span>
+            </>
+          ) : null}
+        </div>
+      );
+    case "rateLimit":
+      return (
+        <div className="space-y-1 tabular-nums">
+          {activity.limitName ? <p>{activity.limitName}</p> : null}
+          {activity.primary ? (
+            <p>
+              Primary: {activity.primary.usedPercent.toFixed(1)}% used
+              {formatReset(activity.primary.resetsAt)
+                ? ` · resets ${formatReset(activity.primary.resetsAt)}`
+                : ""}
+            </p>
+          ) : null}
+          {activity.secondary ? (
+            <p>
+              Secondary: {activity.secondary.usedPercent.toFixed(1)}% used
+              {formatReset(activity.secondary.resetsAt)
+                ? ` · resets ${formatReset(activity.secondary.resetsAt)}`
+                : ""}
+            </p>
+          ) : null}
+          {activity.reachedType ? (
+            <p className="text-destructive">
+              {activity.reachedType.replaceAll("_", " ")}
+            </p>
+          ) : null}
+        </div>
+      );
+    case "turnSummary":
+      return activity.startedAt !== null && activity.completedAt !== null ? (
+        <p>
+          {new Date(activity.startedAt * 1_000).toLocaleString()} –{" "}
+          {new Date(activity.completedAt * 1_000).toLocaleString()}
+        </p>
+      ) : null;
+    case "contextCompaction":
+    case "worktree":
+    case "fileChange":
+    case "command":
+      return null;
+  }
+}
+
 export function Activity({ activity }: { activity: AgentActivity }) {
   if (activity.type === "worktree") {
     return (
@@ -39,6 +341,7 @@ export function Activity({ activity }: { activity: AgentActivity }) {
         <GitBranch className="size-4 shrink-0 text-violet-500" />
         <span className="min-w-0 truncate">{activity.summary}</span>
         <ActivityState activity={activity} />
+        <CorrelationDetails activity={activity} />
       </div>
     );
   }
@@ -77,11 +380,84 @@ export function Activity({ activity }: { activity: AgentActivity }) {
             ))}
           </ul>
         ) : null}
+        <div className="mt-1 pl-6">
+          <CorrelationDetails activity={activity} />
+        </div>
       </div>
     );
   }
 
-  const hasDetails = Boolean(activity.output || activity.cwd);
+  if (activity.type !== "command") {
+    const details = <RichActivityDetails activity={activity} />;
+    const hasDetails =
+      activity.type === "plan"
+        ? Boolean(
+            activity.text || activity.explanation || activity.steps.length,
+          )
+        : activity.type === "reasoning"
+          ? activity.summary.length > 0
+          : activity.type === "mcpToolCall"
+            ? Boolean(activity.error || activity.durationMs !== null)
+            : activity.type === "dynamicToolCall"
+              ? activity.success !== null || activity.durationMs !== null
+              : activity.type === "collabToolCall"
+                ? Boolean(
+                    activity.prompt ||
+                    activity.receiverThreadIds.length ||
+                    activity.agentStates.length,
+                  )
+                : activity.type === "webSearch"
+                  ? Boolean(activity.action)
+                  : activity.type === "reviewMode"
+                    ? Boolean(activity.review)
+                    : activity.type === "notice"
+                      ? Boolean(activity.details || activity.willRetry !== null)
+                      : activity.type === "contextCompaction"
+                        ? false
+                        : true;
+    return (
+      <details
+        className="group min-w-0 py-1 text-sm"
+        open={activity.type === "notice" && activity.level === "error"}
+      >
+        <summary
+          className={cn(
+            "flex min-w-0 list-none items-center gap-2",
+            (hasDetails || activity.correlation) && "cursor-pointer",
+          )}
+        >
+          <RichActivityIcon activity={activity} />
+          <span
+            className={cn(
+              "min-w-0 truncate font-medium",
+              activity.type === "notice" &&
+                activity.level === "error" &&
+                "text-destructive",
+            )}
+          >
+            {activityLabel(activity)}
+          </span>
+          <ActivityState activity={activity} />
+          {hasDetails || activity.correlation ? (
+            <ChevronRight className="ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+          ) : null}
+        </summary>
+        {hasDetails || activity.correlation ? (
+          <div className="mt-2 min-w-0 space-y-2 pl-6 text-xs leading-5 text-muted-foreground">
+            {details}
+            <CorrelationDetails activity={activity} />
+          </div>
+        ) : null}
+      </details>
+    );
+  }
+
+  const hasDetails = Boolean(
+    activity.output ||
+    activity.cwd ||
+    activity.durationMs !== null ||
+    activity.correlation,
+  );
   return (
     <details
       className="group min-w-0 py-1 text-sm"
@@ -120,6 +496,12 @@ export function Activity({ activity }: { activity: AgentActivity }) {
               Exit code {activity.exitCode}
             </p>
           ) : null}
+          {formatDuration(activity.durationMs) ? (
+            <p className="text-[11px] text-muted-foreground">
+              Duration {formatDuration(activity.durationMs)}
+            </p>
+          ) : null}
+          <CorrelationDetails activity={activity} />
         </div>
       ) : null}
     </details>

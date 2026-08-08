@@ -835,6 +835,50 @@ describe("Cantrip protocol", () => {
     });
 
     expect(event.event.activity.type).toBe("fileChange");
+
+    const reasoning = workerEventEnvelopeSchema.parse({
+      kind: "event",
+      requestId: "request-2",
+      event: {
+        type: "agent.activity",
+        activity: {
+          type: "reasoning",
+          id: "reasoning-1",
+          status: "completed",
+          summary: ["Compared the two supported paths."],
+          correlation: {
+            sourceMethod: "item/completed",
+            diagnosticId: "session-1:9",
+            threadId: "thread-1",
+            turnId: "turn-1",
+            itemId: "reasoning-1",
+          },
+        },
+      },
+    });
+    expect(reasoning.event).toMatchObject({
+      type: "agent.activity",
+      activity: {
+        type: "reasoning",
+        correlation: { diagnosticId: "session-1:9" },
+      },
+    });
+
+    expect(
+      workerEventEnvelopeSchema.parse({
+        kind: "event",
+        requestId: "request-3",
+        event: {
+          type: "agent.message",
+          message: {
+            id: "message-1",
+            text: "I’m checking the runtime contract.",
+            phase: "commentary",
+            correlation: null,
+          },
+        },
+      }).event.type,
+    ).toBe("agent.message");
   });
 
   it("validates interactive terminal frames", () => {

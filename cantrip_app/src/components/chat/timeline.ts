@@ -34,6 +34,24 @@ function precedingTurnStart(messages: ChatMessage[], index: number): string {
   return messages[index]?.createdAt ?? new Date(0).toISOString();
 }
 
+function terminalMessage(message: ChatMessage | undefined): boolean {
+  if (!message) return false;
+  if (message.role === "system") return true;
+  if (message.role !== "assistant") return false;
+  return message.content.some(
+    (item) => item.type === "text" && item.phase !== "commentary",
+  );
+}
+
+function trailingTurnMetadata(activities: AgentActivity[]): boolean {
+  return activities.every(
+    (activity) =>
+      activity.type === "usage" ||
+      activity.type === "rateLimit" ||
+      activity.type === "turnSummary",
+  );
+}
+
 export function buildChatTimeline(
   messages: ChatMessage[],
 ): ChatTimelineEntry[] {
@@ -58,18 +76,46 @@ export function buildChatTimeline(
       endIndex += 1;
     }
     const followingMessage = messages[endIndex + 1];
-    const completed =
-      followingMessage &&
-      (followingMessage.role === "assistant" ||
-        followingMessage.role === "system") &&
-      activities(followingMessage) === null;
+    const turnSummary = [...grouped]
+      .reverse()
+      .find(
+        (activity) =>
+          activity.type === "turnSummary" && activity.status !== "running",
+      );
+    const endedAt = terminalMessage(followingMessage)
+      ? followingMessage!.createdAt
+      : turnSummary?.type === "turnSummary" && turnSummary.completedAt !== null
+        ? new Date(turnSummary.completedAt * 1_000).toISOString()
+        : null;
+
+    const previousMessageEntry = entries.at(-1);
+    const previousActivityEntry = entries.at(-2);
+    if (
+      trailingTurnMetadata(grouped) &&
+      previousMessageEntry?.type === "message" &&
+      terminalMessage(previousMessageEntry.message)
+    ) {
+      if (previousActivityEntry?.type === "activityGroup") {
+        previousActivityEntry.activities.push(...grouped);
+      } else {
+        entries.splice(entries.length - 1, 0, {
+          type: "activityGroup",
+          key: `activities:${message.id}`,
+          activities: grouped,
+          startedAt: precedingTurnStart(messages, index),
+          endedAt: previousMessageEntry.message.createdAt,
+        });
+      }
+      index = endIndex;
+      continue;
+    }
 
     entries.push({
       type: "activityGroup",
       key: `activities:${message.id}`,
       activities: grouped,
       startedAt: precedingTurnStart(messages, index),
-      endedAt: completed ? followingMessage.createdAt : null,
+      endedAt,
     });
     index = endIndex;
   }

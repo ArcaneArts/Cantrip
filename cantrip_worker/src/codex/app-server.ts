@@ -21,6 +21,7 @@ import {
   pendingPlanQuestionSchema,
   permissionProfileCapabilitySchema,
   normalizeResponsesBaseUrl,
+  normalizedAgentMessageSchema,
   threadGoalSchema,
   type AgentActivity,
   type AgentInteractionRequestKind,
@@ -33,7 +34,9 @@ import {
   type AgentTurnResult,
   type ChatGoalResponse,
   type CodexRuntimeReport,
+  type CodexEventCorrelation,
   type ChatPlanAnswer,
+  type NormalizedAgentMessage,
   type PendingPlanQuestion,
   type PermissionProfileCapability,
   type PlanMode,
@@ -88,6 +91,7 @@ interface ActiveTurn {
   finalText: string | null;
   model: RunAgentTurnOptions["model"];
   onActivity?: (activity: AgentActivity) => void;
+  onMessage?: (message: NormalizedAgentMessage) => void;
   onInteractionCleared?: (requestKey: string) => void;
   onInteractionExpired?: (requestKey: string) => void;
   onInteractionRequest?: (request: AgentInteractionRuntimeRequest) => void;
@@ -100,6 +104,7 @@ interface ActiveTurn {
   onPlanQuestion?: (question: PendingPlanQuestion) => void;
   onPlanQuestionResolved?: (questionId: string) => void;
   onWorktreeToolCall?: WorktreeToolHandler;
+  reasoningSummaries: Map<string, string[]>;
   reject(error: Error): void;
   resolve(result: AgentTurnResult): void;
   threadId: string;
@@ -108,13 +113,10 @@ interface ActiveTurn {
 interface ThreadTurn {
   completedAt: number | null;
   durationMs: number | null;
-  error: { message: string } | null;
+  error: TurnError | null;
   id: string;
   items: Array<
-    | (AgentMessageItem & { id: string })
-    | PlanItem
-    | CommandExecutionItem
-    | FileChangeItem
+    | CodexThreadItem
     | {
         clientId: string | null;
         content: Array<{ type: string; text?: string }>;
@@ -539,8 +541,11 @@ interface TurnStartResponse {
 interface TurnCompletedParams {
   threadId: string;
   turn: {
-    error: { message: string } | null;
+    completedAt?: number | null;
+    durationMs?: number | null;
+    error: TurnError | null;
     id: string;
+    startedAt?: number | null;
     status: "completed" | "failed" | "interrupted" | "inProgress";
   };
 }
@@ -551,10 +556,22 @@ interface AgentMessageDeltaParams {
   turnId: string;
 }
 
+interface ReasoningSummaryPartAddedParams {
+  itemId: string;
+  summaryIndex: number;
+  threadId: string;
+  turnId: string;
+}
+
+interface ReasoningSummaryTextDeltaParams extends ReasoningSummaryPartAddedParams {
+  delta: string;
+}
+
 interface CommandExecutionItem {
   aggregatedOutput: string | null;
   command: string;
   cwd: string;
+  durationMs?: number | null;
   exitCode: number | null;
   id: string;
   status: "inProgress" | "completed" | "failed" | "declined";
@@ -572,6 +589,7 @@ interface FileChangeItem {
 }
 
 interface AgentMessageItem {
+  id: string;
   phase?: "commentary" | "final_answer" | null;
   text?: string;
   type: "agentMessage";
@@ -583,10 +601,164 @@ interface PlanItem {
   type: "plan";
 }
 
+interface ReasoningItem {
+  content?: string[];
+  id: string;
+  summary: string[];
+  type: "reasoning";
+}
+
+interface McpToolCallItem {
+  durationMs: number | null;
+  error: { message: string } | null;
+  id: string;
+  server: string;
+  status: "inProgress" | "completed" | "failed";
+  tool: string;
+  type: "mcpToolCall";
+}
+
+interface DynamicToolCallItem {
+  durationMs: number | null;
+  id: string;
+  namespace: string | null;
+  status: "inProgress" | "completed" | "failed";
+  success: boolean | null;
+  tool: string;
+  type: "dynamicToolCall";
+}
+
+interface CollabAgentToolCallItem {
+  agentsStates: Record<
+    string,
+    { message: string | null; status: string } | undefined
+  >;
+  id: string;
+  model: string | null;
+  prompt: string | null;
+  receiverThreadIds: string[];
+  senderThreadId: string;
+  status: "inProgress" | "completed" | "failed";
+  tool: string;
+  type: "collabAgentToolCall";
+}
+
+interface SubAgentActivityItem {
+  agentPath: string;
+  agentThreadId: string;
+  id: string;
+  kind: "started" | "interacted" | "interrupted";
+  type: "subAgentActivity";
+}
+
+interface WebSearchItem {
+  action: {
+    pattern?: string;
+    queries?: string[];
+    query?: string;
+    type: string;
+    url?: string;
+  } | null;
+  id: string;
+  query: string;
+  type: "webSearch";
+}
+
+interface ImageViewItem {
+  id: string;
+  path: string;
+  type: "imageView";
+}
+
+interface ReviewModeItem {
+  id: string;
+  review: string;
+  type: "enteredReviewMode" | "exitedReviewMode";
+}
+
+interface ContextCompactionItem {
+  id: string;
+  type: "contextCompaction";
+}
+
+type CodexThreadItem =
+  | AgentMessageItem
+  | PlanItem
+  | ReasoningItem
+  | CommandExecutionItem
+  | FileChangeItem
+  | McpToolCallItem
+  | DynamicToolCallItem
+  | CollabAgentToolCallItem
+  | SubAgentActivityItem
+  | WebSearchItem
+  | ImageViewItem
+  | ReviewModeItem
+  | ContextCompactionItem;
+
 interface ItemLifecycleParams {
-  item: AgentMessageItem | CommandExecutionItem | FileChangeItem | PlanItem;
+  item: CodexThreadItem;
   threadId: string;
   turnId: string;
+}
+
+interface TokenUsageBreakdown {
+  totalTokens: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteInputTokens: number;
+  outputTokens: number;
+  reasoningOutputTokens: number;
+}
+
+interface ThreadTokenUsageUpdatedParams {
+  threadId: string;
+  turnId: string;
+  tokenUsage: {
+    total: TokenUsageBreakdown;
+    last: TokenUsageBreakdown;
+    modelContextWindow: number | null;
+  };
+}
+
+interface RateLimitWindow {
+  usedPercent: number;
+  windowDurationMins: number | null;
+  resetsAt: number | null;
+}
+
+interface AccountRateLimitsUpdatedParams {
+  rateLimits: {
+    limitId: string | null;
+    limitName: string | null;
+    planType: string | null;
+    primary: RateLimitWindow | null;
+    rateLimitReachedType: string | null;
+    secondary: RateLimitWindow | null;
+  };
+}
+
+interface WarningParams {
+  message: string;
+  threadId: string | null;
+}
+
+interface ConfigWarningParams {
+  details: string | null;
+  path?: string;
+  summary: string;
+}
+
+interface TurnError {
+  additionalDetails?: string | null;
+  message: string;
+}
+
+interface ErrorNotificationParams {
+  error: TurnError;
+  threadId: string;
+  turnId: string;
+  willRetry: boolean;
 }
 
 interface TurnDiffUpdatedParams {
@@ -685,6 +857,7 @@ export interface RunAgentTurnOptions {
     { type: "chat.turn" }
   >["worktreePolicy"];
   onActivity?: (activity: AgentActivity) => void;
+  onMessage?: ActiveTurn["onMessage"];
   onInteractionCleared?: ActiveTurn["onInteractionCleared"];
   onInteractionExpired?: ActiveTurn["onInteractionExpired"];
   onInteractionRequest?: ActiveTurn["onInteractionRequest"];
@@ -1039,9 +1212,39 @@ export function codexRuntimeId(
 }
 
 function activityStatus(
-  status: CommandExecutionItem["status"],
+  status: "inProgress" | "completed" | "failed" | "declined",
 ): AgentActivity["status"] {
   return status === "inProgress" ? "running" : status;
+}
+
+function boundedText(value: string | null | undefined, limit = 20_000) {
+  if (value === null || value === undefined) return null;
+  if (value.length <= limit) return value;
+  return `${value.slice(0, limit)}\n…truncated…`;
+}
+
+function stableActivityId(prefix: string, ...parts: Array<string | null>) {
+  const digest = createHash("sha256")
+    .update(parts.map((part) => part ?? "").join("\0"))
+    .digest("hex")
+    .slice(0, 20);
+  return `${prefix}:${digest}`;
+}
+
+function eventCorrelation(
+  sourceMethod: string,
+  diagnosticId: string | null,
+  threadId: string | null,
+  turnId: string | null,
+  itemId: string | null,
+): CodexEventCorrelation {
+  return {
+    sourceMethod,
+    diagnosticId,
+    threadId,
+    turnId,
+    itemId,
+  };
 }
 
 function displayPath(cwd: string, filePath: string): string {
@@ -1156,6 +1359,7 @@ function emitFileActivity(
   active: ActiveTurn,
   turnId: string,
   status: AgentActivity["status"],
+  correlation: CodexEventCorrelation,
 ): void {
   if (active.diffChanges.length === 0) {
     return;
@@ -1166,14 +1370,53 @@ function emitFileActivity(
       id: `turn:${turnId}:files`,
       status,
       changes: active.diffChanges,
+      correlation,
     }),
   );
 }
 
-function toActivity(
-  item: CommandExecutionItem | FileChangeItem,
+function webSearchAction(item: WebSearchItem): string | null {
+  if (!item.action) return null;
+  if (item.action.type === "open_page") {
+    return item.action.url
+      ? `Opened ${safeDisplayUrl(item.action.url)}`
+      : "Opened a page";
+  }
+  if (item.action.type === "find_in_page") {
+    const location = item.action.url
+      ? ` in ${safeDisplayUrl(item.action.url)}`
+      : "";
+    return item.action.pattern
+      ? `Found “${item.action.pattern}”${location}`
+      : `Searched within a page${location}`;
+  }
+  if (item.action.type === "search") {
+    const queries =
+      item.action.queries ?? (item.action.query ? [item.action.query] : []);
+    return queries.length > 0 ? `Searched ${queries.join(", ")}` : "Searched";
+  }
+  return item.action.type === "other" ? "Web search" : item.action.type;
+}
+
+function safeDisplayUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return value.split(/[?#]/u, 1)[0] ?? "page";
+  }
+}
+
+export function normalizeCodexThreadItem(
+  item: CodexThreadItem,
   cwd: string,
-): AgentActivity {
+  lifecycle: "started" | "completed",
+  correlation: CodexEventCorrelation,
+): AgentActivity | null {
   if (item.type === "commandExecution") {
     return agentActivitySchema.parse({
       type: "command",
@@ -1183,16 +1426,245 @@ function toActivity(
       status: activityStatus(item.status),
       exitCode: item.exitCode,
       output: commandOutput(item.aggregatedOutput),
+      durationMs: item.durationMs ?? null,
+      correlation,
     });
   }
-  return agentActivitySchema.parse({
-    type: "fileChange",
+  if (item.type === "fileChange") {
+    return agentActivitySchema.parse({
+      type: "fileChange",
+      id: item.id,
+      status: activityStatus(item.status),
+      changes: item.changes.map((change) => ({
+        path: displayPath(cwd, change.path),
+        kind: change.kind.type,
+      })),
+      correlation,
+    });
+  }
+  if (item.type === "plan") {
+    return agentActivitySchema.parse({
+      type: "plan",
+      id: item.id,
+      status: lifecycle === "started" ? "running" : "completed",
+      text: boundedText(item.text) ?? "",
+      explanation: null,
+      steps: [],
+      correlation,
+    });
+  }
+  if (item.type === "reasoning") {
+    return agentActivitySchema.parse({
+      type: "reasoning",
+      id: item.id,
+      status: lifecycle === "started" ? "running" : "completed",
+      summary: item.summary
+        .map((part) => boundedText(part)?.trim() ?? "")
+        .filter(Boolean)
+        .slice(0, 100),
+      correlation,
+    });
+  }
+  if (item.type === "mcpToolCall") {
+    return agentActivitySchema.parse({
+      type: "mcpToolCall",
+      id: item.id,
+      status: activityStatus(item.status),
+      server: item.server,
+      tool: item.tool,
+      error: boundedText(item.error?.message),
+      durationMs: item.durationMs,
+      correlation,
+    });
+  }
+  if (item.type === "dynamicToolCall") {
+    return agentActivitySchema.parse({
+      type: "dynamicToolCall",
+      id: item.id,
+      status: activityStatus(item.status),
+      namespace: item.namespace?.trim() || null,
+      tool: item.tool,
+      success: item.success,
+      durationMs: item.durationMs,
+      correlation,
+    });
+  }
+  if (item.type === "collabAgentToolCall") {
+    return agentActivitySchema.parse({
+      type: "collabToolCall",
+      id: item.id,
+      status: activityStatus(item.status),
+      tool: item.tool,
+      senderThreadId: item.senderThreadId,
+      receiverThreadIds: item.receiverThreadIds.slice(0, 100),
+      prompt: null,
+      model: item.model,
+      agentStates: Object.entries(item.agentsStates)
+        .flatMap(([threadId, state]) =>
+          state
+            ? [
+                {
+                  threadId,
+                  status: state.status,
+                  message: boundedText(state.message, 4_000),
+                },
+              ]
+            : [],
+        )
+        .slice(0, 100),
+      correlation,
+    });
+  }
+  if (item.type === "subAgentActivity") {
+    return agentActivitySchema.parse({
+      type: "subAgent",
+      id: item.id,
+      status:
+        item.kind === "started"
+          ? "running"
+          : item.kind === "interrupted"
+            ? "failed"
+            : "completed",
+      kind: item.kind,
+      agentThreadId: item.agentThreadId,
+      agentPath: item.agentPath || item.agentThreadId,
+      correlation,
+    });
+  }
+  if (item.type === "webSearch") {
+    return agentActivitySchema.parse({
+      type: "webSearch",
+      id: item.id,
+      status: lifecycle === "started" ? "running" : "completed",
+      query: boundedText(item.query, 4_000) ?? "",
+      action: boundedText(webSearchAction(item), 4_000),
+      correlation,
+    });
+  }
+  if (item.type === "imageView") {
+    return agentActivitySchema.parse({
+      type: "imageView",
+      id: item.id,
+      status: lifecycle === "started" ? "running" : "completed",
+      path: displayPath(cwd, item.path),
+      correlation,
+    });
+  }
+  if (item.type === "enteredReviewMode" || item.type === "exitedReviewMode") {
+    return agentActivitySchema.parse({
+      type: "reviewMode",
+      id: item.id,
+      status: lifecycle === "started" ? "running" : "completed",
+      state: item.type === "enteredReviewMode" ? "entered" : "exited",
+      review: boundedText(item.review) ?? "",
+      correlation,
+    });
+  }
+  if (item.type === "contextCompaction") {
+    return agentActivitySchema.parse({
+      type: "contextCompaction",
+      id: item.id,
+      status: lifecycle === "started" ? "running" : "completed",
+      correlation,
+    });
+  }
+  return null;
+}
+
+export function normalizeAgentMessage(
+  item: AgentMessageItem,
+  correlation: CodexEventCorrelation,
+): NormalizedAgentMessage | null {
+  const text = item.text?.trim();
+  if (!text) return null;
+  return normalizedAgentMessageSchema.parse({
     id: item.id,
-    status: activityStatus(item.status),
-    changes: item.changes.map((change) => ({
-      path: displayPath(cwd, change.path),
-      kind: change.kind.type,
-    })),
+    text,
+    phase: item.phase ?? null,
+    correlation,
+  });
+}
+
+export function normalizeTokenUsageActivity(
+  params: ThreadTokenUsageUpdatedParams,
+  correlation: CodexEventCorrelation,
+): AgentActivity {
+  const window = params.tokenUsage.modelContextWindow;
+  const contextUsedPercent = window
+    ? Math.round((params.tokenUsage.last.totalTokens / window) * 1_000) / 10
+    : null;
+  return agentActivitySchema.parse({
+    type: "usage",
+    id: `turn:${params.turnId}:usage`,
+    status: "completed",
+    ...params.tokenUsage,
+    contextUsedPercent,
+    correlation,
+  });
+}
+
+export function normalizeRateLimitActivity(
+  params: AccountRateLimitsUpdatedParams,
+  turnId: string,
+  correlation: CodexEventCorrelation,
+): AgentActivity {
+  return agentActivitySchema.parse({
+    type: "rateLimit",
+    id: `turn:${turnId}:rate-limit`,
+    status: params.rateLimits.rateLimitReachedType ? "failed" : "completed",
+    limitName: params.rateLimits.limitName,
+    planType: params.rateLimits.planType,
+    reachedType: params.rateLimits.rateLimitReachedType,
+    primary: params.rateLimits.primary,
+    secondary: params.rateLimits.secondary,
+    correlation,
+  });
+}
+
+export function normalizeNoticeActivity(input: {
+  correlation: CodexEventCorrelation;
+  details?: string | null;
+  level: "warning" | "error";
+  message: string;
+  willRetry?: boolean | null;
+}): AgentActivity {
+  return agentActivitySchema.parse({
+    type: "notice",
+    id: stableActivityId(
+      input.level,
+      input.correlation.turnId,
+      input.correlation.sourceMethod,
+      input.message,
+    ),
+    status: input.level === "error" ? "failed" : "completed",
+    level: input.level,
+    message: boundedText(input.message)?.trim() || input.level,
+    details: boundedText(input.details),
+    willRetry: input.willRetry ?? null,
+    correlation: input.correlation,
+  });
+}
+
+function turnSummaryActivity(
+  turn: Pick<
+    ThreadTurn,
+    "completedAt" | "durationMs" | "id" | "startedAt" | "status"
+  >,
+  correlation: CodexEventCorrelation,
+): AgentActivity {
+  return agentActivitySchema.parse({
+    type: "turnSummary",
+    id: `turn:${turn.id}:summary`,
+    status:
+      turn.status === "inProgress"
+        ? "running"
+        : turn.status === "completed"
+          ? "completed"
+          : "failed",
+    durationMs: turn.durationMs,
+    startedAt: turn.startedAt,
+    completedAt: turn.completedAt,
+    correlation,
   });
 }
 
@@ -1215,6 +1687,7 @@ export class CodexAppServer implements CodexRuntime {
   #child: ChildProcessWithoutNullStreams | null = null;
   #remoteUrl: string | null = null;
   #runtimeId: string | null = null;
+  #nextDiagnosticSequence = 1;
   #nextId = 1;
   #socket: WebSocket | null = null;
   #starting: Promise<void> | null = null;
@@ -1281,6 +1754,7 @@ export class CodexAppServer implements CodexRuntime {
         finalText: null,
         model: options.model,
         onActivity: options.onActivity,
+        onMessage: options.onMessage,
         onInteractionCleared: options.onInteractionCleared,
         onInteractionExpired: options.onInteractionExpired,
         onInteractionRequest: options.onInteractionRequest,
@@ -1289,6 +1763,7 @@ export class CodexAppServer implements CodexRuntime {
         onPlanQuestion: options.onPlanQuestion,
         onPlanQuestionResolved: options.onPlanQuestionResolved,
         onWorktreeToolCall: options.onWorktreeToolCall,
+        reasoningSummaries: new Map(),
         reject,
         resolve,
         threadId,
@@ -1408,7 +1883,7 @@ export class CodexAppServer implements CodexRuntime {
               item.clientId?.startsWith("cantrip:"),
           ),
       )
-      .map((turn) => this.syncTurn(turn, options.cwd));
+      .map((turn) => this.syncTurn(turn, options.cwd, response.thread.id));
     for (const turn of turns) {
       if (turn.status !== "inProgress") baseline?.add(turn.id);
     }
@@ -1850,7 +2325,7 @@ export class CodexAppServer implements CodexRuntime {
     return collaborationMode;
   }
 
-  private syncTurn(turn: ThreadTurn, cwd: string) {
+  private syncTurn(turn: ThreadTurn, cwd: string, threadId: string) {
     const items = turn.items.flatMap((item): AgentThreadSyncItem[] => {
       if (item.type === "userMessage") {
         const text = item.content
@@ -1862,28 +2337,44 @@ export class CodexAppServer implements CodexRuntime {
         return text ? [{ type: "userMessage", id: item.id, text }] : [];
       }
       if (item.type === "agentMessage") {
-        const text = item.text?.trim();
-        return text
-          ? [
-              {
-                type: "agentMessage",
-                id: item.id,
-                text,
-                phase: item.phase ?? null,
-              },
-            ]
-          : [];
+        const message = normalizeAgentMessage(
+          item,
+          eventCorrelation("thread/read", null, threadId, turn.id, item.id),
+        );
+        return message ? [{ type: "agentMessage", ...message }] : [];
       }
-      if (item.type === "plan") {
-        const text = item.text?.trim();
-        return text
-          ? [{ type: "agentMessage", id: item.id, text, phase: "final_answer" }]
-          : [];
-      }
-      if (item.type === "commandExecution" || item.type === "fileChange") {
-        return [{ type: "activity", activity: toActivity(item, cwd) }];
-      }
-      return [];
+      const activity = normalizeCodexThreadItem(
+        item,
+        cwd,
+        turn.status === "inProgress" ? "started" : "completed",
+        eventCorrelation("thread/read", null, threadId, turn.id, item.id),
+      );
+      return activity ? [{ type: "activity", activity }] : [];
+    });
+    if (turn.error?.message) {
+      items.push({
+        type: "activity",
+        activity: normalizeNoticeActivity({
+          level: "error",
+          message: turn.error.message,
+          details: turn.error.additionalDetails,
+          willRetry: false,
+          correlation: eventCorrelation(
+            "thread/read",
+            null,
+            threadId,
+            turn.id,
+            null,
+          ),
+        }),
+      });
+    }
+    items.push({
+      type: "activity",
+      activity: turnSummaryActivity(
+        turn,
+        eventCorrelation("thread/read", null, threadId, turn.id, null),
+      ),
     });
     return {
       id: turn.id,
@@ -2122,7 +2613,7 @@ export class CodexAppServer implements CodexRuntime {
       return;
     }
 
-    this.recordDiagnostic({
+    const diagnosticId = this.recordDiagnostic({
       at: new Date().toISOString(),
       direction: "from-runtime",
       kind: "message",
@@ -2194,11 +2685,34 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "turn/plan/updated") {
       const params = message.params as TurnPlanUpdatedParams;
-      this.#activeTurns.get(params.turnId)?.onPlan?.({
-        explanation: params.explanation,
-        steps: params.plan,
-        turnId: params.turnId,
-      });
+      const active = this.#activeTurns.get(params.turnId);
+      if (active) {
+        active.onPlan?.({
+          explanation: params.explanation,
+          steps: params.plan,
+          turnId: params.turnId,
+        });
+        active.onActivity?.(
+          agentActivitySchema.parse({
+            type: "plan",
+            id: `turn:${params.turnId}:plan`,
+            status: "completed",
+            text: "",
+            explanation: boundedText(params.explanation),
+            steps: params.plan.slice(0, 100).map((step) => ({
+              ...step,
+              step: boundedText(step.step) ?? "",
+            })),
+            correlation: eventCorrelation(
+              message.method,
+              diagnosticId,
+              params.threadId,
+              params.turnId,
+              null,
+            ),
+          }),
+        );
+      }
       return;
     }
 
@@ -2225,6 +2739,46 @@ export class CodexAppServer implements CodexRuntime {
       return;
     }
 
+    if (message.method === "item/reasoning/summaryPartAdded") {
+      const params = message.params as ReasoningSummaryPartAddedParams;
+      const active = this.#activeTurns.get(params.turnId);
+      if (active && params.summaryIndex >= 0 && params.summaryIndex < 100) {
+        const summary = active.reasoningSummaries.get(params.itemId) ?? [];
+        while (summary.length <= params.summaryIndex) summary.push("");
+        active.reasoningSummaries.set(params.itemId, summary);
+      }
+      return;
+    }
+
+    if (message.method === "item/reasoning/summaryTextDelta") {
+      const params = message.params as ReasoningSummaryTextDeltaParams;
+      const active = this.#activeTurns.get(params.turnId);
+      if (active && params.summaryIndex >= 0 && params.summaryIndex < 100) {
+        const summary = active.reasoningSummaries.get(params.itemId) ?? [];
+        while (summary.length <= params.summaryIndex) summary.push("");
+        summary[params.summaryIndex] =
+          boundedText(`${summary[params.summaryIndex] ?? ""}${params.delta}`) ??
+          "";
+        active.reasoningSummaries.set(params.itemId, summary);
+        active.onActivity?.(
+          agentActivitySchema.parse({
+            type: "reasoning",
+            id: params.itemId,
+            status: "running",
+            summary: summary.map((part) => part.trim()).filter(Boolean),
+            correlation: eventCorrelation(
+              message.method,
+              diagnosticId,
+              params.threadId,
+              params.turnId,
+              params.itemId,
+            ),
+          }),
+        );
+      }
+      return;
+    }
+
     if (message.method === "thread/goal/updated") {
       const params = message.params as ThreadGoalUpdatedParams;
       this.#goals.set(params.threadId, threadGoalSchema.parse(params.goal));
@@ -2240,8 +2794,27 @@ export class CodexAppServer implements CodexRuntime {
     if (message.method === "item/started") {
       const params = message.params as ItemLifecycleParams;
       const active = this.#activeTurns.get(params.turnId);
-      if (active && params.item.type === "commandExecution") {
-        active.onActivity?.(toActivity(params.item, active.cwd));
+      if (
+        active &&
+        params.item.type !== "agentMessage" &&
+        params.item.type !== "fileChange"
+      ) {
+        if (params.item.type === "reasoning") {
+          active.reasoningSummaries.set(params.item.id, params.item.summary);
+        }
+        const activity = normalizeCodexThreadItem(
+          params.item,
+          active.cwd,
+          "started",
+          eventCorrelation(
+            message.method,
+            diagnosticId,
+            params.threadId,
+            params.turnId,
+            params.item.id,
+          ),
+        );
+        if (activity) active.onActivity?.(activity);
       }
       return;
     }
@@ -2258,8 +2831,37 @@ export class CodexAppServer implements CodexRuntime {
       ) {
         active.finalText = params.item.text;
       }
-      if (active && params.item.type === "commandExecution") {
-        active.onActivity?.(toActivity(params.item, active.cwd));
+      if (active && params.item.type === "agentMessage") {
+        const normalized = normalizeAgentMessage(
+          params.item,
+          eventCorrelation(
+            message.method,
+            diagnosticId,
+            params.threadId,
+            params.turnId,
+            params.item.id,
+          ),
+        );
+        if (normalized) active.onMessage?.(normalized);
+      } else if (active) {
+        if (params.item.type !== "fileChange") {
+          const activity = normalizeCodexThreadItem(
+            params.item,
+            active.cwd,
+            "completed",
+            eventCorrelation(
+              message.method,
+              diagnosticId,
+              params.threadId,
+              params.turnId,
+              params.item.id,
+            ),
+          );
+          if (activity) active.onActivity?.(activity);
+        }
+        if (params.item.type === "reasoning") {
+          active.reasoningSummaries.delete(params.item.id);
+        }
       }
       return;
     }
@@ -2269,8 +2871,124 @@ export class CodexAppServer implements CodexRuntime {
       const active = this.#activeTurns.get(params.turnId);
       if (active) {
         active.diffChanges = changedFiles(params.diff);
-        emitFileActivity(active, params.turnId, "running");
+        emitFileActivity(
+          active,
+          params.turnId,
+          "running",
+          eventCorrelation(
+            message.method,
+            diagnosticId,
+            params.threadId,
+            params.turnId,
+            null,
+          ),
+        );
       }
+      return;
+    }
+
+    if (message.method === "thread/tokenUsage/updated") {
+      const params = message.params as ThreadTokenUsageUpdatedParams;
+      const active = this.#activeTurns.get(params.turnId);
+      if (active) {
+        active.onActivity?.(
+          normalizeTokenUsageActivity(
+            params,
+            eventCorrelation(
+              message.method,
+              diagnosticId,
+              params.threadId,
+              params.turnId,
+              null,
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (message.method === "account/rateLimits/updated") {
+      const params = message.params as AccountRateLimitsUpdatedParams;
+      for (const [turnId, active] of this.#activeTurns) {
+        active.onActivity?.(
+          normalizeRateLimitActivity(
+            params,
+            turnId,
+            eventCorrelation(
+              message.method,
+              diagnosticId,
+              active.threadId,
+              turnId,
+              null,
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (message.method === "warning") {
+      const params = message.params as WarningParams;
+      for (const [turnId, active] of this.#activeTurns) {
+        if (params.threadId && params.threadId !== active.threadId) continue;
+        active.onActivity?.(
+          normalizeNoticeActivity({
+            level: "warning",
+            message: params.message,
+            correlation: eventCorrelation(
+              message.method,
+              diagnosticId,
+              params.threadId ?? active.threadId,
+              turnId,
+              null,
+            ),
+          }),
+        );
+      }
+      return;
+    }
+
+    if (message.method === "configWarning") {
+      const params = message.params as ConfigWarningParams;
+      for (const [turnId, active] of this.#activeTurns) {
+        active.onActivity?.(
+          normalizeNoticeActivity({
+            level: "warning",
+            message: params.summary,
+            details:
+              [params.details, params.path]
+                .filter((value): value is string => Boolean(value))
+                .join("\n") || null,
+            correlation: eventCorrelation(
+              message.method,
+              diagnosticId,
+              active.threadId,
+              turnId,
+              null,
+            ),
+          }),
+        );
+      }
+      return;
+    }
+
+    if (message.method === "error") {
+      const params = message.params as ErrorNotificationParams;
+      this.#activeTurns.get(params.turnId)?.onActivity?.(
+        normalizeNoticeActivity({
+          level: "error",
+          message: params.error.message,
+          details: params.error.additionalDetails,
+          willRetry: params.willRetry,
+          correlation: eventCorrelation(
+            message.method,
+            diagnosticId,
+            params.threadId,
+            params.turnId,
+            null,
+          ),
+        }),
+      );
       return;
     }
 
@@ -2280,6 +2998,36 @@ export class CodexAppServer implements CodexRuntime {
       if (!active) {
         return;
       }
+      const correlation = eventCorrelation(
+        message.method,
+        diagnosticId,
+        params.threadId,
+        params.turn.id,
+        null,
+      );
+      if (params.turn.error?.message) {
+        active.onActivity?.(
+          normalizeNoticeActivity({
+            level: "error",
+            message: params.turn.error.message,
+            details: params.turn.error.additionalDetails,
+            willRetry: false,
+            correlation,
+          }),
+        );
+      }
+      active.onActivity?.(
+        turnSummaryActivity(
+          {
+            id: params.turn.id,
+            status: params.turn.status,
+            startedAt: params.turn.startedAt ?? null,
+            completedAt: params.turn.completedAt ?? null,
+            durationMs: params.turn.durationMs ?? null,
+          },
+          correlation,
+        ),
+      );
       this.#activeTurns.delete(params.turn.id);
       if (params.turn.status !== "completed") {
         void this.failTurn(
@@ -2318,7 +3066,18 @@ export class CodexAppServer implements CodexRuntime {
   ): Promise<void> {
     try {
       active.diffChanges = await workspaceChanges(active);
-      emitFileActivity(active, turnId, "completed");
+      emitFileActivity(
+        active,
+        turnId,
+        "completed",
+        eventCorrelation(
+          "cantrip/workspaceSnapshot",
+          null,
+          active.threadId,
+          turnId,
+          null,
+        ),
+      );
       const text = active.finalText ?? active.delta;
       if (this.#goals.has(active.threadId)) {
         const response = await this.refreshGoal(active.threadId);
@@ -2337,6 +3096,7 @@ export class CodexAppServer implements CodexRuntime {
           active.delta = "";
           active.diffChanges = [];
           active.finalText = null;
+          active.reasoningSummaries.clear();
           const continued = (await this.request("turn/start", {
             threadId: active.threadId,
             ...codexWorkspaceContext(active.cwd),
@@ -2360,6 +3120,7 @@ export class CodexAppServer implements CodexRuntime {
       active.resolve(
         agentTurnResultSchema.parse({
           threadId: active.threadId,
+          turnId,
           text,
           status: "completed",
         }),
@@ -2394,7 +3155,18 @@ export class CodexAppServer implements CodexRuntime {
   ): Promise<void> {
     try {
       active.diffChanges = await workspaceChanges(active);
-      emitFileActivity(active, turnId, "failed");
+      emitFileActivity(
+        active,
+        turnId,
+        "failed",
+        eventCorrelation(
+          "cantrip/workspaceSnapshot",
+          null,
+          active.threadId,
+          turnId,
+          null,
+        ),
+      );
     } finally {
       active.reject(error);
     }
@@ -2543,18 +3315,21 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private recordDiagnostic(
-    diagnostic: CodexRuntimeDiagnostic,
+    diagnostic: Omit<CodexRuntimeDiagnostic, "id">,
     warning?: string,
-  ): void {
-    this.#runtimeDiagnostics.push(diagnostic);
+  ): string {
+    const id = `${this.#appServerSessionId}:${this.#nextDiagnosticSequence++}`;
+    const correlated = { id, ...diagnostic };
+    this.#runtimeDiagnostics.push(correlated);
     if (this.#runtimeDiagnostics.length > CODEX_DIAGNOSTIC_LIMIT) {
       this.#runtimeDiagnostics.splice(
         0,
         this.#runtimeDiagnostics.length - CODEX_DIAGNOSTIC_LIMIT,
       );
     }
-    this.onDiagnostic?.(diagnostic);
+    this.onDiagnostic?.(correlated);
     if (warning) console.warn(`[codex] ${warning}.`);
+    return id;
   }
 
   private handleExit(error: Error): void {

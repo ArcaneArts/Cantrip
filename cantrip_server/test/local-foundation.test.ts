@@ -406,15 +406,17 @@ const workerBridge = {
         return { accepted: true };
       case "surface.desktop.probe":
         return { available: true, message: null };
-      case "chat.turn":
-        turnRequests += 1;
-        turnModelIds.push(command.model.id);
-        turnProviderIds.push(command.provider.id);
-        turnRouteIds.push(command.model.routeId);
-        turnPermissionProfileIds.push(command.permissionProfileId);
-        turnPrompts.push(command.prompt);
-        turnSkillNames.push(command.skillNames);
-        turnTimeouts.push(options?.timeoutMs);
+      case "chat.turn": {
+        if (command.prompt !== "Render rich events") {
+          turnRequests += 1;
+          turnModelIds.push(command.model.id);
+          turnProviderIds.push(command.provider.id);
+          turnRouteIds.push(command.model.routeId);
+          turnPermissionProfileIds.push(command.permissionProfileId);
+          turnPrompts.push(command.prompt);
+          turnSkillNames.push(command.skillNames);
+          turnTimeouts.push(options?.timeoutMs);
+        }
         if (command.prompt === "Finish the long-running goal") {
           await options?.onEvent?.({
             type: "agent.checkpoint",
@@ -520,6 +522,98 @@ const workerBridge = {
             releaseAgentInteraction = resolve;
           });
         }
+        if (command.prompt === "Render rich events") {
+          const richCorrelation = (
+            sourceMethod: string,
+            itemId: string | null,
+          ) => ({
+            sourceMethod,
+            diagnosticId: `runtime-session:${itemId ?? "turn"}`,
+            threadId: "codex-rich-thread-1",
+            turnId: "rich-turn-1",
+            itemId,
+          });
+          await options?.onEvent?.({
+            type: "agent.message",
+            message: {
+              id: "commentary-1",
+              text: "I’m comparing the event schemas.",
+              phase: "commentary",
+              correlation: richCorrelation("item/completed", "commentary-1"),
+            },
+          });
+          await options?.onEvent?.({
+            type: "agent.activity",
+            activity: {
+              type: "reasoning",
+              id: "reasoning-1",
+              status: "completed",
+              summary: ["Compared the supported event unions."],
+              correlation: richCorrelation("item/completed", "reasoning-1"),
+            },
+          });
+          await options?.onEvent?.({
+            type: "agent.activity",
+            activity: {
+              type: "mcpToolCall",
+              id: "mcp-1",
+              status: "completed",
+              server: "github",
+              tool: "search_issues",
+              error: null,
+              durationMs: 75,
+              correlation: richCorrelation("item/completed", "mcp-1"),
+            },
+          });
+          const tokenUsage = {
+            totalTokens: 1_200,
+            inputTokens: 800,
+            cachedInputTokens: 200,
+            cacheWriteInputTokens: 0,
+            outputTokens: 300,
+            reasoningOutputTokens: 100,
+          };
+          await options?.onEvent?.({
+            type: "agent.activity",
+            activity: {
+              type: "usage",
+              id: "turn:rich-turn-1:usage",
+              status: "completed",
+              total: tokenUsage,
+              last: tokenUsage,
+              modelContextWindow: 10_000,
+              contextUsedPercent: 12,
+              correlation: richCorrelation("thread/tokenUsage/updated", null),
+            },
+          });
+          await options?.onEvent?.({
+            type: "agent.message",
+            message: {
+              id: "final-1",
+              text: "Rich events are preserved.",
+              phase: "final_answer",
+              correlation: richCorrelation("item/completed", "final-1"),
+            },
+          });
+          await options?.onEvent?.({
+            type: "agent.activity",
+            activity: {
+              type: "turnSummary",
+              id: "turn:rich-turn-1:summary",
+              status: "completed",
+              durationMs: 2_000,
+              startedAt: 1_786_134_300,
+              completedAt: 1_786_134_302,
+              correlation: richCorrelation("turn/completed", null),
+            },
+          });
+          return {
+            threadId: "codex-rich-thread-1",
+            turnId: "rich-turn-1",
+            text: "Rich events are preserved.",
+            status: "completed",
+          };
+        }
         await options?.onEvent?.({
           type: "agent.activity",
           activity: {
@@ -563,6 +657,7 @@ const workerBridge = {
           text: "The local agent replied.",
           status: "completed",
         };
+      }
       case "chat.compact":
         compactRequests += 1;
         return { accepted: true };
@@ -639,9 +734,78 @@ const workerBridge = {
                 },
                 {
                   type: "agentMessage",
+                  id: "console-commentary-1",
+                  text: "I’m calculating the result.",
+                  phase: "commentary",
+                  correlation: {
+                    sourceMethod: "thread/read",
+                    diagnosticId: null,
+                    threadId: command.threadId,
+                    turnId: "console-turn-1",
+                    itemId: "console-commentary-1",
+                  },
+                },
+                {
+                  type: "activity",
+                  activity: {
+                    type: "reasoning",
+                    id: "console-reasoning-1",
+                    status: "completed",
+                    summary: ["Added four and four."],
+                    correlation: {
+                      sourceMethod: "thread/read",
+                      diagnosticId: null,
+                      threadId: command.threadId,
+                      turnId: "console-turn-1",
+                      itemId: "console-reasoning-1",
+                    },
+                  },
+                },
+                {
+                  type: "activity",
+                  activity: {
+                    type: "contextCompaction",
+                    id: "console-compaction-1",
+                    status: "completed",
+                    correlation: {
+                      sourceMethod: "thread/read",
+                      diagnosticId: null,
+                      threadId: command.threadId,
+                      turnId: "console-turn-1",
+                      itemId: "console-compaction-1",
+                    },
+                  },
+                },
+                {
+                  type: "activity",
+                  activity: {
+                    type: "turnSummary",
+                    id: "turn:console-turn-1:summary",
+                    status: "completed",
+                    durationMs: 2_000,
+                    startedAt: 1_786_134_300,
+                    completedAt: 1_786_134_302,
+                    correlation: {
+                      sourceMethod: "thread/read",
+                      diagnosticId: null,
+                      threadId: command.threadId,
+                      turnId: "console-turn-1",
+                      itemId: null,
+                    },
+                  },
+                },
+                {
+                  type: "agentMessage",
                   id: "console-agent-1",
                   text: "8",
-                  phase: null,
+                  phase: "final_answer",
+                  correlation: {
+                    sourceMethod: "thread/read",
+                    diagnosticId: null,
+                    threadId: command.threadId,
+                    turnId: "console-turn-1",
+                    itemId: "console-agent-1",
+                  },
                 },
               ],
             },
@@ -1741,10 +1905,27 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    expect(completedMessages.slice(-2)).toMatchObject([
-      { role: "user", content: [{ type: "text", text: "What is 4+4?" }] },
-      { role: "assistant", content: [{ type: "text", text: "8" }] },
-    ]);
+    expect(completedMessages.at(-1)).toMatchObject({
+      role: "assistant",
+      content: [{ type: "text", text: "8", phase: "final_answer" }],
+    });
+    expect(
+      completedMessages.some((message) =>
+        message.content.some(
+          (content) =>
+            content.type === "text" && content.phase === "commentary",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      completedMessages
+        .flatMap((message) => message.content)
+        .flatMap((content) =>
+          content.type === "activity" ? [content.activity.type] : [],
+        ),
+    ).toEqual(
+      expect.arrayContaining(["reasoning", "contextCompaction", "turnSummary"]),
+    );
     const renamedChat = chatSummarySchema.parse(
       (
         await firstApp.inject({
@@ -1811,6 +1992,54 @@ describe("local server foundation", () => {
       );
       expect(forkMessages).toHaveLength(completedMessages.length + 4);
     });
+    const richChat = chatSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/chats`,
+          payload: { title: "Rich events" },
+        })
+      ).json(),
+    );
+    await firstApp.inject({
+      method: "PATCH",
+      url: `/api/chats/${richChat.id}/model`,
+      payload: { modelId: selectedModel.id },
+    });
+    await firstApp.inject({
+      method: "POST",
+      url: `/api/chats/${richChat.id}/turns`,
+      payload: { text: "Render rich events", idempotencyKey: "rich-events" },
+    });
+    let richMessages = chatMessageListSchema.parse([]);
+    await vi.waitFor(async () => {
+      richMessages = chatMessageListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${richChat.id}/messages`,
+          })
+        ).json(),
+      );
+      expect(richMessages).toHaveLength(7);
+    });
+    expect(richMessages.map((message) => message.content[0])).toMatchObject([
+      { type: "text", text: "Render rich events" },
+      { type: "text", phase: "commentary" },
+      { type: "activity", activity: { type: "reasoning" } },
+      { type: "activity", activity: { type: "mcpToolCall" } },
+      { type: "activity", activity: { type: "usage" } },
+      { type: "text", phase: "final_answer" },
+      { type: "activity", activity: { type: "turnSummary" } },
+    ]);
+    expect(
+      richMessages.filter((message) =>
+        message.content.some(
+          (content) =>
+            content.type === "text" && content.phase === "final_answer",
+        ),
+      ),
+    ).toHaveLength(1);
     const reorderedTerminal = terminalSummarySchema.parse(
       (
         await firstApp.inject({
@@ -1954,6 +2183,7 @@ describe("local server foundation", () => {
             `explorer:${explorer.id}`,
             `chat:${forkedChat.id}`,
             `chat:${chat.id}`,
+            `chat:${richChat.id}`,
           ],
         },
       }),
@@ -1972,6 +2202,7 @@ describe("local server foundation", () => {
       { id: duplicatedChat.id, position: 0 },
       { id: forkedChat.id, position: 5 },
       { id: chat.id, position: 6 },
+      { id: richChat.id, position: 7 },
     ]);
     expect(
       terminalListSchema.parse(
@@ -2531,7 +2762,11 @@ describe("local server foundation", () => {
         expect.objectContaining({
           role: "assistant",
           content: [
-            { type: "text", text: "Finished the first goal milestone." },
+            {
+              type: "text",
+              text: "Finished the first goal milestone.",
+              phase: "final_answer",
+            },
           ],
         }),
       );
@@ -2707,6 +2942,14 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
+    const restoredRichMessages = chatMessageListSchema.parse(
+      (
+        await secondApp.inject({
+          method: "GET",
+          url: `/api/chats/${richChat.id}/messages`,
+        })
+      ).json(),
+    );
 
     expect(projects).toHaveLength(1);
     expect(workers).toHaveLength(1);
@@ -2742,6 +2985,17 @@ describe("local server foundation", () => {
       },
       { role: "assistant", content: [{ text: "The local agent replied." }] },
     ]);
+    expect(restoredRichMessages).toHaveLength(7);
+    expect(restoredRichMessages[2]?.content[0]).toMatchObject({
+      type: "activity",
+      activity: {
+        type: "reasoning",
+        correlation: {
+          sourceMethod: "item/completed",
+          diagnosticId: "runtime-session:reasoning-1",
+        },
+      },
+    });
     expect(restoredSettings.preferences).toEqual({
       theme: "dark",
       highContrast: true,
