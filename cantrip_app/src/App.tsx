@@ -1,4 +1,5 @@
 import type {
+  AgentInteractionResponse,
   BrowserSummary,
   ChatMessage,
   ChatPlanAnswer,
@@ -63,10 +64,12 @@ import {
 } from "react";
 
 import { Activity, ActivityGroup } from "@/components/chat/activity";
+import { AgentInteractionPanel } from "@/components/chat/agent-interaction-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
 import { PlanPanel } from "@/components/chat/plan-panel";
 import { Markdown } from "@/components/chat/markdown";
 import { PromptQueue } from "@/components/chat/prompt-queue";
+import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import {
   activeSkillMention,
   filterSkills,
@@ -130,12 +133,14 @@ import {
   getChats,
   getChatGoal,
   getChatPlan,
+  getChatPermissionProfiles,
   getBrowsers,
   getCachedGithubRepositories,
   getExplorers,
   getGithubRepositories,
   getGithubStatus,
   getMessages,
+  getAgentInteractionRequests,
   getProjects,
   getProjectWorktrees,
   getProjectWorktreeStatus,
@@ -155,6 +160,7 @@ import {
   reorderProjectTabs,
   reorderProjects,
   reorderQueuedPrompts,
+  respondToAgentInteractionRequest,
   setChatPaused,
   startTurn,
   steerQueuedPrompt,
@@ -162,6 +168,7 @@ import {
   updateChatModel,
   updateChatGoal,
   updateChatPlan,
+  updateChatPermissionProfile,
   updateChatWorktree,
   updateBrowser,
   updateExplorerWorktree,
@@ -631,7 +638,10 @@ function ChatTranscript({
   const messages = useQuery({
     queryFn: () => getMessages(chat.id),
     queryKey: ["messages", chat.id],
-    refetchInterval: chat.status === "running" ? 750 : 3_000,
+    refetchInterval:
+      chat.status === "running" || chat.status === "waiting-for-approval"
+        ? 750
+        : 3_000,
   });
   useQuery({
     enabled: syncEnabled,
@@ -667,6 +677,22 @@ function ChatTranscript({
     queryKey: ["plan", chat.id],
     refetchInterval: chat.status === "running" ? 750 : 3_000,
     retry: false,
+  });
+  const interactionRequests = useQuery({
+    queryFn: () =>
+      getAgentInteractionRequests({ chatId: chat.id, status: "pending" }),
+    queryKey: ["agent-requests", chat.id, "pending"],
+    refetchInterval:
+      chat.status === "running" || chat.status === "waiting-for-approval"
+        ? 750
+        : 3_000,
+    retry: false,
+  });
+  const permissionProfiles = useQuery({
+    queryFn: () => getChatPermissionProfiles(chat.id),
+    queryKey: ["permission-profiles", chat.id, selectedModelId],
+    retry: false,
+    staleTime: 30_000,
   });
   const skills = useQuery({
     enabled: Boolean(selectedModelId && draft.includes("$")),
@@ -829,15 +855,71 @@ function ChatTranscript({
       });
     },
   });
-  const answerPlan = useMutation({
-    mutationFn: (answers: ChatPlanAnswer["answers"]) =>
-      answerChatPlan(chat.id, { answers }),
-    onSuccess: async () => {
+  const [answerPlanPending, setAnswerPlanPending] = useState(false);
+  const [answerPlanError, setAnswerPlanError] = useState<string | null>(null);
+  const submitPlanAnswer = async (answers: ChatPlanAnswer["answers"]) => {
+    setAnswerPlanPending(true);
+    setAnswerPlanError(null);
+    try {
+      await answerChatPlan(chat.id, { answers });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["plan", chat.id] }),
         queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
         queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
       ]);
+    } catch (error) {
+      setAnswerPlanError(errorText(error));
+    } finally {
+      setAnswerPlanPending(false);
+    }
+  };
+  const [respondingRequestId, setRespondingRequestId] = useState<string | null>(
+    null,
+  );
+  const [interactionResponseError, setInteractionResponseError] = useState<
+    string | null
+  >(null);
+  const interactionIdempotencyKeys = useRef(new Map<string, string>());
+  const submitInteractionResponse = async (
+    requestId: string,
+    response: AgentInteractionResponse,
+  ) => {
+    setRespondingRequestId(requestId);
+    setInteractionResponseError(null);
+    const idempotencyKey =
+      interactionIdempotencyKeys.current.get(requestId) ?? crypto.randomUUID();
+    interactionIdempotencyKeys.current.set(requestId, idempotencyKey);
+    let delivered = false;
+    try {
+      await respondToAgentInteractionRequest(requestId, {
+        idempotencyKey,
+        response,
+      });
+      delivered = true;
+    } catch (error) {
+      setInteractionResponseError(errorText(error));
+    } finally {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["agent-requests", chat.id],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["plan", chat.id] }),
+        queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
+      ]);
+      if (delivered) interactionIdempotencyKeys.current.delete(requestId);
+      setRespondingRequestId(null);
+    }
+  };
+  const selectPermissionProfile = useMutation({
+    mutationFn: (id: string) => updateChatPermissionProfile(chat.id, id),
+    onSuccess: async (state) => {
+      queryClient.setQueryData(
+        ["permission-profiles", chat.id, selectedModelId],
+        state,
+      );
+      await queryClient.invalidateQueries({
+        queryKey: ["chats", chat.projectId],
+      });
     },
   });
 
@@ -1090,7 +1172,8 @@ function ChatTranscript({
             );
           })}
 
-          {chat.status === "running" ? (
+          {chat.status === "running" ||
+          chat.status === "waiting-for-approval" ? (
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <div className="grid size-7 place-items-center rounded-lg border bg-card">
                 {chat.automationPaused ? (
@@ -1099,11 +1182,13 @@ function ChatTranscript({
                   <Loader2 className="size-3.5 animate-spin" />
                 )}
               </div>
-              {chat.automationPaused
-                ? "Pause requested — Codex will hold at its next safe boundary…"
-                : planState.data?.question
-                  ? "Codex is waiting for your plan answer…"
-                  : `${selectedModel?.name ?? "Agent"} is working through Codex…`}
+              {chat.status === "waiting-for-approval"
+                ? "Codex is waiting for your approval…"
+                : chat.automationPaused
+                  ? "Pause requested — Codex will hold at its next safe boundary…"
+                  : planState.data?.question
+                    ? "Codex is waiting for your plan answer…"
+                    : `${selectedModel?.name ?? "Agent"} is working through Codex…`}
             </div>
           ) : null}
         </div>
@@ -1245,12 +1330,26 @@ function ChatTranscript({
             onOpenChange={setGoalDialogOpen}
             onUpdate={(status) => updateGoal.mutate(status)}
           />
+          <AgentInteractionPanel
+            requests={interactionRequests.data ?? []}
+            pendingRequestId={respondingRequestId}
+            planQuestionId={planState.data?.question?.id}
+            error={
+              interactionResponseError ??
+              (interactionRequests.isError
+                ? errorText(interactionRequests.error)
+                : null)
+            }
+            onRespond={(requestId, response) =>
+              void submitInteractionResponse(requestId, response)
+            }
+          />
           {planState.data ? (
             <PlanPanel
               state={planState.data}
-              pending={answerPlan.isPending}
-              error={answerPlan.isError ? errorText(answerPlan.error) : null}
-              onAnswer={(answers) => answerPlan.mutate(answers)}
+              pending={answerPlanPending}
+              error={answerPlanError}
+              onAnswer={(answers) => void submitPlanAnswer(answers)}
             />
           ) : null}
           <PromptQueue
@@ -1437,7 +1536,11 @@ function ChatTranscript({
                 <select
                   aria-label="Chat model"
                   value={selectedModelId}
-                  disabled={chat.status === "running" || selectModel.isPending}
+                  disabled={
+                    chat.status === "running" ||
+                    chat.status === "waiting-for-approval" ||
+                    selectModel.isPending
+                  }
                   onChange={(event) => selectModel.mutate(event.target.value)}
                   className="min-w-0 max-w-64 truncate rounded-md bg-transparent px-1 py-1 text-xs font-medium outline-none disabled:cursor-not-allowed"
                 >
@@ -1450,6 +1553,15 @@ function ChatTranscript({
                     </option>
                   ))}
                 </select>
+                <PermissionProfileControl
+                  state={permissionProfiles.data}
+                  disabled={
+                    chat.status === "running" ||
+                    chat.status === "waiting-for-approval"
+                  }
+                  pending={selectPermissionProfile.isPending}
+                  onChange={(id) => selectPermissionProfile.mutate(id)}
+                />
                 {!goalState.data?.goal ? (
                   <Button
                     type="button"
@@ -1459,6 +1571,7 @@ function ChatTranscript({
                     disabled={
                       !selectedModelId ||
                       chat.status === "running" ||
+                      chat.status === "waiting-for-approval" ||
                       chat.automationPaused
                     }
                     onClick={() => setGoalDialogOpen(true)}
@@ -1482,6 +1595,7 @@ function ChatTranscript({
                   disabled={
                     !selectedModelId ||
                     chat.status === "running" ||
+                    chat.status === "waiting-for-approval" ||
                     setPlanMode.isPending
                   }
                   onClick={() =>
@@ -1555,7 +1669,8 @@ function ChatTranscript({
           steerPrompt.isError ||
           reorderPrompts.isError ||
           setPlanMode.isError ||
-          setAutomationPaused.isError ? (
+          setAutomationPaused.isError ||
+          selectPermissionProfile.isError ? (
             <p className="mt-2 text-xs text-destructive">
               {errorText(
                 send.error ??
@@ -1566,7 +1681,8 @@ function ChatTranscript({
                   steerPrompt.error ??
                   reorderPrompts.error ??
                   setPlanMode.error ??
-                  setAutomationPaused.error,
+                  setAutomationPaused.error ??
+                  selectPermissionProfile.error,
               )}
             </p>
           ) : editingPrompt ? (

@@ -191,6 +191,12 @@ async function start(): Promise<void> {
           model: command.model,
           provider: command.provider,
         });
+      case "permission-profiles.list":
+        return runtimeFor(command).listPermissionProfiles({
+          cwd: command.cwd,
+          model: command.model,
+          provider: command.provider,
+        });
       case "terminal.open":
         if (command.launch.type === "codex") {
           const runtime = runtimeFor(command.launch);
@@ -273,6 +279,7 @@ async function start(): Promise<void> {
           cwd: command.cwd,
           isPrimary: command.isPrimary,
           model: command.model,
+          permissionProfileId: command.permissionProfileId,
           provider: command.provider,
           planMode: command.planMode,
           prompt: command.prompt,
@@ -355,6 +362,7 @@ async function start(): Promise<void> {
         return runtimeFor(command).compactThread({
           cwd: command.cwd,
           model: command.model,
+          permissionProfileId: command.permissionProfileId,
           provider: command.provider,
           threadId: command.threadId,
         });
@@ -364,6 +372,7 @@ async function start(): Promise<void> {
         return runtimeFor(command).getGoal({
           cwd: command.cwd,
           model: command.model,
+          permissionProfileId: command.permissionProfileId,
           provider: command.provider,
           threadId: command.threadId,
         });
@@ -372,6 +381,7 @@ async function start(): Promise<void> {
           cwd: command.cwd,
           model: command.model,
           objective: command.objective,
+          permissionProfileId: command.permissionProfileId,
           provider: command.provider,
           threadId: command.threadId,
           tokenBudget: command.tokenBudget,
@@ -380,6 +390,7 @@ async function start(): Promise<void> {
         return runtimeFor(command).updateGoal({
           cwd: command.cwd,
           model: command.model,
+          permissionProfileId: command.permissionProfileId,
           provider: command.provider,
           status: command.status,
           threadId: command.threadId,
@@ -388,6 +399,7 @@ async function start(): Promise<void> {
         return runtimeFor(command).clearGoal({
           cwd: command.cwd,
           model: command.model,
+          permissionProfileId: command.permissionProfileId,
           provider: command.provider,
           threadId: command.threadId,
         });
@@ -396,6 +408,7 @@ async function start(): Promise<void> {
           cwd: command.cwd,
           fallbackMode: command.fallbackMode,
           model: command.model,
+          permissionProfileId: command.permissionProfileId,
           provider: command.provider,
           threadId: command.threadId,
         });
@@ -404,6 +417,7 @@ async function start(): Promise<void> {
           cwd: command.cwd,
           mode: command.mode,
           model: command.model,
+          permissionProfileId: command.permissionProfileId,
           provider: command.provider,
           threadId: command.threadId,
         });

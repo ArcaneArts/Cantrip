@@ -1,0 +1,1 @@
+ALTER TABLE "chats" ADD COLUMN "permission_profile_id" text;

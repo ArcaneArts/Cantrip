@@ -19,6 +19,7 @@ import {
   chatGoalResponseSchema,
   chatPlanAcceptedSchema,
   pendingPlanQuestionSchema,
+  permissionProfileCapabilitySchema,
   normalizeResponsesBaseUrl,
   threadGoalSchema,
   type AgentActivity,
@@ -34,6 +35,7 @@ import {
   type CodexRuntimeReport,
   type ChatPlanAnswer,
   type PendingPlanQuestion,
+  type PermissionProfileCapability,
   type PlanMode,
   type PlanStep,
   type ThreadGoal,
@@ -670,6 +672,10 @@ export interface RunAgentTurnOptions {
   >["automationPaused"];
   planMode: Extract<WorkerCommand, { type: "chat.turn" }>["planMode"];
   provider: Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
+  permissionProfileId: Extract<
+    WorkerCommand,
+    { type: "chat.turn" }
+  >["permissionProfileId"];
   prompt: string;
   skillNames: string[];
   threadId: string | null;
@@ -691,7 +697,7 @@ export interface RunAgentTurnOptions {
 
 export type GoalRuntimeOptions = Pick<
   RunAgentTurnOptions,
-  "cwd" | "model" | "provider" | "threadId"
+  "cwd" | "model" | "permissionProfileId" | "provider" | "threadId"
 >;
 
 export const GOAL_CONTINUATION_PROMPT =
@@ -857,7 +863,7 @@ export function codexWorktreeTurnPolicy(
   options: Pick<
     RunAgentTurnOptions,
     "cwd" | "isPrimary" | "worktreeMode" | "worktreePolicy"
-  >,
+  > & { permissionProfileActive?: boolean },
 ) {
   const cwd = path.resolve(options.cwd);
   const primaryIsReadOnly =
@@ -873,6 +879,15 @@ export function codexWorktreeTurnPolicy(
       : options.worktreePolicy === "required-for-writes"
         ? "The project policy is Required for writes and this turn is in a secondary worktree, so writes are permitted here."
         : "The project policy is Agent managed. You may work in the current checkout or acquire a secondary worktree when the task benefits from isolation.";
+  const sandboxPolicy = primaryIsReadOnly
+    ? { type: "readOnly" as const, networkAccess: false }
+    : {
+        type: "workspaceWrite" as const,
+        writableRoots: [cwd],
+        networkAccess: false,
+        excludeTmpdirEnvVar: false,
+        excludeSlashTmp: false,
+      };
   return {
     additionalContext: {
       "cantrip.worktree-policy": {
@@ -880,16 +895,17 @@ export function codexWorktreeTurnPolicy(
         value: `${policyInstruction} ${modeInstruction}`,
       },
     },
-    sandboxPolicy: primaryIsReadOnly
-      ? { type: "readOnly", networkAccess: false }
-      : {
-          type: "workspaceWrite",
-          writableRoots: [cwd],
-          networkAccess: false,
-          excludeTmpdirEnvVar: false,
-          excludeSlashTmp: false,
-        },
+    ...(options.permissionProfileActive ? {} : { sandboxPolicy }),
   } as const;
+}
+
+export function codexThreadPermissionParams(
+  permissionProfileId: string,
+  permissionProfilesSupported: boolean,
+) {
+  return permissionProfilesSupported
+    ? { permissions: permissionProfileId }
+    : { sandbox: "workspace-write" as const };
 }
 
 export async function executeDynamicWorktreeTool(
@@ -991,7 +1007,7 @@ export function parseCodexSkills(response: unknown, cwd: string): CodexSkill[] {
 
 export type CompactAgentThreadOptions = Pick<
   RunAgentTurnOptions,
-  "cwd" | "model" | "provider"
+  "cwd" | "model" | "permissionProfileId" | "provider"
 > & {
   threadId: string;
 };
@@ -1186,6 +1202,7 @@ export class CodexAppServer implements CodexRuntime {
   readonly #externalTurnBaselines = new Map<string, Set<string>>();
   readonly #goals = new Map<string, ThreadGoal>();
   readonly #loadedThreads = new Set<string>();
+  readonly #permissionProfilesByThread = new Map<string, string>();
   readonly #pending = new Map<number, PendingRpcRequest>();
   readonly #pendingAgentInteractions = new Map<
     string,
@@ -1287,7 +1304,10 @@ export class CodexAppServer implements CodexRuntime {
     const response = (await this.request("turn/start", {
       threadId,
       ...codexWorkspaceContext(options.cwd),
-      ...codexWorktreeTurnPolicy(options),
+      ...codexWorktreeTurnPolicy({
+        ...options,
+        permissionProfileActive: this.permissionProfilesSupported(),
+      }),
       clientUserMessageId: `cantrip:${options.clientMessageId}`,
       input: [
         { type: "text", text: options.prompt, text_elements: [] },
@@ -1318,6 +1338,41 @@ export class CodexAppServer implements CodexRuntime {
       forceReload,
     });
     return parseCodexSkills(response, options.cwd);
+  }
+
+  async listPermissionProfiles(
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
+  ): Promise<PermissionProfileCapability> {
+    if (!this.permissionProfilesSupported()) {
+      return permissionProfileCapabilitySchema.parse({
+        available: false,
+        profiles: [],
+        reason:
+          "The installed Codex runtime does not advertise permission profiles; Cantrip is using its legacy sandbox policy.",
+      });
+    }
+    await this.ensureStarted(options.model, options.provider);
+    const profiles: PermissionProfileCapability["profiles"] = [];
+    let cursor: string | null = null;
+    do {
+      const response = (await this.request("permissionProfile/list", {
+        cwd: options.cwd,
+        cursor,
+        limit: 100,
+      })) as { data?: unknown; nextCursor?: unknown };
+      profiles.push(
+        ...permissionProfileCapabilitySchema.shape.profiles.parse(
+          response.data,
+        ),
+      );
+      cursor =
+        typeof response.nextCursor === "string" ? response.nextCursor : null;
+    } while (cursor);
+    return permissionProfileCapabilitySchema.parse({
+      available: true,
+      profiles,
+      reason: null,
+    });
   }
 
   async remoteEndpoint(
@@ -1617,6 +1672,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#runtimeId = null;
     this.#starting = null;
     this.#loadedThreads.clear();
+    this.#permissionProfilesByThread.clear();
     this.#externalTurnBaselines.clear();
     this.#goals.clear();
   }
@@ -1669,6 +1725,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#remoteUrl = null;
     this.#runtimeId = null;
     this.#loadedThreads.clear();
+    this.#permissionProfilesByThread.clear();
     this.#collaborationModes.clear();
     this.#externalTurnBaselines.clear();
     socket?.close();
@@ -1678,13 +1735,18 @@ export class CodexAppServer implements CodexRuntime {
   private async loadThread(
     options: Pick<
       RunAgentTurnOptions,
-      "cwd" | "model" | "provider" | "threadId"
+      "cwd" | "model" | "permissionProfileId" | "provider" | "threadId"
     >,
     create = true,
   ): Promise<string | null> {
     const modelProvider = codexModelProviderName(options.provider);
     let threadId = options.threadId;
-    if (threadId && !this.#loadedThreads.has(threadId)) {
+    if (
+      threadId &&
+      (!this.#loadedThreads.has(threadId) ||
+        this.#permissionProfilesByThread.get(threadId) !==
+          options.permissionProfileId)
+    ) {
       try {
         const resumed = (await this.request("thread/resume", {
           threadId,
@@ -1692,10 +1754,14 @@ export class CodexAppServer implements CodexRuntime {
           modelProvider,
           ...codexWorkspaceContext(options.cwd),
           approvalPolicy: "on-request",
-          sandbox: "workspace-write",
+          ...this.threadPermissionParams(options.permissionProfileId),
         })) as ThreadResponse;
         threadId = resumed.thread.id;
         this.#loadedThreads.add(threadId);
+        this.#permissionProfilesByThread.set(
+          threadId,
+          options.permissionProfileId,
+        );
       } catch {
         // Codex thread state is local to its worker/runtime. A normal turn can
         // recover from replacement by starting a new thread; compaction cannot.
@@ -1708,7 +1774,7 @@ export class CodexAppServer implements CodexRuntime {
         modelProvider,
         ...codexWorkspaceContext(options.cwd),
         approvalPolicy: "on-request",
-        sandbox: "workspace-write",
+        ...this.threadPermissionParams(options.permissionProfileId),
         developerInstructions: CANTRIP_WORKTREE_DEVELOPER_INSTRUCTIONS,
         ...(this.compatibility.initialize?.experimentalApi
           ? { dynamicTools: CANTRIP_WORKTREE_DYNAMIC_TOOLS }
@@ -1716,6 +1782,10 @@ export class CodexAppServer implements CodexRuntime {
       })) as ThreadResponse;
       threadId = started.thread.id;
       this.#loadedThreads.add(threadId);
+      this.#permissionProfilesByThread.set(
+        threadId,
+        options.permissionProfileId,
+      );
     }
     return threadId;
   }
@@ -1723,6 +1793,20 @@ export class CodexAppServer implements CodexRuntime {
   private hasActiveThread(threadId: string): boolean {
     return [...this.#activeTurns.values()].some(
       (active) => active.threadId === threadId,
+    );
+  }
+
+  private permissionProfilesSupported(): boolean {
+    return Boolean(
+      this.compatibility.initialize?.experimentalApi &&
+      this.methodAvailable("permissionProfile/list"),
+    );
+  }
+
+  private threadPermissionParams(permissionProfileId: string) {
+    return codexThreadPermissionParams(
+      permissionProfileId,
+      this.permissionProfilesSupported(),
     );
   }
 
@@ -1933,6 +2017,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#runtimeId = null;
       this.#starting = null;
       this.#loadedThreads.clear();
+      this.#permissionProfilesByThread.clear();
       this.#collaborationModes.clear();
       this.#externalTurnBaselines.clear();
       this.#goals.clear();
@@ -1956,6 +2041,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#runtimeId = null;
       this.#starting = null;
       this.#loadedThreads.clear();
+      this.#permissionProfilesByThread.clear();
       this.#externalTurnBaselines.clear();
     });
 

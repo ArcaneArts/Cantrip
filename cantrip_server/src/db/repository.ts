@@ -110,6 +110,7 @@ export interface ChatExecutionContext {
   status: ChatSummary["status"];
   modelId: string | null;
   modelRouteId: string | null;
+  permissionProfileId: string | null;
   planMode: PlanMode;
   pendingPlanQuestion: PendingPlanQuestion | null;
   projectId: string;
@@ -334,6 +335,7 @@ function toChatSummary(chat: typeof schema.chats.$inferSelect): ChatSummary {
     activeWorktreeId: chat.activeWorktreeId,
     worktreeMode: chat.worktreeMode as ChatSummary["worktreeMode"],
     modelId: chat.modelId,
+    permissionProfileId: chat.permissionProfileId,
     planMode: chat.planMode as ChatSummary["planMode"],
     hasPendingPlanQuestion: chat.pendingPlanQuestion !== null,
     automationPaused: chat.automationPaused,
@@ -1885,6 +1887,7 @@ export class ServerRepository {
           status: "running",
           modelId: row.chat.modelId,
           modelRouteId: runtime.modelRouteId,
+          permissionProfileId: row.chat.permissionProfileId,
           planMode: row.chat.planMode as PlanMode,
           pendingPlanQuestion: row.chat.pendingPlanQuestion,
           projectId: row.chat.projectId,
@@ -4360,6 +4363,7 @@ export class ServerRepository {
           activeWorktreeId: target.id,
           worktreeMode: input.worktreeMode ?? row.chat.worktreeMode,
           modelId: row.chat.modelId,
+          permissionProfileId: row.chat.permissionProfileId,
         })
         .returning();
       const fork = firstOrThrow(chatResult, "forking a chat");
@@ -4570,6 +4574,37 @@ export class ServerRepository {
     return toChatSummary(firstOrThrow(result, "selecting a chat model"));
   }
 
+  async setChatPermissionProfile(
+    ownerId: string,
+    chatId: string,
+    permissionProfileId: string,
+  ): Promise<ChatSummary | null> {
+    const chats = await this.database
+      .select({ chat: schema.chats })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.chats.id, chatId))
+      .limit(1);
+    if (!chats[0]) return null;
+    const result = await this.database
+      .update(schema.chats)
+      .set({ permissionProfileId, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          notInArray(schema.chats.status, ["running", "waiting-for-approval"]),
+        ),
+      )
+      .returning();
+    return result[0] ? toChatSummary(result[0]) : null;
+  }
+
   async getChatPlanState(
     ownerId: string,
     chatId: string,
@@ -4698,6 +4733,7 @@ export class ServerRepository {
       isPrimary: row.worktree.isPrimary,
       modelId: row.chat.modelId,
       modelRouteId: row.runtime?.modelRouteId ?? null,
+      permissionProfileId: row.chat.permissionProfileId,
       planMode: row.chat.planMode as PlanMode,
       pendingPlanQuestion: row.chat.pendingPlanQuestion,
       projectId: row.chat.projectId,

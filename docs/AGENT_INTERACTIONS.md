@@ -65,6 +65,39 @@ record, so Plan Mode does not create a parallel approval channel.
 - `POST /api/agent-requests/:requestId/respond` validates and durably resolves
   a request.
 
-The persistence API and App Server bridge are complete. The following isolated
-pass renders the waiting controls and configurable permission profiles in the
-app.
+## Waiting controls
+
+The chat composer polls pending requests while a turn is running or waiting.
+It renders request-specific controls for command and network decisions, file
+changes, scoped permission grants, structured user input, and MCP forms or URL
+confirmations. Only decisions advertised by Codex are shown. Permission denial
+is represented by an empty turn-scoped grant, matching the worker's fail-closed
+response.
+
+Plan Mode questions reuse their existing plan panel and are omitted from the
+generic request list when both views refer to the same `requestKey`. Secret
+answers remain component-local during submission, never enter the query cache,
+and return from the server only as `[redacted]`.
+
+## Permission profiles
+
+Cantrip exposes Codex's beta permission profiles through:
+
+- `GET /api/chats/:chatId/permission-profiles`, which returns advertised
+  profiles plus the chat's selected and effective IDs; and
+- `PATCH /api/chats/:chatId/permission-profile`, which accepts only an
+  advertised, allowed profile while the chat is not executing.
+
+The selected profile is durable chat state and defaults to `:workspace`.
+Cantrip computes the effective profile on the server. A project using
+`required-for-writes` always forces `:read-only` on Primary, even when the chat
+selected a broader profile. The UI displays that override and gives
+`:danger-full-access` an explicit warning treatment.
+
+Permission profiles require both experimental API negotiation and the
+`permissionProfile/list` method. Supported runtimes receive `permissions` on
+thread start or resume, and Cantrip omits legacy `sandbox` and turn-level
+`sandboxPolicy` fields because the two systems do not compose. A profile change
+forces the worker to resume the thread with the new ID. When capability
+negotiation fails, the selector is disabled with a reason and the established
+legacy sandbox/worktree policy remains active.

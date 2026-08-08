@@ -546,6 +546,7 @@ export const chatSummarySchema = z.object({
   activeWorktreeId: z.string().min(1),
   worktreeMode: z.enum(["agent-managed", "pinned"]),
   modelId: z.string().min(1).nullable(),
+  permissionProfileId: z.string().min(1).max(200).nullable(),
   planMode: z.enum(["default", "plan"]),
   hasPendingPlanQuestion: z.boolean(),
   automationPaused: z.boolean().default(false),
@@ -554,6 +555,31 @@ export const chatSummarySchema = z.object({
 });
 
 export const chatListSchema = z.array(chatSummarySchema);
+
+export const permissionProfileIdSchema = z.string().min(1).max(200);
+
+export const permissionProfileSummarySchema = z.object({
+  id: permissionProfileIdSchema,
+  description: z.string(),
+  allowed: z.boolean(),
+});
+
+export const permissionProfileCapabilitySchema = z.object({
+  available: z.boolean(),
+  profiles: z.array(permissionProfileSummarySchema),
+  reason: z.string().min(1).nullable(),
+});
+
+export const chatPermissionProfileStateSchema =
+  permissionProfileCapabilitySchema.extend({
+    selectedId: permissionProfileIdSchema,
+    effectiveId: permissionProfileIdSchema,
+    forcedByWorktreePolicy: z.boolean(),
+  });
+
+export const chatPermissionProfileUpdateSchema = z.object({
+  id: permissionProfileIdSchema,
+});
 
 export const terminalCreateSchema = z.object({
   title: z.string().trim().min(1).max(200).default("Terminal"),
@@ -2042,6 +2068,12 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     provider: workerRuntimeProviderSchema,
   }),
   z.object({
+    type: z.literal("permission-profiles.list"),
+    cwd: z.string().min(1),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
     type: z.literal("terminal.open"),
     terminalId: z.string().min(1),
     attachmentId: z.string().min(1),
@@ -2124,6 +2156,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     skillNames: z.array(z.string().min(1)).max(64).default([]),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
+    permissionProfileId: permissionProfileIdSchema,
     planMode: planModeSchema,
     automationPaused: z.boolean().default(false),
   }),
@@ -2139,6 +2172,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     threadId: z.string().min(1),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
+    permissionProfileId: permissionProfileIdSchema,
   }),
   z.object({
     type: z.literal("chat.interrupt"),
@@ -2154,6 +2188,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     threadId: z.string().min(1),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
+    permissionProfileId: permissionProfileIdSchema,
   }),
   z.object({
     type: z.literal("chat.goal.create"),
@@ -2164,6 +2199,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     tokenBudget: chatGoalCreateSchema.shape.tokenBudget,
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
+    permissionProfileId: permissionProfileIdSchema,
   }),
   z.object({
     type: z.literal("chat.goal.update"),
@@ -2173,6 +2209,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     status: chatGoalUpdateSchema.shape.status,
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
+    permissionProfileId: permissionProfileIdSchema,
   }),
   z.object({
     type: z.literal("chat.goal.clear"),
@@ -2181,6 +2218,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     threadId: z.string().min(1),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
+    permissionProfileId: permissionProfileIdSchema,
   }),
   z.object({
     type: z.literal("chat.plan.get"),
@@ -2189,6 +2227,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     fallbackMode: planModeSchema,
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
+    permissionProfileId: permissionProfileIdSchema,
   }),
   z.object({
     type: z.literal("chat.plan.set"),
@@ -2197,6 +2236,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     mode: planModeSchema,
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
+    permissionProfileId: permissionProfileIdSchema,
   }),
   z.object({
     type: z.literal("chat.plan.answer"),
@@ -2404,6 +2444,18 @@ export type ChatUpdate = z.infer<typeof chatUpdateSchema>;
 export type ChatFork = z.infer<typeof chatForkSchema>;
 export type OrderedIds = z.infer<typeof orderedIdsSchema>;
 export type ChatSummary = z.infer<typeof chatSummarySchema>;
+export type PermissionProfileSummary = z.infer<
+  typeof permissionProfileSummarySchema
+>;
+export type PermissionProfileCapability = z.infer<
+  typeof permissionProfileCapabilitySchema
+>;
+export type ChatPermissionProfileState = z.infer<
+  typeof chatPermissionProfileStateSchema
+>;
+export type ChatPermissionProfileUpdate = z.infer<
+  typeof chatPermissionProfileUpdateSchema
+>;
 export type TerminalCreate = z.infer<typeof terminalCreateSchema>;
 export type TerminalUpdate = z.infer<typeof terminalUpdateSchema>;
 export type TerminalSummary = z.infer<typeof terminalSummarySchema>;

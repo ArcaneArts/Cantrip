@@ -5,6 +5,7 @@ import type {
   ChatGoalResponse,
   ChatPlanAnswer,
   CodexRuntimeReport,
+  PermissionProfileCapability,
   PlanMode,
 } from "@cantrip/protocol";
 
@@ -37,6 +38,9 @@ export interface CodexRuntime {
     options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
     forceReload?: boolean,
   ): Promise<CodexSkill[]>;
+  listPermissionProfiles(
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
+  ): Promise<PermissionProfileCapability>;
   remoteEndpoint(
     model: RunAgentTurnOptions["model"],
     provider: RunAgentTurnOptions["provider"],

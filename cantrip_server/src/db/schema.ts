@@ -295,6 +295,7 @@ export const chats = pgTable("chats", {
   modelId: text("model_id").references(() => modelProfiles.id, {
     onDelete: "restrict",
   }),
+  permissionProfileId: text("permission_profile_id"),
   automationPaused: boolean("automation_paused").notNull().default(false),
   planMode: text("plan_mode").notNull().default("default"),
   planExplanation: text("plan_explanation"),
