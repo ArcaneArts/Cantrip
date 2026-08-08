@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "source": "https://github.com/gitpod-io/openvscode-server",
+  "version": "1.109.5",
+  "ref": "openvscode-server-v1.109.5",
+  "openvscodeServerCommit": "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+  "vscodeCommit": "072586267e68ece9a47aa43f8c108e0dcbf44622",
+  "patchset": 1,
+  "registry": "https://open-vsx.org"
+}

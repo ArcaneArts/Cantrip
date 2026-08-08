@@ -7,3 +7,7 @@ cantrip_app/src-tauri/target/
 
 # Keep the previously committed architecture plan's compact tables unchanged.
 docs/PLAN.md
+
+# This is a pinned upstream source snapshot with its own formatting rules.
+cantrip_code/upstream/
+cantrip_code/upstream.files.json

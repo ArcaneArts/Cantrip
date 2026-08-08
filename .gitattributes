@@ -1,0 +1,4 @@
+# Preserve the pinned OpenVSCode snapshot byte-for-byte. Its upstream test
+# fixtures intentionally contain mixed encodings, line endings, and whitespace
+# that must not be rewritten or treated as Cantrip formatting violations.
+cantrip_code/upstream/** -text -whitespace
