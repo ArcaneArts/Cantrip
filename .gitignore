@@ -50,3 +50,8 @@ cantrip_app/ios/
 # Rust/Tauri build output.
 cantrip_app/src-tauri/target/
 cantrip_app/src-tauri/gen/
+cantrip_app/src-tauri/resources/runtime/*
+!cantrip_app/src-tauri/resources/runtime/.gitkeep
+
+# Locally assembled release artifacts.
+artifacts/

@@ -8,6 +8,12 @@ async function start(): Promise<void> {
   const app = await buildApp({ config, database });
   let closing = false;
 
+  if (config.allowInsecureRemote) {
+    app.log.warn(
+      "CANTRIP_ALLOW_INSECURE_REMOTE is enabled: application APIs do not authenticate users yet.",
+    );
+  }
+
   const close = async (signal: NodeJS.Signals) => {
     if (closing) {
       return;

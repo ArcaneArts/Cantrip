@@ -22,6 +22,7 @@ function readPort(value: string | undefined): number {
 }
 
 export interface ServerConfig {
+  allowInsecureRemote: boolean;
   appOrigins: string[];
   authMode: AuthMode;
   bootstrapMode: BootstrapMode;
@@ -35,6 +36,12 @@ export interface ServerConfig {
   port: number;
   workerToken: string;
   remoteSurfaceWebRtc?: RemoteSurfaceTurnConfig;
+}
+
+function readBoolean(name: string, value: string | undefined): boolean {
+  if (value === undefined || value === "false" || value === "0") return false;
+  if (value === "true" || value === "1") return true;
+  throw new Error(`Invalid ${name}: expected true, false, 1, or 0.`);
 }
 
 export interface RemoteSurfaceTurnConfig {
@@ -107,6 +114,10 @@ export function readServerConfig(): ServerConfig {
   const authMode = authModeSchema.parse(
     process.env.CANTRIP_AUTH_MODE ?? "none",
   );
+  const allowInsecureRemote = readBoolean(
+    "CANTRIP_ALLOW_INSECURE_REMOTE",
+    process.env.CANTRIP_ALLOW_INSECURE_REMOTE,
+  );
 
   if (authMode !== "none") {
     throw new Error(
@@ -114,19 +125,23 @@ export function readServerConfig(): ServerConfig {
     );
   }
 
-  if (deploymentMode !== "local") {
+  const loopback = ["127.0.0.1", "localhost", "::1"].includes(host);
+  if ((!loopback || deploymentMode === "hosted") && !allowInsecureRemote) {
     throw new Error(
-      "Hosted deployment is planned but not implemented. Use CANTRIP_DEPLOYMENT_MODE=local.",
+      "Unauthenticated remote access is disabled. Set CANTRIP_ALLOW_INSECURE_REMOTE=true only behind a trusted network or authenticating reverse proxy.",
     );
   }
-
-  if (!["127.0.0.1", "localhost", "::1"].includes(host)) {
+  if (
+    (!loopback || deploymentMode === "hosted") &&
+    workerToken === DEFAULT_WORKER_TOKEN
+  ) {
     throw new Error(
-      "The unauthenticated local foundation must bind to a loopback host.",
+      "Remote deployments must set a unique CANTRIP_WORKER_TOKEN.",
     );
   }
 
   return {
+    allowInsecureRemote,
     appOrigins: (
       process.env.CANTRIP_APP_ORIGINS ??
       process.env.CANTRIP_APP_ORIGIN ??

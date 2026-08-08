@@ -10,5 +10,6 @@ allowBuilds:
   sharp: true
 
 engineStrict: true
+injectWorkspacePackages: true
 saveWorkspaceProtocol: rolling
 sharedWorkspaceLockfile: true

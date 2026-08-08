@@ -1,0 +1,71 @@
+name: Package distributions
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  services:
+    name: Services (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v4
+        with:
+          cache: pnpm
+          node-version: 24
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm package:services
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cantrip-server-${{ runner.os }}-${{ runner.arch }}
+          path: artifacts/cantrip-server-*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cantrip-worker-${{ runner.os }}-${{ runner.arch }}
+          path: artifacts/cantrip-worker-*
+          if-no-files-found: error
+
+  desktop:
+    name: Desktop (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v4
+        with:
+          cache: pnpm
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev
+          libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm package:app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cantrip-desktop-${{ runner.os }}-${{ runner.arch }}
+          path: cantrip_app/src-tauri/target/release/bundle/**/*
+          if-no-files-found: error

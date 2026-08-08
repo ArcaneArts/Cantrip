@@ -82,11 +82,7 @@ import type {
   UserSettingsUpdate,
   WorktreePolicy,
 } from "@cantrip/protocol";
-
-const serverUrl = (import.meta.env.VITE_CANTRIP_SERVER_URL ?? "").replace(
-  /\/$/,
-  "",
-);
+import { getActiveServerUrl } from "@/lib/server-connections";
 
 export class CantripApiError extends Error {
   constructor(
@@ -98,7 +94,7 @@ export class CantripApiError extends Error {
 }
 
 async function request(path: string, init?: RequestInit): Promise<unknown> {
-  const response = await fetch(`${serverUrl}${path}`, {
+  const response = await fetch(`${getActiveServerUrl()}${path}`, {
     ...init,
     credentials: "include",
     headers: {
@@ -702,6 +698,7 @@ export async function getExplorerFile(explorerId: string, path: string) {
 }
 
 export function terminalWebSocketUrl(terminalId: string): string {
+  const serverUrl = getActiveServerUrl();
   const url = new URL(
     `/api/terminals/${encodeURIComponent(terminalId)}/connect`,
     serverUrl || window.location.origin,
@@ -714,6 +711,7 @@ export function remoteSurfaceWebSocketUrl(
   surfaceId: string,
   viewport: { width: number; height: number; devicePixelRatio: number },
 ): string {
+  const serverUrl = getActiveServerUrl();
   const url = new URL(
     `/api/remote-surfaces/${encodeURIComponent(surfaceId)}/connect`,
     serverUrl || window.location.origin,

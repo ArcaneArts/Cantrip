@@ -4,7 +4,7 @@ Cantrip is a local-first, self-hostable coding-agent workspace powered by the op
 
 The project is inspired by the Codex desktop experience, but its architecture is designed around a server and independent workers. Today, the supported development path runs the app, server, and one worker on the same computer. The same boundaries are intended to support a hosted server, multiple workers, and browser, desktop, or mobile clients later.
 
-> Cantrip is under active development. Local single-user mode is the current target; hosted accounts, secure worker enrollment, relays, and production multi-worker switching are not ready yet.
+> Cantrip is under active development. Local single-user mode is the current target. Standalone server and worker packages can be used on trusted networks, but hosted accounts, secure worker enrollment, and production multi-user access are not ready yet.
 
 ## What Cantrip does
 
@@ -79,9 +79,11 @@ documented in
 
 ## Current deployment model
 
-The current local mode has one anonymous Cantrip user and no Cantrip sign-in screen. `pnpm dev` or `pnpm devtop` starts the server and a local worker together, so the app connects immediately.
+The current local mode has one anonymous Cantrip user and no Cantrip sign-in screen. `pnpm dev` or `pnpm devtop` starts the server and a local worker together, so the app connects immediately. A packaged Tauri desktop app carries its own production server, worker, Node.js runtime, and PGlite migrations. It starts those services on a private dynamic loopback port and stops them with the app.
 
-The architecture leaves room for a future cloud server to route several outbound-connected workers—for example, a desktop, laptop, and VPS—to web, desktop, and mobile clients. That mode will require real accounts, worker enrollment, secure remote transport, and possibly a relay. Those capabilities should not be inferred from the current local development authentication.
+The account area in the main sidebar is also the server switcher. Its **Add server** action saves a named server origin in client bootstrap storage, tests `/api/bootstrap`, and switches every HTTP and WebSocket request after a reload. The built-in **Local** profile always selects the desktop-bundled stack in a release build and the normal development stack in `devtop`. Server profiles contain no credentials; multi-account authentication is intentionally a later milestone.
+
+Standalone server and worker packages establish the deployable boundary for a future cloud control plane. The server can bind remotely only with the explicit `CANTRIP_ALLOW_INSECURE_REMOTE=true` acknowledgement. Until account authentication and worker enrollment land, use that mode only on a trusted private network or behind an authenticating reverse proxy; it is not safe to expose directly to the public internet.
 
 Conversation history and configuration live on the server, so they remain readable when a worker is unavailable. Project files and live runtime state remain on the worker. Moving a conversation to another worker will therefore require a compatible checkout and an explicit handoff rather than pretending that uncommitted files moved automatically.
 
@@ -260,6 +262,23 @@ pnpm devtop
 
 Do not run the complete `pnpm dev` and `pnpm devtop` stacks simultaneously with the default configuration because they still share the Cantrip server and worker. A separately running browser Vite process on port 5173 no longer prevents `devtop` from starting. Press `Ctrl+C` in the `devtop` terminal to stop the Tauri app and all processes it started.
 
+## Packaging and standalone services
+
+Packages are assembled for the operating system and architecture running the command. This matters for worker dependencies such as PTYs, screen capture, and image processing, which include native binaries.
+
+```shell
+pnpm package:server          # artifacts/cantrip-server-<platform>-<arch>
+pnpm package:worker          # artifacts/cantrip-worker-<platform>-<arch>
+pnpm package:services        # both standalone service trees
+pnpm package:desktop-runtime # stage the local services used by Tauri
+pnpm package:app             # native Tauri installer/bundle for this platform
+pnpm package:all             # standalone services plus the desktop app
+```
+
+Standalone service directories include compiled JavaScript, production dependencies, startup scripts, and a focused `.env.example`. They require Node.js 22 or newer on the host. Copy `.env.example` to `.env`, configure matching `CANTRIP_WORKER_TOKEN` values, then launch `start.sh` or `start.cmd`. The worker initiates its connection with `CANTRIP_SERVER_URL`; no inbound worker port is exposed.
+
+The `Package distributions` GitHub Actions workflow builds separate Server, Worker, and Desktop artifacts on macOS, Linux, and Windows. See [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) for the environment contract, desktop lifecycle, and current security boundary.
+
 ## Test with Ollama
 
 The development seed includes an Ollama provider at `http://127.0.0.1:11434/v1` and a `gemma4:26b` model entry. Make the configured model available in Ollama, start Ollama, then select that model in Cantrip. Providers and model names can be changed from Settings without storing credentials in the browser.
@@ -311,7 +330,7 @@ pnpm --filter @cantrip/app cap:add:android
 pnpm --filter @cantrip/app cap:sync
 ```
 
-Browser-only and mobile clients cannot bootstrap a Node server or worker. Packaged remote clients will connect to a separately running Cantrip server using `VITE_CANTRIP_SERVER_URL`. The local Tauri development command currently runs the local stack through the root orchestrator.
+Browser-only and mobile clients cannot bootstrap a Node server or worker. They use the same server switcher to select a reachable standalone server. Tauri development keeps the root-orchestrated hot-reload stack, while a production desktop bundle supervises its internal server and worker automatically.
 
 ## Further design
 

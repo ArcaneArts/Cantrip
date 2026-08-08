@@ -15,6 +15,7 @@ describe("server configuration safety", () => {
     expect(readServerConfig()).toMatchObject({
       agentModel: "gemma4:26b",
       agentModelProvider: "ollama",
+      allowInsecureRemote: false,
       authMode: "none",
       bootstrapMode: "pnpm-dev",
       deploymentMode: "local",
@@ -26,14 +27,31 @@ describe("server configuration safety", () => {
   it("refuses to expose the no-auth foundation beyond loopback", () => {
     vi.stubEnv("CANTRIP_SERVER_HOST", "0.0.0.0");
 
-    expect(() => readServerConfig()).toThrow(/must bind to a loopback host/);
+    expect(() => readServerConfig()).toThrow(/remote access is disabled/);
   });
 
-  it("refuses unimplemented hosted and account modes", () => {
+  it("requires an explicit unsafe opt-in for hosted mode", () => {
     vi.stubEnv("CANTRIP_DEPLOYMENT_MODE", "hosted");
-    expect(() => readServerConfig()).toThrow(/Hosted deployment/);
+    expect(() => readServerConfig()).toThrow(/remote access is disabled/);
 
-    vi.stubEnv("CANTRIP_DEPLOYMENT_MODE", "local");
+    vi.stubEnv("CANTRIP_SERVER_HOST", "0.0.0.0");
+    vi.stubEnv("CANTRIP_ALLOW_INSECURE_REMOTE", "true");
+    vi.stubEnv("CANTRIP_WORKER_TOKEN", "a-unique-remote-worker-token");
+    expect(readServerConfig()).toMatchObject({
+      allowInsecureRemote: true,
+      deploymentMode: "hosted",
+      host: "0.0.0.0",
+    });
+  });
+
+  it("refuses the development worker token for remote deployments", () => {
+    vi.stubEnv("CANTRIP_SERVER_HOST", "0.0.0.0");
+    vi.stubEnv("CANTRIP_ALLOW_INSECURE_REMOTE", "true");
+    vi.stubEnv("CANTRIP_WORKER_TOKEN", "cantrip-local-development");
+    expect(() => readServerConfig()).toThrow(/unique CANTRIP_WORKER_TOKEN/);
+  });
+
+  it("refuses unimplemented account mode", () => {
     vi.stubEnv("CANTRIP_AUTH_MODE", "accounts");
     expect(() => readServerConfig()).toThrow(/not implemented/);
   });
