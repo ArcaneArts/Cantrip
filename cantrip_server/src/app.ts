@@ -19,6 +19,10 @@ import {
   chatGoalResponseSchema,
   chatGoalUpdateSchema,
   chatInterruptAcceptedSchema,
+  chatPlanAcceptedSchema,
+  chatPlanAnswerSchema,
+  chatPlanStateSchema,
+  chatPlanUpdateSchema,
   chatCreateSchema,
   chatExecutionLaneListSchema,
   chatExecutionLaneReleaseSchema,
@@ -989,6 +993,7 @@ export async function buildApp({
                 skillNames: mentionedSkillNames(input.text),
                 model: runtime.model,
                 provider: runtime.provider,
+                planMode: execution.planMode,
               },
               {
                 timeoutMs: null,
@@ -1007,6 +1012,34 @@ export async function buildApp({
                       },
                       attribution,
                     );
+                    return;
+                  }
+                  if (event.type === "agent.plan.updated") {
+                    await repository.updateChatPlanSnapshot(
+                      execution.chatId,
+                      event.explanation,
+                      event.steps,
+                    );
+                    return;
+                  }
+                  if (event.type === "agent.plan.question") {
+                    await repository.setPendingPlanQuestion(
+                      execution.chatId,
+                      event.question,
+                    );
+                    return;
+                  }
+                  if (event.type === "agent.plan.question-resolved") {
+                    const state = await repository.getChatPlanState(
+                      LOCAL_USER_ID,
+                      execution.chatId,
+                    );
+                    if (state?.question?.id === event.questionId) {
+                      await repository.setPendingPlanQuestion(
+                        execution.chatId,
+                        null,
+                      );
+                    }
                     return;
                   }
                   if (event.type !== "agent.activity") return;
@@ -3594,6 +3627,173 @@ export async function buildApp({
         provider: runtime.provider,
       });
       return reply.send(chatInterruptAcceptedSchema.parse(result));
+    },
+  );
+
+  app.get<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/plan",
+    async (request, reply) => {
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      if (context.threadId && bridge.isConnected(context.workerId)) {
+        try {
+          const runtime = await runtimeForContext(context);
+          if (runtime) {
+            const result = (await bridge.request(context.workerId, {
+              type: "chat.plan.get",
+              cwd: context.cwd,
+              threadId: context.threadId,
+              fallbackMode: context.planMode,
+              model: runtime.model,
+              provider: runtime.provider,
+            })) as { mode?: unknown };
+            const mode = chatPlanUpdateSchema.safeParse({ mode: result.mode });
+            if (mode.success && mode.data.mode !== context.planMode) {
+              await repository.updateChatPlanMode(
+                LOCAL_USER_ID,
+                context.chatId,
+                mode.data.mode,
+              );
+            }
+          }
+        } catch (error) {
+          app.log.warn(
+            { chatId: context.chatId, err: error },
+            "Could not refresh native Plan Mode state",
+          );
+        }
+      }
+      const state = await repository.getChatPlanState(
+        LOCAL_USER_ID,
+        context.chatId,
+      );
+      return reply.send(chatPlanStateSchema.parse(state));
+    },
+  );
+
+  app.patch<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/plan",
+    async (request, reply) => {
+      const input = chatPlanUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      if (context.status === "running") {
+        return reply
+          .code(409)
+          .send({ error: "Wait for the active turn to finish." });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const modelId = await resolveModelId(context);
+        const runtime =
+          (await runtimeForContext(context)) ??
+          (await availableModelRuntimes(context, modelId))[0]!;
+        const result = (await bridge.request(context.workerId, {
+          type: "chat.plan.set",
+          cwd: context.cwd,
+          threadId: context.threadId,
+          mode: input.data.mode,
+          model: runtime.model,
+          provider: runtime.provider,
+        })) as { mode: unknown; threadId: unknown };
+        const nativeMode = chatPlanUpdateSchema.parse({ mode: result.mode });
+        if (typeof result.threadId !== "string" || !result.threadId) {
+          throw new Error("Codex did not return a Plan Mode thread.");
+        }
+        await repository.updateChatRuntime(
+          context.chatId,
+          context.workerId,
+          context.worktreeId,
+          result.threadId,
+          runtime.routeId,
+        );
+        const state = await repository.updateChatPlanMode(
+          LOCAL_USER_ID,
+          context.chatId,
+          nativeMode.mode,
+        );
+        return reply.send(chatPlanStateSchema.parse(state));
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/plan/answer",
+    async (request, reply) => {
+      const input = chatPlanAnswerSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      const state = await repository.getChatPlanState(
+        LOCAL_USER_ID,
+        context.chatId,
+      );
+      if (!state?.question) {
+        return reply
+          .code(409)
+          .send({ error: "This chat has no pending Plan Mode question." });
+      }
+      const expectedIds = new Set(
+        state.question.questions.map((question) => question.id),
+      );
+      const answerIds = Object.keys(input.data.answers);
+      if (
+        answerIds.length !== expectedIds.size ||
+        answerIds.some((id) => !expectedIds.has(id))
+      ) {
+        return reply
+          .code(400)
+          .send({ error: "Answer every pending Plan Mode question once." });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const runtime = await runtimeForContext(context);
+        if (!runtime) throw new Error("Selected model was not found.");
+        const result = await bridge.request(context.workerId, {
+          type: "chat.plan.answer",
+          questionId: state.question.id,
+          answers: input.data.answers,
+          model: runtime.model,
+          provider: runtime.provider,
+        });
+        const accepted = chatPlanAcceptedSchema.parse(result);
+        const latest = await repository.getChatPlanState(
+          LOCAL_USER_ID,
+          context.chatId,
+        );
+        if (latest?.question?.id === state.question.id) {
+          await repository.setPendingPlanQuestion(context.chatId, null);
+        }
+        return reply.send(accepted);
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
     },
   );
 

@@ -2,7 +2,9 @@ import type {
   AgentThreadSync,
   AgentTurnResult,
   ChatGoalResponse,
+  ChatPlanAnswer,
   CodexRuntimeReport,
+  PlanMode,
 } from "@cantrip/protocol";
 
 import type {
@@ -70,6 +72,16 @@ export interface CodexRuntime {
   clearGoal(
     options: GoalRuntimeOptions & { threadId: string },
   ): Promise<{ cleared: boolean }>;
+  getPlanMode(
+    options: GoalRuntimeOptions & { fallbackMode: PlanMode },
+  ): Promise<{ mode: PlanMode; threadId: string | null }>;
+  setPlanMode(
+    options: GoalRuntimeOptions & { mode: PlanMode },
+  ): Promise<{ mode: PlanMode; threadId: string }>;
+  answerPlanQuestion(
+    questionId: string,
+    answers: ChatPlanAnswer["answers"],
+  ): Promise<{ accepted: true }>;
   interruptThread(threadId: string): Promise<{ interrupted: boolean }>;
   steerThread(
     chatId: string,

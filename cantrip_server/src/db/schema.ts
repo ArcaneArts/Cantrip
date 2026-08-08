@@ -1,6 +1,8 @@
 import type {
   ChatMessageContent,
   CodexRuntimeReport,
+  PendingPlanQuestion,
+  PlanStep,
   RemoteSurfaceCapabilities,
   RemoteSurfaceConfiguration,
 } from "@cantrip/protocol";
@@ -286,6 +288,12 @@ export const chats = pgTable("chats", {
   modelId: text("model_id").references(() => modelProfiles.id, {
     onDelete: "restrict",
   }),
+  planMode: text("plan_mode").notNull().default("default"),
+  planExplanation: text("plan_explanation"),
+  planSteps: jsonb("plan_steps").$type<PlanStep[]>().notNull().default([]),
+  pendingPlanQuestion: jsonb(
+    "pending_plan_question",
+  ).$type<PendingPlanQuestion | null>(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

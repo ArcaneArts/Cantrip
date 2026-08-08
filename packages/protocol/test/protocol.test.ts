@@ -9,6 +9,8 @@ import {
   chatExecutionLaneSummarySchema,
   chatGoalCreateSchema,
   chatGoalResponseSchema,
+  chatPlanAnswerSchema,
+  chatPlanStateSchema,
   decodeRemoteSurfaceFrame,
   encodeRemoteSurfaceFrame,
   remoteBrowserClipboardMessageSchema,
@@ -197,12 +199,55 @@ describe("Cantrip protocol", () => {
         baseUrl: "https://api.openai.com/v1",
         apiKey: null,
       },
+      planMode: "plan",
     });
     expect(turn).toMatchObject({
       isPrimary: true,
       worktreeMode: "agent-managed",
       worktreePolicy: "required-for-writes",
+      planMode: "plan",
     });
+  });
+
+  it("validates durable Plan Mode state and no-timeout worker questions", () => {
+    const state = chatPlanStateSchema.parse({
+      mode: "plan",
+      explanation: "Confirm the deployment shape before implementation.",
+      steps: [
+        { step: "Inspect the runtime", status: "completed" },
+        { step: "Choose a topology", status: "inProgress" },
+      ],
+      question: {
+        id: "question-1",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "item-1",
+        createdAt: "2026-08-08T12:00:00.000Z",
+        questions: [
+          {
+            id: "topology",
+            header: "Topology",
+            question: "Which topology should the plan target?",
+            isOther: true,
+            isSecret: false,
+            options: [
+              { label: "Multi-node", description: "Use four instances." },
+            ],
+          },
+        ],
+      },
+    });
+    expect(state.question?.questions[0]?.id).toBe("topology");
+    expect(
+      chatPlanAnswerSchema.parse({ answers: { topology: ["Multi-node"] } }),
+    ).toEqual({ answers: { topology: ["Multi-node"] } });
+    expect(
+      workerEventEnvelopeSchema.parse({
+        kind: "event",
+        requestId: "request-1",
+        event: { type: "agent.plan.question", question: state.question },
+      }).event.type,
+    ).toBe("agent.plan.question");
   });
 
   it("validates worker-backed chat interruption", () => {

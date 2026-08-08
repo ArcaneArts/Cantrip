@@ -25,6 +25,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   { name: "init", description: "Generate an AGENTS.md scaffold" },
   { name: "fork", description: "Fork the current chat" },
   { name: "goal", description: "Start or inspect a long-running Codex goal" },
+  { name: "plan", description: "Toggle Codex Plan Mode for this chat" },
   { name: "new", description: "Start a new chat in this project" },
   { name: "review", description: "Ask Codex to review the working tree" },
   { name: "status", description: "Inspect the current Codex session" },
