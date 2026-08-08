@@ -334,6 +334,7 @@ export async function buildApp({
 
   await app.register(cors, {
     credentials: true,
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     origin: config.appOrigins,
   });
   await app.register(websocket);
@@ -2575,13 +2576,26 @@ export async function buildApp({
 
   app.get<{
     Params: { projectId: string };
-    Querystring: { state?: string };
+    Querystring: { limit?: string; page?: string; state?: string };
   }>("/api/projects/:projectId/github/issues", async (request, reply) => {
     const state = githubIssueStateSchema.safeParse(
       request.query.state ?? "open",
     );
     if (!state.success) {
       return reply.code(400).send({ error: "state must be open or closed" });
+    }
+    const page = Number(request.query.page ?? "1");
+    const limit = Number(request.query.limit ?? "100");
+    if (
+      !Number.isInteger(page) ||
+      page < 1 ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > 100
+    ) {
+      return reply.code(400).send({
+        error: "page must be positive and limit must be between 1 and 100",
+      });
     }
     const context = await repository.getGithubProjectExecutionContext(
       LOCAL_USER_ID,
@@ -2595,6 +2609,8 @@ export async function buildApp({
         type: "github.issues.list",
         repository: context.nameWithOwner,
         state: state.data,
+        page,
+        limit,
       });
       return reply.send(githubIssueListSchema.parse(issues));
     } catch (error) {
@@ -2907,9 +2923,57 @@ export async function buildApp({
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/console",
     async (request, reply) => {
-      const terminal = await repository.getOrCreateChatConsole(
+      let context = await repository.getChatExecutionContext(
         LOCAL_USER_ID,
         request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      if (!context.threadId) {
+        if (!bridge.isConnected(context.workerId)) {
+          return reply.code(503).send({ error: "Project worker is offline." });
+        }
+        try {
+          const modelId = await resolveModelId(context);
+          const runtime = (await availableModelRuntimes(context, modelId))[0]!;
+          const result = (await bridge.request(context.workerId, {
+            type: "chat.thread.ensure",
+            cwd: context.cwd,
+            threadId: null,
+            planMode: context.planMode,
+            model: runtime.model,
+            provider: runtime.provider,
+            permissionProfileId:
+              effectivePermissionProfile(context).effectiveId,
+          })) as { threadId?: unknown };
+          if (typeof result.threadId !== "string" || !result.threadId) {
+            throw new Error("Codex did not return a console thread.");
+          }
+          await repository.setChatModel(LOCAL_USER_ID, context.chatId, {
+            modelId,
+          });
+          await repository.updateChatRuntime(
+            context.chatId,
+            context.workerId,
+            context.worktreeId,
+            result.threadId,
+            runtime.routeId,
+          );
+          const updated = await repository.getChatExecutionContext(
+            LOCAL_USER_ID,
+            context.chatId,
+          );
+          if (!updated) throw new Error("Chat source not found.");
+          context = updated;
+        } catch (error) {
+          const status = error instanceof WorkerUnavailableError ? 503 : 409;
+          return reply.code(status).send({ error: errorMessage(error) });
+        }
+      }
+      const terminal = await repository.getOrCreateChatConsole(
+        LOCAL_USER_ID,
+        context.chatId,
       );
       return terminal
         ? reply.code(201).send(terminalSummarySchema.parse(terminal))

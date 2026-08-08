@@ -816,49 +816,49 @@ function SortableProject({
                   disabled={creatingChat}
                   onSelect={onCreateChat}
                 >
-                  <Plus className="size-4" /> Chat
+                  <MessageSquare className="size-4" /> Chat
                 </DropdownMenuPrimitive.Item>
                 <DropdownMenuPrimitive.Item
                   className={menuItemClass}
                   disabled={creatingTerminal}
                   onSelect={onCreateTerminal}
                 >
-                  <Plus className="size-4" /> Terminal
+                  <SquareTerminal className="size-4" /> Terminal
                 </DropdownMenuPrimitive.Item>
                 <DropdownMenuPrimitive.Item
                   className={menuItemClass}
                   disabled={creatingExplorer}
                   onSelect={onCreateExplorer}
                 >
-                  <Plus className="size-4" /> Explorer
+                  <FolderTree className="size-4" /> Explorer
                 </DropdownMenuPrimitive.Item>
                 <DropdownMenuPrimitive.Item
                   className={menuItemClass}
                   disabled={creatingBrowser}
                   onSelect={onCreateBrowser}
                 >
-                  <Plus className="size-4" /> Browser
+                  <Globe2 className="size-4" /> Browser
                 </DropdownMenuPrimitive.Item>
                 <DropdownMenuPrimitive.Item
                   className={menuItemClass}
                   disabled={creatingView}
                   onSelect={onCreateHistory}
                 >
-                  <Plus className="size-4" /> History
+                  <GitCommitHorizontal className="size-4" /> History
                 </DropdownMenuPrimitive.Item>
                 <DropdownMenuPrimitive.Item
                   className={menuItemClass}
                   disabled={creatingView || !project.github}
                   onSelect={onCreateIssues}
                 >
-                  <Plus className="size-4" /> Issues
+                  <CircleDot className="size-4" /> Issues
                 </DropdownMenuPrimitive.Item>
                 <DropdownMenuPrimitive.Item
                   className={menuItemClass}
                   disabled={creatingRemoteDesktop}
                   onSelect={onCreateRemoteDesktop}
                 >
-                  <Plus className="size-4" /> Remote Desktop
+                  <MonitorUp className="size-4" /> Remote Desktop
                 </DropdownMenuPrimitive.Item>
               </DropdownMenuPrimitive.Content>
             </DropdownMenuPrimitive.Portal>

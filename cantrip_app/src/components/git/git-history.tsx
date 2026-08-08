@@ -3,6 +3,7 @@ import type {
   GitCommit,
   GitRef,
   GitStatus,
+  GithubIssueList,
   GithubIssueState,
   ProjectSummary,
   ProjectWorktreeCreate,
@@ -12,7 +13,6 @@ import type {
 import {
   useInfiniteQuery,
   useMutation,
-  useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import {
@@ -28,7 +28,7 @@ import {
   ScanLine,
   Tag,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createProjectWorktree,
@@ -368,6 +368,7 @@ export function GitHistoryView({
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const [changesOpen, setChangesOpen] = useState(false);
   const [issueState, setIssueState] = useState<GithubIssueState>("open");
+  const [issueRefreshEpoch, setIssueRefreshEpoch] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
   const [pruneOpen, setPruneOpen] = useState(false);
   const [allowExternalPrune, setAllowExternalPrune] = useState(false);
@@ -390,11 +391,18 @@ export function GitHistoryView({
     queryKey: ["worktree-history", project.id, worktreeId],
     getNextPageParam: (page) => page.nextCursor ?? undefined,
   });
-  const issues = useQuery({
+  const issues = useInfiniteQuery({
     enabled: view === "issues" && Boolean(project.github),
-    queryFn: () => getGithubIssues(project.id, issueState),
-    queryKey: ["github-issues", project.id, issueState],
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) =>
+      getGithubIssues(project.id, issueState, pageParam),
+    queryKey: ["github-issues", project.id, issueState, issueRefreshEpoch],
+    getNextPageParam: (page) => page.nextPage ?? undefined,
   });
+  const refreshIssues = useCallback(
+    () => setIssueRefreshEpoch((epoch) => epoch + 1),
+    [],
+  );
   const gitAction = useMutation({
     mutationFn: (type: "pull" | "push") =>
       runProjectWorktreeGitAction(project.id, worktreeId, { type }),
@@ -500,6 +508,18 @@ export function GitHistoryView({
   const graphAreaWidth = Math.min(260, Math.max(160, graphWidth + 126));
   const historyColumns = `${graphAreaWidth}px minmax(320px, 1fr) 150px 82px`;
   const firstPage = history.data?.pages[0];
+  const loadedIssues = useMemo<GithubIssueList | undefined>(() => {
+    if (!issues.data) return undefined;
+    const values = issues.data.pages.flatMap((page) => page.issues);
+    return {
+      state: issueState,
+      total: values.length,
+      issues: values,
+      nextPage: issues.data.pages.at(-1)?.nextPage ?? null,
+    };
+  }, [issueState, issues.data]);
+  const issuesRefreshing =
+    issues.isFetching && !issues.isFetchingNextPage && !issues.isLoading;
 
   useEffect(() => {
     onHeaderChange({
@@ -517,8 +537,8 @@ export function GitHistoryView({
       isFetching:
         view === "history"
           ? history.isFetching || reconcile.isPending
-          : issues.isFetching,
-      issueCount: issues.data?.total ?? null,
+          : issuesRefreshing,
+      issueCount: loadedIssues?.total ?? null,
       issueState,
       isGitActionPending: gitAction.isPending,
       pull: () => gitAction.mutate("pull"),
@@ -530,7 +550,7 @@ export function GitHistoryView({
             queryKey: ["worktree-status", project.id],
           });
         } else {
-          void issues.refetch();
+          refreshIssues();
         }
       },
     });
@@ -542,12 +562,12 @@ export function GitHistoryView({
     gitAction.isPending,
     gitAction.mutate,
     issueState,
-    issues.data?.total,
-    issues.isFetching,
-    issues.refetch,
+    issuesRefreshing,
+    loadedIssues?.total,
     onHeaderChange,
     project.id,
     queryClient,
+    refreshIssues,
     reconcile.isPending,
     reconcile.mutate,
     selectedWorktree?.branch,
@@ -593,6 +613,7 @@ export function GitHistoryView({
                   workers={workers}
                   actions={{
                     disabled: gitAction.isPending,
+                    pending: gitAction.isPending,
                     onCreate: () => setCreateOpen(true),
                     onSelect: onSelectWorktree,
                   }}
@@ -632,7 +653,7 @@ export function GitHistoryView({
             className="size-8"
             disabled={history.isFetching || reconcile.isPending}
             onClick={() =>
-              view === "history" ? reconcile.mutate() : void issues.refetch()
+              view === "history" ? reconcile.mutate() : refreshIssues()
             }
             title="Refresh"
           >
@@ -641,7 +662,7 @@ export function GitHistoryView({
                 "size-4",
                 (view === "history"
                   ? history.isFetching || reconcile.isPending
-                  : issues.isFetching) && "animate-spin",
+                  : issuesRefreshing) && "animate-spin",
               )}
             />
             <span className="sr-only">Refresh</span>
@@ -666,12 +687,15 @@ export function GitHistoryView({
       {view === "issues" ? (
         <GithubIssuesView
           error={issues.error}
-          isFetching={issues.isFetching}
+          hasNextPage={issues.hasNextPage}
+          isFetching={issuesRefreshing}
+          isFetchingNextPage={issues.isFetchingNextPage}
           isLoading={issues.isLoading}
-          issues={issues.data}
+          issues={loadedIssues}
           project={project}
           state={issueState}
-          onRefresh={() => void issues.refetch()}
+          onLoadMore={() => void issues.fetchNextPage()}
+          onRefresh={refreshIssues}
           onStateChange={setIssueState}
         />
       ) : (

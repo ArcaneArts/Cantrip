@@ -53,6 +53,25 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("bounds GitHub issue pagination to pages of at most 100", () => {
+    expect(
+      workerCommandSchema.parse({
+        type: "github.issues.list",
+        repository: "ArcaneArts/Cantrip",
+        state: "open",
+      }),
+    ).toMatchObject({ page: 1, limit: 100 });
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "github.issues.list",
+        repository: "ArcaneArts/Cantrip",
+        state: "open",
+        page: 1,
+        limit: 101,
+      }),
+    ).toThrow();
+  });
+
   it("validates native customization worker commands and bounded MCP reads", () => {
     const runtime = {
       cwd: "/workspace/Cantrip",

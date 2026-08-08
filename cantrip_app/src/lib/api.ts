@@ -381,10 +381,11 @@ export async function getGitHistory(projectId: string, cursor = 0) {
 export async function getGithubIssues(
   projectId: string,
   state: GithubIssueState,
+  page = 1,
 ) {
   return githubIssueListSchema.parse(
     await request(
-      `/api/projects/${encodeURIComponent(projectId)}/github/issues?state=${encodeURIComponent(state)}`,
+      `/api/projects/${encodeURIComponent(projectId)}/github/issues?state=${encodeURIComponent(state)}&page=${page}&limit=100`,
     ),
   );
 }

@@ -345,16 +345,18 @@ export class GithubClient {
   async listIssues(
     nameWithOwner: string,
     state: GithubIssueState,
+    page = 1,
+    limit = 100,
   ): Promise<GithubIssueList> {
-    const pages = (await this.api(
+    const values = (await this.api(
       `${this.repositoryApiPath(nameWithOwner)}/issues`,
       [
         "--method",
         "GET",
-        "--paginate",
-        "--slurp",
         "-f",
-        "per_page=100",
+        `per_page=${limit}`,
+        "-f",
+        `page=${page}`,
         "-f",
         `state=${state}`,
         "-f",
@@ -362,12 +364,16 @@ export class GithubClient {
         "-f",
         "direction=desc",
       ],
-    )) as GithubApiIssue[][];
-    const issues = pages
-      .flat()
+    )) as GithubApiIssue[];
+    const issues = values
       .filter((issue) => !issue.pull_request)
       .map(parseIssue);
-    return githubIssueListSchema.parse({ state, total: issues.length, issues });
+    return githubIssueListSchema.parse({
+      state,
+      total: issues.length,
+      issues,
+      nextPage: values.length === limit ? page + 1 : null,
+    });
   }
 
   async getIssue(

@@ -42,6 +42,8 @@ import {
   Lock,
   MessageSquare,
   PanelLeft,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pause,
   Play,
   Plus,
@@ -2044,6 +2046,7 @@ export function App() {
   const [showProjectSettings, setShowProjectSettings] = useState(false);
   const [showCustomizations, setShowCustomizations] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [gitHistoryHeader, setGitHistoryHeader] =
     useState<GitHistoryHeaderState | null>(null);
   const [explorerHeader, setExplorerHeader] =
@@ -3062,7 +3065,7 @@ export function App() {
 
   return (
     <main className="flex h-svh overflow-hidden bg-background text-foreground">
-      {!isPopout ? (
+      {!isPopout && !sidebarCollapsed ? (
         <aside
           data-slot="app-sidebar"
           className="hidden w-72 shrink-0 flex-col border-r bg-background md:flex"
@@ -3075,6 +3078,16 @@ export function App() {
               <p className="font-semibold tracking-tight">Cantrip</p>
             </div>
             <StatusDot online={Boolean(onlineWorker)} />
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-8"
+              onClick={() => setSidebarCollapsed(true)}
+              title="Collapse sidebar"
+            >
+              <PanelLeftClose className="size-4" />
+              <span className="sr-only">Collapse sidebar</span>
+            </Button>
           </div>
 
           <div className="flex items-center justify-between px-4 pb-2 pt-4">
@@ -3282,7 +3295,19 @@ export function App() {
       <section className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {!isPopout ? (
           <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b px-4 sm:px-6">
-            <div className="min-w-0">
+            {sidebarCollapsed ? (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="absolute left-4 top-4 hidden size-8 md:inline-flex"
+                onClick={() => setSidebarCollapsed(false)}
+                title="Expand sidebar"
+              >
+                <PanelLeftOpen className="size-4" />
+                <span className="sr-only">Expand sidebar</span>
+              </Button>
+            ) : null}
+            <div className={cn("min-w-0", sidebarCollapsed && "pl-10")}>
               <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
                 <span className="truncate">
                   {showImporter
@@ -3320,6 +3345,7 @@ export function App() {
                     leaseOwner={activeChat?.title}
                     actions={{
                       chatMode: activeChat?.worktreeMode,
+                      pending: bindWorktreeMutation.isPending,
                       disabled:
                         bindWorktreeMutation.isPending ||
                         activeChat?.status === "running" ||
