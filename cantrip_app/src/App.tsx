@@ -6,6 +6,8 @@ import type {
   GithubRepository,
   ModelProfileSummary,
   ProjectSummary,
+  ProjectWorktreeCreate,
+  ProjectWorktreeSummary,
   ProjectViewKind,
   ProjectViewSummary,
   QueuedPrompt,
@@ -13,7 +15,12 @@ import type {
   SkillSummary,
   TerminalSummary,
 } from "@cantrip/protocol";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -70,6 +77,11 @@ import {
 } from "@/components/git/git-history";
 import { ProjectChatList } from "@/components/sidebar/project-chat-list";
 import { SettingsPage } from "@/components/settings/settings-page";
+import {
+  WorktreeControl,
+  WorktreeCreateDialog,
+  type WorktreeStatusMap,
+} from "@/components/worktrees/worktree-control";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -92,6 +104,7 @@ import {
   createChatConsole,
   createExplorer,
   createGithubProject,
+  createProjectWorktree,
   createProjectView,
   createTerminal,
   compactChat,
@@ -110,6 +123,8 @@ import {
   getGithubStatus,
   getMessages,
   getProjects,
+  getProjectWorktrees,
+  getProjectWorktreeStatus,
   getProjectViews,
   getQueuedPrompts,
   getServerBootstrap,
@@ -129,8 +144,12 @@ import {
   steerQueuedPrompt,
   syncChat,
   updateChatModel,
+  updateChatWorktree,
   updateBrowser,
+  updateExplorerWorktree,
+  updateProjectViewWorktree,
   updateQueuedPrompt,
+  updateTerminalWorktree,
 } from "@/lib/api";
 import {
   isDesktopRuntime,
@@ -167,6 +186,19 @@ const BrowserView = lazy(() =>
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
+
+type WorktreeBindingTarget =
+  | {
+      kind: "chat";
+      projectId: string;
+      tabId: string;
+      mode: "agent-managed" | "pinned";
+    }
+  | {
+      kind: "explorer" | "history" | "terminal";
+      projectId: string;
+      tabId: string;
+    };
 
 function MessageContent({ message }: { message: ChatMessage }) {
   return (
@@ -1338,6 +1370,11 @@ export function App() {
     useState<GitHistoryHeaderState | null>(null);
   const [popoutPending, setPopoutPending] = useState(false);
   const [popoutError, setPopoutError] = useState<string | null>(null);
+  const [worktreeCreateTarget, setWorktreeCreateTarget] =
+    useState<WorktreeBindingTarget | null>(null);
+  const [worktreeActionError, setWorktreeActionError] = useState<string | null>(
+    null,
+  );
 
   const openCreatedTab = (
     projectId: string,
@@ -1373,6 +1410,37 @@ export function App() {
         ? 750
         : false,
   });
+  const worktrees = useQuery({
+    enabled: Boolean(selectedProjectId),
+    queryFn: () => getProjectWorktrees(selectedProjectId!),
+    queryKey: ["worktrees", selectedProjectId],
+    refetchInterval: 3_000,
+  });
+  const worktreeStatusQueries = useQueries({
+    queries: (worktrees.data ?? []).map((worktree) => ({
+      enabled: Boolean(
+        workers.data?.find(({ workerId }) => workerId === worktree.workerId)
+          ?.online && worktree.lifecycleState === "ready",
+      ),
+      queryFn: () =>
+        getProjectWorktreeStatus(worktree.projectId, worktree.id).then(
+          ({ status }) => status,
+        ),
+      queryKey: ["worktree-status", worktree.projectId, worktree.id],
+      refetchInterval: 3_000,
+      retry: false,
+    })),
+  });
+  const worktreeStatuses = useMemo<WorktreeStatusMap>(
+    () =>
+      Object.fromEntries(
+        (worktrees.data ?? []).map((worktree, index) => [
+          worktree.id,
+          worktreeStatusQueries[index]?.data,
+        ]),
+      ),
+    [worktreeStatusQueries, worktrees.data],
+  );
   const chats = useQuery({
     enabled: Boolean(selectedProjectId),
     queryFn: () => getChats(selectedProjectId!),
@@ -1420,7 +1488,13 @@ export function App() {
     },
   });
   const newTerminal = useMutation({
-    mutationFn: (projectId: string) => createTerminal(projectId, "Terminal"),
+    mutationFn: ({
+      projectId,
+      worktreeId,
+    }: {
+      projectId: string;
+      worktreeId?: string;
+    }) => createTerminal(projectId, "Terminal", worktreeId),
     onSuccess: (terminal) => {
       queryClient.setQueryData<TerminalSummary[]>(
         ["terminals", terminal.projectId],
@@ -1449,7 +1523,13 @@ export function App() {
     },
   });
   const newExplorer = useMutation({
-    mutationFn: (projectId: string) => createExplorer(projectId, "Explorer"),
+    mutationFn: ({
+      projectId,
+      worktreeId,
+    }: {
+      projectId: string;
+      worktreeId?: string;
+    }) => createExplorer(projectId, "Explorer", worktreeId),
     onSuccess: (explorer) => {
       queryClient.setQueryData<ExplorerSummary[]>(
         ["explorers", explorer.projectId],
@@ -1484,14 +1564,17 @@ export function App() {
     mutationFn: ({
       projectId,
       kind,
+      worktreeId,
     }: {
       projectId: string;
       kind: ProjectViewKind;
+      worktreeId?: string;
     }) =>
       createProjectView(
         projectId,
         kind,
         kind === "history" ? "History" : "Issues",
+        worktreeId,
       ),
     onSuccess: (view) => {
       queryClient.setQueryData<ProjectViewSummary[]>(
@@ -1505,6 +1588,128 @@ export function App() {
       void queryClient.invalidateQueries({
         queryKey: ["project-views", view.projectId],
       });
+    },
+  });
+  const bindWorktreeMutation = useMutation({
+    mutationFn: async ({
+      target,
+      worktreeId,
+      mode,
+    }: {
+      target: WorktreeBindingTarget;
+      worktreeId: string;
+      mode?: "agent-managed" | "pinned";
+    }) => {
+      if (target.kind === "chat") {
+        return {
+          kind: "chat" as const,
+          value: await updateChatWorktree(target.tabId, {
+            worktreeId,
+            mode: mode ?? target.mode,
+          }),
+        };
+      }
+      if (target.kind === "terminal") {
+        return {
+          kind: "terminal" as const,
+          value: await updateTerminalWorktree(target.tabId, worktreeId),
+        };
+      }
+      if (target.kind === "explorer") {
+        return {
+          kind: "explorer" as const,
+          value: await updateExplorerWorktree(target.tabId, worktreeId),
+        };
+      }
+      return {
+        kind: "history" as const,
+        value: await updateProjectViewWorktree(target.tabId, worktreeId),
+      };
+    },
+    onMutate: async ({ target, worktreeId, mode }) => {
+      setWorktreeActionError(null);
+      if (target.kind !== "chat") return {};
+      const queryKey = ["chats", target.projectId] as const;
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<ChatSummary[]>(queryKey);
+      queryClient.setQueryData<ChatSummary[]>(queryKey, (current = []) =>
+        current.map((chat) =>
+          chat.id === target.tabId
+            ? {
+                ...chat,
+                activeWorktreeId: worktreeId,
+                worktreeMode: mode ?? target.mode,
+              }
+            : chat,
+        ),
+      );
+      return { previous, queryKey };
+    },
+    onSuccess: ({ kind, value }) => {
+      if (kind === "chat") {
+        queryClient.setQueryData<ChatSummary[]>(
+          ["chats", value.projectId],
+          (current = []) =>
+            current.map((chat) => (chat.id === value.id ? value : chat)),
+        );
+        void queryClient.invalidateQueries({
+          queryKey: ["terminals", value.projectId],
+        });
+      } else if (kind === "terminal") {
+        queryClient.setQueryData<TerminalSummary[]>(
+          ["terminals", value.projectId],
+          (current = []) =>
+            current.map((terminal) =>
+              terminal.id === value.id ? value : terminal,
+            ),
+        );
+      } else if (kind === "explorer") {
+        queryClient.setQueryData<ExplorerSummary[]>(
+          ["explorers", value.projectId],
+          (current = []) =>
+            current.map((explorer) =>
+              explorer.id === value.id ? value : explorer,
+            ),
+        );
+        void Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: ["explorer-directory", value.id],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["explorer-file", value.id],
+          }),
+        ]);
+      } else {
+        queryClient.setQueryData<ProjectViewSummary[]>(
+          ["project-views", value.projectId],
+          (current = []) =>
+            current.map((view) => (view.id === value.id ? value : view)),
+        );
+      }
+    },
+    onError: (error, _input, context) => {
+      if (context?.queryKey) {
+        queryClient.setQueryData(context.queryKey, context.previous);
+      }
+      setWorktreeActionError(errorText(error));
+    },
+  });
+  const createWorktreeMutation = useMutation({
+    mutationFn: ({
+      projectId,
+      input,
+    }: {
+      projectId: string;
+      input: ProjectWorktreeCreate;
+    }) => createProjectWorktree(projectId, input),
+    onSuccess: (created) => {
+      queryClient.setQueryData<ProjectWorktreeSummary[]>(
+        ["worktrees", created.projectId],
+        (current = []) => [
+          ...current.filter((worktree) => worktree.id !== created.id),
+          created,
+        ],
+      );
     },
   });
   const renameChatMutation = useMutation({
@@ -1814,6 +2019,75 @@ export function App() {
   const selectedBrowser = browsers.data?.find(
     (browser) => browser.id === selectedBrowserId,
   );
+  const activeWorktreeTarget: WorktreeBindingTarget | null = activeChat
+    ? {
+        kind: "chat",
+        projectId: activeChat.projectId,
+        tabId: activeChat.id,
+        mode: activeChat.worktreeMode,
+      }
+    : selectedTerminal
+      ? {
+          kind: "terminal",
+          projectId: selectedTerminal.projectId,
+          tabId: selectedTerminal.id,
+        }
+      : selectedExplorer
+        ? {
+            kind: "explorer",
+            projectId: selectedExplorer.projectId,
+            tabId: selectedExplorer.id,
+          }
+        : selectedProjectView?.kind === "history"
+          ? {
+              kind: "history",
+              projectId: selectedProjectView.projectId,
+              tabId: selectedProjectView.id,
+            }
+          : null;
+  const activeWorktreeId = activeChat
+    ? activeChat.activeWorktreeId
+    : selectedTerminal
+      ? selectedTerminal.worktreeId
+      : selectedExplorer
+        ? selectedExplorer.worktreeId
+        : selectedProjectView?.kind === "history"
+          ? selectedProjectView.worktreeId
+          : null;
+  const activeWorktree = worktrees.data?.find(
+    (worktree) => worktree.id === activeWorktreeId,
+  );
+  const bindChatWorktree = (
+    chat: ChatSummary,
+    worktreeId: string,
+    mode = chat.worktreeMode,
+  ) =>
+    bindWorktreeMutation.mutate({
+      target: {
+        kind: "chat",
+        projectId: chat.projectId,
+        tabId: chat.id,
+        mode: chat.worktreeMode,
+      },
+      worktreeId,
+      mode,
+    });
+  const openChatTerminalHere = (chat: ChatSummary) =>
+    newTerminal.mutate({
+      projectId: chat.projectId,
+      worktreeId: chat.activeWorktreeId,
+    });
+  const openChatExplorerHere = (chat: ChatSummary) =>
+    newExplorer.mutate({
+      projectId: chat.projectId,
+      worktreeId: chat.activeWorktreeId,
+    });
+  const openChatHistoryHere = (chat: ChatSummary) =>
+    newProjectView.mutate({
+      projectId: chat.projectId,
+      kind: "history",
+      worktreeId: chat.activeWorktreeId,
+    });
   const currentSurface = useMemo<{
     target: DesktopPopoutTarget;
     title: string;
@@ -2071,6 +2345,9 @@ export function App() {
               explorers={explorers.data ?? []}
               projectViews={projectViews.data ?? []}
               terminals={terminals.data ?? []}
+              workers={workers.data ?? []}
+              worktrees={worktrees.data ?? []}
+              worktreeStatuses={worktreeStatuses}
               selectedProjectId={selectedProjectId}
               selectedBrowserId={selectedBrowserId}
               selectedChatId={selectedChatId}
@@ -2084,14 +2361,33 @@ export function App() {
               creatingView={newProjectView.isPending}
               onCreateChat={(projectId) => newChat.mutate(projectId)}
               onCreateBrowser={(projectId) => newBrowser.mutate(projectId)}
-              onCreateExplorer={(projectId) => newExplorer.mutate(projectId)}
+              onCreateExplorer={(projectId) =>
+                newExplorer.mutate({ projectId })
+              }
               onCreateHistory={(projectId) =>
                 newProjectView.mutate({ projectId, kind: "history" })
               }
               onCreateIssues={(projectId) =>
                 newProjectView.mutate({ projectId, kind: "issues" })
               }
-              onCreateTerminal={(projectId) => newTerminal.mutate(projectId)}
+              onCreateTerminal={(projectId) =>
+                newTerminal.mutate({ projectId })
+              }
+              onChangeChatWorktree={(chatId, worktreeId, mode) => {
+                const chat = chats.data?.find(({ id }) => id === chatId);
+                if (chat) bindChatWorktree(chat, worktreeId, mode);
+              }}
+              onRequestChatWorktreeCreate={(chat) =>
+                setWorktreeCreateTarget({
+                  kind: "chat",
+                  projectId: chat.projectId,
+                  tabId: chat.id,
+                  mode: chat.worktreeMode,
+                })
+              }
+              onOpenChatTerminal={openChatTerminalHere}
+              onOpenChatExplorer={openChatExplorerHere}
+              onOpenChatHistory={openChatHistoryHere}
               onRenameChat={(chatId, title) =>
                 renameChatMutation.mutate({ chatId, title })
               }
@@ -2239,6 +2535,50 @@ export function App() {
                                 : (selectedProject?.github?.nameWithOwner ??
                                   "Cantrip")}
                 </span>
+                {!showImporter &&
+                !showSettings &&
+                activeWorktreeTarget &&
+                activeWorktreeId ? (
+                  <WorktreeControl
+                    currentWorktreeId={activeWorktreeId}
+                    worktrees={worktrees.data ?? []}
+                    statuses={worktreeStatuses}
+                    workers={workers.data ?? []}
+                    leaseOwner={activeChat?.title}
+                    actions={{
+                      chatMode: activeChat?.worktreeMode,
+                      disabled:
+                        bindWorktreeMutation.isPending ||
+                        activeChat?.status === "running" ||
+                        selectedTerminal?.status === "running",
+                      error: worktreeActionError,
+                      onCreate: () =>
+                        setWorktreeCreateTarget(activeWorktreeTarget),
+                      onSelect: (worktreeId) =>
+                        bindWorktreeMutation.mutate({
+                          target: activeWorktreeTarget,
+                          worktreeId,
+                        }),
+                      onSetChatMode: activeChat
+                        ? (mode) =>
+                            bindWorktreeMutation.mutate({
+                              target: activeWorktreeTarget,
+                              worktreeId: activeChat.activeWorktreeId,
+                              mode,
+                            })
+                        : undefined,
+                      onOpenTerminal: activeChat
+                        ? () => openChatTerminalHere(activeChat)
+                        : undefined,
+                      onOpenExplorer: activeChat
+                        ? () => openChatExplorerHere(activeChat)
+                        : undefined,
+                      onOpenHistory: activeChat
+                        ? () => openChatHistoryHere(activeChat)
+                        : undefined,
+                    }}
+                  />
+                ) : null}
                 {gitHistoryProject && gitHistoryHeader ? (
                   <>
                     <Badge
@@ -2281,15 +2621,23 @@ export function App() {
                 ) : selectedBrowser ? (
                   selectedBrowser.url
                 ) : selectedExplorer ? (
-                  (selectedProject?.source?.displayPath ?? "Explorer")
+                  (activeWorktree?.displayPath ??
+                  selectedProject?.source?.displayPath ??
+                  "Explorer")
                 ) : selectedTerminal ? (
                   selectedTerminal.linkedChatId ? (
-                    (selectedProject?.source?.displayPath ?? "Chat")
+                    (activeWorktree?.displayPath ??
+                    selectedProject?.source?.displayPath ??
+                    "Chat")
                   ) : (
-                    (selectedProject?.source?.displayPath ?? "Terminal")
+                    (activeWorktree?.displayPath ??
+                    selectedProject?.source?.displayPath ??
+                    "Terminal")
                   )
                 ) : selectedChat ? (
-                  (selectedProject?.source?.displayPath ?? "Chat")
+                  (activeWorktree?.displayPath ??
+                  selectedProject?.source?.displayPath ??
+                  "Chat")
                 ) : (
                   (selectedProject?.source?.displayPath ??
                   "Choose a project to begin")
@@ -2690,7 +3038,9 @@ export function App() {
                   <Button
                     variant="outline"
                     disabled={newTerminal.isPending || !selectedProject.source}
-                    onClick={() => newTerminal.mutate(selectedProject.id)}
+                    onClick={() =>
+                      newTerminal.mutate({ projectId: selectedProject.id })
+                    }
                   >
                     {newTerminal.isPending ? (
                       <Loader2 className="size-4 animate-spin" />
@@ -2702,7 +3052,9 @@ export function App() {
                   <Button
                     variant="outline"
                     disabled={newExplorer.isPending || !selectedProject.source}
-                    onClick={() => newExplorer.mutate(selectedProject.id)}
+                    onClick={() =>
+                      newExplorer.mutate({ projectId: selectedProject.id })
+                    }
                   >
                     {newExplorer.isPending ? (
                       <Loader2 className="size-4 animate-spin" />
@@ -2758,6 +3110,31 @@ export function App() {
         )}
       </section>
 
+      <WorktreeCreateDialog
+        open={Boolean(worktreeCreateTarget)}
+        pending={
+          createWorktreeMutation.isPending || bindWorktreeMutation.isPending
+        }
+        onOpenChange={(open) => {
+          if (!open) setWorktreeCreateTarget(null);
+        }}
+        onSubmit={async (input) => {
+          const target = worktreeCreateTarget;
+          if (!target) return;
+          const created = await createWorktreeMutation.mutateAsync({
+            projectId: target.projectId,
+            input,
+          });
+          await bindWorktreeMutation.mutateAsync({
+            target,
+            worktreeId: created.id,
+          });
+          await queryClient.invalidateQueries({
+            queryKey: ["worktrees", target.projectId],
+          });
+        }}
+      />
+
       <Dialog
         open={mobileNavigationOpen}
         onOpenChange={setMobileNavigationOpen}
@@ -2777,6 +3154,9 @@ export function App() {
               explorers={explorers.data ?? []}
               projectViews={projectViews.data ?? []}
               terminals={terminals.data ?? []}
+              workers={workers.data ?? []}
+              worktrees={worktrees.data ?? []}
+              worktreeStatuses={worktreeStatuses}
               selectedProjectId={selectedProjectId}
               selectedBrowserId={selectedBrowserId}
               selectedChatId={selectedChatId}
@@ -2790,14 +3170,34 @@ export function App() {
               creatingView={newProjectView.isPending}
               onCreateChat={(projectId) => newChat.mutate(projectId)}
               onCreateBrowser={(projectId) => newBrowser.mutate(projectId)}
-              onCreateExplorer={(projectId) => newExplorer.mutate(projectId)}
+              onCreateExplorer={(projectId) =>
+                newExplorer.mutate({ projectId })
+              }
               onCreateHistory={(projectId) =>
                 newProjectView.mutate({ projectId, kind: "history" })
               }
               onCreateIssues={(projectId) =>
                 newProjectView.mutate({ projectId, kind: "issues" })
               }
-              onCreateTerminal={(projectId) => newTerminal.mutate(projectId)}
+              onCreateTerminal={(projectId) =>
+                newTerminal.mutate({ projectId })
+              }
+              onChangeChatWorktree={(chatId, worktreeId, mode) => {
+                const chat = chats.data?.find(({ id }) => id === chatId);
+                if (chat) bindChatWorktree(chat, worktreeId, mode);
+              }}
+              onRequestChatWorktreeCreate={(chat) => {
+                setMobileNavigationOpen(false);
+                setWorktreeCreateTarget({
+                  kind: "chat",
+                  projectId: chat.projectId,
+                  tabId: chat.id,
+                  mode: chat.worktreeMode,
+                });
+              }}
+              onOpenChatTerminal={openChatTerminalHere}
+              onOpenChatExplorer={openChatExplorerHere}
+              onOpenChatHistory={openChatHistoryHere}
               onRenameChat={(chatId, title) =>
                 renameChatMutation.mutate({ chatId, title })
               }

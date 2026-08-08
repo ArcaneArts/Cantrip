@@ -21,8 +21,10 @@ import type {
   ChatSummary,
   ExplorerSummary,
   ProjectSummary,
+  ProjectWorktreeSummary,
   ProjectViewSummary,
   TerminalSummary,
+  WorkerSummary,
 } from "@cantrip/protocol";
 import {
   CircleAlert,
@@ -42,7 +44,11 @@ import {
 } from "lucide-react";
 import { useState, type CSSProperties, type ReactNode } from "react";
 
-import { ChatContextMenu, ChatDropdownMenu } from "@/components/chat/chat-menu";
+import {
+  ChatContextMenu,
+  ChatDropdownMenu,
+  type ChatWorktreeActions,
+} from "@/components/chat/chat-menu";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -54,6 +60,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import {
+  WorktreeIndicator,
+  type WorktreeStatusMap,
+} from "@/components/worktrees/worktree-control";
 
 const projectId = (id: string) => `project:${id}`;
 const chatId = (id: string) => `chat:${id}`;
@@ -97,6 +107,10 @@ function SortableChat({
   renameValue,
   setRenameValue,
   submitRename,
+  workers,
+  worktree,
+  worktreeActions,
+  worktreeStatus,
 }: {
   active: boolean;
   chat: ChatSummary;
@@ -108,6 +122,10 @@ function SortableChat({
   renameValue: string;
   setRenameValue(value: string): void;
   submitRename(): void;
+  workers: WorkerSummary[];
+  worktree?: ProjectWorktreeSummary;
+  worktreeActions?: ChatWorktreeActions;
+  worktreeStatus?: WorktreeStatusMap[string];
 }) {
   const sortable = useSortable({ id: chatId(chat.id) });
   const style: CSSProperties = {
@@ -116,7 +134,12 @@ function SortableChat({
     opacity: sortable.isDragging ? 0.25 : 1,
     zIndex: sortable.isDragging ? 10 : undefined,
   };
-  const actions = { onDelete, onDuplicate, onRename };
+  const actions = {
+    onDelete,
+    onDuplicate,
+    onRename,
+    worktree: worktreeActions,
+  };
   return (
     <ChatContextMenu actions={actions}>
       <div
@@ -162,6 +185,14 @@ function SortableChat({
           </button>
         )}
         {!editing ? (
+          <WorktreeIndicator
+            leaseOwner={chat.title}
+            status={worktreeStatus}
+            workers={workers}
+            worktree={worktree}
+          />
+        ) : null}
+        {!editing ? (
           <ChatDropdownMenu actions={actions} title={chat.title} />
         ) : null}
       </div>
@@ -179,6 +210,9 @@ function TerminalTab({
   setRenameValue,
   submitRename,
   terminal,
+  workers,
+  worktree,
+  worktreeStatus,
 }: {
   active: boolean;
   editing: boolean;
@@ -189,6 +223,9 @@ function TerminalTab({
   setRenameValue(value: string): void;
   submitRename(): void;
   terminal: TerminalSummary;
+  workers: WorkerSummary[];
+  worktree?: ProjectWorktreeSummary;
+  worktreeStatus?: WorktreeStatusMap[string];
 }) {
   const sortable = useSortable({ id: terminalId(terminal.id) });
   const style: CSSProperties = {
@@ -245,6 +282,13 @@ function TerminalTab({
         </button>
       )}
       {!editing ? (
+        <WorktreeIndicator
+          status={worktreeStatus}
+          workers={workers}
+          worktree={worktree}
+        />
+      ) : null}
+      {!editing ? (
         <DropdownMenuPrimitive.Root>
           <DropdownMenuPrimitive.Trigger asChild>
             <Button
@@ -295,6 +339,9 @@ function ExplorerTab({
   renameValue,
   setRenameValue,
   submitRename,
+  workers,
+  worktree,
+  worktreeStatus,
 }: {
   active: boolean;
   editing: boolean;
@@ -305,6 +352,9 @@ function ExplorerTab({
   renameValue: string;
   setRenameValue(value: string): void;
   submitRename(): void;
+  workers: WorkerSummary[];
+  worktree?: ProjectWorktreeSummary;
+  worktreeStatus?: WorktreeStatusMap[string];
 }) {
   const sortable = useSortable({ id: explorerId(explorer.id) });
   const style: CSSProperties = {
@@ -353,6 +403,13 @@ function ExplorerTab({
           <span className="truncate">{explorer.title}</span>
         </button>
       )}
+      {!editing ? (
+        <WorktreeIndicator
+          status={worktreeStatus}
+          workers={workers}
+          worktree={worktree}
+        />
+      ) : null}
       {!editing ? (
         <DropdownMenuPrimitive.Root>
           <DropdownMenuPrimitive.Trigger asChild>
@@ -513,6 +570,9 @@ function ProjectViewTab({
   setRenameValue,
   submitRename,
   view,
+  workers,
+  worktree,
+  worktreeStatus,
 }: {
   active: boolean;
   editing: boolean;
@@ -523,6 +583,9 @@ function ProjectViewTab({
   setRenameValue(value: string): void;
   submitRename(): void;
   view: ProjectViewSummary;
+  workers: WorkerSummary[];
+  worktree?: ProjectWorktreeSummary;
+  worktreeStatus?: WorktreeStatusMap[string];
 }) {
   const sortable = useSortable({ id: viewId(view.id) });
   const style: CSSProperties = {
@@ -572,6 +635,13 @@ function ProjectViewTab({
           <span className="truncate">{view.title}</span>
         </button>
       )}
+      {!editing && view.kind === "history" ? (
+        <WorktreeIndicator
+          status={worktreeStatus}
+          workers={workers}
+          worktree={worktree}
+        />
+      ) : null}
       {!editing ? (
         <DropdownMenuPrimitive.Root>
           <DropdownMenuPrimitive.Trigger asChild>
@@ -811,6 +881,7 @@ export function ProjectChatList({
   creatingTerminal,
   creatingView,
   explorers,
+  onChangeChatWorktree,
   projectViews,
   onCreateChat,
   onCreateBrowser,
@@ -822,9 +893,13 @@ export function ProjectChatList({
   onDeleteExplorer,
   onDeleteProjectView,
   onDuplicateChat,
+  onOpenChatExplorer,
+  onOpenChatHistory,
+  onOpenChatTerminal,
   onCreateTerminal,
   onDeleteTerminal,
   onRemoveProject,
+  onRequestChatWorktreeCreate,
   onRenameChat,
   onRenameBrowser,
   onRenameExplorer,
@@ -846,6 +921,9 @@ export function ProjectChatList({
   selectedProjectId,
   selectedTerminalId,
   terminals,
+  workers,
+  worktrees,
+  worktreeStatuses,
 }: {
   browsers: BrowserSummary[];
   chats: ChatSummary[];
@@ -855,6 +933,11 @@ export function ProjectChatList({
   creatingTerminal: boolean;
   creatingView: boolean;
   explorers: ExplorerSummary[];
+  onChangeChatWorktree(
+    chatId: string,
+    worktreeId: string,
+    mode: "agent-managed" | "pinned",
+  ): void;
   projectViews: ProjectViewSummary[];
   onCreateChat(projectId: string): void;
   onCreateBrowser(projectId: string): void;
@@ -866,9 +949,13 @@ export function ProjectChatList({
   onDeleteExplorer(explorerId: string): void;
   onDeleteProjectView(viewId: string): void;
   onDuplicateChat(chatId: string): void;
+  onOpenChatExplorer(chat: ChatSummary): void;
+  onOpenChatHistory(chat: ChatSummary): void;
+  onOpenChatTerminal(chat: ChatSummary): void;
   onCreateTerminal(projectId: string): void;
   onDeleteTerminal(terminalId: string): void;
   onRemoveProject(projectId: string, deleteLocalFiles: boolean): void;
+  onRequestChatWorktreeCreate(chat: ChatSummary): void;
   onRenameChat(chatId: string, title: string): void;
   onRenameBrowser(browserId: string, title: string): void;
   onRenameExplorer(explorerId: string, title: string): void;
@@ -890,6 +977,9 @@ export function ProjectChatList({
   selectedProjectId: string | null;
   selectedTerminalId: string | null;
   terminals: TerminalSummary[];
+  workers: WorkerSummary[];
+  worktrees: ProjectWorktreeSummary[];
+  worktreeStatuses: WorktreeStatusMap;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -983,6 +1073,9 @@ export function ProjectChatList({
       position: view.position,
     })),
   ].sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
+  const worktreeById = new Map(
+    worktrees.map((worktree) => [worktree.id, worktree]),
+  );
 
   const beginRename = (chat: ChatSummary) => {
     if (editingChatId === chat.id) {
@@ -1158,6 +1251,38 @@ export function ProjectChatList({
                             onRename={() => beginRename(tab.chat)}
                             onDuplicate={() => onDuplicateChat(tab.chat.id)}
                             onDelete={() => setDeleteTarget(tab.chat)}
+                            workers={workers}
+                            worktree={worktreeById.get(
+                              tab.chat.activeWorktreeId,
+                            )}
+                            worktreeStatus={
+                              worktreeStatuses[tab.chat.activeWorktreeId]
+                            }
+                            worktreeActions={{
+                              currentWorktreeId: tab.chat.activeWorktreeId,
+                              disabled: tab.chat.status === "running",
+                              mode: tab.chat.worktreeMode,
+                              worktrees,
+                              onCreate: () =>
+                                onRequestChatWorktreeCreate(tab.chat),
+                              onSelect: (worktreeId) =>
+                                onChangeChatWorktree(
+                                  tab.chat.id,
+                                  worktreeId,
+                                  tab.chat.worktreeMode,
+                                ),
+                              onSetMode: (mode) =>
+                                onChangeChatWorktree(
+                                  tab.chat.id,
+                                  tab.chat.activeWorktreeId,
+                                  mode,
+                                ),
+                              onOpenTerminal: () =>
+                                onOpenChatTerminal(tab.chat),
+                              onOpenExplorer: () =>
+                                onOpenChatExplorer(tab.chat),
+                              onOpenHistory: () => onOpenChatHistory(tab.chat),
+                            }}
                           />
                         ) : tab.kind === "terminal" ? (
                           <TerminalTab
@@ -1175,6 +1300,11 @@ export function ProjectChatList({
                             onDelete={() =>
                               setDeleteTerminalTarget(tab.terminal)
                             }
+                            workers={workers}
+                            worktree={worktreeById.get(tab.terminal.worktreeId)}
+                            worktreeStatus={
+                              worktreeStatuses[tab.terminal.worktreeId]
+                            }
                           />
                         ) : tab.kind === "explorer" ? (
                           <ExplorerTab
@@ -1191,6 +1321,11 @@ export function ProjectChatList({
                             onRename={() => beginExplorerRename(tab.explorer)}
                             onDelete={() =>
                               setDeleteExplorerTarget(tab.explorer)
+                            }
+                            workers={workers}
+                            worktree={worktreeById.get(tab.explorer.worktreeId)}
+                            worktreeStatus={
+                              worktreeStatuses[tab.explorer.worktreeId]
                             }
                           />
                         ) : tab.kind === "browser" ? (
@@ -1223,6 +1358,17 @@ export function ProjectChatList({
                             onRename={() => beginProjectViewRename(tab.view)}
                             onDelete={() =>
                               setDeleteProjectViewTarget(tab.view)
+                            }
+                            workers={workers}
+                            worktree={
+                              tab.view.worktreeId
+                                ? worktreeById.get(tab.view.worktreeId)
+                                : undefined
+                            }
+                            worktreeStatus={
+                              tab.view.worktreeId
+                                ? worktreeStatuses[tab.view.worktreeId]
+                                : undefined
                             }
                           />
                         ),

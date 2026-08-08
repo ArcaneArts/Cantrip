@@ -31,6 +31,8 @@ import {
   orderedIdsSchema,
   projectListSchema,
   projectSummarySchema,
+  projectWorktreeListSchema,
+  projectWorktreeSummarySchema,
   projectViewListSchema,
   projectViewSummarySchema,
   queuedPromptListSchema,
@@ -41,9 +43,11 @@ import {
   systemHealthSchema,
   terminalListSchema,
   terminalSummarySchema,
+  worktreeStatusResultSchema,
   workerListSchema,
 } from "@cantrip/protocol";
 import type {
+  ChatWorktreeUpdate,
   GitAction,
   GithubIssueState,
   ModelProfileCreate,
@@ -51,6 +55,7 @@ import type {
   ModelProviderCreate,
   ModelProviderUpdate,
   ProjectViewKind,
+  ProjectWorktreeCreate,
   UserSettingsUpdate,
 } from "@cantrip/protocol";
 
@@ -223,6 +228,35 @@ export async function getProjects() {
   return projectListSchema.parse(await request("/api/projects"));
 }
 
+export async function getProjectWorktrees(projectId: string) {
+  return projectWorktreeListSchema.parse(
+    await request(`/api/projects/${encodeURIComponent(projectId)}/worktrees`),
+  );
+}
+
+export async function getProjectWorktreeStatus(
+  projectId: string,
+  worktreeId: string,
+) {
+  return worktreeStatusResultSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/status`,
+    ),
+  );
+}
+
+export async function createProjectWorktree(
+  projectId: string,
+  input: ProjectWorktreeCreate,
+) {
+  return projectWorktreeSummarySchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees`,
+      input,
+    ),
+  );
+}
+
 export async function getGitHistory(projectId: string, cursor = 0) {
   return gitHistorySchema.parse(
     await request(
@@ -318,10 +352,15 @@ export async function getChats(projectId: string) {
   );
 }
 
-export async function createChat(projectId: string, title: string) {
+export async function createChat(
+  projectId: string,
+  title: string,
+  worktreeId?: string,
+) {
   return chatSummarySchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/chats`, {
       title,
+      ...(worktreeId ? { worktreeId } : {}),
     }),
   );
 }
@@ -332,10 +371,27 @@ export async function getTerminals(projectId: string) {
   );
 }
 
-export async function createTerminal(projectId: string, title: string) {
+export async function createTerminal(
+  projectId: string,
+  title: string,
+  worktreeId?: string,
+) {
   return terminalSummarySchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/terminals`, {
       title,
+      ...(worktreeId ? { worktreeId } : {}),
+    }),
+  );
+}
+
+export async function updateTerminalWorktree(
+  terminalId: string,
+  worktreeId: string,
+) {
+  return terminalSummarySchema.parse(
+    await request(`/api/terminals/${encodeURIComponent(terminalId)}/worktree`, {
+      method: "PATCH",
+      body: JSON.stringify({ worktreeId }),
     }),
   );
 }
@@ -361,10 +417,27 @@ export async function getExplorers(projectId: string) {
   );
 }
 
-export async function createExplorer(projectId: string, title: string) {
+export async function createExplorer(
+  projectId: string,
+  title: string,
+  worktreeId?: string,
+) {
   return explorerSummarySchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/explorers`, {
       title,
+      ...(worktreeId ? { worktreeId } : {}),
+    }),
+  );
+}
+
+export async function updateExplorerWorktree(
+  explorerId: string,
+  worktreeId: string,
+) {
+  return explorerSummarySchema.parse(
+    await request(`/api/explorers/${encodeURIComponent(explorerId)}/worktree`, {
+      method: "PATCH",
+      body: JSON.stringify({ worktreeId }),
     }),
   );
 }
@@ -426,11 +499,25 @@ export async function createProjectView(
   projectId: string,
   kind: ProjectViewKind,
   title: string,
+  worktreeId?: string,
 ) {
   return projectViewSummarySchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/views`, {
       kind,
       title,
+      ...(worktreeId ? { worktreeId } : {}),
+    }),
+  );
+}
+
+export async function updateProjectViewWorktree(
+  viewId: string,
+  worktreeId: string,
+) {
+  return projectViewSummarySchema.parse(
+    await request(`/api/project-views/${encodeURIComponent(viewId)}/worktree`, {
+      method: "PATCH",
+      body: JSON.stringify({ worktreeId }),
     }),
   );
 }
@@ -495,6 +582,18 @@ export async function renameChat(chatId: string, title: string) {
     await request(`/api/chats/${encodeURIComponent(chatId)}`, {
       method: "PATCH",
       body: JSON.stringify({ title }),
+    }),
+  );
+}
+
+export async function updateChatWorktree(
+  chatId: string,
+  input: ChatWorktreeUpdate,
+) {
+  return chatSummarySchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/worktree`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
     }),
   );
 }
