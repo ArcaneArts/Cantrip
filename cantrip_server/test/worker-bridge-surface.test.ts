@@ -1,6 +1,9 @@
 import {
+  decodeCodeTunnelFrame,
   decodeRemoteSurfaceFrame,
+  encodeCodeTunnelFrame,
   encodeRemoteSurfaceFrame,
+  type CodeTunnelFrameHeader,
   type RemoteSurfaceFrameHeader,
 } from "@cantrip/protocol";
 import { describe, expect, it, vi } from "vitest";
@@ -78,6 +81,39 @@ describe("WorkerBridge Remote Surface transport", () => {
     unsubscribe();
     socket.close();
     expect(disconnected).toHaveBeenCalledOnce();
+    bridge.close();
+  });
+
+  it("keeps Code tunnel streams distinct on the shared worker socket", () => {
+    const bridge = new WorkerBridge();
+    const socket = new TestWorkerSocket();
+    bridge.attach("worker-1", socket);
+    const listener = vi.fn();
+    bridge.subscribeCodeTunnelFrames("worker-1", listener);
+    const codeHeader: CodeTunnelFrameHeader = {
+      protocolVersion: 1,
+      attachmentId: "code-attachment-1",
+      sessionId: "code-session-1",
+      streamId: "stream-1",
+      kind: "http-response-data",
+    };
+
+    socket.emit(
+      "message",
+      encodeCodeTunnelFrame(codeHeader, new Uint8Array([7, 8])),
+      true,
+    );
+    expect(listener).toHaveBeenCalledWith(codeHeader, new Uint8Array([7, 8]));
+    expect(
+      bridge.sendCodeTunnelFrame(
+        "worker-1",
+        { ...codeHeader, kind: "http-request-end" },
+        new Uint8Array(),
+      ),
+    ).toBe(true);
+    expect(
+      decodeCodeTunnelFrame(socket.sent.at(-1) as Uint8Array).header.kind,
+    ).toBe("http-request-end");
     bridge.close();
   });
 

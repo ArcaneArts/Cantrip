@@ -14,6 +14,7 @@ import { invokeCantripWorktreeTool } from "./codex/worktree-tool-client.js";
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
 import { discoverCantripCode } from "./code/installation.js";
 import { CodeSupervisor } from "./code/supervisor.js";
+import { CodeTunnelProxy } from "./code/tunnel-proxy.js";
 import { readWorkerConfig } from "./config.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
 import { listExplorerDirectory, readExplorerFile } from "./explorer.js";
@@ -52,6 +53,7 @@ async function start(): Promise<void> {
     installation: codeDiscovery.installation,
   });
   await code.start();
+  const codeTunnel = new CodeTunnelProxy(code);
   const heartbeat = createHeartbeat(
     config,
     codexRuntime,
@@ -690,9 +692,13 @@ async function start(): Promise<void> {
     config,
     handleCommand,
     (header, payload) => remoteSurfaces.handleFrame(header, payload),
+    (header, payload) => codeTunnel.handleFrame(header, payload),
   );
   remoteSurfaces.setFrameEmitter((header, payload) =>
     commandConnection.sendSurfaceFrame(header, payload),
+  );
+  codeTunnel.setFrameEmitter((header, payload) =>
+    commandConnection.sendCodeTunnelFrame(header, payload),
   );
 
   console.log(
@@ -738,6 +744,7 @@ async function start(): Promise<void> {
       commandConnection.close();
       for (const client of codexAuthClients.values()) client.close();
       terminals.closeAll();
+      codeTunnel.close();
       await code.close();
       await remoteSurfaces.closeAll();
       await desktopAdapter.shutdown();

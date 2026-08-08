@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
@@ -16,11 +16,17 @@ import {
   browserListSchema,
   browserSummarySchema,
   browserUpdateSchema,
+  codeAttachmentCreateSchema,
+  codeAttachmentSchema,
+  codeProbeResultSchema,
+  codeRuntimeStatusSchema,
+  codeSaveAllResultSchema,
   codeSessionListSchema,
   codeTabCreateSchema,
   codeTabListSchema,
   codeTabSummarySchema,
   codeTabUpdateSchema,
+  codeThemeUpdateSchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   codexCustomizationInventorySchema,
@@ -160,6 +166,7 @@ import type {
   ChatMessage,
   ChatSummary,
   ChatTurnCreate,
+  CodeRuntimeStatus,
 } from "@cantrip/protocol";
 import type {
   AgentWorktreeToolCall,
@@ -185,7 +192,8 @@ import {
   workflowRunQuerySchema,
 } from "@cantrip/protocol/workflows";
 
-import type { ServerConfig } from "./config.js";
+import { resolveCodeSurfaceConfig, type ServerConfig } from "./config.js";
+import { CodeTunnelBroker } from "./code/tunnel.js";
 import type { DatabaseConnection } from "./db/index.js";
 import {
   AgentInteractionConflictError,
@@ -213,6 +221,7 @@ export interface BuildAppOptions {
   config: ServerConfig;
   database: DatabaseConnection;
   logger?: boolean;
+  codeTunnel?: CodeTunnelBroker;
   workerBridge?: WorkerCommandBus;
 }
 
@@ -269,6 +278,10 @@ const ATTACHMENT_CHUNK_BYTES = 256 * 1_024;
 const AGENT_INTERACTION_EXPIRY_SWEEP_MS = 1_000;
 const GOAL_RESUME_PROMPT =
   "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
+
+function scopedCodeProfileId(ownerId: string, profileId: string): string {
+  return createHash("sha256").update(`${ownerId}\0${profileId}`).digest("hex");
+}
 
 function canFailOverRoute(error: unknown): boolean {
   return /(quota|usage limit|rate.?limit|\b429\b|unauthori[sz]ed|\b401\b|forbidden|\b403\b|authentication|credentials|model.+(?:not found|unavailable)|\b404\b|timed? out|timeout|ECONN|connection|network|socket|\b5\d\d\b|service unavailable|overloaded)/i.test(
@@ -339,6 +352,7 @@ function continuationPrompt(messages: ChatMessage[], prompt: string): string {
 
 export async function buildApp({
   config,
+  codeTunnel: providedCodeTunnel,
   database,
   logger = true,
   workerBridge,
@@ -350,6 +364,13 @@ export async function buildApp({
     (_request, body, done) => done(null, body),
   );
   const bridge = workerBridge ?? new WorkerBridge();
+  const codeSurface = resolveCodeSurfaceConfig(config);
+  const codeTunnel =
+    providedCodeTunnel ??
+    new CodeTunnelBroker(bridge, {
+      allowedFrameAncestors: config.appOrigins,
+      surfaceOrigin: codeSurface.origin,
+    });
   const surfaceRelay = new RemoteSurfaceRelay(bridge);
   const repository = database.repository;
   const workflowExecutor = new WorkflowExecutor(repository, bridge, app.log);
@@ -3517,12 +3538,305 @@ export async function buildApp({
     },
   );
 
+  app.post<{ Params: { codeTabId: string } }>(
+    "/api/code-tabs/:codeTabId/attachments",
+    async (request, reply) => {
+      const input = codeAttachmentCreateSchema.safeParse(request.body ?? {});
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getCodeTabExecutionContext(
+        LOCAL_USER_ID,
+        request.params.codeTabId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Code tab not found." });
+      }
+      if (!context.capabilities.available) {
+        return reply.code(409).send({
+          error:
+            context.capabilities.reason ??
+            "Cantrip Code is unavailable on this worker.",
+        });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+
+      let probe;
+      try {
+        probe = codeProbeResultSchema.parse(
+          await bridge.request(context.workerId, { type: "code.probe" }),
+        );
+      } catch (error) {
+        return reply.code(503).send({ error: errorMessage(error) });
+      }
+      if (!probe.capabilities.available || !probe.editorBuild) {
+        return reply.code(409).send({
+          error:
+            probe.capabilities.reason ??
+            "This worker has no compatible Cantrip Code build.",
+        });
+      }
+
+      const session = await repository.getOrCreateCodeSession(
+        LOCAL_USER_ID,
+        request.params.codeTabId,
+        probe.editorBuild,
+        randomUUID(),
+      );
+      if (!session) {
+        return reply.code(409).send({
+          error: "The Code tab changed while its editor was opening.",
+        });
+      }
+
+      let runtime: CodeRuntimeStatus | null = null;
+      try {
+        runtime = codeRuntimeStatusSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "code.open",
+            sessionId: session.id,
+            codeTabId: context.codeTab.id,
+            projectId: context.codeTab.projectId,
+            worktreeId: context.worktreeId,
+            cwd: context.cwd,
+            profileId: scopedCodeProfileId(
+              LOCAL_USER_ID,
+              context.codeTab.profileId,
+            ),
+            themeMode: context.codeTab.themeMode,
+            appearance: input.data.appearance,
+          }),
+        );
+        if (
+          !(await repository.updateCodeSessionRuntime(
+            LOCAL_USER_ID,
+            context.codeTab.id,
+            session.id,
+            runtime,
+            true,
+          ))
+        ) {
+          throw new Error(
+            "The Code session changed while its runtime was starting.",
+          );
+        }
+      } catch (error) {
+        const message = errorMessage(error);
+        if (runtime) {
+          void bridge
+            .request(context.workerId, {
+              type: "code.stop",
+              sessionId: session.id,
+            })
+            .catch(() => undefined);
+        }
+        const failedRuntime = codeRuntimeStatusSchema.parse({
+          sessionId: session.id,
+          status:
+            error instanceof WorkerUnavailableError ? "offline" : "failed",
+          editorBuild: probe.editorBuild,
+          processInstanceId: null,
+          bridgeConnected: false,
+          dirtyEditors: [],
+          startedAt: null,
+          lastActivityAt: new Date().toISOString(),
+          lastError: message,
+        });
+        await repository.updateCodeSessionRuntime(
+          LOCAL_USER_ID,
+          context.codeTab.id,
+          session.id,
+          failedRuntime,
+        );
+        return reply
+          .code(error instanceof WorkerUnavailableError ? 503 : 502)
+          .send({ error: message });
+      }
+      if (!runtime) {
+        return reply.code(502).send({ error: "Code editor did not start." });
+      }
+      try {
+        return reply.code(201).send(
+          codeAttachmentSchema.parse(
+            codeTunnel.createAttachment({
+              codeTabId: context.codeTab.id,
+              ownerId: LOCAL_USER_ID,
+              runtime,
+              sessionId: session.id,
+              workerId: context.workerId,
+            }),
+          ),
+        );
+      } catch (error) {
+        return reply.code(503).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { codeTabId: string } }>(
+    "/api/code-tabs/:codeTabId/save-all",
+    async (request, reply) => {
+      const context = await repository.getCodeTabExecutionContext(
+        LOCAL_USER_ID,
+        request.params.codeTabId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Code tab not found." });
+      }
+      const sessions =
+        (await repository.listCodeSessions(
+          LOCAL_USER_ID,
+          request.params.codeTabId,
+        )) ?? [];
+      const session = sessions.find((candidate) =>
+        ["starting", "running", "idle"].includes(candidate.status),
+      );
+      if (!session) {
+        return reply.code(409).send({ error: "Code editor is not running." });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+      try {
+        return reply.send(
+          codeSaveAllResultSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "code.saveAll",
+              sessionId: session.id,
+            }),
+          ),
+        );
+      } catch (error) {
+        return reply.code(502).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { codeTabId: string } }>(
+    "/api/code-tabs/:codeTabId/stop",
+    async (request, reply) => {
+      const context = await repository.getCodeTabExecutionContext(
+        LOCAL_USER_ID,
+        request.params.codeTabId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Code tab not found." });
+      }
+      const sessions =
+        (await repository.listCodeSessions(
+          LOCAL_USER_ID,
+          request.params.codeTabId,
+        )) ?? [];
+      const session = sessions.find(
+        (candidate) => candidate.status !== "stopped",
+      );
+      if (!session) return reply.code(204).send();
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+      try {
+        const runtime = codeRuntimeStatusSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "code.stop",
+            sessionId: session.id,
+          }),
+        );
+        codeTunnel.revokeSession(session.id);
+        await repository.updateCodeSessionRuntime(
+          LOCAL_USER_ID,
+          context.codeTab.id,
+          session.id,
+          runtime,
+        );
+        return reply.send(runtime);
+      } catch (error) {
+        return reply.code(502).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { codeTabId: string } }>(
+    "/api/code-tabs/:codeTabId/theme",
+    async (request, reply) => {
+      const input = codeThemeUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getCodeTabExecutionContext(
+        LOCAL_USER_ID,
+        request.params.codeTabId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Code tab not found." });
+      }
+      const codeTab = await repository.updateCodeTab(
+        LOCAL_USER_ID,
+        request.params.codeTabId,
+        { themeMode: input.data.themeMode },
+      );
+      const sessions =
+        (await repository.listCodeSessions(
+          LOCAL_USER_ID,
+          request.params.codeTabId,
+        )) ?? [];
+      const session = sessions.find((candidate) =>
+        ["starting", "running", "idle"].includes(candidate.status),
+      );
+      if (session && bridge.isConnected(context.workerId)) {
+        try {
+          const runtime = codeRuntimeStatusSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "code.setTheme",
+              sessionId: session.id,
+              themeMode: input.data.themeMode,
+              appearance: input.data.appearance,
+            }),
+          );
+          await repository.updateCodeSessionRuntime(
+            LOCAL_USER_ID,
+            context.codeTab.id,
+            session.id,
+            runtime,
+          );
+        } catch (error) {
+          return reply.code(502).send({ error: errorMessage(error) });
+        }
+      }
+      return reply.send(codeTabSummarySchema.parse(codeTab));
+    },
+  );
+
   app.delete<{ Params: { codeTabId: string } }>(
     "/api/code-tabs/:codeTabId",
-    async (request, reply) =>
-      (await repository.deleteCodeTab(LOCAL_USER_ID, request.params.codeTabId))
-        ? reply.code(204).send()
-        : reply.code(404).send({ error: "Code tab not found." }),
+    async (request, reply) => {
+      const sessions = await repository.listCodeSessions(
+        LOCAL_USER_ID,
+        request.params.codeTabId,
+      );
+      const context = await repository.deleteCodeTab(
+        LOCAL_USER_ID,
+        request.params.codeTabId,
+      );
+      if (!context || !sessions) {
+        return reply.code(404).send({ error: "Code tab not found." });
+      }
+      for (const session of sessions) codeTunnel.revokeSession(session.id);
+      if (bridge.isConnected(context.workerId)) {
+        await Promise.allSettled(
+          sessions
+            .filter((session) => session.status !== "stopped")
+            .map((session) =>
+              bridge.request(context.workerId, {
+                type: "code.stop",
+                sessionId: session.id,
+              }),
+            ),
+        );
+      }
+      return reply.code(204).send();
+    },
   );
 
   app.get<{ Params: { projectId: string } }>(
@@ -6568,6 +6882,7 @@ export async function buildApp({
   app.addHook("onClose", async () => {
     clearInterval(agentInteractionExpiryTimer);
     workflowExecutor.stop();
+    codeTunnel.close();
     bridge.close();
     await workflowExecutor.drain();
     await Promise.allSettled(projectSetupTasks);

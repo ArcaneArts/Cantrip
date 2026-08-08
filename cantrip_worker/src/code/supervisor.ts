@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import type {
   CodeAppearance,
   CodeCapabilities,
+  CodeProbeResult,
   CodeRuntimeStatus,
   CodeSaveAllResult,
   CodeThemeMode,
@@ -174,8 +175,11 @@ export class CodeSupervisor {
     ]);
   }
 
-  probe(): CodeCapabilities {
-    return this.#capabilities;
+  probe(): CodeProbeResult {
+    return {
+      capabilities: this.#capabilities,
+      editorBuild: this.#installation?.editorBuild ?? null,
+    };
   }
 
   async open(command: CodeOpenCommand): Promise<CodeRuntimeStatus> {

@@ -11,11 +11,15 @@ import {
 
 const DEFAULT_WORKER_TOKEN = "cantrip-local-development";
 
-function readPort(value: string | undefined): number {
-  const port = Number.parseInt(value ?? "4310", 10);
+function readPort(
+  value: string | undefined,
+  name = "CANTRIP_SERVER_PORT",
+  fallback = 4_310,
+): number {
+  const port = Number.parseInt(value ?? String(fallback), 10);
 
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-    throw new Error(`Invalid CANTRIP_SERVER_PORT: ${value}`);
+    throw new Error(`Invalid ${name}: ${value}`);
   }
 
   return port;
@@ -34,6 +38,9 @@ export interface ServerConfig {
   ollamaBaseUrl: string;
   host: string;
   port: number;
+  codeSurfaceHost?: string;
+  codeSurfaceOrigin?: string;
+  codeSurfacePort?: number;
   workerToken: string;
   remoteSurfaceWebRtc?: RemoteSurfaceTurnConfig;
 }
@@ -49,6 +56,41 @@ export interface RemoteSurfaceTurnConfig {
   sharedSecret: string;
   ttlSeconds: number;
   urls: string[];
+}
+
+export interface CodeSurfaceConfig {
+  host: string;
+  origin: string;
+  port: number;
+}
+
+export function resolveCodeSurfaceConfig(
+  config: ServerConfig,
+): CodeSurfaceConfig {
+  const port = config.codeSurfacePort ?? config.port + 1;
+  if (port > 65_535) {
+    throw new Error(
+      "CANTRIP_CODE_SURFACE_PORT is required when CANTRIP_SERVER_PORT is 65535.",
+    );
+  }
+  const host = config.codeSurfaceHost ?? config.host;
+  const origin = new URL(
+    config.codeSurfaceOrigin ??
+      `http://${host.includes(":") ? `[${host}]` : host}:${port}`,
+  );
+  if (
+    !["http:", "https:"].includes(origin.protocol) ||
+    origin.pathname !== "/" ||
+    origin.search ||
+    origin.hash ||
+    origin.username ||
+    origin.password
+  ) {
+    throw new Error(
+      "CANTRIP_CODE_SURFACE_ORIGIN must be an HTTP(S) origin without a path or credentials.",
+    );
+  }
+  return { host, origin: origin.origin, port };
 }
 
 function readBoundedInteger(
@@ -140,7 +182,18 @@ export function readServerConfig(): ServerConfig {
     );
   }
 
-  return {
+  const port = readPort(process.env.CANTRIP_SERVER_PORT);
+  const codeSurfacePort = readPort(
+    process.env.CANTRIP_CODE_SURFACE_PORT,
+    "CANTRIP_CODE_SURFACE_PORT",
+    port < 65_535 ? port + 1 : 0,
+  );
+  const codeSurfaceHost = process.env.CANTRIP_CODE_SURFACE_HOST ?? host;
+  const codeSurfaceOrigin =
+    process.env.CANTRIP_CODE_SURFACE_ORIGIN ??
+    `http://${codeSurfaceHost.includes(":") ? `[${codeSurfaceHost}]` : codeSurfaceHost}:${codeSurfacePort}`;
+
+  const config: ServerConfig = {
     allowInsecureRemote,
     appOrigins: (
       process.env.CANTRIP_APP_ORIGINS ??
@@ -163,8 +216,13 @@ export function readServerConfig(): ServerConfig {
     ollamaBaseUrl:
       process.env.CANTRIP_OLLAMA_BASE_URL ?? "http://127.0.0.1:11434/v1",
     host,
-    port: readPort(process.env.CANTRIP_SERVER_PORT),
+    port,
+    codeSurfaceHost,
+    codeSurfaceOrigin,
+    codeSurfacePort,
     workerToken,
     remoteSurfaceWebRtc: readRemoteSurfaceWebRtcConfig(),
   };
+  resolveCodeSurfaceConfig(config);
+  return config;
 }

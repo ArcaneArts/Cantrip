@@ -1,12 +1,51 @@
 import { buildApp } from "./app.js";
-import { readServerConfig } from "./config.js";
+import { readServerConfig, resolveCodeSurfaceConfig } from "./config.js";
+import {
+  closeCodeSurfaceServer,
+  CodeTunnelBroker,
+  createCodeSurfaceServer,
+} from "./code/tunnel.js";
 import { connectDatabase } from "./db/index.js";
+import { WorkerBridge } from "./workers/bridge.js";
+
+async function listenCodeSurface(
+  server: ReturnType<typeof createCodeSurfaceServer>,
+  host: string,
+  port: number,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const onError = (error: Error) => {
+      server.off("listening", onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      server.off("error", onError);
+      resolve();
+    };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(port, host);
+  });
+}
 
 async function start(): Promise<void> {
   const config = readServerConfig();
   const database = await connectDatabase(config);
-  const app = await buildApp({ config, database });
+  const workerBridge = new WorkerBridge();
+  const surfaceConfig = resolveCodeSurfaceConfig(config);
+  const codeTunnel = new CodeTunnelBroker(workerBridge, {
+    allowedFrameAncestors: config.appOrigins,
+    surfaceOrigin: surfaceConfig.origin,
+  });
+  const app = await buildApp({
+    codeTunnel,
+    config,
+    database,
+    workerBridge,
+  });
+  const codeSurface = createCodeSurfaceServer(codeTunnel, surfaceConfig.origin);
   let closing = false;
+  let codeSurfaceListening = false;
 
   if (config.allowInsecureRemote) {
     app.log.warn(
@@ -21,13 +60,35 @@ async function start(): Promise<void> {
 
     closing = true;
     app.log.info({ signal }, "Shutting down Cantrip Server");
-    await app.close();
+    try {
+      if (codeSurfaceListening) {
+        await closeCodeSurfaceServer(codeSurface);
+        codeSurfaceListening = false;
+      }
+    } finally {
+      await app.close();
+    }
   };
 
   process.once("SIGINT", () => void close("SIGINT"));
   process.once("SIGTERM", () => void close("SIGTERM"));
 
   await app.listen({ host: config.host, port: config.port });
+  try {
+    await listenCodeSurface(
+      codeSurface,
+      surfaceConfig.host,
+      surfaceConfig.port,
+    );
+    codeSurfaceListening = true;
+  } catch (error) {
+    await app.close();
+    throw error;
+  }
+  app.log.info(
+    { origin: surfaceConfig.origin },
+    "Cantrip Code isolated surface is ready",
+  );
   app.log.info({ database: database.engine }, "Cantrip Server is ready");
 }
 

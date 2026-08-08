@@ -28,6 +28,10 @@ import {
   chatPermissionProfileStateSchema,
   chatPlanStateSchema,
   chatSummarySchema,
+  codeAttachmentSchema,
+  codeRuntimeStatusSchema,
+  codeSaveAllResultSchema,
+  codeTabSummarySchema,
   explorerDirectorySchema,
   explorerFileSchema,
   explorerListSchema,
@@ -128,6 +132,12 @@ const relayedSurfaceFrames: Array<{
 const surfaceAttachCommands: Array<
   Extract<WorkerCommand, { type: "surface.attach" }>
 > = [];
+const codeEditorBuild = {
+  version: "1.109.5-cantrip.1",
+  upstreamRevision: "a".repeat(40),
+  patchset: 1,
+  fingerprint: "b".repeat(64),
+};
 const attachmentUploads = new Map<
   string,
   { chunks: Buffer[]; fileName: string; sizeBytes: number }
@@ -617,6 +627,47 @@ const workerBridge = {
           ],
           reason: null,
         };
+      case "code.probe":
+        return {
+          capabilities: {
+            available: true,
+            version: codeEditorBuild.version,
+            upstreamRevision: codeEditorBuild.upstreamRevision,
+            patchset: codeEditorBuild.patchset,
+            transport: "web-proxy",
+            maxSessions: 4,
+            reason: null,
+          },
+          editorBuild: codeEditorBuild,
+        };
+      case "code.open":
+      case "code.status":
+      case "code.setTheme":
+        return {
+          sessionId: command.sessionId,
+          status: "running",
+          editorBuild: codeEditorBuild,
+          processInstanceId: "code-process-1",
+          bridgeConnected: true,
+          dirtyEditors: [],
+          startedAt: "2026-08-08T12:00:00.000Z",
+          lastActivityAt: "2026-08-08T12:01:00.000Z",
+          lastError: null,
+        };
+      case "code.stop":
+        return {
+          sessionId: command.sessionId,
+          status: "stopped",
+          editorBuild: codeEditorBuild,
+          processInstanceId: "code-process-1",
+          bridgeConnected: false,
+          dirtyEditors: [],
+          startedAt: "2026-08-08T12:00:00.000Z",
+          lastActivityAt: "2026-08-08T12:02:00.000Z",
+          lastError: null,
+        };
+      case "code.saveAll":
+        return { saved: ["file:///workspace/Cantrip/README.md"], failed: [] };
       case "terminal.open":
         return { status: "detached" };
       case "terminal.detach":
@@ -1253,6 +1304,15 @@ describe("local server foundation", () => {
           transports: ["websocket"],
           maxSessions: 4,
         },
+        code: {
+          available: true,
+          version: codeEditorBuild.version,
+          upstreamRevision: codeEditorBuild.upstreamRevision,
+          patchset: codeEditorBuild.patchset,
+          transport: "web-proxy",
+          maxSessions: 4,
+          reason: null,
+        },
         startedAt: "2026-08-07T12:00:00.000Z",
       },
     });
@@ -1376,6 +1436,68 @@ describe("local server foundation", () => {
       });
       return current!;
     });
+    const codeTab = codeTabSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/code-tabs`,
+          payload: { title: "Code" },
+        })
+      ).json(),
+    );
+    const codeAttachmentResponse = await firstApp.inject({
+      method: "POST",
+      url: `/api/code-tabs/${codeTab.id}/attachments`,
+      payload: { appearance: "high-contrast-dark" },
+    });
+    expect(codeAttachmentResponse.statusCode).toBe(201);
+    expect(
+      codeAttachmentSchema.parse(codeAttachmentResponse.json()),
+    ).toMatchObject({
+      sessionId: expect.any(String),
+      url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:4311\/code\//u),
+      runtime: { status: "running", processInstanceId: "code-process-1" },
+    });
+    expect(
+      codeSaveAllResultSchema.parse(
+        (
+          await firstApp.inject({
+            method: "POST",
+            url: `/api/code-tabs/${codeTab.id}/save-all`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject({ saved: ["file:///workspace/Cantrip/README.md"] });
+    expect(
+      codeTabSummarySchema.parse(
+        (
+          await firstApp.inject({
+            method: "POST",
+            url: `/api/code-tabs/${codeTab.id}/theme`,
+            payload: {
+              themeMode: "follow-cantrip",
+              appearance: "light",
+            },
+          })
+        ).json(),
+      ).themeMode,
+    ).toBe("follow-cantrip");
+    expect(
+      codeRuntimeStatusSchema.parse(
+        (
+          await firstApp.inject({
+            method: "POST",
+            url: `/api/code-tabs/${codeTab.id}/stop`,
+          })
+        ).json(),
+      ).status,
+    ).toBe("stopped");
+    expect(
+      await firstApp.inject({
+        method: "DELETE",
+        url: `/api/code-tabs/${codeTab.id}`,
+      }),
+    ).toMatchObject({ statusCode: 204 });
     const remoteSurface = remoteSurfaceSummarySchema.parse(
       (
         await firstApp.inject({

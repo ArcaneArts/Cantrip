@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  decodeCodeTunnelFrame,
   decodeRemoteSurfaceFrame,
+  encodeCodeTunnelFrame,
   encodeRemoteSurfaceFrame,
+  isCodeTunnelFrame,
+  type CodeTunnelFrameHeader,
   type RemoteSurfaceFrameHeader,
   type WorkerCommand,
   workerEventEnvelopeSchema,
@@ -29,6 +33,11 @@ export type WorkerSurfaceFrameListener = (
   payload: Uint8Array,
 ) => void;
 
+export type WorkerCodeTunnelFrameListener = (
+  header: CodeTunnelFrameHeader,
+  payload: Uint8Array,
+) => void;
+
 export interface WorkerCommandBus {
   attach(workerId: string, socket: WorkerSocket): void;
   close(): void;
@@ -38,10 +47,19 @@ export interface WorkerCommandBus {
     header: RemoteSurfaceFrameHeader,
     payload: Uint8Array,
   ): boolean;
+  sendCodeTunnelFrame?(
+    workerId: string,
+    header: CodeTunnelFrameHeader,
+    payload: Uint8Array,
+  ): boolean;
   subscribeWorkerDisconnect(workerId: string, listener: () => void): () => void;
   subscribeSurfaceFrames(
     workerId: string,
     listener: WorkerSurfaceFrameListener,
+  ): () => void;
+  subscribeCodeTunnelFrames?(
+    workerId: string,
+    listener: WorkerCodeTunnelFrameListener,
   ): () => void;
   request(
     workerId: string,
@@ -87,6 +105,10 @@ function workerFrameBytes(data: unknown): Uint8Array {
 
 export class WorkerBridge implements WorkerCommandBus {
   readonly #pending = new Map<string, PendingRequest>();
+  readonly #codeTunnelListeners = new Map<
+    string,
+    Set<WorkerCodeTunnelFrameListener>
+  >();
   readonly #sockets = new Map<string, WorkerSocket>();
   readonly #surfaceListeners = new Map<
     string,
@@ -104,9 +126,18 @@ export class WorkerBridge implements WorkerCommandBus {
     socket.on("message", (data, isBinary) => {
       if (isBinary) {
         try {
-          const frame = decodeRemoteSurfaceFrame(workerFrameBytes(data));
-          for (const listener of this.#surfaceListeners.get(workerId) ?? []) {
-            listener(frame.header, frame.payload);
+          const bytes = workerFrameBytes(data);
+          if (isCodeTunnelFrame(bytes)) {
+            const frame = decodeCodeTunnelFrame(bytes);
+            for (const listener of this.#codeTunnelListeners.get(workerId) ??
+              []) {
+              listener(frame.header, frame.payload);
+            }
+          } else {
+            const frame = decodeRemoteSurfaceFrame(bytes);
+            for (const listener of this.#surfaceListeners.get(workerId) ?? []) {
+              listener(frame.header, frame.payload);
+            }
           }
         } catch {
           // Malformed binary data is isolated to the worker connection.
@@ -201,6 +232,22 @@ export class WorkerBridge implements WorkerCommandBus {
     }
   }
 
+  sendCodeTunnelFrame(
+    workerId: string,
+    header: CodeTunnelFrameHeader,
+    payload: Uint8Array,
+  ): boolean {
+    const socket = this.#sockets.get(workerId);
+    if (!socket || socket.readyState !== 1) return false;
+    if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) return false;
+    try {
+      socket.send(encodeCodeTunnelFrame(header, payload), { binary: true });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   subscribeSurfaceFrames(
     workerId: string,
     listener: WorkerSurfaceFrameListener,
@@ -214,6 +261,22 @@ export class WorkerBridge implements WorkerCommandBus {
     return () => {
       listeners?.delete(listener);
       if (listeners?.size === 0) this.#surfaceListeners.delete(workerId);
+    };
+  }
+
+  subscribeCodeTunnelFrames(
+    workerId: string,
+    listener: WorkerCodeTunnelFrameListener,
+  ): () => void {
+    let listeners = this.#codeTunnelListeners.get(workerId);
+    if (!listeners) {
+      listeners = new Set();
+      this.#codeTunnelListeners.set(workerId, listeners);
+    }
+    listeners.add(listener);
+    return () => {
+      listeners?.delete(listener);
+      if (listeners?.size === 0) this.#codeTunnelListeners.delete(workerId);
     };
   }
 
@@ -289,6 +352,7 @@ export class WorkerBridge implements WorkerCommandBus {
       socket.close(1001, "Server shutting down");
     }
     this.#sockets.clear();
+    this.#codeTunnelListeners.clear();
     this.#surfaceListeners.clear();
     for (const listeners of this.#workerDisconnectListeners.values()) {
       for (const listener of listeners) listener();
