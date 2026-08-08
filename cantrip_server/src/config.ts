@@ -71,7 +71,7 @@ export function readServerConfig(): ServerConfig {
     appOrigins: (
       process.env.CANTRIP_APP_ORIGINS ??
       process.env.CANTRIP_APP_ORIGIN ??
-      "http://127.0.0.1:5173,http://127.0.0.1:1420,tauri://localhost,capacitor://localhost"
+      "http://127.0.0.1:5173,http://127.0.0.1:1420,http://tauri.localhost,https://tauri.localhost,tauri://localhost,capacitor://localhost"
     )
       .split(",")
       .map((origin) => origin.trim())

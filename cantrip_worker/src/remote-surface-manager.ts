@@ -62,6 +62,7 @@ export class RemoteSurfaceManager {
     adapters: Partial<
       Record<RemoteSurfaceConfiguration["kind"], RemoteSurfaceAdapter>
     > = {},
+    private readonly maxSessions = 4,
   ) {
     this.#adapters = adapters;
   }
@@ -76,6 +77,11 @@ export class RemoteSurfaceManager {
   }> {
     let managed = this.#sessions.get(command.surfaceId);
     if (!managed) {
+      if (this.#sessions.size >= this.maxSessions) {
+        throw new Error(
+          `Worker Remote Surface limit of ${this.maxSessions} sessions reached.`,
+        );
+      }
       const adapter = this.#adapters[command.configuration.kind];
       if (!adapter) {
         throw new Error(

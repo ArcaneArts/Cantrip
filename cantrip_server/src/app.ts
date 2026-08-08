@@ -184,6 +184,7 @@ export async function buildApp({
     config.agentModel,
     config.ollamaBaseUrl,
   );
+  await repository.ensureBrowserRemoteSurfaces(LOCAL_USER_ID);
   await repository.resetTransientRemoteSurfaceStatuses();
 
   await app.register(cors, {
@@ -1887,6 +1888,22 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
+      const source = await repository.getProjectSource(
+        LOCAL_USER_ID,
+        request.params.projectId,
+      );
+      if (!source) {
+        return reply.code(404).send({ error: "Project source not found." });
+      }
+      const worker = (await repository.listWorkers(LOCAL_USER_ID)).find(
+        ({ workerId }) => workerId === source.workerId,
+      );
+      if (!worker?.remoteSurfaces.browser) {
+        return reply.code(409).send({
+          error:
+            "The project worker does not have an available Chromium browser.",
+        });
+      }
       const browser = await repository.createBrowser(
         LOCAL_USER_ID,
         request.params.projectId,
@@ -1918,10 +1935,29 @@ export async function buildApp({
 
   app.delete<{ Params: { browserId: string } }>(
     "/api/browsers/:browserId",
-    async (request, reply) =>
-      (await repository.deleteBrowser(LOCAL_USER_ID, request.params.browserId))
-        ? reply.code(204).send()
-        : reply.code(404).send({ error: "Browser not found." }),
+    async (request, reply) => {
+      const context = await repository.getRemoteSurfaceExecutionContext(
+        LOCAL_USER_ID,
+        request.params.browserId,
+      );
+      if (
+        !(await repository.deleteBrowser(
+          LOCAL_USER_ID,
+          request.params.browserId,
+        ))
+      ) {
+        return reply.code(404).send({ error: "Browser not found." });
+      }
+      if (context && bridge.isConnected(context.workerId)) {
+        void bridge
+          .request(context.workerId, {
+            type: "surface.close",
+            surfaceId: context.surface.id,
+          })
+          .catch(() => undefined);
+      }
+      return reply.code(204).send();
+    },
   );
 
   app.get<{ Params: { projectId: string } }>(

@@ -475,6 +475,21 @@ export function terminalWebSocketUrl(terminalId: string): string {
   return url.toString();
 }
 
+export function remoteSurfaceWebSocketUrl(
+  surfaceId: string,
+  viewport: { width: number; height: number; devicePixelRatio: number },
+): string {
+  const url = new URL(
+    `/api/remote-surfaces/${encodeURIComponent(surfaceId)}/connect`,
+    serverUrl || window.location.origin,
+  );
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.searchParams.set("width", String(viewport.width));
+  url.searchParams.set("height", String(viewport.height));
+  url.searchParams.set("devicePixelRatio", String(viewport.devicePixelRatio));
+  return url.toString();
+}
+
 export function browserProxyUrl(targetUrl: string): string {
   const url = new URL(
     "/api/browser/proxy",
