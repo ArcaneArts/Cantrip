@@ -199,15 +199,19 @@ export interface GitHistoryHeaderState {
 }
 
 export function GitHistoryView({
+  initialView = "commits",
   onHeaderChange,
   project,
 }: {
+  initialView?: "commits" | "issues";
   onHeaderChange(state: GitHistoryHeaderState | null): void;
   project: ProjectSummary;
 }) {
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const [changesOpen, setChangesOpen] = useState(false);
-  const [activeView, setActiveView] = useState<"commits" | "issues">("commits");
+  const [activeView, setActiveView] = useState<"commits" | "issues">(
+    initialView,
+  );
   const [issueState, setIssueState] = useState<GithubIssueState>("open");
   const history = useInfiniteQuery({
     initialPageParam: 0,

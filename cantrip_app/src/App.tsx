@@ -14,7 +14,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bot,
   Check,
+  CircleAlert,
   Copy,
+  ExternalLink,
   FileDiff,
   FolderGit2,
   FolderTree,
@@ -115,6 +117,12 @@ import {
   updateBrowser,
   updateQueuedPrompt,
 } from "@/lib/api";
+import {
+  isDesktopRuntime,
+  openDesktopPopout,
+  parseDesktopPopoutTarget,
+  type DesktopPopoutTarget,
+} from "@/lib/desktop-popout";
 import { cn } from "@/lib/utils";
 
 function modelDisplayName(model: ModelProfileSummary): string {
@@ -171,14 +179,21 @@ function StatusDot({ online }: { online: boolean }) {
 }
 
 function RepositoryImporter({
-  onImported,
+  projects,
   workerId,
 }: {
-  onImported(project: ProjectSummary): void;
+  projects: ProjectSummary[];
   workerId: string | null;
 }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [pendingRepositoryIds, setPendingRepositoryIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const pendingRepositoryIdsRef = useRef(new Set<string>());
+  const [importErrors, setImportErrors] = useState<Map<string, string>>(
+    new Map(),
+  );
   const github = useQuery({
     enabled: Boolean(workerId),
     queryFn: () => getGithubStatus(workerId!),
@@ -197,27 +212,55 @@ function RepositoryImporter({
     queryKey: ["github-repositories-cache", workerId, github.data?.login],
     staleTime: 30_000,
   });
-  const importProject = useMutation({
-    mutationFn: (repository: GithubRepository) =>
-      createGithubProject({
-        workerId: workerId!,
-        repositoryId: repository.id,
-        nameWithOwner: repository.nameWithOwner,
-        url: repository.url,
-      }),
-    onSuccess: async (project) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["projects"] }),
-        queryClient.invalidateQueries({
-          queryKey: ["github-repositories", workerId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["github-repositories-cache", workerId],
-        }),
-      ]);
-      onImported(project);
-    },
-  });
+  const queueImport = (repository: GithubRepository) => {
+    if (!workerId || pendingRepositoryIdsRef.current.has(repository.id)) return;
+    pendingRepositoryIdsRef.current.add(repository.id);
+    setPendingRepositoryIds(new Set(pendingRepositoryIdsRef.current));
+    setImportErrors((current) => {
+      const next = new Map(current);
+      next.delete(repository.id);
+      return next;
+    });
+
+    void createGithubProject({
+      workerId: workerId!,
+      repositoryId: repository.id,
+      nameWithOwner: repository.nameWithOwner,
+      url: repository.url,
+    })
+      .then((project) => {
+        queryClient.setQueryData<ProjectSummary[]>(
+          ["projects"],
+          (current = []) =>
+            [...current.filter((item) => item.id !== project.id), project].sort(
+              (left, right) => left.position - right.position,
+            ),
+        );
+        const markImported = (queryKey: readonly unknown[]) =>
+          queryClient.setQueryData<GithubRepository[]>(queryKey, (current) =>
+            current?.map((item) =>
+              item.id === repository.id ? { ...item, imported: true } : item,
+            ),
+          );
+        markImported(["github-repositories", workerId]);
+        if (github.data?.login) {
+          markImported([
+            "github-repositories-cache",
+            workerId,
+            github.data.login,
+          ]);
+        }
+      })
+      .catch((error: unknown) => {
+        setImportErrors((current) =>
+          new Map(current).set(repository.id, errorText(error)),
+        );
+      })
+      .finally(() => {
+        pendingRepositoryIdsRef.current.delete(repository.id);
+        setPendingRepositoryIds(new Set(pendingRepositoryIdsRef.current));
+      });
+  };
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -346,19 +389,28 @@ function RepositoryImporter({
                   </thead>
                   <tbody>
                     {filtered.map((repository) => {
+                      const project = projects.find(
+                        (candidate) =>
+                          candidate.github?.repositoryId === repository.id,
+                      );
                       const importing =
-                        importProject.isPending &&
-                        importProject.variables?.id === repository.id;
-                      const disabled =
-                        repository.imported || importProject.isPending;
+                        pendingRepositoryIds.has(repository.id) ||
+                        project?.setupStatus === "cloning";
+                      const failed = project?.setupStatus === "failed";
+                      const disabled = Boolean(
+                        repository.imported || project || importing,
+                      );
+                      const importError =
+                        project?.setupError ?? importErrors.get(repository.id);
                       return (
                         <tr
                           key={repository.id}
                           role="button"
                           tabIndex={disabled ? -1 : 0}
                           aria-disabled={disabled}
+                          title={importError}
                           onClick={() => {
-                            if (!disabled) importProject.mutate(repository);
+                            if (!disabled) queueImport(repository);
                           }}
                           onKeyDown={(event) => {
                             if (
@@ -366,7 +418,7 @@ function RepositoryImporter({
                               (event.key === "Enter" || event.key === " ")
                             ) {
                               event.preventDefault();
-                              importProject.mutate(repository);
+                              queueImport(repository);
                             }
                           }}
                           className={cn(
@@ -412,18 +464,22 @@ function RepositoryImporter({
                           </td>
                           <td className="px-3 py-1.5 text-right text-xs">
                             <span className="inline-flex items-center justify-end gap-1.5">
-                              {repository.imported ? (
-                                <Check className="size-3.5" />
+                              {failed ? (
+                                <CircleAlert className="size-3.5 text-destructive" />
                               ) : importing ? (
                                 <Loader2 className="size-3.5 animate-spin" />
+                              ) : repository.imported ? (
+                                <Check className="size-3.5" />
                               ) : (
                                 <Plus className="size-3.5" />
                               )}
-                              {repository.imported
-                                ? "Added"
+                              {failed
+                                ? "Failed"
                                 : importing
-                                  ? "Adding"
-                                  : "Add"}
+                                  ? "Cloning"
+                                  : repository.imported
+                                    ? "Added"
+                                    : "Add"}
                             </span>
                           </td>
                         </tr>
@@ -446,9 +502,9 @@ function RepositoryImporter({
               </p>
             ) : null}
 
-            {importProject.isError ? (
+            {importErrors.size > 0 ? (
               <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                {errorText(importProject.error)}
+                {Array.from(importErrors.values()).at(-1)}
               </p>
             ) : null}
           </>
@@ -1049,27 +1105,38 @@ function ChatTranscript({
 
 export function App() {
   const queryClient = useQueryClient();
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
-    null,
+  const desktopRuntime = useMemo(() => isDesktopRuntime(), []);
+  const popoutTarget = useMemo(
+    () =>
+      desktopRuntime ? parseDesktopPopoutTarget(window.location.search) : null,
+    [desktopRuntime],
   );
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const isPopout = popoutTarget !== null;
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
+    popoutTarget?.projectId ?? null,
+  );
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(
+    popoutTarget?.kind === "chat" ? popoutTarget.tabId : null,
+  );
   const [selectedBrowserId, setSelectedBrowserId] = useState<string | null>(
-    null,
+    popoutTarget?.kind === "browser" ? popoutTarget.tabId : null,
   );
   const [selectedExplorerId, setSelectedExplorerId] = useState<string | null>(
-    null,
+    popoutTarget?.kind === "explorer" ? popoutTarget.tabId : null,
   );
   const [selectedTerminalId, setSelectedTerminalId] = useState<string | null>(
-    null,
+    popoutTarget?.kind === "terminal" ? popoutTarget.tabId : null,
   );
   const [showImporter, setShowImporter] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [gitHistoryProjectId, setGitHistoryProjectId] = useState<string | null>(
-    null,
+    popoutTarget?.kind === "git" ? popoutTarget.projectId : null,
   );
   const [gitHistoryHeader, setGitHistoryHeader] =
     useState<GitHistoryHeaderState | null>(null);
+  const [popoutPending, setPopoutPending] = useState(false);
+  const [popoutError, setPopoutError] = useState<string | null>(null);
 
   const openCreatedTab = (
     projectId: string,
@@ -1097,7 +1164,14 @@ export function App() {
     refetchInterval: 3_000,
   });
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
-  const projects = useQuery({ queryFn: getProjects, queryKey: ["projects"] });
+  const projects = useQuery({
+    queryFn: getProjects,
+    queryKey: ["projects"],
+    refetchInterval: (query) =>
+      query.state.data?.some((project) => project.setupStatus === "cloning")
+        ? 750
+        : false,
+  });
   const chats = useQuery({
     enabled: Boolean(selectedProjectId),
     queryFn: () => getChats(selectedProjectId!),
@@ -1468,6 +1542,83 @@ export function App() {
   const selectedBrowser = browsers.data?.find(
     (browser) => browser.id === selectedBrowserId,
   );
+  const activePopout = useMemo<{
+    target: DesktopPopoutTarget;
+    title: string;
+  } | null>(() => {
+    if (!desktopRuntime || isPopout || showImporter || showSettings)
+      return null;
+    if (gitHistoryProject) {
+      const view = gitHistoryHeader?.activeView ?? "commits";
+      return {
+        target: { kind: "git", projectId: gitHistoryProject.id, view },
+        title: `${gitHistoryProject.name} ${view === "issues" ? "Issues" : "Commits"}`,
+      };
+    }
+    if (selectedBrowser) {
+      return {
+        target: {
+          kind: "browser",
+          projectId: selectedBrowser.projectId,
+          tabId: selectedBrowser.id,
+        },
+        title: selectedBrowser.title,
+      };
+    }
+    if (selectedExplorer) {
+      return {
+        target: {
+          kind: "explorer",
+          projectId: selectedExplorer.projectId,
+          tabId: selectedExplorer.id,
+        },
+        title: selectedExplorer.title,
+      };
+    }
+    if (selectedTerminal) {
+      return {
+        target: {
+          kind: "terminal",
+          projectId: selectedTerminal.projectId,
+          tabId: selectedTerminal.id,
+        },
+        title: selectedTerminal.linkedChatId
+          ? (linkedConsoleChat?.title ?? "Codex console")
+          : selectedTerminal.title,
+      };
+    }
+    if (selectedChat) {
+      return {
+        target: {
+          kind: "chat",
+          projectId: selectedChat.projectId,
+          tabId: selectedChat.id,
+        },
+        title: selectedChat.title,
+      };
+    }
+    return null;
+  }, [
+    desktopRuntime,
+    gitHistoryHeader?.activeView,
+    gitHistoryProject,
+    isPopout,
+    linkedConsoleChat?.title,
+    selectedBrowser,
+    selectedChat,
+    selectedExplorer,
+    selectedTerminal,
+    showImporter,
+    showSettings,
+  ]);
+  const popOutActiveView = () => {
+    if (!activePopout || popoutPending) return;
+    setPopoutPending(true);
+    setPopoutError(null);
+    void openDesktopPopout(activePopout.target, activePopout.title)
+      .catch((error: unknown) => setPopoutError(errorText(error)))
+      .finally(() => setPopoutPending(false));
+  };
   const showChatConsole = (chat: ChatSummary) => {
     const existing = terminals.data?.find(
       (terminal) => terminal.linkedChatId === chat.id,
@@ -1573,170 +1724,172 @@ export function App() {
 
   return (
     <main className="flex h-svh overflow-hidden bg-background text-foreground">
-      <aside
-        data-slot="app-sidebar"
-        className="hidden w-72 shrink-0 flex-col border-r bg-card/40 md:flex"
-      >
-        <div className="flex h-16 items-center gap-3 border-b px-4">
-          <div className="grid size-9 place-items-center rounded-xl border bg-background shadow-sm">
-            <WandSparkles className="size-4" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="font-semibold tracking-tight">Cantrip</p>
-          </div>
-          <StatusDot online={Boolean(onlineWorker)} />
-        </div>
-
-        <div className="flex items-center justify-between px-4 pb-2 pt-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Projects
-          </p>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="size-7"
-            onClick={() => {
-              setShowImporter(true);
-              setShowSettings(false);
-            }}
-          >
-            <Plus className="size-4" />
-            <span className="sr-only">Add project</span>
-          </Button>
-        </div>
-
-        <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-          <ProjectChatList
-            browsers={browsers.data ?? []}
-            projects={projects.data ?? []}
-            chats={chats.data ?? []}
-            explorers={explorers.data ?? []}
-            terminals={terminals.data ?? []}
-            selectedProjectId={selectedProjectId}
-            selectedBrowserId={selectedBrowserId}
-            selectedChatId={selectedChatId}
-            selectedExplorerId={selectedExplorerId}
-            selectedTerminalId={selectedTerminalId}
-            gitHistoryProjectId={gitHistoryProjectId}
-            creatingChat={newChat.isPending}
-            creatingBrowser={newBrowser.isPending}
-            creatingExplorer={newExplorer.isPending}
-            creatingTerminal={newTerminal.isPending}
-            onCreateChat={(projectId) => newChat.mutate(projectId)}
-            onCreateBrowser={(projectId) => newBrowser.mutate(projectId)}
-            onCreateExplorer={(projectId) => newExplorer.mutate(projectId)}
-            onCreateTerminal={(projectId) => newTerminal.mutate(projectId)}
-            onRenameChat={(chatId, title) =>
-              renameChatMutation.mutate({ chatId, title })
-            }
-            onDuplicateChat={(chatId) => forkChatMutation.mutate(chatId)}
-            onDeleteChat={(chatId) => deleteChatMutation.mutate(chatId)}
-            onRenameBrowser={(browserId, title) =>
-              updateBrowserMutation.mutate({ browserId, input: { title } })
-            }
-            onDeleteBrowser={(browserId) =>
-              deleteBrowserMutation.mutate(browserId)
-            }
-            onRenameExplorer={(explorerId, title) =>
-              renameExplorerMutation.mutate({ explorerId, title })
-            }
-            onDeleteExplorer={(explorerId) =>
-              deleteExplorerMutation.mutate(explorerId)
-            }
-            onRenameTerminal={(terminalId, title) =>
-              renameTerminalMutation.mutate({ terminalId, title })
-            }
-            onDeleteTerminal={(terminalId) =>
-              deleteTerminalMutation.mutate(terminalId)
-            }
-            onOpenGitHistory={(projectId) => {
-              setSelectedProjectId(projectId);
-              setGitHistoryProjectId(projectId);
-              setShowImporter(false);
-              setShowSettings(false);
-            }}
-            onRemoveProject={(projectId, deleteLocalFiles) =>
-              removeProjectMutation.mutate({ projectId, deleteLocalFiles })
-            }
-            onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
-            onReorderTabs={(projectId, ids) =>
-              reorderTabsMutation.mutate({ projectId, ids })
-            }
-            onSelectProject={(projectId) => {
-              setGitHistoryProjectId(null);
-              setSelectedProjectId(projectId);
-              setSelectedChatId(null);
-              setSelectedTerminalId(null);
-              setSelectedExplorerId(null);
-              setSelectedBrowserId(null);
-              setShowImporter(false);
-              setShowSettings(false);
-            }}
-            onSelectChat={(chatId) => {
-              setGitHistoryProjectId(null);
-              setSelectedTerminalId(null);
-              setSelectedExplorerId(null);
-              setSelectedBrowserId(null);
-              setSelectedChatId(chatId);
-              setShowImporter(false);
-              setShowSettings(false);
-            }}
-            onSelectTerminal={(terminalId) => {
-              setGitHistoryProjectId(null);
-              setSelectedChatId(null);
-              setSelectedExplorerId(null);
-              setSelectedBrowserId(null);
-              setSelectedTerminalId(terminalId);
-              setShowImporter(false);
-              setShowSettings(false);
-            }}
-            onSelectExplorer={(explorerId) => {
-              setGitHistoryProjectId(null);
-              setSelectedChatId(null);
-              setSelectedTerminalId(null);
-              setSelectedBrowserId(null);
-              setSelectedExplorerId(explorerId);
-              setShowImporter(false);
-              setShowSettings(false);
-            }}
-            onSelectBrowser={(browserId) => {
-              setGitHistoryProjectId(null);
-              setSelectedChatId(null);
-              setSelectedTerminalId(null);
-              setSelectedExplorerId(null);
-              setSelectedBrowserId(browserId);
-              setShowImporter(false);
-              setShowSettings(false);
-            }}
-          />
-        </nav>
-
-        <div className="border-t p-3">
-          <div className="flex items-center gap-3 rounded-lg px-2 py-2">
-            <div className="grid size-8 place-items-center rounded-full bg-muted">
-              <User className="size-4" />
+      {!isPopout ? (
+        <aside
+          data-slot="app-sidebar"
+          className="hidden w-72 shrink-0 flex-col border-r bg-card/40 md:flex"
+        >
+          <div className="flex h-16 items-center gap-3 border-b px-4">
+            <div className="grid size-9 place-items-center rounded-xl border bg-background shadow-sm">
+              <WandSparkles className="size-4" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-medium">Local User</p>
-              <p className="truncate text-[11px] text-muted-foreground">
-                {onlineWorker?.name ?? "Worker offline"}
-              </p>
+              <p className="font-semibold tracking-tight">Cantrip</p>
             </div>
+            <StatusDot online={Boolean(onlineWorker)} />
+          </div>
+
+          <div className="flex items-center justify-between px-4 pb-2 pt-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Projects
+            </p>
             <Button
               size="icon"
               variant="ghost"
-              className="size-8"
+              className="size-7"
               onClick={() => {
-                setShowSettings(true);
-                setShowImporter(false);
+                setShowImporter(true);
+                setShowSettings(false);
               }}
             >
-              <Settings className="size-4" />
-              <span className="sr-only">Open settings</span>
+              <Plus className="size-4" />
+              <span className="sr-only">Add project</span>
             </Button>
           </div>
-        </div>
-      </aside>
+
+          <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+            <ProjectChatList
+              browsers={browsers.data ?? []}
+              projects={projects.data ?? []}
+              chats={chats.data ?? []}
+              explorers={explorers.data ?? []}
+              terminals={terminals.data ?? []}
+              selectedProjectId={selectedProjectId}
+              selectedBrowserId={selectedBrowserId}
+              selectedChatId={selectedChatId}
+              selectedExplorerId={selectedExplorerId}
+              selectedTerminalId={selectedTerminalId}
+              gitHistoryProjectId={gitHistoryProjectId}
+              creatingChat={newChat.isPending}
+              creatingBrowser={newBrowser.isPending}
+              creatingExplorer={newExplorer.isPending}
+              creatingTerminal={newTerminal.isPending}
+              onCreateChat={(projectId) => newChat.mutate(projectId)}
+              onCreateBrowser={(projectId) => newBrowser.mutate(projectId)}
+              onCreateExplorer={(projectId) => newExplorer.mutate(projectId)}
+              onCreateTerminal={(projectId) => newTerminal.mutate(projectId)}
+              onRenameChat={(chatId, title) =>
+                renameChatMutation.mutate({ chatId, title })
+              }
+              onDuplicateChat={(chatId) => forkChatMutation.mutate(chatId)}
+              onDeleteChat={(chatId) => deleteChatMutation.mutate(chatId)}
+              onRenameBrowser={(browserId, title) =>
+                updateBrowserMutation.mutate({ browserId, input: { title } })
+              }
+              onDeleteBrowser={(browserId) =>
+                deleteBrowserMutation.mutate(browserId)
+              }
+              onRenameExplorer={(explorerId, title) =>
+                renameExplorerMutation.mutate({ explorerId, title })
+              }
+              onDeleteExplorer={(explorerId) =>
+                deleteExplorerMutation.mutate(explorerId)
+              }
+              onRenameTerminal={(terminalId, title) =>
+                renameTerminalMutation.mutate({ terminalId, title })
+              }
+              onDeleteTerminal={(terminalId) =>
+                deleteTerminalMutation.mutate(terminalId)
+              }
+              onOpenGitHistory={(projectId) => {
+                setSelectedProjectId(projectId);
+                setGitHistoryProjectId(projectId);
+                setShowImporter(false);
+                setShowSettings(false);
+              }}
+              onRemoveProject={(projectId, deleteLocalFiles) =>
+                removeProjectMutation.mutate({ projectId, deleteLocalFiles })
+              }
+              onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
+              onReorderTabs={(projectId, ids) =>
+                reorderTabsMutation.mutate({ projectId, ids })
+              }
+              onSelectProject={(projectId) => {
+                setGitHistoryProjectId(null);
+                setSelectedProjectId(projectId);
+                setSelectedChatId(null);
+                setSelectedTerminalId(null);
+                setSelectedExplorerId(null);
+                setSelectedBrowserId(null);
+                setShowImporter(false);
+                setShowSettings(false);
+              }}
+              onSelectChat={(chatId) => {
+                setGitHistoryProjectId(null);
+                setSelectedTerminalId(null);
+                setSelectedExplorerId(null);
+                setSelectedBrowserId(null);
+                setSelectedChatId(chatId);
+                setShowImporter(false);
+                setShowSettings(false);
+              }}
+              onSelectTerminal={(terminalId) => {
+                setGitHistoryProjectId(null);
+                setSelectedChatId(null);
+                setSelectedExplorerId(null);
+                setSelectedBrowserId(null);
+                setSelectedTerminalId(terminalId);
+                setShowImporter(false);
+                setShowSettings(false);
+              }}
+              onSelectExplorer={(explorerId) => {
+                setGitHistoryProjectId(null);
+                setSelectedChatId(null);
+                setSelectedTerminalId(null);
+                setSelectedBrowserId(null);
+                setSelectedExplorerId(explorerId);
+                setShowImporter(false);
+                setShowSettings(false);
+              }}
+              onSelectBrowser={(browserId) => {
+                setGitHistoryProjectId(null);
+                setSelectedChatId(null);
+                setSelectedTerminalId(null);
+                setSelectedExplorerId(null);
+                setSelectedBrowserId(browserId);
+                setShowImporter(false);
+                setShowSettings(false);
+              }}
+            />
+          </nav>
+
+          <div className="border-t p-3">
+            <div className="flex items-center gap-3 rounded-lg px-2 py-2">
+              <div className="grid size-8 place-items-center rounded-full bg-muted">
+                <User className="size-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium">Local User</p>
+                <p className="truncate text-[11px] text-muted-foreground">
+                  {onlineWorker?.name ?? "Worker offline"}
+                </p>
+              </div>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-8"
+                onClick={() => {
+                  setShowSettings(true);
+                  setShowImporter(false);
+                }}
+              >
+                <Settings className="size-4" />
+                <span className="sr-only">Open settings</span>
+              </Button>
+            </div>
+          </div>
+        </aside>
+      ) : null}
 
       <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b px-4 sm:px-6">
@@ -1748,7 +1901,9 @@ export function App() {
                   : showSettings
                     ? "Settings"
                     : gitHistoryProject
-                      ? "Git history"
+                      ? gitHistoryHeader?.activeView === "issues"
+                        ? "Git issues"
+                        : "Git history"
                       : selectedBrowser
                         ? selectedBrowser.title
                         : selectedExplorer
@@ -1820,14 +1975,16 @@ export function App() {
             </p>
           </div>
           <div className="flex items-center gap-2 md:hidden">
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => setMobileNavigationOpen(true)}
-            >
-              <PanelLeft className="size-4" />
-              <span className="sr-only">Open projects and chats</span>
-            </Button>
+            {!isPopout ? (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setMobileNavigationOpen(true)}
+              >
+                <PanelLeft className="size-4" />
+                <span className="sr-only">Open projects and chats</span>
+              </Button>
+            ) : null}
             {gitHistoryProject && gitHistoryHeader?.activeView === "commits" ? (
               <>
                 <Button
@@ -1855,6 +2012,23 @@ export function App() {
                   <span className="sr-only">Refresh Git history</span>
                 </Button>
               </>
+            ) : null}
+            {activePopout ? (
+              <Button
+                size="icon"
+                variant="ghost"
+                disabled={popoutPending}
+                className={cn(popoutError && "text-destructive")}
+                onClick={popOutActiveView}
+                title={popoutError ?? "Open this tab in a new window"}
+              >
+                {popoutPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <ExternalLink className="size-4" />
+                )}
+                <span className="sr-only">Open this tab in a new window</span>
+              </Button>
             ) : null}
             {activeChat && !showImporter && !showSettings ? (
               <Button
@@ -1884,28 +2058,32 @@ export function App() {
                 </span>
               </Button>
             ) : null}
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => {
-                setShowSettings(true);
-                setShowImporter(false);
-              }}
-            >
-              <Settings className="size-4" />
-              <span className="sr-only">Open settings</span>
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setShowImporter(true);
-                setShowSettings(false);
-              }}
-            >
-              <Plus className="size-4" />
-              Project
-            </Button>
+            {!isPopout ? (
+              <>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => {
+                    setShowSettings(true);
+                    setShowImporter(false);
+                  }}
+                >
+                  <Settings className="size-4" />
+                  <span className="sr-only">Open settings</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setShowImporter(true);
+                    setShowSettings(false);
+                  }}
+                >
+                  <Plus className="size-4" />
+                  Project
+                </Button>
+              </>
+            ) : null}
           </div>
           <div className="ml-auto hidden items-center gap-2 md:flex">
             {gitHistoryProject && gitHistoryHeader?.activeView === "commits" ? (
@@ -1935,6 +2113,23 @@ export function App() {
                   <span className="sr-only">Refresh Git history</span>
                 </Button>
               </>
+            ) : null}
+            {activePopout ? (
+              <Button
+                size="icon"
+                variant="ghost"
+                disabled={popoutPending}
+                className={cn(popoutError && "text-destructive")}
+                onClick={popOutActiveView}
+                title={popoutError ?? "Open this tab in a new window"}
+              >
+                {popoutPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <ExternalLink className="size-4" />
+                )}
+                <span className="sr-only">Open this tab in a new window</span>
+              </Button>
             ) : null}
             {activeChat && !showImporter && !showSettings ? (
               <Button
@@ -1978,19 +2173,14 @@ export function App() {
           <SettingsPage />
         ) : showImporter ? (
           <RepositoryImporter
+            projects={projects.data ?? []}
             workerId={onlineWorker?.workerId ?? null}
-            onImported={(project) => {
-              setSelectedProjectId(project.id);
-              setSelectedChatId(null);
-              setSelectedTerminalId(null);
-              setSelectedExplorerId(null);
-              setSelectedBrowserId(null);
-              setShowImporter(false);
-              setShowSettings(false);
-            }}
           />
         ) : gitHistoryProject ? (
           <GitHistoryView
+            initialView={
+              popoutTarget?.kind === "git" ? popoutTarget.view : undefined
+            }
             project={gitHistoryProject}
             onHeaderChange={setGitHistoryHeader}
           />
@@ -2068,72 +2258,97 @@ export function App() {
             }
           />
         ) : selectedProject ? (
-          <div className="grid flex-1 place-items-center p-6 text-center">
-            <div>
-              <div className="mx-auto grid size-12 place-items-center rounded-2xl border bg-card">
-                <SquareTerminal className="size-5" />
-              </div>
-              <h1 className="mt-4 font-semibold">No tabs yet</h1>
-              <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
-                Start a Codex chat, shell, file explorer, or browser in{" "}
-                {selectedProject.name}.
-              </p>
-              <div className="mt-5 flex justify-center gap-2">
-                <Button
-                  disabled={newChat.isPending || !selectedProject.source}
-                  onClick={() => newChat.mutate(selectedProject.id)}
-                >
-                  {newChat.isPending ? (
-                    <Loader2 className="size-4 animate-spin" />
+          selectedProject.setupStatus !== "ready" ? (
+            <div className="grid flex-1 place-items-center p-6 text-center">
+              <div>
+                <div className="mx-auto grid size-12 place-items-center rounded-2xl border bg-card">
+                  {selectedProject.setupStatus === "cloning" ? (
+                    <Loader2 className="size-5 animate-spin" />
                   ) : (
-                    <Plus className="size-4" />
+                    <CircleAlert className="size-5 text-destructive" />
                   )}
-                  Chat
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={newTerminal.isPending || !selectedProject.source}
-                  onClick={() => newTerminal.mutate(selectedProject.id)}
-                >
-                  {newTerminal.isPending ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Plus className="size-4" />
-                  )}
-                  Terminal
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={newExplorer.isPending || !selectedProject.source}
-                  onClick={() => newExplorer.mutate(selectedProject.id)}
-                >
-                  {newExplorer.isPending ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <FolderTree className="size-4" />
-                  )}
-                  Explorer
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={newBrowser.isPending || !selectedProject.source}
-                  onClick={() => newBrowser.mutate(selectedProject.id)}
-                >
-                  {newBrowser.isPending ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Globe2 className="size-4" />
-                  )}
-                  Browser
-                </Button>
-              </div>
-              {newChat.isError ? (
-                <p className="mt-3 text-xs text-destructive">
-                  {errorText(newChat.error)}
+                </div>
+                <h1 className="mt-4 font-semibold">
+                  {selectedProject.setupStatus === "cloning"
+                    ? "Cloning repository…"
+                    : "Repository setup failed"}
+                </h1>
+                <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+                  {selectedProject.setupStatus === "cloning"
+                    ? `${selectedProject.github?.nameWithOwner ?? selectedProject.name} is being prepared on the worker. You can keep adding other projects while it finishes.`
+                    : (selectedProject.setupError ??
+                      "The worker could not prepare this repository.")}
                 </p>
-              ) : null}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="grid flex-1 place-items-center p-6 text-center">
+              <div>
+                <div className="mx-auto grid size-12 place-items-center rounded-2xl border bg-card">
+                  <SquareTerminal className="size-5" />
+                </div>
+                <h1 className="mt-4 font-semibold">No tabs yet</h1>
+                <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
+                  Start a Codex chat, shell, file explorer, or browser in{" "}
+                  {selectedProject.name}.
+                </p>
+                <div className="mt-5 flex justify-center gap-2">
+                  <Button
+                    disabled={newChat.isPending || !selectedProject.source}
+                    onClick={() => newChat.mutate(selectedProject.id)}
+                  >
+                    {newChat.isPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Plus className="size-4" />
+                    )}
+                    Chat
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={newTerminal.isPending || !selectedProject.source}
+                    onClick={() => newTerminal.mutate(selectedProject.id)}
+                  >
+                    {newTerminal.isPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Plus className="size-4" />
+                    )}
+                    Terminal
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={newExplorer.isPending || !selectedProject.source}
+                    onClick={() => newExplorer.mutate(selectedProject.id)}
+                  >
+                    {newExplorer.isPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <FolderTree className="size-4" />
+                    )}
+                    Explorer
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={newBrowser.isPending || !selectedProject.source}
+                    onClick={() => newBrowser.mutate(selectedProject.id)}
+                  >
+                    {newBrowser.isPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Globe2 className="size-4" />
+                    )}
+                    Browser
+                  </Button>
+                </div>
+                {newChat.isError ? (
+                  <p className="mt-3 text-xs text-destructive">
+                    {errorText(newChat.error)}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          )
         ) : (
           <div className="grid flex-1 place-items-center p-6 text-center">
             <div>

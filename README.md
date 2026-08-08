@@ -136,9 +136,9 @@ Local database files and worker-owned repository clones are stored under `.cantr
 pnpm devtop
 ```
 
-`devtop` runs the same protocol, server, and worker development stack, but launches the frontend inside the Tauri desktop window instead of asking you to open the standalone browser app. Tauri still starts Vite internally, so frontend hot module replacement works in the desktop window.
+`devtop` runs the same protocol, server, and worker development stack, but launches the frontend inside the Tauri desktop window instead of asking you to open the standalone browser app. Tauri starts its Vite hot-reload server on <http://127.0.0.1:1420>, separately from the browser-development port.
 
-Do not run `pnpm dev` and `pnpm devtop` simultaneously with the default configuration because both use the same server and Vite ports. Press `Ctrl+C` in the `devtop` terminal to stop the Tauri app and all processes it started.
+Do not run the complete `pnpm dev` and `pnpm devtop` stacks simultaneously with the default configuration because they still share the Cantrip server and worker. A separately running browser Vite process on port 5173 no longer prevents `devtop` from starting. Press `Ctrl+C` in the `devtop` terminal to stop the Tauri app and all processes it started.
 
 ## Test with Ollama
 

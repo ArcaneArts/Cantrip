@@ -26,6 +26,7 @@ async function start(): Promise<void> {
     new Date().toISOString(),
   );
   let connected = false;
+  let commandChannelStarted = false;
   let lastConnectionError: string | null = null;
   let stopping = false;
   const github = new GithubClient(config.dataDirectory);
@@ -228,6 +229,10 @@ async function start(): Promise<void> {
       }
       connected = true;
       lastConnectionError = null;
+      if (!commandChannelStarted) {
+        commandConnection.start();
+        commandChannelStarted = true;
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (!stopping && (connected || message !== lastConnectionError)) {
@@ -239,7 +244,6 @@ async function start(): Promise<void> {
   };
 
   await publish();
-  commandConnection.start();
   const heartbeatTimer = setInterval(
     () => void publish(),
     HEARTBEAT_INTERVAL_MS,

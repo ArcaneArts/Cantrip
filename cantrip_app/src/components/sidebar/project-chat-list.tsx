@@ -24,6 +24,7 @@ import type {
   TerminalSummary,
 } from "@cantrip/protocol";
 import {
+  CircleAlert,
   FolderGit2,
   FolderTree,
   GitBranch,
@@ -532,7 +533,12 @@ function SortableProject({
   onSelect(): void;
   project: ProjectSummary;
 }) {
-  const sortable = useSortable({ id: projectId(project.id) });
+  const cloning = project.setupStatus === "cloning";
+  const failed = project.setupStatus === "failed";
+  const sortable = useSortable({
+    id: projectId(project.id),
+    disabled: cloning,
+  });
   const style: CSSProperties = {
     transform: CSS.Transform.toString(sortable.transform),
     transition: sortable.transition,
@@ -542,6 +548,7 @@ function SortableProject({
   return (
     <div ref={sortable.setNodeRef} style={style} className="group mb-1">
       <div
+        title={failed ? (project.setupError ?? undefined) : undefined}
         className={cn(
           "flex items-center rounded-md hover:bg-muted",
           active && "bg-muted font-medium",
@@ -556,106 +563,126 @@ function SortableProject({
           className="flex min-w-0 flex-1 items-center gap-2 py-2 pr-3 text-left text-sm"
           onClick={onSelect}
         >
-          <FolderGit2 className="size-4 shrink-0" />
+          {cloning ? (
+            <Loader2 className="size-4 shrink-0 animate-spin" />
+          ) : failed ? (
+            <CircleAlert className="size-4 shrink-0 text-destructive" />
+          ) : (
+            <FolderGit2 className="size-4 shrink-0" />
+          )}
           <span className="truncate">{project.name}</span>
+          {cloning || failed ? (
+            <span
+              className={cn(
+                "ml-auto shrink-0 text-[10px] font-normal text-muted-foreground",
+                failed && "text-destructive",
+              )}
+            >
+              {cloning ? "Cloning" : "Failed"}
+            </span>
+          ) : null}
         </button>
         <button
           type="button"
           title={`Git history for ${project.name}`}
+          disabled={!project.source}
           onClick={(event) => {
             event.stopPropagation();
             onOpenHistory();
           }}
           className={cn(
-            "mr-1 grid size-7 shrink-0 place-items-center rounded text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100 focus:opacity-100 [@media(pointer:coarse)]:opacity-100",
+            "mr-1 grid size-7 shrink-0 place-items-center rounded text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100 focus:opacity-100 disabled:pointer-events-none disabled:opacity-0 [@media(pointer:coarse)]:opacity-100",
             historyActive && "bg-background text-foreground opacity-100",
           )}
         >
           <GitBranch className="size-3.5" />
           <span className="sr-only">Git history for {project.name}</span>
         </button>
-        <DropdownMenuPrimitive.Root>
-          <DropdownMenuPrimitive.Trigger asChild>
-            <button
-              type="button"
-              title={`Add to ${project.name}`}
-              disabled={!project.source}
-              onClick={(event) => event.stopPropagation()}
-              className="mr-1 grid size-7 shrink-0 place-items-center rounded text-muted-foreground hover:bg-background hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Plus className="size-3.5" />
-              <span className="sr-only">Add to {project.name}</span>
-            </button>
-          </DropdownMenuPrimitive.Trigger>
-          <DropdownMenuPrimitive.Portal>
-            <DropdownMenuPrimitive.Content
-              align="end"
-              sideOffset={4}
-              className={menuContentClass}
-            >
-              <DropdownMenuPrimitive.Item
-                className={menuItemClass}
-                disabled={creatingChat}
-                onSelect={onCreateChat}
+        {project.source ? (
+          <DropdownMenuPrimitive.Root>
+            <DropdownMenuPrimitive.Trigger asChild>
+              <button
+                type="button"
+                title={`Add to ${project.name}`}
+                onClick={(event) => event.stopPropagation()}
+                className="mr-1 grid size-7 shrink-0 place-items-center rounded text-muted-foreground hover:bg-background hover:text-foreground"
               >
-                <Plus className="size-4" /> Chat
-              </DropdownMenuPrimitive.Item>
-              <DropdownMenuPrimitive.Item
-                className={menuItemClass}
-                disabled={creatingTerminal}
-                onSelect={onCreateTerminal}
+                <Plus className="size-3.5" />
+                <span className="sr-only">Add to {project.name}</span>
+              </button>
+            </DropdownMenuPrimitive.Trigger>
+            <DropdownMenuPrimitive.Portal>
+              <DropdownMenuPrimitive.Content
+                align="end"
+                sideOffset={4}
+                className={menuContentClass}
               >
-                <Plus className="size-4" /> Terminal
-              </DropdownMenuPrimitive.Item>
-              <DropdownMenuPrimitive.Item
-                className={menuItemClass}
-                disabled={creatingExplorer}
-                onSelect={onCreateExplorer}
+                <DropdownMenuPrimitive.Item
+                  className={menuItemClass}
+                  disabled={creatingChat}
+                  onSelect={onCreateChat}
+                >
+                  <Plus className="size-4" /> Chat
+                </DropdownMenuPrimitive.Item>
+                <DropdownMenuPrimitive.Item
+                  className={menuItemClass}
+                  disabled={creatingTerminal}
+                  onSelect={onCreateTerminal}
+                >
+                  <Plus className="size-4" /> Terminal
+                </DropdownMenuPrimitive.Item>
+                <DropdownMenuPrimitive.Item
+                  className={menuItemClass}
+                  disabled={creatingExplorer}
+                  onSelect={onCreateExplorer}
+                >
+                  <Plus className="size-4" /> Explorer
+                </DropdownMenuPrimitive.Item>
+                <DropdownMenuPrimitive.Item
+                  className={menuItemClass}
+                  disabled={creatingBrowser}
+                  onSelect={onCreateBrowser}
+                >
+                  <Plus className="size-4" /> Browser
+                </DropdownMenuPrimitive.Item>
+              </DropdownMenuPrimitive.Content>
+            </DropdownMenuPrimitive.Portal>
+          </DropdownMenuPrimitive.Root>
+        ) : null}
+        {cloning ? null : (
+          <DropdownMenuPrimitive.Root>
+            <DropdownMenuPrimitive.Trigger asChild>
+              <button
+                type="button"
+                title={`Project actions for ${project.name}`}
+                onClick={(event) => event.stopPropagation()}
+                className="mr-1 grid size-7 shrink-0 place-items-center rounded text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100 focus:opacity-100 [@media(pointer:coarse)]:opacity-100"
               >
-                <Plus className="size-4" /> Explorer
-              </DropdownMenuPrimitive.Item>
-              <DropdownMenuPrimitive.Item
-                className={menuItemClass}
-                disabled={creatingBrowser}
-                onSelect={onCreateBrowser}
+                <MoreHorizontal className="size-3.5" />
+                <span className="sr-only">
+                  Project actions for {project.name}
+                </span>
+              </button>
+            </DropdownMenuPrimitive.Trigger>
+            <DropdownMenuPrimitive.Portal>
+              <DropdownMenuPrimitive.Content
+                align="end"
+                sideOffset={4}
+                className={menuContentClass}
               >
-                <Plus className="size-4" /> Browser
-              </DropdownMenuPrimitive.Item>
-            </DropdownMenuPrimitive.Content>
-          </DropdownMenuPrimitive.Portal>
-        </DropdownMenuPrimitive.Root>
-        <DropdownMenuPrimitive.Root>
-          <DropdownMenuPrimitive.Trigger asChild>
-            <button
-              type="button"
-              title={`Project actions for ${project.name}`}
-              onClick={(event) => event.stopPropagation()}
-              className="mr-1 grid size-7 shrink-0 place-items-center rounded text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100 focus:opacity-100 [@media(pointer:coarse)]:opacity-100"
-            >
-              <MoreHorizontal className="size-3.5" />
-              <span className="sr-only">
-                Project actions for {project.name}
-              </span>
-            </button>
-          </DropdownMenuPrimitive.Trigger>
-          <DropdownMenuPrimitive.Portal>
-            <DropdownMenuPrimitive.Content
-              align="end"
-              sideOffset={4}
-              className={menuContentClass}
-            >
-              <DropdownMenuPrimitive.Item
-                className={cn(
-                  menuItemClass,
-                  "text-destructive focus:bg-destructive/10",
-                )}
-                onSelect={onRemove}
-              >
-                <Trash2 className="size-4" /> Remove project
-              </DropdownMenuPrimitive.Item>
-            </DropdownMenuPrimitive.Content>
-          </DropdownMenuPrimitive.Portal>
-        </DropdownMenuPrimitive.Root>
+                <DropdownMenuPrimitive.Item
+                  className={cn(
+                    menuItemClass,
+                    "text-destructive focus:bg-destructive/10",
+                  )}
+                  onSelect={onRemove}
+                >
+                  <Trash2 className="size-4" /> Remove project
+                </DropdownMenuPrimitive.Item>
+              </DropdownMenuPrimitive.Content>
+            </DropdownMenuPrimitive.Portal>
+          </DropdownMenuPrimitive.Root>
+        )}
       </div>
       {children}
     </div>
@@ -1106,21 +1133,23 @@ export function ProjectChatList({
               repository remains on the worker and can be re-linked later.
             </DialogDescription>
           </DialogHeader>
-          <label className="flex cursor-pointer items-start gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
-            <input
-              type="checkbox"
-              className="mt-0.5 size-4 accent-destructive"
-              checked={deleteLocalFiles}
-              onChange={(event) => setDeleteLocalFiles(event.target.checked)}
-            />
-            <span>
-              <span className="font-medium">Also delete local files</span>
-              <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                Permanently removes the checked-out repository from the worker.
-                This cannot be undone by Cantrip.
+          {removeProjectTarget?.source ? (
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 accent-destructive"
+                checked={deleteLocalFiles}
+                onChange={(event) => setDeleteLocalFiles(event.target.checked)}
+              />
+              <span>
+                <span className="font-medium">Also delete local files</span>
+                <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                  Permanently removes the checked-out repository from the
+                  worker. This cannot be undone by Cantrip.
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
+          ) : null}
           <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline">Cancel</Button>

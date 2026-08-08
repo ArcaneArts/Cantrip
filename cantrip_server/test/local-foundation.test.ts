@@ -71,6 +71,8 @@ const steeredPrompts: string[] = [];
 const issueComments: string[] = [];
 const closedIssues: Array<{ comment: string | null; number: number }> = [];
 let releaseHeldTurn: (() => void) | null = null;
+let heldProjectCloneName: string | null = null;
+let releaseProjectClone: (() => void) | null = null;
 const workerBridge = {
   attach() {},
   close() {},
@@ -178,6 +180,11 @@ const workerBridge = {
         };
       }
       case "project.clone":
+        if (command.repository.nameWithOwner === heldProjectCloneName) {
+          await new Promise<void>((resolve) => {
+            releaseProjectClone = resolve;
+          });
+        }
         return {
           path: path.join(dataDirectory, "repositories", "Cantrip"),
           displayPath: "ArcaneArts/Cantrip",
@@ -593,6 +600,7 @@ describe("local server foundation", () => {
       ),
     ).toMatchObject([{ nameWithOwner: "ArcaneArts/Cantrip", imported: false }]);
 
+    heldProjectCloneName = "ArcaneArts/Cantrip";
     const projectResponse = await firstApp.inject({
       method: "POST",
       url: "/api/projects/from-github",
@@ -603,7 +611,64 @@ describe("local server foundation", () => {
         url: "https://github.com/ArcaneArts/Cantrip",
       },
     });
-    const project = projectSummarySchema.parse(projectResponse.json());
+    expect(projectResponse.statusCode).toBe(202);
+    const queuedProject = projectSummarySchema.parse(projectResponse.json());
+    expect(queuedProject).toMatchObject({
+      setupStatus: "cloning",
+      setupError: null,
+      source: null,
+    });
+    expect(releaseProjectClone).not.toBeNull();
+    const parallelResponse = await firstApp.inject({
+      method: "POST",
+      url: "/api/projects/from-github",
+      payload: {
+        workerId: "test-worker",
+        repositoryId: "github-repository-2",
+        nameWithOwner: "ArcaneArts/ParallelClone",
+        url: "https://github.com/ArcaneArts/ParallelClone",
+      },
+    });
+    expect(parallelResponse.statusCode).toBe(202);
+    const parallelProject = projectSummarySchema.parse(parallelResponse.json());
+    await vi.waitFor(async () => {
+      const currentProjects = projectListSchema.parse(
+        (await firstApp.inject({ method: "GET", url: "/api/projects" })).json(),
+      );
+      expect(
+        currentProjects.find((candidate) => candidate.id === parallelProject.id)
+          ?.setupStatus,
+      ).toBe("ready");
+      expect(
+        currentProjects.find((candidate) => candidate.id === queuedProject.id)
+          ?.setupStatus,
+      ).toBe("cloning");
+    });
+    expect(
+      await firstApp.inject({
+        method: "DELETE",
+        url: `/api/projects/${parallelProject.id}`,
+        payload: { deleteLocalFiles: false },
+      }),
+    ).toMatchObject({ statusCode: 204 });
+    heldProjectCloneName = null;
+    releaseProjectClone?.();
+    releaseProjectClone = null;
+    const project = await vi.waitFor(async () => {
+      const current = projectListSchema
+        .parse(
+          (
+            await firstApp.inject({ method: "GET", url: "/api/projects" })
+          ).json(),
+        )
+        .find((candidate) => candidate.id === queuedProject.id);
+      expect(current).toMatchObject({
+        setupStatus: "ready",
+        setupError: null,
+        source: expect.objectContaining({ workerId: "test-worker" }),
+      });
+      return current!;
+    });
     expect(
       githubIssueListSchema.parse(
         (
@@ -1388,7 +1453,7 @@ describe("local server foundation", () => {
       ),
     ).toEqual([]);
 
-    const relinked = projectSummarySchema.parse(
+    const queuedRelinked = projectSummarySchema.parse(
       (
         await secondApp.inject({
           method: "POST",
@@ -1402,6 +1467,17 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
+    const relinked = await vi.waitFor(async () => {
+      const current = projectListSchema
+        .parse(
+          (
+            await secondApp.inject({ method: "GET", url: "/api/projects" })
+          ).json(),
+        )
+        .find((candidate) => candidate.id === queuedRelinked.id);
+      expect(current?.setupStatus).toBe("ready");
+      return current!;
+    });
     expect(
       await secondApp.inject({
         method: "DELETE",

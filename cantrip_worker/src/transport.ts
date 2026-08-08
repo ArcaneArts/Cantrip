@@ -16,6 +16,7 @@ type CommandHandler = (
 
 export class WorkerConnection {
   #closed = false;
+  #lastConnectionError: string | null = null;
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   #socket: WebSocket | null = null;
 
@@ -52,13 +53,15 @@ export class WorkerConnection {
     });
     this.#socket = socket;
     socket.once("open", () => {
+      this.#lastConnectionError = null;
       console.log("[cantrip_worker] Command channel connected.");
     });
     socket.on("message", (data) => {
       void this.onMessage(socket, data);
     });
     socket.once("error", (error) => {
-      if (!this.#closed) {
+      if (!this.#closed && error.message !== this.#lastConnectionError) {
+        this.#lastConnectionError = error.message;
         console.warn(
           `[cantrip_worker] Command channel unavailable: ${error.message}`,
         );

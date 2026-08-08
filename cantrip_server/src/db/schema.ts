@@ -148,6 +148,8 @@ export const projects = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     position: integer("position").notNull().default(0),
+    setupStatus: text("setup_status").notNull().default("ready"),
+    setupError: text("setup_error"),
     githubRepositoryId: text("github_repository_id"),
     githubRepositoryFullName: text("github_repository_full_name"),
     githubRepositoryUrl: text("github_repository_url"),

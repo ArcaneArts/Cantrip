@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "identifier": "art.cantrip",
   "build": {
-    "beforeDevCommand": "pnpm dev",
-    "devUrl": "http://127.0.0.1:5173",
+    "beforeDevCommand": "pnpm dev:desktop",
+    "devUrl": "http://127.0.0.1:1420",
     "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist"
   },

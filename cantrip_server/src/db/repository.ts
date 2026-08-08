@@ -76,9 +76,10 @@ export interface TerminalExecutionContext {
 }
 
 export interface ProjectRemovalContext {
-  cwd: string;
+  cwd: string | null;
+  setupStatus: ProjectSummary["setupStatus"];
   terminalIds: string[];
-  workerId: string;
+  workerId: string | null;
 }
 
 export interface GithubProjectExecutionContext {
@@ -141,6 +142,8 @@ function toProjectSummary(
     id: project.id,
     name: project.name,
     position: project.position,
+    setupStatus: project.setupStatus as ProjectSummary["setupStatus"],
+    setupError: project.setupError,
     github,
     source: source
       ? {
@@ -964,9 +967,8 @@ export class ServerRepository {
   async createGithubProject(
     ownerId: string,
     input: GithubProjectCreate,
-    clone: ProjectCloneResult,
   ): Promise<ProjectSummary> {
-    return this.database.transaction(async (transaction) => {
+    const project = await this.database.transaction(async (transaction) => {
       const lastProjects = await transaction
         .select({ position: schema.projects.position })
         .from(schema.projects)
@@ -980,41 +982,119 @@ export class ServerRepository {
           ownerId,
           name: input.nameWithOwner.split("/")[1] ?? input.nameWithOwner,
           position: (lastProjects[0]?.position ?? -1) + 1,
+          setupStatus: "cloning",
+          setupError: null,
           githubRepositoryId: input.repositoryId,
           githubRepositoryFullName: input.nameWithOwner,
           githubRepositoryUrl: input.url,
         })
         .returning();
-      const project = firstOrThrow(projectResult, "creating a GitHub project");
+      return firstOrThrow(projectResult, "creating a GitHub project");
+    });
+    return toProjectSummary(project);
+  }
 
+  async completeGithubProjectSetup(
+    ownerId: string,
+    projectId: string,
+    workerId: string,
+    clone: ProjectCloneResult,
+  ): Promise<ProjectSummary | null> {
+    return this.database.transaction(async (transaction) => {
+      const projectRows = await transaction
+        .select()
+        .from(schema.projects)
+        .where(
+          and(
+            eq(schema.projects.id, projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .limit(1);
+      if (!projectRows[0]) return null;
       const sourceResult = await transaction
         .insert(schema.projectSources)
         .values({
           id: randomUUID(),
-          projectId: project.id,
-          workerId: input.workerId,
+          projectId,
+          workerId,
           absolutePath: clone.path,
           displayPath: clone.displayPath,
         })
         .returning();
       const source = firstOrThrow(sourceResult, "recording a project source");
-      return toProjectSummary(project, source);
+      const projectResult = await transaction
+        .update(schema.projects)
+        .set({
+          setupStatus: "ready",
+          setupError: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.projects.id, projectId))
+        .returning();
+      return toProjectSummary(
+        firstOrThrow(projectResult, "completing project setup"),
+        source,
+      );
     });
+  }
+
+  async failGithubProjectSetup(
+    ownerId: string,
+    projectId: string,
+    error: string,
+  ): Promise<boolean> {
+    const result = await this.database
+      .update(schema.projects)
+      .set({
+        setupStatus: "failed",
+        setupError: error,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .returning({ id: schema.projects.id });
+    return Boolean(result[0]);
   }
 
   async getProjectRemovalContext(
     ownerId: string,
     projectId: string,
   ): Promise<ProjectRemovalContext | null> {
-    const source = await this.getProjectSource(ownerId, projectId);
-    if (!source) return null;
+    const rows = await this.database
+      .select({
+        projectId: schema.projects.id,
+        setupStatus: schema.projects.setupStatus,
+        workerId: schema.projectSources.workerId,
+        cwd: schema.projectSources.absolutePath,
+      })
+      .from(schema.projects)
+      .leftJoin(
+        schema.projectSources,
+        eq(schema.projectSources.projectId, schema.projects.id),
+      )
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    const project = rows[0];
+    if (!project) return null;
     const terminals = await this.database
       .select({ id: schema.terminals.id })
       .from(schema.terminals)
       .where(eq(schema.terminals.projectId, projectId));
     return {
-      ...source,
+      cwd: project.cwd,
+      setupStatus: project.setupStatus as ProjectSummary["setupStatus"],
       terminalIds: terminals.map(({ id }) => id),
+      workerId: project.workerId,
     };
   }
 

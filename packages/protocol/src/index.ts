@@ -289,10 +289,14 @@ export const projectSourceSummarySchema = z.object({
   displayPath: z.string().min(1),
 });
 
+export const projectSetupStatusSchema = z.enum(["cloning", "ready", "failed"]);
+
 export const projectSummarySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   position: z.number().int().nonnegative(),
+  setupStatus: projectSetupStatusSchema,
+  setupError: z.string().min(1).nullable(),
   github: z
     .object({
       repositoryId: z.string().min(1),

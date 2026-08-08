@@ -1,0 +1,37 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  desktopPopoutSearch,
+  parseDesktopPopoutTarget,
+  type DesktopPopoutTarget,
+} from "./desktop-popout";
+
+describe("desktop pop-out targets", () => {
+  const targets: DesktopPopoutTarget[] = [
+    { kind: "chat", projectId: "project one", tabId: "chat/1" },
+    { kind: "terminal", projectId: "project one", tabId: "terminal:1" },
+    { kind: "explorer", projectId: "project one", tabId: "explorer_1" },
+    { kind: "browser", projectId: "project one", tabId: "browser-1" },
+    { kind: "git", projectId: "project one", view: "commits" },
+    { kind: "git", projectId: "project one", view: "issues" },
+  ];
+
+  it.each(targets)("round-trips $kind targets", (target) => {
+    expect(parseDesktopPopoutTarget(desktopPopoutSearch(target))).toEqual(
+      target,
+    );
+  });
+
+  it("rejects incomplete and unsupported targets", () => {
+    expect(
+      parseDesktopPopoutTarget("?cantrip-popout=chat&project=p"),
+    ).toBeNull();
+    expect(
+      parseDesktopPopoutTarget("?cantrip-popout=git&project=p&view=branches"),
+    ).toBeNull();
+    expect(
+      parseDesktopPopoutTarget("?cantrip-popout=settings&project=p&tab=s"),
+    ).toBeNull();
+    expect(parseDesktopPopoutTarget("?cantrip-popout=chat&tab=c")).toBeNull();
+  });
+});

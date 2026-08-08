@@ -163,7 +163,55 @@ export async function buildApp({
 
   const dispatchingChats = new Set<string>();
   const pendingQueueDispatches = new Set<string>();
+  const projectSetupTasks = new Set<Promise<void>>();
   const routeCooldowns = new Map<string, number>();
+
+  const queueProjectSetup = (
+    projectId: string,
+    input: {
+      nameWithOwner: string;
+      workerId: string;
+    },
+  ) => {
+    const task = (async () => {
+      try {
+        const clone = projectCloneResultSchema.parse(
+          await bridge.request(
+            input.workerId,
+            {
+              type: "project.clone",
+              repository: { nameWithOwner: input.nameWithOwner },
+            },
+            { timeoutMs: null },
+          ),
+        );
+        await repository.completeGithubProjectSetup(
+          LOCAL_USER_ID,
+          projectId,
+          input.workerId,
+          clone,
+        );
+      } catch (error) {
+        const message =
+          errorMessage(error).trim().slice(0, 4_000) ||
+          "Repository setup failed.";
+        try {
+          await repository.failGithubProjectSetup(
+            LOCAL_USER_ID,
+            projectId,
+            message,
+          );
+        } catch (persistenceError) {
+          app.log.error(
+            { error: persistenceError, projectId },
+            "Could not record failed project setup",
+          );
+        }
+      }
+    })();
+    projectSetupTasks.add(task);
+    void task.finally(() => projectSetupTasks.delete(task));
+  };
 
   const resolveModelId = async (
     context: ChatExecutionContext,
@@ -1092,25 +1140,31 @@ export async function buildApp({
       if (!context) {
         return reply.code(404).send({ error: "Project not found." });
       }
+      if (context.setupStatus === "cloning") {
+        return reply
+          .code(409)
+          .send({ error: "Wait for the repository clone to finish." });
+      }
+      const { cwd, workerId } = context;
 
       try {
-        if (input.data.deleteLocalFiles) {
+        if (input.data.deleteLocalFiles && cwd && workerId) {
           await Promise.all(
             context.terminalIds.map((terminalId) =>
-              bridge.request(context.workerId, {
+              bridge.request(workerId, {
                 type: "terminal.close",
                 terminalId,
               }),
             ),
           );
-          await bridge.request(context.workerId, {
+          await bridge.request(workerId, {
             type: "project.files.delete",
-            path: context.cwd,
+            path: cwd,
           });
-        } else if (bridge.isConnected(context.workerId)) {
+        } else if (workerId && bridge.isConnected(workerId)) {
           for (const terminalId of context.terminalIds) {
             void bridge
-              .request(context.workerId, {
+              .request(workerId, {
                 type: "terminal.close",
                 terminalId,
               })
@@ -1145,35 +1199,12 @@ export async function buildApp({
     }
 
     try {
-      const available = githubWorkerRepositoryListSchema.parse(
-        await bridge.request(input.data.workerId, {
-          type: "github.repositories.list",
-        }),
-      );
-      const githubRepository = available.find(
-        (candidate) =>
-          candidate.id === input.data.repositoryId &&
-          candidate.nameWithOwner === input.data.nameWithOwner &&
-          candidate.url === input.data.url,
-      );
-      if (!githubRepository) {
-        return reply
-          .code(404)
-          .send({ error: "Repository is not available on this worker." });
-      }
-
-      const clone = projectCloneResultSchema.parse(
-        await bridge.request(input.data.workerId, {
-          type: "project.clone",
-          repository: { nameWithOwner: githubRepository.nameWithOwner },
-        }),
-      );
       const project = await repository.createGithubProject(
         LOCAL_USER_ID,
         input.data,
-        clone,
       );
-      return reply.code(201).send(projectSummarySchema.parse(project));
+      queueProjectSetup(project.id, input.data);
+      return reply.code(202).send(projectSummarySchema.parse(project));
     } catch (error) {
       if (
         await repository.hasGithubProject(
@@ -2171,6 +2202,7 @@ export async function buildApp({
 
   app.addHook("onClose", async () => {
     bridge.close();
+    await Promise.allSettled(projectSetupTasks);
     await database.close();
   });
 

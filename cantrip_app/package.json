@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc -b && vite build",
     "dev": "vite",
+    "dev:desktop": "vite --port 1420",
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc -b --pretty false",

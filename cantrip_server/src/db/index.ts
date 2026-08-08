@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, rename } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,22 +31,74 @@ async function connectPglite(
 ): Promise<DatabaseConnection> {
   await mkdir(config.dataDirectory, { recursive: true });
 
-  const client = new PGlite(path.join(config.dataDirectory, "server-db"));
-  const database = drizzlePglite(client, { schema });
-  await migratePglite(database, { migrationsFolder });
-  const repository = new ServerRepository(database);
-  await repository.ensureLocalIdentity();
+  const databaseDirectory = path.join(config.dataDirectory, "server-db");
 
-  return {
-    engine: "pglite",
-    repository,
-    async ping() {
-      await database.execute(sql`select 1`);
-    },
-    async close() {
-      await client.close();
-    },
-  };
+  try {
+    return await openPglite(databaseDirectory);
+  } catch (error) {
+    if (config.bootstrapMode !== "pnpm-dev" || !isPgliteAbort(error)) {
+      throw error;
+    }
+
+    const backupDirectory = path.join(
+      config.dataDirectory,
+      `server-db-corrupt-${new Date().toISOString().replaceAll(":", "-").replaceAll(".", "-")}`,
+    );
+    await rename(databaseDirectory, backupDirectory);
+    console.warn(
+      `[cantrip_server] PGlite data was unreadable. Preserved it at ${backupDirectory} and created a fresh development database.`,
+    );
+    return openPglite(databaseDirectory);
+  }
+}
+
+function isPgliteAbort(error: unknown): boolean {
+  const visited = new Set<unknown>();
+  let current = error;
+
+  while (current && !visited.has(current)) {
+    visited.add(current);
+    if (
+      current instanceof Error &&
+      current.name === "RuntimeError" &&
+      current.message.includes("Aborted()")
+    ) {
+      return true;
+    }
+    current =
+      typeof current === "object" && "cause" in current
+        ? (current as { cause?: unknown }).cause
+        : null;
+  }
+
+  return false;
+}
+
+async function openPglite(
+  databaseDirectory: string,
+): Promise<DatabaseConnection> {
+  const client = new PGlite(databaseDirectory);
+  const database = drizzlePglite(client, { schema });
+
+  try {
+    await migratePglite(database, { migrationsFolder });
+    const repository = new ServerRepository(database);
+    await repository.ensureLocalIdentity();
+
+    return {
+      engine: "pglite",
+      repository,
+      async ping() {
+        await database.execute(sql`select 1`);
+      },
+      async close() {
+        await client.close();
+      },
+    };
+  } catch (error) {
+    await client.close().catch(() => undefined);
+    throw error;
+  }
 }
 
 async function connectPostgres(
