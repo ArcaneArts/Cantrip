@@ -44,6 +44,7 @@ import {
   Send,
   Settings,
   SquareTerminal,
+  Target,
   User,
   WandSparkles,
 } from "lucide-react";
@@ -58,6 +59,7 @@ import {
 } from "react";
 
 import { Activity, ActivityGroup } from "@/components/chat/activity";
+import { GoalPanel } from "@/components/chat/goal-panel";
 import { Markdown } from "@/components/chat/markdown";
 import { PromptQueue } from "@/components/chat/prompt-queue";
 import {
@@ -111,6 +113,8 @@ import {
   createRemoteDesktop,
   createTerminal,
   compactChat,
+  clearChatGoal,
+  createChatGoal,
   deleteChat,
   deleteBrowser,
   deleteExplorer,
@@ -119,6 +123,7 @@ import {
   deleteQueuedPrompt,
   forkChat,
   getChats,
+  getChatGoal,
   getBrowsers,
   getCachedGithubRepositories,
   getExplorers,
@@ -148,6 +153,7 @@ import {
   steerQueuedPrompt,
   syncChat,
   updateChatModel,
+  updateChatGoal,
   updateChatWorktree,
   updateBrowser,
   updateExplorerWorktree,
@@ -592,6 +598,7 @@ function ChatTranscript({
 }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
+  const [goalDialogOpen, setGoalDialogOpen] = useState(false);
   const [editingPrompt, setEditingPrompt] = useState<{
     id: string;
     frozen: boolean;
@@ -639,6 +646,12 @@ function ChatTranscript({
     queryFn: () => getQueuedPrompts(chat.id),
     queryKey: ["prompt-queue", chat.id],
     refetchInterval: chat.status === "running" ? 750 : 3_000,
+  });
+  const goalState = useQuery({
+    queryFn: () => getChatGoal(chat.id),
+    queryKey: ["goal", chat.id],
+    refetchInterval: chat.status === "running" ? 750 : 3_000,
+    retry: false,
   });
   const skills = useQuery({
     enabled: Boolean(selectedModelId && draft.includes("$")),
@@ -752,6 +765,35 @@ function ChatTranscript({
     mutationFn: () => compactChat(chat.id),
     onSuccess: () => setCommandNotice("Conversation context compacted."),
   });
+  const createGoal = useMutation({
+    mutationFn: (input: { objective: string; tokenBudget?: number | null }) =>
+      createChatGoal(chat.id, input),
+    onSuccess: async () => {
+      setGoalDialogOpen(false);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["goal", chat.id] }),
+        queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
+        queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
+      ]);
+    },
+  });
+  const updateGoal = useMutation({
+    mutationFn: (status: "active" | "paused") =>
+      updateChatGoal(chat.id, { status }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["goal", chat.id] }),
+        queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
+        queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
+      ]);
+    },
+  });
+  const clearGoal = useMutation({
+    mutationFn: () => clearChatGoal(chat.id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["goal", chat.id] });
+    },
+  });
 
   useEffect(() => {
     setSelectedCommandIndex(0);
@@ -815,6 +857,14 @@ function ChatTranscript({
 
     if (name === "compact") {
       compact.mutate();
+    } else if (name === "goal") {
+      if (goalState.data?.goal) {
+        setCommandNotice(
+          `Goal is ${goalState.data.goal.status}: ${goalState.data.goal.objective}`,
+        );
+      } else {
+        setGoalDialogOpen(true);
+      }
     } else if (name === "copy") {
       if (!latestAssistantText) {
         setCommandNotice("There is no completed response to copy yet.");
@@ -1096,6 +1146,28 @@ function ChatTranscript({
               ))}
             </div>
           ) : null}
+          <GoalPanel
+            error={
+              createGoal.isError
+                ? errorText(createGoal.error)
+                : updateGoal.isError
+                  ? errorText(updateGoal.error)
+                  : clearGoal.isError
+                    ? errorText(clearGoal.error)
+                    : null
+            }
+            goal={goalState.data?.goal ?? null}
+            open={goalDialogOpen}
+            pending={
+              createGoal.isPending ||
+              updateGoal.isPending ||
+              clearGoal.isPending
+            }
+            onClear={() => clearGoal.mutate()}
+            onCreate={(input) => createGoal.mutate(input)}
+            onOpenChange={setGoalDialogOpen}
+            onUpdate={(status) => updateGoal.mutate(status)}
+          />
           <PromptQueue
             prompts={queuedPrompts.data ?? []}
             editingPromptId={editingPrompt?.id ?? null}
@@ -1291,6 +1363,19 @@ function ChatTranscript({
                     </option>
                   ))}
                 </select>
+                {!goalState.data?.goal ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs text-muted-foreground"
+                    disabled={!selectedModelId || chat.status === "running"}
+                    onClick={() => setGoalDialogOpen(true)}
+                  >
+                    <Target className="size-3.5" />
+                    Goal
+                  </Button>
+                ) : null}
               </div>
             </div>
             <Button

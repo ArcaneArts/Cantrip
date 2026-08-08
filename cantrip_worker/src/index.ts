@@ -278,6 +278,8 @@ async function start(): Promise<void> {
           skillNames: command.skillNames,
           threadId: command.threadId,
           onActivity: (activity) => emit({ type: "agent.activity", activity }),
+          onCheckpoint: ({ text, turnId }) =>
+            emit({ type: "agent.checkpoint", text, turnId }),
           onWorktreeToolCall: async ({
             arguments: toolArguments,
             callId,
@@ -332,6 +334,37 @@ async function start(): Promise<void> {
         });
       case "chat.interrupt":
         return runtimeFor(command).interruptThread(command.threadId);
+      case "chat.goal.get":
+        return runtimeFor(command).getGoal({
+          cwd: command.cwd,
+          model: command.model,
+          provider: command.provider,
+          threadId: command.threadId,
+        });
+      case "chat.goal.create":
+        return runtimeFor(command).createGoal({
+          cwd: command.cwd,
+          model: command.model,
+          objective: command.objective,
+          provider: command.provider,
+          threadId: command.threadId,
+          tokenBudget: command.tokenBudget,
+        });
+      case "chat.goal.update":
+        return runtimeFor(command).updateGoal({
+          cwd: command.cwd,
+          model: command.model,
+          provider: command.provider,
+          status: command.status,
+          threadId: command.threadId,
+        });
+      case "chat.goal.clear":
+        return runtimeFor(command).clearGoal({
+          cwd: command.cwd,
+          model: command.model,
+          provider: command.provider,
+          threadId: command.threadId,
+        });
       case "chat.steer":
         return runtimeFor(command).steerThread(
           command.chatId,

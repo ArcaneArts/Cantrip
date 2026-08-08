@@ -1188,6 +1188,43 @@ export const chatInterruptAcceptedSchema = z.object({
   interrupted: z.boolean(),
 });
 
+export const threadGoalStatusSchema = z.enum([
+  "active",
+  "paused",
+  "blocked",
+  "usageLimited",
+  "budgetLimited",
+  "complete",
+]);
+
+export const threadGoalSchema = z.object({
+  threadId: z.string().min(1),
+  objective: z.string().min(1),
+  status: threadGoalStatusSchema,
+  tokenBudget: z.number().int().positive().nullable(),
+  tokensUsed: z.number().int().nonnegative(),
+  timeUsedSeconds: z.number().int().nonnegative(),
+  createdAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+});
+
+export const chatGoalResponseSchema = z.object({
+  goal: threadGoalSchema.nullable(),
+});
+
+export const chatGoalCreateSchema = z.object({
+  objective: z.string().trim().min(1).max(100_000),
+  tokenBudget: z.number().int().positive().nullable().optional(),
+});
+
+export const chatGoalUpdateSchema = z.object({
+  status: z.enum(["active", "paused"]),
+});
+
+export const chatGoalClearSchema = z.object({
+  cleared: z.boolean(),
+});
+
 export const githubWorkerRepositorySchema = githubRepositorySchema.omit({
   imported: true,
 });
@@ -1675,6 +1712,41 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     provider: workerRuntimeProviderSchema,
   }),
   z.object({
+    type: z.literal("chat.goal.get"),
+    chatId: z.string().min(1),
+    cwd: z.string().min(1),
+    threadId: z.string().min(1),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
+    type: z.literal("chat.goal.create"),
+    chatId: z.string().min(1),
+    cwd: z.string().min(1),
+    threadId: z.string().min(1).nullable(),
+    objective: chatGoalCreateSchema.shape.objective,
+    tokenBudget: chatGoalCreateSchema.shape.tokenBudget,
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
+    type: z.literal("chat.goal.update"),
+    chatId: z.string().min(1),
+    cwd: z.string().min(1),
+    threadId: z.string().min(1),
+    status: chatGoalUpdateSchema.shape.status,
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
+    type: z.literal("chat.goal.clear"),
+    chatId: z.string().min(1),
+    cwd: z.string().min(1),
+    threadId: z.string().min(1),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
     type: z.literal("chat.steer"),
     chatId: z.string().min(1),
     threadId: z.string().min(1).nullable(),
@@ -1719,6 +1791,11 @@ export const workerEventSchema = z.discriminatedUnion("type", [
     activity: agentActivitySchema,
   }),
   z.object({ type: z.literal("terminal.ready") }),
+  z.object({
+    type: z.literal("agent.checkpoint"),
+    turnId: z.string().min(1),
+    text: z.string(),
+  }),
   z.object({
     type: z.literal("terminal.output"),
     data: z.string(),
@@ -1915,6 +1992,12 @@ export type QueuedPromptOrder = z.infer<typeof queuedPromptOrderSchema>;
 export type ChatModelUpdate = z.infer<typeof chatModelUpdateSchema>;
 export type ChatCompactAccepted = z.infer<typeof chatCompactAcceptedSchema>;
 export type ChatInterruptAccepted = z.infer<typeof chatInterruptAcceptedSchema>;
+export type ThreadGoalStatus = z.infer<typeof threadGoalStatusSchema>;
+export type ThreadGoal = z.infer<typeof threadGoalSchema>;
+export type ChatGoalResponse = z.infer<typeof chatGoalResponseSchema>;
+export type ChatGoalCreate = z.infer<typeof chatGoalCreateSchema>;
+export type ChatGoalUpdate = z.infer<typeof chatGoalUpdateSchema>;
+export type ChatGoalClear = z.infer<typeof chatGoalClearSchema>;
 export type AgentTurnResult = z.infer<typeof agentTurnResultSchema>;
 export type AgentActivity = z.infer<typeof agentActivitySchema>;
 export type AgentThreadSync = z.infer<typeof agentThreadSyncSchema>;

@@ -14,6 +14,10 @@ import {
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   chatCompactAcceptedSchema,
+  chatGoalClearSchema,
+  chatGoalCreateSchema,
+  chatGoalResponseSchema,
+  chatGoalUpdateSchema,
   chatInterruptAcceptedSchema,
   chatCreateSchema,
   chatExecutionLaneListSchema,
@@ -171,6 +175,8 @@ function optionalToolString(
 }
 
 const ROUTE_FAILURE_COOLDOWN_MS = 60_000;
+const GOAL_RESUME_PROMPT =
+  "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
 
 function canFailOverRoute(error: unknown): boolean {
   return /(quota|usage limit|rate.?limit|\b429\b|unauthori[sz]ed|\b401\b|forbidden|\b403\b|authentication|credentials|model.+(?:not found|unavailable)|\b404\b|timed? out|timeout|ECONN|connection|network|socket|\b5\d\d\b|service unavailable|overloaded)/i.test(
@@ -880,13 +886,16 @@ export async function buildApp({
       acquiringActor?: "agent" | "user";
       messageRole?: "system" | "user";
       purpose?: string;
+      runtimes?: ModelRuntime[];
+      workerPrompt?: string;
     } = {},
   ): Promise<ChatMessage> {
     if (!bridge.isConnected(context.workerId)) {
       throw new Error("Project worker is offline.");
     }
     const modelId = await resolveModelId(context, input.modelId);
-    const runtimes = await availableModelRuntimes(context, modelId);
+    const runtimes =
+      options.runtimes ?? (await availableModelRuntimes(context, modelId));
     const execution = await repository.startChatExecutionLane(
       LOCAL_USER_ID,
       context.chatId,
@@ -945,8 +954,11 @@ export async function buildApp({
           const canResume = runtime.routeId === execution.modelRouteId;
           const threadId = canResume ? execution.threadId : null;
           const workerPrompt = threadId
-            ? input.text
-            : continuationPrompt(priorMessages, input.text);
+            ? (options.workerPrompt ?? input.text)
+            : continuationPrompt(
+                priorMessages,
+                options.workerPrompt ?? input.text,
+              );
           await repository.setMessageModelRoute(
             userMessage.id,
             modelId,
@@ -979,9 +991,23 @@ export async function buildApp({
               {
                 timeoutMs: null,
                 onEvent: async (event) => {
-                  if (event.type !== "agent.activity") return;
                   attemptActivity = true;
                   anyActivity = true;
+                  if (event.type === "agent.checkpoint") {
+                    if (!event.text.trim()) return;
+                    await repository.upsertMessage(
+                      LOCAL_USER_ID,
+                      execution.chatId,
+                      {
+                        role: "assistant",
+                        content: [{ type: "text", text: event.text }],
+                        idempotencyKey: `goal-checkpoint:${userMessage.id}:${event.turnId}`,
+                      },
+                      attribution,
+                    );
+                    return;
+                  }
+                  if (event.type !== "agent.activity") return;
                   await repository.upsertMessage(
                     LOCAL_USER_ID,
                     execution.chatId,
@@ -3639,6 +3665,207 @@ export async function buildApp({
         provider: runtime.provider,
       });
       return reply.send(chatInterruptAcceptedSchema.parse(result));
+    },
+  );
+
+  app.get<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/goal",
+    async (request, reply) => {
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      if (!context.threadId) {
+        return reply.send(chatGoalResponseSchema.parse({ goal: null }));
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const runtime = await runtimeForContext(context);
+        if (!runtime) {
+          return reply
+            .code(409)
+            .send({ error: "Selected model was not found." });
+        }
+        const result = await bridge.request(context.workerId, {
+          type: "chat.goal.get",
+          chatId: context.chatId,
+          cwd: context.cwd,
+          threadId: context.threadId,
+          model: runtime.model,
+          provider: runtime.provider,
+        });
+        return reply.send(chatGoalResponseSchema.parse(result));
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/goal",
+    async (request, reply) => {
+      const input = chatGoalCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      if (context.status === "running") {
+        return reply
+          .code(409)
+          .send({ error: "Wait for the active turn to finish." });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const modelId = await resolveModelId(context);
+        const runtime = (await availableModelRuntimes(context, modelId))[0]!;
+        const result = chatGoalResponseSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "chat.goal.create",
+            chatId: context.chatId,
+            cwd: context.cwd,
+            threadId: context.threadId,
+            objective: input.data.objective,
+            tokenBudget: input.data.tokenBudget ?? null,
+            model: runtime.model,
+            provider: runtime.provider,
+          }),
+        );
+        if (!result.goal) {
+          throw new Error("Codex did not create the goal.");
+        }
+        await repository.updateChatRuntime(
+          context.chatId,
+          context.workerId,
+          context.worktreeId,
+          result.goal.threadId,
+          runtime.routeId,
+        );
+        const updatedContext = await repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          context.chatId,
+        );
+        if (!updatedContext) throw new Error("Chat source not found.");
+        await beginTurn(
+          updatedContext,
+          {
+            text: input.data.objective,
+            modelId,
+            idempotencyKey: `goal:${result.goal.createdAt}:${randomUUID()}`,
+          },
+          { purpose: "Codex goal", runtimes: [runtime] },
+        );
+        return reply.code(202).send(result);
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.patch<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/goal",
+    async (request, reply) => {
+      const input = chatGoalUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      if (!context.threadId) {
+        return reply.code(409).send({ error: "This chat has no goal." });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const runtime = await runtimeForContext(context);
+        if (!runtime) throw new Error("Selected model was not found.");
+        const result = chatGoalResponseSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "chat.goal.update",
+            chatId: context.chatId,
+            cwd: context.cwd,
+            threadId: context.threadId,
+            status: input.data.status,
+            model: runtime.model,
+            provider: runtime.provider,
+          }),
+        );
+        if (
+          input.data.status === "active" &&
+          context.status !== "running" &&
+          result.goal
+        ) {
+          const modelId = await resolveModelId(context);
+          await beginTurn(
+            context,
+            {
+              text: `Resume goal: ${result.goal.objective}`,
+              modelId,
+              idempotencyKey: `goal-resume:${result.goal.updatedAt}:${randomUUID()}`,
+            },
+            {
+              purpose: "Resume Codex goal",
+              runtimes: [runtime],
+              workerPrompt: GOAL_RESUME_PROMPT,
+            },
+          );
+        }
+        return reply.send(result);
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.delete<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/goal",
+    async (request, reply) => {
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      if (!context.threadId) {
+        return reply.send(chatGoalClearSchema.parse({ cleared: false }));
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const runtime = await runtimeForContext(context);
+        if (!runtime) throw new Error("Selected model was not found.");
+        const result = await bridge.request(context.workerId, {
+          type: "chat.goal.clear",
+          chatId: context.chatId,
+          cwd: context.cwd,
+          threadId: context.threadId,
+          model: runtime.model,
+          provider: runtime.provider,
+        });
+        return reply.send(chatGoalClearSchema.parse(result));
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
     },
   );
 

@@ -7,6 +7,8 @@ import {
   codexModelProviderName,
   codexWorkspaceContext,
   executeDynamicWorktreeTool,
+  GOAL_CONTINUATION_PROMPT,
+  goalShouldContinue,
   parseCodexSkills,
 } from "../src/codex/app-server.js";
 
@@ -161,5 +163,25 @@ describe("parseCodexSkills", () => {
         path: "/skills/skill-creator/SKILL.md",
       },
     ]);
+  });
+});
+
+describe("Codex goals", () => {
+  const goal = {
+    threadId: "thread-1",
+    objective: "Complete the task",
+    status: "active" as const,
+    tokenBudget: null,
+    tokensUsed: 100,
+    timeUsedSeconds: 30,
+    createdAt: 1,
+    updatedAt: 2,
+  };
+
+  it("continues only active goals with an explicit follow-up prompt", () => {
+    expect(goalShouldContinue(goal)).toBe(true);
+    expect(goalShouldContinue({ ...goal, status: "paused" })).toBe(false);
+    expect(goalShouldContinue({ ...goal, status: "complete" })).toBe(false);
+    expect(GOAL_CONTINUATION_PROMPT).toContain("active goal");
   });
 });
