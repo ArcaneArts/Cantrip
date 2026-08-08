@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  agentActivitySchema,
+  agentWorktreeToolCallSchema,
+  agentWorktreeToolResultSchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   chatExecutionLaneSummarySchema,
@@ -68,12 +71,43 @@ describe("Cantrip protocol", () => {
         startingHead: "0123456789abcdef",
         runtimeSessionId: "runtime-1",
         codexThreadId: "thread-1",
+        transitionKind: null,
         createdAt: "2026-08-08T12:00:00.000Z",
         activatedAt: "2026-08-08T12:00:01.000Z",
         releasedAt: null,
         updatedAt: "2026-08-08T12:00:01.000Z",
       }).state,
     ).toBe("active");
+  });
+
+  it("validates lane-scoped agent worktree tool calls and activity", () => {
+    expect(
+      agentWorktreeToolCallSchema.parse({
+        callId: "call-1",
+        chatId: "chat-1",
+        executionLaneId: "lane-1",
+        workerId: "worker-1",
+        tool: "cantrip_worktree_switch",
+        arguments: { worktreeId: "worktree-2", purpose: "Implement safely" },
+      }).tool,
+    ).toBe("cantrip_worktree_switch");
+    expect(
+      agentWorktreeToolResultSchema.parse({
+        summary: "Continuation scheduled.",
+        worktreeId: "worktree-2",
+        continuationScheduled: true,
+      }).continuationScheduled,
+    ).toBe(true);
+    expect(
+      agentActivitySchema.parse({
+        type: "worktree",
+        id: "worktree-tool:call-1",
+        operation: "cantrip_worktree_switch",
+        status: "completed",
+        summary: "Continuation scheduled.",
+        worktreeId: "worktree-2",
+      }).type,
+    ).toBe("worktree");
   });
 
   it("accepts non-secret Codex account and device login state", () => {

@@ -5,6 +5,7 @@ import {
   ChevronRight,
   CircleX,
   FileDiff,
+  GitBranch,
   Loader2,
   Terminal,
 } from "lucide-react";
@@ -32,6 +33,15 @@ function changeLabel(kind: "add" | "delete" | "update") {
 }
 
 export function Activity({ activity }: { activity: AgentActivity }) {
+  if (activity.type === "worktree") {
+    return (
+      <div className="flex min-w-0 items-center gap-2 py-1 text-sm">
+        <GitBranch className="size-4 shrink-0 text-violet-500" />
+        <span className="min-w-0 truncate">{activity.summary}</span>
+        <ActivityState activity={activity} />
+      </div>
+    );
+  }
   if (activity.type === "fileChange") {
     return (
       <div className="min-w-0 py-1 text-sm">

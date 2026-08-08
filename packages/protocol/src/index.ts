@@ -959,6 +959,14 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
       }),
     ),
   }),
+  z.object({
+    type: z.literal("worktree"),
+    id: z.string().min(1),
+    operation: z.string().min(1),
+    status: agentActivityStatusSchema,
+    summary: z.string().min(1),
+    worktreeId: z.string().min(1).nullable(),
+  }),
 ]);
 export const chatMessageContentSchema = z.array(
   z.discriminatedUnion("type", [
@@ -1015,6 +1023,7 @@ export const chatExecutionLaneSummarySchema = z.object({
   startingHead: z.string().min(1).nullable(),
   runtimeSessionId: z.string().min(1).nullable(),
   codexThreadId: z.string().min(1).nullable(),
+  transitionKind: z.enum(["switch", "release"]).nullable(),
   createdAt: z.string().datetime(),
   activatedAt: z.string().datetime().nullable(),
   releasedAt: z.string().datetime().nullable(),
@@ -1028,6 +1037,32 @@ export const chatExecutionLaneListSchema = z.array(
 export const chatExecutionLaneReleaseSchema = z.object({
   allowDirty: z.boolean().default(false),
   returnToPrimary: z.boolean().default(true),
+});
+
+export const agentWorktreeToolNameSchema = z.enum([
+  "cantrip_worktrees_list",
+  "cantrip_worktree_acquire",
+  "cantrip_worktree_create",
+  "cantrip_worktree_switch",
+  "cantrip_worktree_status",
+  "cantrip_worktree_release",
+  "cantrip_worktree_remove",
+]);
+
+export const agentWorktreeToolCallSchema = z.object({
+  callId: z.string().min(1).max(200),
+  chatId: z.string().min(1),
+  executionLaneId: z.string().min(1),
+  workerId: z.string().min(1),
+  tool: agentWorktreeToolNameSchema,
+  arguments: z.record(z.string(), z.unknown()),
+});
+
+export const agentWorktreeToolResultSchema = z.object({
+  summary: z.string().min(1),
+  worktreeId: z.string().min(1).nullable().default(null),
+  continuationScheduled: z.boolean().default(false),
+  data: z.unknown().optional(),
 });
 
 export const chatMessageListSchema = z.array(chatMessageSchema);
@@ -1782,6 +1817,11 @@ export type ChatExecutionLaneSummary = z.infer<
 >;
 export type ChatExecutionLaneRelease = z.infer<
   typeof chatExecutionLaneReleaseSchema
+>;
+export type AgentWorktreeToolName = z.infer<typeof agentWorktreeToolNameSchema>;
+export type AgentWorktreeToolCall = z.infer<typeof agentWorktreeToolCallSchema>;
+export type AgentWorktreeToolResult = z.infer<
+  typeof agentWorktreeToolResultSchema
 >;
 export type ChatTurnCreate = z.infer<typeof chatTurnCreateSchema>;
 export type QueuedPrompt = z.infer<typeof queuedPromptSchema>;

@@ -7,6 +7,7 @@ import { codexAccountHome } from "./codex/account-home.js";
 import { CodexAppServer, codexRuntimeId } from "./codex/app-server.js";
 import { CodexAuthClient } from "./codex/auth-client.js";
 import { discoverCodexVersion } from "./codex/discovery.js";
+import { invokeCantripWorktreeTool } from "./codex/worktree-tool-client.js";
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
 import { readWorkerConfig } from "./config.js";
 import { listExplorerDirectory, readExplorerFile } from "./explorer.js";
@@ -253,6 +254,50 @@ async function start(): Promise<void> {
           skillNames: command.skillNames,
           threadId: command.threadId,
           onActivity: (activity) => emit({ type: "agent.activity", activity }),
+          onWorktreeToolCall: async ({
+            arguments: toolArguments,
+            callId,
+            tool,
+          }) => {
+            try {
+              const result = await invokeCantripWorktreeTool({
+                arguments: toolArguments,
+                callId,
+                chatId: command.chatId,
+                executionLaneId: command.executionLaneId,
+                serverUrl: config.serverUrl,
+                token: config.token,
+                tool,
+                workerId: config.workerId,
+              });
+              emit({
+                type: "agent.activity",
+                activity: {
+                  type: "worktree",
+                  id: `worktree-tool:${callId}`,
+                  operation: tool,
+                  status: "completed",
+                  summary: result.summary,
+                  worktreeId: result.worktreeId,
+                },
+              });
+              return result;
+            } catch (error) {
+              emit({
+                type: "agent.activity",
+                activity: {
+                  type: "worktree",
+                  id: `worktree-tool:${callId}`,
+                  operation: tool,
+                  status: "failed",
+                  summary:
+                    error instanceof Error ? error.message : String(error),
+                  worktreeId: null,
+                },
+              });
+              throw error;
+            }
+          },
         });
       case "chat.compact":
         return runtimeFor(command).compactThread({

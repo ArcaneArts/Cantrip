@@ -134,6 +134,13 @@
       "when": 1786204210128,
       "tag": "0018_tan_eternity",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786205585001,
+      "tag": "0019_lucky_oracle",
+      "breakpoints": true
     }
   ]
 }
