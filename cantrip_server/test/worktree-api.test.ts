@@ -6,6 +6,9 @@ import {
   agentWorktreeToolResultSchema,
   chatSummarySchema,
   chatMessageListSchema,
+  codeSessionListSchema,
+  codeSessionSummarySchema,
+  codeTabSummarySchema,
   explorerSummarySchema,
   gitActionResultSchema,
   gitHistorySchema,
@@ -291,13 +294,22 @@ let linkedConsoleId: string;
 
 beforeAll(async () => {
   database = await connectDatabase(config);
-  await database.repository.recordWorker({
+  const recordedWorker = await database.repository.recordWorker({
     workerId: "test-worker",
     name: "Test Worker",
     platform: "darwin",
     architecture: "arm64",
     codexVersion: "0.146.1",
     codexRuntime: unprobedCodexRuntimeReport,
+    code: {
+      available: true,
+      version: "1.109.5",
+      upstreamRevision: "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+      patchset: 1,
+      transport: "web-proxy",
+      maxSessions: 4,
+      reason: null,
+    },
     remoteSurfaces: {
       browser: false,
       transports: ["websocket"],
@@ -305,6 +317,7 @@ beforeAll(async () => {
     },
     startedAt: new Date().toISOString(),
   });
+  expect(recordedWorker.code.available).toBe(true);
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "test-worker",
     repositoryId: "repo-1",
@@ -831,6 +844,16 @@ describe.sequential("server worktree control plane", () => {
         architecture: "arm64",
         codexVersion: "0.146.1",
         codexRuntime: unprobedCodexRuntimeReport,
+        code: {
+          available: true,
+          version: "1.109.5",
+          upstreamRevision:
+            "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+          patchset: 1,
+          transport: "web-proxy",
+          maxSessions: 4,
+          reason: null,
+        },
         remoteSurfaces: {
           browser: false,
           transports: ["websocket"],
@@ -960,6 +983,87 @@ describe.sequential("server worktree control plane", () => {
       ).json(),
     );
     expect(explorer.worktreeId).toBe(secondId);
+    expect(
+      (await database.repository.listWorkers(LOCAL_USER_ID))[0]?.code.available,
+    ).toBe(true);
+    const codeTabResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/code-tabs`,
+      payload: {
+        title: "Worktree Code",
+        worktreeId: secondId,
+        profileId: "main-profile",
+      },
+    });
+    expect(codeTabResponse.statusCode, codeTabResponse.body).toBe(201);
+    const codeTab = codeTabSummarySchema.parse(codeTabResponse.json());
+    expect(codeTab).toMatchObject({
+      worktreeId: secondId,
+      activeWorkerId: "test-worker",
+      profileId: "main-profile",
+      themeMode: "follow-cantrip",
+      status: "idle",
+    });
+    const renamedCodeTab = codeTabSummarySchema.parse(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/code-tabs/${codeTab.id}`,
+          payload: { title: "Review Code", themeMode: "independent" },
+        })
+      ).json(),
+    );
+    expect(renamedCodeTab).toMatchObject({
+      title: "Review Code",
+      themeMode: "independent",
+    });
+    const session = await database.repository.getOrCreateCodeSession(
+      LOCAL_USER_ID,
+      codeTab.id,
+      {
+        version: "1.109.5",
+        upstreamRevision: "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+        patchset: 1,
+        fingerprint: "a".repeat(64),
+      },
+    );
+    expect(codeSessionSummarySchema.parse(session)).toMatchObject({
+      codeTabId: codeTab.id,
+      projectId,
+      workerId: "test-worker",
+      worktreeId: secondId,
+      profileId: "main-profile",
+      status: "starting",
+    });
+    expect(
+      codeSessionListSchema.parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/code-tabs/${codeTab.id}/sessions`,
+          })
+        ).json(),
+      ),
+    ).toHaveLength(1);
+    const retargetedCodeTab = codeTabSummarySchema.parse(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/code-tabs/${codeTab.id}/worktree`,
+          payload: { worktreeId: firstId },
+        })
+      ).json(),
+    );
+    expect(retargetedCodeTab.worktreeId).toBe(firstId);
+    expect(
+      await app.inject({
+        method: "DELETE",
+        url: `/api/code-tabs/${codeTab.id}`,
+      }),
+    ).toMatchObject({ statusCode: 204 });
+    expect(
+      await database.repository.listCodeSessions(LOCAL_USER_ID, codeTab.id),
+    ).toBeNull();
     const history = projectViewSummarySchema.parse(
       (
         await app.inject({

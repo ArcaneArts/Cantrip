@@ -6,6 +6,7 @@ import type {
   ChatAttachmentSummary,
   ChatMessageContent,
   ChatTurnMode,
+  CodeCapabilities,
   CodexRuntimeReport,
   PendingPlanQuestion,
   PlanStep,
@@ -36,6 +37,16 @@ const unprobedCodexRuntimeReport = {
   features: [],
   degradedReasons: ["This worker has not reported runtime compatibility."],
 } satisfies CodexRuntimeReport;
+
+const unavailableCodeCapabilities = {
+  available: false,
+  version: null,
+  upstreamRevision: null,
+  patchset: 0,
+  transport: "web-proxy",
+  maxSessions: 1,
+  reason: "This worker has not reported Cantrip Code capability.",
+} satisfies CodeCapabilities;
 
 export const systemState = pgTable("system_state", {
   key: text("key").primaryKey(),
@@ -173,6 +184,10 @@ export const workers = pgTable("workers", {
       transports: ["websocket"],
       maxSessions: 4,
     }),
+  codeCapabilities: jsonb("code_capabilities")
+    .$type<CodeCapabilities>()
+    .notNull()
+    .default(unavailableCodeCapabilities),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -361,6 +376,99 @@ export const explorers = pgTable("explorers", {
     .notNull()
     .defaultNow(),
 });
+
+export const codeTabs = pgTable(
+  "code_tabs",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    position: integer("position").notNull().default(0),
+    activeWorkerId: text("active_worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "restrict" }),
+    worktreeId: text("worktree_id")
+      .notNull()
+      .references(() => projectWorktrees.id, { onDelete: "restrict" }),
+    profileId: text("profile_id").notNull().default("default"),
+    themeMode: text("theme_mode").notNull().default("follow-cantrip"),
+    status: text("status").notNull().default("idle"),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("code_tabs_project_position_index").on(
+      table.projectId,
+      table.position,
+    ),
+    check(
+      "code_tabs_theme_mode_check",
+      sql`${table.themeMode} IN ('follow-cantrip', 'independent')`,
+    ),
+    check(
+      "code_tabs_status_check",
+      sql`${table.status} IN ('idle', 'starting', 'running', 'stopped', 'offline', 'failed')`,
+    ),
+  ],
+);
+
+export const codeSessions = pgTable(
+  "code_sessions",
+  {
+    id: text("id").primaryKey(),
+    codeTabId: text("code_tab_id")
+      .notNull()
+      .references(() => codeTabs.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "restrict" }),
+    worktreeId: text("worktree_id")
+      .notNull()
+      .references(() => projectWorktrees.id, { onDelete: "restrict" }),
+    profileId: text("profile_id").notNull(),
+    editorVersion: text("editor_version").notNull(),
+    editorUpstreamRevision: text("editor_upstream_revision").notNull(),
+    editorPatchset: integer("editor_patchset").notNull(),
+    editorFingerprint: text("editor_fingerprint").notNull(),
+    status: text("status").notNull().default("starting"),
+    processInstanceId: text("process_instance_id"),
+    lastAttachmentAt: timestamp("last_attachment_at", { withTimezone: true }),
+    lastStartedAt: timestamp("last_started_at", { withTimezone: true }),
+    stoppedAt: timestamp("stopped_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("code_sessions_runtime_identity_unique").on(
+      table.codeTabId,
+      table.workerId,
+      table.worktreeId,
+      table.profileId,
+      table.editorFingerprint,
+    ),
+    index("code_sessions_tab_status_index").on(table.codeTabId, table.status),
+    check("code_sessions_patchset_check", sql`${table.editorPatchset} >= 0`),
+    check(
+      "code_sessions_status_check",
+      sql`${table.status} IN ('starting', 'running', 'idle', 'stopping', 'stopped', 'offline', 'failed')`,
+    ),
+  ],
+);
 
 export const browsers = pgTable("browsers", {
   id: text("id").primaryKey(),

@@ -21,6 +21,8 @@ import {
   chatPauseStateSchema,
   chatPauseUpdateSchema,
   chatTurnCreateSchema,
+  codeRuntimeStatusSchema,
+  codeTabSummarySchema,
   decodeRemoteSurfaceFrame,
   desktopStreamSettingsSchema,
   encodeRemoteSurfaceFrame,
@@ -759,6 +761,75 @@ describe("Cantrip protocol", () => {
       desktop: false,
       transports: ["websocket"],
     });
+    expect(heartbeat.code).toBeUndefined();
+  });
+
+  it("validates Cantrip Code capabilities, durable tabs, and worker commands", () => {
+    const heartbeat = workerHeartbeatSchema.parse({
+      architecture: "arm64",
+      codexVersion: "codex-cli 1.0.0",
+      name: "Code Worker",
+      platform: "darwin",
+      startedAt: "2026-08-07T12:00:00.000Z",
+      workerId: "code-worker",
+      code: {
+        available: true,
+        version: "1.109.5",
+        upstreamRevision: "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+        patchset: 1,
+        transport: "web-proxy",
+        maxSessions: 4,
+        reason: null,
+      },
+    });
+    expect(heartbeat.code).toMatchObject({ available: true, patchset: 1 });
+    expect(
+      codeTabSummarySchema.parse({
+        id: "code-1",
+        projectId: "project-1",
+        title: "Code",
+        position: 3,
+        activeWorkerId: "code-worker",
+        worktreeId: "worktree-1",
+        profileId: "default",
+        themeMode: "follow-cantrip",
+        status: "running",
+        lastError: null,
+        createdAt: "2026-08-07T12:00:00.000Z",
+        updatedAt: "2026-08-07T12:00:00.000Z",
+      }),
+    ).toMatchObject({ status: "running", themeMode: "follow-cantrip" });
+    expect(
+      workerCommandSchema.parse({
+        type: "code.open",
+        sessionId: "session-1",
+        codeTabId: "code-1",
+        projectId: "project-1",
+        worktreeId: "worktree-1",
+        cwd: "/workspace/Cantrip",
+        profileId: "default",
+        themeMode: "follow-cantrip",
+        appearance: "high-contrast-dark",
+      }).type,
+    ).toBe("code.open");
+    expect(
+      codeRuntimeStatusSchema.safeParse({
+        sessionId: "session-1",
+        status: "running",
+        editorBuild: {
+          version: "1.109.5",
+          upstreamRevision: "short-sha",
+          patchset: 1,
+          fingerprint: "a".repeat(64),
+        },
+        processInstanceId: "process-1",
+        bridgeConnected: false,
+        dirtyEditors: [],
+        startedAt: null,
+        lastActivityAt: null,
+        lastError: null,
+      }).success,
+    ).toBe(false);
   });
 
   it("validates one-click managed desktops without client configuration", () => {
@@ -911,6 +982,11 @@ describe("Cantrip protocol", () => {
           enabled: true,
           transports: ["websocket"],
           relayOnly: true,
+        },
+        code: {
+          enabled: true,
+          transport: "web-proxy",
+          isolatedOrigin: true,
         },
       },
     });

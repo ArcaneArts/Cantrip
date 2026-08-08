@@ -42,6 +42,30 @@ export const remoteSurfaceCapabilitiesSchema = z.object({
   maxSessions: z.number().int().positive(),
 });
 
+export const codeTransportSchema = z.literal("web-proxy");
+export const codeCapabilitiesSchema = z.object({
+  available: z.boolean(),
+  version: z.string().min(1).nullable(),
+  upstreamRevision: z
+    .string()
+    .regex(/^[0-9a-f]{40}$/u)
+    .nullable(),
+  patchset: z.number().int().nonnegative(),
+  transport: codeTransportSchema,
+  maxSessions: z.number().int().positive(),
+  reason: z.string().min(1).nullable(),
+});
+
+export const unavailableCodeCapabilities = codeCapabilitiesSchema.parse({
+  available: false,
+  version: null,
+  upstreamRevision: null,
+  patchset: 0,
+  transport: "web-proxy",
+  maxSessions: 1,
+  reason: "This worker has not reported a Cantrip Code runtime.",
+});
+
 export const remoteSurfaceIceServerSchema = z.object({
   urls: z.array(z.string().min(1)).min(1),
   username: z.string().min(1).optional(),
@@ -129,6 +153,11 @@ export const serverBootstrapSchema = z.object({
       transports: z.array(remoteSurfaceTransportSchema).min(1),
       relayOnly: z.literal(true),
     }),
+    code: z.object({
+      enabled: z.boolean(),
+      transport: codeTransportSchema,
+      isolatedOrigin: z.literal(true),
+    }),
   }),
 });
 
@@ -197,10 +226,12 @@ export const workerHeartbeatSchema = z.object({
   remoteSurfaces: remoteSurfaceCapabilitiesSchema.default(
     defaultRemoteSurfaceCapabilities,
   ),
+  code: codeCapabilitiesSchema.optional(),
   startedAt: z.string().datetime(),
 });
 
 export const workerSummarySchema = workerHeartbeatSchema.extend({
+  code: codeCapabilitiesSchema.default(unavailableCodeCapabilities),
   online: z.boolean(),
   lastSeenAt: z.string().datetime(),
 });
@@ -908,6 +939,123 @@ export const explorerSummarySchema = z.object({
 });
 
 export const explorerListSchema = z.array(explorerSummarySchema);
+
+export const codeThemeModeSchema = z.enum(["follow-cantrip", "independent"]);
+export const codeAppearanceSchema = z.enum([
+  "light",
+  "dark",
+  "high-contrast-light",
+  "high-contrast-dark",
+]);
+export const codeTabStatusSchema = z.enum([
+  "idle",
+  "starting",
+  "running",
+  "stopped",
+  "offline",
+  "failed",
+]);
+export const codeSessionStatusSchema = z.enum([
+  "starting",
+  "running",
+  "idle",
+  "stopping",
+  "stopped",
+  "offline",
+  "failed",
+]);
+
+export const codeTabCreateSchema = z.object({
+  title: z.string().trim().min(1).max(200).default("Code"),
+  worktreeId: z.string().min(1).optional(),
+  profileId: z.string().trim().min(1).max(200).default("default"),
+  themeMode: codeThemeModeSchema.default("follow-cantrip"),
+});
+
+export const codeTabUpdateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    themeMode: codeThemeModeSchema.optional(),
+  })
+  .refine(
+    (input) => input.title !== undefined || input.themeMode !== undefined,
+    { message: "At least one Code tab field is required." },
+  );
+
+export const codeTabSummarySchema = z.object({
+  id: z.string().min(1),
+  projectId: z.string().min(1),
+  title: z.string().min(1),
+  position: z.number().int().nonnegative(),
+  activeWorkerId: z.string().min(1),
+  worktreeId: z.string().min(1),
+  profileId: z.string().min(1),
+  themeMode: codeThemeModeSchema,
+  status: codeTabStatusSchema,
+  lastError: z.string().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const codeTabListSchema = z.array(codeTabSummarySchema);
+
+export const codeEditorBuildSchema = z.object({
+  version: z.string().min(1),
+  upstreamRevision: z.string().regex(/^[0-9a-f]{40}$/u),
+  patchset: z.number().int().nonnegative(),
+  fingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+
+export const codeSessionSummarySchema = z.object({
+  id: z.string().min(1),
+  codeTabId: z.string().min(1),
+  projectId: z.string().min(1),
+  workerId: z.string().min(1),
+  worktreeId: z.string().min(1),
+  profileId: z.string().min(1),
+  editorBuild: codeEditorBuildSchema.nullable(),
+  status: codeSessionStatusSchema,
+  processInstanceId: z.string().min(1).nullable(),
+  lastAttachmentAt: z.string().datetime().nullable(),
+  lastStartedAt: z.string().datetime().nullable(),
+  stoppedAt: z.string().datetime().nullable(),
+  lastError: z.string().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const codeSessionListSchema = z.array(codeSessionSummarySchema);
+
+export const codeDirtyEditorSchema = z.object({
+  uri: z.string().min(1).max(16_384),
+  relativePath: z.string().max(8_192).nullable(),
+  untitled: z.boolean(),
+  dirty: z.literal(true),
+});
+
+export const codeRuntimeStatusSchema = z.object({
+  sessionId: z.string().min(1),
+  status: codeSessionStatusSchema,
+  editorBuild: codeEditorBuildSchema,
+  processInstanceId: z.string().min(1).nullable(),
+  bridgeConnected: z.boolean(),
+  dirtyEditors: z.array(codeDirtyEditorSchema).max(1_000),
+  startedAt: z.string().datetime().nullable(),
+  lastActivityAt: z.string().datetime().nullable(),
+  lastError: z.string().nullable(),
+});
+
+export const codeSaveAllResultSchema = z.object({
+  saved: z.array(z.string().max(16_384)).max(1_000),
+  failed: z
+    .array(
+      z.object({
+        uri: z.string().min(1).max(16_384),
+        message: z.string().min(1).max(4_000),
+      }),
+    )
+    .max(1_000),
+});
 
 export const browserCreateSchema = z.object({
   title: z.string().trim().min(1).max(200).default("Browser"),
@@ -2630,6 +2778,40 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     root: z.string().min(1),
     path: z.string().min(1),
   }),
+  z.object({ type: z.literal("code.probe") }),
+  z.object({
+    type: z.literal("code.open"),
+    sessionId: z.string().min(1),
+    codeTabId: z.string().min(1),
+    projectId: z.string().min(1),
+    worktreeId: z.string().min(1),
+    cwd: z.string().min(1),
+    profileId: z.string().min(1).max(200),
+    themeMode: codeThemeModeSchema,
+    appearance: codeAppearanceSchema,
+  }),
+  z.object({
+    type: z.literal("code.status"),
+    sessionId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("code.stop"),
+    sessionId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("code.saveAll"),
+    sessionId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("code.getDirtyEditors"),
+    sessionId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("code.setTheme"),
+    sessionId: z.string().min(1),
+    themeMode: codeThemeModeSchema,
+    appearance: codeAppearanceSchema,
+  }),
   z.object({
     type: z.literal("skills.list"),
     cwd: z.string().min(1),
@@ -3101,6 +3283,8 @@ export type RemoteSurfaceChannel = z.infer<typeof remoteSurfaceChannelSchema>;
 export type RemoteSurfaceCapabilities = z.infer<
   typeof remoteSurfaceCapabilitiesSchema
 >;
+export type CodeTransport = z.infer<typeof codeTransportSchema>;
+export type CodeCapabilities = z.infer<typeof codeCapabilitiesSchema>;
 export type UserSummary = z.infer<typeof userSummarySchema>;
 export type ServerBootstrap = z.infer<typeof serverBootstrapSchema>;
 export type CodexRuntimeMethodState = z.infer<
@@ -3204,6 +3388,18 @@ export type TerminalSummary = z.infer<typeof terminalSummarySchema>;
 export type ExplorerCreate = z.infer<typeof explorerCreateSchema>;
 export type ExplorerUpdate = z.infer<typeof explorerUpdateSchema>;
 export type ExplorerSummary = z.infer<typeof explorerSummarySchema>;
+export type CodeThemeMode = z.infer<typeof codeThemeModeSchema>;
+export type CodeAppearance = z.infer<typeof codeAppearanceSchema>;
+export type CodeTabStatus = z.infer<typeof codeTabStatusSchema>;
+export type CodeSessionStatus = z.infer<typeof codeSessionStatusSchema>;
+export type CodeTabCreate = z.infer<typeof codeTabCreateSchema>;
+export type CodeTabUpdate = z.infer<typeof codeTabUpdateSchema>;
+export type CodeTabSummary = z.infer<typeof codeTabSummarySchema>;
+export type CodeEditorBuild = z.infer<typeof codeEditorBuildSchema>;
+export type CodeSessionSummary = z.infer<typeof codeSessionSummarySchema>;
+export type CodeDirtyEditor = z.infer<typeof codeDirtyEditorSchema>;
+export type CodeRuntimeStatus = z.infer<typeof codeRuntimeStatusSchema>;
+export type CodeSaveAllResult = z.infer<typeof codeSaveAllResultSchema>;
 export type BrowserCreate = z.infer<typeof browserCreateSchema>;
 export type BrowserUpdate = z.infer<typeof browserUpdateSchema>;
 export type BrowserSummary = z.infer<typeof browserSummarySchema>;
