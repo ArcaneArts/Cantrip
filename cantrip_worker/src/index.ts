@@ -13,8 +13,9 @@ import { GithubClient } from "./github.js";
 import { readGitHistory, readGitStatus, runGitAction } from "./git.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
 import { TerminalManager } from "./terminal-manager.js";
-import { WorkerConnection } from "./transport.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
+import { WorkerConnection } from "./transport.js";
+import { WorktreeManager } from "./worktrees.js";
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
 
@@ -36,6 +37,7 @@ async function start(): Promise<void> {
   const codexRuntimes = new Map<string, CodexAppServer>();
   const terminals = new TerminalManager();
   const remoteSurfaces = new RemoteSurfaceManager();
+  const worktrees = new WorktreeManager(config.dataDirectory);
 
   const accountHomeFor = (providerId: string) =>
     codexAccountHome(config.dataDirectory, providerId);
@@ -123,6 +125,34 @@ async function start(): Promise<void> {
         return readGitStatus(command.cwd);
       case "git.action":
         return runGitAction(command.cwd, command.action);
+      case "worktree.list":
+        return worktrees.list(command.sourcePath);
+      case "worktree.reconcile":
+        return worktrees.reconcile(command.sourcePath);
+      case "worktree.create":
+        return worktrees.create(
+          command.sourcePath,
+          command.worktreeId,
+          command.name,
+          command.mode,
+        );
+      case "worktree.remove":
+        return worktrees.remove(command.sourcePath, command.worktreePath, {
+          allowExternal: command.allowExternal,
+          force: command.force,
+        });
+      case "worktree.lock":
+        return worktrees.lock(
+          command.sourcePath,
+          command.worktreePath,
+          command.reason,
+        );
+      case "worktree.unlock":
+        return worktrees.unlock(command.sourcePath, command.worktreePath);
+      case "worktree.prune":
+        return worktrees.prune(command.sourcePath, command.allowExternal);
+      case "worktree.status":
+        return worktrees.status(command.sourcePath, command.worktreePath);
       case "explorer.directory.list":
         return listExplorerDirectory(command.root, command.path);
       case "explorer.file.read":

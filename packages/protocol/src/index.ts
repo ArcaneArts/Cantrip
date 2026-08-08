@@ -1024,6 +1024,70 @@ export const gitActionResultSchema = z.object({
   output: z.string(),
 });
 
+export const workerWorktreeSummarySchema = z.object({
+  path: z.string().min(1),
+  head: z.string().min(1).nullable(),
+  branch: z.string().min(1).nullable(),
+  detached: z.boolean(),
+  isPrimary: z.boolean(),
+  managed: z.boolean(),
+  locked: z.boolean(),
+  lockReason: z.string().min(1).nullable(),
+  prunable: z.boolean(),
+  pruneReason: z.string().min(1).nullable(),
+  missing: z.boolean(),
+});
+
+export const worktreeInventorySchema = z.object({
+  sourcePath: z.string().min(1),
+  primaryPath: z.string().min(1),
+  gitCommonDir: z.string().min(1),
+  managedRoot: z.string().min(1),
+  repositoryFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
+  worktrees: z.array(workerWorktreeSummarySchema),
+});
+
+export const worktreeCreateModeSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("newBranch"),
+    branch: z.string().trim().min(1).max(255),
+    startPoint: z.string().trim().min(1).max(1_024).nullable().default(null),
+  }),
+  z.object({
+    type: z.literal("existingBranch"),
+    branch: z.string().trim().min(1).max(255),
+  }),
+  z.object({
+    type: z.literal("detached"),
+    revision: z.string().trim().min(1).max(1_024),
+  }),
+]);
+
+export const worktreeCreateResultSchema = z.object({
+  worktree: workerWorktreeSummarySchema,
+  inventory: worktreeInventorySchema,
+});
+
+export const worktreeMutationResultSchema = z.object({
+  worktree: workerWorktreeSummarySchema,
+  inventory: worktreeInventorySchema,
+});
+
+export const worktreeRemoveResultSchema = z.object({
+  removedPath: z.string().min(1),
+  inventory: worktreeInventorySchema,
+});
+
+export const worktreePruneResultSchema = z.object({
+  prunedPaths: z.array(z.string().min(1)),
+  inventory: worktreeInventorySchema,
+});
+
+export const worktreeStatusResultSchema = z.object({
+  worktree: workerWorktreeSummarySchema,
+  status: gitStatusSchema,
+});
+
 export const agentTurnResultSchema = z.object({
   threadId: z.string().min(1),
   text: z.string(),
@@ -1143,6 +1207,49 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("git.action"),
     cwd: z.string().min(1),
     action: gitActionSchema,
+  }),
+  z.object({
+    type: z.literal("worktree.list"),
+    sourcePath: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("worktree.reconcile"),
+    sourcePath: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("worktree.create"),
+    sourcePath: z.string().min(1),
+    worktreeId: z.string().min(1).max(200),
+    name: z.string().trim().min(1).max(200),
+    mode: worktreeCreateModeSchema,
+  }),
+  z.object({
+    type: z.literal("worktree.remove"),
+    sourcePath: z.string().min(1),
+    worktreePath: z.string().min(1),
+    force: z.boolean().default(false),
+    allowExternal: z.boolean().default(false),
+  }),
+  z.object({
+    type: z.literal("worktree.lock"),
+    sourcePath: z.string().min(1),
+    worktreePath: z.string().min(1),
+    reason: z.string().trim().min(1).max(1_000).nullable().default(null),
+  }),
+  z.object({
+    type: z.literal("worktree.unlock"),
+    sourcePath: z.string().min(1),
+    worktreePath: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("worktree.prune"),
+    sourcePath: z.string().min(1),
+    allowExternal: z.boolean().default(false),
+  }),
+  z.object({
+    type: z.literal("worktree.status"),
+    sourcePath: z.string().min(1),
+    worktreePath: z.string().min(1),
   }),
   z.object({
     type: z.literal("explorer.directory.list"),
@@ -1371,6 +1478,16 @@ export type GitBranch = z.infer<typeof gitBranchSchema>;
 export type GitStatus = z.infer<typeof gitStatusSchema>;
 export type GitAction = z.infer<typeof gitActionSchema>;
 export type GitActionResult = z.infer<typeof gitActionResultSchema>;
+export type WorkerWorktreeSummary = z.infer<typeof workerWorktreeSummarySchema>;
+export type WorktreeInventory = z.infer<typeof worktreeInventorySchema>;
+export type WorktreeCreateMode = z.infer<typeof worktreeCreateModeSchema>;
+export type WorktreeCreateResult = z.infer<typeof worktreeCreateResultSchema>;
+export type WorktreeMutationResult = z.infer<
+  typeof worktreeMutationResultSchema
+>;
+export type WorktreeRemoveResult = z.infer<typeof worktreeRemoveResultSchema>;
+export type WorktreePruneResult = z.infer<typeof worktreePruneResultSchema>;
+export type WorktreeStatusResult = z.infer<typeof worktreeStatusResultSchema>;
 export type ChatCreate = z.infer<typeof chatCreateSchema>;
 export type ChatUpdate = z.infer<typeof chatUpdateSchema>;
 export type ChatFork = z.infer<typeof chatForkSchema>;
