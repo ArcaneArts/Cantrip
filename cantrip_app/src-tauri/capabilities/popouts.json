@@ -5,6 +5,7 @@
   "windows": ["popout-*"],
   "permissions": [
     "core:default",
+    "core:window:allow-set-theme",
     "core:window:allow-set-title",
     "opener:default"
   ]

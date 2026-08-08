@@ -63,6 +63,15 @@ export async function updateDesktopWindowTitle(title: string): Promise<void> {
   await getCurrentWebviewWindow().setTitle(title);
 }
 
+export async function updateDesktopWindowTheme(
+  theme: "dark" | "light",
+): Promise<void> {
+  if (!isDesktopRuntime()) return;
+  const { getCurrentWebviewWindow } =
+    await import("@tauri-apps/api/webviewWindow");
+  await getCurrentWebviewWindow().setTheme(theme);
+}
+
 export async function openDesktopPopout(
   target: DesktopPopoutTarget,
   title: string,

@@ -121,6 +121,7 @@ import {
   isDesktopRuntime,
   openDesktopPopout,
   parseDesktopPopoutTarget,
+  updateDesktopWindowTheme,
   updateDesktopWindowTitle,
   type DesktopPopoutTarget,
 } from "@/lib/desktop-popout";
@@ -1652,6 +1653,11 @@ export function App() {
         settings.data?.preferences.highContrast ?? false,
       );
       document.documentElement.style.colorScheme = dark ? "dark" : "light";
+      void updateDesktopWindowTheme(dark ? "dark" : "light").catch(
+        (error: unknown) => {
+          console.error("Could not update the desktop window theme", error);
+        },
+      );
     };
     apply();
     if (preference === "system") {
@@ -1738,7 +1744,7 @@ export function App() {
       {!isPopout ? (
         <aside
           data-slot="app-sidebar"
-          className="hidden w-72 shrink-0 flex-col border-r bg-card/40 md:flex"
+          className="hidden w-72 shrink-0 flex-col border-r bg-background md:flex"
         >
           <div className="flex h-16 items-center gap-3 border-b px-4">
             <div className="grid size-9 place-items-center rounded-xl border bg-background shadow-sm">

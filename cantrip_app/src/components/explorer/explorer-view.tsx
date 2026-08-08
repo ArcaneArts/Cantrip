@@ -163,7 +163,7 @@ export function ExplorerView({ explorer }: { explorer: ExplorerSummary }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-      <aside className="flex h-60 shrink-0 flex-col border-b bg-card/25 sm:h-auto sm:w-72 sm:border-b-0 sm:border-r">
+      <aside className="flex h-60 shrink-0 flex-col border-b bg-background sm:h-auto sm:w-72 sm:border-b-0 sm:border-r">
         <div className="flex h-10 shrink-0 items-center gap-1 border-b px-2">
           <div className="flex min-w-0 flex-1 items-center overflow-hidden text-xs">
             {breadcrumbs.map((crumb, index) => (
