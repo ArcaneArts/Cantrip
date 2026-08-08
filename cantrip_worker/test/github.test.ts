@@ -86,7 +86,7 @@ describe("GitHub project files", () => {
         `  *"/issues/42/comments --method POST"*) printf '%s' '${comment}' ;;`,
         `  *"/issues/42 --method PATCH"*) printf '%s' '${issue}' ;;`,
         `  *"/issues/42"*) printf '%s' '${issue}' ;;`,
-        `  *"/issues --method GET"*) printf '%s' '${JSON.stringify([[JSON.parse(issue), JSON.parse(pullRequest)]])}' ;;`,
+        `  *"/issues --method GET -f per_page=50 -f page=2"*) printf '%s' '${JSON.stringify([JSON.parse(issue), JSON.parse(pullRequest)])}' ;;`,
         "  *) exit 1 ;;",
         "esac",
       ].join("\n"),
@@ -96,8 +96,12 @@ describe("GitHub project files", () => {
 
     const github = new GithubClient(dataDirectory);
     await expect(
-      github.listIssues("ArcaneArts/Cantrip", "open"),
-    ).resolves.toMatchObject({ total: 1, issues: [{ number: 42 }] });
+      github.listIssues("ArcaneArts/Cantrip", "open", 2, 50),
+    ).resolves.toMatchObject({
+      total: 1,
+      issues: [{ number: 42 }],
+      nextPage: null,
+    });
     await expect(
       github.getIssue("ArcaneArts/Cantrip", 42),
     ).resolves.toMatchObject({

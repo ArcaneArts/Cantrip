@@ -2353,6 +2353,22 @@ export class CodexAppServer implements CodexRuntime {
     return { mode: options.fallbackMode, threadId };
   }
 
+  async ensureThread(
+    options: GoalRuntimeOptions & { planMode: PlanMode },
+  ): Promise<{ threadId: string }> {
+    await this.ensureStarted(options.model, options.provider);
+    const threadId = await this.loadThread(options);
+    if (!threadId) {
+      throw new Error("Could not initialize the Codex console thread.");
+    }
+    await this.updatePlanModeOnThread(
+      threadId,
+      options.planMode,
+      options.model,
+    );
+    return { threadId };
+  }
+
   async setPlanMode(
     options: GoalRuntimeOptions & { mode: PlanMode },
   ): Promise<{ mode: PlanMode; threadId: string }> {

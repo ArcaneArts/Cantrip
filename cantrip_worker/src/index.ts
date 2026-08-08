@@ -125,7 +125,12 @@ async function start(): Promise<void> {
       case "github.repositories.list":
         return github.listRepositories();
       case "github.issues.list":
-        return github.listIssues(command.repository, command.state);
+        return github.listIssues(
+          command.repository,
+          command.state,
+          command.page,
+          command.limit,
+        );
       case "github.issue.get":
         return github.getIssue(command.repository, command.number);
       case "github.issue.comment":
@@ -508,6 +513,15 @@ async function start(): Promise<void> {
           cwd: command.cwd,
           model: command.model,
           permissionProfileId: command.permissionProfileId,
+          provider: command.provider,
+          threadId: command.threadId,
+        });
+      case "chat.thread.ensure":
+        return runtimeFor(command).ensureThread({
+          cwd: command.cwd,
+          model: command.model,
+          permissionProfileId: command.permissionProfileId,
+          planMode: command.planMode,
           provider: command.provider,
           threadId: command.threadId,
         });

@@ -219,6 +219,7 @@ export interface WorktreeControlActions {
   chatMode?: "agent-managed" | "pinned";
   disabled?: boolean;
   error?: string | null;
+  pending?: boolean;
   onCreate(): void;
   onOpenExplorer?(): void;
   onOpenHistory?(): void;
@@ -260,7 +261,7 @@ export function WorktreeControl({
           className="h-7 max-w-48 gap-1.5 px-2 text-xs text-muted-foreground"
           title={worktreeTooltip(details)}
         >
-          {actions.disabled ? (
+          {actions.pending ? (
             <Loader2 className="size-3.5 animate-spin" />
           ) : (
             <GitFork

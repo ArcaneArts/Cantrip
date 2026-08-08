@@ -110,6 +110,9 @@ export interface CodexRuntime {
   compactThread(
     options: CompactAgentThreadOptions,
   ): Promise<{ accepted: true }>;
+  ensureThread(
+    options: GoalRuntimeOptions & { planMode: PlanMode },
+  ): Promise<{ threadId: string }>;
   getGoal(
     options: GoalRuntimeOptions & { threadId: string },
   ): Promise<ChatGoalResponse>;

@@ -211,6 +211,15 @@ const workerBridge = {
       case "git.action":
         gitActionPaths.push(command.cwd);
         return { status: status(), output: "done" };
+      case "chat.plan.set":
+        return {
+          mode: command.mode,
+          threadId: command.threadId ?? `thread-${command.cwd}`,
+        };
+      case "chat.thread.ensure":
+        return {
+          threadId: command.threadId ?? `thread-${command.cwd}`,
+        };
       case "chat.turn":
         chatTurnCommands.push(command);
         if (agentToolInvocation) {

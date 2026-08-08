@@ -114,6 +114,7 @@ let releasePlanQuestion: (() => void) | null = null;
 let releaseAgentInteraction: (() => void) | null = null;
 const deliveredAgentInteractionResponses: unknown[] = [];
 const issueComments: string[] = [];
+const issueListRequests: Array<{ limit: number; page: number }> = [];
 const closedIssues: Array<{ comment: string | null; number: number }> = [];
 const relayedSurfaceFrames: Array<{
   workerId: string;
@@ -250,9 +251,11 @@ const workerBridge = {
           },
         ];
       case "github.issues.list":
+        issueListRequests.push({ limit: command.limit, page: command.page });
         return {
           state: command.state,
           total: 1,
+          nextPage: command.page + 1,
           issues: [
             {
               number: 42,
@@ -912,6 +915,11 @@ const workerBridge = {
       case "chat.goal.clear":
         codexGoal = null;
         return { cleared: true };
+      case "chat.thread.ensure":
+        codexPlanMode = command.planMode;
+        return {
+          threadId: command.threadId ?? "codex-console-thread-1",
+        };
       case "chat.plan.get":
         return { mode: codexPlanMode, threadId: command.threadId };
       case "chat.plan.set":
@@ -1052,6 +1060,23 @@ describe("local server foundation", () => {
       logger: false,
       workerBridge,
     });
+
+    const mutationPreflight = await firstApp.inject({
+      method: "OPTIONS",
+      url: "/api/projects/test-project/tabs/order",
+      headers: {
+        origin: config.appOrigins[0]!,
+        "access-control-request-method": "PATCH",
+        "access-control-request-headers": "content-type",
+      },
+    });
+    expect(mutationPreflight).toMatchObject({ statusCode: 204 });
+    expect(mutationPreflight.headers["access-control-allow-methods"]).toContain(
+      "PATCH",
+    );
+    expect(mutationPreflight.headers["access-control-allow-methods"]).toContain(
+      "DELETE",
+    );
 
     const bootstrap = serverBootstrapSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/bootstrap" })).json(),
@@ -1516,11 +1541,16 @@ describe("local server foundation", () => {
         (
           await firstApp.inject({
             method: "GET",
-            url: `/api/projects/${project.id}/github/issues?state=open`,
+            url: `/api/projects/${project.id}/github/issues?state=open&page=3&limit=25`,
           })
         ).json(),
       ),
-    ).toMatchObject({ total: 1, issues: [{ number: 42, state: "open" }] });
+    ).toMatchObject({
+      total: 1,
+      issues: [{ number: 42, state: "open" }],
+      nextPage: 4,
+    });
+    expect(issueListRequests).toContainEqual({ page: 3, limit: 25 });
     expect(
       githubIssueDetailSchema.parse(
         (
@@ -2703,6 +2733,46 @@ describe("local server foundation", () => {
         url: `/api/project-views/${remoteDesktop.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
+    const consoleFirstChat = chatSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/chats`,
+          payload: { title: "Console-first chat" },
+        })
+      ).json(),
+    );
+    await firstApp.inject({
+      method: "PATCH",
+      url: `/api/chats/${consoleFirstChat.id}/model`,
+      payload: { modelId: selectedModel.id },
+    });
+    const consoleFirstTerminal = terminalSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/chats/${consoleFirstChat.id}/console`,
+        })
+      ).json(),
+    );
+    expect(consoleFirstTerminal.linkedChatId).toBe(consoleFirstChat.id);
+    expect(
+      await firstDatabase.repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        consoleFirstChat.id,
+      ),
+    ).toMatchObject({
+      modelId: selectedModel.id,
+      threadId: "codex-console-thread-1",
+    });
+    await firstApp.inject({
+      method: "DELETE",
+      url: `/api/terminals/${consoleFirstTerminal.id}`,
+    });
+    await firstApp.inject({
+      method: "DELETE",
+      url: `/api/chats/${consoleFirstChat.id}`,
+    });
     const linkedConsole = terminalSummarySchema.parse(
       (
         await firstApp.inject({

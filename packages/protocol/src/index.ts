@@ -680,6 +680,7 @@ export const githubIssueListSchema = z.object({
   state: githubIssueStateSchema,
   total: z.number().int().nonnegative(),
   issues: z.array(githubIssueSummarySchema),
+  nextPage: z.number().int().positive().nullable().default(null),
 });
 
 export const githubIssueCommentSchema = z.object({
@@ -2453,6 +2454,8 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("github.issues.list"),
     repository: githubRepositorySchema.shape.nameWithOwner,
     state: githubIssueStateSchema,
+    page: z.number().int().positive().default(1),
+    limit: z.number().int().min(1).max(100).default(100),
   }),
   z.object({
     type: z.literal("github.issue.get"),
@@ -2815,6 +2818,15 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     chatId: z.string().min(1),
     cwd: z.string().min(1),
     threadId: z.string().min(1),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+    permissionProfileId: permissionProfileIdSchema,
+  }),
+  z.object({
+    type: z.literal("chat.thread.ensure"),
+    cwd: z.string().min(1),
+    threadId: z.string().min(1).nullable(),
+    planMode: planModeSchema,
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
     permissionProfileId: permissionProfileIdSchema,

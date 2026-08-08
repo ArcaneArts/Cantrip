@@ -12,7 +12,7 @@ import {
   MessageSquare,
   RefreshCw,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Markdown } from "@/components/chat/markdown";
 import { Badge } from "@/components/ui/badge";
@@ -266,24 +266,46 @@ function IssueDialog({
 
 export function GithubIssuesView({
   error,
+  hasNextPage,
   isFetching,
+  isFetchingNextPage,
   isLoading,
   issues,
+  onLoadMore,
   onRefresh,
   onStateChange,
   project,
   state,
 }: {
   error: unknown;
+  hasNextPage: boolean;
   isFetching: boolean;
+  isFetchingNextPage: boolean;
   isLoading: boolean;
   issues: GithubIssueList | undefined;
+  onLoadMore(): void;
   onRefresh(): void;
   onStateChange(state: GithubIssueState): void;
   project: ProjectSummary;
   state: GithubIssueState;
 }) {
   const [selectedIssue, setSelectedIssue] = useState<number | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const root = listRef.current;
+    const target = loadMoreRef.current;
+    if (!root || !target || !hasNextPage) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !isFetchingNextPage) onLoadMore();
+      },
+      { root, rootMargin: "300px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, onLoadMore]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -315,7 +337,7 @@ export function GithubIssuesView({
         </Button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div ref={listRef} className="min-h-0 flex-1 overflow-auto">
         {isLoading ? (
           <div className="grid min-h-64 place-items-center text-muted-foreground">
             <Loader2 className="size-5 animate-spin" />
@@ -375,6 +397,18 @@ export function GithubIssuesView({
                 </span>
               </button>
             ))}
+            {hasNextPage || isFetchingNextPage ? (
+              <div
+                ref={loadMoreRef}
+                className="grid h-12 place-items-center text-muted-foreground"
+              >
+                {isFetchingNextPage ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <span>Scroll to load more</span>
+                )}
+              </div>
+            ) : null}
           </div>
         )}
       </div>
