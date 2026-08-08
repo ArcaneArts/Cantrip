@@ -1,0 +1,429 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  workflowApprovalGateSchema,
+  workflowDefinitionCreateSchema,
+  workflowDefinitionQuerySchema,
+  workflowGraphSchema,
+  workflowJsonValueSchema,
+  workflowPermissionRequirementsSchema,
+  workflowRevisionNodeSchema,
+  workflowRunCreateSchema,
+  workflowRunDetailSchema,
+  workflowRunStatusUpdateSchema,
+} from "../src/workflows.js";
+
+const timestamp = "2026-08-08T17:00:00.000Z";
+
+function readNode(key: string) {
+  return {
+    key,
+    type: "agent" as const,
+    name: `Read ${key}`,
+  };
+}
+
+function writeNode(key: string) {
+  return {
+    key,
+    type: "agent" as const,
+    name: `Write ${key}`,
+    mutationMode: "write" as const,
+    permissionRequirements: { filesystem: "workspace-write" as const },
+  };
+}
+
+function validGraph() {
+  return {
+    version: 1 as const,
+    nodes: [readNode("inspect"), writeNode("apply")],
+    edges: [{ from: "inspect", to: "apply" }],
+  };
+}
+
+function permissionManifest() {
+  return workflowPermissionRequirementsSchema.parse({});
+}
+
+function budget() {
+  return {
+    maxNodes: 100,
+    maxAttemptsPerNode: 3,
+    maxParallelism: 4,
+    maxTokens: null,
+    maxDurationMs: 3_600_000,
+    maxNodeDurationMs: 900_000,
+    maxEstimatedCostUsd: null,
+  };
+}
+
+function measuredUsage() {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cachedInputTokens: 0,
+    totalTokens: 0,
+    durationMs: 0,
+    estimatedCostUsd: null,
+    costAvailable: false,
+  };
+}
+
+function trigger() {
+  return {
+    type: "manual" as const,
+    sourceId: null,
+    actorType: "user" as const,
+    actorId: "user-1",
+    deliveredAt: timestamp,
+    metadata: {},
+  };
+}
+
+describe("workflow protocol", () => {
+  it("accepts bounded JSON and rejects unsafe or oversized values", () => {
+    expect(
+      workflowJsonValueSchema.parse({ nested: [true, 42, "safe", null] }),
+    ).toEqual({ nested: [true, 42, "safe", null] });
+    expect(workflowJsonValueSchema.safeParse(Number.NaN).success).toBe(false);
+    expect(workflowJsonValueSchema.safeParse("x".repeat(100_001)).success).toBe(
+      false,
+    );
+
+    let deeplyNested: Record<string, unknown> = {};
+    for (let index = 0; index < 33; index += 1) {
+      deeplyNested = { child: deeplyNested };
+    }
+    expect(workflowJsonValueSchema.safeParse(deeplyNested).success).toBe(false);
+
+    const cyclic: { self?: unknown } = {};
+    cyclic.self = cyclic;
+    expect(workflowJsonValueSchema.safeParse(cyclic).success).toBe(false);
+
+    const shared = {};
+    expect(
+      workflowJsonValueSchema.safeParse({ first: shared, second: shared })
+        .success,
+    ).toBe(false);
+  });
+
+  it("validates DAG structure, node identity, and dependency endpoints", () => {
+    const parsed = workflowGraphSchema.parse(validGraph());
+    expect(parsed.nodes).toHaveLength(2);
+    expect(parsed.nodes[0]?.mutationMode).toBe("read-only");
+    expect(parsed.edges[0]).toMatchObject({ from: "inspect", to: "apply" });
+
+    expect(
+      workflowGraphSchema.safeParse({
+        version: 1,
+        nodes: [readNode("duplicate"), readNode("duplicate")],
+      }).success,
+    ).toBe(false);
+    expect(
+      workflowGraphSchema.safeParse({
+        version: 1,
+        nodes: [readNode("known")],
+        edges: [{ from: "known", to: "missing" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      workflowGraphSchema.safeParse({
+        version: 1,
+        nodes: [readNode("first"), readNode("second")],
+        edges: [
+          { from: "first", to: "second" },
+          { from: "second", to: "first" },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires node mutation mode to match filesystem permissions", () => {
+    expect(
+      workflowGraphSchema.safeParse({
+        version: 1,
+        nodes: [
+          {
+            ...readNode("unsafe-read"),
+            permissionRequirements: { filesystem: "workspace-write" },
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      workflowGraphSchema.safeParse({
+        version: 1,
+        nodes: [{ ...writeNode("unsafe-write"), permissionRequirements: {} }],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      workflowRevisionNodeSchema.safeParse({
+        ...readNode("persisted"),
+        mutationMode: "read-only",
+        permissionRequirements: { filesystem: "workspace-write" },
+        id: "node-1",
+        revisionId: "revision-1",
+        position: 0,
+        createdAt: timestamp,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("validates workflow scope and initial revision provenance", () => {
+    expect(
+      workflowDefinitionCreateSchema.parse({
+        scope: "personal",
+        slug: "local-check",
+        name: "Local check",
+        revision: { graph: { version: 1, nodes: [readNode("check")] } },
+      }),
+    ).toMatchObject({
+      source: "cantrip",
+      revision: { source: "cantrip" },
+    });
+
+    const provenance = {
+      origin: "claude-code" as const,
+      sourceId: "commands/review.md",
+      metadata: { importedBy: "user-1" },
+    };
+    const valid = {
+      scope: "project" as const,
+      projectId: "project-1",
+      slug: "review-change",
+      name: "Review change",
+      source: "imported" as const,
+      provenance,
+      revision: {
+        graph: validGraph(),
+        source: "imported" as const,
+        provenance,
+      },
+    };
+    expect(workflowDefinitionCreateSchema.parse(valid)).toMatchObject({
+      scope: "project",
+      projectId: "project-1",
+      source: "imported",
+    });
+    expect(
+      workflowDefinitionCreateSchema.safeParse({
+        ...valid,
+        provenance: {
+          ...provenance,
+          metadata: { importedBy: "user-1", path: "commands/review.md" },
+        },
+        revision: {
+          ...valid.revision,
+          provenance: {
+            ...provenance,
+            metadata: { path: "commands/review.md", importedBy: "user-1" },
+          },
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      workflowDefinitionCreateSchema.safeParse({
+        ...valid,
+        projectId: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      workflowDefinitionCreateSchema.safeParse({
+        ...valid,
+        scope: "personal",
+      }).success,
+    ).toBe(false);
+    expect(
+      workflowDefinitionCreateSchema.safeParse({
+        ...valid,
+        revision: { ...valid.revision, source: "manual" },
+      }).success,
+    ).toBe(false);
+    expect(
+      workflowDefinitionCreateSchema.safeParse({
+        ...valid,
+        revision: {
+          ...valid.revision,
+          provenance: { ...provenance, sourceId: "different.md" },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      workflowDefinitionCreateSchema.safeParse({
+        ...valid,
+        trustState: "trusted",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects duplicate skill and MCP requirements", () => {
+    expect(
+      workflowPermissionRequirementsSchema.safeParse({
+        skills: ["review", "review"],
+      }).success,
+    ).toBe(false);
+    expect(
+      workflowPermissionRequirementsSchema.safeParse({
+        mcpServers: ["github", "github"],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps approval gate status and decision data consistent", () => {
+    const gate = {
+      id: "gate-1",
+      runId: "run-1",
+      runNodeId: "run-node-1",
+      gateKey: "approve-write",
+      status: "pending" as const,
+      prompt: "Approve workspace changes?",
+      permissionManifest: permissionManifest(),
+      interactionRequestId: null,
+      requestedByType: "workflow",
+      requestedById: "run-1",
+      decision: null,
+      decidedByUserId: null,
+      decisionReason: null,
+      expiresAt: null,
+      decidedAt: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    expect(workflowApprovalGateSchema.parse(gate).status).toBe("pending");
+    expect(
+      workflowApprovalGateSchema.safeParse({
+        ...gate,
+        decision: "approved",
+      }).success,
+    ).toBe(false);
+    expect(
+      workflowApprovalGateSchema.safeParse({
+        ...gate,
+        status: "approved",
+      }).success,
+    ).toBe(false);
+    expect(
+      workflowApprovalGateSchema.parse({
+        ...gate,
+        status: "approved",
+        decision: "approved",
+        decidedByUserId: "user-1",
+        decidedAt: timestamp,
+      }).status,
+    ).toBe("approved");
+  });
+
+  it("parses explicit false query parameters and rejects bad statuses", () => {
+    expect(
+      workflowDefinitionQuerySchema.parse({ includeArchived: "false" }),
+    ).toMatchObject({ includeArchived: false });
+    expect(
+      workflowRunStatusUpdateSchema.safeParse({
+        expectedStatus: "queued",
+        status: "unknown",
+        idempotencyKey: "update-1",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("parses representative run creation and materialized run details", () => {
+    expect(
+      workflowRunCreateSchema.safeParse({
+        trigger: trigger(),
+        idempotencyKey: "missing-revision",
+      }).success,
+    ).toBe(false);
+
+    expect(
+      workflowRunCreateSchema.parse({
+        workflowRevisionId: "revision-1",
+        projectId: "project-1",
+        structuredInput: { issue: 42 },
+        trigger: trigger(),
+        idempotencyKey: "launch-1",
+      }),
+    ).toMatchObject({
+      workflowRevisionId: "revision-1",
+      budget: { maxParallelism: 4 },
+      permissionManifest: { filesystem: "read-only" },
+    });
+
+    const run = {
+      id: "run-1",
+      workflowId: "workflow-1",
+      workflowRevisionId: "revision-1",
+      ownerId: "user-1",
+      projectId: "project-1",
+      status: "queued" as const,
+      trigger: trigger(),
+      idempotencyKey: "launch-1",
+      structuredInput: { issue: 42 },
+      structuredResult: null,
+      budget: budget(),
+      measuredUsage: measuredUsage(),
+      permissionManifest: permissionManifest(),
+      selectedModelRouteId: "route-1",
+      selectedPermissionProfileId: "profile-1",
+      workerId: null,
+      worktreeId: null,
+      codexThreadId: null,
+      errorCode: null,
+      errorMessage: null,
+      pauseReason: null,
+      cancelReason: null,
+      recoveryState: "stable" as const,
+      queuedAt: timestamp,
+      startedAt: null,
+      pausedAt: null,
+      cancelRequestedAt: null,
+      completedAt: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    const node = {
+      id: "run-node-1",
+      runId: "run-1",
+      revisionNodeId: "node-1",
+      nodeKey: "inspect",
+      nodeType: "agent" as const,
+      status: "ready" as const,
+      dependencyState: {},
+      structuredInput: { issue: 42 },
+      structuredResult: null,
+      budget: budget(),
+      measuredUsage: measuredUsage(),
+      permissionManifest: permissionManifest(),
+      workerId: null,
+      worktreeId: null,
+      modelRouteId: "route-1",
+      permissionProfileId: "profile-1",
+      codexThreadId: null,
+      codexTurnId: null,
+      writeCapable: false,
+      executionLeaseKey: null,
+      attemptCount: 0,
+      notBefore: null,
+      timeoutAt: null,
+      readyAt: timestamp,
+      startedAt: null,
+      waitingAt: null,
+      completedAt: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    expect(
+      workflowRunDetailSchema.parse({
+        run,
+        nodes: [node],
+        dependencies: [],
+        attempts: [],
+        gates: [],
+      }),
+    ).toMatchObject({
+      run: { status: "queued", recoveryState: "stable" },
+      nodes: [{ status: "ready", writeCapable: false }],
+    });
+  });
+});
