@@ -65,6 +65,13 @@ import {
   queuedPromptOrderSchema,
   queuedPromptSchema,
   queuedPromptUpdateSchema,
+  remoteSurfaceAttachResultSchema,
+  remoteSurfaceConnectionMessageSchema,
+  remoteSurfaceCreateSchema,
+  remoteSurfaceListSchema,
+  remoteSurfaceSummarySchema,
+  remoteSurfaceUpdateSchema,
+  remoteSurfaceViewportSchema,
   serverBootstrapSchema,
   settingsBundleSchema,
   skillListSchema,
@@ -96,6 +103,7 @@ import {
   type WorkerCommandBus,
   WorkerUnavailableError,
 } from "./workers/bridge.js";
+import { RemoteSurfaceRelay } from "./remote-surfaces/relay.js";
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -150,6 +158,7 @@ export async function buildApp({
 }: BuildAppOptions) {
   const app = Fastify({ logger });
   const bridge = workerBridge ?? new WorkerBridge();
+  const surfaceRelay = new RemoteSurfaceRelay(bridge);
   const repository = database.repository;
   const [serverId, currentUser] = await Promise.all([
     repository.getOrCreateServerId(),
@@ -160,6 +169,7 @@ export async function buildApp({
     config.agentModel,
     config.ollamaBaseUrl,
   );
+  await repository.resetTransientRemoteSurfaceStatuses();
 
   await app.register(cors, {
     credentials: true,
@@ -171,6 +181,7 @@ export async function buildApp({
   const pendingQueueDispatches = new Set<string>();
   const projectSetupTasks = new Set<Promise<void>>();
   const routeCooldowns = new Map<string, number>();
+  const surfaceAttachmentCounts = new Map<string, number>();
 
   const queueProjectSetup = (
     projectId: string,
@@ -549,6 +560,11 @@ export async function buildApp({
           workerSwitching: false,
           gitSync: false,
           worktrees: false,
+          remoteSurfaces: {
+            enabled: true,
+            transports: ["websocket"],
+            relayOnly: true,
+          },
         },
       }),
     );
@@ -1414,6 +1430,292 @@ export async function buildApp({
       (await repository.deleteBrowser(LOCAL_USER_ID, request.params.browserId))
         ? reply.code(204).send()
         : reply.code(404).send({ error: "Browser not found." }),
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/remote-surfaces",
+    async (request, reply) =>
+      reply.send(
+        remoteSurfaceListSchema.parse(
+          await repository.listRemoteSurfaces(
+            LOCAL_USER_ID,
+            request.params.projectId,
+          ),
+        ),
+      ),
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/remote-surfaces",
+    async (request, reply) => {
+      const input = remoteSurfaceCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const worker = (await repository.listWorkers(LOCAL_USER_ID)).find(
+        ({ workerId }) => workerId === input.data.workerId,
+      );
+      if (!worker) return reply.code(404).send({ error: "Worker not found." });
+      if (!worker.remoteSurfaces[input.data.configuration.kind]) {
+        return reply.code(409).send({
+          error: `Worker does not support ${input.data.configuration.kind} Remote Surfaces.`,
+        });
+      }
+      const surface = await repository.createRemoteSurface(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        input.data,
+      );
+      return surface
+        ? reply.code(201).send(remoteSurfaceSummarySchema.parse(surface))
+        : reply.code(404).send({ error: "Project or worker not found." });
+    },
+  );
+
+  app.patch<{ Params: { surfaceId: string } }>(
+    "/api/remote-surfaces/:surfaceId",
+    async (request, reply) => {
+      const input = remoteSurfaceUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const surface = await repository.updateRemoteSurface(
+        LOCAL_USER_ID,
+        request.params.surfaceId,
+        input.data,
+      );
+      return surface
+        ? reply.send(remoteSurfaceSummarySchema.parse(surface))
+        : reply.code(404).send({ error: "Remote Surface not found." });
+    },
+  );
+
+  for (const action of ["suspend", "resume"] as const) {
+    app.post<{ Params: { surfaceId: string } }>(
+      `/api/remote-surfaces/:surfaceId/${action}`,
+      async (request, reply) => {
+        const context = await repository.getRemoteSurfaceExecutionContext(
+          LOCAL_USER_ID,
+          request.params.surfaceId,
+        );
+        if (!context) {
+          return reply.code(404).send({ error: "Remote Surface not found." });
+        }
+        if (!bridge.isConnected(context.workerId)) {
+          await repository.setRemoteSurfaceStatus(
+            context.surface.id,
+            "offline",
+            "Worker is offline.",
+          );
+          return reply.code(503).send({ error: "Worker is offline." });
+        }
+        try {
+          await bridge.request(context.workerId, {
+            type: action === "suspend" ? "surface.suspend" : "surface.resume",
+            surfaceId: context.surface.id,
+          });
+          await repository.setRemoteSurfaceStatus(
+            context.surface.id,
+            action === "suspend" ? "suspended" : "active",
+          );
+          const updated = await repository.getRemoteSurfaceExecutionContext(
+            LOCAL_USER_ID,
+            context.surface.id,
+          );
+          return updated
+            ? reply.send(remoteSurfaceSummarySchema.parse(updated.surface))
+            : reply.code(404).send({
+                error: "Remote Surface was removed during the request.",
+              });
+        } catch (error) {
+          return reply.code(502).send({ error: errorMessage(error) });
+        }
+      },
+    );
+  }
+
+  app.delete<{ Params: { surfaceId: string } }>(
+    "/api/remote-surfaces/:surfaceId",
+    async (request, reply) => {
+      const context = await repository.deleteRemoteSurface(
+        LOCAL_USER_ID,
+        request.params.surfaceId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Remote Surface not found." });
+      }
+      if (bridge.isConnected(context.workerId)) {
+        void bridge
+          .request(context.workerId, {
+            type: "surface.close",
+            surfaceId: context.surface.id,
+          })
+          .catch((error: unknown) =>
+            app.log.warn(
+              { err: error, surfaceId: context.surface.id },
+              "Could not close deleted Remote Surface",
+            ),
+          );
+      }
+      return reply.code(204).send();
+    },
+  );
+
+  app.get<{
+    Params: { surfaceId: string };
+    Querystring: { width?: string; height?: string; devicePixelRatio?: string };
+  }>(
+    "/api/remote-surfaces/:surfaceId/connect",
+    { websocket: true },
+    (socket, request) => {
+      if (
+        !request.headers.origin ||
+        !config.appOrigins.includes(request.headers.origin)
+      ) {
+        socket.close(1008, "Origin not allowed");
+        return;
+      }
+      const viewport = remoteSurfaceViewportSchema.safeParse({
+        width: Number(request.query.width ?? 1_280),
+        height: Number(request.query.height ?? 720),
+        devicePixelRatio: Number(request.query.devicePixelRatio ?? 1),
+      });
+      if (!viewport.success) {
+        socket.close(1008, "Invalid viewport");
+        return;
+      }
+
+      const attachmentId = randomUUID();
+      let attached = false;
+      let closed = false;
+      let surfaceId: string | null = null;
+      let workerId: string | null = null;
+
+      const send = (message: unknown) => {
+        if (socket.readyState === 1) {
+          socket.send(
+            JSON.stringify(remoteSurfaceConnectionMessageSchema.parse(message)),
+          );
+        }
+      };
+
+      socket.on("close", () => {
+        closed = true;
+        if (!attached || !surfaceId || !workerId) return;
+        attached = false;
+        const remaining = Math.max(
+          0,
+          (surfaceAttachmentCounts.get(surfaceId) ?? 1) - 1,
+        );
+        if (remaining === 0) surfaceAttachmentCounts.delete(surfaceId);
+        else surfaceAttachmentCounts.set(surfaceId, remaining);
+        if (bridge.isConnected(workerId)) {
+          void bridge
+            .request(workerId, {
+              type: "surface.detach",
+              surfaceId,
+              attachmentId,
+            })
+            .catch(() => undefined);
+        }
+        if (remaining === 0) {
+          void repository.setRemoteSurfaceStatus(
+            surfaceId,
+            bridge.isConnected(workerId) ? "idle" : "offline",
+            bridge.isConnected(workerId) ? null : "Worker is offline.",
+          );
+        }
+      });
+
+      void (async () => {
+        const context = await repository.getRemoteSurfaceExecutionContext(
+          LOCAL_USER_ID,
+          request.params.surfaceId,
+        );
+        if (!context) {
+          send({
+            type: "error",
+            message: "Remote Surface not found.",
+            recoverable: false,
+          });
+          socket.close(1008, "Remote Surface not found");
+          return;
+        }
+        surfaceId = context.surface.id;
+        workerId = context.workerId;
+        if (!bridge.isConnected(workerId)) {
+          await repository.setRemoteSurfaceStatus(
+            surfaceId,
+            "offline",
+            "Worker is offline.",
+          );
+          send({
+            type: "error",
+            message: "Worker is offline.",
+            recoverable: true,
+          });
+          socket.close(1013, "Worker offline");
+          return;
+        }
+
+        await repository.setRemoteSurfaceStatus(surfaceId, "connecting");
+        const cleanupRelay = surfaceRelay.bind(socket, {
+          surfaceId,
+          attachmentId,
+          workerId,
+        });
+        try {
+          const result = remoteSurfaceAttachResultSchema.parse(
+            await bridge.request(
+              workerId,
+              {
+                type: "surface.attach",
+                surfaceId,
+                attachmentId,
+                projectId: context.surface.projectId,
+                configuration: context.surface.configuration,
+                preferredTransport: context.surface.preferredTransport,
+                viewport: viewport.data,
+              },
+              { timeoutMs: 30_000 },
+            ),
+          );
+          if (closed) {
+            cleanupRelay();
+            void bridge
+              .request(workerId, {
+                type: "surface.detach",
+                surfaceId,
+                attachmentId,
+              })
+              .catch(() => undefined);
+            return;
+          }
+          attached = true;
+          surfaceAttachmentCounts.set(
+            surfaceId,
+            (surfaceAttachmentCounts.get(surfaceId) ?? 0) + 1,
+          );
+          await repository.setRemoteSurfaceStatus(surfaceId, "active");
+          send({
+            type: "ready",
+            surfaceId,
+            attachmentId,
+            transport: result.transport,
+          });
+        } catch (error) {
+          cleanupRelay();
+          const message = errorMessage(error);
+          await repository.setRemoteSurfaceStatus(
+            surfaceId,
+            error instanceof WorkerUnavailableError ? "offline" : "error",
+            message,
+          );
+          send({ type: "error", message, recoverable: true });
+          socket.close(1013, "Remote Surface unavailable");
+        }
+      })();
+    },
   );
 
   app.get<{ Params: { projectId: string } }>(

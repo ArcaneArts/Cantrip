@@ -11,6 +11,44 @@ export const bootstrapModeSchema = z.enum([
 ]);
 export const authModeSchema = z.enum(["none", "password", "accounts"]);
 
+export const remoteSurfaceProtocolVersionSchema = z.literal(1);
+export const remoteSurfaceKindSchema = z.enum(["browser", "vnc"]);
+export const remoteSurfaceTransportSchema = z.enum(["websocket", "webrtc"]);
+export const remoteSurfaceStatusSchema = z.enum([
+  "idle",
+  "connecting",
+  "active",
+  "suspended",
+  "offline",
+  "error",
+]);
+export const remoteSurfaceChannelSchema = z.enum([
+  "control",
+  "frame",
+  "cursor",
+  "clipboard",
+  "rfb",
+  "webrtc-signal",
+]);
+
+export const remoteSurfaceCapabilitiesSchema = z.object({
+  browser: z.boolean(),
+  vnc: z.boolean(),
+  transports: z.array(remoteSurfaceTransportSchema).min(1),
+  maxSessions: z.number().int().positive(),
+});
+
+function defaultRemoteSurfaceCapabilities(): z.infer<
+  typeof remoteSurfaceCapabilitiesSchema
+> {
+  return {
+    browser: false,
+    vnc: false,
+    transports: ["websocket"],
+    maxSessions: 4,
+  };
+}
+
 export const userSummarySchema = z.object({
   id: z.string().min(1),
   kind: z.enum(["anonymous", "account"]),
@@ -49,6 +87,11 @@ export const serverBootstrapSchema = z.object({
     workerSwitching: z.boolean(),
     gitSync: z.boolean(),
     worktrees: z.boolean(),
+    remoteSurfaces: z.object({
+      enabled: z.boolean(),
+      transports: z.array(remoteSurfaceTransportSchema).min(1),
+      relayOnly: z.literal(true),
+    }),
   }),
 });
 
@@ -58,6 +101,9 @@ export const workerHeartbeatSchema = z.object({
   platform: z.string().min(1),
   architecture: z.string().min(1),
   codexVersion: z.string().nullable(),
+  remoteSurfaces: remoteSurfaceCapabilitiesSchema.default(
+    defaultRemoteSurfaceCapabilities,
+  ),
   startedAt: z.string().datetime(),
 });
 
@@ -474,6 +520,170 @@ export const browserSummarySchema = z.object({
 });
 
 export const browserListSchema = z.array(browserSummarySchema);
+
+export const remoteSurfaceConfigurationSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("browser"),
+    initialUrl: z.url().max(4_096),
+    profileId: z.string().trim().min(1).max(200).nullable().default(null),
+  }),
+  z.object({
+    kind: z.literal("vnc"),
+    host: z.string().trim().min(1).max(253),
+    port: z.number().int().min(1).max(65_535).default(5_900),
+    displayName: z.string().trim().min(1).max(200).nullable().default(null),
+    secretRef: z.string().min(1).nullable().default(null),
+  }),
+]);
+
+export const remoteSurfaceCreateSchema = z.object({
+  workerId: z.string().min(1),
+  title: z.string().trim().min(1).max(200),
+  configuration: remoteSurfaceConfigurationSchema,
+});
+
+export const remoteSurfaceUpdateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    configuration: remoteSurfaceConfigurationSchema.optional(),
+    preferredTransport: remoteSurfaceTransportSchema.optional(),
+  })
+  .refine(
+    (input) =>
+      input.title !== undefined ||
+      input.configuration !== undefined ||
+      input.preferredTransport !== undefined,
+    { message: "At least one remote surface field is required." },
+  );
+
+export const remoteSurfaceSummarySchema = z.object({
+  id: z.string().min(1),
+  projectId: z.string().min(1),
+  workerId: z.string().min(1),
+  kind: remoteSurfaceKindSchema,
+  title: z.string().min(1),
+  status: remoteSurfaceStatusSchema,
+  preferredTransport: remoteSurfaceTransportSchema,
+  configuration: remoteSurfaceConfigurationSchema,
+  lastError: z.string().nullable(),
+  lastConnectedAt: z.string().datetime().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const remoteSurfaceListSchema = z.array(remoteSurfaceSummarySchema);
+
+export const remoteSurfaceViewportSchema = z.object({
+  width: z.number().int().min(1).max(16_384),
+  height: z.number().int().min(1).max(16_384),
+  devicePixelRatio: z.number().min(0.25).max(8),
+});
+
+export const remoteSurfaceConnectionMessageSchema = z.discriminatedUnion(
+  "type",
+  [
+    z.object({
+      type: z.literal("ready"),
+      surfaceId: z.string().min(1),
+      attachmentId: z.string().min(1),
+      transport: remoteSurfaceTransportSchema,
+    }),
+    z.object({
+      type: z.literal("error"),
+      message: z.string().min(1),
+      recoverable: z.boolean(),
+    }),
+  ],
+);
+
+export const remoteSurfaceAttachResultSchema = z.object({
+  accepted: z.literal(true),
+  transport: remoteSurfaceTransportSchema,
+});
+
+export const remoteSurfaceControlSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("resize"),
+    viewport: remoteSurfaceViewportSchema,
+  }),
+  z.object({ type: z.literal("suspend") }),
+  z.object({ type: z.literal("resume") }),
+]);
+
+export const remoteSurfaceFrameHeaderSchema = z.object({
+  protocolVersion: remoteSurfaceProtocolVersionSchema,
+  surfaceId: z.string().min(1).max(200),
+  attachmentId: z.string().min(1).max(200),
+  sequence: z.number().int().nonnegative().safe(),
+  channel: remoteSurfaceChannelSchema,
+});
+
+export const REMOTE_SURFACE_MAX_HEADER_BYTES = 64 * 1_024;
+export const REMOTE_SURFACE_MAX_PAYLOAD_BYTES = 4 * 1_024 * 1_024;
+const REMOTE_SURFACE_FRAME_MAGIC = new Uint8Array([0x43, 0x54, 0x52, 0x53]);
+
+export function encodeRemoteSurfaceFrame(
+  header: RemoteSurfaceFrameHeader,
+  payload: Uint8Array,
+): Uint8Array {
+  const parsedHeader = remoteSurfaceFrameHeaderSchema.parse(header);
+  if (payload.byteLength > REMOTE_SURFACE_MAX_PAYLOAD_BYTES) {
+    throw new Error("Remote Surface payload exceeds the protocol limit.");
+  }
+  const encodedHeader = new TextEncoder().encode(JSON.stringify(parsedHeader));
+  if (encodedHeader.byteLength > REMOTE_SURFACE_MAX_HEADER_BYTES) {
+    throw new Error("Remote Surface header exceeds the protocol limit.");
+  }
+  const frame = new Uint8Array(
+    8 + encodedHeader.byteLength + payload.byteLength,
+  );
+  frame.set(REMOTE_SURFACE_FRAME_MAGIC, 0);
+  new DataView(frame.buffer).setUint32(4, encodedHeader.byteLength, false);
+  frame.set(encodedHeader, 8);
+  frame.set(payload, 8 + encodedHeader.byteLength);
+  return frame;
+}
+
+export function decodeRemoteSurfaceFrame(frame: Uint8Array): {
+  header: RemoteSurfaceFrameHeader;
+  payload: Uint8Array;
+} {
+  if (frame.byteLength < 8)
+    throw new Error("Remote Surface frame is truncated.");
+  for (let index = 0; index < REMOTE_SURFACE_FRAME_MAGIC.length; index += 1) {
+    if (frame[index] !== REMOTE_SURFACE_FRAME_MAGIC[index]) {
+      throw new Error("Remote Surface frame has an invalid magic value.");
+    }
+  }
+  const headerLength = new DataView(
+    frame.buffer,
+    frame.byteOffset,
+    frame.byteLength,
+  ).getUint32(4, false);
+  if (headerLength < 1 || headerLength > REMOTE_SURFACE_MAX_HEADER_BYTES) {
+    throw new Error("Remote Surface frame header length is invalid.");
+  }
+  const payloadOffset = 8 + headerLength;
+  if (payloadOffset > frame.byteLength) {
+    throw new Error("Remote Surface frame header is truncated.");
+  }
+  const payloadLength = frame.byteLength - payloadOffset;
+  if (payloadLength > REMOTE_SURFACE_MAX_PAYLOAD_BYTES) {
+    throw new Error("Remote Surface payload exceeds the protocol limit.");
+  }
+  let rawHeader: unknown;
+  try {
+    rawHeader = JSON.parse(
+      new TextDecoder().decode(frame.subarray(8, payloadOffset)),
+    );
+  } catch {
+    throw new Error("Remote Surface frame header is not valid JSON.");
+  }
+  return {
+    header: remoteSurfaceFrameHeaderSchema.parse(rawHeader),
+    payload: frame.subarray(payloadOffset),
+  };
+}
 
 export const projectViewKindSchema = z.enum(["history", "issues"]);
 
@@ -988,6 +1198,32 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     terminalId: z.string().min(1),
   }),
   z.object({
+    type: z.literal("surface.attach"),
+    surfaceId: z.string().min(1),
+    attachmentId: z.string().min(1),
+    projectId: z.string().min(1),
+    configuration: remoteSurfaceConfigurationSchema,
+    preferredTransport: remoteSurfaceTransportSchema,
+    viewport: remoteSurfaceViewportSchema,
+  }),
+  z.object({
+    type: z.literal("surface.detach"),
+    surfaceId: z.string().min(1),
+    attachmentId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("surface.suspend"),
+    surfaceId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("surface.resume"),
+    surfaceId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("surface.close"),
+    surfaceId: z.string().min(1),
+  }),
+  z.object({
     type: z.literal("chat.turn"),
     chatId: z.string().min(1),
     clientMessageId: z.string().min(1),
@@ -1074,6 +1310,15 @@ export type DatabaseEngine = z.infer<typeof databaseEngineSchema>;
 export type DeploymentMode = z.infer<typeof deploymentModeSchema>;
 export type BootstrapMode = z.infer<typeof bootstrapModeSchema>;
 export type AuthMode = z.infer<typeof authModeSchema>;
+export type RemoteSurfaceKind = z.infer<typeof remoteSurfaceKindSchema>;
+export type RemoteSurfaceTransport = z.infer<
+  typeof remoteSurfaceTransportSchema
+>;
+export type RemoteSurfaceStatus = z.infer<typeof remoteSurfaceStatusSchema>;
+export type RemoteSurfaceChannel = z.infer<typeof remoteSurfaceChannelSchema>;
+export type RemoteSurfaceCapabilities = z.infer<
+  typeof remoteSurfaceCapabilitiesSchema
+>;
 export type UserSummary = z.infer<typeof userSummarySchema>;
 export type ServerBootstrap = z.infer<typeof serverBootstrapSchema>;
 export type WorkerHeartbeat = z.infer<typeof workerHeartbeatSchema>;
@@ -1140,6 +1385,23 @@ export type ExplorerSummary = z.infer<typeof explorerSummarySchema>;
 export type BrowserCreate = z.infer<typeof browserCreateSchema>;
 export type BrowserUpdate = z.infer<typeof browserUpdateSchema>;
 export type BrowserSummary = z.infer<typeof browserSummarySchema>;
+export type RemoteSurfaceConfiguration = z.infer<
+  typeof remoteSurfaceConfigurationSchema
+>;
+export type RemoteSurfaceCreate = z.infer<typeof remoteSurfaceCreateSchema>;
+export type RemoteSurfaceUpdate = z.infer<typeof remoteSurfaceUpdateSchema>;
+export type RemoteSurfaceSummary = z.infer<typeof remoteSurfaceSummarySchema>;
+export type RemoteSurfaceViewport = z.infer<typeof remoteSurfaceViewportSchema>;
+export type RemoteSurfaceConnectionMessage = z.infer<
+  typeof remoteSurfaceConnectionMessageSchema
+>;
+export type RemoteSurfaceAttachResult = z.infer<
+  typeof remoteSurfaceAttachResultSchema
+>;
+export type RemoteSurfaceControl = z.infer<typeof remoteSurfaceControlSchema>;
+export type RemoteSurfaceFrameHeader = z.infer<
+  typeof remoteSurfaceFrameHeaderSchema
+>;
 export type ProjectViewKind = z.infer<typeof projectViewKindSchema>;
 export type ProjectViewCreate = z.infer<typeof projectViewCreateSchema>;
 export type ProjectViewUpdate = z.infer<typeof projectViewUpdateSchema>;

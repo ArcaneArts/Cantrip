@@ -6,6 +6,8 @@ import {
   agentThreadSyncSchema,
   browserListSchema,
   browserSummarySchema,
+  decodeRemoteSurfaceFrame,
+  encodeRemoteSurfaceFrame,
   chatListSchema,
   chatMessageListSchema,
   chatMessageSchema,
@@ -28,6 +30,9 @@ import {
   projectViewSummarySchema,
   queuedPromptListSchema,
   queuedPromptSchema,
+  remoteSurfaceListSchema,
+  remoteSurfaceConnectionMessageSchema,
+  remoteSurfaceSummarySchema,
   serverBootstrapSchema,
   settingsBundleSchema,
   skillListSchema,
@@ -75,6 +80,17 @@ const exhaustedProviderIds = new Set<string>();
 const steeredPrompts: string[] = [];
 const issueComments: string[] = [];
 const closedIssues: Array<{ comment: string | null; number: number }> = [];
+const relayedSurfaceFrames: Array<{
+  workerId: string;
+  sequence: number;
+  payload: number[];
+}> = [];
+const surfaceFrameListeners = new Set<
+  (
+    header: Parameters<WorkerCommandBus["sendSurfaceFrame"]>[1],
+    payload: Uint8Array,
+  ) => void
+>();
 let releaseHeldTurn: (() => void) | null = null;
 let heldProjectCloneName: string | null = null;
 let releaseProjectClone: (() => void) | null = null;
@@ -83,6 +99,18 @@ const workerBridge = {
   close() {},
   isConnected(workerId: string) {
     return workerId === "test-worker";
+  },
+  sendSurfaceFrame(workerId, header, payload) {
+    relayedSurfaceFrames.push({
+      workerId,
+      sequence: header.sequence,
+      payload: [...payload],
+    });
+    return true;
+  },
+  subscribeSurfaceFrames(_workerId, listener) {
+    surfaceFrameListeners.add(listener);
+    return () => surfaceFrameListeners.delete(listener);
   },
   async request(_workerId, command, options) {
     switch (command.type) {
@@ -312,6 +340,13 @@ const workerBridge = {
       case "terminal.input":
       case "terminal.resize":
       case "terminal.close":
+        return { accepted: true };
+      case "surface.attach":
+        return { accepted: true, transport: "websocket" };
+      case "surface.detach":
+      case "surface.suspend":
+      case "surface.resume":
+      case "surface.close":
         return { accepted: true };
       case "chat.turn":
         turnRequests += 1;
@@ -550,6 +585,14 @@ describe("local server foundation", () => {
       ).json(),
     );
 
+    expect(
+      await firstApp.inject({
+        method: "POST",
+        url: "/api/internal/workers/heartbeat",
+        headers: { authorization: "Bearer wrong-worker-token" },
+        payload: {},
+      }),
+    ).toMatchObject({ statusCode: 401 });
     const heartbeatResponse = await firstApp.inject({
       method: "POST",
       url: "/api/internal/workers/heartbeat",
@@ -560,6 +603,12 @@ describe("local server foundation", () => {
         platform: "darwin",
         architecture: "arm64",
         codexVersion: "codex-cli 1.0.0",
+        remoteSurfaces: {
+          browser: true,
+          vnc: true,
+          transports: ["websocket"],
+          maxSessions: 4,
+        },
         startedAt: "2026-08-07T12:00:00.000Z",
       },
     });
@@ -683,6 +732,161 @@ describe("local server foundation", () => {
       });
       return current!;
     });
+    const remoteSurface = remoteSurfaceSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/remote-surfaces`,
+          payload: {
+            workerId: "test-worker",
+            title: "Worker browser",
+            configuration: {
+              kind: "browser",
+              initialUrl: "https://example.com/",
+            },
+          },
+        })
+      ).json(),
+    );
+    expect(remoteSurface).toMatchObject({
+      workerId: "test-worker",
+      kind: "browser",
+      status: "idle",
+      preferredTransport: "websocket",
+      configuration: {
+        kind: "browser",
+        initialUrl: "https://example.com/",
+        profileId: null,
+      },
+    });
+    expect(
+      remoteSurfaceListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/remote-surfaces`,
+          })
+        ).json(),
+      ),
+    ).toHaveLength(1);
+    expect(
+      remoteSurfaceSummarySchema.parse(
+        (
+          await firstApp.inject({
+            method: "PATCH",
+            url: `/api/remote-surfaces/${remoteSurface.id}`,
+            payload: { title: "Renamed worker browser" },
+          })
+        ).json(),
+      ).title,
+    ).toBe("Renamed worker browser");
+    expect(
+      remoteSurfaceSummarySchema.parse(
+        (
+          await firstApp.inject({
+            method: "POST",
+            url: `/api/remote-surfaces/${remoteSurface.id}/suspend`,
+          })
+        ).json(),
+      ).status,
+    ).toBe("suspended");
+    expect(
+      remoteSurfaceSummarySchema.parse(
+        (
+          await firstApp.inject({
+            method: "POST",
+            url: `/api/remote-surfaces/${remoteSurface.id}/resume`,
+          })
+        ).json(),
+      ).status,
+    ).toBe("active");
+    await firstApp.ready();
+    let resolveRejectedOrigin: ((code: number) => void) | null = null;
+    const rejectedOriginPromise = new Promise<number>((resolve) => {
+      resolveRejectedOrigin = resolve;
+    });
+    const rejectedSocket = await firstApp.injectWS(
+      `/api/remote-surfaces/${remoteSurface.id}/connect`,
+      { headers: { origin: "https://attacker.example" } },
+      {
+        onInit(socket) {
+          socket.once("close", (code) => resolveRejectedOrigin?.(code));
+        },
+      },
+    );
+    expect(await rejectedOriginPromise).toBe(1008);
+    rejectedSocket.terminate();
+    let resolveReadyMessage: ((message: unknown) => void) | null = null;
+    const readyMessagePromise = new Promise<unknown>((resolve) => {
+      resolveReadyMessage = resolve;
+    });
+    const surfaceSocket = await firstApp.injectWS(
+      `/api/remote-surfaces/${remoteSurface.id}/connect?width=800&height=600&devicePixelRatio=2`,
+      { headers: { origin: "http://127.0.0.1:5173" } },
+      {
+        onInit(socket) {
+          socket.once("message", (data) =>
+            resolveReadyMessage?.(JSON.parse(data.toString())),
+          );
+        },
+      },
+    );
+    const readyMessage = await readyMessagePromise;
+    const connection = remoteSurfaceConnectionMessageSchema.parse(readyMessage);
+    expect(connection).toMatchObject({
+      type: "ready",
+      surfaceId: remoteSurface.id,
+      transport: "websocket",
+    });
+    if (connection.type !== "ready") throw new Error("Surface did not attach.");
+
+    surfaceSocket.send(
+      encodeRemoteSurfaceFrame(
+        {
+          protocolVersion: 1,
+          surfaceId: remoteSurface.id,
+          attachmentId: connection.attachmentId,
+          sequence: 0,
+          channel: "control",
+        },
+        new Uint8Array([1, 2, 3]),
+      ),
+    );
+    await vi.waitFor(() =>
+      expect(relayedSurfaceFrames.at(-1)).toEqual({
+        workerId: "test-worker",
+        sequence: 0,
+        payload: [1, 2, 3],
+      }),
+    );
+
+    const workerFrame = new Promise<Uint8Array>((resolve) => {
+      surfaceSocket.once("message", (data) =>
+        resolve(new Uint8Array(data as ArrayBuffer)),
+      );
+    });
+    for (const listener of surfaceFrameListeners) {
+      listener(
+        {
+          protocolVersion: 1,
+          surfaceId: remoteSurface.id,
+          attachmentId: connection.attachmentId,
+          sequence: 0,
+          channel: "frame",
+        },
+        new Uint8Array([9, 8, 7]),
+      );
+    }
+    expect([...decodeRemoteSurfaceFrame(await workerFrame).payload]).toEqual([
+      9, 8, 7,
+    ]);
+    surfaceSocket.terminate();
+    expect(
+      await firstApp.inject({
+        method: "DELETE",
+        url: `/api/remote-surfaces/${remoteSurface.id}`,
+      }),
+    ).toMatchObject({ statusCode: 204 });
     expect(
       await firstDatabase.repository.listProjectWorktrees(
         LOCAL_USER_ID,

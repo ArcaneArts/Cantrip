@@ -15,6 +15,12 @@ export function createHeartbeat(
     platform: os.platform(),
     architecture: os.arch(),
     codexVersion,
+    remoteSurfaces: {
+      browser: false,
+      vnc: false,
+      transports: ["websocket"],
+      maxSessions: 4,
+    },
     startedAt,
   });
 }

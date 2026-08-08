@@ -1,4 +1,7 @@
 import {
+  decodeRemoteSurfaceFrame,
+  encodeRemoteSurfaceFrame,
+  type RemoteSurfaceFrameHeader,
   type WorkerCommand,
   workerEventEnvelopeSchema,
   type WorkerEvent,
@@ -14,6 +17,19 @@ type CommandHandler = (
   emit: (event: WorkerEvent) => void,
 ) => Promise<unknown>;
 
+type SurfaceFrameHandler = (
+  header: RemoteSurfaceFrameHeader,
+  payload: Uint8Array,
+) => Promise<void> | void;
+
+const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
+
+function rawDataBytes(data: RawData): Uint8Array {
+  if (Array.isArray(data)) return Buffer.concat(data);
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+}
+
 export class WorkerConnection {
   #closed = false;
   #lastConnectionError: string | null = null;
@@ -23,6 +39,7 @@ export class WorkerConnection {
   constructor(
     private readonly config: WorkerConfig,
     private readonly handleCommand: CommandHandler,
+    private readonly handleSurfaceFrame: SurfaceFrameHandler = () => undefined,
   ) {}
 
   start(): void {
@@ -56,8 +73,8 @@ export class WorkerConnection {
       this.#lastConnectionError = null;
       console.log("[cantrip_worker] Command channel connected.");
     });
-    socket.on("message", (data) => {
-      void this.onMessage(socket, data);
+    socket.on("message", (data, isBinary) => {
+      void this.onMessage(socket, data, isBinary);
     });
     socket.once("error", (error) => {
       if (!this.#closed && error.message !== this.#lastConnectionError) {
@@ -77,7 +94,38 @@ export class WorkerConnection {
     });
   }
 
-  private async onMessage(socket: WebSocket, data: RawData): Promise<void> {
+  sendSurfaceFrame(
+    header: RemoteSurfaceFrameHeader,
+    payload: Uint8Array,
+  ): boolean {
+    const socket = this.#socket;
+    if (
+      !socket ||
+      socket.readyState !== WebSocket.OPEN ||
+      socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES
+    ) {
+      return false;
+    }
+    socket.send(encodeRemoteSurfaceFrame(header, payload), { binary: true });
+    return true;
+  }
+
+  private async onMessage(
+    socket: WebSocket,
+    data: RawData,
+    isBinary: boolean,
+  ): Promise<void> {
+    if (isBinary) {
+      try {
+        const frame = decodeRemoteSurfaceFrame(rawDataBytes(data));
+        await this.handleSurfaceFrame(frame.header, frame.payload);
+      } catch (error) {
+        console.warn(
+          `[cantrip_worker] Rejected Remote Surface frame: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      return;
+    }
     let raw: unknown;
     try {
       raw = JSON.parse(data.toString());

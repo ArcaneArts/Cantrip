@@ -4,6 +4,8 @@ import {
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   chatExecutionLaneSummarySchema,
+  decodeRemoteSurfaceFrame,
+  encodeRemoteSurfaceFrame,
   gitActionSchema,
   mentionedSkillNames,
   normalizeResponsesBaseUrl,
@@ -192,6 +194,11 @@ describe("Cantrip protocol", () => {
     });
 
     expect(heartbeat.workerId).toBe("local-worker");
+    expect(heartbeat.remoteSurfaces).toMatchObject({
+      browser: false,
+      vnc: false,
+      transports: ["websocket"],
+    });
   });
 
   it("rejects an unhealthy server payload", () => {
@@ -237,6 +244,11 @@ describe("Cantrip protocol", () => {
         workerSwitching: false,
         gitSync: false,
         worktrees: false,
+        remoteSurfaces: {
+          enabled: true,
+          transports: ["websocket"],
+          relayOnly: true,
+        },
       },
     });
 
@@ -246,6 +258,44 @@ describe("Cantrip protocol", () => {
       conversations: "server",
       files: "worker",
     });
+  });
+
+  it("round-trips versioned binary Remote Surface frames", () => {
+    const encoded = encodeRemoteSurfaceFrame(
+      {
+        protocolVersion: 1,
+        surfaceId: "surface-1",
+        attachmentId: "attachment-1",
+        sequence: 42,
+        channel: "frame",
+      },
+      new Uint8Array([0, 1, 127, 255]),
+    );
+    const decoded = decodeRemoteSurfaceFrame(encoded);
+
+    expect(decoded.header).toEqual({
+      protocolVersion: 1,
+      surfaceId: "surface-1",
+      attachmentId: "attachment-1",
+      sequence: 42,
+      channel: "frame",
+    });
+    expect([...decoded.payload]).toEqual([0, 1, 127, 255]);
+  });
+
+  it("rejects malformed Remote Surface binary envelopes", () => {
+    const encoded = encodeRemoteSurfaceFrame(
+      {
+        protocolVersion: 1,
+        surfaceId: "surface-1",
+        attachmentId: "attachment-1",
+        sequence: 0,
+        channel: "control",
+      },
+      new Uint8Array(),
+    );
+    encoded[0] = 0;
+    expect(() => decodeRemoteSurfaceFrame(encoded)).toThrow(/magic/i);
   });
 
   it("accepts correlated agent activity from a worker", () => {

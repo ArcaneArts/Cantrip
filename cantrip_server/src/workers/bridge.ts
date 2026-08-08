@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  decodeRemoteSurfaceFrame,
+  encodeRemoteSurfaceFrame,
+  type RemoteSurfaceFrameHeader,
   type WorkerCommand,
   workerEventEnvelopeSchema,
   type WorkerEvent,
@@ -9,18 +12,36 @@ import {
 } from "@cantrip/protocol";
 
 interface WorkerSocket {
+  bufferedAmount: number;
   close(code?: number, reason?: string): void;
   on(event: "close", listener: () => void): void;
   on(event: "error", listener: (error: Error) => void): void;
-  on(event: "message", listener: (data: { toString(): string }) => void): void;
+  on(
+    event: "message",
+    listener: (data: unknown, isBinary?: boolean) => void,
+  ): void;
   readyState: number;
-  send(data: string): void;
+  send(data: string | Uint8Array, options?: { binary?: boolean }): void;
 }
+
+export type WorkerSurfaceFrameListener = (
+  header: RemoteSurfaceFrameHeader,
+  payload: Uint8Array,
+) => void;
 
 export interface WorkerCommandBus {
   attach(workerId: string, socket: WorkerSocket): void;
   close(): void;
   isConnected(workerId: string): boolean;
+  sendSurfaceFrame(
+    workerId: string,
+    header: RemoteSurfaceFrameHeader,
+    payload: Uint8Array,
+  ): boolean;
+  subscribeSurfaceFrames(
+    workerId: string,
+    listener: WorkerSurfaceFrameListener,
+  ): () => void;
   request(
     workerId: string,
     command: WorkerCommand,
@@ -44,9 +65,32 @@ interface PendingRequest {
 
 export class WorkerUnavailableError extends Error {}
 
+const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
+
+function workerFrameBytes(data: unknown): Uint8Array {
+  if (data instanceof Uint8Array) return data;
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (Array.isArray(data)) {
+    const chunks = data.map(workerFrameBytes);
+    const size = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
+    const combined = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      combined.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return combined;
+  }
+  throw new Error("Worker sent an unsupported binary frame type.");
+}
+
 export class WorkerBridge implements WorkerCommandBus {
   readonly #pending = new Map<string, PendingRequest>();
   readonly #sockets = new Map<string, WorkerSocket>();
+  readonly #surfaceListeners = new Map<
+    string,
+    Set<WorkerSurfaceFrameListener>
+  >();
 
   attach(workerId: string, socket: WorkerSocket): void {
     const existing = this.#sockets.get(workerId);
@@ -55,10 +99,21 @@ export class WorkerBridge implements WorkerCommandBus {
     }
     this.#sockets.set(workerId, socket);
 
-    socket.on("message", (data) => {
+    socket.on("message", (data, isBinary) => {
+      if (isBinary) {
+        try {
+          const frame = decodeRemoteSurfaceFrame(workerFrameBytes(data));
+          for (const listener of this.#surfaceListeners.get(workerId) ?? []) {
+            listener(frame.header, frame.payload);
+          }
+        } catch {
+          // Malformed binary data is isolated to the worker connection.
+        }
+        return;
+      }
       let payload: unknown;
       try {
-        payload = JSON.parse(data.toString());
+        payload = JSON.parse(String(data));
       } catch {
         return;
       }
@@ -117,6 +172,39 @@ export class WorkerBridge implements WorkerCommandBus {
     return this.#sockets.get(workerId)?.readyState === 1;
   }
 
+  sendSurfaceFrame(
+    workerId: string,
+    header: RemoteSurfaceFrameHeader,
+    payload: Uint8Array,
+  ): boolean {
+    const socket = this.#sockets.get(workerId);
+    if (
+      !socket ||
+      socket.readyState !== 1 ||
+      socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES
+    ) {
+      return false;
+    }
+    socket.send(encodeRemoteSurfaceFrame(header, payload), { binary: true });
+    return true;
+  }
+
+  subscribeSurfaceFrames(
+    workerId: string,
+    listener: WorkerSurfaceFrameListener,
+  ): () => void {
+    let listeners = this.#surfaceListeners.get(workerId);
+    if (!listeners) {
+      listeners = new Set();
+      this.#surfaceListeners.set(workerId, listeners);
+    }
+    listeners.add(listener);
+    return () => {
+      listeners?.delete(listener);
+      if (listeners?.size === 0) this.#surfaceListeners.delete(workerId);
+    };
+  }
+
   request(
     workerId: string,
     command: WorkerCommand,
@@ -171,6 +259,7 @@ export class WorkerBridge implements WorkerCommandBus {
       socket.close(1001, "Server shutting down");
     }
     this.#sockets.clear();
+    this.#surfaceListeners.clear();
     for (const pending of this.#pending.values()) {
       if (pending.timeout) clearTimeout(pending.timeout);
       pending.reject(new WorkerUnavailableError("Server is shutting down."));

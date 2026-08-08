@@ -14,6 +14,7 @@ import { readGitHistory, readGitStatus, runGitAction } from "./git.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
 import { TerminalManager } from "./terminal-manager.js";
 import { WorkerConnection } from "./transport.js";
+import { RemoteSurfaceManager } from "./remote-surface-manager.js";
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
 
@@ -34,6 +35,7 @@ async function start(): Promise<void> {
   const codexAuthClients = new Map<string, CodexAuthClient>();
   const codexRuntimes = new Map<string, CodexAppServer>();
   const terminals = new TerminalManager();
+  const remoteSurfaces = new RemoteSurfaceManager();
 
   const accountHomeFor = (providerId: string) =>
     codexAccountHome(config.dataDirectory, providerId);
@@ -186,6 +188,20 @@ async function start(): Promise<void> {
       case "terminal.close":
         terminals.close(command.terminalId);
         return { accepted: true };
+      case "surface.attach":
+        return remoteSurfaces.attach(command);
+      case "surface.detach":
+        await remoteSurfaces.detach(command.surfaceId, command.attachmentId);
+        return { accepted: true };
+      case "surface.suspend":
+        await remoteSurfaces.suspend(command.surfaceId);
+        return { accepted: true };
+      case "surface.resume":
+        await remoteSurfaces.resume(command.surfaceId);
+        return { accepted: true };
+      case "surface.close":
+        await remoteSurfaces.close(command.surfaceId);
+        return { accepted: true };
       case "chat.turn":
         return runtimeFor(command).runTurn({
           chatId: command.chatId,
@@ -222,7 +238,14 @@ async function start(): Promise<void> {
         });
     }
   };
-  const commandConnection = new WorkerConnection(config, handleCommand);
+  const commandConnection = new WorkerConnection(
+    config,
+    handleCommand,
+    (header, payload) => remoteSurfaces.handleFrame(header, payload),
+  );
+  remoteSurfaces.setFrameEmitter((header, payload) =>
+    commandConnection.sendSurfaceFrame(header, payload),
+  );
 
   console.log(
     `[cantrip_worker] Starting ${heartbeat.name} (${heartbeat.workerId}); Codex: ${codexVersion ?? "not found"}`,
@@ -257,7 +280,7 @@ async function start(): Promise<void> {
   );
 
   await new Promise<void>((resolve) => {
-    const stop = (signal: NodeJS.Signals) => {
+    const stop = async (signal: NodeJS.Signals) => {
       if (stopping) {
         return;
       }
@@ -267,6 +290,7 @@ async function start(): Promise<void> {
       commandConnection.close();
       for (const client of codexAuthClients.values()) client.close();
       terminals.closeAll();
+      await remoteSurfaces.closeAll();
       for (const runtime of codexRuntimes.values()) {
         runtime.close();
       }
@@ -274,8 +298,8 @@ async function start(): Promise<void> {
       resolve();
     };
 
-    process.once("SIGINT", () => stop("SIGINT"));
-    process.once("SIGTERM", () => stop("SIGTERM"));
+    process.once("SIGINT", () => void stop("SIGINT"));
+    process.once("SIGTERM", () => void stop("SIGTERM"));
   });
 }
 
