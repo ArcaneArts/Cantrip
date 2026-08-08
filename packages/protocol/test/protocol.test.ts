@@ -16,6 +16,7 @@ import {
   terminalClientMessageSchema,
   terminalServerMessageSchema,
   workerCommandSchema,
+  worktreeInventorySchema,
   workerEventEnvelopeSchema,
   workerHeartbeatSchema,
 } from "../src/index.js";
@@ -164,6 +165,55 @@ describe("Cantrip protocol", () => {
     expect(
       gitActionSchema.safeParse({ type: "stage", paths: [] }).success,
     ).toBe(false);
+  });
+
+  it("validates worker worktree lifecycle commands and inventories", () => {
+    expect(
+      workerCommandSchema.parse({
+        type: "worktree.create",
+        sourcePath: "/workspace/Cantrip",
+        worktreeId: "worktree-1",
+        name: "Feature lane",
+        mode: {
+          type: "newBranch",
+          branch: "agent/feature-lane",
+        },
+      }),
+    ).toMatchObject({
+      type: "worktree.create",
+      mode: { type: "newBranch", startPoint: null },
+    });
+    expect(
+      workerCommandSchema.parse({
+        type: "worktree.remove",
+        sourcePath: "/workspace/Cantrip",
+        worktreePath: "/worker/worktrees/feature",
+      }),
+    ).toMatchObject({ force: false, allowExternal: false });
+    expect(
+      worktreeInventorySchema.parse({
+        sourcePath: "/workspace/Cantrip",
+        primaryPath: "/workspace/Cantrip",
+        gitCommonDir: "/workspace/Cantrip/.git",
+        managedRoot: "/worker/worktrees",
+        repositoryFingerprint: "a".repeat(64),
+        worktrees: [
+          {
+            path: "/workspace/Cantrip",
+            head: "0123456789abcdef",
+            branch: "main",
+            detached: false,
+            isPrimary: true,
+            managed: false,
+            locked: false,
+            lockReason: null,
+            prunable: false,
+            pruneReason: null,
+            missing: false,
+          },
+        ],
+      }).worktrees[0]?.isPrimary,
+    ).toBe(true);
   });
 
   it("normalizes Responses provider URLs to their API root", () => {
