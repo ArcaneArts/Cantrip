@@ -53,6 +53,10 @@ cantrip_app/src-tauri/gen/
 cantrip_app/src-tauri/resources/runtime/*
 !cantrip_app/src-tauri/resources/runtime/.gitkeep
 
+# Locally compiled pinned Codex runtime.
+cantrip_codex/.build/
+cantrip_codex/.upstream-backup-*/
+
 # Locally assembled release artifacts.
 artifacts/
 

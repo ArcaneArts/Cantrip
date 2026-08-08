@@ -26,6 +26,14 @@ jobs:
         with:
           cache: pnpm
           node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+      - name: Install Linux Codex build dependencies
+        if: runner.os == 'Linux'
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          binutils build-essential libcap-dev pkg-config
       - run: pnpm install --frozen-lockfile
       - run: pnpm package:services
       - uses: actions/upload-artifact@v4
@@ -56,12 +64,15 @@ jobs:
           cache: pnpm
           node-version: 24
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
       - name: Install Linux desktop dependencies
         if: runner.os == 'Linux'
         run: >-
           sudo apt-get update && sudo apt-get install -y
           libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev
-          libssl-dev libayatana-appindicator3-dev librsvg2-dev
+          libssl-dev libayatana-appindicator3-dev librsvg2-dev binutils
+          libcap-dev pkg-config
       - run: pnpm install --frozen-lockfile
       - run: pnpm package:app
       - uses: actions/upload-artifact@v4

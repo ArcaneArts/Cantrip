@@ -2,3 +2,6 @@
 # fixtures intentionally contain mixed encodings, line endings, and whitespace
 # that must not be rewritten or treated as Cantrip formatting violations.
 cantrip_code/upstream/** -text -whitespace
+
+# Preserve the pinned Codex snapshot while keeping it identifiable as vendored.
+cantrip_codex/upstream/** -text -whitespace linguist-vendored
