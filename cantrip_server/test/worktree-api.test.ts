@@ -14,6 +14,7 @@ import {
   projectWorktreeSummarySchema,
   queuedPromptSchema,
   terminalSummarySchema,
+  unprobedCodexRuntimeReport,
   worktreeStatusResultSchema,
   type WorkerWorktreeSummary,
   type WorkerCommand,
@@ -287,6 +288,7 @@ beforeAll(async () => {
     platform: "darwin",
     architecture: "arm64",
     codexVersion: "0.146.1",
+    codexRuntime: unprobedCodexRuntimeReport,
     remoteSurfaces: {
       browser: false,
       vnc: false,
@@ -820,6 +822,7 @@ describe.sequential("server worktree control plane", () => {
         platform: "darwin",
         architecture: "arm64",
         codexVersion: "0.146.1",
+        codexRuntime: unprobedCodexRuntimeReport,
         remoteSurfaces: {
           browser: false,
           vnc: false,

@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
+
 import {
   CANTRIP_WORKTREE_DYNAMIC_TOOLS,
   changedFiles,
+  CodexAppServer,
   codexEndpointFromLine,
   codexModelProviderName,
   codexWorktreeTurnPolicy,
@@ -10,6 +13,8 @@ import {
   executeDynamicWorktreeTool,
   GOAL_CONTINUATION_PROMPT,
   goalShouldContinue,
+  isKnownCodexNotificationMethod,
+  parseCodexRpcMessage,
   parseCodexSkills,
 } from "../src/codex/app-server.js";
 
@@ -168,6 +173,34 @@ describe("codexEndpointFromLine", () => {
   });
 });
 
+describe("parseCodexRpcMessage", () => {
+  it("preserves raw method payloads while rejecting malformed envelopes", () => {
+    expect(
+      parseCodexRpcMessage(
+        JSON.stringify({
+          method: "future/event",
+          params: { nested: { value: 42 } },
+        }),
+      ),
+    ).toEqual({
+      method: "future/event",
+      params: { nested: { value: 42 } },
+    });
+    expect(parseCodexRpcMessage("not json")).toBeNull();
+    expect(parseCodexRpcMessage(JSON.stringify({ method: 42 }))).toBeNull();
+    expect(
+      parseCodexRpcMessage(
+        JSON.stringify({ id: 1, error: { code: "bad", message: "failed" } }),
+      ),
+    ).toBeNull();
+  });
+
+  it("distinguishes generated notifications from future schema drift", () => {
+    expect(isKnownCodexNotificationMethod("turn/plan/updated")).toBe(true);
+    expect(isKnownCodexNotificationMethod("future/event")).toBe(false);
+  });
+});
+
 describe("parseCodexSkills", () => {
   it("returns enabled skills for the requested working directory", () => {
     expect(
@@ -224,5 +257,40 @@ describe("Codex goals", () => {
     expect(goalShouldContinue({ ...goal, status: "paused" })).toBe(false);
     expect(goalShouldContinue({ ...goal, status: "complete" })).toBe(false);
     expect(GOAL_CONTINUATION_PROMPT).toContain("active goal");
+  });
+});
+
+describe("Codex runtime compatibility enforcement", () => {
+  it("returns a clear error before starting an unavailable runtime", async () => {
+    const runtime = new CodexAppServer(
+      "/definitely/missing/codex",
+      "/private/tmp/cantrip-runtime-test",
+      "/private/tmp/cantrip-runtime-test/home",
+      unprobedCodexRuntimeReport,
+    );
+
+    await expect(
+      runtime.runTurn({
+        chatId: "chat-1",
+        clientMessageId: "message-1",
+        cwd: "/private/tmp/cantrip-runtime-test",
+        model: {
+          id: "model-1",
+          routeId: "route-1",
+          name: "gpt-5.6-sol",
+          reasoningEffort: null,
+        },
+        provider: {
+          id: "provider-1",
+          name: "ChatGPT",
+          kind: "chatgpt",
+          baseUrl: "https://api.openai.com/v1",
+          apiKey: null,
+        },
+        prompt: "Inspect the project",
+        skillNames: [],
+        threadId: null,
+      }),
+    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.146\.0/u);
   });
 });

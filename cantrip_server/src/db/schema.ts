@@ -1,5 +1,6 @@
 import type {
   ChatMessageContent,
+  CodexRuntimeReport,
   RemoteSurfaceCapabilities,
   RemoteSurfaceConfiguration,
 } from "@cantrip/protocol";
@@ -14,6 +15,17 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+
+const unprobedCodexRuntimeReport = {
+  adapter: "app-server",
+  compatibility: "missing",
+  version: null,
+  testedRange: ">=0.146.0 <0.147.0",
+  initialize: null,
+  methods: {},
+  features: [],
+  degradedReasons: ["This worker has not reported runtime compatibility."],
+} satisfies CodexRuntimeReport;
 
 export const systemState = pgTable("system_state", {
   key: text("key").primaryKey(),
@@ -134,6 +146,10 @@ export const workers = pgTable("workers", {
   platform: text("platform").notNull(),
   architecture: text("architecture").notNull(),
   codexVersion: text("codex_version"),
+  codexRuntime: jsonb("codex_runtime")
+    .$type<CodexRuntimeReport>()
+    .notNull()
+    .default(unprobedCodexRuntimeReport),
   remoteSurfaceCapabilities: jsonb("remote_surface_capabilities")
     .$type<RemoteSurfaceCapabilities>()
     .notNull()

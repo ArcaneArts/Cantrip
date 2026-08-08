@@ -56,6 +56,11 @@ Use stdio between the worker and Codex because it is local, mature, private to t
 
 The integration boundary will be a `CodexRuntime` interface. The first and primary implementation is `CodexAppServerRuntime`; a fake runtime will support deterministic tests. This boundary protects Cantrip from Codex schema churn and leaves room for future engines without diluting the initial product.
 
+The initial adapter boundary and worker compatibility report are implemented.
+The tested Codex range, live method/feature negotiation, degradation states, and
+schema-update procedure are documented in
+[`CODEX_RUNTIME_COMPATIBILITY.md`](CODEX_RUNTIME_COMPATIBILITY.md).
+
 The worker will:
 
 - detect the installed Codex binary and version;

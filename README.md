@@ -71,6 +71,9 @@ Workers communicate through the server. There is intentionally no app-to-worker 
 
 `@cantrip/protocol` contains the Zod-validated contracts shared by the app, server, and worker. It keeps transport and persisted data boundaries explicit as the three applications evolve independently.
 
+Codex App Server versions and negotiated features follow the explicit policy in
+[`docs/CODEX_RUNTIME_COMPATIBILITY.md`](docs/CODEX_RUNTIME_COMPATIBILITY.md).
+
 ## Current deployment model
 
 The current local mode has one anonymous Cantrip user and no Cantrip sign-in screen. `pnpm dev` or `pnpm devtop` starts the server and a local worker together, so the app connects immediately.

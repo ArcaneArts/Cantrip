@@ -128,12 +128,68 @@ export const serverBootstrapSchema = z.object({
   }),
 });
 
+export const codexRuntimeMethodStateSchema = z.enum([
+  "available",
+  "unavailable",
+  "unknown",
+]);
+
+export const codexRuntimeFeatureStageSchema = z.enum([
+  "beta",
+  "underDevelopment",
+  "stable",
+  "deprecated",
+  "removed",
+]);
+
+export const codexRuntimeFeatureSchema = z.object({
+  name: z.string().min(1),
+  stage: codexRuntimeFeatureStageSchema,
+  enabled: z.boolean(),
+  defaultEnabled: z.boolean(),
+});
+
+export const codexRuntimeReportSchema = z.object({
+  adapter: z.literal("app-server"),
+  compatibility: z.enum(["compatible", "partial", "incompatible", "missing"]),
+  version: z
+    .object({
+      raw: z.string().min(1),
+      semantic: z.string().regex(/^\d+\.\d+\.\d+$/u),
+    })
+    .nullable(),
+  testedRange: z.string().min(1),
+  initialize: z
+    .object({
+      userAgent: z.string().min(1),
+      platformFamily: z.string().min(1),
+      platformOs: z.string().min(1),
+      experimentalApi: z.boolean(),
+    })
+    .nullable(),
+  methods: z.record(z.string().min(1), codexRuntimeMethodStateSchema),
+  features: z.array(codexRuntimeFeatureSchema),
+  degradedReasons: z.array(z.string().min(1)),
+});
+
+export const unprobedCodexRuntimeReport = codexRuntimeReportSchema.parse({
+  adapter: "app-server",
+  compatibility: "missing",
+  version: null,
+  testedRange: ">=0.146.0 <0.147.0",
+  initialize: null,
+  methods: {},
+  features: [],
+  degradedReasons: ["This worker has not reported runtime compatibility."],
+});
+
 export const workerHeartbeatSchema = z.object({
   workerId: z.string().min(1),
   name: z.string().min(1),
   platform: z.string().min(1),
   architecture: z.string().min(1),
   codexVersion: z.string().nullable(),
+  codexRuntime: codexRuntimeReportSchema.default(unprobedCodexRuntimeReport),
   remoteSurfaces: remoteSurfaceCapabilitiesSchema.default(
     defaultRemoteSurfaceCapabilities,
   ),
@@ -1827,6 +1883,14 @@ export type RemoteSurfaceCapabilities = z.infer<
 >;
 export type UserSummary = z.infer<typeof userSummarySchema>;
 export type ServerBootstrap = z.infer<typeof serverBootstrapSchema>;
+export type CodexRuntimeMethodState = z.infer<
+  typeof codexRuntimeMethodStateSchema
+>;
+export type CodexRuntimeFeatureStage = z.infer<
+  typeof codexRuntimeFeatureStageSchema
+>;
+export type CodexRuntimeFeature = z.infer<typeof codexRuntimeFeatureSchema>;
+export type CodexRuntimeReport = z.infer<typeof codexRuntimeReportSchema>;
 export type WorkerHeartbeat = z.infer<typeof workerHeartbeatSchema>;
 export type WorkerSummary = z.infer<typeof workerSummarySchema>;
 export type SkillSummary = z.infer<typeof skillSummarySchema>;

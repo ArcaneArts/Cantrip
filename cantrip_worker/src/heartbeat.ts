@@ -1,6 +1,7 @@
 import os from "node:os";
 
 import {
+  type CodexRuntimeReport,
   type RemoteSurfaceCapabilities,
   type WorkerHeartbeat,
   workerHeartbeatSchema,
@@ -10,7 +11,7 @@ import type { WorkerConfig } from "./config.js";
 
 export function createHeartbeat(
   config: WorkerConfig,
-  codexVersion: string | null,
+  codexRuntime: CodexRuntimeReport,
   startedAt: string,
   remoteSurfaces: RemoteSurfaceCapabilities = {
     browser: false,
@@ -24,7 +25,8 @@ export function createHeartbeat(
     name: config.name,
     platform: os.platform(),
     architecture: os.arch(),
-    codexVersion,
+    codexVersion: codexRuntime.version?.raw ?? null,
+    codexRuntime,
     remoteSurfaces,
     startedAt,
   });
