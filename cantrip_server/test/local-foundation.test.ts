@@ -114,7 +114,11 @@ let releasePlanQuestion: (() => void) | null = null;
 let releaseAgentInteraction: (() => void) | null = null;
 const deliveredAgentInteractionResponses: unknown[] = [];
 const issueComments: string[] = [];
-const issueListRequests: Array<{ limit: number; page: number }> = [];
+const issueListRequests: Array<{
+  kind: "issue" | "pull-request";
+  limit: number;
+  page: number;
+}> = [];
 const closedIssues: Array<{ comment: string | null; number: number }> = [];
 const relayedSurfaceFrames: Array<{
   workerId: string;
@@ -251,8 +255,13 @@ const workerBridge = {
           },
         ];
       case "github.issues.list":
-        issueListRequests.push({ limit: command.limit, page: command.page });
+        issueListRequests.push({
+          kind: command.kind,
+          limit: command.limit,
+          page: command.page,
+        });
         return {
+          kind: command.kind,
           state: command.state,
           total: 1,
           nextPage: command.page + 1,
@@ -1541,16 +1550,27 @@ describe("local server foundation", () => {
         (
           await firstApp.inject({
             method: "GET",
-            url: `/api/projects/${project.id}/github/issues?state=open&page=3&limit=25`,
+            url: `/api/projects/${project.id}/github/issues?kind=pull-request&state=open&page=3&limit=25`,
           })
         ).json(),
       ),
     ).toMatchObject({
+      kind: "pull-request",
       total: 1,
       issues: [{ number: 42, state: "open" }],
       nextPage: 4,
     });
-    expect(issueListRequests).toContainEqual({ page: 3, limit: 25 });
+    expect(issueListRequests).toContainEqual({
+      kind: "pull-request",
+      page: 3,
+      limit: 25,
+    });
+    expect(
+      await firstApp.inject({
+        method: "GET",
+        url: `/api/projects/${project.id}/github/issues?kind=discussion`,
+      }),
+    ).toMatchObject({ statusCode: 400 });
     expect(
       githubIssueDetailSchema.parse(
         (

@@ -593,7 +593,7 @@ export function ProjectSettingsPage({
                             }
                             onSelect={() => onCreateHistory(worktree.id)}
                           >
-                            <History className="size-4" /> History
+                            <History className="size-4" /> Git
                           </DropdownMenuPrimitive.Item>
                           {!worktree.isPrimary ? (
                             <>

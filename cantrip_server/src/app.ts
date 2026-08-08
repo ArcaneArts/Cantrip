@@ -74,6 +74,7 @@ import {
   githubIssueCloseSchema,
   githubIssueCommentCreateSchema,
   githubIssueDetailSchema,
+  githubIssueKindSchema,
   githubIssueListSchema,
   githubIssueStateSchema,
   githubProjectCreateSchema,
@@ -2576,8 +2577,19 @@ export async function buildApp({
 
   app.get<{
     Params: { projectId: string };
-    Querystring: { limit?: string; page?: string; state?: string };
+    Querystring: {
+      kind?: string;
+      limit?: string;
+      page?: string;
+      state?: string;
+    };
   }>("/api/projects/:projectId/github/issues", async (request, reply) => {
+    const kind = githubIssueKindSchema.safeParse(request.query.kind ?? "issue");
+    if (!kind.success) {
+      return reply
+        .code(400)
+        .send({ error: "kind must be issue or pull-request" });
+    }
     const state = githubIssueStateSchema.safeParse(
       request.query.state ?? "open",
     );
@@ -2608,6 +2620,7 @@ export async function buildApp({
       const issues = await bridge.request(context.workerId, {
         type: "github.issues.list",
         repository: context.nameWithOwner,
+        kind: kind.data,
         state: state.data,
         page,
         limit,

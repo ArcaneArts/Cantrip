@@ -115,7 +115,7 @@ function ContextWorktreeItems({ actions }: { actions: ChatWorktreeActions }) {
             className={itemClass}
             onSelect={actions.onOpenHistory}
           >
-            <History className="size-4" /> Open in History
+            <History className="size-4" /> Open in Git
           </ContextMenuPrimitive.Item>
         </ContextMenuPrimitive.SubContent>
       </ContextMenuPrimitive.Portal>
@@ -214,7 +214,7 @@ function DropdownWorktreeItems({ actions }: { actions: ChatWorktreeActions }) {
             className={itemClass}
             onSelect={actions.onOpenHistory}
           >
-            <History className="size-4" /> Open in History
+            <History className="size-4" /> Open in Git
           </DropdownMenuPrimitive.Item>
         </DropdownMenuPrimitive.SubContent>
       </DropdownMenuPrimitive.Portal>

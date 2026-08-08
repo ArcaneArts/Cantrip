@@ -28,7 +28,6 @@ import type {
 } from "@cantrip/protocol";
 import {
   CircleAlert,
-  CircleDot,
   CircleHelp,
   CirclePause,
   FolderGit2,
@@ -608,12 +607,7 @@ function ProjectViewTab({
     opacity: sortable.isDragging ? 0.25 : 1,
     zIndex: sortable.isDragging ? 10 : undefined,
   };
-  const Icon =
-    view.kind === "history"
-      ? GitCommitHorizontal
-      : view.kind === "issues"
-        ? CircleDot
-        : MonitorUp;
+  const Icon = view.kind === "remote-desktop" ? MonitorUp : GitCommitHorizontal;
   return (
     <div
       ref={sortable.setNodeRef}
@@ -714,8 +708,7 @@ function SortableProject({
   onCreateChat,
   onCreateBrowser,
   onCreateExplorer,
-  onCreateHistory,
-  onCreateIssues,
+  onCreateGit,
   onCreateRemoteDesktop,
   onCreateTerminal,
   onOpenSettings,
@@ -734,8 +727,7 @@ function SortableProject({
   onCreateChat(): void;
   onCreateBrowser(): void;
   onCreateExplorer(): void;
-  onCreateHistory(): void;
-  onCreateIssues(): void;
+  onCreateGit(): void;
   onCreateRemoteDesktop(): void;
   onCreateTerminal(): void;
   onOpenSettings(): void;
@@ -842,16 +834,9 @@ function SortableProject({
                 <DropdownMenuPrimitive.Item
                   className={menuItemClass}
                   disabled={creatingView}
-                  onSelect={onCreateHistory}
+                  onSelect={onCreateGit}
                 >
-                  <GitCommitHorizontal className="size-4" /> History
-                </DropdownMenuPrimitive.Item>
-                <DropdownMenuPrimitive.Item
-                  className={menuItemClass}
-                  disabled={creatingView || !project.github}
-                  onSelect={onCreateIssues}
-                >
-                  <CircleDot className="size-4" /> Issues
+                  <GitCommitHorizontal className="size-4" /> Git
                 </DropdownMenuPrimitive.Item>
                 <DropdownMenuPrimitive.Item
                   className={menuItemClass}
@@ -926,8 +911,7 @@ export function ProjectChatList({
   onCreateChat,
   onCreateBrowser,
   onCreateExplorer,
-  onCreateHistory,
-  onCreateIssues,
+  onCreateGit,
   onCreateRemoteDesktop,
   onDeleteChat,
   onDeleteBrowser,
@@ -985,8 +969,7 @@ export function ProjectChatList({
   onCreateChat(projectId: string): void;
   onCreateBrowser(projectId: string): void;
   onCreateExplorer(projectId: string): void;
-  onCreateHistory(projectId: string): void;
-  onCreateIssues(projectId: string): void;
+  onCreateGit(projectId: string): void;
   onCreateRemoteDesktop(projectId: string): void;
   onDeleteChat(chatId: string): void;
   onDeleteBrowser(browserId: string): void;
@@ -1265,8 +1248,7 @@ export function ProjectChatList({
                 onCreateChat={() => onCreateChat(project.id)}
                 onCreateBrowser={() => onCreateBrowser(project.id)}
                 onCreateExplorer={() => onCreateExplorer(project.id)}
-                onCreateHistory={() => onCreateHistory(project.id)}
-                onCreateIssues={() => onCreateIssues(project.id)}
+                onCreateGit={() => onCreateGit(project.id)}
                 onCreateRemoteDesktop={() => onCreateRemoteDesktop(project.id)}
                 onCreateTerminal={() => onCreateTerminal(project.id)}
                 onOpenSettings={() => onOpenProjectSettings(project.id)}
@@ -1456,12 +1438,10 @@ export function ProjectChatList({
             </div>
           ) : draggedProjectView ? (
             <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
-              {draggedProjectView.kind === "history" ? (
-                <GitCommitHorizontal className="size-3.5" />
-              ) : draggedProjectView.kind === "issues" ? (
-                <CircleDot className="size-3.5" />
-              ) : (
+              {draggedProjectView.kind === "remote-desktop" ? (
                 <MonitorUp className="size-3.5" />
+              ) : (
+                <GitCommitHorizontal className="size-3.5" />
               )}
               <span className="truncate">{draggedProjectView.title}</span>
             </div>

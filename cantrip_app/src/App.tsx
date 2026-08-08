@@ -2287,7 +2287,7 @@ export function App() {
       createProjectView(
         projectId,
         kind,
-        kind === "history" ? "History" : "Issues",
+        kind === "remote-desktop" ? "Remote Desktop" : "Git",
         worktreeId,
       ),
     onSuccess: (view) => {
@@ -3137,11 +3137,8 @@ export function App() {
               onCreateExplorer={(projectId) =>
                 newExplorer.mutate({ projectId })
               }
-              onCreateHistory={(projectId) =>
+              onCreateGit={(projectId) =>
                 newProjectView.mutate({ projectId, kind: "history" })
-              }
-              onCreateIssues={(projectId) =>
-                newProjectView.mutate({ projectId, kind: "issues" })
               }
               onCreateRemoteDesktop={(projectId) => {
                 newRemoteDesktop.reset();
@@ -3336,7 +3333,9 @@ export function App() {
                 {!showImporter &&
                 !showSettings &&
                 activeWorktreeTarget &&
-                activeWorktreeId ? (
+                activeWorktreeId &&
+                (!gitHistoryProject ||
+                  gitHistoryHeader?.section === "history") ? (
                   <WorktreeControl
                     currentWorktreeId={activeWorktreeId}
                     worktrees={worktrees.data ?? []}
@@ -3378,7 +3377,8 @@ export function App() {
                     }}
                   />
                 ) : null}
-                {gitHistoryProject && gitHistoryHeader ? (
+                {gitHistoryProject &&
+                gitHistoryHeader?.section === "history" ? (
                   <>
                     <Badge
                       variant="secondary"
@@ -3409,8 +3409,8 @@ export function App() {
                     {gitHistoryProject.github?.nameWithOwner ??
                       gitHistoryProject.name}
                     {gitHistoryHeader ? (
-                      selectedProjectView?.kind === "issues" ? (
-                        ` · ${gitHistoryHeader.issueCount ?? "…"} ${gitHistoryHeader.issueState} issues`
+                      gitHistoryHeader.section !== "history" ? (
+                        ` · ${gitHistoryHeader.issueCount ?? "…"} ${gitHistoryHeader.issueState} ${gitHistoryHeader.section === "prs" ? "PRs" : "issues"}`
                       ) : (
                         <>
                           <span className="sm:hidden">
@@ -3459,7 +3459,7 @@ export function App() {
                 </Button>
               ) : null}
               {gitHistoryProject &&
-              selectedProjectView?.kind === "history" &&
+              gitHistoryHeader?.section === "history" &&
               gitHistoryHeader ? (
                 <>
                   <Button
@@ -3602,7 +3602,7 @@ export function App() {
             </div>
             <div className="ml-auto hidden items-center gap-2 md:flex">
               {gitHistoryProject &&
-              selectedProjectView?.kind === "history" &&
+              gitHistoryHeader?.section === "history" &&
               gitHistoryHeader ? (
                 <>
                   <Button
@@ -3854,6 +3854,7 @@ export function App() {
           )
         ) : gitHistoryProject ? (
           <GitHistoryView
+            key={selectedProjectView?.id}
             chats={chats.data ?? []}
             view={selectedProjectView?.kind ?? "history"}
             standalone={isPopout}
@@ -4202,11 +4203,8 @@ export function App() {
               onCreateExplorer={(projectId) =>
                 newExplorer.mutate({ projectId })
               }
-              onCreateHistory={(projectId) =>
+              onCreateGit={(projectId) =>
                 newProjectView.mutate({ projectId, kind: "history" })
-              }
-              onCreateIssues={(projectId) =>
-                newProjectView.mutate({ projectId, kind: "issues" })
               }
               onCreateRemoteDesktop={(projectId) => {
                 newRemoteDesktop.reset();

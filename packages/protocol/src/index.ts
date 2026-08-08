@@ -657,6 +657,7 @@ export const githubRepositorySchema = z.object({
 export const githubRepositoryListSchema = z.array(githubRepositorySchema);
 
 export const githubIssueStateSchema = z.enum(["open", "closed"]);
+export const githubIssueKindSchema = z.enum(["issue", "pull-request"]);
 
 export const githubIssueLabelSchema = z.object({
   name: z.string().min(1),
@@ -677,6 +678,7 @@ export const githubIssueSummarySchema = z.object({
 });
 
 export const githubIssueListSchema = z.object({
+  kind: githubIssueKindSchema.default("issue"),
   state: githubIssueStateSchema,
   total: z.number().int().nonnegative(),
   issues: z.array(githubIssueSummarySchema),
@@ -2453,6 +2455,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("github.issues.list"),
     repository: githubRepositorySchema.shape.nameWithOwner,
+    kind: githubIssueKindSchema.default("issue"),
     state: githubIssueStateSchema,
     page: z.number().int().positive().default(1),
     limit: z.number().int().min(1).max(100).default(100),
@@ -3018,6 +3021,7 @@ export type ProjectWorktreeSummary = z.infer<
 export type GithubAuthStatus = z.infer<typeof githubAuthStatusSchema>;
 export type GithubRepository = z.infer<typeof githubRepositorySchema>;
 export type GithubIssueState = z.infer<typeof githubIssueStateSchema>;
+export type GithubIssueKind = z.infer<typeof githubIssueKindSchema>;
 export type GithubIssueSummary = z.infer<typeof githubIssueSummarySchema>;
 export type GithubIssueList = z.infer<typeof githubIssueListSchema>;
 export type GithubIssueComment = z.infer<typeof githubIssueCommentSchema>;
