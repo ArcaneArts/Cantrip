@@ -18,6 +18,7 @@ const attachCommand = {
   },
   preferredTransport: "websocket" as const,
   viewport: { width: 1_280, height: 720, devicePixelRatio: 2 },
+  desktopStream: null,
 };
 
 describe("RemoteSurfaceManager", () => {
@@ -26,7 +27,11 @@ describe("RemoteSurfaceManager", () => {
     const attach = vi.fn();
     const detach = vi.fn();
     let emit:
-      | ((attachmentId: string, channel: "frame", payload: Uint8Array) => void)
+      | ((
+          attachmentId: string,
+          channel: "frame",
+          payload: Uint8Array,
+        ) => boolean)
       | undefined;
     const session: RemoteSurfaceSession = {
       configuration: attachCommand.configuration,

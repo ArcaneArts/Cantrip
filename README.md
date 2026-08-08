@@ -203,6 +203,14 @@ keyboard, and clipboard actions. Encoded frames and input travel app ↔ server
 Surface transport as Browser tabs. No listener is exposed on the worker and an
 app never receives a worker address or native desktop-control credential.
 
+Remote Desktop defaults to a best-effort 30 FPS native capture pipeline and
+can target 15, 30, or at most 60 FPS from Settings. Adaptive, data-saver,
+balanced, and sharp quality profiles continuously tune JPEG quality and
+resolution against their bandwidth budget and client render feedback. Capture
+and encoding are pipelined, and clients discard stale undecoded frames instead
+of accumulating input-to-display latency. Workers that cannot load the fast
+native capture module retain the lower-frame-rate compatibility backend.
+
 The worker operating system still enforces local permissions. macOS workers
 need Screen Recording and Accessibility permission for the Node process that
 runs Cantrip. Windows uses its native desktop APIs. Linux workers require a

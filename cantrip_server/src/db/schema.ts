@@ -131,6 +131,10 @@ export const userSettings = pgTable("user_settings", {
     .references(() => users.id, { onDelete: "cascade" }),
   theme: text("theme").notNull().default("system"),
   highContrast: boolean("high_contrast").notNull().default(false),
+  desktopFrameRate: integer("desktop_frame_rate").notNull().default(30),
+  desktopStreamQuality: text("desktop_stream_quality")
+    .notNull()
+    .default("adaptive"),
   defaultModelId: text("default_model_id").references(() => modelProfiles.id, {
     onDelete: "set null",
   }),

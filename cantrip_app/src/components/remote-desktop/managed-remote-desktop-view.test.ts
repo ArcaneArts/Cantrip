@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   desktopPointerCoordinates,
   fitDesktopSize,
+  LatestDesktopFrameBuffer,
 } from "./managed-remote-desktop-view";
 
 describe("managed Remote Desktop geometry", () => {
@@ -23,5 +24,14 @@ describe("managed Remote Desktop geometry", () => {
         { width: 1_920, height: 1_080 },
       ),
     ).toEqual({ x: 960, y: 540 });
+  });
+
+  it("drops stale undecoded frames instead of building latency", () => {
+    const frames = new LatestDesktopFrameBuffer();
+    expect(frames.push(new Uint8Array([1]))).toBe(false);
+    expect(frames.push(new Uint8Array([2]))).toBe(true);
+    expect(frames.push(new Uint8Array([3]))).toBe(true);
+    expect(frames.take()).toEqual(new Uint8Array([3]));
+    expect(frames.hasFrame).toBe(false);
   });
 });

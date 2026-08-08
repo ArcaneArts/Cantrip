@@ -719,7 +719,7 @@ class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     attachmentId: string,
     channel: RemoteSurfaceChannel,
     payload: Uint8Array,
-  ): void {
+  ): boolean {
     if (channel === "control") {
       const state = remoteBrowserServerMessageSchema.safeParse(
         JSON.parse(decoder.decode(payload)),
@@ -728,7 +728,7 @@ class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
         this.#currentUrl = state.data.url;
       }
     }
-    this.#emit(attachmentId, channel, payload);
+    return this.#emit(attachmentId, channel, payload);
   }
 
   private handleCrash(

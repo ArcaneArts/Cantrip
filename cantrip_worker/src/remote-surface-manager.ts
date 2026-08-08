@@ -44,7 +44,7 @@ export interface RemoteSurfaceAdapter {
       attachmentId: string,
       channel: RemoteSurfaceChannel,
       payload: Uint8Array,
-    ) => void,
+    ) => boolean,
   ): Promise<RemoteSurfaceSession>;
 }
 
@@ -246,9 +246,9 @@ export class RemoteSurfaceManager {
     attachmentId: string,
     channel: RemoteSurfaceChannel,
     payload: Uint8Array,
-  ): void {
+  ): boolean {
     const managed = this.#sessions.get(surfaceId);
-    if (!managed?.attachments.has(attachmentId)) return;
+    if (!managed?.attachments.has(attachmentId)) return false;
     const key = `${surfaceId}:${attachmentId}`;
     const sequence = (this.#outboundSequences.get(key) ?? -1) + 1;
     const header: RemoteSurfaceFrameHeader = {
@@ -265,11 +265,13 @@ export class RemoteSurfaceManager {
     );
     if (rtcResult === "sent" || rtcResult === "dropped") {
       this.#outboundSequences.set(key, sequence);
-      return;
+      return rtcResult === "sent";
     }
     if (this.#emitFrame(header, payload)) {
       this.#outboundSequences.set(key, sequence);
+      return true;
     }
+    return false;
   }
 
   private async acceptFrame(

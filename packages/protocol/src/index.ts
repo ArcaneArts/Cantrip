@@ -348,6 +348,8 @@ export const modelProfileListSchema = z.array(modelProfileSummarySchema);
 export const userSettingsSchema = z.object({
   theme: themePreferenceSchema,
   highContrast: z.boolean(),
+  desktopFrameRate: z.union([z.literal(15), z.literal(30), z.literal(60)]),
+  desktopStreamQuality: z.enum(["adaptive", "data-saver", "balanced", "sharp"]),
   defaultModelId: z.string().min(1).nullable(),
 });
 
@@ -694,6 +696,11 @@ export const remoteSurfaceViewportSchema = z.object({
   devicePixelRatio: z.number().min(0.25).max(8),
 });
 
+export const desktopStreamSettingsSchema = z.object({
+  targetFps: z.number().int().min(1).max(60),
+  quality: z.enum(["adaptive", "data-saver", "balanced", "sharp"]),
+});
+
 export const remoteSurfaceConnectionMessageSchema = z.discriminatedUnion(
   "type",
   [
@@ -764,6 +771,14 @@ export const remoteDesktopClientMessageSchema = z.discriminatedUnion("type", [
     operation: z.enum(["copy", "paste-text"]),
     text: z.string().max(1_000_000).default(""),
   }),
+  z.object({
+    type: z.literal("stream-feedback"),
+    intervalMs: z.number().int().min(250).max(10_000),
+    receivedFrames: z.number().int().nonnegative().max(1_000),
+    renderedFrames: z.number().int().nonnegative().max(1_000),
+    droppedFrames: z.number().int().nonnegative().max(1_000),
+    averageDecodeMs: z.number().finite().nonnegative().max(10_000),
+  }),
 ]);
 
 export const remoteDesktopServerMessageSchema = z.discriminatedUnion("type", [
@@ -773,6 +788,16 @@ export const remoteDesktopServerMessageSchema = z.discriminatedUnion("type", [
     height: z.number().int().positive(),
     status: z.enum(["ready", "suspended", "error"]),
     message: z.string().max(2_048).nullable(),
+    stream: z
+      .object({
+        backend: z.enum(["native", "compatibility"]),
+        targetFps: z.number().int().min(1).max(60),
+        observedFps: z.number().finite().nonnegative().max(240),
+        quality: z.number().int().min(1).max(100),
+        encodedWidth: z.number().int().positive(),
+      })
+      .nullable()
+      .default(null),
   }),
   z.object({
     type: z.literal("desktop-clipboard"),
@@ -2045,6 +2070,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     preferredTransport: remoteSurfaceTransportSchema,
     webrtc: remoteSurfaceWebRtcConfigurationSchema.nullable().default(null),
     viewport: remoteSurfaceViewportSchema,
+    desktopStream: desktopStreamSettingsSchema.nullable().default(null),
   }),
   z.object({
     type: z.literal("surface.detach"),
@@ -2353,6 +2379,7 @@ export type RemoteSurfaceCreate = z.infer<typeof remoteSurfaceCreateSchema>;
 export type RemoteSurfaceUpdate = z.infer<typeof remoteSurfaceUpdateSchema>;
 export type RemoteSurfaceSummary = z.infer<typeof remoteSurfaceSummarySchema>;
 export type RemoteSurfaceViewport = z.infer<typeof remoteSurfaceViewportSchema>;
+export type DesktopStreamSettings = z.infer<typeof desktopStreamSettingsSchema>;
 export type RemoteSurfaceConnectionMessage = z.infer<
   typeof remoteSurfaceConnectionMessageSchema
 >;

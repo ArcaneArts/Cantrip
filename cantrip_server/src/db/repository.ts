@@ -61,6 +61,7 @@ import type {
   TerminalSummary,
   TerminalUpdate,
   ThemePreference,
+  UserSettings,
   UserSettingsUpdate,
   UserSummary,
   WorkerHeartbeat,
@@ -719,6 +720,8 @@ export class ServerRepository {
         userId: ownerId,
         theme: "system",
         highContrast: false,
+        desktopFrameRate: 30,
+        desktopStreamQuality: "adaptive",
         defaultModelId: DEFAULT_MODEL_ID,
       })
       .onConflictDoNothing({ target: schema.userSettings.userId });
@@ -774,6 +777,10 @@ export class ServerRepository {
       preferences: {
         theme: settings.theme as ThemePreference,
         highContrast: settings.highContrast,
+        desktopFrameRate:
+          settings.desktopFrameRate as UserSettings["desktopFrameRate"],
+        desktopStreamQuality:
+          settings.desktopStreamQuality as UserSettings["desktopStreamQuality"],
         defaultModelId: settings.defaultModelId,
       },
       providers: providerRows.map(toProviderSummary),
@@ -787,6 +794,24 @@ export class ServerRepository {
             ),
         ),
       ),
+    };
+  }
+
+  async getUserSettings(ownerId: string): Promise<UserSettings> {
+    const rows = await this.database
+      .select()
+      .from(schema.userSettings)
+      .where(eq(schema.userSettings.userId, ownerId))
+      .limit(1);
+    const settings = firstOrThrow(rows, "loading user settings");
+    return {
+      theme: settings.theme as ThemePreference,
+      highContrast: settings.highContrast,
+      desktopFrameRate:
+        settings.desktopFrameRate as UserSettings["desktopFrameRate"],
+      desktopStreamQuality:
+        settings.desktopStreamQuality as UserSettings["desktopStreamQuality"],
+      defaultModelId: settings.defaultModelId,
     };
   }
 

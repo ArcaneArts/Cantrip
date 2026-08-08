@@ -83,9 +83,12 @@ describe("BrowserRemoteSurfaceAdapter", () => {
           },
           preferredTransport: "websocket",
           viewport: { width: 640, height: 480, devicePixelRatio: 1 },
+          desktopStream: null,
         },
-        (attachmentId, channel, payload) =>
-          emissions.push({ attachmentId, channel, payload }),
+        (attachmentId, channel, payload) => {
+          emissions.push({ attachmentId, channel, payload });
+          return true;
+        },
       );
       expect(adapter.session("browser-test")).not.toBeNull();
       try {

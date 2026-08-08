@@ -6,6 +6,7 @@ import type {
   ModelRouteInput,
   ReasoningEffort,
   ThemePreference,
+  UserSettings,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -14,6 +15,7 @@ import {
   ChevronUp,
   Copy,
   Cpu,
+  Gauge,
   KeyRound,
   Loader2,
   LogOut,
@@ -412,6 +414,12 @@ export function SettingsPage() {
       search,
       "appearance theme system light dark high contrast operating system",
     );
+  const desktopStreamingMatches =
+    !search ||
+    matchesSearch(
+      search,
+      "remote desktop streaming frame rate fps quality adaptive latency bandwidth data saver sharp",
+    );
   const providerSectionMatches =
     !search ||
     matchesSearch(
@@ -453,7 +461,11 @@ export function SettingsPage() {
       );
   const providersMatch = providerSectionMatches || visibleProviders.length > 0;
   const modelsMatch = modelSectionMatches || visibleModels.length > 0;
-  const hasSearchResults = appearanceMatches || providersMatch || modelsMatch;
+  const hasSearchResults =
+    appearanceMatches ||
+    desktopStreamingMatches ||
+    providersMatch ||
+    modelsMatch;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -543,6 +555,67 @@ export function SettingsPage() {
                       }
                     />
                     High contrast
+                  </label>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {desktopStreamingMatches ? (
+            <section className="overflow-hidden rounded-lg border bg-card/30">
+              <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <Gauge className="size-4 shrink-0 text-muted-foreground" />
+                  <div>
+                    <h2 className="text-sm font-semibold">Remote Desktop</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Higher rates are best effort; adaptive quality keeps the
+                      newest frame responsive.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <label className="flex items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">Frame rate</span>
+                    <select
+                      className="h-8 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2"
+                      aria-label="Remote Desktop frame rate"
+                      value={settings.data?.preferences.desktopFrameRate ?? 30}
+                      disabled={preferences.isPending}
+                      onChange={(event) =>
+                        preferences.mutate({
+                          desktopFrameRate: Number(event.target.value) as
+                            15 | 30 | 60,
+                        })
+                      }
+                    >
+                      <option value={15}>15 FPS</option>
+                      <option value={30}>30 FPS</option>
+                      <option value={60}>60 FPS max</option>
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">Quality</span>
+                    <select
+                      className="h-8 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2"
+                      aria-label="Remote Desktop stream quality"
+                      value={
+                        settings.data?.preferences.desktopStreamQuality ??
+                        "adaptive"
+                      }
+                      disabled={preferences.isPending}
+                      onChange={(event) =>
+                        preferences.mutate({
+                          desktopStreamQuality: event.target
+                            .value as UserSettings["desktopStreamQuality"],
+                        })
+                      }
+                    >
+                      <option value="adaptive">Adaptive</option>
+                      <option value="data-saver">Data saver</option>
+                      <option value="balanced">Balanced</option>
+                      <option value="sharp">Sharp</option>
+                    </select>
                   </label>
                 </div>
               </div>

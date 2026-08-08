@@ -3046,6 +3046,15 @@ export async function buildApp({
         }
         surfaceId = context.surface.id;
         workerId = context.workerId;
+        const desktopStream =
+          context.surface.kind === "desktop"
+            ? await repository
+                .getUserSettings(LOCAL_USER_ID)
+                .then((preferences) => ({
+                  targetFps: preferences.desktopFrameRate,
+                  quality: preferences.desktopStreamQuality,
+                }))
+            : null;
         if (!bridge.isConnected(workerId)) {
           await repository.setRemoteSurfaceStatus(
             surfaceId,
@@ -3089,6 +3098,7 @@ export async function buildApp({
                 preferredTransport: context.surface.preferredTransport,
                 webrtc: webRtcConfiguration,
                 viewport: viewport.data,
+                desktopStream,
               },
               { timeoutMs: 30_000 },
             ),

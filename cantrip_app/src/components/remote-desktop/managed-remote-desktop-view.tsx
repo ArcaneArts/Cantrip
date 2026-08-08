@@ -41,6 +41,30 @@ interface Size {
   width: number;
 }
 
+export class LatestDesktopFrameBuffer {
+  #pending: Uint8Array | null = null;
+
+  push(frame: Uint8Array): boolean {
+    const replaced = this.#pending !== null;
+    this.#pending = new Uint8Array(frame);
+    return replaced;
+  }
+
+  take(): Uint8Array | null {
+    const frame = this.#pending;
+    this.#pending = null;
+    return frame;
+  }
+
+  clear(): void {
+    this.#pending = null;
+  }
+
+  get hasFrame(): boolean {
+    return this.#pending !== null;
+  }
+}
+
 export function fitDesktopSize(container: Size, desktop: Size): Size {
   const scale = Math.min(
     container.width / desktop.width,
@@ -109,7 +133,6 @@ export function ManagedRemoteDesktopView({
   const lastInboundSequenceRef = useRef(-1);
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const frameChainRef = useRef(Promise.resolve());
   const lastPointerMoveAtRef = useRef(0);
   const viewportRef = useRef({
     width: 1_280,
@@ -133,6 +156,13 @@ export function ManagedRemoteDesktopView({
   const [notice, setNotice] = useState<string | null>(null);
   const [transportState, setTransportState] =
     useState<RemoteSurfaceWebRtcState | null>(null);
+  const [streamStatus, setStreamStatus] = useState<{
+    backend: "native" | "compatibility";
+    encodedWidth: number;
+    observedFps: number;
+    quality: number;
+    targetFps: number;
+  } | null>(null);
 
   const sendFrame = useCallback(
     (
@@ -213,6 +243,7 @@ export function ManagedRemoteDesktopView({
     );
     setError(null);
     setTransportState(null);
+    setStreamStatus(null);
     attachmentIdRef.current = null;
     sequenceRef.current = 0;
     lastInboundSequenceRef.current = -1;
@@ -224,6 +255,13 @@ export function ManagedRemoteDesktopView({
     socket.binaryType = "arraybuffer";
     socketRef.current = socket;
     let disposed = false;
+    let decoding = false;
+    const frameBuffer = new LatestDesktopFrameBuffer();
+    let receivedFrames = 0;
+    let renderedFrames = 0;
+    let droppedFrames = 0;
+    let decodeTimeMs = 0;
+    let feedbackStartedAt = performance.now();
 
     const scheduleReconnect = () => {
       if (disposed || reconnectTimerRef.current) return;
@@ -236,29 +274,59 @@ export function ManagedRemoteDesktopView({
       }, delay);
     };
 
-    const drawFrame = (payload: Uint8Array) => {
-      const bytes = new Uint8Array(payload);
-      frameChainRef.current = frameChainRef.current
-        .then(async () => {
-          const canvas = canvasRef.current;
-          if (!canvas || disposed) return;
-          const bitmap = await createImageBitmap(
-            new Blob([bytes], { type: "image/jpeg" }),
-          );
-          if (disposed) {
-            bitmap.close();
-            return;
-          }
-          canvas.width = bitmap.width;
-          canvas.height = bitmap.height;
-          canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
+    const decodeLatestFrame = async () => {
+      if (decoding || !frameBuffer.hasFrame || disposed) return;
+      const bytes = frameBuffer.take();
+      if (!bytes) return;
+      decoding = true;
+      const startedAt = performance.now();
+      try {
+        const canvas = canvasRef.current;
+        if (!canvas || disposed) return;
+        const bitmap = await createImageBitmap(
+          new Blob([Uint8Array.from(bytes).buffer], { type: "image/jpeg" }),
+        );
+        if (disposed) {
           bitmap.close();
-        })
-        .catch(() => {
-          if (!disposed)
-            setError("The worker sent an unreadable desktop frame.");
-        });
+          return;
+        }
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        renderedFrames += 1;
+        decodeTimeMs += performance.now() - startedAt;
+      } catch {
+        if (!disposed) setError("The worker sent an unreadable desktop frame.");
+      } finally {
+        decoding = false;
+        if (frameBuffer.hasFrame && !disposed) void decodeLatestFrame();
+      }
     };
+
+    const drawFrame = (payload: Uint8Array) => {
+      receivedFrames += 1;
+      if (frameBuffer.push(payload)) droppedFrames += 1;
+      void decodeLatestFrame();
+    };
+
+    const feedbackTimer = setInterval(() => {
+      const now = performance.now();
+      const intervalMs = Math.max(250, Math.round(now - feedbackStartedAt));
+      send({
+        type: "stream-feedback",
+        intervalMs,
+        receivedFrames,
+        renderedFrames,
+        droppedFrames,
+        averageDecodeMs: renderedFrames ? decodeTimeMs / renderedFrames : 0,
+      });
+      receivedFrames = 0;
+      renderedFrames = 0;
+      droppedFrames = 0;
+      decodeTimeMs = 0;
+      feedbackStartedAt = now;
+    }, 2_000);
 
     const handleFrame = (bytes: Uint8Array) => {
       try {
@@ -285,6 +353,7 @@ export function ManagedRemoteDesktopView({
             setDesktopSize(nextSize);
             setRuntimeStatus(message.status);
             setError(message.status === "error" ? message.message : null);
+            setStreamStatus(message.stream);
           } else {
             void navigator.clipboard.writeText(message.text).then(
               () => setNotice("Remote clipboard copied"),
@@ -356,6 +425,8 @@ export function ManagedRemoteDesktopView({
 
     return () => {
       disposed = true;
+      clearInterval(feedbackTimer);
+      frameBuffer.clear();
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
       webRtcRef.current?.close();
@@ -460,6 +531,9 @@ export function ManagedRemoteDesktopView({
           <MonitorUp className="size-4 shrink-0" />
           <span className="truncate">
             {desktopSize.width} × {desktopSize.height} · project worker
+            {streamStatus
+              ? ` · ${Math.round(streamStatus.observedFps)} / ${streamStatus.targetFps} FPS · ${streamStatus.backend}`
+              : ""}
           </span>
         </div>
         <Button

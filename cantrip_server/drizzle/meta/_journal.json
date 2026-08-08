@@ -169,6 +169,13 @@
       "when": 1786213094124,
       "tag": "0023_fair_silver_centurion",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1786213333830,
+      "tag": "0024_last_starfox",
+      "breakpoints": true
     }
   ]
 }

@@ -16,6 +16,7 @@ import {
   chatPauseStateSchema,
   chatPauseUpdateSchema,
   decodeRemoteSurfaceFrame,
+  desktopStreamSettingsSchema,
   encodeRemoteSurfaceFrame,
   remoteBrowserClipboardMessageSchema,
   remoteBrowserClientMessageSchema,
@@ -30,12 +31,14 @@ import {
   queuedPromptSchema,
   projectWorktreeSummarySchema,
   remoteDesktopCreateSchema,
+  remoteDesktopClientMessageSchema,
   remoteDesktopSummarySchema,
   serverBootstrapSchema,
   systemHealthSchema,
   terminalClientMessageSchema,
   terminalServerMessageSchema,
   unprobedCodexRuntimeReport,
+  userSettingsSchema,
   workerCommandSchema,
   worktreeInventorySchema,
   workerEventEnvelopeSchema,
@@ -545,6 +548,28 @@ describe("Cantrip protocol", () => {
     expect(
       workerCommandSchema.parse({ type: "surface.desktop.probe" }).type,
     ).toBe("surface.desktop.probe");
+    expect(
+      desktopStreamSettingsSchema.parse({ targetFps: 60, quality: "sharp" }),
+    ).toEqual({ targetFps: 60, quality: "sharp" });
+    expect(
+      remoteDesktopClientMessageSchema.parse({
+        type: "stream-feedback",
+        intervalMs: 2_000,
+        receivedFrames: 55,
+        renderedFrames: 54,
+        droppedFrames: 1,
+        averageDecodeMs: 4.2,
+      }).type,
+    ).toBe("stream-feedback");
+    expect(
+      userSettingsSchema.parse({
+        theme: "system",
+        highContrast: false,
+        desktopFrameRate: 30,
+        desktopStreamQuality: "adaptive",
+        defaultModelId: null,
+      }),
+    ).toMatchObject({ desktopFrameRate: 30 });
   });
 
   it("rejects an unhealthy server payload", () => {
