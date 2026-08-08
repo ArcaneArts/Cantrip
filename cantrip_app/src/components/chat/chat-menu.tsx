@@ -1,6 +1,20 @@
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { CopyPlus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import type { ProjectWorktreeSummary } from "@cantrip/protocol";
+import {
+  CopyPlus,
+  FolderTree,
+  GitBranch,
+  GitFork,
+  History,
+  MoreHorizontal,
+  Pencil,
+  Pin,
+  PinOff,
+  Plus,
+  SquareTerminal,
+  Trash2,
+} from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -10,6 +24,20 @@ interface Actions {
   onDelete(): void;
   onDuplicate(): void;
   onRename(): void;
+  worktree?: ChatWorktreeActions;
+}
+
+export interface ChatWorktreeActions {
+  currentWorktreeId: string;
+  disabled?: boolean;
+  mode: "agent-managed" | "pinned";
+  onCreate(): void;
+  onOpenExplorer(): void;
+  onOpenHistory(): void;
+  onOpenTerminal(): void;
+  onSelect(worktreeId: string): void;
+  onSetMode(mode: "agent-managed" | "pinned"): void;
+  worktrees: ProjectWorktreeSummary[];
 }
 
 const contentClass =
@@ -17,7 +45,85 @@ const contentClass =
 const itemClass =
   "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus:bg-accent";
 
-function ContextItems({ onDelete, onDuplicate, onRename }: Actions) {
+function ContextWorktreeItems({ actions }: { actions: ChatWorktreeActions }) {
+  return (
+    <ContextMenuPrimitive.Sub>
+      <ContextMenuPrimitive.SubTrigger className={itemClass}>
+        <GitFork className="size-4" /> Worktree
+        <span className="ml-auto text-muted-foreground">›</span>
+      </ContextMenuPrimitive.SubTrigger>
+      <ContextMenuPrimitive.Portal>
+        <ContextMenuPrimitive.SubContent
+          sideOffset={4}
+          className={contentClass}
+        >
+          {actions.worktrees.map((worktree) => (
+            <ContextMenuPrimitive.Item
+              key={worktree.id}
+              className={itemClass}
+              disabled={actions.disabled || worktree.lifecycleState !== "ready"}
+              onSelect={() => actions.onSelect(worktree.id)}
+            >
+              {worktree.isPrimary ? (
+                <GitBranch className="size-4" />
+              ) : (
+                <GitFork className="size-4 text-violet-500" />
+              )}
+              <span className="min-w-0 flex-1 truncate">{worktree.name}</span>
+              {worktree.id === actions.currentWorktreeId ? "✓" : null}
+            </ContextMenuPrimitive.Item>
+          ))}
+          <ContextMenuPrimitive.Item
+            className={itemClass}
+            disabled={actions.disabled}
+            onSelect={actions.onCreate}
+          >
+            <Plus className="size-4" /> Create worktree…
+          </ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Separator className="my-1 h-px bg-border" />
+          <ContextMenuPrimitive.Item
+            className={itemClass}
+            disabled={actions.disabled}
+            onSelect={() =>
+              actions.onSetMode(
+                actions.mode === "pinned" ? "agent-managed" : "pinned",
+              )
+            }
+          >
+            {actions.mode === "pinned" ? (
+              <PinOff className="size-4" />
+            ) : (
+              <Pin className="size-4" />
+            )}
+            {actions.mode === "pinned"
+              ? "Return to Agent managed"
+              : "Pin to current"}
+          </ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Item
+            className={itemClass}
+            onSelect={actions.onOpenTerminal}
+          >
+            <SquareTerminal className="size-4" /> Open Terminal here
+          </ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Item
+            className={itemClass}
+            onSelect={actions.onOpenExplorer}
+          >
+            <FolderTree className="size-4" /> Open Explorer here
+          </ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Item
+            className={itemClass}
+            onSelect={actions.onOpenHistory}
+          >
+            <History className="size-4" /> Open in History
+          </ContextMenuPrimitive.Item>
+        </ContextMenuPrimitive.SubContent>
+      </ContextMenuPrimitive.Portal>
+    </ContextMenuPrimitive.Sub>
+  );
+}
+
+function ContextItems({ onDelete, onDuplicate, onRename, worktree }: Actions) {
   return (
     <>
       <ContextMenuPrimitive.Item className={itemClass} onSelect={onRename}>
@@ -26,6 +132,7 @@ function ContextItems({ onDelete, onDuplicate, onRename }: Actions) {
       <ContextMenuPrimitive.Item className={itemClass} onSelect={onDuplicate}>
         <CopyPlus className="size-4" /> Duplicate
       </ContextMenuPrimitive.Item>
+      {worktree ? <ContextWorktreeItems actions={worktree} /> : null}
       <ContextMenuPrimitive.Separator className="my-1 h-px bg-border" />
       <ContextMenuPrimitive.Item
         className={cn(itemClass, "text-destructive focus:bg-destructive/10")}
@@ -37,7 +144,85 @@ function ContextItems({ onDelete, onDuplicate, onRename }: Actions) {
   );
 }
 
-function DropdownItems({ onDelete, onDuplicate, onRename }: Actions) {
+function DropdownWorktreeItems({ actions }: { actions: ChatWorktreeActions }) {
+  return (
+    <DropdownMenuPrimitive.Sub>
+      <DropdownMenuPrimitive.SubTrigger className={itemClass}>
+        <GitFork className="size-4" /> Worktree
+        <span className="ml-auto text-muted-foreground">›</span>
+      </DropdownMenuPrimitive.SubTrigger>
+      <DropdownMenuPrimitive.Portal>
+        <DropdownMenuPrimitive.SubContent
+          sideOffset={4}
+          className={contentClass}
+        >
+          {actions.worktrees.map((worktree) => (
+            <DropdownMenuPrimitive.Item
+              key={worktree.id}
+              className={itemClass}
+              disabled={actions.disabled || worktree.lifecycleState !== "ready"}
+              onSelect={() => actions.onSelect(worktree.id)}
+            >
+              {worktree.isPrimary ? (
+                <GitBranch className="size-4" />
+              ) : (
+                <GitFork className="size-4 text-violet-500" />
+              )}
+              <span className="min-w-0 flex-1 truncate">{worktree.name}</span>
+              {worktree.id === actions.currentWorktreeId ? "✓" : null}
+            </DropdownMenuPrimitive.Item>
+          ))}
+          <DropdownMenuPrimitive.Item
+            className={itemClass}
+            disabled={actions.disabled}
+            onSelect={actions.onCreate}
+          >
+            <Plus className="size-4" /> Create worktree…
+          </DropdownMenuPrimitive.Item>
+          <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+          <DropdownMenuPrimitive.Item
+            className={itemClass}
+            disabled={actions.disabled}
+            onSelect={() =>
+              actions.onSetMode(
+                actions.mode === "pinned" ? "agent-managed" : "pinned",
+              )
+            }
+          >
+            {actions.mode === "pinned" ? (
+              <PinOff className="size-4" />
+            ) : (
+              <Pin className="size-4" />
+            )}
+            {actions.mode === "pinned"
+              ? "Return to Agent managed"
+              : "Pin to current"}
+          </DropdownMenuPrimitive.Item>
+          <DropdownMenuPrimitive.Item
+            className={itemClass}
+            onSelect={actions.onOpenTerminal}
+          >
+            <SquareTerminal className="size-4" /> Open Terminal here
+          </DropdownMenuPrimitive.Item>
+          <DropdownMenuPrimitive.Item
+            className={itemClass}
+            onSelect={actions.onOpenExplorer}
+          >
+            <FolderTree className="size-4" /> Open Explorer here
+          </DropdownMenuPrimitive.Item>
+          <DropdownMenuPrimitive.Item
+            className={itemClass}
+            onSelect={actions.onOpenHistory}
+          >
+            <History className="size-4" /> Open in History
+          </DropdownMenuPrimitive.Item>
+        </DropdownMenuPrimitive.SubContent>
+      </DropdownMenuPrimitive.Portal>
+    </DropdownMenuPrimitive.Sub>
+  );
+}
+
+function DropdownItems({ onDelete, onDuplicate, onRename, worktree }: Actions) {
   return (
     <>
       <DropdownMenuPrimitive.Item className={itemClass} onSelect={onRename}>
@@ -46,6 +231,7 @@ function DropdownItems({ onDelete, onDuplicate, onRename }: Actions) {
       <DropdownMenuPrimitive.Item className={itemClass} onSelect={onDuplicate}>
         <CopyPlus className="size-4" /> Duplicate
       </DropdownMenuPrimitive.Item>
+      {worktree ? <DropdownWorktreeItems actions={worktree} /> : null}
       <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
       <DropdownMenuPrimitive.Item
         className={cn(itemClass, "text-destructive focus:bg-destructive/10")}
