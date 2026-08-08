@@ -180,6 +180,45 @@ app-to-server and server-to-worker transport does not make an independently
 exposed VNC server safe. TLS/VenCrypt endpoints and automatic operating-system
 screen-sharing provisioning are not implemented yet.
 
+### Remote Surface limits and troubleshooting
+
+The current local worker admits at most four live Remote Surface sessions and
+four simultaneous client attachments per surface. Main and popout windows each
+count as an attachment. WebSocket queues are bounded at 8 MiB: disposable
+Browser visual frames may be dropped under pressure, while congestion on a
+reliable input/RFB channel deliberately resets the connection so the client can
+reconnect instead of continuing with a corrupted byte stream. Frame payloads
+are capped at 4 MiB by the shared protocol.
+
+- **Worker offline:** the surface reports a recoverable error and retries its
+  server connection. Start or reconnect the assigned worker; the durable tab
+  remains on the server.
+- **Chromium missing:** install Chrome, Chromium, Brave, Edge, or Vivaldi on the
+  worker, or set `CANTRIP_CHROMIUM_EXECUTABLE` to a worker-local executable.
+  Restart the worker after changing it.
+- **TURN unavailable:** relay-only WebRTC negotiation times out and the same
+  session continues over WebSocket. Check the TURN URLs, REST shared secret,
+  firewall, and TLS certificate if WebRTC is expected; do not add host/direct
+  ICE candidates as a workaround.
+- **VNC unreachable:** verify the host and port from the worker machine rather
+  than the app device. Confirm the endpoint speaks RFB 3.8 and uses either None
+  or classic VNC Password security. TLS/VenCrypt-only servers are not yet
+  supported.
+- **VNC authentication failed:** delete and recreate the Remote Desktop tab to
+  submit a corrected password. Passwords are intentionally not readable or
+  editable through ordinary APIs after creation.
+
+Remote Surface logs contain lifecycle and validation errors only. Frame bytes,
+screenshots, keystrokes, clipboard contents, browser cookies, and VNC passwords
+must never be logged.
+
+For deterministic manual QA, run `pnpm qa:remote-surfaces`. It starts a local
+interactive website on `127.0.0.1:4391` and a no-password RFB 3.8 fixture on
+`127.0.0.1:5909`. Add those endpoints as Browser and Remote Desktop tabs on a
+local worker. Visiting `http://127.0.0.1:4391/vnc/drop` drops active fixture RFB
+connections without stopping the listener, which verifies automatic reconnect.
+The fixture is for local development only and binds exclusively to loopback.
+
 ## Desktop development with `pnpm devtop`
 
 ```shell

@@ -99,11 +99,13 @@ export class WorkerConnection {
     payload: Uint8Array,
   ): boolean {
     const socket = this.#socket;
-    if (
-      !socket ||
-      socket.readyState !== WebSocket.OPEN ||
-      socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES
-    ) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) {
+      if (header.channel !== "frame" && header.channel !== "cursor") {
+        socket.close(1013, "Remote Surface worker channel is congested");
+      }
       return false;
     }
     try {

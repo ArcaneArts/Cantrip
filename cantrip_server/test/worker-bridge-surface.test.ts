@@ -11,9 +11,11 @@ class TestWorkerSocket {
   bufferedAmount = 0;
   readyState = 1;
   readonly sent: Array<string | Uint8Array> = [];
+  readonly closes: Array<{ code?: number; reason?: string }> = [];
   readonly #listeners = new Map<string, Array<(...args: never[]) => void>>();
 
-  close(): void {
+  close(code?: number, reason?: string): void {
+    this.closes.push({ code, reason });
     this.readyState = 3;
     this.emit("close");
   }
@@ -76,6 +78,35 @@ describe("WorkerBridge Remote Surface transport", () => {
     unsubscribe();
     socket.close();
     expect(disconnected).toHaveBeenCalledOnce();
+    bridge.close();
+  });
+
+  it("drops disposable frames but resets a congested reliable worker channel", () => {
+    const bridge = new WorkerBridge();
+    const socket = new TestWorkerSocket();
+    bridge.attach("worker-1", socket);
+    socket.bufferedAmount = 9 * 1_024 * 1_024;
+
+    expect(
+      bridge.sendSurfaceFrame(
+        "worker-1",
+        { ...header, channel: "frame" },
+        new Uint8Array([1]),
+      ),
+    ).toBe(false);
+    expect(socket.closes).toEqual([]);
+
+    expect(
+      bridge.sendSurfaceFrame(
+        "worker-1",
+        { ...header, channel: "rfb" },
+        new Uint8Array([2]),
+      ),
+    ).toBe(false);
+    expect(socket.closes).toContainEqual({
+      code: 1013,
+      reason: "Remote Surface worker channel is congested",
+    });
     bridge.close();
   });
 });
