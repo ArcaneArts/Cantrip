@@ -608,6 +608,11 @@ function toRemoteDesktopSummary(
     title: view.title,
     position: view.position,
     workerId: surface.workerId,
+    target: surface.configuration.target ?? {
+      kind: "monitor",
+      id: null,
+      name: null,
+    },
     status: surface.status as RemoteDesktopSummary["status"],
     lastError: surface.lastError,
     createdAt: toISOString(view.createdAt),
@@ -3754,6 +3759,7 @@ export class ServerRepository {
         preferredTransport: "webrtc",
         configuration: {
           kind: "desktop",
+          target: { kind: "monitor", id: null, name: null },
         },
       });
     });

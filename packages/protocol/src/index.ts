@@ -931,12 +931,64 @@ export const browserListSchema = z.array(browserSummarySchema);
 
 export const remoteDesktopCreateSchema = z.object({}).strict();
 
+export const remoteDesktopTargetSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("monitor"),
+    id: z.string().min(1).max(200).nullable().default(null),
+    name: z.string().trim().min(1).max(500).nullable().default(null),
+  }),
+  z.object({
+    kind: z.literal("window"),
+    id: z.string().min(1).max(200).nullable().default(null),
+    application: z.string().trim().min(1).max(500),
+    title: z.string().trim().min(1).max(1_000).nullable().default(null),
+  }),
+]);
+
+export const remoteDesktopMonitorSchema = z.object({
+  kind: z.literal("monitor"),
+  id: z.string().min(1).max(200),
+  name: z.string().trim().min(1).max(500),
+  x: z.number().int(),
+  y: z.number().int(),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  primary: z.boolean(),
+});
+
+export const remoteDesktopWindowSchema = z.object({
+  kind: z.literal("window"),
+  id: z.string().min(1).max(200),
+  application: z.string().trim().min(1).max(500),
+  title: z.string().trim().min(1).max(1_000),
+  x: z.number().int(),
+  y: z.number().int(),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  minimized: z.boolean(),
+  focused: z.boolean(),
+});
+
+export const remoteDesktopTargetInventorySchema = z.object({
+  monitors: z.array(remoteDesktopMonitorSchema).max(64),
+  windows: z.array(remoteDesktopWindowSchema).max(2_000),
+});
+
+export const remoteDesktopUpdateSchema = z.object({
+  target: remoteDesktopTargetSchema,
+});
+
 export const remoteDesktopSummarySchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
   title: z.string().min(1),
   position: z.number().int().nonnegative(),
   workerId: z.string().min(1),
+  target: remoteDesktopTargetSchema.default({
+    kind: "monitor",
+    id: null,
+    name: null,
+  }),
   status: remoteSurfaceStatusSchema,
   lastError: z.string().nullable(),
   createdAt: z.string().datetime(),
@@ -953,6 +1005,11 @@ export const remoteSurfaceConfigurationSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("desktop"),
+    target: remoteDesktopTargetSchema.default({
+      kind: "monitor",
+      id: null,
+      name: null,
+    }),
   }),
 ]);
 
@@ -1069,6 +1126,7 @@ export const remoteDesktopClientMessageSchema = z.discriminatedUnion("type", [
     modifiers: z.number().int().nonnegative().max(15).default(0),
   }),
   z.object({ type: z.literal("focus") }),
+  z.object({ type: z.literal("refresh-targets") }),
   z.object({
     type: z.literal("clipboard"),
     operation: z.enum(["copy", "paste-text"]),
@@ -1089,7 +1147,7 @@ export const remoteDesktopServerMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("desktop-state"),
     width: z.number().int().positive(),
     height: z.number().int().positive(),
-    status: z.enum(["ready", "suspended", "error"]),
+    status: z.enum(["ready", "launching", "suspended", "error"]),
     message: z.string().max(2_048).nullable(),
     stream: z
       .object({
@@ -1101,6 +1159,14 @@ export const remoteDesktopServerMessageSchema = z.discriminatedUnion("type", [
       })
       .nullable()
       .default(null),
+  }),
+  z.object({
+    type: z.literal("desktop-targets"),
+    inventory: remoteDesktopTargetInventorySchema,
+    requested: remoteDesktopTargetSchema,
+    active: remoteDesktopTargetSchema,
+    launchingApplication: z.string().trim().min(1).max(500).nullable(),
+    message: z.string().max(2_048).nullable(),
   }),
   z.object({
     type: z.literal("desktop-clipboard"),
@@ -2731,6 +2797,11 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     attachmentId: z.string().min(1),
   }),
   z.object({
+    type: z.literal("surface.configure"),
+    surfaceId: z.string().min(1),
+    configuration: remoteSurfaceConfigurationSchema,
+  }),
+  z.object({
     type: z.literal("surface.suspend"),
     surfaceId: z.string().min(1),
   }),
@@ -3086,6 +3157,13 @@ export type BrowserCreate = z.infer<typeof browserCreateSchema>;
 export type BrowserUpdate = z.infer<typeof browserUpdateSchema>;
 export type BrowserSummary = z.infer<typeof browserSummarySchema>;
 export type RemoteDesktopCreate = z.infer<typeof remoteDesktopCreateSchema>;
+export type RemoteDesktopTarget = z.infer<typeof remoteDesktopTargetSchema>;
+export type RemoteDesktopMonitor = z.infer<typeof remoteDesktopMonitorSchema>;
+export type RemoteDesktopWindow = z.infer<typeof remoteDesktopWindowSchema>;
+export type RemoteDesktopTargetInventory = z.infer<
+  typeof remoteDesktopTargetInventorySchema
+>;
+export type RemoteDesktopUpdate = z.infer<typeof remoteDesktopUpdateSchema>;
 export type RemoteDesktopSummary = z.infer<typeof remoteDesktopSummarySchema>;
 export type RemoteSurfaceConfiguration = z.infer<
   typeof remoteSurfaceConfigurationSchema

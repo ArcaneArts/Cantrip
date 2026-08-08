@@ -362,6 +362,12 @@ async function start(): Promise<void> {
       case "surface.detach":
         await remoteSurfaces.detach(command.surfaceId, command.attachmentId);
         return { accepted: true };
+      case "surface.configure":
+        await remoteSurfaces.configure(
+          command.surfaceId,
+          command.configuration,
+        );
+        return { accepted: true };
       case "surface.suspend":
         await remoteSurfaces.suspend(command.surfaceId);
         return { accepted: true };

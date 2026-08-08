@@ -82,8 +82,20 @@ renderer and no hidden platform-specific fallback.
 Creating a Remote Desktop supplies no host, port, password, display name, or
 worker selection. The server resolves the project's primary source worker and
 asks that worker to probe native display capture before it persists the tab.
-The durable configuration is only `{ kind: "desktop" }`; the worker is the
-authority for the display and input backend.
+The durable configuration contains the desktop kind and a safe capture-target
+identity; the worker remains the authority for display discovery, capture,
+application launch, and input. Target identity stores monitor ID/name or
+window ID/application/title, never an executable command supplied by the app.
+
+An attached client receives a bounded inventory of monitors and capturable
+windows through the existing control channel. Selecting one persists the tab
+configuration on the server, which forwards live reconfiguration to the
+worker. Native IDs are preferred but treated as ephemeral: monitor name and
+application/window title restore a saved target after reconnect. If a saved
+application is absent, the worker uses its platform launcher and polls for the
+matching window while publishing a launch state. Missing or failed targets
+fall back to the primary or first monitor while retaining the requested target
+for the next refresh or reconnect.
 
 The worker uses a cross-platform native desktop-control library to capture
 compressed frames and perform pointer, keyboard, and explicit clipboard
@@ -100,6 +112,8 @@ quality preferences into each authorized attachment. The worker adapts JPEG
 quality and encoded width from payload size, transport pressure, and bounded
 client render feedback. The app retains only the newest undecoded frame, so a
 slow decoder drops visual history instead of increasing control latency.
+Pointer input remains target-relative in the app protocol; the worker adds the
+selected monitor or window origin immediately before invoking native input.
 
 The operating system remains the final authority. macOS requires Screen
 Recording and Accessibility grants for the worker process; Windows uses native

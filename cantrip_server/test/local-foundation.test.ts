@@ -628,6 +628,7 @@ const workerBridge = {
         surfaceAttachCommands.push(command);
         return { accepted: true, transport: "websocket" };
       case "surface.detach":
+      case "surface.configure":
       case "surface.suspend":
       case "surface.resume":
       case "surface.close":
@@ -2700,6 +2701,7 @@ describe("local server foundation", () => {
       projectId: project.id,
       workerId: "test-worker",
       status: "idle",
+      target: { kind: "monitor", id: null, name: null },
     });
     expect(JSON.stringify(remoteDesktop)).not.toContain("password");
     expect(
@@ -2712,6 +2714,28 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toContainEqual(expect.objectContaining({ id: remoteDesktop.id }));
+    const targetedDesktop = remoteDesktopSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/remote-desktops/${remoteDesktop.id}`,
+          payload: {
+            target: {
+              kind: "window",
+              id: "window-42",
+              application: "Code",
+              title: "Cantrip",
+            },
+          },
+        })
+      ).json(),
+    );
+    expect(targetedDesktop.target).toEqual({
+      kind: "window",
+      id: "window-42",
+      application: "Code",
+      title: "Cantrip",
+    });
     expect(
       projectViewListSchema
         .parse(
@@ -2745,6 +2769,10 @@ describe("local server foundation", () => {
     expect(surfaceAttachCommands.at(-1)?.desktopStream).toEqual({
       targetFps: 60,
       quality: "balanced",
+    });
+    expect(surfaceAttachCommands.at(-1)?.configuration).toMatchObject({
+      kind: "desktop",
+      target: { kind: "window", application: "Code", title: "Cantrip" },
     });
     desktopSocket.terminate();
     expect(

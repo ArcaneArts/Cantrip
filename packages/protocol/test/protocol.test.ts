@@ -40,6 +40,8 @@ import {
   remoteDesktopCreateSchema,
   remoteDesktopClientMessageSchema,
   remoteDesktopSummarySchema,
+  remoteDesktopTargetInventorySchema,
+  remoteDesktopUpdateSchema,
   serverBootstrapSchema,
   systemHealthSchema,
   terminalClientMessageSchema,
@@ -703,6 +705,7 @@ describe("Cantrip protocol", () => {
       title: "Desk",
       position: 2,
       workerId: "worker-1",
+      target: { kind: "monitor", id: null, name: null },
       status: "offline",
       lastError: null,
       createdAt: "2026-08-08T12:00:00.000Z",
@@ -710,6 +713,46 @@ describe("Cantrip protocol", () => {
     });
     expect(summary).not.toHaveProperty("password");
     expect(summary).not.toHaveProperty("secretRef");
+    expect(
+      remoteDesktopUpdateSchema.parse({
+        target: {
+          kind: "window",
+          id: "window-42",
+          application: "Code",
+          title: "Cantrip",
+        },
+      }).target,
+    ).toMatchObject({ kind: "window", application: "Code" });
+    expect(
+      remoteDesktopTargetInventorySchema.parse({
+        monitors: [
+          {
+            kind: "monitor",
+            id: "1",
+            name: "Studio Display",
+            x: 0,
+            y: 0,
+            width: 2560,
+            height: 1440,
+            primary: true,
+          },
+        ],
+        windows: [
+          {
+            kind: "window",
+            id: "42",
+            application: "Code",
+            title: "Cantrip",
+            x: 20,
+            y: 30,
+            width: 1200,
+            height: 800,
+            minimized: false,
+            focused: true,
+          },
+        ],
+      }).windows,
+    ).toHaveLength(1);
     expect(
       workerCommandSchema.parse({ type: "surface.desktop.probe" }).type,
     ).toBe("surface.desktop.probe");
@@ -726,6 +769,23 @@ describe("Cantrip protocol", () => {
         averageDecodeMs: 4.2,
       }).type,
     ).toBe("stream-feedback");
+    expect(
+      remoteDesktopClientMessageSchema.parse({ type: "refresh-targets" }).type,
+    ).toBe("refresh-targets");
+    expect(
+      workerCommandSchema.parse({
+        type: "surface.configure",
+        surfaceId: "desktop-1",
+        configuration: {
+          kind: "desktop",
+          target: {
+            kind: "monitor",
+            id: "1",
+            name: "Studio Display",
+          },
+        },
+      }).type,
+    ).toBe("surface.configure");
     expect(
       userSettingsSchema.parse({
         theme: "system",
