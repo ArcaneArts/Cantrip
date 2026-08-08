@@ -1,4 +1,5 @@
 import type { ChatMessageContent } from "@cantrip/protocol";
+import { sql } from "drizzle-orm";
 import {
   bigserial,
   boolean,
@@ -150,6 +151,7 @@ export const projects = pgTable(
     position: integer("position").notNull().default(0),
     setupStatus: text("setup_status").notNull().default("ready"),
     setupError: text("setup_error"),
+    worktreePolicy: text("worktree_policy").notNull().default("agent-managed"),
     githubRepositoryId: text("github_repository_id"),
     githubRepositoryFullName: text("github_repository_full_name"),
     githubRepositoryUrl: text("github_repository_url"),
@@ -193,6 +195,50 @@ export const projectSources = pgTable(
   ],
 );
 
+export const projectWorktrees = pgTable(
+  "project_worktrees",
+  {
+    id: text("id").primaryKey(),
+    projectSourceId: text("project_source_id")
+      .notNull()
+      .references(() => projectSources.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    absolutePath: text("absolute_path").notNull(),
+    displayPath: text("display_path").notNull(),
+    isPrimary: boolean("is_primary").notNull().default(false),
+    isDefault: boolean("is_default").notNull().default(false),
+    origin: text("origin").notNull(),
+    lifecycleState: text("lifecycle_state").notNull().default("creating"),
+    branch: text("branch"),
+    head: text("head"),
+    detached: boolean("detached").notNull().default(false),
+    locked: boolean("locked").notNull().default(false),
+    lockReason: text("lock_reason"),
+    lastScannedAt: timestamp("last_scanned_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("project_worktrees_source_path_unique").on(
+      table.projectSourceId,
+      table.absolutePath,
+    ),
+    uniqueIndex("project_worktrees_source_primary_unique")
+      .on(table.projectSourceId)
+      .where(sql`${table.isPrimary} = true`),
+    uniqueIndex("project_worktrees_source_default_unique")
+      .on(table.projectSourceId)
+      .where(sql`${table.isDefault} = true`),
+  ],
+);
+
 export const chats = pgTable("chats", {
   id: text("id").primaryKey(),
   projectId: text("project_id")
@@ -204,6 +250,10 @@ export const chats = pgTable("chats", {
   activeWorkerId: text("active_worker_id").references(() => workers.id, {
     onDelete: "set null",
   }),
+  activeWorktreeId: text("active_worktree_id")
+    .notNull()
+    .references(() => projectWorktrees.id, { onDelete: "restrict" }),
+  worktreeMode: text("worktree_mode").notNull().default("agent-managed"),
   modelId: text("model_id").references(() => modelProfiles.id, {
     onDelete: "restrict",
   }),
@@ -226,6 +276,9 @@ export const terminals = pgTable("terminals", {
   activeWorkerId: text("active_worker_id")
     .notNull()
     .references(() => workers.id, { onDelete: "cascade" }),
+  worktreeId: text("worktree_id")
+    .notNull()
+    .references(() => projectWorktrees.id, { onDelete: "restrict" }),
   linkedChatId: text("linked_chat_id")
     .unique()
     .references(() => chats.id, { onDelete: "cascade" }),
@@ -247,6 +300,9 @@ export const explorers = pgTable("explorers", {
   activeWorkerId: text("active_worker_id")
     .notNull()
     .references(() => workers.id, { onDelete: "cascade" }),
+  worktreeId: text("worktree_id")
+    .notNull()
+    .references(() => projectWorktrees.id, { onDelete: "restrict" }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -278,6 +334,9 @@ export const projectViews = pgTable("project_views", {
     .references(() => projects.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   kind: text("kind").notNull(),
+  worktreeId: text("worktree_id").references(() => projectWorktrees.id, {
+    onDelete: "restrict",
+  }),
   position: integer("position").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
@@ -297,6 +356,9 @@ export const chatRuntimeSessions = pgTable(
     workerId: text("worker_id")
       .notNull()
       .references(() => workers.id, { onDelete: "cascade" }),
+    worktreeId: text("worktree_id")
+      .notNull()
+      .references(() => projectWorktrees.id, { onDelete: "cascade" }),
     codexThreadId: text("codex_thread_id"),
     modelRouteId: text("model_route_id").references(() => modelRoutes.id, {
       onDelete: "set null",
@@ -310,10 +372,53 @@ export const chatRuntimeSessions = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("chat_runtime_sessions_chat_worker_unique").on(
+    uniqueIndex("chat_runtime_sessions_chat_worker_worktree_unique").on(
       table.chatId,
       table.workerId,
+      table.worktreeId,
     ),
+  ],
+);
+
+export const chatExecutionLanes = pgTable(
+  "chat_execution_lanes",
+  {
+    id: text("id").primaryKey(),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    worktreeId: text("worktree_id")
+      .notNull()
+      .references(() => projectWorktrees.id, { onDelete: "restrict" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    acquiringActor: text("acquiring_actor").notNull(),
+    purpose: text("purpose"),
+    state: text("state").notNull(),
+    baseRevision: text("base_revision"),
+    startingHead: text("starting_head"),
+    runtimeSessionId: text("runtime_session_id").references(
+      () => chatRuntimeSessions.id,
+      { onDelete: "set null" },
+    ),
+    codexThreadId: text("codex_thread_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("chat_execution_lanes_chat_active_unique")
+      .on(table.chatId)
+      .where(sql`${table.state} = 'active'`),
+    uniqueIndex("chat_execution_lanes_worktree_reserved_unique")
+      .on(table.worktreeId)
+      .where(sql`${table.state} <> 'released'`),
   ],
 );
 
@@ -324,6 +429,13 @@ export const chatMessages = pgTable(
     chatId: text("chat_id")
       .notNull()
       .references(() => chats.id, { onDelete: "cascade" }),
+    worktreeId: text("worktree_id")
+      .notNull()
+      .references(() => projectWorktrees.id, { onDelete: "restrict" }),
+    executionLaneId: text("execution_lane_id").references(
+      () => chatExecutionLanes.id,
+      { onDelete: "set null" },
+    ),
     sequence: bigserial("sequence", { mode: "number" }).notNull(),
     role: text("role").notNull(),
     content: jsonb("content").$type<ChatMessageContent>().notNull(),

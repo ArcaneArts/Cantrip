@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
+  chatExecutionLaneSummarySchema,
   gitActionSchema,
   mentionedSkillNames,
   normalizeResponsesBaseUrl,
   queuedPromptSchema,
+  projectWorktreeSummarySchema,
   serverBootstrapSchema,
   systemHealthSchema,
   terminalClientMessageSchema,
@@ -17,6 +19,52 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("validates durable worktree and execution-lane summaries", () => {
+    expect(
+      projectWorktreeSummarySchema.parse({
+        id: "worktree-1",
+        projectSourceId: "source-1",
+        projectId: "project-1",
+        workerId: "worker-1",
+        name: "Primary",
+        path: "/workspace/project",
+        displayPath: "ArcaneArts/Cantrip",
+        isPrimary: true,
+        isDefault: true,
+        origin: "cantrip",
+        lifecycleState: "ready",
+        branch: "main",
+        head: "0123456789abcdef",
+        detached: false,
+        locked: false,
+        lockReason: null,
+        lastScannedAt: "2026-08-08T12:00:00.000Z",
+        createdAt: "2026-08-08T12:00:00.000Z",
+        updatedAt: "2026-08-08T12:00:00.000Z",
+      }).isPrimary,
+    ).toBe(true);
+
+    expect(
+      chatExecutionLaneSummarySchema.parse({
+        id: "lane-1",
+        chatId: "chat-1",
+        worktreeId: "worktree-1",
+        workerId: "worker-1",
+        acquiringActor: "agent",
+        purpose: "Implement the requested change",
+        state: "active",
+        baseRevision: "origin/main",
+        startingHead: "0123456789abcdef",
+        runtimeSessionId: "runtime-1",
+        codexThreadId: "thread-1",
+        createdAt: "2026-08-08T12:00:00.000Z",
+        activatedAt: "2026-08-08T12:00:01.000Z",
+        releasedAt: null,
+        updatedAt: "2026-08-08T12:00:01.000Z",
+      }).state,
+    ).toBe("active");
+  });
+
   it("accepts non-secret Codex account and device login state", () => {
     expect(
       codexAuthStatusSchema.parse({

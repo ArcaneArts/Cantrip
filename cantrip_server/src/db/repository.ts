@@ -6,6 +6,7 @@ import type {
   BrowserSummary,
   BrowserUpdate,
   ChatCreate,
+  ChatExecutionLaneSummary,
   ChatModelUpdate,
   ChatMessage,
   ChatMessageCreate,
@@ -29,6 +30,7 @@ import type {
   QueuedPromptUpdate,
   ProjectCloneResult,
   ProjectSummary,
+  ProjectWorktreeSummary,
   ProjectViewCreate,
   ProjectViewSummary,
   ProjectViewUpdate,
@@ -59,6 +61,7 @@ const ONLINE_WINDOW_MS = 15_000;
 type RepositoryDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type ProjectRow = typeof schema.projects.$inferSelect;
 type ProjectSourceRow = typeof schema.projectSources.$inferSelect;
+type ProjectWorktreeRow = typeof schema.projectWorktrees.$inferSelect;
 
 export interface ChatExecutionContext {
   chatId: string;
@@ -68,6 +71,7 @@ export interface ChatExecutionContext {
   modelRouteId: string | null;
   threadId: string | null;
   workerId: string;
+  worktreeId: string;
 }
 
 export interface TerminalExecutionContext {
@@ -76,6 +80,7 @@ export interface TerminalExecutionContext {
   status: TerminalSummary["status"];
   terminalId: string;
   workerId: string;
+  worktreeId: string;
 }
 
 export interface ProjectRemovalContext {
@@ -147,6 +152,7 @@ function toProjectSummary(
     position: project.position,
     setupStatus: project.setupStatus as ProjectSummary["setupStatus"],
     setupError: project.setupError,
+    worktreePolicy: project.worktreePolicy as ProjectSummary["worktreePolicy"],
     github,
     source: source
       ? {
@@ -161,6 +167,59 @@ function toProjectSummary(
   };
 }
 
+function toProjectWorktreeSummary(
+  worktree: ProjectWorktreeRow,
+  projectId: string,
+): ProjectWorktreeSummary {
+  return {
+    id: worktree.id,
+    projectSourceId: worktree.projectSourceId,
+    projectId,
+    workerId: worktree.workerId,
+    name: worktree.name,
+    path: worktree.absolutePath,
+    displayPath: worktree.displayPath,
+    isPrimary: worktree.isPrimary,
+    isDefault: worktree.isDefault,
+    origin: worktree.origin as ProjectWorktreeSummary["origin"],
+    lifecycleState:
+      worktree.lifecycleState as ProjectWorktreeSummary["lifecycleState"],
+    branch: worktree.branch,
+    head: worktree.head,
+    detached: worktree.detached,
+    locked: worktree.locked,
+    lockReason: worktree.lockReason,
+    lastScannedAt: worktree.lastScannedAt
+      ? toISOString(worktree.lastScannedAt)
+      : null,
+    createdAt: toISOString(worktree.createdAt),
+    updatedAt: toISOString(worktree.updatedAt),
+  };
+}
+
+function toChatExecutionLaneSummary(
+  lane: typeof schema.chatExecutionLanes.$inferSelect,
+): ChatExecutionLaneSummary {
+  return {
+    id: lane.id,
+    chatId: lane.chatId,
+    worktreeId: lane.worktreeId,
+    workerId: lane.workerId,
+    acquiringActor:
+      lane.acquiringActor as ChatExecutionLaneSummary["acquiringActor"],
+    purpose: lane.purpose,
+    state: lane.state as ChatExecutionLaneSummary["state"],
+    baseRevision: lane.baseRevision,
+    startingHead: lane.startingHead,
+    runtimeSessionId: lane.runtimeSessionId,
+    codexThreadId: lane.codexThreadId,
+    createdAt: toISOString(lane.createdAt),
+    activatedAt: lane.activatedAt ? toISOString(lane.activatedAt) : null,
+    releasedAt: lane.releasedAt ? toISOString(lane.releasedAt) : null,
+    updatedAt: toISOString(lane.updatedAt),
+  };
+}
+
 function toChatSummary(chat: typeof schema.chats.$inferSelect): ChatSummary {
   return {
     id: chat.id,
@@ -169,6 +228,8 @@ function toChatSummary(chat: typeof schema.chats.$inferSelect): ChatSummary {
     position: chat.position,
     status: chat.status as ChatSummary["status"],
     activeWorkerId: chat.activeWorkerId,
+    activeWorktreeId: chat.activeWorktreeId,
+    worktreeMode: chat.worktreeMode as ChatSummary["worktreeMode"],
     modelId: chat.modelId,
     createdAt: toISOString(chat.createdAt),
     updatedAt: toISOString(chat.updatedAt),
@@ -185,6 +246,7 @@ function toTerminalSummary(
     position: terminal.position,
     status: terminal.status as TerminalSummary["status"],
     activeWorkerId: terminal.activeWorkerId,
+    worktreeId: terminal.worktreeId,
     linkedChatId: terminal.linkedChatId,
     createdAt: toISOString(terminal.createdAt),
     updatedAt: toISOString(terminal.updatedAt),
@@ -200,6 +262,7 @@ function toExplorerSummary(
     title: explorer.title,
     position: explorer.position,
     activeWorkerId: explorer.activeWorkerId,
+    worktreeId: explorer.worktreeId,
     createdAt: toISOString(explorer.createdAt),
     updatedAt: toISOString(explorer.updatedAt),
   };
@@ -227,6 +290,7 @@ function toProjectViewSummary(
     projectId: view.projectId,
     title: view.title,
     kind: view.kind as ProjectViewSummary["kind"],
+    worktreeId: view.worktreeId,
     position: view.position,
     createdAt: toISOString(view.createdAt),
     updatedAt: toISOString(view.updatedAt),
@@ -300,6 +364,8 @@ function toChatMessage(
   return {
     id: message.id,
     chatId: message.chatId,
+    worktreeId: message.worktreeId,
+    executionLaneId: message.executionLaneId,
     sequence: message.sequence,
     role: message.role as ChatMessage["role"],
     content: message.content,
@@ -905,13 +971,21 @@ export class ServerRepository {
   async getProjectSource(ownerId: string, projectId: string) {
     const rows = await this.database
       .select({
-        workerId: schema.projectSources.workerId,
-        cwd: schema.projectSources.absolutePath,
+        workerId: schema.projectWorktrees.workerId,
+        cwd: schema.projectWorktrees.absolutePath,
+        worktreeId: schema.projectWorktrees.id,
       })
       .from(schema.projects)
       .innerJoin(
         schema.projectSources,
         eq(schema.projectSources.projectId, schema.projects.id),
+      )
+      .innerJoin(
+        schema.projectWorktrees,
+        and(
+          eq(schema.projectWorktrees.projectSourceId, schema.projectSources.id),
+          eq(schema.projectWorktrees.isDefault, true),
+        ),
       )
       .where(
         and(
@@ -921,6 +995,60 @@ export class ServerRepository {
       )
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  async listProjectWorktrees(
+    ownerId: string,
+    projectId: string,
+  ): Promise<ProjectWorktreeSummary[]> {
+    const rows = await this.database
+      .select({
+        projectId: schema.projects.id,
+        worktree: schema.projectWorktrees,
+      })
+      .from(schema.projectWorktrees)
+      .innerJoin(
+        schema.projectSources,
+        eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.projectSources.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.projects.id, projectId))
+      .orderBy(
+        desc(schema.projectWorktrees.isPrimary),
+        asc(schema.projectWorktrees.name),
+      );
+    return rows.map(({ projectId: id, worktree }) =>
+      toProjectWorktreeSummary(worktree, id),
+    );
+  }
+
+  async listChatExecutionLanes(
+    ownerId: string,
+    chatId: string,
+  ): Promise<ChatExecutionLaneSummary[]> {
+    const rows = await this.database
+      .select({ lane: schema.chatExecutionLanes })
+      .from(schema.chatExecutionLanes)
+      .innerJoin(
+        schema.chats,
+        eq(schema.chats.id, schema.chatExecutionLanes.chatId),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.chatExecutionLanes.chatId, chatId))
+      .orderBy(desc(schema.chatExecutionLanes.createdAt));
+    return rows.map(({ lane }) => toChatExecutionLaneSummary(lane));
   }
 
   async getGithubProjectExecutionContext(
@@ -1040,6 +1168,18 @@ export class ServerRepository {
         })
         .returning();
       const source = firstOrThrow(sourceResult, "recording a project source");
+      await transaction.insert(schema.projectWorktrees).values({
+        id: randomUUID(),
+        projectSourceId: source.id,
+        workerId,
+        name: "Primary",
+        absolutePath: clone.path,
+        displayPath: clone.displayPath,
+        isPrimary: true,
+        isDefault: true,
+        origin: "cantrip",
+        lifecycleState: "ready",
+      });
       const projectResult = await transaction
         .update(schema.projects)
         .set({
@@ -1150,11 +1290,21 @@ export class ServerRepository {
     input: ChatCreate,
   ): Promise<ChatSummary | null> {
     const projectRows = await this.database
-      .select({ source: schema.projectSources })
+      .select({
+        source: schema.projectSources,
+        worktree: schema.projectWorktrees,
+      })
       .from(schema.projects)
       .innerJoin(
         schema.projectSources,
         eq(schema.projectSources.projectId, schema.projects.id),
+      )
+      .innerJoin(
+        schema.projectWorktrees,
+        and(
+          eq(schema.projectWorktrees.projectSourceId, schema.projectSources.id),
+          eq(schema.projectWorktrees.isDefault, true),
+        ),
       )
       .where(
         and(
@@ -1164,7 +1314,8 @@ export class ServerRepository {
       )
       .limit(1);
     const source = projectRows[0]?.source;
-    if (!source) {
+    const worktree = projectRows[0]?.worktree;
+    if (!source || !worktree) {
       return null;
     }
 
@@ -1216,6 +1367,7 @@ export class ServerRepository {
             lastViews[0]?.position ?? -1,
           ) + 1,
         activeWorkerId: source.workerId,
+        activeWorktreeId: worktree.id,
       })
       .returning();
     const chat = firstOrThrow(result, "creating a chat");
@@ -1223,6 +1375,7 @@ export class ServerRepository {
       id: randomUUID(),
       chatId: chat.id,
       workerId: source.workerId,
+      worktreeId: worktree.id,
     });
     return toChatSummary(chat);
   }
@@ -1251,21 +1404,7 @@ export class ServerRepository {
     projectId: string,
     input: TerminalCreate,
   ): Promise<TerminalSummary | null> {
-    const rows = await this.database
-      .select({ source: schema.projectSources })
-      .from(schema.projects)
-      .innerJoin(
-        schema.projectSources,
-        eq(schema.projectSources.projectId, schema.projects.id),
-      )
-      .where(
-        and(
-          eq(schema.projects.id, projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .limit(1);
-    const source = rows[0]?.source;
+    const source = await this.getProjectSource(ownerId, projectId);
     if (!source) return null;
 
     const [lastChats, lastTerminals, lastExplorers, lastBrowsers, lastViews] =
@@ -1316,6 +1455,7 @@ export class ServerRepository {
             lastViews[0]?.position ?? -1,
           ) + 1,
         activeWorkerId: source.workerId,
+        worktreeId: source.worktreeId,
       })
       .returning();
     return toTerminalSummary(firstOrThrow(result, "creating a terminal"));
@@ -1326,7 +1466,7 @@ export class ServerRepository {
     chatId: string,
   ): Promise<TerminalSummary | null> {
     const rows = await this.database
-      .select({ chat: schema.chats, source: schema.projectSources })
+      .select({ chat: schema.chats, worktree: schema.projectWorktrees })
       .from(schema.chats)
       .innerJoin(
         schema.projects,
@@ -1336,8 +1476,8 @@ export class ServerRepository {
         ),
       )
       .innerJoin(
-        schema.projectSources,
-        eq(schema.projectSources.projectId, schema.projects.id),
+        schema.projectWorktrees,
+        eq(schema.projectWorktrees.id, schema.chats.activeWorktreeId),
       )
       .where(eq(schema.chats.id, chatId))
       .limit(1);
@@ -1359,7 +1499,8 @@ export class ServerRepository {
         title: "Codex console",
         position: row.chat.position,
         status: "running",
-        activeWorkerId: row.source.workerId,
+        activeWorkerId: row.worktree.workerId,
+        worktreeId: row.chat.activeWorktreeId,
         linkedChatId: row.chat.id,
       })
       .returning();
@@ -1455,6 +1596,7 @@ export class ServerRepository {
             lastViews[0]?.position ?? -1,
           ) + 1,
         activeWorkerId: source.workerId,
+        worktreeId: source.worktreeId,
       })
       .returning();
     return toExplorerSummary(firstOrThrow(result, "creating an explorer"));
@@ -1465,7 +1607,10 @@ export class ServerRepository {
     explorerId: string,
   ): Promise<ExplorerExecutionContext | null> {
     const rows = await this.database
-      .select({ explorer: schema.explorers, source: schema.projectSources })
+      .select({
+        explorer: schema.explorers,
+        worktree: schema.projectWorktrees,
+      })
       .from(schema.explorers)
       .innerJoin(
         schema.projects,
@@ -1475,8 +1620,8 @@ export class ServerRepository {
         ),
       )
       .innerJoin(
-        schema.projectSources,
-        eq(schema.projectSources.projectId, schema.projects.id),
+        schema.projectWorktrees,
+        eq(schema.projectWorktrees.id, schema.explorers.worktreeId),
       )
       .where(eq(schema.explorers.id, explorerId))
       .limit(1);
@@ -1484,8 +1629,8 @@ export class ServerRepository {
     return row
       ? {
           explorerId: row.explorer.id,
-          root: row.source.absolutePath,
-          workerId: row.explorer.activeWorkerId,
+          root: row.worktree.absolutePath,
+          workerId: row.worktree.workerId,
         }
       : null;
   }
@@ -1642,7 +1787,8 @@ export class ServerRepository {
     projectId: string,
     input: ProjectViewCreate,
   ): Promise<ProjectViewSummary | null> {
-    if (!(await this.getProjectSource(ownerId, projectId))) return null;
+    const source = await this.getProjectSource(ownerId, projectId);
+    if (!source) return null;
     const [lastChats, lastTerminals, lastExplorers, lastBrowsers, lastViews] =
       await Promise.all([
         this.database
@@ -1683,6 +1829,7 @@ export class ServerRepository {
         projectId,
         title: input.title,
         kind: input.kind,
+        worktreeId: input.kind === "history" ? source.worktreeId : null,
         position:
           Math.max(
             lastChats[0]?.position ?? -1,
@@ -1776,7 +1923,10 @@ export class ServerRepository {
     terminalId: string,
   ): Promise<TerminalExecutionContext | null> {
     const rows = await this.database
-      .select({ terminal: schema.terminals, source: schema.projectSources })
+      .select({
+        terminal: schema.terminals,
+        worktree: schema.projectWorktrees,
+      })
       .from(schema.terminals)
       .innerJoin(
         schema.projects,
@@ -1786,8 +1936,8 @@ export class ServerRepository {
         ),
       )
       .innerJoin(
-        schema.projectSources,
-        eq(schema.projectSources.projectId, schema.projects.id),
+        schema.projectWorktrees,
+        eq(schema.projectWorktrees.id, schema.terminals.worktreeId),
       )
       .where(eq(schema.terminals.id, terminalId))
       .limit(1);
@@ -1795,8 +1945,9 @@ export class ServerRepository {
     return row
       ? {
           terminalId: row.terminal.id,
-          workerId: row.terminal.activeWorkerId,
-          cwd: row.source.absolutePath,
+          workerId: row.worktree.workerId,
+          worktreeId: row.worktree.id,
+          cwd: row.worktree.absolutePath,
           linkedChatId: row.terminal.linkedChatId,
           status: row.terminal.status as TerminalSummary["status"],
         }
@@ -1962,6 +2113,8 @@ export class ServerRepository {
               lastViews[0]?.position ?? -1,
             ) + 1,
           activeWorkerId: row.source.workerId,
+          activeWorktreeId: row.chat.activeWorktreeId,
+          worktreeMode: row.chat.worktreeMode,
           modelId: row.chat.modelId,
         })
         .returning();
@@ -1970,12 +2123,15 @@ export class ServerRepository {
         id: randomUUID(),
         chatId: fork.id,
         workerId: row.source.workerId,
+        worktreeId: row.chat.activeWorktreeId,
       });
       if (sourceMessages.length > 0) {
         await transaction.insert(schema.chatMessages).values(
           sourceMessages.map((message) => ({
             id: randomUUID(),
             chatId: fork.id,
+            worktreeId: message.worktreeId,
+            executionLaneId: null,
             role: message.role,
             content: message.content,
             createdAt: message.createdAt,
@@ -2164,7 +2320,7 @@ export class ServerRepository {
     const rows = await this.database
       .select({
         chat: schema.chats,
-        source: schema.projectSources,
+        worktree: schema.projectWorktrees,
         runtime: schema.chatRuntimeSessions,
       })
       .from(schema.chats)
@@ -2176,8 +2332,8 @@ export class ServerRepository {
         ),
       )
       .innerJoin(
-        schema.projectSources,
-        eq(schema.projectSources.projectId, schema.projects.id),
+        schema.projectWorktrees,
+        eq(schema.projectWorktrees.id, schema.chats.activeWorktreeId),
       )
       .leftJoin(
         schema.chatRuntimeSessions,
@@ -2185,8 +2341,9 @@ export class ServerRepository {
           eq(schema.chatRuntimeSessions.chatId, schema.chats.id),
           eq(
             schema.chatRuntimeSessions.workerId,
-            schema.projectSources.workerId,
+            schema.projectWorktrees.workerId,
           ),
+          eq(schema.chatRuntimeSessions.worktreeId, schema.projectWorktrees.id),
         ),
       )
       .where(eq(schema.chats.id, chatId))
@@ -2197,18 +2354,20 @@ export class ServerRepository {
     }
     return {
       chatId: row.chat.id,
-      cwd: row.source.absolutePath,
+      cwd: row.worktree.absolutePath,
       modelId: row.chat.modelId,
       modelRouteId: row.runtime?.modelRouteId ?? null,
       status: row.chat.status as ChatSummary["status"],
       threadId: row.runtime?.codexThreadId ?? null,
-      workerId: row.source.workerId,
+      workerId: row.worktree.workerId,
+      worktreeId: row.worktree.id,
     };
   }
 
   async updateChatRuntime(
     chatId: string,
     workerId: string,
+    worktreeId: string,
     threadId: string | null,
     modelRouteId: string,
     status = "ready",
@@ -2219,6 +2378,7 @@ export class ServerRepository {
         id: randomUUID(),
         chatId,
         workerId,
+        worktreeId,
         codexThreadId: threadId,
         modelRouteId,
         status,
@@ -2227,6 +2387,7 @@ export class ServerRepository {
         target: [
           schema.chatRuntimeSessions.chatId,
           schema.chatRuntimeSessions.workerId,
+          schema.chatRuntimeSessions.worktreeId,
         ],
         set: {
           codexThreadId: threadId,
@@ -2440,7 +2601,10 @@ export class ServerRepository {
     input: ChatMessageCreate,
   ): Promise<ChatMessage | null> {
     const chat = await this.database
-      .select({ id: schema.chats.id })
+      .select({
+        id: schema.chats.id,
+        worktreeId: schema.chats.activeWorktreeId,
+      })
       .from(schema.chats)
       .innerJoin(
         schema.projects,
@@ -2454,6 +2618,18 @@ export class ServerRepository {
     if (!chat[0]) {
       return null;
     }
+
+    const activeLanes = await this.database
+      .select({ id: schema.chatExecutionLanes.id })
+      .from(schema.chatExecutionLanes)
+      .where(
+        and(
+          eq(schema.chatExecutionLanes.chatId, chatId),
+          eq(schema.chatExecutionLanes.worktreeId, chat[0].worktreeId),
+          eq(schema.chatExecutionLanes.state, "active"),
+        ),
+      )
+      .limit(1);
 
     if (input.idempotencyKey) {
       const existing = await this.database
@@ -2476,6 +2652,8 @@ export class ServerRepository {
       .values({
         id: randomUUID(),
         chatId,
+        worktreeId: chat[0].worktreeId,
+        executionLaneId: activeLanes[0]?.id ?? null,
         role: input.role,
         content: input.content,
         idempotencyKey: input.idempotencyKey ?? null,

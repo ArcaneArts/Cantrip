@@ -40,6 +40,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
+import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
 const dataDirectory = await mkdtemp(
@@ -682,6 +683,21 @@ describe("local server foundation", () => {
       });
       return current!;
     });
+    expect(
+      await firstDatabase.repository.listProjectWorktrees(
+        LOCAL_USER_ID,
+        project.id,
+      ),
+    ).toMatchObject([
+      {
+        name: "Primary",
+        isPrimary: true,
+        isDefault: true,
+        lifecycleState: "ready",
+        path: project.source!.path,
+        workerId: "test-worker",
+      },
+    ]);
     expect(
       githubIssueListSchema.parse(
         (

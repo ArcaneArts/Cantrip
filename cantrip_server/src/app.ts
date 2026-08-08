@@ -385,6 +385,7 @@ export async function buildApp({
           await repository.updateChatRuntime(
             context.chatId,
             context.workerId,
+            context.worktreeId,
             threadId,
             runtime.routeId,
             "starting",
@@ -426,6 +427,7 @@ export async function buildApp({
             await repository.updateChatRuntime(
               context.chatId,
               context.workerId,
+              context.worktreeId,
               result.threadId,
               runtime.routeId,
             );
@@ -468,6 +470,7 @@ export async function buildApp({
           await repository.updateChatRuntime(
             context.chatId,
             context.workerId,
+            context.worktreeId,
             context.threadId,
             context.modelRouteId,
           );
