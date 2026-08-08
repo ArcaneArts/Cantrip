@@ -139,6 +139,12 @@ screencast frames inside the normal React layout. Navigation and input travel
 through the Cantrip server; the app never receives Chromium's debugging URL.
 Persistent browser profiles live under the worker data directory at
 `.cantrip/dev/worker/browser/profiles/` by default and are ignored by Git.
+The same canvas renderer is used by Vite, Tauri, Capacitor-compatible clients,
+and desktop pop-out windows. Browser processes automatically restart against
+the same profile and last known URL after an ordinary Chromium crash. Copying a
+page selection or pasting local clipboard text requires an explicit toolbar
+action; Cantrip does not continuously synchronize browser and device
+clipboards.
 
 ## Desktop development with `pnpm devtop`
 

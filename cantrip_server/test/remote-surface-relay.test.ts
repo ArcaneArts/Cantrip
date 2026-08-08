@@ -67,6 +67,7 @@ describe("RemoteSurfaceRelay", () => {
       isConnected: () => true,
       request: async () => undefined,
       sendSurfaceFrame: forwarded,
+      subscribeWorkerDisconnect: () => () => undefined,
       subscribeSurfaceFrames(_workerId, listener) {
         workerListener = listener;
         return () => {
@@ -107,6 +108,7 @@ describe("RemoteSurfaceRelay", () => {
       isConnected: () => true,
       request: async () => undefined,
       sendSurfaceFrame: () => true,
+      subscribeWorkerDisconnect: () => () => undefined,
       subscribeSurfaceFrames: () => () => undefined,
     } satisfies WorkerCommandBus;
     const socket = new TestClientSocket();
@@ -128,6 +130,37 @@ describe("RemoteSurfaceRelay", () => {
     });
   });
 
+  it("closes the client promptly when its assigned worker disconnects", () => {
+    let disconnect: (() => void) | null = null;
+    const bridge = {
+      attach() {},
+      close() {},
+      isConnected: () => true,
+      request: async () => undefined,
+      sendSurfaceFrame: () => true,
+      subscribeWorkerDisconnect(_workerId, listener) {
+        disconnect = listener;
+        return () => {
+          disconnect = null;
+        };
+      },
+      subscribeSurfaceFrames: () => () => undefined,
+    } satisfies WorkerCommandBus;
+    const socket = new TestClientSocket();
+    new RemoteSurfaceRelay(bridge).bind(socket, {
+      workerId: "worker-1",
+      surfaceId: "surface-1",
+      attachmentId: "attachment-1",
+    });
+
+    disconnect?.();
+
+    expect(socket.closes).toContainEqual({
+      code: 1013,
+      reason: "Remote Surface worker disconnected",
+    });
+  });
+
   it("drops disposable frames and closes reliable channels under pressure", () => {
     let workerListener: WorkerSurfaceFrameListener | null = null;
     const bridge = {
@@ -136,6 +169,7 @@ describe("RemoteSurfaceRelay", () => {
       isConnected: () => true,
       request: async () => undefined,
       sendSurfaceFrame: () => true,
+      subscribeWorkerDisconnect: () => () => undefined,
       subscribeSurfaceFrames(_workerId, listener) {
         workerListener = listener;
         return () => undefined;

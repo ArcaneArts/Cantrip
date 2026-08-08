@@ -66,6 +66,9 @@ are rendered by the app inside its ordinary React layout, while navigation,
 input, viewport, cursor, clipboard, loading, URL, title, console, DOM, and
 network operations cross the authorized Remote Surface protocol. Chromium's
 raw remote-debugging endpoint is never exposed to an app or the server.
+The original server-side iframe rewriting proxy and Tauri child-webview
+commands are removed once this adapter is active, so there is only one Browser
+renderer and no hidden platform-specific fallback.
 
 ### VNC adapter
 

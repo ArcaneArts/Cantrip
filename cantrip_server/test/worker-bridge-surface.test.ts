@@ -49,7 +49,9 @@ describe("WorkerBridge Remote Surface transport", () => {
     const socket = new TestWorkerSocket();
     bridge.attach("worker-1", socket);
     const listener = vi.fn();
+    const disconnected = vi.fn();
     const unsubscribe = bridge.subscribeSurfaceFrames("worker-1", listener);
+    bridge.subscribeWorkerDisconnect("worker-1", disconnected);
 
     socket.emit(
       "message",
@@ -72,6 +74,8 @@ describe("WorkerBridge Remote Surface transport", () => {
     });
 
     unsubscribe();
+    socket.close();
+    expect(disconnected).toHaveBeenCalledOnce();
     bridge.close();
   });
 });

@@ -4,9 +4,12 @@ import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 
 import {
+  remoteBrowserClipboardMessageSchema,
   remoteBrowserClientMessageSchema,
+  remoteBrowserCursorMessageSchema,
   remoteBrowserServerMessageSchema,
   type RemoteBrowserServerMessage,
+  type RemoteSurfaceChannel,
   type RemoteSurfaceConfiguration,
   type RemoteSurfaceViewport,
 } from "@cantrip/protocol";
@@ -17,11 +20,13 @@ import type {
   RemoteSurfaceSession,
 } from "../remote-surface-manager.js";
 import { CdpClient } from "./cdp-client.js";
+import { BrowserCdpSession } from "./browser-session.js";
 import { findChromiumExecutable } from "./chromium.js";
 
 interface BrowserAdapterOptions {
   dataDirectory: string;
   executable?: string | null;
+  onLaunch?(process: ChildProcess): void;
 }
 
 interface NavigationEntry {
@@ -124,28 +129,57 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   readonly transport = "websocket" as const;
   readonly #attachments = new Map<string, RemoteSurfaceAttachment>();
   readonly #client: CdpClient;
+  readonly #cdp: BrowserCdpSession;
   readonly #emit: Parameters<RemoteSurfaceAdapter["open"]>[1];
+  readonly #onCrash: (error: Error) => void;
   readonly #process: ChildProcess;
-  readonly #sessionId: string;
   readonly #targetId: string;
   #closed = false;
+  #currentUrl: string;
+  #cursor = "default";
+  #lastCursorProbeAt = 0;
   #loading = true;
   #stateRefresh: Promise<void> | null = null;
 
   private constructor(options: {
     client: CdpClient;
+    cdp: BrowserCdpSession;
     configuration: RemoteSurfaceConfiguration;
     emit: Parameters<RemoteSurfaceAdapter["open"]>[1];
+    onCrash(error: Error): void;
     process: ChildProcess;
-    sessionId: string;
     targetId: string;
   }) {
     this.#client = options.client;
+    this.#cdp = options.cdp;
     this.configuration = options.configuration;
+    this.#currentUrl =
+      options.configuration.kind === "browser"
+        ? options.configuration.initialUrl
+        : "about:blank";
     this.#emit = options.emit;
+    this.#onCrash = options.onCrash;
     this.#process = options.process;
-    this.#sessionId = options.sessionId;
     this.#targetId = options.targetId;
+    this.#client.onClose((error) => {
+      if (!this.#closed) this.#onCrash(error);
+    });
+    this.#process.once("exit", (code, signal) => {
+      if (this.#closed) return;
+      this.#onCrash(
+        new Error(
+          `Chromium exited unexpectedly${signal ? ` (${signal})` : code === null ? "" : ` (${code})`}.`,
+        ),
+      );
+    });
+  }
+
+  get currentUrl(): string {
+    return this.#currentUrl;
+  }
+
+  get cdpSession(): BrowserCdpSession {
+    return this.#cdp;
   }
 
   static async open(options: {
@@ -153,6 +187,8 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     dataDirectory: string;
     emit: Parameters<RemoteSurfaceAdapter["open"]>[1];
     executable: string;
+    onCrash(error: Error): void;
+    onLaunch?(process: ChildProcess): void;
     surfaceId: string;
     viewport: RemoteSurfaceViewport;
   }): Promise<BrowserRemoteSurfaceSession> {
@@ -167,6 +203,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
       userDataDirectory,
       options.viewport,
     );
+    options.onLaunch?.(process);
     try {
       const client = await CdpClient.connect(await waitForDevtoolsUrl(process));
       const { targetId } = await client.request<{ targetId: string }>(
@@ -177,12 +214,14 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
         "Target.attachToTarget",
         { flatten: true, targetId },
       );
+      const cdp = new BrowserCdpSession(client, sessionId);
       const session = new BrowserRemoteSurfaceSession({
         client,
+        cdp,
         configuration: options.configuration,
         emit: options.emit,
+        onCrash: options.onCrash,
         process,
-        sessionId,
         targetId,
       });
       await session.initialize(options.viewport);
@@ -229,14 +268,29 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     } else if (message.type === "reload") {
       this.#loading = true;
       await this.command("Page.reload");
+    } else if (message.type === "stop") {
+      await this.command("Page.stopLoading");
+      this.#loading = false;
+      await this.publishState();
     } else if (message.type === "viewport") {
       const attachment = this.#attachments.get(attachmentId);
       if (attachment) attachment.viewport = message.viewport;
       await this.configureViewport(message.viewport);
     } else if (message.type === "pointer") {
       await this.pointer(message);
+      if (
+        message.event === "move" &&
+        Date.now() - this.#lastCursorProbeAt >= 50
+      ) {
+        this.#lastCursorProbeAt = Date.now();
+        void this.publishCursor(message.x, message.y).catch(() => undefined);
+      }
     } else if (message.type === "key") {
       await this.key(message);
+    } else if (message.type === "touch") {
+      await this.touch(message);
+    } else if (message.type === "clipboard") {
+      await this.clipboard(attachmentId, message);
     } else {
       await this.command("Page.bringToFront");
     }
@@ -263,8 +317,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   }
 
   private async initialize(viewport: RemoteSurfaceViewport): Promise<void> {
-    this.#client.on("Page.screencastFrame", (params, sessionId) => {
-      if (sessionId !== this.#sessionId) return;
+    this.#cdp.on("Page.screencastFrame", (params) => {
       const frame = params as ScreencastFrame;
       const payload = Buffer.from(frame.data, "base64");
       for (const attachmentId of this.#attachments.keys()) {
@@ -274,13 +327,11 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
         sessionId: frame.sessionId,
       }).catch(() => undefined);
     });
-    this.#client.on("Page.frameStartedLoading", (_params, sessionId) => {
-      if (sessionId !== this.#sessionId) return;
+    this.#cdp.on("Page.frameStartedLoading", () => {
       this.#loading = true;
       void this.publishState().catch(() => undefined);
     });
-    this.#client.on("Page.frameStoppedLoading", (_params, sessionId) => {
-      if (sessionId !== this.#sessionId) return;
+    this.#cdp.on("Page.frameStoppedLoading", () => {
       this.#loading = false;
       void this.publishState().catch(() => undefined);
       void this.captureFrame().catch(() => undefined);
@@ -290,12 +341,10 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
       "Page.navigatedWithinDocument",
       "Page.loadEventFired",
     ]) {
-      this.#client.on(event, (_params, sessionId) => {
-        if (sessionId === this.#sessionId) {
-          void this.publishState().catch(() => undefined);
-          if (event === "Page.loadEventFired") {
-            void this.captureFrame().catch(() => undefined);
-          }
+      this.#cdp.on(event, () => {
+        void this.publishState().catch(() => undefined);
+        if (event === "Page.loadEventFired") {
+          void this.captureFrame().catch(() => undefined);
         }
       });
     }
@@ -317,7 +366,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     method: string,
     params: Record<string, unknown> = {},
   ): Promise<T> {
-    return this.#client.request<T>(method, params, this.#sessionId);
+    return this.#cdp.command<T>(method, params);
   }
 
   private async configureViewport(
@@ -352,6 +401,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
       const history = await this.navigationHistory();
       const entry = history.entries[history.currentIndex];
       if (!entry) return;
+      this.#currentUrl = entry.url;
       const state: RemoteBrowserServerMessage =
         remoteBrowserServerMessageSchema.parse({
           type: "browser-state",
@@ -377,15 +427,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   }
 
   private async captureFrame(onlyAttachmentId?: string): Promise<void> {
-    const screenshot = await this.command<{ data: string }>(
-      "Page.captureScreenshot",
-      {
-        format: "jpeg",
-        quality: 78,
-        fromSurface: true,
-        captureBeyondViewport: false,
-      },
-    );
+    const screenshot = await this.#cdp.captureScreenshot();
     const payload = Buffer.from(screenshot.data, "base64");
     const recipients = onlyAttachmentId
       ? [onlyAttachmentId]
@@ -425,6 +467,88 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     });
   }
 
+  private async publishCursor(x: number, y: number): Promise<void> {
+    const cursor = await this.#cdp.evaluate<string>(
+      `(() => { const node = document.elementFromPoint(${JSON.stringify(x)}, ${JSON.stringify(y)}); return node ? getComputedStyle(node).cursor : "default"; })()`,
+    );
+    if (!cursor || cursor === this.#cursor) return;
+    let message = remoteBrowserCursorMessageSchema.safeParse({
+      type: "browser-cursor",
+      cursor,
+    });
+    if (!message.success) {
+      message = remoteBrowserCursorMessageSchema.safeParse({
+        type: "browser-cursor",
+        cursor: "default",
+      });
+    }
+    if (!message.success || message.data.cursor === this.#cursor) return;
+    this.#cursor = message.data.cursor;
+    const payload = encoder.encode(JSON.stringify(message.data));
+    for (const attachmentId of this.#attachments.keys()) {
+      this.#emit(attachmentId, "cursor", payload);
+    }
+  }
+
+  private touch(
+    message: Extract<
+      ReturnType<typeof remoteBrowserClientMessageSchema.parse>,
+      { type: "touch" }
+    >,
+  ): Promise<unknown> {
+    return this.command("Input.dispatchTouchEvent", {
+      type:
+        message.event === "start"
+          ? "touchStart"
+          : message.event === "move"
+            ? "touchMove"
+            : message.event === "cancel"
+              ? "touchCancel"
+              : "touchEnd",
+      touchPoints: message.points.map((point) => ({
+        x: point.x,
+        y: point.y,
+        radiusX: point.radiusX,
+        radiusY: point.radiusY,
+        force: point.force,
+        id: point.id,
+      })),
+      modifiers: message.modifiers,
+    });
+  }
+
+  private async clipboard(
+    attachmentId: string,
+    message: Extract<
+      ReturnType<typeof remoteBrowserClientMessageSchema.parse>,
+      { type: "clipboard" }
+    >,
+  ): Promise<void> {
+    if (message.operation === "paste-text") {
+      if (message.text) {
+        await this.command("Input.insertText", { text: message.text });
+      }
+      return;
+    }
+    const text =
+      (await this.#cdp.evaluate<string>(
+        "String(globalThis.getSelection?.() ?? '')",
+      )) ?? "";
+    this.#emit(
+      attachmentId,
+      "clipboard",
+      encoder.encode(
+        JSON.stringify(
+          remoteBrowserClipboardMessageSchema.parse({
+            type: "browser-clipboard",
+            operation: "copy-selection",
+            text,
+          }),
+        ),
+      ),
+    );
+  }
+
   private async key(
     message: Extract<
       ReturnType<typeof remoteBrowserClientMessageSchema.parse>,
@@ -444,8 +568,219 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   }
 }
 
+class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
+  readonly configuration: Extract<
+    RemoteSurfaceConfiguration,
+    { kind: "browser" }
+  >;
+  readonly transport = "websocket" as const;
+  readonly #attachments = new Map<string, RemoteSurfaceAttachment>();
+  readonly #command: Parameters<RemoteSurfaceAdapter["open"]>[0];
+  readonly #emit: Parameters<RemoteSurfaceAdapter["open"]>[1];
+  readonly #executable: string;
+  readonly #options: BrowserAdapterOptions;
+  readonly #onClose: () => void;
+  #closed = false;
+  #currentUrl: string;
+  #opening: Promise<BrowserRemoteSurfaceSession> | null = null;
+  #restartAttempt = 0;
+  #restartTimer: ReturnType<typeof setTimeout> | null = null;
+  #session: BrowserRemoteSurfaceSession | null = null;
+
+  private constructor(options: {
+    command: Parameters<RemoteSurfaceAdapter["open"]>[0];
+    emit: Parameters<RemoteSurfaceAdapter["open"]>[1];
+    executable: string;
+    onClose(): void;
+    options: BrowserAdapterOptions;
+  }) {
+    if (options.command.configuration.kind !== "browser") {
+      throw new Error("Browser session requires browser configuration.");
+    }
+    this.#command = options.command;
+    this.#emit = options.emit;
+    this.#executable = options.executable;
+    this.#onClose = options.onClose;
+    this.#options = options.options;
+    this.configuration = options.command.configuration;
+    this.#currentUrl = this.configuration.initialUrl;
+  }
+
+  static async open(options: {
+    command: Parameters<RemoteSurfaceAdapter["open"]>[0];
+    emit: Parameters<RemoteSurfaceAdapter["open"]>[1];
+    executable: string;
+    onClose(): void;
+    options: BrowserAdapterOptions;
+  }): Promise<ResilientBrowserRemoteSurfaceSession> {
+    const session = new ResilientBrowserRemoteSurfaceSession(options);
+    await session.ensureSession();
+    return session;
+  }
+
+  async attach(attachment: RemoteSurfaceAttachment): Promise<void> {
+    this.#attachments.set(attachment.id, attachment);
+    const existing = this.#session;
+    const session = await this.ensureSession();
+    if (existing === session) await session.attach(attachment);
+  }
+
+  async detach(attachmentId: string): Promise<void> {
+    this.#attachments.delete(attachmentId);
+    await this.#session?.detach(attachmentId);
+  }
+
+  async handleFrame(
+    attachmentId: string,
+    channel: Parameters<RemoteSurfaceSession["handleFrame"]>[1],
+    payload: Uint8Array,
+  ): Promise<void> {
+    const session = await this.ensureSession();
+    try {
+      await session.handleFrame(attachmentId, channel, payload);
+    } catch (error) {
+      this.handleCrash(
+        session,
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      throw error;
+    }
+  }
+
+  async suspend(): Promise<void> {
+    await this.#session?.suspend();
+  }
+
+  async resume(): Promise<void> {
+    await (await this.ensureSession()).resume();
+  }
+
+  async close(): Promise<void> {
+    if (this.#closed) return;
+    this.#closed = true;
+    if (this.#restartTimer) clearTimeout(this.#restartTimer);
+    this.#restartTimer = null;
+    const session = this.#session;
+    this.#session = null;
+    await session?.close();
+    this.#attachments.clear();
+    this.#onClose();
+  }
+
+  get cdpSession(): BrowserCdpSession | null {
+    return this.#session?.cdpSession ?? null;
+  }
+
+  private ensureSession(): Promise<BrowserRemoteSurfaceSession> {
+    if (this.#closed) {
+      return Promise.reject(new Error("Browser session is closed."));
+    }
+    if (this.#session) return Promise.resolve(this.#session);
+    if (this.#opening) return this.#opening;
+    this.#opening = this.openSession().finally(() => {
+      this.#opening = null;
+    });
+    return this.#opening;
+  }
+
+  private async openSession(): Promise<BrowserRemoteSurfaceSession> {
+    let opened: BrowserRemoteSurfaceSession | null = null;
+    const session = await BrowserRemoteSurfaceSession.open({
+      configuration: {
+        ...this.configuration,
+        initialUrl: this.#currentUrl,
+      },
+      dataDirectory: this.#options.dataDirectory,
+      emit: (attachmentId, channel, payload) =>
+        this.forward(attachmentId, channel, payload),
+      executable: this.#executable,
+      onCrash: (error) => {
+        if (opened) this.handleCrash(opened, error);
+      },
+      onLaunch: this.#options.onLaunch,
+      surfaceId: this.#command.surfaceId,
+      viewport: this.#command.viewport,
+    });
+    opened = session;
+    if (this.#closed) {
+      await session.close();
+      throw new Error("Browser session closed while Chromium was starting.");
+    }
+    this.#session = session;
+    for (const attachment of this.#attachments.values()) {
+      await session.attach(attachment);
+    }
+    this.#restartAttempt = 0;
+    this.publishRuntime("ready", null);
+    return session;
+  }
+
+  private forward(
+    attachmentId: string,
+    channel: RemoteSurfaceChannel,
+    payload: Uint8Array,
+  ): void {
+    if (channel === "control") {
+      const state = remoteBrowserServerMessageSchema.safeParse(
+        JSON.parse(decoder.decode(payload)),
+      );
+      if (state.success && state.data.type === "browser-state") {
+        this.#currentUrl = state.data.url;
+      }
+    }
+    this.#emit(attachmentId, channel, payload);
+  }
+
+  private handleCrash(
+    session: BrowserRemoteSurfaceSession,
+    error: Error,
+  ): void {
+    if (this.#closed || this.#session !== session) return;
+    this.#currentUrl = session.currentUrl;
+    this.#session = null;
+    void session.close().catch(() => undefined);
+    this.publishRuntime("recovering", error.message);
+    this.scheduleRestart();
+  }
+
+  private scheduleRestart(): void {
+    if (this.#closed || this.#restartTimer) return;
+    const delay = Math.min(250 * 2 ** this.#restartAttempt, 5_000);
+    this.#restartAttempt += 1;
+    this.#restartTimer = setTimeout(() => {
+      this.#restartTimer = null;
+      void this.ensureSession().catch((error: unknown) => {
+        this.publishRuntime(
+          "error",
+          error instanceof Error ? error.message : String(error),
+        );
+        this.scheduleRestart();
+      });
+    }, delay);
+  }
+
+  private publishRuntime(
+    status: "ready" | "recovering" | "error",
+    message: string | null,
+  ): void {
+    const payload = encoder.encode(
+      JSON.stringify(
+        remoteBrowserServerMessageSchema.parse({
+          type: "browser-runtime",
+          status,
+          message,
+        }),
+      ),
+    );
+    for (const attachmentId of this.#attachments.keys()) {
+      this.#emit(attachmentId, "control", payload);
+    }
+  }
+}
+
 export class BrowserRemoteSurfaceAdapter implements RemoteSurfaceAdapter {
   readonly executable: string | null;
+  readonly #sessions = new Map<string, ResilientBrowserRemoteSurfaceSession>();
 
   constructor(private readonly options: BrowserAdapterOptions) {
     this.executable = options.executable ?? findChromiumExecutable();
@@ -453,6 +788,10 @@ export class BrowserRemoteSurfaceAdapter implements RemoteSurfaceAdapter {
 
   get available(): boolean {
     return Boolean(this.executable);
+  }
+
+  session(surfaceId: string): BrowserCdpSession | null {
+    return this.#sessions.get(surfaceId)?.cdpSession ?? null;
   }
 
   async open(
@@ -467,13 +806,18 @@ export class BrowserRemoteSurfaceAdapter implements RemoteSurfaceAdapter {
         "No Chromium browser was found. Set CANTRIP_CHROMIUM_EXECUTABLE.",
       );
     }
-    return BrowserRemoteSurfaceSession.open({
-      configuration: command.configuration,
-      dataDirectory: this.options.dataDirectory,
+    const session = await ResilientBrowserRemoteSurfaceSession.open({
+      command,
       emit,
       executable: this.executable,
-      surfaceId: command.surfaceId,
-      viewport: command.viewport,
+      onClose: () => {
+        if (this.#sessions.get(command.surfaceId) === session) {
+          this.#sessions.delete(command.surfaceId);
+        }
+      },
+      options: this.options,
     });
+    this.#sessions.set(command.surfaceId, session);
+    return session;
   }
 }

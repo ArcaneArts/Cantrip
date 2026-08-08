@@ -6,7 +6,9 @@ import {
   chatExecutionLaneSummarySchema,
   decodeRemoteSurfaceFrame,
   encodeRemoteSurfaceFrame,
+  remoteBrowserClipboardMessageSchema,
   remoteBrowserClientMessageSchema,
+  remoteBrowserCursorMessageSchema,
   remoteBrowserServerMessageSchema,
   gitActionSchema,
   mentionedSkillNames,
@@ -371,6 +373,38 @@ describe("Cantrip protocol", () => {
         loading: true,
       }),
     ).toMatchObject({ url: "about:blank", loading: true });
+    expect(
+      remoteBrowserClientMessageSchema.parse({
+        type: "touch",
+        event: "start",
+        points: [{ id: 1, x: 40, y: 80 }],
+      }),
+    ).toMatchObject({
+      points: [{ id: 1, radiusX: 1, radiusY: 1, force: 1 }],
+    });
+    expect(
+      remoteBrowserServerMessageSchema.parse({
+        type: "browser-runtime",
+        status: "recovering",
+      }),
+    ).toEqual({
+      type: "browser-runtime",
+      status: "recovering",
+      message: null,
+    });
+    expect(
+      remoteBrowserCursorMessageSchema.parse({
+        type: "browser-cursor",
+        cursor: "pointer",
+      }).cursor,
+    ).toBe("pointer");
+    expect(
+      remoteBrowserClipboardMessageSchema.parse({
+        type: "browser-clipboard",
+        operation: "copy-selection",
+        text: "Cantrip",
+      }).text,
+    ).toBe("Cantrip");
   });
 
   it("accepts correlated agent activity from a worker", () => {

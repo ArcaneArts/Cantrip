@@ -53,6 +53,7 @@ export class RemoteSurfaceRelay {
     let closed = false;
     let lastClientSequence = -1;
     let lastWorkerSequence = -1;
+    let unsubscribeDisconnect: () => void = () => undefined;
 
     const unsubscribe = this.bridge.subscribeSurfaceFrames(
       binding.workerId,
@@ -82,7 +83,17 @@ export class RemoteSurfaceRelay {
       if (closed) return;
       closed = true;
       unsubscribe();
+      unsubscribeDisconnect();
     };
+
+    unsubscribeDisconnect = this.bridge.subscribeWorkerDisconnect(
+      binding.workerId,
+      () => {
+        if (closed) return;
+        socket.close(1013, "Remote Surface worker disconnected");
+        cleanup();
+      },
+    );
 
     socket.on("message", (data, isBinary) => {
       if (closed) return;
