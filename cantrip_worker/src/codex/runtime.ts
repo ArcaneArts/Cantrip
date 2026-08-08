@@ -1,4 +1,5 @@
 import type {
+  AgentInteractionResponse,
   AgentThreadSync,
   AgentTurnResult,
   ChatGoalResponse,
@@ -82,6 +83,14 @@ export interface CodexRuntime {
   answerPlanQuestion(
     questionId: string,
     answers: ChatPlanAnswer["answers"],
+  ): Promise<{ accepted: true; requestKey?: string }>;
+  answerAgentInteraction(
+    requestKey: string,
+    response: AgentInteractionResponse,
+  ): Promise<{ accepted: true }>;
+  cancelAgentInteraction(
+    requestKey: string,
+    reason: string,
   ): Promise<{ accepted: true }>;
   interruptThread(threadId: string): Promise<{ interrupted: boolean }>;
   steerThread(

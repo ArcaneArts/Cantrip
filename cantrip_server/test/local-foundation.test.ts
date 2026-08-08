@@ -96,6 +96,8 @@ const pauseCommands: Array<{ chatId: string; paused: boolean }> = [];
 let codexGoal: ThreadGoal | null = null;
 let codexPlanMode: PlanMode = "default";
 let releasePlanQuestion: (() => void) | null = null;
+let releaseAgentInteraction: (() => void) | null = null;
+const deliveredAgentInteractionResponses: unknown[] = [];
 const issueComments: string[] = [];
 const closedIssues: Array<{ comment: string | null; number: number }> = [];
 const relayedSurfaceFrames: Array<{
@@ -401,6 +403,35 @@ const workerBridge = {
             ],
           });
           await options?.onEvent?.({
+            type: "agent.interaction.requested",
+            request: {
+              requestKey: "plan-question-1",
+              threadId: command.threadId ?? "codex-plan-thread-1",
+              turnId: "plan-turn-1",
+              itemId: "plan-item-1",
+              payload: {
+                kind: "userInput",
+                questions: [
+                  {
+                    id: "topology",
+                    header: "Topology",
+                    question: "Which topology should the plan target?",
+                    isOther: true,
+                    isSecret: false,
+                    options: [
+                      {
+                        label: "Four nodes",
+                        description: "Load balance across four servers.",
+                      },
+                    ],
+                  },
+                ],
+                autoResolutionMs: null,
+              },
+              expiresAt: "2030-08-08T18:30:00.000Z",
+            },
+          });
+          await options?.onEvent?.({
             type: "agent.plan.question",
             question: {
               id: "plan-question-1",
@@ -427,6 +458,36 @@ const workerBridge = {
           });
           await new Promise<void>((resolve) => {
             releasePlanQuestion = resolve;
+          });
+        }
+        if (command.prompt === "Request a command approval") {
+          await options?.onEvent?.({
+            type: "agent.interaction.requested",
+            request: {
+              requestKey: "runtime-bridge:approval-1",
+              threadId: command.threadId ?? "codex-approval-thread-1",
+              turnId: "approval-turn-1",
+              itemId: "approval-item-1",
+              payload: {
+                kind: "commandExecution",
+                startedAtMs: 1_786_665_600_000,
+                approvalId: null,
+                environmentId: null,
+                reason: "Run the verification suite",
+                command: "pnpm check",
+                cwd: command.cwd,
+                commandActions: null,
+                networkApprovalContext: null,
+                additionalPermissions: null,
+                proposedExecpolicyAmendment: null,
+                proposedNetworkPolicyAmendments: null,
+                availableDecisions: ["accept", "decline", "cancel"],
+              },
+              expiresAt: "2030-08-08T18:30:00.000Z",
+            },
+          });
+          await new Promise<void>((resolve) => {
+            releaseAgentInteraction = resolve;
           });
         }
         await options?.onEvent?.({
@@ -516,6 +577,15 @@ const workerBridge = {
       case "chat.plan.answer":
         releasePlanQuestion?.();
         releasePlanQuestion = null;
+        return { accepted: true, requestKey: command.questionId };
+      case "agent.interaction.respond":
+        deliveredAgentInteractionResponses.push(command.response);
+        releaseAgentInteraction?.();
+        releaseAgentInteraction = null;
+        return { accepted: true };
+      case "agent.interaction.cancel":
+        releaseAgentInteraction?.();
+        releaseAgentInteraction = null;
         return { accepted: true };
       case "chat.steer":
         steeredPrompts.push(command.prompt);
@@ -1344,6 +1414,53 @@ describe("local server foundation", () => {
         ).json(),
       ).status,
     ).toBe("expired");
+    await firstDatabase.repository.setChatStatus(chat.id, "idle");
+
+    const permissionRequest =
+      await firstDatabase.repository.recordAgentInteractionRequest({
+        requestKey: "runtime-1:approval-permissions",
+        projectId: project.id,
+        provenance: {
+          chatId: chat.id,
+          threadId: "thread-approval",
+          turnId: "turn-approval",
+          itemId: "item-permissions",
+          executionLaneId: null,
+          workflowRunId: null,
+          workflowNodeId: null,
+          workerId: "test-worker",
+        },
+        payload: {
+          kind: "permissions",
+          startedAtMs: Date.now(),
+          environmentId: null,
+          cwd: project.source!.path,
+          reason: "Read test fixtures",
+          requestedPermissions: {
+            network: null,
+            fileSystem: { read: ["/fixtures"], write: null },
+          },
+        },
+        expiresAt: null,
+      });
+    await expect(
+      firstDatabase.repository.validateAgentInteractionResolution(
+        LOCAL_USER_ID,
+        permissionRequest.id,
+        {
+          idempotencyKey: "resolution-overbroad",
+          response: {
+            kind: "permissions",
+            permissions: {
+              fileSystem: { read: ["/outside"] },
+            },
+            scope: "turn",
+            strictAutoReview: false,
+          },
+        },
+      ),
+    ).rejects.toThrow(/subset of the requested permissions/u);
+    await firstDatabase.repository.interruptAgentInteractionRequests(chat.id);
     await firstDatabase.repository.setChatStatus(chat.id, "idle");
 
     const secretRequest =
@@ -2225,6 +2342,18 @@ describe("local server foundation", () => {
         })
       ).json(),
     ).toEqual({ accepted: true });
+    expect(
+      await firstDatabase.repository.getAgentInteractionRequestByKey(
+        LOCAL_USER_ID,
+        "plan-question-1",
+      ),
+    ).toMatchObject({
+      status: "resolved",
+      response: {
+        kind: "userInput",
+        answers: { topology: { answers: ["Four nodes"] } },
+      },
+    });
     await vi.waitFor(async () => {
       const current = chatListSchema
         .parse(
@@ -2363,6 +2492,91 @@ describe("local server foundation", () => {
         ).json(),
       ).goal,
     ).toBeNull();
+
+    deliveredAgentInteractionResponses.length = 0;
+    const bridgedApprovalChat = chatSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/chats`,
+          payload: { title: "Bridged approval" },
+        })
+      ).json(),
+    );
+    await firstApp.inject({
+      method: "PATCH",
+      url: `/api/chats/${bridgedApprovalChat.id}/model`,
+      payload: { modelId: selectedModel.id },
+    });
+    expect(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/chats/${bridgedApprovalChat.id}/turns`,
+          payload: {
+            text: "Request a command approval",
+            idempotencyKey: "bridged-approval-turn",
+            modelId: selectedModel.id,
+          },
+        })
+      ).statusCode,
+    ).toBe(202);
+    const bridgedApproval = await vi.waitFor(async () => {
+      const pending = agentInteractionRequestListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/agent-requests?chatId=${bridgedApprovalChat.id}&status=pending`,
+          })
+        ).json(),
+      );
+      expect(pending).toHaveLength(1);
+      return pending[0]!;
+    });
+    expect(
+      (
+        await firstDatabase.repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          bridgedApprovalChat.id,
+        )
+      )?.status,
+    ).toBe("waiting-for-approval");
+    expect(deliveredAgentInteractionResponses).toEqual([]);
+    expect(
+      agentInteractionRequestSchema.parse(
+        (
+          await firstApp.inject({
+            method: "POST",
+            url: `/api/agent-requests/${bridgedApproval.id}/respond`,
+            payload: {
+              idempotencyKey: "bridged-resolution-1",
+              response: {
+                kind: "commandExecution",
+                decision: "decline",
+              },
+            },
+          })
+        ).json(),
+      ).status,
+    ).toBe("resolved");
+    expect(deliveredAgentInteractionResponses).toEqual([
+      {
+        kind: "commandExecution",
+        decision: "decline",
+        execpolicyAmendment: null,
+        networkPolicyAmendment: null,
+      },
+    ]);
+    await vi.waitFor(async () => {
+      expect(
+        (
+          await firstDatabase.repository.getChatExecutionContext(
+            LOCAL_USER_ID,
+            bridgedApprovalChat.id,
+          )
+        )?.status,
+      ).toBe("idle");
+    });
 
     await firstApp.close();
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   agentActivitySchema,
   agentInteractionRequestSchema,
+  agentInteractionRuntimeRequestSchema,
   agentInteractionResolutionCreateSchema,
   agentWorktreeToolCallSchema,
   agentWorktreeToolResultSchema,
@@ -110,6 +111,42 @@ describe("Cantrip protocol", () => {
         status: "resolved",
       }),
     ).toThrow(/Resolved requests require response and resolution data/u);
+
+    const runtimeRequest = agentInteractionRuntimeRequestSchema.parse({
+      requestKey: "runtime-1:request-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "item-1",
+      payload: request.payload,
+      expiresAt: "2026-08-08T18:30:00.000Z",
+    });
+    expect(
+      workerEventEnvelopeSchema.parse({
+        kind: "event",
+        requestId: "worker-turn-1",
+        event: { type: "agent.interaction.requested", request: runtimeRequest },
+      }).event.type,
+    ).toBe("agent.interaction.requested");
+    expect(
+      workerCommandSchema.parse({
+        type: "agent.interaction.respond",
+        requestKey: runtimeRequest.requestKey,
+        response: { kind: "commandExecution", decision: "decline" },
+        model: {
+          id: "model-1",
+          routeId: "route-1",
+          name: "gpt-5.6-sol",
+          reasoningEffort: null,
+        },
+        provider: {
+          id: "provider-1",
+          name: "ChatGPT",
+          kind: "chatgpt",
+          baseUrl: "https://api.openai.com/v1",
+          apiKey: null,
+        },
+      }).type,
+    ).toBe("agent.interaction.respond");
   });
 
   it("validates durable worktree and execution-lane summaries", () => {

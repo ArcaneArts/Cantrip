@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   execFile,
   spawn,
@@ -11,6 +11,8 @@ import { promisify, stripVTControlCharacters } from "node:util";
 
 import {
   agentActivitySchema,
+  agentInteractionAcceptedSchema,
+  agentInteractionRuntimeRequestSchema,
   agentThreadSyncSchema,
   agentTurnResultSchema,
   chatGoalClearSchema,
@@ -20,6 +22,9 @@ import {
   normalizeResponsesBaseUrl,
   threadGoalSchema,
   type AgentActivity,
+  type AgentInteractionRequestKind,
+  type AgentInteractionResponse,
+  type AgentInteractionRuntimeRequest,
   type AgentWorktreeToolName,
   type AgentWorktreeToolResult,
   type AgentThreadSync,
@@ -81,6 +86,9 @@ interface ActiveTurn {
   finalText: string | null;
   model: RunAgentTurnOptions["model"];
   onActivity?: (activity: AgentActivity) => void;
+  onInteractionCleared?: (requestKey: string) => void;
+  onInteractionExpired?: (requestKey: string) => void;
+  onInteractionRequest?: (request: AgentInteractionRuntimeRequest) => void;
   onCheckpoint?: (checkpoint: { text: string; turnId: string }) => void;
   onPlan?: (plan: {
     explanation: string | null;
@@ -278,6 +286,246 @@ export function planQuestionId(
   return `${params.threadId}:${params.turnId}:${params.itemId}:${String(rpcId)}`;
 }
 
+export const AGENT_INTERACTION_TIMEOUT_MS = 30 * 60_000;
+
+const AGENT_INTERACTION_METHODS = new Set([
+  "item/commandExecution/requestApproval",
+  "item/fileChange/requestApproval",
+  "item/permissions/requestApproval",
+  "item/tool/requestUserInput",
+  "mcpServer/elicitation/request",
+]);
+
+function rpcParams(params: unknown): Record<string, unknown> {
+  if (!params || typeof params !== "object" || Array.isArray(params)) {
+    throw new Error("App Server request params must be an object.");
+  }
+  return params as Record<string, unknown>;
+}
+
+function availableCommandDecisions(
+  value: unknown,
+): Array<
+  | "accept"
+  | "acceptForSession"
+  | "acceptWithExecpolicyAmendment"
+  | "applyNetworkPolicyAmendment"
+  | "decline"
+  | "cancel"
+> | null {
+  if (!Array.isArray(value)) return null;
+  const known: ReadonlySet<string> = new Set([
+    "accept",
+    "acceptForSession",
+    "acceptWithExecpolicyAmendment",
+    "applyNetworkPolicyAmendment",
+    "decline",
+    "cancel",
+  ]);
+  return value.flatMap((decision) => {
+    if (typeof decision === "string" && known.has(decision)) {
+      return [
+        decision as
+          | "accept"
+          | "acceptForSession"
+          | "acceptWithExecpolicyAmendment"
+          | "applyNetworkPolicyAmendment"
+          | "decline"
+          | "cancel",
+      ];
+    }
+    if (!decision || typeof decision !== "object") return [];
+    if ("acceptWithExecpolicyAmendment" in decision) {
+      return ["acceptWithExecpolicyAmendment"] as const;
+    }
+    if ("applyNetworkPolicyAmendment" in decision) {
+      return ["applyNetworkPolicyAmendment"] as const;
+    }
+    return [];
+  }) as ReturnType<typeof availableCommandDecisions>;
+}
+
+export function agentInteractionRequestFromServerRequest(
+  method: string,
+  params: unknown,
+  requestKey: string,
+  nowMs = Date.now(),
+): AgentInteractionRuntimeRequest | null {
+  if (!AGENT_INTERACTION_METHODS.has(method)) return null;
+  const value = rpcParams(params);
+  const requestedTimeout =
+    method === "item/tool/requestUserInput" &&
+    typeof value.autoResolutionMs === "number" &&
+    Number.isSafeInteger(value.autoResolutionMs) &&
+    value.autoResolutionMs >= 0
+      ? value.autoResolutionMs
+      : AGENT_INTERACTION_TIMEOUT_MS;
+  const expiresAt = new Date(
+    nowMs + Math.min(requestedTimeout, AGENT_INTERACTION_TIMEOUT_MS),
+  ).toISOString();
+
+  if (method === "item/commandExecution/requestApproval") {
+    return agentInteractionRuntimeRequestSchema.parse({
+      requestKey,
+      threadId: value.threadId,
+      turnId: value.turnId,
+      itemId: value.itemId,
+      expiresAt,
+      payload: {
+        kind: "commandExecution",
+        startedAtMs: value.startedAtMs,
+        approvalId: value.approvalId ?? null,
+        environmentId: value.environmentId ?? null,
+        reason: value.reason ?? null,
+        command: value.command ?? null,
+        cwd: value.cwd ?? null,
+        commandActions: value.commandActions ?? null,
+        networkApprovalContext: value.networkApprovalContext ?? null,
+        additionalPermissions: value.additionalPermissions ?? null,
+        proposedExecpolicyAmendment: value.proposedExecpolicyAmendment ?? null,
+        proposedNetworkPolicyAmendments:
+          value.proposedNetworkPolicyAmendments ?? null,
+        availableDecisions: availableCommandDecisions(value.availableDecisions),
+      },
+    });
+  }
+  if (method === "item/fileChange/requestApproval") {
+    return agentInteractionRuntimeRequestSchema.parse({
+      requestKey,
+      threadId: value.threadId,
+      turnId: value.turnId,
+      itemId: value.itemId,
+      expiresAt,
+      payload: {
+        kind: "fileChange",
+        startedAtMs: value.startedAtMs,
+        reason: value.reason ?? null,
+        grantRoot: value.grantRoot ?? null,
+      },
+    });
+  }
+  if (method === "item/permissions/requestApproval") {
+    return agentInteractionRuntimeRequestSchema.parse({
+      requestKey,
+      threadId: value.threadId,
+      turnId: value.turnId,
+      itemId: value.itemId,
+      expiresAt,
+      payload: {
+        kind: "permissions",
+        startedAtMs: value.startedAtMs,
+        environmentId: value.environmentId ?? null,
+        cwd: value.cwd,
+        reason: value.reason ?? null,
+        requestedPermissions: value.permissions,
+      },
+    });
+  }
+  if (method === "item/tool/requestUserInput") {
+    return agentInteractionRuntimeRequestSchema.parse({
+      requestKey,
+      threadId: value.threadId,
+      turnId: value.turnId,
+      itemId: value.itemId,
+      expiresAt,
+      payload: {
+        kind: "userInput",
+        questions: value.questions,
+        autoResolutionMs: value.autoResolutionMs ?? null,
+      },
+    });
+  }
+  return agentInteractionRuntimeRequestSchema.parse({
+    requestKey,
+    threadId: value.threadId,
+    turnId: value.turnId ?? null,
+    itemId: null,
+    expiresAt,
+    payload: {
+      kind: "mcpElicitation",
+      serverName: value.serverName,
+      mode: value.mode,
+      message: value.message,
+      requestedSchema: value.requestedSchema ?? null,
+      url: value.url ?? null,
+      elicitationId: value.elicitationId ?? null,
+      metadata: value._meta ?? null,
+    },
+  });
+}
+
+export function codexResultForAgentInteraction(
+  response: AgentInteractionResponse,
+): unknown {
+  if (response.kind === "commandExecution") {
+    if (response.decision === "acceptWithExecpolicyAmendment") {
+      if (!response.execpolicyAmendment) {
+        throw new Error("Missing execpolicy amendment.");
+      }
+      return {
+        decision: {
+          acceptWithExecpolicyAmendment: {
+            execpolicy_amendment: response.execpolicyAmendment,
+          },
+        },
+      };
+    }
+    if (response.decision === "applyNetworkPolicyAmendment") {
+      if (!response.networkPolicyAmendment) {
+        throw new Error("Missing network policy amendment.");
+      }
+      return {
+        decision: {
+          applyNetworkPolicyAmendment: {
+            network_policy_amendment: response.networkPolicyAmendment,
+          },
+        },
+      };
+    }
+    return { decision: response.decision };
+  }
+  if (response.kind === "fileChange") {
+    return { decision: response.decision };
+  }
+  if (response.kind === "permissions") {
+    return {
+      permissions: response.permissions,
+      scope: response.scope,
+      strictAutoReview: response.strictAutoReview,
+    };
+  }
+  if (response.kind === "userInput") {
+    return { answers: response.answers };
+  }
+  return {
+    action: response.action,
+    content: response.content,
+    _meta: response.metadata,
+  };
+}
+
+export function failClosedAgentInteractionReply(
+  kind: AgentInteractionRequestKind,
+  reason: string,
+): Pick<RpcMessage, "error" | "result"> {
+  if (kind === "commandExecution" || kind === "fileChange") {
+    return { result: { decision: "cancel" } };
+  }
+  if (kind === "permissions") {
+    return {
+      result: {
+        permissions: {},
+        scope: "turn",
+        strictAutoReview: false,
+      },
+    };
+  }
+  if (kind === "mcpElicitation") {
+    return { result: { action: "cancel", content: null, _meta: null } };
+  }
+  return { error: { code: -32_000, message: reason } };
+}
+
 interface ThreadResponse {
   thread: { id: string };
 }
@@ -398,9 +646,16 @@ interface ServerRequestResolvedParams {
 }
 
 interface NativePendingPlanQuestion {
-  activeTurnId: string;
+  active: ActiveTurn;
   question: PendingPlanQuestion;
+  requestKey: string;
+}
+
+interface NativePendingAgentInteraction {
+  active: ActiveTurn;
+  request: AgentInteractionRuntimeRequest;
   rpcId: number | string;
+  timeout: ReturnType<typeof setTimeout>;
 }
 
 export interface RunAgentTurnOptions {
@@ -424,6 +679,9 @@ export interface RunAgentTurnOptions {
     { type: "chat.turn" }
   >["worktreePolicy"];
   onActivity?: (activity: AgentActivity) => void;
+  onInteractionCleared?: ActiveTurn["onInteractionCleared"];
+  onInteractionExpired?: ActiveTurn["onInteractionExpired"];
+  onInteractionRequest?: ActiveTurn["onInteractionRequest"];
   onCheckpoint?: ActiveTurn["onCheckpoint"];
   onPlan?: ActiveTurn["onPlan"];
   onPlanQuestion?: ActiveTurn["onPlanQuestion"];
@@ -929,9 +1187,14 @@ export class CodexAppServer implements CodexRuntime {
   readonly #goals = new Map<string, ThreadGoal>();
   readonly #loadedThreads = new Set<string>();
   readonly #pending = new Map<number, PendingRpcRequest>();
+  readonly #pendingAgentInteractions = new Map<
+    string,
+    NativePendingAgentInteraction
+  >();
   readonly #pendingPlanQuestions = new Map<string, NativePendingPlanQuestion>();
   readonly #pausedChats = new Set<string>();
   readonly #runtimeDiagnostics: CodexRuntimeDiagnostic[] = [];
+  #appServerSessionId = randomUUID();
   #child: ChildProcessWithoutNullStreams | null = null;
   #remoteUrl: string | null = null;
   #runtimeId: string | null = null;
@@ -1001,6 +1264,9 @@ export class CodexAppServer implements CodexRuntime {
         finalText: null,
         model: options.model,
         onActivity: options.onActivity,
+        onInteractionCleared: options.onInteractionCleared,
+        onInteractionExpired: options.onInteractionExpired,
+        onInteractionRequest: options.onInteractionRequest,
         onCheckpoint: options.onCheckpoint,
         onPlan: options.onPlan,
         onPlanQuestion: options.onPlanQuestion,
@@ -1256,27 +1522,59 @@ export class CodexAppServer implements CodexRuntime {
   async answerPlanQuestion(
     questionId: string,
     answers: ChatPlanAnswer["answers"],
-  ): Promise<{ accepted: true }> {
+  ): Promise<{ accepted: true; requestKey?: string }> {
     const pending = this.#pendingPlanQuestions.get(questionId);
     if (!pending) {
       throw new Error("The Plan Mode question is no longer pending.");
     }
+    await this.answerAgentInteraction(pending.requestKey, {
+      kind: "userInput",
+      answers: Object.fromEntries(
+        Object.entries(answers).map(([id, values]) => [
+          id,
+          { answers: values },
+        ]),
+      ),
+    });
+    return chatPlanAcceptedSchema.parse({
+      accepted: true,
+      requestKey: pending.requestKey,
+    });
+  }
+
+  async answerAgentInteraction(
+    requestKey: string,
+    response: AgentInteractionResponse,
+  ): Promise<{ accepted: true }> {
+    const pending = this.#pendingAgentInteractions.get(requestKey);
+    if (!pending) {
+      throw new Error("The agent interaction is no longer pending.");
+    }
+    if (pending.request.payload.kind !== response.kind) {
+      throw new Error("The agent interaction response kind does not match.");
+    }
     this.send({
       id: pending.rpcId,
-      result: {
-        answers: Object.fromEntries(
-          Object.entries(answers).map(([id, values]) => [
-            id,
-            { answers: values },
-          ]),
-        ),
-      },
+      result: codexResultForAgentInteraction(response),
     });
-    this.#pendingPlanQuestions.delete(questionId);
-    this.#activeTurns
-      .get(pending.activeTurnId)
-      ?.onPlanQuestionResolved?.(questionId);
-    return chatPlanAcceptedSchema.parse({ accepted: true });
+    this.releaseAgentInteraction(pending);
+    return agentInteractionAcceptedSchema.parse({ accepted: true });
+  }
+
+  async cancelAgentInteraction(
+    requestKey: string,
+    reason: string,
+  ): Promise<{ accepted: true }> {
+    const pending = this.#pendingAgentInteractions.get(requestKey);
+    if (!pending) {
+      return agentInteractionAcceptedSchema.parse({ accepted: true });
+    }
+    this.send({
+      id: pending.rpcId,
+      ...failClosedAgentInteractionReply(pending.request.payload.kind, reason),
+    });
+    this.releaseAgentInteraction(pending);
+    return agentInteractionAcceptedSchema.parse({ accepted: true });
   }
 
   async interruptThread(threadId: string): Promise<{ interrupted: boolean }> {
@@ -1393,7 +1691,7 @@ export class CodexAppServer implements CodexRuntime {
           model: options.model.name,
           modelProvider,
           ...codexWorkspaceContext(options.cwd),
-          approvalPolicy: "never",
+          approvalPolicy: "on-request",
           sandbox: "workspace-write",
         })) as ThreadResponse;
         threadId = resumed.thread.id;
@@ -1409,7 +1707,7 @@ export class CodexAppServer implements CodexRuntime {
         model: options.model.name,
         modelProvider,
         ...codexWorkspaceContext(options.cwd),
-        approvalPolicy: "never",
+        approvalPolicy: "on-request",
         sandbox: "workspace-write",
         developerInstructions: CANTRIP_WORKTREE_DEVELOPER_INSTRUCTIONS,
         ...(this.compatibility.initialize?.experimentalApi
@@ -1517,6 +1815,7 @@ export class CodexAppServer implements CodexRuntime {
     model: RunAgentTurnOptions["model"],
     provider: RunAgentTurnOptions["provider"],
   ): Promise<void> {
+    this.#appServerSessionId = randomUUID();
     await mkdir(this.codexHome, { recursive: true });
     const providerArguments =
       provider.kind === "chatgpt"
@@ -1665,6 +1964,7 @@ export class CodexAppServer implements CodexRuntime {
       capabilities: {
         experimentalApi:
           this.compatibility.initialize?.experimentalApi ?? false,
+        mcpServerOpenaiFormElicitation: true,
         requestAttestation: false,
       },
     });
@@ -1771,7 +2071,29 @@ export class CodexAppServer implements CodexRuntime {
     }
 
     if (message.id !== undefined && message.method) {
-      void this.handleServerRequest(message);
+      void this.handleServerRequest(message).catch((error) => {
+        this.recordDiagnostic(
+          {
+            at: new Date().toISOString(),
+            direction: "from-runtime",
+            kind: "unsupported-request",
+            method: message.method ?? null,
+            payload: message.params,
+          },
+          `Failed App Server request ${message.method ?? "<missing method>"}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        try {
+          this.send({
+            id: message.id,
+            error: {
+              code: -32_602,
+              message: error instanceof Error ? error.message : String(error),
+            },
+          });
+        } catch {
+          // The App Server connection may already be closed.
+        }
+      });
       return;
     }
 
@@ -1796,16 +2118,14 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "serverRequest/resolved") {
       const params = message.params as ServerRequestResolvedParams;
-      const pending = [...this.#pendingPlanQuestions.entries()].find(
-        ([, candidate]) =>
-          candidate.question.threadId === params.threadId &&
+      const pending = [...this.#pendingAgentInteractions.values()].find(
+        (candidate) =>
+          candidate.request.threadId === params.threadId &&
           String(candidate.rpcId) === String(params.requestId),
       );
       if (pending) {
-        this.#pendingPlanQuestions.delete(pending[0]);
-        this.#activeTurns
-          .get(pending[1].activeTurnId)
-          ?.onPlanQuestionResolved?.(pending[0]);
+        this.releaseAgentInteraction(pending);
+        pending.active.onInteractionCleared?.(pending.request.requestKey);
       }
       return;
     }
@@ -1998,41 +2318,48 @@ export class CodexAppServer implements CodexRuntime {
     if (message.id === undefined) {
       return;
     }
-    if (message.method === "item/commandExecution/requestApproval") {
-      this.send({ id: message.id, result: { decision: "decline" } });
-      return;
-    }
-    if (message.method === "item/fileChange/requestApproval") {
-      this.send({ id: message.id, result: { decision: "decline" } });
-      return;
-    }
-    if (message.method === "item/tool/requestUserInput") {
-      const params = message.params as ToolRequestUserInputParams;
-      const active = this.#activeTurns.get(params.turnId);
-      if (!active) {
+    const request = agentInteractionRequestFromServerRequest(
+      message.method ?? "",
+      message.params,
+      `codex:${this.#appServerSessionId}:${String(message.id)}`,
+    );
+    if (request) {
+      const active = request.turnId
+        ? this.#activeTurns.get(request.turnId)
+        : [...this.#activeTurns.values()].find(
+            (candidate) => candidate.threadId === request.threadId,
+          );
+      if (!active?.onInteractionRequest) {
         this.send({
           id: message.id,
-          error: { code: -32602, message: "No active Cantrip plan turn." },
+          ...failClosedAgentInteractionReply(
+            request.payload.kind,
+            "No active Cantrip interaction channel.",
+          ),
         });
         return;
       }
-      const id = planQuestionId(params, message.id);
-      const question = pendingPlanQuestionSchema.parse({
-        id,
-        threadId: params.threadId,
-        turnId: params.turnId,
-        itemId: params.itemId,
-        questions: params.questions,
-        createdAt: new Date().toISOString(),
-      });
-      this.#pendingPlanQuestions.set(id, {
-        activeTurnId: params.turnId,
-        question,
-        rpcId: message.id,
-      });
-      active.onPlanQuestion?.(question);
-      // Deliberately do not answer or schedule auto-resolution. The App Server
-      // request remains pending until answerPlanQuestion receives human input.
+      this.registerAgentInteraction(active, message.id, request);
+      if (
+        request.payload.kind === "userInput" &&
+        request.turnId &&
+        request.itemId
+      ) {
+        const question = pendingPlanQuestionSchema.parse({
+          id: request.requestKey,
+          threadId: request.threadId,
+          turnId: request.turnId,
+          itemId: request.itemId,
+          questions: request.payload.questions,
+          createdAt: new Date().toISOString(),
+        });
+        this.#pendingPlanQuestions.set(question.id, {
+          active,
+          question,
+          requestKey: request.requestKey,
+        });
+        active.onPlanQuestion?.(question);
+      }
       return;
     }
     if (message.method === "item/tool/call") {
@@ -2066,6 +2393,69 @@ export class CodexAppServer implements CodexRuntime {
     });
   }
 
+  private registerAgentInteraction(
+    active: ActiveTurn,
+    rpcId: number | string,
+    request: AgentInteractionRuntimeRequest,
+  ): void {
+    const existing = this.#pendingAgentInteractions.get(request.requestKey);
+    if (existing) {
+      if (String(existing.rpcId) !== String(rpcId)) {
+        throw new Error("Agent interaction request key was reused.");
+      }
+      return;
+    }
+    let pending: NativePendingAgentInteraction;
+    const timeout = setTimeout(
+      () => this.expireAgentInteraction(pending),
+      Math.max(0, Date.parse(request.expiresAt) - Date.now()),
+    );
+    timeout.unref();
+    pending = { active, request, rpcId, timeout };
+    this.#pendingAgentInteractions.set(request.requestKey, pending);
+    try {
+      active.onInteractionRequest?.(request);
+    } catch (error) {
+      this.releaseAgentInteraction(pending);
+      throw error;
+    }
+  }
+
+  private expireAgentInteraction(pending: NativePendingAgentInteraction): void {
+    if (
+      this.#pendingAgentInteractions.get(pending.request.requestKey) !== pending
+    ) {
+      return;
+    }
+    try {
+      this.send({
+        id: pending.rpcId,
+        ...failClosedAgentInteractionReply(
+          pending.request.payload.kind,
+          "The Cantrip interaction expired before it was answered.",
+        ),
+      });
+    } catch {
+      // The runtime may already be unavailable; the request still expires.
+    }
+    this.releaseAgentInteraction(pending);
+    pending.active.onInteractionExpired?.(pending.request.requestKey);
+  }
+
+  private releaseAgentInteraction(
+    pending: NativePendingAgentInteraction,
+  ): void {
+    clearTimeout(pending.timeout);
+    this.#pendingAgentInteractions.delete(pending.request.requestKey);
+    const planQuestion = this.#pendingPlanQuestions.get(
+      pending.request.requestKey,
+    );
+    if (planQuestion) {
+      this.#pendingPlanQuestions.delete(planQuestion.question.id);
+      planQuestion.active.onPlanQuestionResolved?.(planQuestion.question.id);
+    }
+  }
+
   private recordDiagnostic(
     diagnostic: CodexRuntimeDiagnostic,
     warning?: string,
@@ -2087,11 +2477,11 @@ export class CodexAppServer implements CodexRuntime {
       pending.reject(error);
     }
     this.#pending.clear();
-    for (const [questionId, pending] of this.#pendingPlanQuestions) {
-      this.#activeTurns
-        .get(pending.activeTurnId)
-        ?.onPlanQuestionResolved?.(questionId);
+    for (const pending of [...this.#pendingAgentInteractions.values()]) {
+      this.releaseAgentInteraction(pending);
+      pending.active.onInteractionCleared?.(pending.request.requestKey);
     }
+    this.#pendingAgentInteractions.clear();
     this.#pendingPlanQuestions.clear();
     for (const active of this.#activeTurns.values()) {
       active.reject(error);

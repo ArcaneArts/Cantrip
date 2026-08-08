@@ -1235,6 +1235,7 @@ export const agentInteractionRequestPayloadSchema = z.discriminatedUnion(
       reason: z.string().nullable(),
       command: z.string().nullable(),
       cwd: z.string().nullable(),
+      commandActions: z.json().nullable().optional(),
       networkApprovalContext: z
         .object({
           host: z.string().min(1),
@@ -1388,6 +1389,19 @@ export const agentInteractionResolutionCreateSchema = z
   .refine(fitsAgentInteractionStorageLimit, {
     message: "Agent interaction response exceeds the 1 MB storage limit.",
   });
+
+export const agentInteractionRuntimeRequestSchema = z.object({
+  requestKey: z.string().min(1).max(200),
+  threadId: z.string().min(1),
+  turnId: z.string().min(1).nullable(),
+  itemId: z.string().min(1).nullable(),
+  payload: agentInteractionRequestPayloadSchema,
+  expiresAt: z.string().datetime(),
+});
+
+export const agentInteractionAcceptedSchema = z.object({
+  accepted: z.literal(true),
+});
 
 export const agentInteractionRequestSchema = z
   .object({
@@ -1641,7 +1655,10 @@ export const chatPlanAnswerSchema = z.object({
   ),
 });
 
-export const chatPlanAcceptedSchema = z.object({ accepted: z.literal(true) });
+export const chatPlanAcceptedSchema = z.object({
+  accepted: z.literal(true),
+  requestKey: z.string().min(1).optional(),
+});
 
 export const githubWorkerRepositorySchema = githubRepositorySchema.omit({
   imported: true,
@@ -2189,6 +2206,20 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     provider: workerRuntimeProviderSchema,
   }),
   z.object({
+    type: z.literal("agent.interaction.respond"),
+    requestKey: z.string().min(1).max(200),
+    response: agentInteractionResponseSchema,
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
+    type: z.literal("agent.interaction.cancel"),
+    requestKey: z.string().min(1).max(200),
+    reason: z.string().min(1).max(4_000),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
     type: z.literal("chat.steer"),
     chatId: z.string().min(1),
     threadId: z.string().min(1).nullable(),
@@ -2251,6 +2282,18 @@ export const workerEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("agent.plan.question-resolved"),
     questionId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("agent.interaction.requested"),
+    request: agentInteractionRuntimeRequestSchema,
+  }),
+  z.object({
+    type: z.literal("agent.interaction.cleared"),
+    requestKey: z.string().min(1).max(200),
+  }),
+  z.object({
+    type: z.literal("agent.interaction.expired"),
+    requestKey: z.string().min(1).max(200),
   }),
   z.object({
     type: z.literal("terminal.output"),
@@ -2465,6 +2508,12 @@ export type AgentInteractionRequestCreate = z.infer<
 >;
 export type AgentInteractionResolutionCreate = z.infer<
   typeof agentInteractionResolutionCreateSchema
+>;
+export type AgentInteractionRuntimeRequest = z.infer<
+  typeof agentInteractionRuntimeRequestSchema
+>;
+export type AgentInteractionAccepted = z.infer<
+  typeof agentInteractionAcceptedSchema
 >;
 export type AgentInteractionRequest = z.infer<
   typeof agentInteractionRequestSchema
