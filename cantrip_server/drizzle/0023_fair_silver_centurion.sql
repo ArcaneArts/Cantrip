@@ -1,0 +1,1 @@
+ALTER TABLE "chats" ADD COLUMN "automation_paused" boolean DEFAULT false NOT NULL;

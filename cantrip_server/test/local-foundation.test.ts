@@ -14,6 +14,7 @@ import {
   chatGoalResponseSchema,
   chatMessageListSchema,
   chatMessageSchema,
+  chatPauseStateSchema,
   chatPlanStateSchema,
   chatSummarySchema,
   explorerDirectorySchema,
@@ -90,6 +91,7 @@ const deletedProjectPaths: string[] = [];
 const authProviderIds: string[] = [];
 const exhaustedProviderIds = new Set<string>();
 const steeredPrompts: string[] = [];
+const pauseCommands: Array<{ chatId: string; paused: boolean }> = [];
 let codexGoal: ThreadGoal | null = null;
 let codexPlanMode: PlanMode = "default";
 let releasePlanQuestion: (() => void) | null = null;
@@ -468,6 +470,9 @@ const workerBridge = {
       case "chat.compact":
         compactRequests += 1;
         return { accepted: true };
+      case "chat.pause.set":
+        pauseCommands.push({ chatId: command.chatId, paused: command.paused });
+        return { paused: command.paused };
       case "chat.interrupt":
         return { interrupted: false };
       case "chat.goal.get":
@@ -1977,6 +1982,22 @@ describe("local server foundation", () => {
     ).toMatchObject({ statusCode: 200 });
     expect(steeredPrompts).toContain("First follow-up");
 
+    expect(
+      chatPauseStateSchema.parse(
+        (
+          await firstApp.inject({
+            method: "PATCH",
+            url: `/api/chats/${queueChat.id}/pause`,
+            payload: { paused: true },
+          })
+        ).json(),
+      ),
+    ).toEqual({ paused: true });
+    expect(pauseCommands.at(-1)).toEqual({
+      chatId: queueChat.id,
+      paused: true,
+    });
+
     const turnsBeforeRelease = turnRequests;
     releaseHeldTurn?.();
     releaseHeldTurn = null;
@@ -1987,6 +2008,31 @@ describe("local server foundation", () => {
       url: `/api/queued-prompts/${secondQueued.id}`,
       payload: { frozen: false },
     });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(turnRequests).toBe(turnsBeforeRelease);
+    expect(
+      chatListSchema
+        .parse(
+          (
+            await firstApp.inject({
+              method: "GET",
+              url: `/api/projects/${project.id}/chats`,
+            })
+          ).json(),
+        )
+        .find(({ id }) => id === queueChat.id),
+    ).toMatchObject({ automationPaused: true, status: "idle" });
+    expect(
+      chatPauseStateSchema.parse(
+        (
+          await firstApp.inject({
+            method: "PATCH",
+            url: `/api/chats/${queueChat.id}/pause`,
+            payload: { paused: false },
+          })
+        ).json(),
+      ),
+    ).toEqual({ paused: false });
     await vi.waitFor(() =>
       expect(turnPrompts).toContain("Edited second follow-up"),
     );

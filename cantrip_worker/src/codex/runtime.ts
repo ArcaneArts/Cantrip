@@ -30,6 +30,7 @@ export interface CodexRuntimeDiagnostic {
 export interface CodexRuntime {
   readonly compatibility: CodexRuntimeReport;
 
+  setChatPaused(chatId: string, paused: boolean): void;
   runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult>;
   listSkills(
     options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,

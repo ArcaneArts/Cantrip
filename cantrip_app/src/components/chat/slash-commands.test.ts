@@ -28,6 +28,7 @@ describe("slash commands", () => {
         "/fork",
         "/goal",
         "/new",
+        "/pause",
         "/plan",
         "/review",
       ]),

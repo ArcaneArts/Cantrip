@@ -255,6 +255,7 @@ describe("Codex goals", () => {
 
   it("continues only active goals with an explicit follow-up prompt", () => {
     expect(goalShouldContinue(goal)).toBe(true);
+    expect(goalShouldContinue(goal, true)).toBe(false);
     expect(goalShouldContinue({ ...goal, status: "paused" })).toBe(false);
     expect(goalShouldContinue({ ...goal, status: "complete" })).toBe(false);
     expect(GOAL_CONTINUATION_PROMPT).toContain("active goal");

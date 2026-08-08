@@ -546,6 +546,7 @@ export const chatSummarySchema = z.object({
   modelId: z.string().min(1).nullable(),
   planMode: z.enum(["default", "plan"]),
   hasPendingPlanQuestion: z.boolean(),
+  automationPaused: z.boolean().default(false),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -1524,6 +1525,14 @@ export const chatInterruptAcceptedSchema = z.object({
   interrupted: z.boolean(),
 });
 
+export const chatPauseUpdateSchema = z.object({
+  paused: z.boolean(),
+});
+
+export const chatPauseStateSchema = z.object({
+  paused: z.boolean(),
+});
+
 export const threadGoalStatusSchema = z.enum([
   "active",
   "paused",
@@ -2073,6 +2082,12 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
     planMode: planModeSchema,
+    automationPaused: z.boolean().default(false),
+  }),
+  z.object({
+    type: z.literal("chat.pause.set"),
+    chatId: z.string().min(1),
+    paused: z.boolean(),
   }),
   z.object({
     type: z.literal("chat.compact"),
@@ -2443,6 +2458,8 @@ export type QueuedPromptOrder = z.infer<typeof queuedPromptOrderSchema>;
 export type ChatModelUpdate = z.infer<typeof chatModelUpdateSchema>;
 export type ChatCompactAccepted = z.infer<typeof chatCompactAcceptedSchema>;
 export type ChatInterruptAccepted = z.infer<typeof chatInterruptAcceptedSchema>;
+export type ChatPauseUpdate = z.infer<typeof chatPauseUpdateSchema>;
+export type ChatPauseState = z.infer<typeof chatPauseStateSchema>;
 export type ThreadGoalStatus = z.infer<typeof threadGoalStatusSchema>;
 export type ThreadGoal = z.infer<typeof threadGoalSchema>;
 export type ChatGoalResponse = z.infer<typeof chatGoalResponseSchema>;

@@ -101,6 +101,7 @@ type ProjectSourceRow = typeof schema.projectSources.$inferSelect;
 type ProjectWorktreeRow = typeof schema.projectWorktrees.$inferSelect;
 
 export interface ChatExecutionContext {
+  automationPaused: boolean;
   chatId: string;
   cwd: string;
   executionLaneId: string | null;
@@ -334,6 +335,7 @@ function toChatSummary(chat: typeof schema.chats.$inferSelect): ChatSummary {
     modelId: chat.modelId,
     planMode: chat.planMode as ChatSummary["planMode"],
     hasPendingPlanQuestion: chat.pendingPlanQuestion !== null,
+    automationPaused: chat.automationPaused,
     createdAt: toISOString(chat.createdAt),
     updatedAt: toISOString(chat.updatedAt),
   };
@@ -1722,6 +1724,11 @@ export class ServerRepository {
             "The selected worktree is not ready for execution.",
           );
         }
+        if (row.chat.automationPaused) {
+          throw new ExecutionLaneConflictError(
+            "Chat automation is paused. Resume the chat before starting another turn.",
+          );
+        }
 
         const claimed = await transaction
           .update(schema.chats)
@@ -1808,6 +1815,7 @@ export class ServerRepository {
           lane = firstOrThrow(inserted, "creating an execution lane");
         }
         return {
+          automationPaused: row.chat.automationPaused,
           chatId,
           cwd: row.worktree.absolutePath,
           executionLaneId: lane.id,
@@ -3952,6 +3960,30 @@ export class ServerRepository {
     return result[0] ? toChatSummary(result[0]) : null;
   }
 
+  async setChatAutomationPaused(
+    ownerId: string,
+    chatId: string,
+    paused: boolean,
+  ): Promise<ChatSummary | null> {
+    const rows = await this.database
+      .update(schema.chats)
+      .set({ automationPaused: paused, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          inArray(
+            schema.chats.projectId,
+            this.database
+              .select({ id: schema.projects.id })
+              .from(schema.projects)
+              .where(eq(schema.projects.ownerId, ownerId)),
+          ),
+        ),
+      )
+      .returning();
+    return rows[0] ? toChatSummary(rows[0]) : null;
+  }
+
   async updateChatWorktree(
     ownerId: string,
     chatId: string,
@@ -4597,6 +4629,7 @@ export class ServerRepository {
       return null;
     }
     return {
+      automationPaused: row.chat.automationPaused,
       chatId: row.chat.id,
       cwd: row.worktree.absolutePath,
       executionLaneId: row.lane?.id ?? null,

@@ -13,6 +13,8 @@ import {
   chatGoalResponseSchema,
   chatPlanAnswerSchema,
   chatPlanStateSchema,
+  chatPauseStateSchema,
+  chatPauseUpdateSchema,
   decodeRemoteSurfaceFrame,
   encodeRemoteSurfaceFrame,
   remoteBrowserClipboardMessageSchema,
@@ -268,13 +270,31 @@ describe("Cantrip protocol", () => {
         apiKey: null,
       },
       planMode: "plan",
+      automationPaused: true,
     });
     expect(turn).toMatchObject({
       isPrimary: true,
       worktreeMode: "agent-managed",
       worktreePolicy: "required-for-writes",
       planMode: "plan",
+      automationPaused: true,
     });
+  });
+
+  it("validates cooperative chat pause state and worker commands", () => {
+    expect(chatPauseUpdateSchema.parse({ paused: true })).toEqual({
+      paused: true,
+    });
+    expect(chatPauseStateSchema.parse({ paused: false })).toEqual({
+      paused: false,
+    });
+    expect(
+      workerCommandSchema.parse({
+        type: "chat.pause.set",
+        chatId: "chat-1",
+        paused: true,
+      }),
+    ).toEqual({ type: "chat.pause.set", chatId: "chat-1", paused: true });
   });
 
   it("validates durable Plan Mode state and no-timeout worker questions", () => {

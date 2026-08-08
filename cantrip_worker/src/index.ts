@@ -53,6 +53,7 @@ async function start(): Promise<void> {
   const github = new GithubClient(config.dataDirectory);
   const codexAuthClients = new Map<string, CodexAuthClient>();
   const codexRuntimes = new Map<string, CodexRuntime>();
+  const pausedChats = new Set<string>();
   const terminals = new TerminalManager();
   const remoteSurfaces = new RemoteSurfaceManager({
     browser: browserAdapter,
@@ -261,8 +262,12 @@ async function start(): Promise<void> {
         return { accepted: true };
       case "surface.desktop.probe":
         return desktopAdapter.probe();
-      case "chat.turn":
-        return runtimeFor(command).runTurn({
+      case "chat.turn": {
+        if (command.automationPaused) pausedChats.add(command.chatId);
+        const runtime = runtimeFor(command);
+        runtime.setChatPaused(command.chatId, pausedChats.has(command.chatId));
+        return runtime.runTurn({
+          automationPaused: pausedChats.has(command.chatId),
           chatId: command.chatId,
           clientMessageId: command.clientMessageId,
           cwd: command.cwd,
@@ -329,6 +334,17 @@ async function start(): Promise<void> {
             }
           },
         });
+      }
+      case "chat.pause.set":
+        if (command.paused) {
+          pausedChats.add(command.chatId);
+        } else {
+          pausedChats.delete(command.chatId);
+        }
+        for (const runtime of codexRuntimes.values()) {
+          runtime.setChatPaused(command.chatId, command.paused);
+        }
+        return { paused: command.paused };
       case "chat.compact":
         return runtimeFor(command).compactThread({
           cwd: command.cwd,
