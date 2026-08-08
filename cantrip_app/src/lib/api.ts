@@ -103,6 +103,7 @@ import type {
   ModelProviderUpdate,
   ProjectViewKind,
   ProjectWorktreeCreate,
+  RemoteDesktopTarget,
   UserSettingsUpdate,
   WorktreePolicy,
 } from "@cantrip/protocol";
@@ -656,6 +657,18 @@ export async function createRemoteDesktop(projectId: string) {
       `/api/projects/${encodeURIComponent(projectId)}/remote-desktops`,
       {},
     ),
+  );
+}
+
+export async function updateRemoteDesktopTarget(
+  desktopId: string,
+  target: RemoteDesktopTarget,
+) {
+  return remoteDesktopSummarySchema.parse(
+    await request(`/api/remote-desktops/${encodeURIComponent(desktopId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ target }),
+    }),
   );
 }
 

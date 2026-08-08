@@ -177,6 +177,17 @@ worker-owned desktop surface. The worker sends compressed display frames and
 accepts pointer, keyboard, and explicit clipboard messages. No desktop port,
 password, or worker address exists in the app contract.
 
+Each Remote Desktop tab persists a capture target. Users can switch between
+the worker's monitors and individual application windows while connected, and
+the worker translates local pointer coordinates into the selected target's
+global desktop origin. Native monitor IDs and window IDs are only hints:
+reconnect first matches them, then falls back to monitor name or application
+and window title. A missing saved application is launched by the worker and
+polled for a matching window; the client shows that launch state. If the
+target remains unavailable, the stream safely returns to the primary or first
+available monitor without discarding the saved preference, so a later refresh
+or reconnect can restore it.
+
 The desktop data plane uses pipelined native capture and JPEG encoding with a
 30 FPS default and a best-effort 60 FPS ceiling. Server-owned user settings
 select the target frame rate and adaptive quality profile. Payload size,

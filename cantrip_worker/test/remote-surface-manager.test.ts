@@ -26,6 +26,7 @@ describe("RemoteSurfaceManager", () => {
     const handleFrame = vi.fn();
     const attach = vi.fn();
     const detach = vi.fn();
+    const updateConfiguration = vi.fn();
     let emit:
       | ((
           attachmentId: string,
@@ -42,6 +43,7 @@ describe("RemoteSurfaceManager", () => {
       handleFrame,
       resume: vi.fn(),
       suspend: vi.fn(),
+      updateConfiguration,
     };
     const adapter: RemoteSurfaceAdapter = {
       async open(_command, send) {
@@ -83,6 +85,17 @@ describe("RemoteSurfaceManager", () => {
       new Uint8Array([2]),
     );
     expect(handleFrame).toHaveBeenCalledTimes(1);
+
+    await manager.configure("surface-1", {
+      kind: "browser",
+      initialUrl: "https://cantrip.art/",
+      profileId: null,
+    });
+    expect(updateConfiguration).toHaveBeenCalledWith({
+      kind: "browser",
+      initialUrl: "https://cantrip.art/",
+      profileId: null,
+    });
 
     emit?.("attachment-1", "frame", new Uint8Array([9, 8]));
     expect(outbound).toHaveBeenCalledWith(

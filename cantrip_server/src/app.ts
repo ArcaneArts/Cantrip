@@ -117,6 +117,7 @@ import {
   remoteDesktopProbeResultSchema,
   remoteDesktopListSchema,
   remoteDesktopSummarySchema,
+  remoteDesktopUpdateSchema,
   remoteSurfaceAttachResultSchema,
   remoteSurfaceConnectionMessageSchema,
   remoteSurfaceCreateSchema,
@@ -3212,6 +3213,67 @@ export async function buildApp({
       const desktop = await repository.getRemoteDesktop(
         LOCAL_USER_ID,
         request.params.desktopId,
+      );
+      return desktop
+        ? reply.send(remoteDesktopSummarySchema.parse(desktop))
+        : reply.code(404).send({ error: "Remote Desktop not found." });
+    },
+  );
+
+  app.patch<{ Params: { desktopId: string } }>(
+    "/api/remote-desktops/:desktopId",
+    async (request, reply) => {
+      const input = remoteDesktopUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getRemoteSurfaceExecutionContext(
+        LOCAL_USER_ID,
+        request.params.desktopId,
+      );
+      if (!context || context.surface.kind !== "desktop") {
+        return reply.code(404).send({ error: "Remote Desktop not found." });
+      }
+      const configuration = {
+        kind: "desktop" as const,
+        target: input.data.target,
+      };
+      const updated = await repository.updateRemoteSurface(
+        LOCAL_USER_ID,
+        context.surface.id,
+        { configuration },
+      );
+      if (!updated) {
+        return reply.code(404).send({ error: "Remote Desktop not found." });
+      }
+      if (bridge.isConnected(context.workerId)) {
+        try {
+          await bridge.request(
+            context.workerId,
+            {
+              type: "surface.configure",
+              surfaceId: context.surface.id,
+              configuration,
+            },
+            { timeoutMs: 20_000 },
+          );
+        } catch (error) {
+          await repository.setRemoteSurfaceStatus(
+            context.surface.id,
+            "error",
+            errorMessage(error),
+          );
+        }
+      } else {
+        await repository.setRemoteSurfaceStatus(
+          context.surface.id,
+          "offline",
+          "Worker is offline. The saved target will be restored when it reconnects.",
+        );
+      }
+      const desktop = await repository.getRemoteDesktop(
+        LOCAL_USER_ID,
+        context.surface.id,
       );
       return desktop
         ? reply.send(remoteDesktopSummarySchema.parse(desktop))

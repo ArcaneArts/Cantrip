@@ -35,6 +35,9 @@ export interface RemoteSurfaceSession {
   ): Promise<void> | void;
   resume(): Promise<void> | void;
   suspend(): Promise<void> | void;
+  updateConfiguration?(
+    configuration: RemoteSurfaceConfiguration,
+  ): Promise<void> | void;
 }
 
 export interface RemoteSurfaceAdapter {
@@ -122,6 +125,8 @@ export class RemoteSurfaceManager {
       throw new Error(
         "Remote Surface kind changed while its session was live.",
       );
+    } else if (managed.session.updateConfiguration) {
+      await managed.session.updateConfiguration(command.configuration);
     }
 
     if (
@@ -190,6 +195,18 @@ export class RemoteSurfaceManager {
     await attachment.webrtc?.close(false);
     this.#outboundSequences.delete(`${surfaceId}:${attachmentId}`);
     await managed.session.detach(attachmentId);
+  }
+
+  async configure(
+    surfaceId: string,
+    configuration: RemoteSurfaceConfiguration,
+  ): Promise<void> {
+    const managed = this.#sessions.get(surfaceId);
+    if (!managed) return;
+    if (managed.session.configuration.kind !== configuration.kind) {
+      throw new Error("Remote Surface kind cannot change while it is live.");
+    }
+    await managed.session.updateConfiguration?.(configuration);
   }
 
   async suspend(surfaceId: string): Promise<void> {

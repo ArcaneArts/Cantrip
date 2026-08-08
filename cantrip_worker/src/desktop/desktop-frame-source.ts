@@ -1,8 +1,22 @@
-import type { DesktopStreamSettings } from "@cantrip/protocol";
+import { spawn } from "node:child_process";
+
+import {
+  remoteDesktopTargetInventorySchema,
+  type DesktopStreamSettings,
+  type RemoteDesktopMonitor,
+  type RemoteDesktopTarget,
+  type RemoteDesktopTargetInventory,
+  type RemoteDesktopWindow,
+} from "@cantrip/protocol";
 
 export interface DesktopDisplaySize {
   height: number;
   width: number;
+}
+
+export interface DesktopDisplayOrigin {
+  x: number;
+  y: number;
 }
 
 export interface DesktopRawFrame extends DesktopDisplaySize {
@@ -17,11 +31,70 @@ export interface DesktopFrameEncoding {
 export interface NativeDesktopFramePipeline {
   readonly backend: "native";
   readonly display: DesktopDisplaySize;
+  readonly origin: DesktopDisplayOrigin;
+  readonly target: RemoteDesktopTarget;
   capture(): Promise<DesktopRawFrame>;
   encode(
     frame: DesktopRawFrame,
     options: DesktopFrameEncoding,
   ): Promise<Uint8Array>;
+}
+
+const DEFAULT_DESKTOP_TARGET: RemoteDesktopTarget = {
+  kind: "monitor",
+  id: null,
+  name: null,
+};
+
+function sameText(left: string, right: string): boolean {
+  return left.localeCompare(right, undefined, { sensitivity: "accent" }) === 0;
+}
+
+export function desktopApplicationAvailable(
+  application: string,
+  inventory: RemoteDesktopTargetInventory,
+): boolean {
+  return inventory.windows.some((window) =>
+    sameText(window.application, application),
+  );
+}
+
+export function resolveDesktopTarget(
+  requested: RemoteDesktopTarget,
+  inventory: RemoteDesktopTargetInventory,
+): RemoteDesktopMonitor | RemoteDesktopWindow | null {
+  if (requested.kind === "window") {
+    const applicationWindows = inventory.windows.filter((window) =>
+      sameText(window.application, requested.application),
+    );
+    return (
+      (requested.id
+        ? applicationWindows.find((window) => window.id === requested.id)
+        : undefined) ??
+      (requested.title
+        ? applicationWindows.find((window) =>
+            sameText(window.title, requested.title!),
+          )
+        : undefined) ??
+      applicationWindows[0] ??
+      inventory.monitors.find((monitor) => monitor.primary) ??
+      inventory.monitors[0] ??
+      null
+    );
+  }
+  return (
+    (requested.id
+      ? inventory.monitors.find((monitor) => monitor.id === requested.id)
+      : undefined) ??
+    (requested.name
+      ? inventory.monitors.find((monitor) =>
+          sameText(monitor.name, requested.name!),
+        )
+      : undefined) ??
+    inventory.monitors.find((monitor) => monitor.primary) ??
+    inventory.monitors[0] ??
+    null
+  );
 }
 
 interface StreamProfile {
@@ -162,21 +235,147 @@ export class AdaptiveDesktopStreamTuner {
   }
 }
 
-export async function createNativeDesktopFramePipeline(): Promise<NativeDesktopFramePipeline> {
-  const [{ Monitor }, sharpModule] = await Promise.all([
+type ScreenshotMonitor = ReturnType<
+  (typeof import("node-screenshots"))["Monitor"]["all"]
+>[number];
+type ScreenshotWindow = ReturnType<
+  (typeof import("node-screenshots"))["Window"]["all"]
+>[number];
+
+function monitorSummary(monitor: ScreenshotMonitor): RemoteDesktopMonitor {
+  return {
+    kind: "monitor",
+    id: String(monitor.id()),
+    name: monitor.name().trim() || `Display ${monitor.id()}`,
+    x: Math.round(monitor.x()),
+    y: Math.round(monitor.y()),
+    width: Math.round(monitor.width()),
+    height: Math.round(monitor.height()),
+    primary: monitor.isPrimary(),
+  };
+}
+
+function windowSummary(window: ScreenshotWindow): RemoteDesktopWindow | null {
+  const application = window.appName().trim();
+  const title = window.title().trim();
+  const width = Math.round(window.width());
+  const height = Math.round(window.height());
+  if (!application || !title || width <= 0 || height <= 0) return null;
+  return {
+    kind: "window",
+    id: String(window.id()),
+    application,
+    title,
+    x: Math.round(window.x()),
+    y: Math.round(window.y()),
+    width,
+    height,
+    minimized: window.isMinimized(),
+    focused: window.isFocused(),
+  };
+}
+
+function nativeDesktopTargets(input: {
+  monitors: ScreenshotMonitor[];
+  windows: ScreenshotWindow[];
+}): RemoteDesktopTargetInventory {
+  return remoteDesktopTargetInventorySchema.parse({
+    monitors: input.monitors
+      .filter((monitor) => monitor.width() > 0 && monitor.height() > 0)
+      .slice(0, 64)
+      .map(monitorSummary),
+    windows: input.windows
+      .map(windowSummary)
+      .filter((window): window is RemoteDesktopWindow => Boolean(window))
+      .slice(0, 2_000),
+  });
+}
+
+export async function listNativeDesktopTargets(): Promise<RemoteDesktopTargetInventory> {
+  const { Monitor, Window } = await import("node-screenshots");
+  return nativeDesktopTargets({
+    monitors: Monitor.all(),
+    windows: Window.all(),
+  });
+}
+
+export async function launchDesktopApplication(
+  application: string,
+): Promise<void> {
+  const launch = (() => {
+    if (process.platform === "darwin") {
+      return { command: "open", args: ["-a", application], env: process.env };
+    }
+    if (process.platform === "win32") {
+      return {
+        command: "powershell.exe",
+        args: [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "Start-Process -FilePath $env:CANTRIP_DESKTOP_APPLICATION",
+        ],
+        env: { ...process.env, CANTRIP_DESKTOP_APPLICATION: application },
+      };
+    }
+    return { command: application, args: [], env: process.env };
+  })();
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(launch.command, launch.args, {
+      detached: true,
+      env: launch.env,
+      stdio: "ignore",
+    });
+    child.once("error", reject);
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  });
+}
+
+export async function createNativeDesktopFramePipeline(
+  requested: RemoteDesktopTarget = DEFAULT_DESKTOP_TARGET,
+): Promise<NativeDesktopFramePipeline> {
+  const [{ Monitor, Window }, sharpModule] = await Promise.all([
     import("node-screenshots"),
     import("sharp"),
   ]);
   const monitors = Monitor.all();
-  const monitor =
-    monitors.find((candidate) => candidate.isPrimary()) ?? monitors[0];
-  if (!monitor) throw new Error("No graphical display is available.");
+  const windows = requested.kind === "window" ? Window.all() : [];
+  const inventory = nativeDesktopTargets({ monitors, windows });
+  const resolved = resolveDesktopTarget(requested, inventory);
+  if (!resolved) throw new Error("No graphical display is available.");
+  const source =
+    resolved.kind === "window"
+      ? windows.find((window) => String(window.id()) === resolved.id)
+      : monitors.find((monitor) => String(monitor.id()) === resolved.id);
+  if (!source) throw new Error("The selected desktop target disappeared.");
   const sharp = sharpModule.default;
+  const target: RemoteDesktopTarget =
+    resolved.kind === "window"
+      ? {
+          kind: "window",
+          id: resolved.id,
+          application: resolved.application,
+          title: resolved.title,
+        }
+      : {
+          kind: "monitor",
+          id: resolved.id,
+          name: resolved.name,
+        };
   return {
     backend: "native",
-    display: { width: monitor.width(), height: monitor.height() },
+    target,
+    get display() {
+      return { width: source.width(), height: source.height() };
+    },
+    get origin() {
+      return { x: source.x(), y: source.y() };
+    },
     async capture() {
-      const image = await monitor.captureImage();
+      const image = await source.captureImage();
       return {
         width: image.width,
         height: image.height,

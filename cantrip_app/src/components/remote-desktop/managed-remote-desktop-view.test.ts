@@ -4,6 +4,8 @@ import {
   desktopPointerCoordinates,
   fitDesktopSize,
   LatestDesktopFrameBuffer,
+  remoteDesktopTargetLabel,
+  remoteDesktopTargetMatches,
 } from "./managed-remote-desktop-view";
 
 describe("managed Remote Desktop geometry", () => {
@@ -33,5 +35,38 @@ describe("managed Remote Desktop geometry", () => {
     expect(frames.push(new Uint8Array([3]))).toBe(true);
     expect(frames.take()).toEqual(new Uint8Array([3]));
     expect(frames.hasFrame).toBe(false);
+  });
+
+  it("labels and restores persisted monitor and application targets", () => {
+    expect(
+      remoteDesktopTargetMatches(
+        { kind: "monitor", id: "missing", name: "Studio Display" },
+        { kind: "monitor", id: "new-id", name: "Studio Display" },
+      ),
+    ).toBe(true);
+    expect(
+      remoteDesktopTargetMatches(
+        {
+          kind: "window",
+          id: null,
+          application: "Code",
+          title: "Cantrip",
+        },
+        {
+          kind: "window",
+          id: "window-2",
+          application: "Code",
+          title: "Cantrip",
+        },
+      ),
+    ).toBe(true);
+    expect(
+      remoteDesktopTargetLabel({
+        kind: "window",
+        id: "window-2",
+        application: "Code",
+        title: "Cantrip",
+      }),
+    ).toBe("Code — Cantrip");
   });
 });
