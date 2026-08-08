@@ -121,6 +121,7 @@ import {
   WorkerUnavailableError,
 } from "./workers/bridge.js";
 import { RemoteSurfaceRelay } from "./remote-surfaces/relay.js";
+import { createRemoteSurfaceWebRtcConfiguration } from "./remote-surfaces/webrtc.js";
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -658,7 +659,9 @@ export async function buildApp({
           worktrees: false,
           remoteSurfaces: {
             enabled: true,
-            transports: ["websocket"],
+            transports: config.remoteSurfaceWebRtc
+              ? ["websocket", "webrtc"]
+              : ["websocket"],
             relayOnly: true,
           },
         },
@@ -2238,6 +2241,15 @@ export async function buildApp({
         }
 
         await repository.setRemoteSurfaceStatus(surfaceId, "connecting");
+        const webRtcConfiguration =
+          context.surface.preferredTransport === "webrtc" &&
+          context.remoteSurfaceCapabilities.transports.includes("webrtc") &&
+          config.remoteSurfaceWebRtc
+            ? createRemoteSurfaceWebRtcConfiguration(
+                config.remoteSurfaceWebRtc,
+                LOCAL_USER_ID,
+              )
+            : null;
         const cleanupRelay = surfaceRelay.bind(socket, {
           surfaceId,
           attachmentId,
@@ -2254,6 +2266,7 @@ export async function buildApp({
                 projectId: context.surface.projectId,
                 configuration: context.surface.configuration,
                 preferredTransport: context.surface.preferredTransport,
+                webrtc: webRtcConfiguration,
                 viewport: viewport.data,
               },
               { timeoutMs: 30_000 },
@@ -2281,6 +2294,7 @@ export async function buildApp({
             surfaceId,
             attachmentId,
             transport: result.transport,
+            webrtc: result.transport === "webrtc" ? webRtcConfiguration : null,
           });
         } catch (error) {
           cleanupRelay();

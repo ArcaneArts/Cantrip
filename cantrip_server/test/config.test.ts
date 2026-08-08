@@ -37,4 +37,28 @@ describe("server configuration safety", () => {
     vi.stubEnv("CANTRIP_AUTH_MODE", "accounts");
     expect(() => readServerConfig()).toThrow(/not implemented/);
   });
+
+  it("accepts complete TURN configuration and rejects partial or direct URLs", () => {
+    vi.stubEnv(
+      "CANTRIP_TURN_URLS",
+      "turn:relay.cantrip.art:3478?transport=udp,turns:relay.cantrip.art:5349",
+    );
+    vi.stubEnv("CANTRIP_TURN_SHARED_SECRET", "server-only-secret");
+    vi.stubEnv("CANTRIP_TURN_TTL_SECONDS", "900");
+    expect(readServerConfig().remoteSurfaceWebRtc).toEqual({
+      urls: [
+        "turn:relay.cantrip.art:3478?transport=udp",
+        "turns:relay.cantrip.art:5349",
+      ],
+      sharedSecret: "server-only-secret",
+      ttlSeconds: 900,
+      negotiationTimeoutMs: 8_000,
+    });
+
+    vi.stubEnv("CANTRIP_TURN_URLS", "https://relay.cantrip.art");
+    expect(() => readServerConfig()).toThrow(/turn: or turns:/i);
+
+    vi.stubEnv("CANTRIP_TURN_URLS", "");
+    expect(() => readServerConfig()).toThrow(/configured together/i);
+  });
 });

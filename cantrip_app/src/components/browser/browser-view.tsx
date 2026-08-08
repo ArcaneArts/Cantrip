@@ -8,6 +8,7 @@ import {
   remoteSurfaceConnectionMessageSchema,
   type BrowserSummary,
   type RemoteBrowserClientMessage,
+  type RemoteSurfaceChannel,
 } from "@cantrip/protocol";
 import {
   ArrowLeft,
@@ -34,6 +35,10 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { remoteSurfaceWebSocketUrl } from "@/lib/api";
+import {
+  RemoteSurfaceWebRtcClient,
+  type RemoteSurfaceWebRtcState,
+} from "@/lib/remote-surface-webrtc";
 
 const decoder = new TextDecoder();
 
@@ -137,8 +142,10 @@ export function BrowserView({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<WebSocket | null>(null);
+  const webRtcRef = useRef<RemoteSurfaceWebRtcClient | null>(null);
   const attachmentIdRef = useRef<string | null>(null);
   const sequenceRef = useRef(0);
+  const lastInboundSequenceRef = useRef(-1);
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputFocusedRef = useRef(false);
@@ -166,29 +173,49 @@ export function BrowserView({
   >("ready");
   const [runtimeMessage, setRuntimeMessage] = useState<string | null>(null);
   const [clipboardMessage, setClipboardMessage] = useState<string | null>(null);
+  const [transportState, setTransportState] =
+    useState<RemoteSurfaceWebRtcState | null>(null);
   onPageStateRef.current = onPageState;
 
-  const send = useCallback(
-    (message: RemoteBrowserClientMessage) => {
+  const sendFrame = useCallback(
+    (
+      channel: RemoteSurfaceChannel,
+      payload: Uint8Array,
+      webSocketOnly = false,
+    ) => {
       const socket = socketRef.current;
       const attachmentId = attachmentIdRef.current;
-      if (!socket || socket.readyState !== WebSocket.OPEN || !attachmentId)
-        return;
-      const frame = encodeRemoteSurfaceFrame(
-        {
-          protocolVersion: 1,
-          surfaceId: browser.id,
-          attachmentId,
-          sequence: sequenceRef.current++,
-          channel: "control",
-        },
+      if (!attachmentId) return false;
+      const header = {
+        protocolVersion: 1 as const,
+        surfaceId: browser.id,
+        attachmentId,
+        sequence: sequenceRef.current,
+        channel,
+      };
+      if (!webSocketOnly && webRtcRef.current?.send(header, payload)) {
+        sequenceRef.current += 1;
+        return true;
+      }
+      if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+      socket.send(
+        Uint8Array.from(encodeRemoteSurfaceFrame(header, payload)).buffer,
+      );
+      sequenceRef.current += 1;
+      return true;
+    },
+    [browser.id],
+  );
+
+  const send = useCallback(
+    (message: RemoteBrowserClientMessage) =>
+      sendFrame(
+        "control",
         new TextEncoder().encode(
           JSON.stringify(remoteBrowserClientMessageSchema.parse(message)),
         ),
-      );
-      socket.send(Uint8Array.from(frame).buffer);
-    },
-    [browser.id],
+      ),
+    [sendFrame],
   );
 
   useEffect(() => {
@@ -198,6 +225,7 @@ export function BrowserView({
     pageStateRef.current = null;
     setRuntimeStatus("ready");
     setRuntimeMessage(null);
+    setTransportState(null);
   }, [browser.id]);
 
   useEffect(() => {
@@ -239,6 +267,9 @@ export function BrowserView({
     setError(null);
     attachmentIdRef.current = null;
     sequenceRef.current = 0;
+    lastInboundSequenceRef.current = -1;
+    webRtcRef.current?.close();
+    webRtcRef.current = null;
     const socket = new WebSocket(
       remoteSurfaceWebSocketUrl(browser.id, viewport),
     );
@@ -282,29 +313,16 @@ export function BrowserView({
         });
     };
 
-    socket.addEventListener("message", (event) => {
-      if (typeof event.data === "string") {
-        try {
-          const message = remoteSurfaceConnectionMessageSchema.parse(
-            JSON.parse(event.data),
-          );
-          if (message.type === "ready") {
-            ready = true;
-            reconnectAttemptRef.current = 0;
-            attachmentIdRef.current = message.attachmentId;
-            setConnectionState("ready");
-            send({ type: "viewport", viewport: viewportRef.current });
-          } else {
-            setError(message.message);
-          }
-        } catch {
-          setError("The server sent an invalid browser connection message.");
-        }
-        return;
-      }
+    const handleFrameBytes = (bytes: Uint8Array) => {
       try {
-        const frame = decodeRemoteSurfaceFrame(new Uint8Array(event.data));
-        if (frame.header.surfaceId !== browser.id) return;
+        const frame = decodeRemoteSurfaceFrame(bytes);
+        if (
+          frame.header.surfaceId !== browser.id ||
+          frame.header.sequence <= lastInboundSequenceRef.current
+        ) {
+          return;
+        }
+        lastInboundSequenceRef.current = frame.header.sequence;
         if (frame.header.channel === "frame") {
           drawFrame(frame.payload);
         } else if (frame.header.channel === "control") {
@@ -358,10 +376,53 @@ export function BrowserView({
                 "Clipboard access was denied by this app environment.",
               ),
           );
+        } else if (frame.header.channel === "webrtc-signal") {
+          void webRtcRef.current?.handleSignal(frame.payload);
         }
       } catch {
         setError("The server sent an invalid browser frame.");
       }
+    };
+
+    socket.addEventListener("message", (event) => {
+      if (typeof event.data === "string") {
+        try {
+          const message = remoteSurfaceConnectionMessageSchema.parse(
+            JSON.parse(event.data),
+          );
+          if (message.type === "ready") {
+            ready = true;
+            reconnectAttemptRef.current = 0;
+            attachmentIdRef.current = message.attachmentId;
+            setConnectionState("ready");
+            if (message.transport === "webrtc" && message.webrtc) {
+              const client = new RemoteSurfaceWebRtcClient({
+                configuration: message.webrtc,
+                onFrame: handleFrameBytes,
+                onSignal: (signal) => {
+                  sendFrame(
+                    "webrtc-signal",
+                    new TextEncoder().encode(JSON.stringify(signal)),
+                    true,
+                  );
+                },
+                onState: setTransportState,
+              });
+              webRtcRef.current = client;
+              void client.start();
+            } else {
+              setTransportState("fallback");
+            }
+            send({ type: "viewport", viewport: viewportRef.current });
+          } else {
+            setError(message.message);
+          }
+        } catch {
+          setError("The server sent an invalid browser connection message.");
+        }
+        return;
+      }
+      handleFrameBytes(new Uint8Array(event.data));
     });
     socket.addEventListener("close", () => {
       ready = false;
@@ -383,9 +444,13 @@ export function BrowserView({
         reconnectTimerRef.current = null;
       }
       if (socketRef.current === socket) socketRef.current = null;
+      if (webRtcRef.current) {
+        webRtcRef.current.close();
+        webRtcRef.current = null;
+      }
       socket.close(1000, "Browser view closed");
     };
-  }, [browser.id, connectionKey, send]);
+  }, [browser.id, connectionKey, send, sendFrame]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -657,6 +722,11 @@ export function BrowserView({
         {clipboardMessage ? (
           <div className="pointer-events-none absolute bottom-4 right-4 rounded-md bg-background/90 px-3 py-2 text-xs text-foreground shadow-lg backdrop-blur-xl">
             {clipboardMessage}
+          </div>
+        ) : null}
+        {connectionState === "ready" && transportState === "fallback" ? (
+          <div className="pointer-events-none absolute left-4 top-3 rounded-md bg-background/80 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur-xl">
+            WebSocket stream
           </div>
         ) : null}
       </div>

@@ -146,6 +146,16 @@ page selection or pasting local clipboard text requires an explicit toolbar
 action; Cantrip does not continuously synchronize browser and device
 clipboards.
 
+Remote Surfaces always retain the authenticated server-routed WebSocket data
+plane. A deployment can additionally configure relay-only WebRTC by setting
+`CANTRIP_TURN_URLS` and `CANTRIP_TURN_SHARED_SECRET` on the server. The server
+derives short-lived TURN REST credentials for each attachment and never sends
+the shared secret to an app or worker. Browser frames then use an unordered
+loss-tolerant data channel while input and control messages use an ordered data
+channel. Negotiation failure automatically keeps the live WebSocket stream.
+Direct ICE candidates are deliberately disabled, preserving the rule that apps
+do not connect to workers. See `.env.example` for TTL and timeout overrides.
+
 ## Desktop development with `pnpm devtop`
 
 ```shell

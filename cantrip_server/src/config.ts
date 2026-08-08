@@ -34,6 +34,65 @@ export interface ServerConfig {
   host: string;
   port: number;
   workerToken: string;
+  remoteSurfaceWebRtc?: RemoteSurfaceTurnConfig;
+}
+
+export interface RemoteSurfaceTurnConfig {
+  negotiationTimeoutMs: number;
+  sharedSecret: string;
+  ttlSeconds: number;
+  urls: string[];
+}
+
+function readBoundedInteger(
+  name: string,
+  value: string | undefined,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const parsed = Number.parseInt(value ?? String(fallback), 10);
+  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new Error(`Invalid ${name}: ${value}`);
+  }
+  return parsed;
+}
+
+function readRemoteSurfaceWebRtcConfig(): RemoteSurfaceTurnConfig | undefined {
+  const urls = (process.env.CANTRIP_TURN_URLS ?? "")
+    .split(",")
+    .map((url) => url.trim())
+    .filter(Boolean);
+  const sharedSecret = process.env.CANTRIP_TURN_SHARED_SECRET?.trim();
+  if (urls.length === 0 && !sharedSecret) return undefined;
+  if (urls.length === 0 || !sharedSecret) {
+    throw new Error(
+      "CANTRIP_TURN_URLS and CANTRIP_TURN_SHARED_SECRET must be configured together.",
+    );
+  }
+  if (
+    urls.some((url) => !url.startsWith("turn:") && !url.startsWith("turns:"))
+  ) {
+    throw new Error("CANTRIP_TURN_URLS only accepts turn: or turns: URLs.");
+  }
+  return {
+    urls,
+    sharedSecret,
+    ttlSeconds: readBoundedInteger(
+      "CANTRIP_TURN_TTL_SECONDS",
+      process.env.CANTRIP_TURN_TTL_SECONDS,
+      600,
+      60,
+      3_600,
+    ),
+    negotiationTimeoutMs: readBoundedInteger(
+      "CANTRIP_WEBRTC_NEGOTIATION_TIMEOUT_MS",
+      process.env.CANTRIP_WEBRTC_NEGOTIATION_TIMEOUT_MS,
+      8_000,
+      1_000,
+      30_000,
+    ),
+  };
 }
 
 export function readServerConfig(): ServerConfig {
@@ -91,5 +150,6 @@ export function readServerConfig(): ServerConfig {
     host,
     port: readPort(process.env.CANTRIP_SERVER_PORT),
     workerToken,
+    remoteSurfaceWebRtc: readRemoteSurfaceWebRtcConfig(),
   };
 }
