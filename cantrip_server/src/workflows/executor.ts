@@ -7,6 +7,9 @@ import {
 import {
   workflowNodeExecutionResultSchema,
   type WorkflowAgentNodeConfiguration,
+  type WorkflowNodeRetry,
+  type WorkflowRunCancel,
+  type WorkflowRunDetail,
 } from "@cantrip/protocol/workflows";
 
 import {
@@ -82,6 +85,67 @@ export class WorkflowExecutor {
     const runIds =
       await this.repository.workflowRuns.listDispatchableRunIds(LOCAL_USER_ID);
     for (const runId of runIds) this.queueRun(runId);
+  }
+
+  async cancelRun(
+    runId: string,
+    input: WorkflowRunCancel,
+  ): Promise<WorkflowRunDetail | null> {
+    const requested = await this.repository.workflowRuns.requestCancellation(
+      LOCAL_USER_ID,
+      runId,
+      input,
+    );
+    if (!requested?.execution || requested.replayed) {
+      return requested?.run ?? null;
+    }
+    const { execution } = requested;
+    const runtime = await this.repository.getModelRuntimeByRoute(
+      LOCAL_USER_ID,
+      execution.modelRouteId,
+    );
+    if (!runtime || !this.bridge.isConnected(execution.workerId)) {
+      return requested.run;
+    }
+    try {
+      await this.bridge.request(
+        execution.workerId,
+        {
+          type: "workflow.node.interrupt",
+          workflowRunId: execution.runId,
+          runNodeId: execution.runNodeId,
+          attemptId: execution.attemptId,
+          threadId: execution.threadId,
+          model: runtime.model,
+          provider: runtime.provider,
+        },
+        { timeoutMs: 30_000 },
+      );
+    } catch (error) {
+      this.logger.warn(
+        { err: error, workflowRunId: runId },
+        "Workflow cancellation was persisted but runtime interruption failed",
+      );
+    }
+    return (
+      (await this.repository.workflowRuns.getRun(LOCAL_USER_ID, runId)) ??
+      requested.run
+    );
+  }
+
+  async retryNode(
+    runId: string,
+    runNodeId: string,
+    input: WorkflowNodeRetry,
+  ): Promise<WorkflowRunDetail | null> {
+    const run = await this.repository.workflowRuns.retryNode(
+      LOCAL_USER_ID,
+      runId,
+      runNodeId,
+      input,
+    );
+    if (run) this.queueRun(runId);
+    return run;
   }
 
   stop(): void {

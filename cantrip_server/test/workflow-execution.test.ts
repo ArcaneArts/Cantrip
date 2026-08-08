@@ -43,14 +43,24 @@ const config: ServerConfig = {
 };
 const deliveredAt = "2026-08-08T17:00:00.000Z";
 
-type ExecutionMode = "disconnect" | "failure" | "interaction" | "success";
+type ExecutionMode =
+  | "disconnect"
+  | "failure"
+  | "hold-success"
+  | "interaction"
+  | "success"
+  | "terminal-failure";
 
 let connected = true;
 let mode: ExecutionMode = "success";
 let heldInteraction: (() => void) | null = null;
+let heldExecution: (() => void) | null = null;
 let heldEvent: WorkerRequestOptions["onEvent"] | undefined;
 const executionCommands: Array<
   Extract<WorkerCommand, { type: "workflow.node.execute" }>
+> = [];
+const interruptCommands: Array<
+  Extract<WorkerCommand, { type: "workflow.node.interrupt" }>
 > = [];
 
 function resultFor(
@@ -80,6 +90,8 @@ const workerBridge: WorkerCommandBus = {
     connected = false;
     heldInteraction?.();
     heldInteraction = null;
+    heldExecution?.();
+    heldExecution = null;
   },
   isConnected(workerId) {
     return connected && workerId === "test-worker";
@@ -139,6 +151,9 @@ const workerBridge: WorkerCommandBus = {
         mode = "success";
         throw new Error("Codex turn failed at a durable boundary.");
       }
+      if (mode === "terminal-failure") {
+        throw new Error("Codex turn failed at a durable boundary.");
+      }
       await options?.onEvent?.({
         type: "workflow.node.activity",
         attemptId: command.attemptId,
@@ -180,7 +195,19 @@ const workerBridge: WorkerCommandBus = {
         });
         mode = "success";
       }
+      if (mode === "hold-success") {
+        await new Promise<void>((resolve) => {
+          heldExecution = resolve;
+        });
+        heldExecution = null;
+        mode = "success";
+      }
       return resultFor(command);
+    }
+    if (command.type === "workflow.node.interrupt") {
+      interruptCommands.push(command);
+      heldExecution?.();
+      return { interrupted: true };
     }
     if (command.type === "agent.interaction.respond") {
       const active = executionCommands.at(-1)!;
@@ -443,7 +470,111 @@ describe.sequential("single-agent workflow execution", () => {
     });
   });
 
-  it("orphans a disconnected worker attempt without automatic duplication", async () => {
+  it("persists live cancellation, interrupts once, and lets cancellation win completion races", async () => {
+    connected = true;
+    mode = "hold-success";
+    const executionsBefore = executionCommands.length;
+    const interruptsBefore = interruptCommands.length;
+    const response = await createRun("execute-cancel-live");
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).nodes[0]?.codexThreadId).toMatch(
+        /^thread-/u,
+      );
+    });
+    const active = await runDetail(runId);
+    const attempt = active.attempts[0]!;
+    const node = active.nodes[0]!;
+    const payload = {
+      reason: "The operator cancelled this run.",
+      idempotencyKey: "cancel-live-once",
+    };
+    const cancellation = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/cancel`,
+      payload,
+    });
+    expect(cancellation.statusCode).toBe(200);
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("cancelled");
+    });
+    expect(await runDetail(runId)).toMatchObject({
+      run: {
+        status: "cancelled",
+        cancelReason: payload.reason,
+        structuredResult: null,
+        errorCode: "cancelled-by-user",
+      },
+      nodes: [{ status: "cancelled", structuredResult: null }],
+      attempts: [{ status: "interrupted", structuredResult: null }],
+    });
+    expect(executionCommands).toHaveLength(executionsBefore + 1);
+    expect(interruptCommands).toHaveLength(interruptsBefore + 1);
+    expect(interruptCommands.at(-1)).toMatchObject({
+      workflowRunId: runId,
+      runNodeId: node.id,
+      attemptId: attempt.id,
+      threadId: attempt.codexThreadId,
+    });
+
+    const replay = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/cancel`,
+      payload,
+    });
+    expect(replay.statusCode).toBe(200);
+    expect(interruptCommands).toHaveLength(interruptsBefore + 1);
+    const drift = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/cancel`,
+      payload: { ...payload, reason: "A different reason." },
+    });
+    expect(drift.statusCode).toBe(409);
+
+    const events = workflowRunEventPageSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/workflow-runs/${runId}/events`,
+        })
+      ).json(),
+    );
+    expect(events.events.map(({ type }) => type)).toEqual([
+      "run.created",
+      "node.attempt.started",
+      "workflow.node.activity",
+      "run.cancelled",
+      "node.attempt.interrupted",
+    ]);
+  });
+
+  it("cancels queued runs without dispatching worker work", async () => {
+    connected = false;
+    mode = "success";
+    const before = executionCommands.length;
+    const response = await createRun("execute-cancel-queued");
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    const payload = {
+      reason: "No longer needed.",
+      idempotencyKey: "cancel-queued-once",
+    };
+    const cancellation = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/cancel`,
+      payload,
+    });
+    expect(cancellation.statusCode).toBe(200);
+    expect(workflowRunDetailSchema.parse(cancellation.json())).toMatchObject({
+      run: { status: "cancelled", cancelReason: payload.reason },
+      nodes: [{ status: "cancelled" }],
+      attempts: [],
+    });
+    connected = true;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(executionCommands).toHaveLength(before);
+  });
+
+  it("requires explicit idempotent retry for an orphaned attempt", async () => {
     mode = "disconnect";
     connected = true;
     const before = executionCommands.length;
@@ -470,6 +601,69 @@ describe.sequential("single-agent workflow execution", () => {
     await createRun("execute-disconnect");
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(executionCommands).toHaveLength(before + 1);
+
+    mode = "success";
+    const recovering = await runDetail(runId);
+    const payload = {
+      reason: "The worker is connected again.",
+      idempotencyKey: "retry-orphan-once",
+    };
+    const retry = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/nodes/${recovering.nodes[0]!.id}/retry`,
+      payload,
+    });
+    expect(retry.statusCode).toBe(200);
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    expect(executionCommands).toHaveLength(before + 2);
+    expect(
+      (await runDetail(runId)).attempts.map(({ attempt, status }) => ({
+        attempt,
+        status,
+      })),
+    ).toEqual([
+      { attempt: 1, status: "orphaned" },
+      { attempt: 2, status: "completed" },
+    ]);
+
+    const replay = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/nodes/${recovering.nodes[0]!.id}/retry`,
+      payload,
+    });
+    expect(replay.statusCode).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(executionCommands).toHaveLength(before + 2);
+    const drift = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/nodes/${recovering.nodes[0]!.id}/retry`,
+      payload: { ...payload, reason: "A different reason." },
+    });
+    expect(drift.statusCode).toBe(409);
+  });
+
+  it("rejects retries after the node attempt budget is exhausted", async () => {
+    connected = true;
+    mode = "terminal-failure";
+    const response = await createRun("execute-exhausted");
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("failed");
+    });
+    const detail = await runDetail(runId);
+    expect(detail.attempts).toHaveLength(2);
+    const retry = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/nodes/${detail.nodes[0]!.id}/retry`,
+      payload: {
+        reason: null,
+        idempotencyKey: "retry-exhausted",
+      },
+    });
+    expect(retry.statusCode).toBe(409);
+    mode = "success";
   });
 
   it("orphans in-flight attempts during restart recovery", async () => {
