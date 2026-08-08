@@ -3,12 +3,15 @@ import type {
   ModelProfileSummary,
   ModelProviderKind,
   ModelProviderSummary,
+  ModelRouteInput,
   ReasoningEffort,
   ThemePreference,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
+  ChevronDown,
+  ChevronUp,
   Copy,
   Cpu,
   KeyRound,
@@ -18,6 +21,7 @@ import {
   Moon,
   Pencil,
   Plus,
+  Route,
   Search,
   Server,
   Sun,
@@ -76,6 +80,18 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
 
 const inputClass =
   "h-10 w-full rounded-md border bg-background px-3 text-sm outline-none ring-ring focus:ring-2";
+
+type EditableRoute = ModelRouteInput & { key: string };
+
+function newEditableRoute(providerId: string, modelName = ""): EditableRoute {
+  return {
+    key: crypto.randomUUID(),
+    providerId,
+    modelName,
+    reasoningEffort: null,
+    enabled: true,
+  };
+}
 
 function matchesSearch(query: string, ...values: Array<string | null>) {
   return values.some((value) => value?.toLowerCase().includes(query));
@@ -204,10 +220,10 @@ export function SettingsPage() {
     null,
   );
   const [modelName, setModelName] = useState("");
-  const [modelProviderId, setModelProviderId] = useState("");
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | "">(
     "",
   );
+  const [modelRoutes, setModelRoutes] = useState<EditableRoute[]>([]);
   const chatGptProvider =
     editingProvider?.kind === "chatgpt" ? editingProvider : null;
   const codexAuth = useQuery({
@@ -264,8 +280,8 @@ export function SettingsPage() {
     mutationFn: async () => {
       const input = {
         name: modelName,
-        providerId: modelProviderId,
         reasoningEffort: reasoningEffort || null,
+        routes: modelRoutes.map(({ key: _key, ...route }) => route),
       };
       return editingModel
         ? updateModelProfile(editingModel.id, input)
@@ -322,8 +338,14 @@ export function SettingsPage() {
     saveModel.reset();
     setEditingModel(model);
     setModelName(model?.name ?? "");
-    setModelProviderId(model?.providerId ?? firstProviderId);
     setReasoningEffort(model?.reasoningEffort ?? "");
+    setModelRoutes(
+      model
+        ? model.routes.map((route) => ({ ...route, key: route.id }))
+        : firstProviderId
+          ? [newEditableRoute(firstProviderId)]
+          : [],
+    );
     setModelDialogOpen(true);
   };
 
@@ -334,7 +356,9 @@ export function SettingsPage() {
 
   const submitModel = (event: FormEvent) => {
     event.preventDefault();
-    if (modelProviderId) saveModel.mutate();
+    if (modelRoutes.length && modelRoutes.every((route) => route.modelName)) {
+      saveModel.mutate();
+    }
   };
 
   const search = searchQuery.trim().toLowerCase();
@@ -367,7 +391,7 @@ export function SettingsPage() {
     !search ||
     matchesSearch(
       search,
-      "models model default reasoning effort provider new chats",
+      "models model default reasoning effort provider routes priority failover new chats",
     );
   const visibleModels = modelSectionMatches
     ? models
@@ -375,8 +399,11 @@ export function SettingsPage() {
         matchesSearch(
           search,
           model.name,
-          model.providerName,
           model.reasoningEffort,
+          ...model.routes.flatMap((route) => [
+            route.providerName,
+            route.modelName,
+          ]),
           settings.data?.preferences.defaultModelId === model.id
             ? "default"
             : null,
@@ -552,7 +579,7 @@ export function SettingsPage() {
                     </span>
                   </div>
                   <p className="truncate text-xs text-muted-foreground">
-                    Model names, providers, and optional reasoning effort.
+                    Logical models with ordered provider failover routes.
                   </p>
                 </div>
                 <Button
@@ -579,7 +606,7 @@ export function SettingsPage() {
                 >
                   {models.map((model) => (
                     <option key={model.id} value={model.id}>
-                      {model.providerName} / {model.name}
+                      {model.name}
                     </option>
                   ))}
                 </select>
@@ -587,7 +614,7 @@ export function SettingsPage() {
 
               <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_72px] gap-3 bg-muted/35 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
                 <span>Model</span>
-                <span>Provider</span>
+                <span>Routes</span>
                 <span>Configuration</span>
                 <span className="text-right">Actions</span>
               </div>
@@ -611,18 +638,18 @@ export function SettingsPage() {
                       ) : null}
                     </div>
                     <p className="col-span-2 truncate pl-6 text-xs text-muted-foreground sm:col-span-1 sm:pl-0">
-                      {model.providerName}
+                      {model.routes
+                        .filter((route) => route.enabled)
+                        .map((route) => route.providerName)
+                        .join(" → ")}
                       <span className="sm:hidden">
-                        {model.reasoningEffort
-                          ? ` · ${model.reasoningEffort} reasoning`
-                          : " · provider default reasoning"}
+                        {` · ${model.routes.filter((route) => route.enabled).length} enabled`}
                       </span>
                     </p>
                     <div className="hidden items-center justify-end gap-2 text-xs text-muted-foreground sm:flex">
                       <span>
-                        {model.reasoningEffort
-                          ? `${model.reasoningEffort} reasoning`
-                          : "Provider default"}
+                        {model.routes.filter((route) => route.enabled).length}{" "}
+                        enabled
                       </span>
                       {settings.data?.preferences.defaultModelId ===
                       model.id ? (
@@ -959,43 +986,29 @@ export function SettingsPage() {
       </Dialog>
 
       <Dialog open={modelDialogOpen} onOpenChange={setModelDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-3xl">
           <form onSubmit={submitModel} className="grid gap-5">
             <DialogHeader>
               <DialogTitle>
                 {editingModel ? "Edit model" : "Add model"}
               </DialogTitle>
               <DialogDescription>
-                Choose the provider and optional reasoning effort for this
-                model.
+                Select this logical model in chat; Cantrip tries its enabled
+                provider routes from top to bottom.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4">
-              <Field label="Model name">
+              <Field label="Display name">
                 <input
                   required
                   autoFocus
                   value={modelName}
                   onChange={(event) => setModelName(event.target.value)}
                   className={inputClass}
-                  placeholder="gemma4:26b"
+                  placeholder="GPT-5.6 Sol"
                 />
               </Field>
-              <Field label="Provider">
-                <select
-                  required
-                  value={modelProviderId}
-                  onChange={(event) => setModelProviderId(event.target.value)}
-                  className={inputClass}
-                >
-                  {(settings.data?.providers ?? []).map((provider) => (
-                    <option key={provider.id} value={provider.id}>
-                      {provider.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Reasoning effort">
+              <Field label="Default reasoning effort">
                 <select
                   value={reasoningEffort}
                   onChange={(event) =>
@@ -1012,6 +1025,206 @@ export function SettingsPage() {
                   ))}
                 </select>
               </Field>
+              <div className="grid gap-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">Provider routes</p>
+                    <p className="text-xs text-muted-foreground">
+                      The first available route handles each new turn.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const providerId = settings.data?.providers[0]?.id;
+                      if (!providerId) return;
+                      setModelRoutes((routes) => [
+                        ...routes,
+                        newEditableRoute(
+                          providerId,
+                          routes.at(-1)?.modelName || modelName,
+                        ),
+                      ]);
+                    }}
+                  >
+                    <Plus className="size-3.5" /> Add route
+                  </Button>
+                </div>
+                <div className="grid gap-2">
+                  {modelRoutes.map((route, index) => (
+                    <div
+                      key={route.key}
+                      className="grid gap-3 rounded-lg border bg-muted/15 p-3"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Route className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="text-xs font-semibold">
+                          Priority {index + 1}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                          {settings.data?.providers.find(
+                            (provider) => provider.id === route.providerId,
+                          )?.name ?? "Provider"}
+                          {route.modelName ? ` · ${route.modelName}` : ""}
+                        </span>
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={route.enabled}
+                            onChange={(event) =>
+                              setModelRoutes((routes) =>
+                                routes.map((candidate) =>
+                                  candidate.key === route.key
+                                    ? {
+                                        ...candidate,
+                                        enabled: event.target.checked,
+                                      }
+                                    : candidate,
+                                ),
+                              )
+                            }
+                          />
+                          Enabled
+                        </label>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="size-7"
+                          disabled={index === 0}
+                          onClick={() =>
+                            setModelRoutes((routes) => {
+                              const next = [...routes];
+                              [next[index - 1], next[index]] = [
+                                next[index]!,
+                                next[index - 1]!,
+                              ];
+                              return next;
+                            })
+                          }
+                        >
+                          <ChevronUp className="size-3.5" />
+                          <span className="sr-only">Increase priority</span>
+                        </Button>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="size-7"
+                          disabled={index === modelRoutes.length - 1}
+                          onClick={() =>
+                            setModelRoutes((routes) => {
+                              const next = [...routes];
+                              [next[index], next[index + 1]] = [
+                                next[index + 1]!,
+                                next[index]!,
+                              ];
+                              return next;
+                            })
+                          }
+                        >
+                          <ChevronDown className="size-3.5" />
+                          <span className="sr-only">Decrease priority</span>
+                        </Button>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="size-7"
+                          disabled={modelRoutes.length === 1}
+                          onClick={() =>
+                            setModelRoutes((routes) =>
+                              routes.filter(
+                                (candidate) => candidate.key !== route.key,
+                              ),
+                            )
+                          }
+                        >
+                          <Trash2 className="size-3.5" />
+                          <span className="sr-only">Remove route</span>
+                        </Button>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <Field label="Provider">
+                          <select
+                            required
+                            value={route.providerId}
+                            onChange={(event) =>
+                              setModelRoutes((routes) =>
+                                routes.map((candidate) =>
+                                  candidate.key === route.key
+                                    ? {
+                                        ...candidate,
+                                        providerId: event.target.value,
+                                      }
+                                    : candidate,
+                                ),
+                              )
+                            }
+                            className={inputClass}
+                          >
+                            {(settings.data?.providers ?? []).map(
+                              (provider) => (
+                                <option key={provider.id} value={provider.id}>
+                                  {provider.name}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        </Field>
+                        <Field label="Provider model name">
+                          <input
+                            required
+                            value={route.modelName}
+                            onChange={(event) =>
+                              setModelRoutes((routes) =>
+                                routes.map((candidate) =>
+                                  candidate.key === route.key
+                                    ? {
+                                        ...candidate,
+                                        modelName: event.target.value,
+                                      }
+                                    : candidate,
+                                ),
+                              )
+                            }
+                            className={inputClass}
+                            placeholder="openai/gpt-5.6-sol"
+                          />
+                        </Field>
+                        <Field label="Reasoning override">
+                          <select
+                            value={route.reasoningEffort ?? ""}
+                            onChange={(event) =>
+                              setModelRoutes((routes) =>
+                                routes.map((candidate) =>
+                                  candidate.key === route.key
+                                    ? {
+                                        ...candidate,
+                                        reasoningEffort:
+                                          (event.target
+                                            .value as ReasoningEffort) || null,
+                                      }
+                                    : candidate,
+                                ),
+                              )
+                            }
+                            className={inputClass}
+                          >
+                            {reasoningOptions.map((effort) => (
+                              <option key={effort || "inherit"} value={effort}>
+                                {effort || "Use model default"}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
             {saveModel.isError ? (
               <p className="text-sm text-destructive">
@@ -1026,7 +1239,12 @@ export function SettingsPage() {
               </DialogClose>
               <Button
                 type="submit"
-                disabled={!modelProviderId || saveModel.isPending}
+                disabled={
+                  !modelRoutes.length ||
+                  !modelRoutes.some((route) => route.enabled) ||
+                  modelRoutes.some((route) => !route.modelName.trim()) ||
+                  saveModel.isPending
+                }
               >
                 {saveModel.isPending ? (
                   <Loader2 className="size-4 animate-spin" />

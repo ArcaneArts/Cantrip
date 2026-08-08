@@ -4,7 +4,7 @@ import path from "node:path";
 import type { WorkerCommand, WorkerEvent } from "@cantrip/protocol";
 
 import { codexAccountHome } from "./codex/account-home.js";
-import { CodexAppServer } from "./codex/app-server.js";
+import { CodexAppServer, codexRuntimeId } from "./codex/app-server.js";
 import { CodexAuthClient } from "./codex/auth-client.js";
 import { discoverCodexVersion } from "./codex/discovery.js";
 import { readWorkerConfig } from "./config.js";
@@ -53,7 +53,7 @@ async function start(): Promise<void> {
     model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
     provider: Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
   }) => {
-    const runtimeId = `${command.provider.id}:${command.model.id}`;
+    const runtimeId = codexRuntimeId(command.model, command.provider);
     let runtime = codexRuntimes.get(runtimeId);
     if (!runtime) {
       const directoryName = createHash("sha256")

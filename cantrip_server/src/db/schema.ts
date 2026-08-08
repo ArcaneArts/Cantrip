@@ -58,17 +58,35 @@ export const modelProviders = pgTable(
   ],
 );
 
-export const modelProfiles = pgTable(
-  "model_profiles",
+export const modelProfiles = pgTable("model_profiles", {
+  id: text("id").primaryKey(),
+  ownerId: text("owner_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  reasoningEffort: text("reasoning_effort"),
+  routingPolicy: text("routing_policy").notNull().default("priority"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const modelRoutes = pgTable(
+  "model_routes",
   {
     id: text("id").primaryKey(),
-    ownerId: text("owner_id")
+    modelId: text("model_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => modelProfiles.id, { onDelete: "cascade" }),
     providerId: text("provider_id")
       .notNull()
       .references(() => modelProviders.id, { onDelete: "restrict" }),
-    name: text("name").notNull(),
+    modelName: text("model_name").notNull(),
+    position: integer("position").notNull().default(0),
+    enabled: boolean("enabled").notNull().default(true),
     reasoningEffort: text("reasoning_effort"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -78,10 +96,9 @@ export const modelProfiles = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("model_profiles_owner_provider_name_unique").on(
-      table.ownerId,
-      table.providerId,
-      table.name,
+    uniqueIndex("model_routes_model_position_unique").on(
+      table.modelId,
+      table.position,
     ),
   ],
 );
@@ -263,6 +280,9 @@ export const chatRuntimeSessions = pgTable(
       .notNull()
       .references(() => workers.id, { onDelete: "cascade" }),
     codexThreadId: text("codex_thread_id"),
+    modelRouteId: text("model_route_id").references(() => modelRoutes.id, {
+      onDelete: "set null",
+    }),
     status: text("status").notNull().default("detached"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -289,6 +309,17 @@ export const chatMessages = pgTable(
     sequence: bigserial("sequence", { mode: "number" }).notNull(),
     role: text("role").notNull(),
     content: jsonb("content").$type<ChatMessageContent>().notNull(),
+    modelId: text("model_id").references(() => modelProfiles.id, {
+      onDelete: "set null",
+    }),
+    modelRouteId: text("model_route_id").references(() => modelRoutes.id, {
+      onDelete: "set null",
+    }),
+    providerId: text("provider_id").references(() => modelProviders.id, {
+      onDelete: "set null",
+    }),
+    providerName: text("provider_name"),
+    providerModelName: text("provider_model_name"),
     idempotencyKey: text("idempotency_key"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

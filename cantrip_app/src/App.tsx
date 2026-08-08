@@ -4,6 +4,7 @@ import type {
   ChatSummary,
   ExplorerSummary,
   GithubRepository,
+  ModelProfileSummary,
   ProjectSummary,
   QueuedPrompt,
   SettingsBundle,
@@ -115,6 +116,11 @@ import {
   updateQueuedPrompt,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+
+function modelDisplayName(model: ModelProfileSummary): string {
+  const routeCount = model.routes.filter((route) => route.enabled).length;
+  return `${model.name}${routeCount > 1 ? ` · Auto (${routeCount} routes)` : ""}`;
+}
 
 const TerminalView = lazy(() =>
   import("@/components/terminal/terminal-view").then((module) => ({
@@ -672,7 +678,7 @@ function ChatTranscript({
       }
     } else if (name === "status") {
       setCommandNotice(
-        `${selectedModel ? `${selectedModel.providerName} / ${selectedModel.name}` : "No model selected"} · ${chat.status}`,
+        `${selectedModel ? modelDisplayName(selectedModel) : "No model selected"} · ${chat.status}`,
       );
     } else {
       const prompts: Record<string, string> = {
@@ -752,6 +758,14 @@ function ChatTranscript({
                   )}
                 >
                   <MessageContent message={message} />
+                  {user && message.providerName ? (
+                    <p className="mt-1.5 truncate text-[10px] text-muted-foreground">
+                      {message.providerName}
+                      {message.providerModelName
+                        ? ` · ${message.providerModelName}`
+                        : ""}
+                    </p>
+                  ) : null}
                   {assistantText ? (
                     <div className="mt-2 flex items-center gap-1 text-muted-foreground">
                       <Button
@@ -965,7 +979,7 @@ function ChatTranscript({
                 >
                   {(settings?.models ?? []).map((model) => (
                     <option key={model.id} value={model.id}>
-                      {model.providerName} / {model.name}
+                      {modelDisplayName(model)}
                       {model.reasoningEffort
                         ? ` (${model.reasoningEffort})`
                         : ""}

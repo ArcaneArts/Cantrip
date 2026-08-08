@@ -54,7 +54,12 @@ describe("Cantrip protocol", () => {
         chatId: "chat-1",
         cwd: "/workspace",
         threadId: "thread-1",
-        model: { id: "model-1", name: "gpt-test", reasoningEffort: null },
+        model: {
+          id: "model-1",
+          routeId: "route-1",
+          name: "gpt-test",
+          reasoningEffort: null,
+        },
         provider: {
           id: "provider-1",
           name: "ChatGPT",
@@ -71,7 +76,12 @@ describe("Cantrip protocol", () => {
       type: "chat.interrupt",
       chatId: "chat-1",
       threadId: "thread-1",
-      model: { id: "model-1", name: "gpt-test", reasoningEffort: null },
+      model: {
+        id: "model-1",
+        routeId: "route-1",
+        name: "gpt-test",
+        reasoningEffort: null,
+      },
       provider: {
         id: "provider-1",
         name: "ChatGPT",
@@ -232,6 +242,7 @@ describe("Cantrip protocol", () => {
           threadId: "019fdc2c-e848-7552-b2ea-6fc7ef09e9f2",
           model: {
             id: "model-1",
+            routeId: "route-1",
             name: "gpt-5.6-sol",
             reasoningEffort: "high",
           },
@@ -268,6 +279,7 @@ describe("Cantrip protocol", () => {
         prompt: "Focus on the failing test.",
         model: {
           id: "model-1",
+          routeId: "route-1",
           name: "gpt-5.6-sol",
           reasoningEffort: "high",
         },

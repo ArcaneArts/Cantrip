@@ -106,6 +106,14 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+const ROUTE_FAILURE_COOLDOWN_MS = 60_000;
+
+function canFailOverRoute(error: unknown): boolean {
+  return /(quota|usage limit|rate.?limit|\b429\b|unauthori[sz]ed|\b401\b|forbidden|\b403\b|authentication|credentials|model.+(?:not found|unavailable)|\b404\b|timed? out|timeout|ECONN|connection|network|socket|\b5\d\d\b|service unavailable|overloaded)/i.test(
+    errorMessage(error),
+  );
+}
+
 function continuationPrompt(messages: ChatMessage[], prompt: string): string {
   if (messages.length === 0) return prompt;
   const transcript = messages
@@ -155,6 +163,7 @@ export async function buildApp({
 
   const dispatchingChats = new Set<string>();
   const pendingQueueDispatches = new Set<string>();
+  const routeCooldowns = new Map<string, number>();
 
   const resolveModelId = async (
     context: ChatExecutionContext,
@@ -171,6 +180,72 @@ export async function buildApp({
       );
     }
     return modelId;
+  };
+
+  const availableModelRuntimes = async (
+    context: ChatExecutionContext,
+    modelId: string,
+  ): Promise<ModelRuntime[]> => {
+    const runtimes = await repository.getModelRuntimes(LOCAL_USER_ID, modelId);
+    if (!runtimes.length) {
+      throw new Error("The selected model has no enabled provider routes.");
+    }
+    const now = Date.now();
+    const available: ModelRuntime[] = [];
+    const unavailable: string[] = [];
+    for (const runtime of runtimes) {
+      const cooldownUntil = routeCooldowns.get(runtime.routeId) ?? 0;
+      if (cooldownUntil > now) {
+        unavailable.push(`${runtime.provider.name} is cooling down`);
+        continue;
+      }
+      if (runtime.provider.kind === "chatgpt") {
+        try {
+          const status = codexAuthStatusSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "codex.auth.status",
+              providerId: runtime.provider.id,
+            }),
+          );
+          if (!status.authenticated || status.authMode !== "chatgpt") {
+            unavailable.push(`${runtime.provider.name} is not signed in`);
+            continue;
+          }
+          if ((status.weeklyUsage?.usedPercent ?? 0) >= 100) {
+            unavailable.push(
+              `${runtime.provider.name} has no weekly usage left`,
+            );
+            continue;
+          }
+        } catch (error) {
+          app.log.warn(
+            { err: error, providerId: runtime.provider.id },
+            "Could not preflight ChatGPT route; attempting it directly",
+          );
+        }
+      }
+      available.push(runtime);
+    }
+    if (!available.length) {
+      throw new Error(
+        `No provider route is currently available${unavailable.length ? `: ${unavailable.join("; ")}` : "."}`,
+      );
+    }
+    return available;
+  };
+
+  const runtimeForContext = async (
+    context: ChatExecutionContext,
+  ): Promise<ModelRuntime | null> => {
+    if (context.modelRouteId) {
+      const active = await repository.getModelRuntimeByRoute(
+        LOCAL_USER_ID,
+        context.modelRouteId,
+      );
+      if (active) return active;
+    }
+    const modelId = await resolveModelId(context);
+    return repository.getModelRuntime(LOCAL_USER_ID, modelId);
   };
 
   const dispatchNextQueuedPrompt = async (chatId: string): Promise<void> => {
@@ -213,14 +288,11 @@ export async function buildApp({
       throw new Error("Project worker is offline.");
     }
     const modelId = await resolveModelId(context, input.modelId);
-    const runtime = await repository.getModelRuntime(LOCAL_USER_ID, modelId);
-    if (!runtime) {
-      throw new Error("Selected model was not found.");
-    }
-    const priorMessages = context.threadId
-      ? []
-      : await repository.listMessages(LOCAL_USER_ID, context.chatId);
-    const workerPrompt = continuationPrompt(priorMessages, input.text);
+    const runtimes = await availableModelRuntimes(context, modelId);
+    const priorMessages = await repository.listMessages(
+      LOCAL_USER_ID,
+      context.chatId,
+    );
     const userMessage = await repository.appendMessage(
       LOCAL_USER_ID,
       context.chatId,
@@ -233,55 +305,118 @@ export async function buildApp({
     if (!userMessage) {
       throw new Error("Chat not found.");
     }
+    await repository.setMessageModelRoute(
+      userMessage.id,
+      modelId,
+      runtimes[0]!,
+    );
     await repository.setChatModel(LOCAL_USER_ID, context.chatId, { modelId });
     await repository.setChatStatus(context.chatId, "running");
 
-    void bridge
-      .request(
-        context.workerId,
-        {
-          type: "chat.turn",
-          chatId: context.chatId,
-          clientMessageId: userMessage.id,
-          cwd: context.cwd,
-          threadId: context.threadId,
-          prompt: workerPrompt,
-          model: runtime.model,
-          provider: runtime.provider,
-        },
-        {
-          timeoutMs: null,
-          onEvent: async (event) => {
-            if (event.type !== "agent.activity") return;
-            await repository.upsertMessage(LOCAL_USER_ID, context.chatId, {
+    void (async () => {
+      let anyActivity = false;
+      try {
+        for (const [index, runtime] of runtimes.entries()) {
+          let attemptActivity = false;
+          const canResume = runtime.routeId === context.modelRouteId;
+          const threadId = canResume ? context.threadId : null;
+          const workerPrompt = threadId
+            ? input.text
+            : continuationPrompt(priorMessages, input.text);
+          await repository.setMessageModelRoute(
+            userMessage.id,
+            modelId,
+            runtime,
+          );
+          await repository.updateChatRuntime(
+            context.chatId,
+            context.workerId,
+            threadId,
+            runtime.routeId,
+            "starting",
+          );
+          try {
+            const rawResult = await bridge.request(
+              context.workerId,
+              {
+                type: "chat.turn",
+                chatId: context.chatId,
+                clientMessageId: userMessage.id,
+                cwd: context.cwd,
+                threadId,
+                prompt: workerPrompt,
+                model: runtime.model,
+                provider: runtime.provider,
+              },
+              {
+                timeoutMs: null,
+                onEvent: async (event) => {
+                  if (event.type !== "agent.activity") return;
+                  attemptActivity = true;
+                  anyActivity = true;
+                  await repository.upsertMessage(
+                    LOCAL_USER_ID,
+                    context.chatId,
+                    {
+                      role: "assistant",
+                      content: [{ type: "activity", activity: event.activity }],
+                      idempotencyKey: `activity:${userMessage.id}:${event.activity.id}`,
+                    },
+                  );
+                },
+              },
+            );
+            const result = agentTurnResultSchema.parse(rawResult);
+            routeCooldowns.delete(runtime.routeId);
+            await repository.updateChatRuntime(
+              context.chatId,
+              context.workerId,
+              result.threadId,
+              runtime.routeId,
+            );
+            await repository.appendMessage(LOCAL_USER_ID, context.chatId, {
               role: "assistant",
-              content: [{ type: "activity", activity: event.activity }],
-              idempotencyKey: `activity:${userMessage.id}:${event.activity.id}`,
+              content: [
+                {
+                  type: "text",
+                  text: result.text || "The agent completed without a message.",
+                },
+              ],
+              idempotencyKey: `assistant:${userMessage.id}`,
             });
-          },
-        },
-      )
-      .then(async (rawResult) => {
-        const result = agentTurnResultSchema.parse(rawResult);
-        await repository.updateChatRuntime(
-          context.chatId,
-          context.workerId,
-          result.threadId,
-        );
-        await repository.appendMessage(LOCAL_USER_ID, context.chatId, {
-          role: "assistant",
-          content: [
-            {
-              type: "text",
-              text: result.text || "The agent completed without a message.",
-            },
-          ],
-          idempotencyKey: `assistant:${userMessage.id}`,
-        });
-        await repository.setChatStatus(context.chatId, "idle");
-        void dispatchNextQueuedPrompt(context.chatId);
-      })
-      .catch(async (error: unknown) => {
+            await repository.setChatStatus(context.chatId, "idle");
+            void dispatchNextQueuedPrompt(context.chatId);
+            return;
+          } catch (error) {
+            const canRetry =
+              !attemptActivity &&
+              canFailOverRoute(error) &&
+              index < runtimes.length - 1;
+            if (!canRetry) throw error;
+            routeCooldowns.set(
+              runtime.routeId,
+              Date.now() + ROUTE_FAILURE_COOLDOWN_MS,
+            );
+            app.log.warn(
+              {
+                chatId: context.chatId,
+                err: error,
+                providerId: runtime.provider.id,
+                routeId: runtime.routeId,
+              },
+              "Provider route failed before activity; trying the next route",
+            );
+          }
+        }
+      } catch (error: unknown) {
+        if (!anyActivity && context.modelRouteId) {
+          await repository.updateChatRuntime(
+            context.chatId,
+            context.workerId,
+            context.threadId,
+            context.modelRouteId,
+          );
+        }
         const interrupted = /interrupted/i.test(errorMessage(error));
         app.log.error(
           { chatId: context.chatId, err: error },
@@ -304,9 +439,18 @@ export async function buildApp({
           interrupted ? "idle" : "failed",
         );
         void dispatchNextQueuedPrompt(context.chatId);
-      });
+      }
+    })();
 
-    return userMessage;
+    const firstRuntime = runtimes[0]!;
+    return {
+      ...userMessage,
+      modelId,
+      modelRouteId: firstRuntime.routeId,
+      providerId: firstRuntime.provider.id,
+      providerName: firstRuntime.provider.name,
+      providerModelName: firstRuntime.model.name,
+    };
   }
 
   app.get("/api", async () => ({
@@ -1431,13 +1575,7 @@ export async function buildApp({
               LOCAL_USER_ID,
               context.linkedChatId,
             );
-            const modelId =
-              chat?.modelId ??
-              (await repository.getSettings(LOCAL_USER_ID)).preferences
-                .defaultModelId;
-            const runtime = modelId
-              ? await repository.getModelRuntime(LOCAL_USER_ID, modelId)
-              : null;
+            const runtime = chat ? await runtimeForContext(chat) : null;
             if (!chat || !runtime) {
               throw new Error(
                 "Choose a model for this chat before opening its Codex console.",
@@ -1590,16 +1728,7 @@ export async function buildApp({
       if (!bridge.isConnected(context.workerId)) {
         return reply.code(503).send({ error: "Project worker is offline." });
       }
-      const modelId =
-        context.modelId ??
-        (await repository.getSettings(LOCAL_USER_ID)).preferences
-          .defaultModelId;
-      if (!modelId) {
-        return reply
-          .code(409)
-          .send({ error: "Choose a model before compacting this chat." });
-      }
-      const runtime = await repository.getModelRuntime(LOCAL_USER_ID, modelId);
+      const runtime = await runtimeForContext(context);
       if (!runtime) {
         return reply.code(400).send({ error: "Selected model was not found." });
       }
@@ -1630,14 +1759,7 @@ export async function buildApp({
           chatInterruptAcceptedSchema.parse({ interrupted: false }),
         );
       }
-      const modelId =
-        context.modelId ??
-        (await repository.getSettings(LOCAL_USER_ID)).preferences
-          .defaultModelId;
-      if (!modelId) {
-        return reply.code(409).send({ error: "The chat has no active model." });
-      }
-      const runtime = await repository.getModelRuntime(LOCAL_USER_ID, modelId);
+      const runtime = await runtimeForContext(context);
       if (!runtime) {
         return reply.code(400).send({ error: "Selected model was not found." });
       }
@@ -1674,14 +1796,7 @@ export async function buildApp({
       if (!bridge.isConnected(context.workerId)) {
         return reply.code(503).send({ error: "Project worker is offline." });
       }
-      const modelId =
-        context.modelId ??
-        (await repository.getSettings(LOCAL_USER_ID)).preferences
-          .defaultModelId;
-      if (!modelId) {
-        return reply.code(409).send({ error: "The chat has no active model." });
-      }
-      const runtime = await repository.getModelRuntime(LOCAL_USER_ID, modelId);
+      const runtime = await runtimeForContext(context);
       if (!runtime) {
         return reply.code(400).send({ error: "Selected model was not found." });
       }
@@ -1911,11 +2026,7 @@ export async function buildApp({
           if (!bridge.isConnected(context.workerId)) {
             throw new Error("The active Codex thread is unavailable.");
           }
-          const modelId = await resolveModelId(context);
-          const runtime = await repository.getModelRuntime(
-            LOCAL_USER_ID,
-            modelId,
-          );
+          const runtime = await runtimeForContext(context);
           if (!runtime) throw new Error("Selected model was not found.");
           await bridge.request(context.workerId, {
             type: "chat.steer",

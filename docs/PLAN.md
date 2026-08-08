@@ -194,13 +194,15 @@ The database is the source of truth for Cantrip entities. Exact columns can evol
 | `projects` | Server-owned logical project name, owner, settings, and optional default worker/source binding. |
 | `project_sources` | The single worker-owned folder for an MVP project: canonical path, display path, repository fingerprint, Git metadata, and allowed access policy. Future replicas/worktrees require a separate explicit model. |
 | `chats` | Server-owned logical conversation with project, title, active worker, runtime profile, status, model, and event cursor. |
-| `chat_runtime_sessions` | Mapping from one logical chat to a worker-specific Codex thread/session, source binding, status, and replay/handoff metadata. |
-| `chat_messages` | Ordered server-held conversation history that remains readable independently of worker availability. |
+| `chat_runtime_sessions` | Mapping from one logical chat to a worker-specific Codex thread/session, active model route, source binding, status, and replay/handoff metadata. |
+| `chat_messages` | Ordered server-held conversation history that remains readable independently of worker availability, including the concrete model route/provider audit for dispatched user turns. |
 | `turns` | Cantrip projection of Codex turns, status, timestamps, usage, and error summary. |
 | `chat_inputs` | Durable prompt queue with mode, ordering key, idempotency key, delivery state, and optional expected turn ID. |
 | `chat_events` | Append-only normalized event log with per-chat ordering, raw payload, and deduplication key. |
 | `pending_requests` | Approvals, user-input prompts, or elicitation requests awaiting a client response. |
-| `runtime_profiles` | Provider type, model defaults, worker placement, capability metadata, and secret references. |
+| `model_providers` | Independent API endpoints or isolated ChatGPT accounts, including server-held endpoint configuration and worker-held authentication identity. |
+| `model_profiles` | Logical user-facing models selected by chats and queued prompts, with a default reasoning effort and routing policy. |
+| `model_routes` | Ordered provider bindings for a logical model: provider-specific model name, enabled state, priority, and optional reasoning override. |
 | `audit_events` | Security-sensitive operations such as pairing, terminal creation, approvals, policy changes, and secret updates. |
 
 A project source path is meaningful only on its worker. Two workers may bind the same logical project to different clones and different absolute paths. The server stores only source metadata and paths needed for routing; it does not mirror the working tree or file contents. File reads, edits, Git operations, and terminals always execute on the selected worker.
@@ -349,9 +351,15 @@ For local desktop use, the browser callback flow is acceptable. For a phone cont
 
 ChatGPT tokens stay in the worker's isolated Codex credential store. The server stores only account display metadata, auth status, and quota snapshots needed for the UI. It must never store or relay raw ChatGPT access/refresh tokens.
 
-### 9.3 API, OpenRouter, proxy, and Ollama profiles
+### 9.3 Model profiles and provider routes
 
-A runtime profile contains a provider ID, display name, base URL, model ID, optional API-key secret reference, and declared/probed capabilities. The worker renders these into its Cantrip-owned Codex configuration and injects API keys through environment variables rather than writing secrets into TOML.
+A provider contains an endpoint or isolated ChatGPT account and its secret reference. A logical model profile contains one or more ordered provider routes. Each route supplies the provider-specific model name, enabled state, priority, and optional reasoning override. A one-provider model is represented by one route rather than a separate model type.
+
+The initial routing policy is deterministic priority failover. Before a turn, the server skips disabled routes, ChatGPT accounts known to be signed out or out of weekly usage, and routes in a short failure cooldown. The selected route is fixed for the turn. Cantrip may automatically try the next route after a quota, authentication, availability, or connection failure only when the failed route produced no command or file activity. Once activity begins, retrying is an explicit user action so work cannot be executed twice. Queued prompts retain the logical model and resolve their route only when dispatched.
+
+When routing changes to a different Codex runtime, the server starts a new underlying thread and hydrates it from server-owned conversation history. Compaction, steering, interruption, synchronization, and the linked console continue using the concrete route attached to the active runtime session.
+
+The worker renders the selected route into its Cantrip-owned Codex configuration and injects API keys through environment variables rather than writing secrets into TOML.
 
 Important compatibility boundary: current Codex custom model providers use the OpenAI Responses wire API. A configurable base URL does not automatically make a Chat-Completions-only endpoint compatible. OpenRouter or another proxy must expose sufficiently compatible Responses streaming, tool calling, reasoning, and structured output for the selected model. Ollama can use Codex's OSS/provider configuration and requires no key; `localhost` resolves on the worker.
 
@@ -523,7 +531,7 @@ Exit: a developer can use Cantrip locally in the browser for a real repository w
 
 ### Phase 2: runtime profiles and local tools
 
-- Add isolated Codex homes and a runtime process pool. The initial provider/model process pool, server-owned settings, and first-message chat model lock are implemented in the local vertical slice.
+- Add isolated Codex homes and a runtime process pool. The local vertical slice now has server-owned settings, per-message logical model selection, isolated provider runtimes, and ordered provider-route failover.
 - Add ChatGPT browser/device login, logout, account display, and rate-limit UI.
 - Add API-key/base-URL and keyless Ollama profiles.
 - Add explicit model capability tests and structured-output probes.

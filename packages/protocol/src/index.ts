@@ -152,10 +152,31 @@ export const modelProviderSummarySchema = modelProviderCreateSchema
 
 export const modelProviderListSchema = z.array(modelProviderSummarySchema);
 
+export const modelRouteInputSchema = z.object({
+  id: z.string().min(1).optional(),
+  providerId: z.string().min(1),
+  modelName: z.string().trim().min(1).max(160),
+  reasoningEffort: reasoningEffortSchema.nullable().optional(),
+  enabled: z.boolean().default(true),
+});
+
+export const modelRouteSummarySchema = modelRouteInputSchema.extend({
+  id: z.string().min(1),
+  providerName: z.string().min(1),
+  position: z.number().int().nonnegative(),
+  reasoningEffort: reasoningEffortSchema.nullable(),
+});
+
 export const modelProfileCreateSchema = z.object({
   name: z.string().trim().min(1).max(160),
-  providerId: z.string().min(1),
   reasoningEffort: reasoningEffortSchema.nullable().optional(),
+  routes: z
+    .array(modelRouteInputSchema)
+    .min(1)
+    .max(32)
+    .refine((routes) => routes.some((route) => route.enabled), {
+      message: "At least one provider route must be enabled.",
+    }),
 });
 
 export const modelProfileUpdateSchema = modelProfileCreateSchema;
@@ -163,7 +184,8 @@ export const modelProfileUpdateSchema = modelProfileCreateSchema;
 export const modelProfileSummarySchema = modelProfileCreateSchema.extend({
   id: z.string().min(1),
   reasoningEffort: reasoningEffortSchema.nullable(),
-  providerName: z.string().min(1),
+  routingPolicy: z.literal("priority"),
+  routes: z.array(modelRouteSummarySchema).min(1),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -491,6 +513,11 @@ export const chatMessageSchema = chatMessageCreateSchema
     id: z.string().min(1),
     chatId: z.string().min(1),
     sequence: z.number().int().positive(),
+    modelId: z.string().min(1).nullable(),
+    modelRouteId: z.string().min(1).nullable(),
+    providerId: z.string().min(1).nullable(),
+    providerName: z.string().min(1).nullable(),
+    providerModelName: z.string().min(1).nullable(),
     createdAt: z.string().datetime(),
   });
 
@@ -700,6 +727,21 @@ export const agentThreadSyncSchema = z.object({
   ),
 });
 
+const workerRuntimeModelSchema = z.object({
+  id: z.string().min(1),
+  routeId: z.string().min(1),
+  name: z.string().min(1),
+  reasoningEffort: reasoningEffortSchema.nullable(),
+});
+
+const workerRuntimeProviderSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  kind: modelProviderKindSchema,
+  baseUrl: z.url(),
+  apiKey: z.string().min(1).nullable(),
+});
+
 export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("codex.auth.status"),
@@ -788,18 +830,8 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       z.object({
         type: z.literal("codex"),
         threadId: z.string().min(1).nullable(),
-        model: z.object({
-          id: z.string().min(1),
-          name: z.string().min(1),
-          reasoningEffort: reasoningEffortSchema.nullable(),
-        }),
-        provider: z.object({
-          id: z.string().min(1),
-          name: z.string().min(1),
-          kind: modelProviderKindSchema,
-          baseUrl: z.url(),
-          apiKey: z.string().min(1).nullable(),
-        }),
+        model: workerRuntimeModelSchema,
+        provider: workerRuntimeProviderSchema,
       }),
     ]),
   }),
@@ -830,89 +862,39 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     cwd: z.string().min(1),
     threadId: z.string().min(1).nullable(),
     prompt: z.string().min(1),
-    model: z.object({
-      id: z.string().min(1),
-      name: z.string().min(1),
-      reasoningEffort: reasoningEffortSchema.nullable(),
-    }),
-    provider: z.object({
-      id: z.string().min(1),
-      name: z.string().min(1),
-      kind: modelProviderKindSchema,
-      baseUrl: z.url(),
-      apiKey: z.string().min(1).nullable(),
-    }),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
   }),
   z.object({
     type: z.literal("chat.compact"),
     chatId: z.string().min(1),
     cwd: z.string().min(1),
     threadId: z.string().min(1),
-    model: z.object({
-      id: z.string().min(1),
-      name: z.string().min(1),
-      reasoningEffort: reasoningEffortSchema.nullable(),
-    }),
-    provider: z.object({
-      id: z.string().min(1),
-      name: z.string().min(1),
-      kind: modelProviderKindSchema,
-      baseUrl: z.url(),
-      apiKey: z.string().min(1).nullable(),
-    }),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
   }),
   z.object({
     type: z.literal("chat.interrupt"),
     chatId: z.string().min(1),
     threadId: z.string().min(1),
-    model: z.object({
-      id: z.string().min(1),
-      name: z.string().min(1),
-      reasoningEffort: reasoningEffortSchema.nullable(),
-    }),
-    provider: z.object({
-      id: z.string().min(1),
-      name: z.string().min(1),
-      kind: modelProviderKindSchema,
-      baseUrl: z.url(),
-      apiKey: z.string().min(1).nullable(),
-    }),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
   }),
   z.object({
     type: z.literal("chat.steer"),
     chatId: z.string().min(1),
     threadId: z.string().min(1).nullable(),
     prompt: z.string().trim().min(1).max(100_000),
-    model: z.object({
-      id: z.string().min(1),
-      name: z.string().min(1),
-      reasoningEffort: reasoningEffortSchema.nullable(),
-    }),
-    provider: z.object({
-      id: z.string().min(1),
-      name: z.string().min(1),
-      kind: modelProviderKindSchema,
-      baseUrl: z.url(),
-      apiKey: z.string().min(1).nullable(),
-    }),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
   }),
   z.object({
     type: z.literal("chat.sync"),
     chatId: z.string().min(1),
     cwd: z.string().min(1),
     threadId: z.string().min(1),
-    model: z.object({
-      id: z.string().min(1),
-      name: z.string().min(1),
-      reasoningEffort: reasoningEffortSchema.nullable(),
-    }),
-    provider: z.object({
-      id: z.string().min(1),
-      name: z.string().min(1),
-      kind: modelProviderKindSchema,
-      baseUrl: z.url(),
-      apiKey: z.string().min(1).nullable(),
-    }),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
   }),
 ]);
 
@@ -972,6 +954,8 @@ export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>;
 export type ModelProviderCreate = z.infer<typeof modelProviderCreateSchema>;
 export type ModelProviderUpdate = z.infer<typeof modelProviderUpdateSchema>;
 export type ModelProviderSummary = z.infer<typeof modelProviderSummarySchema>;
+export type ModelRouteInput = z.infer<typeof modelRouteInputSchema>;
+export type ModelRouteSummary = z.infer<typeof modelRouteSummarySchema>;
 export type ModelProfileCreate = z.infer<typeof modelProfileCreateSchema>;
 export type ModelProfileUpdate = z.infer<typeof modelProfileUpdateSchema>;
 export type ModelProfileSummary = z.infer<typeof modelProfileSummarySchema>;

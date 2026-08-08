@@ -22,6 +22,14 @@ Settings are stored by the server for the current Cantrip identity rather than i
 - OpenAI-compatible APIs such as OpenRouter.
 - Isolated ChatGPT account providers authenticated through Codex, including account status and available usage information when Codex exposes it.
 
+Models are logical profiles with one or more ordered provider routes. A profile
+such as `GPT-5.6 Sol` can prefer one ChatGPT account, fall back to another when
+its reported weekly usage is exhausted, and then use an OpenAI-compatible
+route such as OpenRouter. Each route keeps its provider-specific model name and
+optional reasoning override. Cantrip records the concrete route used for a
+turn and only retries another route automatically when the first attempt fails
+before producing command or file activity.
+
 The app can switch between the structured chat view and the linked live Codex console. Ordinary terminal, Explorer, browser, chat, and project tabs can be renamed and reordered together.
 
 ## Architecture

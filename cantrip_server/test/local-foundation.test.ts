@@ -60,10 +60,13 @@ const config: ServerConfig = {
 let turnRequests = 0;
 let compactRequests = 0;
 const turnModelIds: string[] = [];
+const turnProviderIds: string[] = [];
+const turnRouteIds: string[] = [];
 const turnPrompts: string[] = [];
 const turnTimeouts: Array<number | null | undefined> = [];
 const deletedProjectPaths: string[] = [];
 const authProviderIds: string[] = [];
+const exhaustedProviderIds = new Set<string>();
 const steeredPrompts: string[] = [];
 const issueComments: string[] = [];
 const closedIssues: Array<{ comment: string | null; number: number }> = [];
@@ -83,7 +86,12 @@ const workerBridge = {
           authMode: "chatgpt",
           email: "test@example.com",
           planType: "plus",
-          weeklyUsage: { usedPercent: 37, resetsAt: 1_786_665_600 },
+          weeklyUsage: {
+            usedPercent: exhaustedProviderIds.has(command.providerId)
+              ? 100
+              : 37,
+            resetsAt: 1_786_665_600,
+          },
         };
       case "codex.auth.login.start":
         authProviderIds.push(command.providerId);
@@ -288,6 +296,8 @@ const workerBridge = {
       case "chat.turn":
         turnRequests += 1;
         turnModelIds.push(command.model.id);
+        turnProviderIds.push(command.provider.id);
+        turnRouteIds.push(command.model.routeId);
         turnPrompts.push(command.prompt);
         turnTimeouts.push(options?.timeoutMs);
         await options?.onEvent?.({
@@ -442,9 +452,15 @@ describe("local server foundation", () => {
           method: "POST",
           url: "/api/settings/models",
           payload: {
-            name: "test-model",
-            providerId: provider.id,
+            name: "Test model",
             reasoningEffort: "high",
+            routes: [
+              {
+                providerId: provider.id,
+                modelName: "test-model",
+                enabled: true,
+              },
+            ],
           },
         })
       ).json(),
@@ -455,17 +471,31 @@ describe("local server foundation", () => {
           method: "PATCH",
           url: `/api/settings/models/${selectedModel.id}`,
           payload: {
-            name: "edited-test-model",
-            providerId: provider.id,
+            name: "Edited test model",
             reasoningEffort: "medium",
+            routes: [
+              {
+                id: selectedModel.routes[0]?.id,
+                providerId: provider.id,
+                modelName: "edited-test-model",
+                enabled: true,
+              },
+            ],
           },
         })
       ).json(),
     );
     expect(editedModel).toMatchObject({
-      name: "edited-test-model",
-      providerName: "Edited test provider",
+      name: "Edited test model",
       reasoningEffort: "medium",
+      routingPolicy: "priority",
+      routes: [
+        expect.objectContaining({
+          providerName: "Edited test provider",
+          modelName: "edited-test-model",
+          position: 0,
+        }),
+      ],
     });
     const updatedSettings = settingsBundleSchema.parse(
       (
@@ -1183,6 +1213,64 @@ describe("local server foundation", () => {
       );
       expect(remaining).toHaveLength(0);
     });
+
+    const routedModel = modelProfileSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: "/api/settings/models",
+          payload: {
+            name: "Priority model",
+            reasoningEffort: "high",
+            routes: [
+              {
+                providerId: chatGptProvider.id,
+                modelName: "gpt-primary",
+                enabled: true,
+              },
+              {
+                providerId: provider.id,
+                modelName: "gpt-fallback",
+                reasoningEffort: "medium",
+                enabled: true,
+              },
+            ],
+          },
+        })
+      ).json(),
+    );
+    expect(routedModel.routes).toMatchObject([
+      { providerId: chatGptProvider.id, position: 0 },
+      { providerId: provider.id, position: 1 },
+    ]);
+    exhaustedProviderIds.add(chatGptProvider.id);
+    const routedChat = chatSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/chats`,
+          payload: { title: "Provider failover" },
+        })
+      ).json(),
+    );
+    const routedTurn = await firstApp.inject({
+      method: "POST",
+      url: `/api/chats/${routedChat.id}/turns`,
+      payload: {
+        text: "Use the first available provider.",
+        idempotencyKey: "priority-route-turn",
+        modelId: routedModel.id,
+      },
+    });
+    expect(routedTurn.statusCode).toBe(202);
+    expect(chatMessageSchema.parse(routedTurn.json().message)).toMatchObject({
+      modelId: routedModel.id,
+      modelRouteId: routedModel.routes[1]?.id,
+      providerId: provider.id,
+      providerModelName: "gpt-fallback",
+    });
+    await vi.waitFor(() => expect(turnProviderIds.at(-1)).toBe(provider.id));
+    expect(turnRouteIds.at(-1)).toBe(routedModel.routes[1]?.id);
 
     await firstApp.close();
 

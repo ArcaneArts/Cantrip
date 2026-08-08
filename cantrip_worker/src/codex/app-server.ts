@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   execFile,
   spawn,
@@ -180,6 +181,26 @@ export function codexModelProviderName(
   provider: RunAgentTurnOptions["provider"],
 ): "cantrip_runtime" | "openai" {
   return provider.kind === "chatgpt" ? "openai" : "cantrip_runtime";
+}
+
+export function codexRuntimeId(
+  model: RunAgentTurnOptions["model"],
+  provider: RunAgentTurnOptions["provider"],
+): string {
+  const configuration = createHash("sha256")
+    .update(
+      JSON.stringify({
+        modelName: model.name,
+        reasoningEffort: model.reasoningEffort,
+        providerName: provider.name,
+        providerKind: provider.kind,
+        baseUrl: provider.baseUrl,
+        apiKey: provider.apiKey,
+      }),
+    )
+    .digest("hex")
+    .slice(0, 16);
+  return `${provider.id}:${model.routeId}:${configuration}`;
 }
 
 function activityStatus(
@@ -536,7 +557,7 @@ export class CodexAppServer {
     model: RunAgentTurnOptions["model"],
     provider: RunAgentTurnOptions["provider"],
   ): Promise<void> {
-    const runtimeId = `${provider.id}:${model.id}`;
+    const runtimeId = codexRuntimeId(model, provider);
     if (this.#starting) {
       await this.#starting;
     }

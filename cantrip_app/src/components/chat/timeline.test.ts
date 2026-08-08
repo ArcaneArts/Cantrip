@@ -9,7 +9,19 @@ function message(
   createdAt: string,
   content: ChatMessage["content"],
 ): ChatMessage {
-  return { id, chatId: "chat-1", sequence: 1, role, createdAt, content };
+  return {
+    id,
+    chatId: "chat-1",
+    sequence: 1,
+    role,
+    createdAt,
+    content,
+    modelId: null,
+    modelRouteId: null,
+    providerId: null,
+    providerName: null,
+    providerModelName: null,
+  };
 }
 
 describe("chat activity timeline", () => {
