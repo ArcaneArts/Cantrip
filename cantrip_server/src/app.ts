@@ -18,6 +18,10 @@ import {
   browserUpdateSchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
+  codexCustomizationInventorySchema,
+  codexExternalImportPreviewSchema,
+  codexMcpResourceReadRequestSchema,
+  codexMcpResourceReadSchema,
   chatCompactAcceptedSchema,
   chatAttachmentKindSchema,
   chatAttachmentSourceSchema,
@@ -4837,6 +4841,108 @@ export async function buildApp({
           provider: runtime.provider,
         });
         return reply.send(skillListSchema.parse(skills));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { chatId: string };
+    Querystring: { refresh?: string };
+  }>("/api/chats/:chatId/customizations", async (request, reply) => {
+    const context = await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      request.params.chatId,
+    );
+    if (!context) return reply.code(404).send({ error: "Chat not found." });
+    if (!bridge.isConnected(context.workerId)) {
+      return reply.code(503).send({ error: "Project worker is offline." });
+    }
+    try {
+      const runtime = await runtimeForContext(context);
+      if (!runtime) {
+        return reply
+          .code(409)
+          .send({ error: "Choose a model before listing customizations." });
+      }
+      const inventory = await bridge.request(context.workerId, {
+        type: "customization.inventory.read",
+        cwd: context.cwd,
+        forceReload: request.query.refresh === "true",
+        model: runtime.model,
+        provider: runtime.provider,
+      });
+      return reply.send(codexCustomizationInventorySchema.parse(inventory));
+    } catch (error) {
+      const status = error instanceof WorkerUnavailableError ? 503 : 502;
+      return reply.code(status).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.get<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/customizations/external-preview",
+    async (request, reply) => {
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) return reply.code(404).send({ error: "Chat not found." });
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const runtime = await runtimeForContext(context);
+        if (!runtime) {
+          return reply
+            .code(409)
+            .send({ error: "Choose a model before previewing imports." });
+        }
+        const preview = await bridge.request(context.workerId, {
+          type: "customization.external.preview",
+          cwd: context.cwd,
+          model: runtime.model,
+          provider: runtime.provider,
+        });
+        return reply.send(codexExternalImportPreviewSchema.parse(preview));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/customizations/mcp-resource",
+    async (request, reply) => {
+      const input = codexMcpResourceReadRequestSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) return reply.code(404).send({ error: "Chat not found." });
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const runtime = await runtimeForContext(context);
+        if (!runtime) {
+          return reply
+            .code(409)
+            .send({ error: "Choose a model before reading MCP resources." });
+        }
+        const resource = await bridge.request(context.workerId, {
+          type: "customization.mcp.resource.read",
+          cwd: context.cwd,
+          model: runtime.model,
+          provider: runtime.provider,
+          ...input.data,
+        });
+        return reply.send(codexMcpResourceReadSchema.parse(resource));
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
         return reply.code(status).send({ error: errorMessage(error) });
