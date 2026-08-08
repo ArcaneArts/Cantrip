@@ -11,6 +11,7 @@ import {
   codexEndpointFromLine,
   codexModelProviderName,
   codexThreadPermissionParams,
+  codexWorkflowTurnPolicy,
   codexWorktreeTurnPolicy,
   codexWorkspaceContext,
   executeDynamicWorktreeTool,
@@ -25,7 +26,9 @@ import {
   normalizeTokenUsageActivity,
   parseCodexRpcMessage,
   parseCodexSkills,
+  parseWorkflowStructuredResult,
   planQuestionId,
+  workflowMeasuredUsage,
 } from "../src/codex/app-server.js";
 
 const correlation = {
@@ -548,6 +551,99 @@ describe("Codex permission profile params", () => {
   });
 });
 
+describe("Codex workflow node policy", () => {
+  it("maps node mutation and network requirements into scoped sandboxes", () => {
+    expect(
+      codexWorkflowTurnPolicy(
+        {
+          cwd: "/workspace/project",
+          mutationMode: "read-only",
+          networkAccess: "none",
+          permissionProfileId: null,
+        },
+        false,
+      ),
+    ).toEqual({
+      sandboxPolicy: { type: "readOnly", networkAccess: false },
+    });
+    expect(
+      codexWorkflowTurnPolicy(
+        {
+          cwd: "/workspace/project/../project",
+          mutationMode: "write",
+          networkAccess: "unrestricted",
+          permissionProfileId: null,
+        },
+        false,
+      ),
+    ).toEqual({
+      sandboxPolicy: {
+        type: "workspaceWrite",
+        writableRoots: ["/workspace/project"],
+        networkAccess: true,
+        excludeTmpdirEnvVar: false,
+        excludeSlashTmp: false,
+      },
+    });
+  });
+
+  it("fails closed for restricted network without named profiles", () => {
+    expect(() =>
+      codexWorkflowTurnPolicy(
+        {
+          cwd: "/workspace/project",
+          mutationMode: "read-only",
+          networkAccess: "restricted",
+          permissionProfileId: ":restricted",
+        },
+        false,
+      ),
+    ).toThrow(/requires a supported Codex permission profile/u);
+    expect(
+      codexWorkflowTurnPolicy(
+        {
+          cwd: "/workspace/project",
+          mutationMode: "read-only",
+          networkAccess: "restricted",
+          permissionProfileId: ":restricted",
+        },
+        true,
+      ),
+    ).toEqual({});
+  });
+
+  it("parses bounded structured output and reports unavailable cost honestly", () => {
+    expect(parseWorkflowStructuredResult("plain text", {})).toBe("plain text");
+    expect(
+      parseWorkflowStructuredResult('{"approved":true}', { type: "object" }),
+    ).toEqual({ approved: true });
+    expect(() =>
+      parseWorkflowStructuredResult("not json", { type: "object" }),
+    ).toThrow();
+    expect(
+      workflowMeasuredUsage(
+        {
+          totalTokens: 15,
+          inputTokens: 10,
+          cachedInputTokens: 2,
+          cacheWriteInputTokens: 0,
+          outputTokens: 4,
+          reasoningOutputTokens: 1,
+        },
+        250.4,
+      ),
+    ).toEqual({
+      inputTokens: 10,
+      outputTokens: 4,
+      cachedInputTokens: 2,
+      totalTokens: 15,
+      durationMs: 250,
+      estimatedCostUsd: null,
+      costAvailable: false,
+    });
+  });
+});
+
 describe("changedFiles", () => {
   it("summarizes added, updated, and deleted files from a turn diff", () => {
     const diff = [
@@ -721,6 +817,49 @@ describe("Codex runtime compatibility enforcement", () => {
         threadId: null,
         worktreeMode: "agent-managed",
         worktreePolicy: "required-for-writes",
+      }),
+    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.146\.0/u);
+  });
+
+  it("uses the dedicated workflow entry point for unavailable runtimes", async () => {
+    const runtime = new CodexAppServer(
+      "/definitely/missing/codex",
+      "/private/tmp/cantrip-workflow-runtime-test",
+      "/private/tmp/cantrip-workflow-runtime-test/home",
+      unprobedCodexRuntimeReport,
+    );
+
+    await expect(
+      runtime.runWorkflowNode({
+        workflowRunId: "run-1",
+        runNodeId: "run-node-1",
+        attemptId: "attempt-1",
+        idempotencyKey: "execute-1",
+        worktreeId: null,
+        cwd: "/private/tmp/cantrip-workflow-runtime-test",
+        threadId: null,
+        prompt: "Inspect the project",
+        developerInstructions: null,
+        skillNames: [],
+        outputSchema: {},
+        mutationMode: "read-only",
+        networkAccess: "none",
+        approvalMode: "interactive",
+        permissionProfileId: null,
+        timeoutMs: 60_000,
+        model: {
+          id: "model-1",
+          routeId: "route-1",
+          name: "gpt-5.6-sol",
+          reasoningEffort: null,
+        },
+        provider: {
+          id: "provider-1",
+          name: "ChatGPT",
+          kind: "chatgpt",
+          baseUrl: "https://api.openai.com/v1",
+          apiKey: null,
+        },
       }),
     ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.146\.0/u);
   });

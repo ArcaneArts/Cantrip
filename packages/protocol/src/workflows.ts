@@ -877,6 +877,48 @@ export const workflowRunStatusUpdateSchema = z.object({
   idempotencyKey: z.string().trim().min(1).max(200),
 });
 
+export const workflowNodeExecutionRequestSchema = z.object({
+  workflowRunId: idSchema,
+  runNodeId: idSchema,
+  attemptId: idSchema,
+  idempotencyKey: z.string().trim().min(1).max(200),
+  worktreeId: optionalIdSchema,
+  cwd: z.string().trim().min(1).max(8_192),
+  threadId: optionalIdSchema,
+  prompt: z.string().trim().min(1).max(100_000),
+  developerInstructions: z
+    .string()
+    .trim()
+    .min(1)
+    .max(100_000)
+    .nullable()
+    .default(null),
+  skillNames: z.array(workflowKeySchema).max(64).default([]),
+  outputSchema: workflowJsonObjectSchema.default({}),
+  mutationMode: workflowMutationModeSchema,
+  networkAccess: workflowPermissionRequirementsSchema.shape.network,
+  approvalMode: workflowPermissionRequirementsSchema.shape.approvalMode,
+  permissionProfileId: optionalIdSchema,
+  timeoutMs: z
+    .number()
+    .int()
+    .min(1_000)
+    .max(24 * 60 * 60 * 1_000),
+});
+
+export const workflowNodeExecutionResultSchema = z.object({
+  threadId: idSchema,
+  turnId: idSchema,
+  text: z.string().max(1_000_000),
+  structuredResult: workflowJsonValueSchema,
+  measuredUsage: workflowMeasuredUsageSchema,
+  status: z.literal("completed"),
+});
+
+export const workflowNodeInterruptResultSchema = z.object({
+  interrupted: z.boolean(),
+});
+
 export type WorkflowScope = z.infer<typeof workflowScopeSchema>;
 export type WorkflowTrustState = z.infer<typeof workflowTrustStateSchema>;
 export type WorkflowSource = z.infer<typeof workflowSourceSchema>;
@@ -950,4 +992,13 @@ export type WorkflowRunEventQuery = z.infer<typeof workflowRunEventQuerySchema>;
 export type WorkflowRunEventPage = z.infer<typeof workflowRunEventPageSchema>;
 export type WorkflowRunStatusUpdate = z.infer<
   typeof workflowRunStatusUpdateSchema
+>;
+export type WorkflowNodeExecutionRequest = z.infer<
+  typeof workflowNodeExecutionRequestSchema
+>;
+export type WorkflowNodeExecutionResult = z.infer<
+  typeof workflowNodeExecutionResultSchema
+>;
+export type WorkflowNodeInterruptResult = z.infer<
+  typeof workflowNodeInterruptResultSchema
 >;

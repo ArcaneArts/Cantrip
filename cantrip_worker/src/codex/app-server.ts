@@ -57,6 +57,11 @@ import {
   type WorkerChatAttachment,
   type WorkerCommand,
 } from "@cantrip/protocol";
+import {
+  workflowJsonValueSchema,
+  workflowNodeExecutionResultSchema,
+  type WorkflowNodeExecutionResult,
+} from "@cantrip/protocol/workflows";
 import WebSocket, { type RawData } from "ws";
 
 import type { CodexRuntime, CodexRuntimeDiagnostic } from "./runtime.js";
@@ -109,12 +114,16 @@ export type WorktreeToolHandler = (input: {
 
 interface ActiveTurn {
   baseline: WorkspaceSnapshot;
-  chatId: string;
+  chatId: string | null;
   collaborationMode: NativeCollaborationMode | null;
   cwd: string;
   delta: string;
   diffChanges: Array<{ kind: "add" | "delete" | "update"; path: string }>;
+  durationMs: number | null;
+  executionKind: "chat" | "workflow";
   finalText: string | null;
+  interactionMode: "interactive" | "preauthorized";
+  latestUsage: TokenUsageBreakdown | null;
   model: RunAgentTurnOptions["model"];
   onActivity?: (activity: AgentActivity) => void;
   onMessage?: (message: NormalizedAgentMessage) => void;
@@ -132,8 +141,11 @@ interface ActiveTurn {
   onWorktreeToolCall?: WorktreeToolHandler;
   reasoningSummaries: Map<string, string[]>;
   reject(error: Error): void;
-  resolve(result: AgentTurnResult): void;
+  resolve(result: AgentTurnResult | WorkflowNodeExecutionResult): void;
+  startedAtMs: number;
   threadId: string;
+  timeout: ReturnType<typeof setTimeout> | null;
+  workflowOutputSchema: Record<string, unknown> | null;
 }
 
 interface ThreadTurn {
@@ -896,6 +908,23 @@ export interface RunAgentTurnOptions {
   onWorktreeToolCall?: ActiveTurn["onWorktreeToolCall"];
 }
 
+type WorkflowNodeExecuteCommand = Extract<
+  WorkerCommand,
+  { type: "workflow.node.execute" }
+>;
+
+export interface RunWorkflowNodeOptions extends Omit<
+  WorkflowNodeExecuteCommand,
+  "type"
+> {
+  onActivity?: ActiveTurn["onActivity"];
+  onMessage?: ActiveTurn["onMessage"];
+  onInteractionCleared?: ActiveTurn["onInteractionCleared"];
+  onInteractionExpired?: ActiveTurn["onInteractionExpired"];
+  onInteractionRequest?: ActiveTurn["onInteractionRequest"];
+  onPlan?: ActiveTurn["onPlan"];
+}
+
 export interface RuntimeChatAttachment extends WorkerChatAttachment {
   path: string;
 }
@@ -1101,6 +1130,64 @@ export function codexWorktreeTurnPolicy(
       },
     },
     ...(options.permissionProfileActive ? {} : { sandboxPolicy }),
+  } as const;
+}
+
+export function codexWorkflowTurnPolicy(
+  options: Pick<
+    RunWorkflowNodeOptions,
+    "cwd" | "mutationMode" | "networkAccess" | "permissionProfileId"
+  >,
+  permissionProfilesSupported: boolean,
+) {
+  const permissionProfileActive = Boolean(
+    options.permissionProfileId && permissionProfilesSupported,
+  );
+  if (options.networkAccess === "restricted" && !permissionProfileActive) {
+    throw new Error(
+      "Restricted workflow network access requires a supported Codex permission profile.",
+    );
+  }
+  if (permissionProfileActive) return {} as const;
+
+  const networkAccess = options.networkAccess === "unrestricted";
+  if (options.mutationMode === "read-only") {
+    return {
+      sandboxPolicy: { type: "readOnly" as const, networkAccess },
+    };
+  }
+  return {
+    sandboxPolicy: {
+      type: "workspaceWrite" as const,
+      writableRoots: [path.resolve(options.cwd)],
+      networkAccess,
+      excludeTmpdirEnvVar: false,
+      excludeSlashTmp: false,
+    },
+  };
+}
+
+export function parseWorkflowStructuredResult(
+  text: string,
+  outputSchema: Record<string, unknown>,
+): unknown {
+  const value =
+    Object.keys(outputSchema).length === 0 ? text : JSON.parse(text);
+  return workflowJsonValueSchema.parse(value);
+}
+
+export function workflowMeasuredUsage(
+  usage: TokenUsageBreakdown | null,
+  durationMs: number,
+) {
+  return {
+    inputTokens: usage?.inputTokens ?? 0,
+    outputTokens: usage?.outputTokens ?? 0,
+    cachedInputTokens: usage?.cachedInputTokens ?? 0,
+    totalTokens: usage?.totalTokens ?? 0,
+    durationMs: Math.max(0, Math.round(durationMs)),
+    estimatedCostUsd: null,
+    costAvailable: false,
   } as const;
 }
 
@@ -1721,6 +1808,8 @@ export class CodexAppServer implements CodexRuntime {
   readonly #pendingPlanQuestions = new Map<string, NativePendingPlanQuestion>();
   readonly #pausedChats = new Set<string>();
   readonly #runtimeDiagnostics: CodexRuntimeDiagnostic[] = [];
+  readonly #threadKinds = new Map<string, "chat" | "workflow">();
+  readonly #workflowThreadOwners = new Map<string, string>();
   #skillRoots: string[] = [];
   #appServerSessionId = randomUUID();
   #child: ChildProcessWithoutNullStreams | null = null;
@@ -1806,7 +1895,9 @@ export class CodexAppServer implements CodexRuntime {
     }
 
     let activeTurn: ActiveTurn | undefined;
-    const completion = new Promise<AgentTurnResult>((resolve, reject) => {
+    const completion = new Promise<
+      AgentTurnResult | WorkflowNodeExecutionResult
+    >((resolve, reject) => {
       activeTurn = {
         baseline,
         chatId: options.chatId,
@@ -1814,7 +1905,11 @@ export class CodexAppServer implements CodexRuntime {
         cwd: options.cwd,
         delta: "",
         diffChanges: [],
+        durationMs: null,
+        executionKind: "chat",
         finalText: null,
+        interactionMode: "interactive",
+        latestUsage: null,
         model: options.model,
         onActivity: options.onActivity,
         onMessage: options.onMessage,
@@ -1829,7 +1924,10 @@ export class CodexAppServer implements CodexRuntime {
         reasoningSummaries: new Map(),
         reject,
         resolve,
+        startedAtMs: Date.now(),
         threadId,
+        timeout: null,
+        workflowOutputSchema: null,
       };
     });
 
@@ -1837,7 +1935,9 @@ export class CodexAppServer implements CodexRuntime {
       ? await this.listSkills(options)
       : [];
     const selectedSkills = new Map(
-      availableSkills.map((skill) => [skill.name, skill]),
+      availableSkills.flatMap((skill) =>
+        skill.path ? ([[skill.name, skill]] as const) : [],
+      ),
     );
     const response = (await this.request("turn/start", {
       threadId,
@@ -1868,7 +1968,121 @@ export class CodexAppServer implements CodexRuntime {
       throw new Error("Could not initialize the Codex turn.");
     }
     this.#activeTurns.set(response.turn.id, activeTurn);
-    return completion;
+    return agentTurnResultSchema.parse(await completion);
+  }
+
+  async runWorkflowNode(
+    options: RunWorkflowNodeOptions,
+  ): Promise<WorkflowNodeExecutionResult> {
+    await this.ensureStarted(options.model, options.provider);
+    const turnPolicy = codexWorkflowTurnPolicy(
+      options,
+      this.permissionProfilesSupported(),
+    );
+    const availableSkills = options.skillNames.length
+      ? await this.listSkills(options)
+      : [];
+    const selectedSkills = new Map(
+      availableSkills.flatMap((skill) =>
+        skill.path ? ([[skill.name, skill]] as const) : [],
+      ),
+    );
+    const missingSkills = options.skillNames.filter(
+      (name) => !selectedSkills.has(name),
+    );
+    if (missingSkills.length) {
+      throw new Error(
+        `Workflow skills are unavailable: ${missingSkills.join(", ")}.`,
+      );
+    }
+    if (options.threadId && this.hasActiveThread(options.threadId)) {
+      throw new Error(
+        `Codex thread ${options.threadId} already has an active turn.`,
+      );
+    }
+    const baseline = await workspaceSnapshot(options.cwd);
+    const threadId = await this.loadWorkflowThread(options);
+    if (this.hasActiveThread(threadId)) {
+      throw new Error(`Codex thread ${threadId} already has an active turn.`);
+    }
+
+    let activeTurn: ActiveTurn | undefined;
+    const completion = new Promise<
+      AgentTurnResult | WorkflowNodeExecutionResult
+    >((resolve, reject) => {
+      activeTurn = {
+        baseline,
+        chatId: null,
+        collaborationMode: null,
+        cwd: options.cwd,
+        delta: "",
+        diffChanges: [],
+        durationMs: null,
+        executionKind: "workflow",
+        finalText: null,
+        interactionMode: options.approvalMode,
+        latestUsage: null,
+        model: options.model,
+        onActivity: options.onActivity,
+        onMessage: options.onMessage,
+        onInteractionCleared: options.onInteractionCleared,
+        onInteractionExpired: options.onInteractionExpired,
+        onInteractionRequest: options.onInteractionRequest,
+        onPlan: options.onPlan,
+        reasoningSummaries: new Map(),
+        reject,
+        resolve,
+        startedAtMs: Date.now(),
+        threadId,
+        timeout: null,
+        workflowOutputSchema: options.outputSchema,
+      };
+    });
+
+    const response = (await this.request("turn/start", {
+      threadId,
+      ...codexWorkspaceContext(options.cwd),
+      ...turnPolicy,
+      approvalPolicy:
+        options.approvalMode === "preauthorized" ? "never" : "on-request",
+      clientUserMessageId: `cantrip:workflow:${options.idempotencyKey}`,
+      input: [
+        { type: "text", text: options.prompt, text_elements: [] },
+        ...options.skillNames.map((name) => {
+          const skill = selectedSkills.get(name)!;
+          return { type: "skill", name: skill.name, path: skill.path };
+        }),
+      ],
+      model: options.model.name,
+      ...(options.model.reasoningEffort
+        ? { effort: options.model.reasoningEffort }
+        : {}),
+      ...(Object.keys(options.outputSchema).length
+        ? { outputSchema: options.outputSchema }
+        : {}),
+    })) as TurnStartResponse;
+    if (!activeTurn) {
+      throw new Error("Could not initialize the Codex workflow turn.");
+    }
+    this.#activeTurns.set(response.turn.id, activeTurn);
+    activeTurn.timeout = setTimeout(() => {
+      const current = this.#activeTurns.get(response.turn.id);
+      if (current !== activeTurn) return;
+      this.#activeTurns.delete(response.turn.id);
+      void this.request("turn/interrupt", {
+        threadId,
+        turnId: response.turn.id,
+      }).catch(() => undefined);
+      void this.failTurn(
+        activeTurn!,
+        response.turn.id,
+        new Error(
+          `Workflow node execution timed out after ${options.timeoutMs}ms.`,
+        ),
+      );
+    }, options.timeoutMs);
+    activeTurn.timeout.unref();
+    return workflowNodeExecutionResultSchema.parse(await completion);
   }
 
   async listSkills(
@@ -2488,6 +2702,8 @@ export class CodexAppServer implements CodexRuntime {
     this.#starting = null;
     this.#loadedThreads.clear();
     this.#permissionProfilesByThread.clear();
+    this.#threadKinds.clear();
+    this.#workflowThreadOwners.clear();
     this.#externalImportStatuses.clear();
     this.#externalTurnBaselines.clear();
     this.#mcpOauthStatuses.clear();
@@ -2612,6 +2828,8 @@ export class CodexAppServer implements CodexRuntime {
     this.#runtimeId = null;
     this.#loadedThreads.clear();
     this.#permissionProfilesByThread.clear();
+    this.#threadKinds.clear();
+    this.#workflowThreadOwners.clear();
     this.#collaborationModes.clear();
     this.#externalImportStatuses.clear();
     this.#externalTurnBaselines.clear();
@@ -2630,6 +2848,11 @@ export class CodexAppServer implements CodexRuntime {
   ): Promise<string | null> {
     const modelProvider = codexModelProviderName(options.provider);
     let threadId = options.threadId;
+    if (threadId && this.#threadKinds.get(threadId) === "workflow") {
+      throw new Error(
+        `Codex thread ${threadId} belongs to a workflow and cannot be resumed as chat.`,
+      );
+    }
     if (
       threadId &&
       (!this.#loadedThreads.has(threadId) ||
@@ -2651,6 +2874,7 @@ export class CodexAppServer implements CodexRuntime {
           threadId,
           options.permissionProfileId,
         );
+        this.#threadKinds.set(threadId, "chat");
       } catch {
         // Codex thread state is local to its worker/runtime. A normal turn can
         // recover from replacement by starting a new thread; compaction cannot.
@@ -2675,7 +2899,70 @@ export class CodexAppServer implements CodexRuntime {
         threadId,
         options.permissionProfileId,
       );
+      this.#threadKinds.set(threadId, "chat");
     }
+    return threadId;
+  }
+
+  private async loadWorkflowThread(
+    options: RunWorkflowNodeOptions,
+  ): Promise<string> {
+    const modelProvider = codexModelProviderName(options.provider);
+    const approvalPolicy =
+      options.approvalMode === "preauthorized" ? "never" : "on-request";
+    const profileKey = options.permissionProfileId
+      ? `profile:${options.permissionProfileId}`
+      : `sandbox:${options.mutationMode}:${options.networkAccess}`;
+    const ownerKey = `${options.workflowRunId}:${options.runNodeId}`;
+    let threadId = options.threadId;
+
+    if (threadId && this.#threadKinds.get(threadId) === "chat") {
+      throw new Error(
+        `Codex thread ${threadId} belongs to chat and cannot be resumed as a workflow.`,
+      );
+    }
+    if (
+      threadId &&
+      this.#workflowThreadOwners.has(threadId) &&
+      this.#workflowThreadOwners.get(threadId) !== ownerKey
+    ) {
+      throw new Error(
+        `Codex workflow thread ${threadId} belongs to a different run node.`,
+      );
+    }
+
+    if (threadId) {
+      try {
+        const resumed = (await this.request("thread/resume", {
+          threadId,
+          model: options.model.name,
+          modelProvider,
+          ...codexWorkspaceContext(options.cwd),
+          approvalPolicy,
+          ...this.workflowThreadPermissionParams(options),
+          developerInstructions: options.developerInstructions,
+        })) as ThreadResponse;
+        threadId = resumed.thread.id;
+      } catch {
+        threadId = null;
+      }
+    }
+    if (!threadId) {
+      const started = (await this.request("thread/start", {
+        model: options.model.name,
+        modelProvider,
+        ...codexWorkspaceContext(options.cwd),
+        approvalPolicy,
+        ...this.workflowThreadPermissionParams(options),
+        developerInstructions: options.developerInstructions,
+      })) as ThreadResponse;
+      threadId = started.thread.id;
+    }
+
+    this.#loadedThreads.add(threadId);
+    this.#permissionProfilesByThread.set(threadId, profileKey);
+    this.#threadKinds.set(threadId, "workflow");
+    this.#workflowThreadOwners.set(threadId, ownerKey);
     return threadId;
   }
 
@@ -2697,6 +2984,18 @@ export class CodexAppServer implements CodexRuntime {
       permissionProfileId,
       this.permissionProfilesSupported(),
     );
+  }
+
+  private workflowThreadPermissionParams(options: RunWorkflowNodeOptions) {
+    if (options.permissionProfileId && this.permissionProfilesSupported()) {
+      return { permissions: options.permissionProfileId };
+    }
+    return {
+      sandbox:
+        options.mutationMode === "write"
+          ? ("workspace-write" as const)
+          : ("read-only" as const),
+    };
   }
 
   private async collaborationMode(
@@ -2923,6 +3222,8 @@ export class CodexAppServer implements CodexRuntime {
       this.#starting = null;
       this.#loadedThreads.clear();
       this.#permissionProfilesByThread.clear();
+      this.#threadKinds.clear();
+      this.#workflowThreadOwners.clear();
       this.#collaborationModes.clear();
       this.#externalImportStatuses.clear();
       this.#externalTurnBaselines.clear();
@@ -2950,6 +3251,8 @@ export class CodexAppServer implements CodexRuntime {
       this.#starting = null;
       this.#loadedThreads.clear();
       this.#permissionProfilesByThread.clear();
+      this.#threadKinds.clear();
+      this.#workflowThreadOwners.clear();
       this.#externalImportStatuses.clear();
       this.#externalTurnBaselines.clear();
       this.#mcpOauthStatuses.clear();
@@ -3329,6 +3632,7 @@ export class CodexAppServer implements CodexRuntime {
       const params = message.params as ThreadTokenUsageUpdatedParams;
       const active = this.#activeTurns.get(params.turnId);
       if (active) {
+        active.latestUsage = params.tokenUsage.last;
         active.onActivity?.(
           normalizeTokenUsageActivity(
             params,
@@ -3467,6 +3771,12 @@ export class CodexAppServer implements CodexRuntime {
         ),
       );
       this.#activeTurns.delete(params.turn.id);
+      if (active.timeout) {
+        clearTimeout(active.timeout);
+        active.timeout = null;
+      }
+      active.durationMs =
+        params.turn.durationMs ?? Math.max(0, Date.now() - active.startedAtMs);
       if (params.turn.status !== "completed") {
         void this.failTurn(
           active,
@@ -3503,6 +3813,10 @@ export class CodexAppServer implements CodexRuntime {
     turnId: string,
   ): Promise<void> {
     try {
+      this.clearInteractionsForTurn(
+        active,
+        "The Codex turn completed before the interaction was answered.",
+      );
       active.diffChanges = await workspaceChanges(active);
       emitFileActivity(
         active,
@@ -3517,16 +3831,16 @@ export class CodexAppServer implements CodexRuntime {
         ),
       );
       const text = active.finalText ?? active.delta;
-      if (this.#goals.has(active.threadId)) {
+      if (active.executionKind === "chat" && this.#goals.has(active.threadId)) {
         const response = await this.refreshGoal(active.threadId);
         if (
           goalShouldContinue(
             response.goal,
-            this.#pausedChats.has(active.chatId),
+            active.chatId ? this.#pausedChats.has(active.chatId) : false,
           ) &&
           goalShouldContinue(
             this.#goals.get(active.threadId) ?? null,
-            this.#pausedChats.has(active.chatId),
+            active.chatId ? this.#pausedChats.has(active.chatId) : false,
           )
         ) {
           active.onCheckpoint?.({ text, turnId });
@@ -3556,12 +3870,27 @@ export class CodexAppServer implements CodexRuntime {
         }
       }
       active.resolve(
-        agentTurnResultSchema.parse({
-          threadId: active.threadId,
-          turnId,
-          text,
-          status: "completed",
-        }),
+        active.executionKind === "workflow"
+          ? workflowNodeExecutionResultSchema.parse({
+              threadId: active.threadId,
+              turnId,
+              text,
+              structuredResult: parseWorkflowStructuredResult(
+                text,
+                active.workflowOutputSchema ?? {},
+              ),
+              measuredUsage: workflowMeasuredUsage(
+                active.latestUsage,
+                active.durationMs ?? Date.now() - active.startedAtMs,
+              ),
+              status: "completed",
+            })
+          : agentTurnResultSchema.parse({
+              threadId: active.threadId,
+              turnId,
+              text,
+              status: "completed",
+            }),
       );
     } catch (error) {
       active.reject(error instanceof Error ? error : new Error(String(error)));
@@ -3592,6 +3921,11 @@ export class CodexAppServer implements CodexRuntime {
     error: Error,
   ): Promise<void> {
     try {
+      if (active.timeout) {
+        clearTimeout(active.timeout);
+        active.timeout = null;
+      }
+      this.clearInteractionsForTurn(active, error.message);
       active.diffChanges = await workspaceChanges(active);
       emitFileActivity(
         active,
@@ -3607,6 +3941,25 @@ export class CodexAppServer implements CodexRuntime {
       );
     } finally {
       active.reject(error);
+    }
+  }
+
+  private clearInteractionsForTurn(active: ActiveTurn, reason: string): void {
+    for (const pending of [...this.#pendingAgentInteractions.values()]) {
+      if (pending.active !== active) continue;
+      try {
+        this.send({
+          id: pending.rpcId,
+          ...failClosedAgentInteractionReply(
+            pending.request.payload.kind,
+            reason,
+          ),
+        });
+      } catch {
+        // The turn or runtime may already be closed.
+      }
+      this.releaseAgentInteraction(pending);
+      active.onInteractionCleared?.(pending.request.requestKey);
     }
   }
 
@@ -3631,6 +3984,16 @@ export class CodexAppServer implements CodexRuntime {
           ...failClosedAgentInteractionReply(
             request.payload.kind,
             "No active Cantrip interaction channel.",
+          ),
+        });
+        return;
+      }
+      if (active.interactionMode === "preauthorized") {
+        this.send({
+          id: message.id,
+          ...failClosedAgentInteractionReply(
+            request.payload.kind,
+            "Preauthorized workflow nodes cannot open interactive requests.",
           ),
         });
         return;
@@ -3783,6 +4146,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#pendingAgentInteractions.clear();
     this.#pendingPlanQuestions.clear();
     for (const active of this.#activeTurns.values()) {
+      if (active.timeout) clearTimeout(active.timeout);
       active.reject(error);
     }
     this.#activeTurns.clear();

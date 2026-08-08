@@ -16,6 +16,7 @@ import type {
   CodexSkillRootsResult,
   PermissionProfileCapability,
   PlanMode,
+  WorkflowNodeExecutionWorkerResult,
 } from "@cantrip/protocol";
 
 import type {
@@ -24,6 +25,7 @@ import type {
   GoalRuntimeOptions,
   RuntimeChatAttachment,
   RunAgentTurnOptions,
+  RunWorkflowNodeOptions,
 } from "./app-server.js";
 
 export interface CodexRuntimeDiagnostic {
@@ -45,6 +47,9 @@ export interface CodexRuntime {
 
   setChatPaused(chatId: string, paused: boolean): void;
   runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult>;
+  runWorkflowNode(
+    options: RunWorkflowNodeOptions,
+  ): Promise<WorkflowNodeExecutionWorkerResult>;
   listSkills(
     options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
     forceReload?: boolean,
