@@ -1,6 +1,7 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import type {
   ChatSummary,
+  CodeTabSummary,
   ExplorerSummary,
   GitStatus,
   ProjectSummary,
@@ -14,6 +15,7 @@ import type {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CircleAlert,
+  Code2,
   ExternalLink,
   FolderTree,
   GitBranch,
@@ -115,6 +117,7 @@ export function projectWorktreeBindings(
   terminals: TerminalSummary[],
   explorers: ExplorerSummary[],
   views: ProjectViewSummary[],
+  codeTabs: CodeTabSummary[] = [],
 ): string[] {
   return [
     ...chats
@@ -124,6 +127,9 @@ export function projectWorktreeBindings(
       .filter(({ worktreeId: id }) => id === worktreeId)
       .map(({ title }) => title),
     ...explorers
+      .filter(({ worktreeId: id }) => id === worktreeId)
+      .map(({ title }) => title),
+    ...codeTabs
       .filter(({ worktreeId: id }) => id === worktreeId)
       .map(({ title }) => title),
     ...views
@@ -149,8 +155,10 @@ function DetailRow({
 
 export function ProjectSettingsPage({
   chats,
+  codeTabs,
   explorers,
   onCreateChat,
+  onCreateCode,
   onCreateExplorer,
   onCreateHistory,
   onCreateTerminal,
@@ -162,8 +170,10 @@ export function ProjectSettingsPage({
   worktrees,
 }: {
   chats: ChatSummary[];
+  codeTabs: CodeTabSummary[];
   explorers: ExplorerSummary[];
   onCreateChat(worktreeId: string): void;
+  onCreateCode(worktreeId: string): void;
   onCreateExplorer(worktreeId: string): void;
   onCreateHistory(worktreeId: string): void;
   onCreateTerminal(worktreeId: string): void;
@@ -459,6 +469,7 @@ export function ProjectSettingsPage({
                   terminals,
                   explorers,
                   projectViews,
+                  codeTabs,
                 );
                 return (
                   <div
@@ -584,6 +595,16 @@ export function ProjectSettingsPage({
                             onSelect={() => onCreateExplorer(worktree.id)}
                           >
                             <FolderTree className="size-4" /> Explorer
+                          </DropdownMenuPrimitive.Item>
+                          <DropdownMenuPrimitive.Item
+                            className={menuItemClass}
+                            disabled={
+                              worktree.lifecycleState !== "ready" ||
+                              !worker?.online
+                            }
+                            onSelect={() => onCreateCode(worktree.id)}
+                          >
+                            <Code2 className="size-4" /> Code
                           </DropdownMenuPrimitive.Item>
                           <DropdownMenuPrimitive.Item
                             className={menuItemClass}

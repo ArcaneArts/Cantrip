@@ -27,6 +27,11 @@ import {
   chatPermissionProfileUpdateSchema,
   chatPromptSteerResultSchema,
   chatPromptSubmitResultSchema,
+  codeAttachmentSchema,
+  codeRuntimeStatusSchema,
+  codeSaveAllResultSchema,
+  codeTabListSchema,
+  codeTabSummarySchema,
   codexCustomizationInventorySchema,
   codexExternalImportApplySchema,
   codexExternalImportPreviewSchema,
@@ -89,6 +94,8 @@ import type {
   ChatPlanAnswer,
   ChatPlanUpdate,
   ChatTurnMode,
+  CodeAppearance,
+  CodeThemeMode,
   CodexExternalImportApply,
   CodexMcpOauthStart,
   CodexMcpResourceReadRequest,
@@ -675,6 +682,93 @@ export async function updateRemoteDesktopTarget(
 export async function getProjectViews(projectId: string) {
   return projectViewListSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/views`),
+  );
+}
+
+export async function getCodeTabs(projectId: string) {
+  return codeTabListSchema.parse(
+    await request(`/api/projects/${encodeURIComponent(projectId)}/code-tabs`),
+  );
+}
+
+export async function createCodeTab(
+  projectId: string,
+  title = "Code",
+  worktreeId?: string,
+) {
+  return codeTabSummarySchema.parse(
+    await post(`/api/projects/${encodeURIComponent(projectId)}/code-tabs`, {
+      title,
+      ...(worktreeId ? { worktreeId } : {}),
+    }),
+  );
+}
+
+export async function updateCodeTab(
+  codeTabId: string,
+  input: { title?: string; themeMode?: CodeThemeMode },
+) {
+  return codeTabSummarySchema.parse(
+    await request(`/api/code-tabs/${encodeURIComponent(codeTabId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function updateCodeTabWorktree(
+  codeTabId: string,
+  worktreeId: string,
+) {
+  return codeTabSummarySchema.parse(
+    await request(`/api/code-tabs/${encodeURIComponent(codeTabId)}/worktree`, {
+      method: "PATCH",
+      body: JSON.stringify({ worktreeId }),
+    }),
+  );
+}
+
+export async function deleteCodeTab(codeTabId: string) {
+  await request(`/api/code-tabs/${encodeURIComponent(codeTabId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function createCodeAttachment(
+  codeTabId: string,
+  appearance: CodeAppearance,
+) {
+  return codeAttachmentSchema.parse(
+    await post(`/api/code-tabs/${encodeURIComponent(codeTabId)}/attachments`, {
+      appearance,
+    }),
+  );
+}
+
+export async function saveAllCodeTab(codeTabId: string) {
+  return codeSaveAllResultSchema.parse(
+    await post(`/api/code-tabs/${encodeURIComponent(codeTabId)}/save-all`, {}),
+  );
+}
+
+export async function stopCodeTab(codeTabId: string) {
+  const result = await post(
+    `/api/code-tabs/${encodeURIComponent(codeTabId)}/stop`,
+    {},
+  );
+  return result === null ? null : codeRuntimeStatusSchema.parse(result);
+}
+
+export async function setCodeTabTheme(
+  codeTabId: string,
+  themeMode: CodeThemeMode,
+  appearance: CodeAppearance,
+) {
+  return codeTabSummarySchema.parse(
+    await post(`/api/code-tabs/${encodeURIComponent(codeTabId)}/theme`, {
+      themeMode,
+      appearance,
+    }),
   );
 }
 

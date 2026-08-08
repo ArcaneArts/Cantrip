@@ -73,6 +73,18 @@ fn wait_for_server(child: &mut Child, port: u16) -> Result<(), String> {
     Err("The bundled Cantrip Server did not become ready within 10 seconds.".into())
 }
 
+fn reserve_local_listener(label: &str) -> Result<TcpListener, String> {
+    TcpListener::bind(("127.0.0.1", 0))
+        .map_err(|error| format!("Could not reserve a local {label} port: {error}"))
+}
+
+fn reserved_port(listener: &TcpListener, label: &str) -> Result<u16, String> {
+    listener
+        .local_addr()
+        .map_err(|error| format!("Could not read reserved local {label} port: {error}"))
+        .map(|address| address.port())
+}
+
 fn terminate_child(child: &mut Child) {
     if child.try_wait().ok().flatten().is_some() {
         return;
@@ -132,13 +144,12 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
 
     let node_name = if cfg!(windows) { "node.exe" } else { "node" };
     let node = resources.join(node_name);
-    let listener = TcpListener::bind(("127.0.0.1", 0))
-        .map_err(|error| format!("Could not reserve a local server port: {error}"))?;
-    let port = listener
-        .local_addr()
-        .map_err(|error| format!("Could not read reserved local port: {error}"))?
-        .port();
-    drop(listener);
+    let server_reservation = reserve_local_listener("server")?;
+    let code_surface_reservation = reserve_local_listener("Code surface")?;
+    let port = reserved_port(&server_reservation, "server")?;
+    let code_surface_port = reserved_port(&code_surface_reservation, "Code surface")?;
+    drop(server_reservation);
+    drop(code_surface_reservation);
 
     let server_url = format!("http://127.0.0.1:{port}");
     let token_seed = SystemTime::now()
@@ -155,6 +166,12 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
         &[
             ("CANTRIP_SERVER_HOST", "127.0.0.1".into()),
             ("CANTRIP_SERVER_PORT", port.to_string()),
+            ("CANTRIP_CODE_SURFACE_HOST", "127.0.0.1".into()),
+            ("CANTRIP_CODE_SURFACE_PORT", code_surface_port.to_string()),
+            (
+                "CANTRIP_CODE_SURFACE_ORIGIN",
+                format!("http://127.0.0.1:{code_surface_port}"),
+            ),
             ("CANTRIP_DEPLOYMENT_MODE", "local".into()),
             ("CANTRIP_BOOTSTRAP_MODE", "tauri".into()),
             ("CANTRIP_AUTH_MODE", "none".into()),

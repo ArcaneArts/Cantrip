@@ -19,6 +19,7 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import type {
   BrowserSummary,
   ChatSummary,
+  CodeTabSummary,
   ExplorerSummary,
   ProjectSummary,
   ProjectWorktreeSummary,
@@ -30,6 +31,7 @@ import {
   CircleAlert,
   CircleHelp,
   CirclePause,
+  Code2,
   FolderGit2,
   FolderTree,
   GitCommitHorizontal,
@@ -73,6 +75,7 @@ const chatId = (id: string) => `chat:${id}`;
 const terminalId = (id: string) => `terminal:${id}`;
 const explorerId = (id: string) => `explorer:${id}`;
 const browserId = (id: string) => `browser:${id}`;
+const codeId = (id: string) => `code:${id}`;
 const viewId = (id: string) => `view:${id}`;
 const menuContentClass =
   "z-50 min-w-36 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
@@ -464,6 +467,137 @@ function ExplorerTab({
   );
 }
 
+function CodeTab({
+  active,
+  codeTab,
+  editing,
+  onDelete,
+  onRename,
+  onSelect,
+  renameValue,
+  setRenameValue,
+  submitRename,
+  workers,
+  worktree,
+  worktreeStatus,
+}: {
+  active: boolean;
+  codeTab: CodeTabSummary;
+  editing: boolean;
+  onDelete(): void;
+  onRename(): void;
+  onSelect(): void;
+  renameValue: string;
+  setRenameValue(value: string): void;
+  submitRename(): void;
+  workers: WorkerSummary[];
+  worktree?: ProjectWorktreeSummary;
+  worktreeStatus?: WorktreeStatusMap[string];
+}) {
+  const sortable = useSortable({ id: codeId(codeTab.id) });
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(sortable.transform),
+    transition: sortable.transition,
+    opacity: sortable.isDragging ? 0.25 : 1,
+    zIndex: sortable.isDragging ? 10 : undefined,
+  };
+  return (
+    <div
+      ref={sortable.setNodeRef}
+      style={style}
+      className={cn(
+        "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
+        active && "bg-muted text-foreground",
+      )}
+    >
+      <DragHandle
+        attributes={sortable.attributes}
+        listeners={sortable.listeners}
+      />
+      {editing ? (
+        <input
+          autoFocus
+          value={renameValue}
+          onChange={(event) => setRenameValue(event.target.value)}
+          onBlur={submitRename}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") submitRename();
+            if (event.key === "Escape") onRename();
+          }}
+          className="h-7 min-w-0 flex-1 rounded border bg-background px-2 text-xs text-foreground outline-none ring-ring focus:ring-2"
+          aria-label={`Rename ${codeTab.title}`}
+        />
+      ) : (
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
+          onClick={onSelect}
+          onDoubleClick={(event) => {
+            event.preventDefault();
+            onRename();
+          }}
+        >
+          <Code2 className="size-3.5 shrink-0" />
+          <span className="truncate">{codeTab.title}</span>
+          <span
+            className={cn(
+              "ml-auto size-1.5 rounded-full bg-muted-foreground/40",
+              codeTab.status === "running" && "bg-emerald-500",
+              codeTab.status === "starting" && "animate-pulse bg-amber-500",
+              codeTab.status === "failed" && "bg-destructive",
+            )}
+            title={`Editor ${codeTab.status}`}
+          />
+        </button>
+      )}
+      {!editing ? (
+        <WorktreeIndicator
+          status={worktreeStatus}
+          workers={workers}
+          worktree={worktree}
+        />
+      ) : null}
+      {!editing ? (
+        <DropdownMenuPrimitive.Root>
+          <DropdownMenuPrimitive.Trigger asChild>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
+            >
+              <MoreHorizontal className="size-3.5" />
+              <span className="sr-only">Actions for {codeTab.title}</span>
+            </Button>
+          </DropdownMenuPrimitive.Trigger>
+          <DropdownMenuPrimitive.Portal>
+            <DropdownMenuPrimitive.Content
+              align="end"
+              className={menuContentClass}
+            >
+              <DropdownMenuPrimitive.Item
+                className={menuItemClass}
+                onSelect={onRename}
+              >
+                <Pencil className="size-4" /> Rename
+              </DropdownMenuPrimitive.Item>
+              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+              <DropdownMenuPrimitive.Item
+                className={cn(
+                  menuItemClass,
+                  "text-destructive focus:bg-destructive/10",
+                )}
+                onSelect={onDelete}
+              >
+                <Trash2 className="size-4" /> Delete
+              </DropdownMenuPrimitive.Item>
+            </DropdownMenuPrimitive.Content>
+          </DropdownMenuPrimitive.Portal>
+        </DropdownMenuPrimitive.Root>
+      ) : null}
+    </div>
+  );
+}
+
 function BrowserTab({
   active,
   browser,
@@ -702,11 +836,13 @@ function SortableProject({
   creatingChat,
   creatingBrowser,
   creatingExplorer,
+  creatingCode,
   creatingRemoteDesktop,
   creatingTerminal,
   creatingView,
   onCreateChat,
   onCreateBrowser,
+  onCreateCode,
   onCreateExplorer,
   onCreateGit,
   onCreateRemoteDesktop,
@@ -720,12 +856,14 @@ function SortableProject({
   children?: ReactNode;
   creatingChat: boolean;
   creatingBrowser: boolean;
+  creatingCode: boolean;
   creatingExplorer: boolean;
   creatingRemoteDesktop: boolean;
   creatingTerminal: boolean;
   creatingView: boolean;
   onCreateChat(): void;
   onCreateBrowser(): void;
+  onCreateCode(): void;
   onCreateExplorer(): void;
   onCreateGit(): void;
   onCreateRemoteDesktop(): void;
@@ -826,6 +964,13 @@ function SortableProject({
                 </DropdownMenuPrimitive.Item>
                 <DropdownMenuPrimitive.Item
                   className={menuItemClass}
+                  disabled={creatingCode}
+                  onSelect={onCreateCode}
+                >
+                  <Code2 className="size-4" /> Code
+                </DropdownMenuPrimitive.Item>
+                <DropdownMenuPrimitive.Item
+                  className={menuItemClass}
                   disabled={creatingBrowser}
                   onSelect={onCreateBrowser}
                 >
@@ -899,8 +1044,10 @@ function SortableProject({
 export function ProjectChatList({
   browsers,
   chats,
+  codeTabs,
   creatingBrowser,
   creatingChat,
+  creatingCode,
   creatingExplorer,
   creatingRemoteDesktop,
   creatingTerminal,
@@ -910,11 +1057,13 @@ export function ProjectChatList({
   projectViews,
   onCreateChat,
   onCreateBrowser,
+  onCreateCode,
   onCreateExplorer,
   onCreateGit,
   onCreateRemoteDesktop,
   onDeleteChat,
   onDeleteBrowser,
+  onDeleteCode,
   onDeleteExplorer,
   onDeleteProjectView,
   onDuplicateChat,
@@ -928,6 +1077,7 @@ export function ProjectChatList({
   onRequestChatWorktreeCreate,
   onRenameChat,
   onRenameBrowser,
+  onRenameCode,
   onRenameExplorer,
   onRenameProjectView,
   onRenameTerminal,
@@ -936,6 +1086,7 @@ export function ProjectChatList({
   onSelectChat,
   onSelectBrowser,
   onSelectExplorer,
+  onSelectCode,
   onSelectProjectView,
   onSelectTerminal,
   onSelectProject,
@@ -943,6 +1094,7 @@ export function ProjectChatList({
   selectedChatId,
   selectedBrowserId,
   selectedExplorerId,
+  selectedCodeTabId,
   selectedProjectViewId,
   selectedProjectId,
   selectedTerminalId,
@@ -953,8 +1105,10 @@ export function ProjectChatList({
 }: {
   browsers: BrowserSummary[];
   chats: ChatSummary[];
+  codeTabs: CodeTabSummary[];
   creatingBrowser: boolean;
   creatingChat: boolean;
+  creatingCode: boolean;
   creatingExplorer: boolean;
   creatingRemoteDesktop: boolean;
   creatingTerminal: boolean;
@@ -968,11 +1122,13 @@ export function ProjectChatList({
   projectViews: ProjectViewSummary[];
   onCreateChat(projectId: string): void;
   onCreateBrowser(projectId: string): void;
+  onCreateCode(projectId: string): void;
   onCreateExplorer(projectId: string): void;
   onCreateGit(projectId: string): void;
   onCreateRemoteDesktop(projectId: string): void;
   onDeleteChat(chatId: string): void;
   onDeleteBrowser(browserId: string): void;
+  onDeleteCode(codeTabId: string): void;
   onDeleteExplorer(explorerId: string): void;
   onDeleteProjectView(viewId: string): void;
   onDuplicateChat(chatId: string): void;
@@ -986,6 +1142,7 @@ export function ProjectChatList({
   onRequestChatWorktreeCreate(chat: ChatSummary): void;
   onRenameChat(chatId: string, title: string): void;
   onRenameBrowser(browserId: string, title: string): void;
+  onRenameCode(codeTabId: string, title: string): void;
   onRenameExplorer(explorerId: string, title: string): void;
   onRenameProjectView(viewId: string, title: string): void;
   onRenameTerminal(terminalId: string, title: string): void;
@@ -993,6 +1150,7 @@ export function ProjectChatList({
   onReorderProjects(ids: string[]): void;
   onSelectChat(chatId: string): void;
   onSelectBrowser(browserId: string): void;
+  onSelectCode(codeTabId: string): void;
   onSelectExplorer(explorerId: string): void;
   onSelectProjectView(viewId: string): void;
   onSelectTerminal(terminalId: string): void;
@@ -1000,6 +1158,7 @@ export function ProjectChatList({
   projects: ProjectSummary[];
   selectedChatId: string | null;
   selectedBrowserId: string | null;
+  selectedCodeTabId: string | null;
   selectedExplorerId: string | null;
   selectedProjectViewId: string | null;
   selectedProjectId: string | null;
@@ -1015,6 +1174,7 @@ export function ProjectChatList({
   const [activeDrag, setActiveDrag] = useState<string | null>(null);
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editingBrowserId, setEditingBrowserId] = useState<string | null>(null);
+  const [editingCodeId, setEditingCodeId] = useState<string | null>(null);
   const [editingExplorerId, setEditingExplorerId] = useState<string | null>(
     null,
   );
@@ -1028,6 +1188,8 @@ export function ProjectChatList({
   const [deleteTarget, setDeleteTarget] = useState<ChatSummary | null>(null);
   const [deleteBrowserTarget, setDeleteBrowserTarget] =
     useState<BrowserSummary | null>(null);
+  const [deleteCodeTarget, setDeleteCodeTarget] =
+    useState<CodeTabSummary | null>(null);
   const [deleteExplorerTarget, setDeleteExplorerTarget] =
     useState<ExplorerSummary | null>(null);
   const [deleteTerminalTarget, setDeleteTerminalTarget] =
@@ -1065,6 +1227,12 @@ export function ProjectChatList({
       }
     | {
         id: string;
+        kind: "code";
+        codeTab: CodeTabSummary;
+        position: number;
+      }
+    | {
+        id: string;
         kind: "view";
         view: ProjectViewSummary;
         position: number;
@@ -1093,6 +1261,12 @@ export function ProjectChatList({
       kind: "browser" as const,
       browser,
       position: browser.position,
+    })),
+    ...codeTabs.map((codeTab) => ({
+      id: codeId(codeTab.id),
+      kind: "code" as const,
+      codeTab,
+      position: codeTab.position,
     })),
     ...projectViews.map((view) => ({
       id: viewId(view.id),
@@ -1151,6 +1325,19 @@ export function ProjectChatList({
     }
     setEditingBrowserId(browser.id);
     setRenameValue(browser.title);
+  };
+  const beginCodeRename = (codeTab: CodeTabSummary) => {
+    if (editingCodeId === codeTab.id) {
+      setEditingCodeId(null);
+      return;
+    }
+    setEditingCodeId(codeTab.id);
+    setRenameValue(codeTab.title);
+  };
+  const finishCodeRename = (codeTab: CodeTabSummary) => {
+    const title = renameValue.trim();
+    setEditingCodeId(null);
+    if (title && title !== codeTab.title) onRenameCode(codeTab.id, title);
   };
   const finishBrowserRename = (browser: BrowserSummary) => {
     const title = renameValue.trim();
@@ -1215,6 +1402,9 @@ export function ProjectChatList({
   const draggedBrowser = browsers.find(
     (browser) => browserId(browser.id) === activeDrag,
   );
+  const draggedCode = codeTabs.find(
+    (codeTab) => codeId(codeTab.id) === activeDrag,
+  );
   const draggedProjectView = projectViews.find(
     (view) => viewId(view.id) === activeDrag,
   );
@@ -1241,12 +1431,14 @@ export function ProjectChatList({
                 active={active}
                 creatingChat={creatingChat}
                 creatingBrowser={creatingBrowser}
+                creatingCode={creatingCode}
                 creatingExplorer={creatingExplorer}
                 creatingRemoteDesktop={creatingRemoteDesktop}
                 creatingTerminal={creatingTerminal}
                 creatingView={creatingView}
                 onCreateChat={() => onCreateChat(project.id)}
                 onCreateBrowser={() => onCreateBrowser(project.id)}
+                onCreateCode={() => onCreateCode(project.id)}
                 onCreateExplorer={() => onCreateExplorer(project.id)}
                 onCreateGit={() => onCreateGit(project.id)}
                 onCreateRemoteDesktop={() => onCreateRemoteDesktop(project.id)}
@@ -1373,6 +1565,24 @@ export function ProjectChatList({
                             onRename={() => beginBrowserRename(tab.browser)}
                             onDelete={() => setDeleteBrowserTarget(tab.browser)}
                           />
+                        ) : tab.kind === "code" ? (
+                          <CodeTab
+                            key={tab.id}
+                            codeTab={tab.codeTab}
+                            active={tab.codeTab.id === selectedCodeTabId}
+                            editing={editingCodeId === tab.codeTab.id}
+                            renameValue={renameValue}
+                            setRenameValue={setRenameValue}
+                            submitRename={() => finishCodeRename(tab.codeTab)}
+                            onSelect={() => onSelectCode(tab.codeTab.id)}
+                            onRename={() => beginCodeRename(tab.codeTab)}
+                            onDelete={() => setDeleteCodeTarget(tab.codeTab)}
+                            workers={workers}
+                            worktree={worktreeById.get(tab.codeTab.worktreeId)}
+                            worktreeStatus={
+                              worktreeStatuses[tab.codeTab.worktreeId]
+                            }
+                          />
                         ) : (
                           <ProjectViewTab
                             key={tab.id}
@@ -1435,6 +1645,11 @@ export function ProjectChatList({
             <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
               <Globe2 className="size-3.5" />
               <span className="truncate">{draggedBrowser.title}</span>
+            </div>
+          ) : draggedCode ? (
+            <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
+              <Code2 className="size-3.5" />
+              <span className="truncate">{draggedCode.title}</span>
             </div>
           ) : draggedProjectView ? (
             <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
@@ -1643,6 +1858,34 @@ export function ProjectChatList({
                   onDeleteProjectView(deleteProjectViewTarget.id);
                 }
                 setDeleteProjectViewTarget(null);
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(deleteCodeTarget)}
+        onOpenChange={(open) => !open && setDeleteCodeTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Code tab?</DialogTitle>
+            <DialogDescription>
+              “{deleteCodeTarget?.title}” will stop its editor and remove this
+              tab. Its persistent worker profile and project files are kept.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteCodeTarget) onDeleteCode(deleteCodeTarget.id);
+                setDeleteCodeTarget(null);
               }}
             >
               Delete

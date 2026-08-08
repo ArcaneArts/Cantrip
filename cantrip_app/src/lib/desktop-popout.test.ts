@@ -12,6 +12,7 @@ describe("desktop pop-out targets", () => {
     { kind: "terminal", projectId: "project one", tabId: "terminal:1" },
     { kind: "explorer", projectId: "project one", tabId: "explorer_1" },
     { kind: "browser", projectId: "project one", tabId: "browser-1" },
+    { kind: "code", projectId: "project one", tabId: "code-1" },
     { kind: "view", projectId: "project one", tabId: "history-1" },
     { kind: "view", projectId: "project one", tabId: "issues-1" },
   ];
