@@ -1,7 +1,9 @@
 import {
   decodeRemoteSurfaceFrame,
   encodeRemoteSurfaceFrame,
+  remoteBrowserClipboardMessageSchema,
   remoteBrowserClientMessageSchema,
+  remoteBrowserCursorMessageSchema,
   remoteBrowserServerMessageSchema,
   remoteSurfaceConnectionMessageSchema,
   type BrowserSummary,
@@ -10,10 +12,13 @@ import {
 import {
   ArrowLeft,
   ArrowRight,
+  ClipboardCopy,
+  ClipboardPaste,
   ExternalLink,
   Globe2,
   Loader2,
   RotateCw,
+  X,
 } from "lucide-react";
 import {
   useCallback,
@@ -23,6 +28,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type PointerEvent,
+  type TouchEvent,
   type WheelEvent,
 } from "react";
 
@@ -43,6 +49,15 @@ export function normalizeBrowserAddress(value: string): string | null {
   } catch {
     return null;
   }
+}
+
+async function openBrowserExternally(url: string): Promise<void> {
+  if ("__TAURI_INTERNALS__" in window) {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url);
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 export function browserPointerCoordinates(
@@ -68,6 +83,26 @@ export function browserPointerCoordinates(
   };
 }
 
+export function browserTouchPoints(
+  touches: ArrayLike<
+    Pick<Touch, "clientX" | "clientY" | "identifier"> & {
+      force?: number;
+      radiusX?: number;
+      radiusY?: number;
+    }
+  >,
+  bounds: Pick<DOMRect, "left" | "top" | "width" | "height">,
+  viewport: { width: number; height: number },
+) {
+  return Array.from(touches, (touch) => ({
+    id: touch.identifier,
+    ...browserPointerCoordinates(touch, bounds, viewport),
+    radiusX: Math.max(1, touch.radiusX || 1),
+    radiusY: Math.max(1, touch.radiusY || 1),
+    force: Math.max(0, Math.min(1, touch.force || 1)),
+  }));
+}
+
 function modifiers(event: {
   altKey: boolean;
   ctrlKey: boolean;
@@ -90,10 +125,14 @@ function pointerButton(button: number) {
 
 export function BrowserView({
   browser,
-  onNavigate,
+  onPageState,
 }: {
   browser: BrowserSummary;
-  onNavigate(url: string): void;
+  onPageState(state: {
+    previousTitle: string | null;
+    title: string;
+    url: string;
+  }): void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -103,7 +142,8 @@ export function BrowserView({
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputFocusedRef = useRef(false);
-  const onNavigateRef = useRef(onNavigate);
+  const onPageStateRef = useRef(onPageState);
+  const pageStateRef = useRef<{ title: string; url: string } | null>(null);
   const viewportRef = useRef({
     width: 1_280,
     height: 720,
@@ -121,7 +161,12 @@ export function BrowserView({
   const [loading, setLoading] = useState(true);
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
-  onNavigateRef.current = onNavigate;
+  const [runtimeStatus, setRuntimeStatus] = useState<
+    "ready" | "recovering" | "error"
+  >("ready");
+  const [runtimeMessage, setRuntimeMessage] = useState<string | null>(null);
+  const [clipboardMessage, setClipboardMessage] = useState<string | null>(null);
+  onPageStateRef.current = onPageState;
 
   const send = useCallback(
     (message: RemoteBrowserClientMessage) => {
@@ -150,7 +195,22 @@ export function BrowserView({
     setAddress(browser.url);
     setCurrentUrl(browser.url);
     setInvalidAddress(false);
-  }, [browser.id, browser.url]);
+    pageStateRef.current = null;
+    setRuntimeStatus("ready");
+    setRuntimeMessage(null);
+  }, [browser.id]);
+
+  useEffect(() => {
+    if (pageStateRef.current?.url === browser.url) return;
+    setCurrentUrl(browser.url);
+    if (!inputFocusedRef.current) setAddress(browser.url);
+  }, [browser.url]);
+
+  useEffect(() => {
+    if (!clipboardMessage) return;
+    const timeout = setTimeout(() => setClipboardMessage(null), 3_000);
+    return () => clearTimeout(timeout);
+  }, [clipboardMessage]);
 
   useEffect(() => {
     const surface = surfaceRef.current;
@@ -251,15 +311,53 @@ export function BrowserView({
           const state = remoteBrowserServerMessageSchema.parse(
             JSON.parse(decoder.decode(frame.payload)),
           );
-          const normalized = normalizeBrowserAddress(state.url);
-          if (normalized) {
-            setCurrentUrl(normalized);
-            if (!inputFocusedRef.current) setAddress(normalized);
-            if (normalized !== browser.url) onNavigateRef.current(normalized);
+          if (state.type === "browser-runtime") {
+            setRuntimeStatus(state.status);
+            setRuntimeMessage(state.message);
+          } else {
+            const normalized = normalizeBrowserAddress(state.url);
+            if (normalized) {
+              setCurrentUrl(normalized);
+              if (!inputFocusedRef.current) setAddress(normalized);
+              const previous = pageStateRef.current;
+              if (
+                previous?.url !== normalized ||
+                previous?.title !== state.title
+              ) {
+                pageStateRef.current = {
+                  title: state.title,
+                  url: normalized,
+                };
+                onPageStateRef.current({
+                  previousTitle: previous?.title ?? null,
+                  title: state.title,
+                  url: normalized,
+                });
+              }
+            }
+            setCanGoBack(state.canGoBack);
+            setCanGoForward(state.canGoForward);
+            setLoading(state.loading);
           }
-          setCanGoBack(state.canGoBack);
-          setCanGoForward(state.canGoForward);
-          setLoading(state.loading);
+        } else if (frame.header.channel === "cursor") {
+          const cursor = remoteBrowserCursorMessageSchema.parse(
+            JSON.parse(decoder.decode(frame.payload)),
+          ).cursor;
+          const canvas = canvasRef.current;
+          if (canvas && CSS.supports("cursor", cursor)) {
+            canvas.style.cursor = cursor;
+          }
+        } else if (frame.header.channel === "clipboard") {
+          const clipboard = remoteBrowserClipboardMessageSchema.parse(
+            JSON.parse(decoder.decode(frame.payload)),
+          );
+          void navigator.clipboard.writeText(clipboard.text).then(
+            () => setClipboardMessage("Selection copied"),
+            () =>
+              setClipboardMessage(
+                "Clipboard access was denied by this app environment.",
+              ),
+          );
         }
       } catch {
         setError("The server sent an invalid browser frame.");
@@ -300,7 +398,6 @@ export function BrowserView({
     setAddress(normalized);
     setCurrentUrl(normalized);
     setLoading(true);
-    onNavigate(normalized);
     send({ type: "navigate", url: normalized });
   };
 
@@ -308,6 +405,7 @@ export function BrowserView({
     event: PointerEvent<HTMLCanvasElement>,
     type: "move" | "down" | "up",
   ) => {
+    if (event.pointerType === "touch") return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     if (type === "down") {
@@ -352,6 +450,38 @@ export function BrowserView({
       deltaY: event.deltaY,
       modifiers: modifiers(event),
     });
+  };
+
+  const touch = (
+    event: TouchEvent<HTMLCanvasElement>,
+    type: "start" | "move" | "end" | "cancel",
+  ) => {
+    event.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.focus();
+    send({
+      type: "touch",
+      event: type,
+      points: browserTouchPoints(
+        event.touches,
+        canvas.getBoundingClientRect(),
+        viewportRef.current,
+      ),
+      modifiers: modifiers(event),
+    });
+  };
+
+  const pasteClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      send({ type: "clipboard", operation: "paste-text", text });
+      setClipboardMessage(text ? "Clipboard pasted" : "Clipboard is empty");
+    } catch {
+      setClipboardMessage(
+        "Clipboard access was denied by this app environment.",
+      );
+    }
   };
 
   const key = (
@@ -405,14 +535,15 @@ export function BrowserView({
           size="icon"
           variant="ghost"
           className="size-8"
-          onClick={() => send({ type: "reload" })}
+          title={loading ? "Stop loading" : "Reload"}
+          onClick={() => send({ type: loading ? "stop" : "reload" })}
         >
           {loading ? (
-            <Loader2 className="size-3.5 animate-spin" />
+            <X className="size-3.5" />
           ) : (
             <RotateCw className="size-3.5" />
           )}
-          <span className="sr-only">Reload</span>
+          <span className="sr-only">{loading ? "Stop" : "Reload"}</span>
         </Button>
         <form className="min-w-0 flex-1" onSubmit={submit}>
           <div className="relative">
@@ -442,9 +573,39 @@ export function BrowserView({
           size="icon"
           variant="ghost"
           className="size-8"
+          title="Copy selected page text"
+          onClick={() =>
+            send({
+              type: "clipboard",
+              operation: "copy-selection",
+              text: "",
+            })
+          }
+        >
+          <ClipboardCopy className="size-3.5" />
+          <span className="sr-only">Copy selected page text</span>
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="size-8"
+          title="Paste clipboard into the page"
+          onClick={() => void pasteClipboard()}
+        >
+          <ClipboardPaste className="size-3.5" />
+          <span className="sr-only">Paste clipboard into the page</span>
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="size-8"
           title="Open in your system browser"
           onClick={() =>
-            window.open(currentUrl, "_blank", "noopener,noreferrer")
+            void openBrowserExternally(currentUrl).catch(() =>
+              setError("Could not open the system browser."),
+            )
           }
         >
           <ExternalLink className="size-3.5" />
@@ -469,21 +630,33 @@ export function BrowserView({
           onPointerDown={(event) => pointer(event, "down")}
           onPointerMove={(event) => pointer(event, "move")}
           onPointerUp={(event) => pointer(event, "up")}
+          onPointerCancel={(event) => pointer(event, "up")}
           onWheel={wheel}
+          onTouchStart={(event) => touch(event, "start")}
+          onTouchMove={(event) => touch(event, "move")}
+          onTouchEnd={(event) => touch(event, "end")}
+          onTouchCancel={(event) => touch(event, "cancel")}
           onKeyDown={(event) => key(event, "down")}
           onKeyUp={(event) => key(event, "up")}
         />
-        {connectionState !== "ready" ? (
+        {connectionState !== "ready" || runtimeStatus === "recovering" ? (
           <div className="pointer-events-none absolute right-4 top-3 flex items-center gap-2 rounded-md bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur-xl">
             <Loader2 className="size-3 animate-spin" />
-            {connectionState === "connecting"
-              ? "Starting browser"
-              : "Reconnecting…"}
+            {runtimeStatus === "recovering"
+              ? runtimeMessage || "Restarting Chromium…"
+              : connectionState === "connecting"
+                ? "Starting browser"
+                : "Reconnecting…"}
           </div>
         ) : null}
-        {error ? (
+        {error || runtimeStatus === "error" ? (
           <div className="pointer-events-none absolute bottom-4 left-1/2 max-w-xl -translate-x-1/2 rounded-md bg-destructive/90 px-3 py-2 text-sm text-destructive-foreground shadow-lg">
-            {error}
+            {error ?? runtimeMessage ?? "The worker browser could not recover."}
+          </div>
+        ) : null}
+        {clipboardMessage ? (
+          <div className="pointer-events-none absolute bottom-4 right-4 rounded-md bg-background/90 px-3 py-2 text-xs text-foreground shadow-lg backdrop-blur-xl">
+            {clipboardMessage}
           </div>
         ) : null}
       </div>

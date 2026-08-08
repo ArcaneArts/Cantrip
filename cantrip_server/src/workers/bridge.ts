@@ -38,6 +38,7 @@ export interface WorkerCommandBus {
     header: RemoteSurfaceFrameHeader,
     payload: Uint8Array,
   ): boolean;
+  subscribeWorkerDisconnect(workerId: string, listener: () => void): () => void;
   subscribeSurfaceFrames(
     workerId: string,
     listener: WorkerSurfaceFrameListener,
@@ -91,6 +92,7 @@ export class WorkerBridge implements WorkerCommandBus {
     string,
     Set<WorkerSurfaceFrameListener>
   >();
+  readonly #workerDisconnectListeners = new Map<string, Set<() => void>>();
 
   attach(workerId: string, socket: WorkerSocket): void {
     const existing = this.#sockets.get(workerId);
@@ -159,6 +161,10 @@ export class WorkerBridge implements WorkerCommandBus {
         return;
       }
       this.#sockets.delete(workerId);
+      for (const listener of this.#workerDisconnectListeners.get(workerId) ??
+        []) {
+        listener();
+      }
       this.rejectWorkerRequests(
         workerId,
         new WorkerUnavailableError(`Worker ${workerId} disconnected.`),
@@ -206,6 +212,24 @@ export class WorkerBridge implements WorkerCommandBus {
     return () => {
       listeners?.delete(listener);
       if (listeners?.size === 0) this.#surfaceListeners.delete(workerId);
+    };
+  }
+
+  subscribeWorkerDisconnect(
+    workerId: string,
+    listener: () => void,
+  ): () => void {
+    let listeners = this.#workerDisconnectListeners.get(workerId);
+    if (!listeners) {
+      listeners = new Set();
+      this.#workerDisconnectListeners.set(workerId, listeners);
+    }
+    listeners.add(listener);
+    return () => {
+      listeners?.delete(listener);
+      if (listeners?.size === 0) {
+        this.#workerDisconnectListeners.delete(workerId);
+      }
     };
   }
 
@@ -264,6 +288,10 @@ export class WorkerBridge implements WorkerCommandBus {
     }
     this.#sockets.clear();
     this.#surfaceListeners.clear();
+    for (const listeners of this.#workerDisconnectListeners.values()) {
+      for (const listener of listeners) listener();
+    }
+    this.#workerDisconnectListeners.clear();
     for (const pending of this.#pending.values()) {
       if (pending.timeout) clearTimeout(pending.timeout);
       pending.reject(new WorkerUnavailableError("Server is shutting down."));

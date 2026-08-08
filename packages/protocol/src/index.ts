@@ -626,6 +626,7 @@ export const remoteBrowserClientMessageSchema = z.discriminatedUnion("type", [
     delta: z.union([z.literal(-1), z.literal(1)]),
   }),
   z.object({ type: z.literal("reload") }),
+  z.object({ type: z.literal("stop") }),
   z.object({
     type: z.literal("viewport"),
     viewport: remoteSurfaceViewportSchema,
@@ -653,6 +654,28 @@ export const remoteBrowserClientMessageSchema = z.discriminatedUnion("type", [
     modifiers: z.number().int().nonnegative().max(15).default(0),
   }),
   z.object({ type: z.literal("focus") }),
+  z.object({
+    type: z.literal("touch"),
+    event: z.enum(["start", "move", "end", "cancel"]),
+    points: z
+      .array(
+        z.object({
+          id: z.number().int().nonnegative(),
+          x: z.number().finite().nonnegative(),
+          y: z.number().finite().nonnegative(),
+          radiusX: z.number().finite().positive().default(1),
+          radiusY: z.number().finite().positive().default(1),
+          force: z.number().finite().min(0).max(1).default(1),
+        }),
+      )
+      .max(10),
+    modifiers: z.number().int().nonnegative().max(15).default(0),
+  }),
+  z.object({
+    type: z.literal("clipboard"),
+    operation: z.enum(["copy-selection", "paste-text"]),
+    text: z.string().max(1_000_000).default(""),
+  }),
 ]);
 
 export const remoteBrowserServerMessageSchema = z.discriminatedUnion("type", [
@@ -664,7 +687,60 @@ export const remoteBrowserServerMessageSchema = z.discriminatedUnion("type", [
     canGoForward: z.boolean(),
     loading: z.boolean(),
   }),
+  z.object({
+    type: z.literal("browser-runtime"),
+    status: z.enum(["ready", "recovering", "error"]),
+    message: z.string().max(2_000).nullable().default(null),
+  }),
 ]);
+
+export const remoteBrowserCursorMessageSchema = z.object({
+  type: z.literal("browser-cursor"),
+  cursor: z.enum([
+    "auto",
+    "default",
+    "none",
+    "context-menu",
+    "help",
+    "pointer",
+    "progress",
+    "wait",
+    "cell",
+    "crosshair",
+    "text",
+    "vertical-text",
+    "alias",
+    "copy",
+    "move",
+    "no-drop",
+    "not-allowed",
+    "grab",
+    "grabbing",
+    "all-scroll",
+    "col-resize",
+    "row-resize",
+    "n-resize",
+    "e-resize",
+    "s-resize",
+    "w-resize",
+    "ne-resize",
+    "nw-resize",
+    "se-resize",
+    "sw-resize",
+    "ew-resize",
+    "ns-resize",
+    "nesw-resize",
+    "nwse-resize",
+    "zoom-in",
+    "zoom-out",
+  ]),
+});
+
+export const remoteBrowserClipboardMessageSchema = z.object({
+  type: z.literal("browser-clipboard"),
+  operation: z.literal("copy-selection"),
+  text: z.string().max(1_000_000),
+});
 
 export const remoteSurfaceFrameHeaderSchema = z.object({
   protocolVersion: remoteSurfaceProtocolVersionSchema,
@@ -1628,6 +1704,12 @@ export type RemoteBrowserClientMessage = z.infer<
 >;
 export type RemoteBrowserServerMessage = z.infer<
   typeof remoteBrowserServerMessageSchema
+>;
+export type RemoteBrowserCursorMessage = z.infer<
+  typeof remoteBrowserCursorMessageSchema
+>;
+export type RemoteBrowserClipboardMessage = z.infer<
+  typeof remoteBrowserClipboardMessageSchema
 >;
 export type RemoteSurfaceFrameHeader = z.infer<
   typeof remoteSurfaceFrameHeaderSchema

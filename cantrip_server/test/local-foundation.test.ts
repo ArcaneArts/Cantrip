@@ -108,6 +108,9 @@ const workerBridge = {
     });
     return true;
   },
+  subscribeWorkerDisconnect() {
+    return () => undefined;
+  },
   subscribeSurfaceFrames(_workerId, listener) {
     surfaceFrameListeners.add(listener);
     return () => surfaceFrameListeners.delete(listener);

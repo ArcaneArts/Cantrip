@@ -107,7 +107,6 @@ import {
 import Fastify from "fastify";
 import type { ChatMessage, ChatTurnCreate } from "@cantrip/protocol";
 
-import { fetchBrowserPage } from "./browser-proxy.js";
 import type { ServerConfig } from "./config.js";
 import type { DatabaseConnection } from "./db/index.js";
 import {
@@ -681,26 +680,6 @@ export async function buildApp({
       }),
     );
   });
-
-  app.get<{ Querystring: { url?: string } }>(
-    "/api/browser/proxy",
-    async (request, reply) => {
-      if (!request.query.url) {
-        return reply.code(400).send({ error: "url is required" });
-      }
-      try {
-        const page = await fetchBrowserPage(request.query.url);
-        return reply
-          .code(page.status)
-          .header("content-type", page.contentType)
-          .header("cache-control", "no-store")
-          .header("x-content-type-options", "nosniff")
-          .send(page.body);
-      } catch (error) {
-        return reply.code(502).send({ error: errorMessage(error) });
-      }
-    },
-  );
 
   app.get("/api/workers", { logLevel: "warn" }, async (_request, reply) => {
     const workers = await repository.listWorkers(LOCAL_USER_ID);

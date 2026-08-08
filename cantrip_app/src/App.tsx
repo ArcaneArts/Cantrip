@@ -140,6 +140,7 @@ import {
   updateDesktopWindowTitle,
   type DesktopPopoutTarget,
 } from "@/lib/desktop-popout";
+import { browserUpdateForPageState } from "@/lib/browser-page-state";
 import { cn } from "@/lib/utils";
 
 function modelDisplayName(model: ModelProfileSummary): string {
@@ -2573,12 +2574,15 @@ export function App() {
           >
             <BrowserView
               browser={selectedBrowser}
-              onNavigate={(url) =>
-                updateBrowserMutation.mutate({
-                  browserId: selectedBrowser.id,
-                  input: { url },
-                })
-              }
+              onPageState={(state) => {
+                const input = browserUpdateForPageState(selectedBrowser, state);
+                if (input) {
+                  updateBrowserMutation.mutate({
+                    browserId: selectedBrowser.id,
+                    input,
+                  });
+                }
+              }}
             />
           </Suspense>
         ) : selectedExplorer ? (

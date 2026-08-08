@@ -21,6 +21,7 @@ export type CdpEventListener = (
 ) => void;
 
 export class CdpClient {
+  readonly #closeListeners = new Set<(reason: Error) => void>();
   readonly #listeners = new Map<string, Set<CdpEventListener>>();
   readonly #pending = new Map<number, PendingRequest>();
   readonly #socket: WebSocket;
@@ -70,6 +71,11 @@ export class CdpClient {
     };
   }
 
+  onClose(listener: (reason: Error) => void): () => void {
+    this.#closeListeners.add(listener);
+    return () => this.#closeListeners.delete(listener);
+  }
+
   request<T = unknown>(
     method: string,
     params: Record<string, unknown> = {},
@@ -109,6 +115,14 @@ export class CdpClient {
     }
     this.#pending.clear();
     this.#listeners.clear();
+    for (const listener of this.#closeListeners) {
+      try {
+        listener(reason);
+      } catch {
+        // One recovery listener must not prevent the remaining cleanup.
+      }
+    }
+    this.#closeListeners.clear();
   }
 
   private onMessage(raw: string): void {

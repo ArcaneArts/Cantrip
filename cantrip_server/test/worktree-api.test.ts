@@ -106,6 +106,9 @@ const workerBridge = {
   sendSurfaceFrame() {
     return false;
   },
+  subscribeWorkerDisconnect() {
+    return () => undefined;
+  },
   subscribeSurfaceFrames() {
     return () => undefined;
   },
