@@ -1,7 +1,12 @@
 import type {
   CodexCustomizationInventory,
+  CodexExternalImportStatus,
   CodexExternalImportPreviewItem,
+  CodexMcpOauthStartResult,
+  CodexMcpOauthStatus,
   CodexMcpResourceRead,
+  CodexSkillConfigResult,
+  CodexSkillRootsResult,
   CustomizationCapability,
 } from "@cantrip/protocol";
 import {
@@ -12,17 +17,22 @@ import {
 } from "@tanstack/react-query";
 import {
   Bot,
+  Check,
   CircleAlert,
+  CircleMinus,
+  ExternalLink,
   FileSearch,
   Loader2,
   PackageSearch,
   RefreshCw,
+  Save,
   Settings2,
   ShieldCheck,
+  Trash2,
   Webhook,
   Wrench,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,9 +44,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  applyChatExternalImport,
+  configureChatSkill,
   getChatCustomizations,
   getChatExternalImportPreview,
+  getChatExternalImportStatus,
+  getChatMcpOauthStatus,
   readChatMcpResource,
+  reloadChatMcpServers,
+  setChatSkillRoots,
+  startChatMcpOauth,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -152,6 +169,40 @@ export function boundedResourceText(
 ): { text: string; truncated: boolean } {
   if (text.length <= limit) return { text, truncated: false };
   return { text: text.slice(0, limit), truncated: true };
+}
+
+export function parseSkillRootsDraft(draft: string): string[] {
+  return [
+    ...new Set(
+      draft
+        .split(/\r?\n/u)
+        .map((root) => root.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+export function selectableExternalImportIds(
+  items: CodexExternalImportPreviewItem[],
+): string[] {
+  return items
+    .filter(
+      ({ itemType, details }) =>
+        itemType !== "PLUGINS" && (details?.pluginNames.length ?? 0) === 0,
+    )
+    .map(({ id }) => id);
+}
+
+async function openAuthorizationUrl(url: string): Promise<void> {
+  if ("__TAURI_INTERNALS__" in window) {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url);
+    return;
+  }
+  const opened = window.open(url, "_blank", "noopener,noreferrer");
+  if (!opened) {
+    throw new Error("The browser blocked the authorization window.");
+  }
 }
 
 function errorText(error: unknown): string {
@@ -272,8 +323,14 @@ function CapabilityInventory({
 
 function SkillInventory({
   inventory,
+  configuration,
 }: {
   inventory: CodexCustomizationInventory;
+  configuration: UseMutationResult<
+    CodexSkillConfigResult,
+    Error,
+    { path: string; enabled: boolean }
+  >;
 }) {
   return (
     <>
@@ -301,11 +358,128 @@ function SkillInventory({
               <code className="mt-2 block break-all text-[11px] text-muted-foreground">
                 {skill.path}
               </code>
+              <Button
+                className="mt-3"
+                size="sm"
+                variant="outline"
+                disabled={
+                  configuration.isPending ||
+                  !inventory.capabilities.skills.configure.available
+                }
+                title={
+                  inventory.capabilities.skills.configure.reason ??
+                  `${skill.enabled ? "Disable" : "Enable"} this skill`
+                }
+                onClick={() =>
+                  configuration.mutate({
+                    path: skill.path,
+                    enabled: !skill.enabled,
+                  })
+                }
+              >
+                {configuration.isPending &&
+                configuration.variables?.path === skill.path ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : skill.enabled ? (
+                  <CircleMinus className="size-3.5" />
+                ) : (
+                  <Check className="size-3.5" />
+                )}
+                {skill.enabled ? "Disable" : "Enable"}
+              </Button>
             </div>
           ))}
         </div>
       )}
+      {configuration.isError ? (
+        <p className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          {errorText(configuration.error)}
+        </p>
+      ) : null}
     </>
+  );
+}
+
+function SkillRootsControl({
+  capability,
+  roots,
+  mutation,
+}: {
+  capability: CustomizationCapability;
+  roots: string[];
+  mutation: UseMutationResult<
+    CodexSkillRootsResult,
+    Error,
+    { roots: string[] }
+  >;
+}) {
+  const [draft, setDraft] = useState(roots.join("\n"));
+  const parsedRoots = parseSkillRootsDraft(draft);
+  const tooManyRoots = parsedRoots.length > 32;
+  return (
+    <div className="mt-4 rounded-lg border p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium">Extra skill roots</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            One project-relative directory per line. Real paths must stay inside
+            this checkout. The replacement applies to this isolated Codex
+            process and is cleared when it stops.
+          </p>
+        </div>
+        <Badge variant="outline">process scoped</Badge>
+      </div>
+      <textarea
+        className="mt-3 min-h-24 w-full resize-y rounded-md border bg-background px-3 py-2 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        disabled={!capability.available || mutation.isPending}
+        placeholder={".agents/skills\nshared/skills"}
+        value={draft}
+        onChange={(event) => setDraft(event.currentTarget.value)}
+      />
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!capability.available || mutation.isPending || tooManyRoots}
+          onClick={() => mutation.mutate({ roots: parsedRoots })}
+        >
+          {mutation.isPending ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Save className="size-3.5" />
+          )}
+          Replace roots
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={
+            !capability.available || mutation.isPending || roots.length === 0
+          }
+          onClick={() => mutation.mutate({ roots: [] })}
+        >
+          <Trash2 className="size-3.5" /> Clear
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          {parsedRoots.length} / 32 directories
+        </span>
+      </div>
+      {!capability.available && capability.reason ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {capability.reason}
+        </p>
+      ) : null}
+      {tooManyRoots ? (
+        <p className="mt-2 text-xs text-destructive">
+          At most 32 roots are allowed.
+        </p>
+      ) : null}
+      {mutation.isError ? (
+        <p className="mt-2 text-xs text-destructive">
+          {errorText(mutation.error)}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -411,10 +585,14 @@ function ResourceResult({ result }: { result: CodexMcpResourceRead }) {
 
 function McpInventory({
   inventory,
+  oauth,
+  oauthInProgress,
   resource,
   onReadResource,
 }: {
   inventory: CodexCustomizationInventory;
+  oauth: UseMutationResult<CodexMcpOauthStartResult, Error, { server: string }>;
+  oauthInProgress: boolean;
   resource: UseMutationResult<
     CodexMcpResourceRead,
     Error,
@@ -451,6 +629,37 @@ function McpInventory({
               ) : null}
             </summary>
             <div className="grid gap-4 border-t px-3 py-3">
+              {server.authStatus === "notLoggedIn" ? (
+                <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    This server requires OAuth. Cantrip opens the native
+                    authorization page and watches Codex for completion.
+                  </p>
+                  <Button
+                    className="mt-2"
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      oauth.isPending ||
+                      oauthInProgress ||
+                      !inventory.capabilities.mcp.oauth.available
+                    }
+                    title={
+                      inventory.capabilities.mcp.oauth.reason ??
+                      `Authorize ${server.name}`
+                    }
+                    onClick={() => oauth.mutate({ server: server.name })}
+                  >
+                    {oauth.isPending &&
+                    oauth.variables?.server === server.name ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <ExternalLink className="size-3.5" />
+                    )}
+                    Authorize
+                  </Button>
+                </div>
+              ) : null}
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Tools
@@ -579,6 +788,96 @@ function importDetailLines(item: CodexExternalImportPreviewItem): string[] {
   return lines;
 }
 
+function ExternalImportProgress({
+  status,
+}: {
+  status: CodexExternalImportStatus;
+}) {
+  if (status.status === "pending") {
+    return (
+      <p className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs text-muted-foreground">
+        <Loader2 className="size-3.5 animate-spin" /> Codex is importing the
+        reviewed configuration…
+      </p>
+    );
+  }
+  if (status.status === "unknown") {
+    return (
+      <p className="rounded-lg border px-3 py-2 text-xs text-muted-foreground">
+        This runtime no longer has completion state for import {status.importId}
+        .
+      </p>
+    );
+  }
+  const successCount = status.results.reduce(
+    (total, result) => total + result.successCount,
+    0,
+  );
+  const failures = status.results.flatMap((result) =>
+    result.failures.map((failure) => ({
+      ...failure,
+      itemType: result.itemType,
+    })),
+  );
+  return (
+    <div
+      className={cn(
+        "rounded-lg border p-3 text-xs",
+        failures.length > 0
+          ? "border-amber-500/30 bg-amber-500/5"
+          : "border-emerald-500/30 bg-emerald-500/5",
+      )}
+    >
+      <p className="flex items-center gap-2 font-medium">
+        {failures.length > 0 ? (
+          <CircleAlert className="size-3.5 text-amber-600" />
+        ) : (
+          <Check className="size-3.5 text-emerald-600" />
+        )}
+        Import completed · {successCount} successful · {failures.length} failed
+      </p>
+      {failures.map((failure, index) => (
+        <p
+          key={`${failure.itemType}:${failure.failureStage}:${index}`}
+          className="mt-2 text-muted-foreground"
+        >
+          {failure.itemType.replaceAll("_", " ")} · {failure.failureStage}:{" "}
+          {failure.message}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function OauthProgress({
+  server,
+  status,
+}: {
+  server: string;
+  status: CodexMcpOauthStatus;
+}) {
+  const message =
+    status.status === "pending"
+      ? "Waiting for authorization"
+      : status.status === "succeeded"
+        ? "Authorization succeeded; reloading MCP servers"
+        : status.status === "failed"
+          ? (status.error ?? "Authorization failed")
+          : "Authorization state is no longer available";
+  return (
+    <p className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs text-muted-foreground">
+      {status.status === "pending" ? (
+        <Loader2 className="size-3.5 animate-spin" />
+      ) : status.status === "succeeded" ? (
+        <Check className="size-3.5 text-emerald-600" />
+      ) : (
+        <CircleAlert className="size-3.5" />
+      )}
+      {server} · {message}
+    </p>
+  );
+}
+
 export function CustomizationPanel({
   chatId,
   chatTitle,
@@ -591,35 +890,151 @@ export function CustomizationPanel({
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
+  const inventoryKey = ["chat-customizations", chatId] as const;
+  const [oauthServer, setOauthServer] = useState<string | null>(null);
+  const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
+  const [importId, setImportId] = useState<string | null>(null);
+  const [selectedImportIds, setSelectedImportIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [resourceTarget, setResourceTarget] = useState<{
     server: string;
     uri: string;
   } | null>(null);
+  const autoReloadedOauth = useRef<string | null>(null);
+  const refreshedImport = useRef<string | null>(null);
   const inventory = useQuery({
-    queryKey: ["chat-customizations", chatId],
+    queryKey: inventoryKey,
     queryFn: () => getChatCustomizations(chatId),
     enabled: open,
     refetchOnWindowFocus: false,
   });
+  const refreshInventory = async () => {
+    const data = await getChatCustomizations(chatId, true);
+    queryClient.setQueryData(inventoryKey, data);
+    return data;
+  };
   const refresh = useMutation({
-    mutationFn: () => getChatCustomizations(chatId, true),
-    onSuccess: (data) => {
-      queryClient.setQueryData(["chat-customizations", chatId], data);
-    },
+    mutationFn: refreshInventory,
+  });
+  const skillConfiguration = useMutation({
+    mutationFn: (input: { path: string; enabled: boolean }) =>
+      configureChatSkill(chatId, input),
+    onSuccess: refreshInventory,
+  });
+  const skillRoots = useMutation({
+    mutationFn: (input: { roots: string[] }) =>
+      setChatSkillRoots(chatId, input),
+    onSuccess: refreshInventory,
   });
   const externalPreview = useMutation({
     mutationFn: () => getChatExternalImportPreview(chatId),
+    onMutate: () => {
+      externalImport.reset();
+      setImportId(null);
+      setSelectedImportIds(new Set());
+      refreshedImport.current = null;
+    },
+  });
+  const externalImport = useMutation({
+    mutationFn: (itemIds: string[]) =>
+      applyChatExternalImport(chatId, { itemIds }),
+    onSuccess: (status) => {
+      setSelectedImportIds(new Set());
+      setImportId(status.importId);
+    },
   });
   const resource = useMutation({
     mutationFn: (input: { server: string; uri: string }) =>
       readChatMcpResource(chatId, input),
   });
+  const mcpReload = useMutation({
+    mutationFn: () => reloadChatMcpServers(chatId),
+    onSuccess: refreshInventory,
+  });
+  const mcpOauth = useMutation({
+    mutationFn: async (input: { server: string }) => {
+      setOauthServer(null);
+      setAuthorizationUrl(null);
+      autoReloadedOauth.current = null;
+      mcpReload.reset();
+      const result = await startChatMcpOauth(chatId, input);
+      queryClient.removeQueries({
+        queryKey: ["chat-customizations", chatId, "mcp-oauth", result.server],
+        exact: true,
+      });
+      setOauthServer(result.server);
+      setAuthorizationUrl(result.authorizationUrl);
+      await openAuthorizationUrl(result.authorizationUrl);
+      return result;
+    },
+  });
+  const oauthStatus = useQuery({
+    queryKey: ["chat-customizations", chatId, "mcp-oauth", oauthServer],
+    queryFn: () => getChatMcpOauthStatus(chatId, oauthServer!),
+    enabled: open && oauthServer !== null,
+    refetchInterval: (query) =>
+      query.state.data?.status === "pending" ? 1_000 : false,
+    refetchOnWindowFocus: false,
+  });
+  const externalImportStatus = useQuery({
+    queryKey: ["chat-customizations", chatId, "external-import", importId],
+    queryFn: () => getChatExternalImportStatus(chatId, importId!),
+    enabled: open && importId !== null,
+    refetchInterval: (query) =>
+      query.state.data?.status === "pending" ? 1_000 : false,
+    refetchOnWindowFocus: false,
+  });
+  const oauthInProgress =
+    mcpOauth.isPending ||
+    oauthStatus.isFetching ||
+    oauthStatus.data?.status === "pending";
+  const externalImportInProgress =
+    externalImport.isPending ||
+    externalImportStatus.isFetching ||
+    externalImportStatus.data?.status === "pending";
+
+  useEffect(() => {
+    const status = oauthStatus.data;
+    if (
+      !oauthServer ||
+      status?.status !== "succeeded" ||
+      autoReloadedOauth.current === oauthServer
+    ) {
+      return;
+    }
+    autoReloadedOauth.current = oauthServer;
+    mcpReload.mutate();
+  }, [mcpReload, oauthServer, oauthStatus.data]);
+
+  useEffect(() => {
+    const status = externalImportStatus.data;
+    if (
+      status?.status !== "completed" ||
+      refreshedImport.current === status.importId
+    ) {
+      return;
+    }
+    refreshedImport.current = status.importId;
+    refresh.mutate();
+  }, [externalImportStatus.data, refresh]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
       externalPreview.reset();
+      externalImport.reset();
+      skillConfiguration.reset();
+      skillRoots.reset();
+      mcpOauth.reset();
+      mcpReload.reset();
       resource.reset();
+      setOauthServer(null);
+      setAuthorizationUrl(null);
+      setImportId(null);
+      setSelectedImportIds(new Set());
       setResourceTarget(null);
+      autoReloadedOauth.current = null;
+      refreshedImport.current = null;
     }
     onOpenChange(nextOpen);
   };
@@ -628,6 +1043,15 @@ export function CustomizationPanel({
     const target = { server, uri };
     setResourceTarget(target);
     resource.mutate(target);
+  };
+
+  const toggleImportSelection = (id: string) => {
+    setSelectedImportIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   return (
@@ -660,11 +1084,13 @@ export function CustomizationPanel({
           <div className="mb-4 flex gap-3 rounded-xl border border-sky-500/30 bg-sky-500/5 p-4 text-sm leading-6">
             <ShieldCheck className="mt-0.5 size-5 shrink-0 text-sky-600" />
             <div>
-              <p className="font-medium">Isolated, inspection-only view</p>
+              <p className="font-medium">Isolated native controls</p>
               <p className="text-xs leading-5 text-muted-foreground">
-                This chat uses a Cantrip-owned Codex home. No skill, hook, MCP,
-                plugin, or external configuration is changed from this panel.
-                Guarded mutation controls are delivered separately.
+                This chat uses a Cantrip-owned Codex home. Changes below go
+                through capability-checked App Server methods: skill toggles are
+                reversible, extra roots are process scoped, and external imports
+                require an explicit reviewed selection. Plugin controls remain
+                unavailable while Codex marks those APIs as developmental.
               </p>
             </div>
           </div>
@@ -714,7 +1140,16 @@ export function CustomizationPanel({
                 title={`Skills (${inventory.data.skills.items.length})`}
                 description="Native skills visible to this isolated chat runtime, including disabled and scoped entries."
               >
-                <SkillInventory inventory={inventory.data} />
+                <SkillInventory
+                  inventory={inventory.data}
+                  configuration={skillConfiguration}
+                />
+                <SkillRootsControl
+                  key={inventory.data.skillRoots.join("\n")}
+                  capability={inventory.data.capabilities.skills.extraRoots}
+                  roots={inventory.data.skillRoots}
+                  mutation={skillRoots}
+                />
               </Section>
 
               <Section
@@ -730,8 +1165,94 @@ export function CustomizationPanel({
                 title={`MCP servers (${inventory.data.mcpServers.length})`}
                 description="Inspect auth state, tools, resources, and resource templates reported by native MCP status."
               >
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      mcpReload.isPending ||
+                      oauthInProgress ||
+                      !inventory.data.capabilities.mcp.reload.available
+                    }
+                    title={
+                      inventory.data.capabilities.mcp.reload.reason ??
+                      "Reload MCP server configuration"
+                    }
+                    onClick={() => mcpReload.mutate()}
+                  >
+                    <RefreshCw
+                      className={cn(
+                        "size-3.5",
+                        mcpReload.isPending && "animate-spin",
+                      )}
+                    />
+                    Reload MCP servers
+                  </Button>
+                  {!inventory.data.capabilities.mcp.reload.available &&
+                  inventory.data.capabilities.mcp.reload.reason ? (
+                    <span className="text-xs text-muted-foreground">
+                      {inventory.data.capabilities.mcp.reload.reason}
+                    </span>
+                  ) : null}
+                </div>
+                {mcpReload.isError ? (
+                  <p className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                    Reload failed: {errorText(mcpReload.error)}
+                  </p>
+                ) : null}
+                {mcpReload.isSuccess ? (
+                  <p className="mb-3 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs">
+                    <Check className="size-3.5 text-emerald-600" /> MCP servers
+                    reloaded.
+                  </p>
+                ) : null}
+                {oauthServer && oauthStatus.data ? (
+                  <div className="mb-3">
+                    <OauthProgress
+                      server={oauthServer}
+                      status={oauthStatus.data}
+                    />
+                    {authorizationUrl &&
+                    oauthStatus.data.status === "pending" ? (
+                      <a
+                        className="mt-2 inline-flex items-center gap-1 text-xs font-medium underline underline-offset-4"
+                        href={authorizationUrl}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        Open authorization page again
+                        <ExternalLink className="size-3" />
+                      </a>
+                    ) : null}
+                  </div>
+                ) : null}
+                {oauthStatus.isError ? (
+                  <p className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                    Authorization status failed: {errorText(oauthStatus.error)}
+                  </p>
+                ) : null}
+                {mcpOauth.isError ? (
+                  <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs">
+                    <p className="text-destructive">
+                      Authorization window failed: {errorText(mcpOauth.error)}
+                    </p>
+                    {authorizationUrl ? (
+                      <a
+                        className="mt-2 inline-flex items-center gap-1 font-medium underline underline-offset-4"
+                        href={authorizationUrl}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        Open authorization page{" "}
+                        <ExternalLink className="size-3" />
+                      </a>
+                    ) : null}
+                  </div>
+                ) : null}
                 <McpInventory
                   inventory={inventory.data}
+                  oauth={mcpOauth}
+                  oauthInProgress={oauthInProgress}
                   resource={resource}
                   onReadResource={handleReadResource}
                 />
@@ -767,8 +1288,8 @@ export function CustomizationPanel({
 
               <Section
                 icon={<FileSearch className="size-4" />}
-                title="External configuration preview"
-                description="Detection is opt-in and restricted to the selected project. It does not scan your home directory or apply anything."
+                title="External configuration import"
+                description="Detection is opt-in and restricted to the selected project. Only explicitly checked, freshly revalidated candidates are applied; home configuration and plugins remain excluded."
               >
                 {!externalPreview.data &&
                 !externalPreview.isPending &&
@@ -825,7 +1346,9 @@ export function CustomizationPanel({
                       <Button
                         size="sm"
                         variant="ghost"
-                        disabled={externalPreview.isPending}
+                        disabled={
+                          externalPreview.isPending || externalImportInProgress
+                        }
                         onClick={() => externalPreview.mutate()}
                       >
                         <RefreshCw className="size-3.5" /> Rescan
@@ -837,29 +1360,141 @@ export function CustomizationPanel({
                         this project.
                       </Empty>
                     ) : (
-                      externalPreview.data.items.map((item) => (
-                        <div key={item.id} className="rounded-lg border p-3">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="outline">
-                              {item.itemType.replaceAll("_", " ")}
-                            </Badge>
-                            <p className="text-sm">{item.description}</p>
-                          </div>
-                          {importDetailLines(item).map((line) => (
-                            <p
-                              key={line}
-                              className="mt-1 break-words text-xs text-muted-foreground"
-                            >
-                              {line}
-                            </p>
-                          ))}
-                        </div>
-                      ))
+                      externalPreview.data.items.map((item) => {
+                        const selectable = selectableExternalImportIds([
+                          item,
+                        ]).includes(item.id);
+                        const disabled =
+                          !selectable ||
+                          !inventory.data.capabilities.externalImports.apply
+                            .available ||
+                          externalImportInProgress;
+                        return (
+                          <label
+                            key={item.id}
+                            className={cn(
+                              "flex gap-3 rounded-lg border p-3",
+                              disabled && "opacity-70",
+                            )}
+                          >
+                            <input
+                              className="mt-1 size-4 shrink-0 accent-primary"
+                              type="checkbox"
+                              checked={selectedImportIds.has(item.id)}
+                              disabled={disabled}
+                              onChange={() => toggleImportSelection(item.id)}
+                            />
+                            <span className="min-w-0">
+                              <span className="flex flex-wrap items-center gap-2">
+                                <Badge variant="outline">
+                                  {item.itemType.replaceAll("_", " ")}
+                                </Badge>
+                                <span className="text-sm">
+                                  {item.description}
+                                </span>
+                              </span>
+                              {importDetailLines(item).map((line) => (
+                                <span
+                                  key={line}
+                                  className="mt-1 block break-words text-xs text-muted-foreground"
+                                >
+                                  {line}
+                                </span>
+                              ))}
+                              {!selectable ? (
+                                <span className="mt-1 block text-xs text-muted-foreground">
+                                  Plugin-bearing imports are disabled because
+                                  native plugin operations are not production
+                                  supported.
+                                </span>
+                              ) : null}
+                            </span>
+                          </label>
+                        );
+                      })
                     )}
-                    <p className="text-xs leading-5 text-muted-foreground">
-                      Review only: applying selected candidates is intentionally
-                      unavailable in this inspection pass.
-                    </p>
+                    {externalPreview.data.items.length > 0 ? (
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={
+                            externalImportInProgress ||
+                            !inventory.data.capabilities.externalImports.apply
+                              .available
+                          }
+                          onClick={() =>
+                            setSelectedImportIds(
+                              new Set(
+                                selectableExternalImportIds(
+                                  externalPreview.data.items,
+                                ),
+                              ),
+                            )
+                          }
+                        >
+                          Select safe candidates
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={
+                            externalImportInProgress ||
+                            selectedImportIds.size === 0
+                          }
+                          onClick={() => setSelectedImportIds(new Set())}
+                        >
+                          Clear selection
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={
+                            externalImportInProgress ||
+                            selectedImportIds.size === 0 ||
+                            !inventory.data.capabilities.externalImports.apply
+                              .available
+                          }
+                          onClick={() =>
+                            externalImport.mutate([...selectedImportIds])
+                          }
+                        >
+                          {externalImportInProgress ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <Save className="size-3.5" />
+                          )}
+                          {externalImportInProgress
+                            ? "Import in progress"
+                            : `Apply selected (${selectedImportIds.size})`}
+                        </Button>
+                      </div>
+                    ) : null}
+                    {!inventory.data.capabilities.externalImports.apply
+                      .available &&
+                    inventory.data.capabilities.externalImports.apply.reason ? (
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        {
+                          inventory.data.capabilities.externalImports.apply
+                            .reason
+                        }
+                      </p>
+                    ) : null}
+                    {externalImport.isError ? (
+                      <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                        Import failed: {errorText(externalImport.error)}
+                      </p>
+                    ) : null}
+                    {externalImportStatus.isError ? (
+                      <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                        Import status failed:{" "}
+                        {errorText(externalImportStatus.error)}
+                      </p>
+                    ) : null}
+                    {externalImportStatus.data ? (
+                      <ExternalImportProgress
+                        status={externalImportStatus.data}
+                      />
+                    ) : null}
                   </div>
                 ) : null}
               </Section>
