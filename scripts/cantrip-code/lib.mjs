@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import {
   access,
+  cp,
   lstat,
   mkdir,
   mkdtemp,
@@ -29,6 +30,31 @@ export const upstreamRoot = path.join(codeRoot, "upstream");
 export const upstreamConfigPath = path.join(codeRoot, "upstream.json");
 export const upstreamFilesPath = path.join(codeRoot, "upstream.files.json");
 export const patchesRoot = path.join(codeRoot, "patches");
+export const extensionsRoot = path.join(codeRoot, "extensions");
+export const codeBuildRoot = path.join(codeRoot, ".build");
+
+export function resolveSharedCodeStateRoot() {
+  if (process.env.CANTRIP_CODE_CACHE_DIR) {
+    return path.resolve(process.env.CANTRIP_CODE_CACHE_DIR);
+  }
+
+  const commonDirectory = spawnSync(
+    "git",
+    ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    { cwd: root, encoding: "utf8" },
+  );
+  if (commonDirectory.status === 0) {
+    const gitDirectory = commonDirectory.stdout.trim();
+    if (gitDirectory) {
+      return path.join(path.dirname(gitDirectory), ".cantrip-code");
+    }
+  }
+
+  return path.join(root, ".cantrip-code");
+}
+
+export const sharedCodeStateRoot = resolveSharedCodeStateRoot();
+export const codeCacheRoot = path.join(sharedCodeStateRoot, "cache");
 
 export function parseArgs(argv) {
   const values = new Map();
@@ -76,7 +102,7 @@ export async function run(command, args, options = {}) {
   await new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: options.cwd ?? root,
-      env: process.env,
+      env: { ...process.env, ...(options.env ?? {}) },
       stdio: options.quiet ? "ignore" : "inherit",
     });
     child.once("error", reject);
@@ -90,6 +116,22 @@ export async function run(command, args, options = {}) {
         );
     });
   });
+}
+
+export async function copyDirectory(source, destination) {
+  await mkdir(path.dirname(destination), { recursive: true });
+  await cp(source, destination, {
+    recursive: true,
+    dereference: false,
+    preserveTimestamps: true,
+    verbatimSymlinks: true,
+  });
+}
+
+export async function sha256File(file) {
+  return createHash("sha256")
+    .update(await readFile(file))
+    .digest("hex");
 }
 
 export function sha256Text(value) {
