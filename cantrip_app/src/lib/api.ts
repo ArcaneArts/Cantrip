@@ -1,4 +1,7 @@
 import {
+  agentInteractionRequestListSchema,
+  agentInteractionRequestSchema,
+  agentInteractionResolutionCreateSchema,
   browserListSchema,
   browserSummarySchema,
   agentThreadSyncSchema,
@@ -57,6 +60,8 @@ import {
   workerListSchema,
 } from "@cantrip/protocol";
 import type {
+  AgentInteractionRequestStatus,
+  AgentInteractionResolutionCreate,
   ChatWorktreeUpdate,
   ChatGoalCreate,
   ChatGoalUpdate,
@@ -828,6 +833,35 @@ export async function createChatConsole(chatId: string) {
 export async function interruptChat(chatId: string) {
   return chatInterruptAcceptedSchema.parse(
     await post(`/api/chats/${encodeURIComponent(chatId)}/interrupt`, {}),
+  );
+}
+
+export async function getAgentInteractionRequests(
+  input: {
+    chatId?: string;
+    status?: AgentInteractionRequestStatus;
+    limit?: number;
+  } = {},
+) {
+  const query = new URLSearchParams();
+  if (input.chatId) query.set("chatId", input.chatId);
+  if (input.status) query.set("status", input.status);
+  if (input.limit) query.set("limit", String(input.limit));
+  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+  return agentInteractionRequestListSchema.parse(
+    await request(`/api/agent-requests${suffix}`),
+  );
+}
+
+export async function respondToAgentInteractionRequest(
+  requestId: string,
+  input: AgentInteractionResolutionCreate,
+) {
+  return agentInteractionRequestSchema.parse(
+    await post(
+      `/api/agent-requests/${encodeURIComponent(requestId)}/respond`,
+      agentInteractionResolutionCreateSchema.parse(input),
+    ),
   );
 }
 

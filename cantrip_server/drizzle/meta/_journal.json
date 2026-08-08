@@ -155,6 +155,13 @@
       "when": 1786211919993,
       "tag": "0021_quick_swarm",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1786212454153,
+      "tag": "0022_magical_winter_soldier",
+      "breakpoints": true
     }
   ]
 }

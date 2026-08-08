@@ -533,7 +533,13 @@ export const chatSummarySchema = z.object({
   projectId: z.string().min(1),
   title: z.string().min(1),
   position: z.number().int().nonnegative(),
-  status: z.enum(["idle", "running", "offline", "failed"]),
+  status: z.enum([
+    "idle",
+    "running",
+    "waiting-for-approval",
+    "offline",
+    "failed",
+  ]),
   activeWorkerId: z.string().min(1).nullable(),
   activeWorktreeId: z.string().min(1),
   worktreeMode: z.enum(["agent-managed", "pinned"]),
@@ -1164,6 +1170,265 @@ export const chatExecutionLaneListSchema = z.array(
 export const chatExecutionLaneReleaseSchema = z.object({
   allowDirty: z.boolean().default(false),
   returnToPrimary: z.boolean().default(true),
+});
+
+export const agentInteractionRequestKindSchema = z.enum([
+  "commandExecution",
+  "fileChange",
+  "permissions",
+  "userInput",
+  "mcpElicitation",
+]);
+
+export const agentInteractionRequestStatusSchema = z.enum([
+  "pending",
+  "resolved",
+  "expired",
+  "interrupted",
+]);
+
+export const agentInteractionProvenanceSchema = z.object({
+  chatId: z.string().min(1).nullable(),
+  threadId: z.string().min(1),
+  turnId: z.string().min(1).nullable(),
+  itemId: z.string().min(1).nullable(),
+  executionLaneId: z.string().min(1).nullable(),
+  workflowRunId: z.string().min(1).nullable(),
+  workflowNodeId: z.string().min(1).nullable(),
+  workerId: z.string().min(1),
+});
+
+export const agentInteractionRequestPayloadSchema = z.discriminatedUnion(
+  "kind",
+  [
+    z.object({
+      kind: z.literal("commandExecution"),
+      startedAtMs: z.number().int().nonnegative(),
+      approvalId: z.string().min(1).nullable(),
+      environmentId: z.string().min(1).nullable(),
+      reason: z.string().nullable(),
+      command: z.string().nullable(),
+      cwd: z.string().nullable(),
+      networkApprovalContext: z
+        .object({
+          host: z.string().min(1),
+          protocol: z.enum(["http", "https", "socks5Tcp", "socks5Udp"]),
+        })
+        .nullable(),
+      additionalPermissions: z.json().nullable(),
+      proposedExecpolicyAmendment: z.array(z.string()).nullable(),
+      proposedNetworkPolicyAmendments: z
+        .array(
+          z.object({
+            host: z.string().min(1),
+            action: z.enum(["allow", "deny"]),
+          }),
+        )
+        .nullable(),
+      availableDecisions: z
+        .array(
+          z.enum([
+            "accept",
+            "acceptForSession",
+            "acceptWithExecpolicyAmendment",
+            "applyNetworkPolicyAmendment",
+            "decline",
+            "cancel",
+          ]),
+        )
+        .nullable(),
+    }),
+    z.object({
+      kind: z.literal("fileChange"),
+      startedAtMs: z.number().int().nonnegative(),
+      reason: z.string().nullable(),
+      grantRoot: z.string().nullable(),
+    }),
+    z.object({
+      kind: z.literal("permissions"),
+      startedAtMs: z.number().int().nonnegative(),
+      environmentId: z.string().min(1).nullable(),
+      cwd: z.string().min(1),
+      reason: z.string().nullable(),
+      requestedPermissions: z.json(),
+    }),
+    z.object({
+      kind: z.literal("userInput"),
+      questions: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            header: z.string().min(1),
+            question: z.string().min(1),
+            isOther: z.boolean(),
+            isSecret: z.boolean(),
+            options: z
+              .array(
+                z.object({
+                  label: z.string().min(1),
+                  description: z.string(),
+                }),
+              )
+              .nullable(),
+          }),
+        )
+        .min(1)
+        .max(3),
+      autoResolutionMs: z.number().int().nonnegative().nullable(),
+    }),
+    z.object({
+      kind: z.literal("mcpElicitation"),
+      serverName: z.string().min(1),
+      mode: z.enum(["form", "openai/form", "url"]),
+      message: z.string().min(1),
+      requestedSchema: z.json().nullable(),
+      url: z.url().nullable(),
+      elicitationId: z.string().min(1).nullable(),
+      metadata: z.json().nullable(),
+    }),
+  ],
+);
+
+export const agentInteractionResponseSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("commandExecution"),
+    decision: z.enum([
+      "accept",
+      "acceptForSession",
+      "acceptWithExecpolicyAmendment",
+      "applyNetworkPolicyAmendment",
+      "decline",
+      "cancel",
+    ]),
+    execpolicyAmendment: z.array(z.string()).nullable().default(null),
+    networkPolicyAmendment: z
+      .object({
+        host: z.string().min(1),
+        action: z.enum(["allow", "deny"]),
+      })
+      .nullable()
+      .default(null),
+  }),
+  z.object({
+    kind: z.literal("fileChange"),
+    decision: z.enum(["accept", "acceptForSession", "decline", "cancel"]),
+  }),
+  z.object({
+    kind: z.literal("permissions"),
+    permissions: z.json(),
+    scope: z.enum(["turn", "session"]),
+    strictAutoReview: z.boolean().default(false),
+  }),
+  z.object({
+    kind: z.literal("userInput"),
+    answers: z.record(
+      z.string().min(1),
+      z.object({ answers: z.array(z.string()).min(1) }),
+    ),
+  }),
+  z.object({
+    kind: z.literal("mcpElicitation"),
+    action: z.enum(["accept", "decline", "cancel"]),
+    content: z.json().nullable(),
+    metadata: z.json().nullable().default(null),
+  }),
+]);
+
+function fitsAgentInteractionStorageLimit(value: unknown): boolean {
+  try {
+    return JSON.stringify(value).length <= 1_000_000;
+  } catch {
+    return false;
+  }
+}
+
+export const agentInteractionRequestCreateSchema = z
+  .object({
+    requestKey: z.string().min(1).max(200),
+    projectId: z.string().min(1),
+    provenance: agentInteractionProvenanceSchema,
+    payload: agentInteractionRequestPayloadSchema,
+    expiresAt: z.string().datetime().nullable(),
+  })
+  .refine(fitsAgentInteractionStorageLimit, {
+    message: "Agent interaction request exceeds the 1 MB storage limit.",
+  });
+
+export const agentInteractionResolutionCreateSchema = z
+  .object({
+    idempotencyKey: z.string().min(1).max(200),
+    response: agentInteractionResponseSchema,
+  })
+  .refine(fitsAgentInteractionStorageLimit, {
+    message: "Agent interaction response exceeds the 1 MB storage limit.",
+  });
+
+export const agentInteractionRequestSchema = z
+  .object({
+    id: z.string().min(1),
+    requestKey: z.string().min(1),
+    projectId: z.string().min(1),
+    provenance: agentInteractionProvenanceSchema,
+    payload: agentInteractionRequestPayloadSchema,
+    status: agentInteractionRequestStatusSchema,
+    response: agentInteractionResponseSchema.nullable(),
+    resolvedByUserId: z.string().min(1).nullable(),
+    expiresAt: z.string().datetime().nullable(),
+    resolvedAt: z.string().datetime().nullable(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .superRefine((request, context) => {
+    if (request.response && request.response.kind !== request.payload.kind) {
+      context.addIssue({
+        code: "custom",
+        path: ["response", "kind"],
+        message: "Response kind must match request kind.",
+      });
+    }
+    const terminalWithoutResponse =
+      request.status === "expired" || request.status === "interrupted";
+    if (request.status === "pending") {
+      if (request.response || request.resolvedByUserId || request.resolvedAt) {
+        context.addIssue({
+          code: "custom",
+          path: ["status"],
+          message: "Pending requests cannot contain resolution data.",
+        });
+      }
+    } else if (request.status === "resolved") {
+      if (
+        !request.response ||
+        !request.resolvedByUserId ||
+        !request.resolvedAt
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["status"],
+          message: "Resolved requests require response and resolution data.",
+        });
+      }
+    } else if (
+      terminalWithoutResponse &&
+      (request.response || request.resolvedByUserId || !request.resolvedAt)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["status"],
+        message:
+          "Expired and interrupted requests require a terminal timestamp without a response.",
+      });
+    }
+  });
+
+export const agentInteractionRequestListSchema = z.array(
+  agentInteractionRequestSchema,
+);
+
+export const agentInteractionRequestQuerySchema = z.object({
+  chatId: z.string().min(1).optional(),
+  status: agentInteractionRequestStatusSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(100),
 });
 
 export const agentWorktreeToolNameSchema = z.enum([
@@ -2137,6 +2402,33 @@ export type ChatExecutionLaneSummary = z.infer<
 >;
 export type ChatExecutionLaneRelease = z.infer<
   typeof chatExecutionLaneReleaseSchema
+>;
+export type AgentInteractionRequestKind = z.infer<
+  typeof agentInteractionRequestKindSchema
+>;
+export type AgentInteractionRequestStatus = z.infer<
+  typeof agentInteractionRequestStatusSchema
+>;
+export type AgentInteractionProvenance = z.infer<
+  typeof agentInteractionProvenanceSchema
+>;
+export type AgentInteractionRequestPayload = z.infer<
+  typeof agentInteractionRequestPayloadSchema
+>;
+export type AgentInteractionResponse = z.infer<
+  typeof agentInteractionResponseSchema
+>;
+export type AgentInteractionRequestCreate = z.infer<
+  typeof agentInteractionRequestCreateSchema
+>;
+export type AgentInteractionResolutionCreate = z.infer<
+  typeof agentInteractionResolutionCreateSchema
+>;
+export type AgentInteractionRequest = z.infer<
+  typeof agentInteractionRequestSchema
+>;
+export type AgentInteractionRequestQuery = z.infer<
+  typeof agentInteractionRequestQuerySchema
 >;
 export type AgentWorktreeToolName = z.infer<typeof agentWorktreeToolNameSchema>;
 export type AgentWorktreeToolCall = z.infer<typeof agentWorktreeToolCallSchema>;

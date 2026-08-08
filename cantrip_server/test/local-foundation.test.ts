@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  agentInteractionRequestListSchema,
+  agentInteractionRequestSchema,
   agentThreadSyncSchema,
   browserListSchema,
   browserSummarySchema,
@@ -45,8 +47,11 @@ import {
   unprobedCodexRuntimeReport,
   workerListSchema,
 } from "@cantrip/protocol";
-import type { ThreadGoal } from "@cantrip/protocol";
-import type { PlanMode } from "@cantrip/protocol";
+import type {
+  AgentInteractionRequestCreate,
+  PlanMode,
+  ThreadGoal,
+} from "@cantrip/protocol";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "../src/app.js";
@@ -1155,6 +1160,269 @@ describe("local server foundation", () => {
     expect(selectedChat).toMatchObject({
       modelId: selectedModel.id,
     });
+
+    const approvalInput: AgentInteractionRequestCreate = {
+      requestKey: "runtime-1:approval-1",
+      projectId: project.id,
+      provenance: {
+        chatId: chat.id,
+        threadId: "thread-approval",
+        turnId: "turn-approval",
+        itemId: "item-approval",
+        executionLaneId: null,
+        workflowRunId: null,
+        workflowNodeId: null,
+        workerId: "test-worker",
+      },
+      payload: {
+        kind: "commandExecution",
+        startedAtMs: Date.now(),
+        approvalId: null,
+        environmentId: null,
+        reason: "Install dependencies",
+        command: "pnpm install",
+        cwd: project.source!.path,
+        networkApprovalContext: {
+          host: "registry.npmjs.org",
+          protocol: "https",
+        },
+        additionalPermissions: { network: { enabled: true } },
+        proposedExecpolicyAmendment: null,
+        proposedNetworkPolicyAmendments: null,
+        availableDecisions: ["accept", "decline", "cancel"],
+      },
+      expiresAt: "2030-08-08T18:00:00Z",
+    };
+    const approval =
+      await firstDatabase.repository.recordAgentInteractionRequest(
+        approvalInput,
+      );
+    expect(
+      await firstDatabase.repository.recordAgentInteractionRequest(
+        approvalInput,
+      ),
+    ).toEqual(approval);
+    expect(
+      (
+        await firstDatabase.repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          chat.id,
+        )
+      )?.status,
+    ).toBe("waiting-for-approval");
+    expect(
+      agentInteractionRequestListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/agent-requests?chatId=${chat.id}&status=pending`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject([{ id: approval.id, status: "pending" }]);
+
+    expect(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/agent-requests/${approval.id}/respond`,
+          payload: {
+            idempotencyKey: "resolution-unavailable",
+            response: {
+              kind: "commandExecution",
+              decision: "acceptForSession",
+            },
+          },
+        })
+      ).statusCode,
+    ).toBe(409);
+
+    const resolution = {
+      idempotencyKey: "resolution-1",
+      response: {
+        kind: "commandExecution" as const,
+        decision: "decline" as const,
+      },
+    };
+    const resolvedApproval = agentInteractionRequestSchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/agent-requests/${approval.id}/respond`,
+          payload: resolution,
+        })
+      ).json(),
+    );
+    expect(resolvedApproval).toMatchObject({
+      status: "resolved",
+      response: { kind: "commandExecution", decision: "decline" },
+      resolvedByUserId: LOCAL_USER_ID,
+    });
+    expect(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/agent-requests/${approval.id}/respond`,
+          payload: resolution,
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/agent-requests/${approval.id}/respond`,
+          payload: { ...resolution, idempotencyKey: "resolution-2" },
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await firstDatabase.repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          chat.id,
+        )
+      )?.status,
+    ).toBe("running");
+    await firstDatabase.repository.setChatStatus(chat.id, "idle");
+
+    const expiringRequest =
+      await firstDatabase.repository.recordAgentInteractionRequest({
+        requestKey: "runtime-1:approval-expired",
+        projectId: project.id,
+        provenance: {
+          chatId: chat.id,
+          threadId: "thread-approval",
+          turnId: "turn-approval",
+          itemId: "item-input",
+          executionLaneId: null,
+          workflowRunId: null,
+          workflowNodeId: null,
+          workerId: "test-worker",
+        },
+        payload: {
+          kind: "userInput",
+          questions: [
+            {
+              id: "choice",
+              header: "Choice",
+              question: "Continue?",
+              isOther: false,
+              isSecret: false,
+              options: [
+                { label: "Yes", description: "Continue the operation." },
+              ],
+            },
+          ],
+          autoResolutionMs: 1,
+        },
+        expiresAt: "2020-01-01T00:00:00.000Z",
+      });
+    expect(
+      agentInteractionRequestSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/agent-requests/${expiringRequest.id}`,
+          })
+        ).json(),
+      ).status,
+    ).toBe("expired");
+    await firstDatabase.repository.setChatStatus(chat.id, "idle");
+
+    const secretRequest =
+      await firstDatabase.repository.recordAgentInteractionRequest({
+        requestKey: "runtime-1:approval-secret",
+        projectId: project.id,
+        provenance: {
+          chatId: chat.id,
+          threadId: "thread-approval",
+          turnId: "turn-approval",
+          itemId: "item-secret",
+          executionLaneId: null,
+          workflowRunId: null,
+          workflowNodeId: null,
+          workerId: "test-worker",
+        },
+        payload: {
+          kind: "userInput",
+          questions: [
+            {
+              id: "token",
+              header: "Token",
+              question: "Enter the temporary token",
+              isOther: false,
+              isSecret: true,
+              options: null,
+            },
+          ],
+          autoResolutionMs: null,
+        },
+        expiresAt: null,
+      });
+    expect(
+      agentInteractionRequestSchema.parse(
+        (
+          await firstApp.inject({
+            method: "POST",
+            url: `/api/agent-requests/${secretRequest.id}/respond`,
+            payload: {
+              idempotencyKey: "resolution-secret",
+              response: {
+                kind: "userInput",
+                answers: { token: { answers: ["do-not-persist"] } },
+              },
+            },
+          })
+        ).json(),
+      ).response,
+    ).toEqual({
+      kind: "userInput",
+      answers: { token: { answers: ["[redacted]"] } },
+    });
+    await firstDatabase.repository.setChatStatus(chat.id, "idle");
+
+    const interruptedRequest =
+      await firstDatabase.repository.recordAgentInteractionRequest({
+        requestKey: "runtime-1:approval-interrupted",
+        projectId: project.id,
+        provenance: {
+          chatId: chat.id,
+          threadId: "thread-approval",
+          turnId: "turn-approval",
+          itemId: "item-file",
+          executionLaneId: null,
+          workflowRunId: null,
+          workflowNodeId: null,
+          workerId: "test-worker",
+        },
+        payload: {
+          kind: "fileChange",
+          startedAtMs: Date.now(),
+          reason: "Write generated files",
+          grantRoot: project.source!.path,
+        },
+        expiresAt: null,
+      });
+    await firstDatabase.repository.resetInterruptedChatExecutions();
+    expect(
+      (
+        await firstDatabase.repository.getAgentInteractionRequest(
+          LOCAL_USER_ID,
+          interruptedRequest.id,
+        )
+      )?.status,
+    ).toBe("interrupted");
+    expect(
+      (
+        await firstDatabase.repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          chat.id,
+        )
+      )?.status,
+    ).toBe("failed");
+    await firstDatabase.repository.setChatStatus(chat.id, "idle");
+
     expect(
       skillListSchema.parse(
         (

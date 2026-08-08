@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   agentActivitySchema,
+  agentInteractionRequestSchema,
+  agentInteractionResolutionCreateSchema,
   agentWorktreeToolCallSchema,
   agentWorktreeToolResultSchema,
   codexAuthStatusSchema,
@@ -39,6 +41,72 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("validates durable structured agent interaction requests", () => {
+    const request = {
+      id: "request-1",
+      requestKey: "worker-1:runtime-1:42",
+      projectId: "project-1",
+      provenance: {
+        chatId: "chat-1",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "item-1",
+        executionLaneId: "lane-1",
+        workflowRunId: null,
+        workflowNodeId: null,
+        workerId: "worker-1",
+      },
+      payload: {
+        kind: "commandExecution" as const,
+        startedAtMs: 1_786_210_000_000,
+        approvalId: null,
+        environmentId: null,
+        reason: "Needs network access",
+        command: "pnpm install",
+        cwd: "/workspace/Cantrip",
+        networkApprovalContext: {
+          host: "registry.npmjs.org",
+          protocol: "https",
+        },
+        additionalPermissions: { network: { enabled: true } },
+        proposedExecpolicyAmendment: null,
+        proposedNetworkPolicyAmendments: null,
+        availableDecisions: ["accept", "decline", "cancel"],
+      },
+      status: "pending" as const,
+      response: null,
+      resolvedByUserId: null,
+      expiresAt: "2026-08-08T18:00:00.000Z",
+      resolvedAt: null,
+      createdAt: "2026-08-08T17:00:00.000Z",
+      updatedAt: "2026-08-08T17:00:00.000Z",
+    };
+
+    expect(agentInteractionRequestSchema.parse(request)).toEqual(request);
+    expect(
+      agentInteractionResolutionCreateSchema.parse({
+        idempotencyKey: "resolve-1",
+        response: {
+          kind: "commandExecution",
+          decision: "decline",
+        },
+      }),
+    ).toMatchObject({ response: { execpolicyAmendment: null } });
+    expect(() =>
+      agentInteractionRequestSchema.parse({
+        ...request,
+        status: "resolved",
+        response: { kind: "fileChange", decision: "decline" },
+      }),
+    ).toThrow(/Response kind must match request kind/u);
+    expect(() =>
+      agentInteractionRequestSchema.parse({
+        ...request,
+        status: "resolved",
+      }),
+    ).toThrow(/Resolved requests require response and resolution data/u);
+  });
+
   it("validates durable worktree and execution-lane summaries", () => {
     expect(
       projectWorktreeSummarySchema.parse({
