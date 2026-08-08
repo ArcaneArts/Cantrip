@@ -114,6 +114,14 @@ client render feedback. The app retains only the newest undecoded frame, so a
 slow decoder drops visual history instead of increasing control latency.
 Pointer input remains target-relative in the app protocol; the worker adds the
 selected monitor or window origin immediately before invoking native input.
+For a window target, the worker retains its native window identity and uses the
+in-process, cross-platform automation backend to activate, restore, and raise
+that window before actionable pointer, keyboard, or clipboard input. The input
+call also carries the same native window ID with strict focus enforcement.
+Activation failure rejects the input and surfaces an error instead of allowing
+a global event to land on whichever window currently overlaps the captured
+target. Portable background-window event injection is intentionally not used
+because operating systems and applications handle it inconsistently.
 
 The operating system remains the final authority. macOS requires Screen
 Recording and Accessibility grants for the worker process; Windows uses native

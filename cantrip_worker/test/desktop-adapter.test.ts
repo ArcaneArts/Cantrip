@@ -54,6 +54,7 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
       ],
     }));
     const client = {
+      activateWindow: vi.fn(async () => textResult('{"activated":true}')),
       click: vi.fn(async () => textResult()),
       close: vi.fn(async () => undefined),
       doubleClick: vi.fn(async () => textResult()),
@@ -170,9 +171,9 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
         new TextEncoder().encode(JSON.stringify(message)),
       );
     }
-    expect(client.mouseDown).toHaveBeenCalledWith(12, 20);
-    expect(client.mouseUp).toHaveBeenCalledWith(12, 20);
-    expect(client.type).toHaveBeenCalledWith("a");
+    expect(client.mouseDown).toHaveBeenCalledWith(12, 20, undefined, undefined);
+    expect(client.mouseUp).toHaveBeenCalledWith(12, 20, undefined, undefined);
+    expect(client.type).toHaveBeenCalledWith("a", undefined, undefined);
     expect(
       emissions.some(({ channel, payload }) => {
         if (channel !== "clipboard") return false;
@@ -189,12 +190,21 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
     expect(client.close).toHaveBeenCalledOnce();
   });
 
-  it("launches a missing saved application and switches to its window", async () => {
+  it("launches a saved application and focuses its window before input", async () => {
     let launched = false;
+    let focusFailure = false;
     const launchApplication = vi.fn(async () => {
       launched = true;
     });
+    const focusTarget = vi.fn(async () =>
+      textResult(
+        focusFailure
+          ? '{"activated":false,"reason":"activation_denied"}'
+          : '{"activated":true,"reason":null}',
+      ),
+    );
     const client = {
+      activateWindow: focusTarget,
       click: vi.fn(async () => textResult()),
       close: vi.fn(async () => undefined),
       doubleClick: vi.fn(async () => textResult()),
@@ -229,7 +239,7 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
         ? [
             {
               kind: "window" as const,
-              id: "window-7",
+              id: "7",
               application: "Code",
               title: "Cantrip",
               x: 100,
@@ -251,7 +261,7 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
           target: windowTarget
             ? {
                 kind: "window" as const,
-                id: "window-7",
+                id: "7",
                 application: "Code",
                 title: "Cantrip",
               }
@@ -325,6 +335,64 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
     ).toMatchObject({
       active: { kind: "window", application: "Code", title: "Cantrip" },
       requested: { kind: "window", application: "Code", title: "Cantrip" },
+    });
+
+    focusTarget.mockClear();
+    await session.handleFrame(
+      "attachment-window",
+      "control",
+      new TextEncoder().encode(
+        JSON.stringify({
+          type: "pointer",
+          event: "down",
+          x: 12,
+          y: 20,
+          button: "left",
+        }),
+      ),
+    );
+    expect(focusTarget).toHaveBeenCalledOnce();
+    expect(focusTarget).toHaveBeenCalledWith(7, 2_000);
+    expect(client.mouseDown).toHaveBeenCalledWith(112, 70, undefined, {
+      focusStrategy: "strict",
+      targetWindowId: 7,
+    });
+    expect(focusTarget.mock.invocationCallOrder[0]).toBeLessThan(
+      client.mouseDown.mock.invocationCallOrder[0]!,
+    );
+
+    focusFailure = true;
+    await expect(
+      session.handleFrame(
+        "attachment-window",
+        "control",
+        new TextEncoder().encode(
+          JSON.stringify({
+            type: "pointer",
+            event: "down",
+            x: 20,
+            y: 30,
+            button: "left",
+          }),
+        ),
+      ),
+    ).rejects.toThrow(
+      "input was not sent: The operating system refused window activation: activation denied.",
+    );
+    expect(client.mouseDown).toHaveBeenCalledTimes(1);
+    expect(
+      emissions
+        .map((payload) =>
+          remoteDesktopServerMessageSchema.parse(
+            JSON.parse(new TextDecoder().decode(payload)),
+          ),
+        )
+        .find(
+          (message) =>
+            message.type === "desktop-state" && message.status === "error",
+        ),
+    ).toMatchObject({
+      message: expect.stringContaining("input was not sent"),
     });
     session.close();
     await adapter.shutdown();
