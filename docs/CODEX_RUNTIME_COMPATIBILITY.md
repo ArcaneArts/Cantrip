@@ -40,6 +40,14 @@ require authentication. Cantrip's active App Server still uses a loopback-only
 WebSocket because the attachable Codex terminal depends on the remote endpoint;
 that transport is not exposed to the browser or network.
 
+The optional method inventory covers the native customization families Cantrip
+uses: collaboration modes, goals, hooks, skill discovery/configuration/extra
+roots, MCP inventory/OAuth/resource read/reload, plugin list/read/install/remove,
+external-agent detection/import history, and effective configuration reads.
+The probe deliberately sends invalid parameters, so discovering a mutation
+method cannot install a plugin, change a skill, import configuration, or start
+OAuth.
+
 ## Compatibility states
 
 - `compatible`: the version is in range, initialization validates, every core
@@ -58,6 +66,12 @@ Version strings are a safety boundary, not a capability substitute. Runtime
 code checks the negotiated method map and fails explicitly when a known method
 is unavailable. Experimental APIs are requested only when the initialization
 probe accepts that capability.
+
+Method existence is necessary but not sufficient for a customization control.
+Feature-backed controls also require the corresponding advertised feature to be
+enabled and not in the `deprecated` or `removed` stage. Read and mutation
+methods are tracked independently so a runtime can remain inspectable while a
+write control degrades to disabled.
 
 Permission profiles are additionally gated on experimental API negotiation and
 `permissionProfile/list`. When available, Cantrip pages the advertised profiles
