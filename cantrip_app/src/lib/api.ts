@@ -6,6 +6,7 @@ import {
   browserSummarySchema,
   agentThreadSyncSchema,
   chatListSchema,
+  chatAttachmentSummarySchema,
   chatGoalClearSchema,
   chatGoalCreateSchema,
   chatGoalResponseSchema,
@@ -67,6 +68,8 @@ import type {
   AgentInteractionRequestStatus,
   AgentInteractionResolutionCreate,
   ChatWorktreeUpdate,
+  ChatAttachmentKind,
+  ChatAttachmentSource,
   ChatGoalCreate,
   ChatGoalUpdate,
   ChatPlanAnswer,
@@ -931,10 +934,16 @@ export async function updateChatModel(chatId: string, modelId: string) {
   );
 }
 
-export async function startTurn(chatId: string, text: string, modelId: string) {
+export async function startTurn(
+  chatId: string,
+  text: string,
+  modelId: string,
+  attachmentIds: string[] = [],
+) {
   return chatPromptSubmitResultSchema.parse(
     await post(`/api/chats/${encodeURIComponent(chatId)}/turns`, {
       text,
+      attachmentIds,
       modelId,
       idempotencyKey: crypto.randomUUID(),
     }),
@@ -949,7 +958,7 @@ export async function getQueuedPrompts(chatId: string) {
 
 export async function updateQueuedPrompt(
   promptId: string,
-  input: { text?: string; frozen?: boolean },
+  input: { attachmentIds?: string[]; text?: string; frozen?: boolean },
 ) {
   return queuedPromptSchema.parse(
     await request(`/api/queued-prompts/${encodeURIComponent(promptId)}`, {
@@ -957,6 +966,50 @@ export async function updateQueuedPrompt(
       body: JSON.stringify(input),
     }),
   );
+}
+
+export async function uploadChatAttachment(
+  chatId: string,
+  file: File,
+  kind: ChatAttachmentKind,
+  source: ChatAttachmentSource,
+) {
+  const response = await fetch(
+    `${getActiveServerUrl()}/api/chats/${encodeURIComponent(chatId)}/attachments`,
+    {
+      method: "POST",
+      body: file,
+      credentials: "include",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/octet-stream",
+        "x-cantrip-attachment-kind": kind,
+        "x-cantrip-attachment-source": source,
+        "x-cantrip-file-name": encodeURIComponent(file.name),
+        "x-cantrip-mime-type": file.type || "application/octet-stream",
+      },
+    },
+  );
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    throw new CantripApiError(
+      body?.error ?? `Cantrip Server returned HTTP ${response.status}.`,
+      response.status,
+    );
+  }
+  return chatAttachmentSummarySchema.parse(await response.json());
+}
+
+export async function deleteChatAttachment(attachmentId: string) {
+  await request(`/api/attachments/${encodeURIComponent(attachmentId)}`, {
+    method: "DELETE",
+  });
+}
+
+export function chatAttachmentContentUrl(attachmentId: string): string {
+  return `${getActiveServerUrl()}/api/attachments/${encodeURIComponent(attachmentId)}/content`;
 }
 
 export async function deleteQueuedPrompt(promptId: string) {

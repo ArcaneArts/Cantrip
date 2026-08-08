@@ -19,6 +19,9 @@ import {
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   chatCompactAcceptedSchema,
+  chatAttachmentKindSchema,
+  chatAttachmentSourceSchema,
+  chatAttachmentSummarySchema,
   chatGoalClearSchema,
   chatGoalCreateSchema,
   chatGoalResponseSchema,
@@ -119,6 +122,8 @@ import {
   terminalUpdateSchema,
   userSettingsUpdateSchema,
   workerHeartbeatSchema,
+  workerAttachmentReadResultSchema,
+  workerAttachmentUploadResultSchema,
   workerListSchema,
   worktreeCreateResultSchema,
   worktreeInventorySchema,
@@ -212,6 +217,8 @@ function optionalToolString(
 }
 
 const ROUTE_FAILURE_COOLDOWN_MS = 60_000;
+const MAX_ATTACHMENT_BYTES = 25 * 1_024 * 1_024;
+const ATTACHMENT_CHUNK_BYTES = 256 * 1_024;
 const AGENT_INTERACTION_EXPIRY_SWEEP_MS = 1_000;
 const GOAL_RESUME_PROMPT =
   "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
@@ -269,6 +276,11 @@ function continuationPrompt(messages: ChatMessage[], prompt: string): string {
       const content = message.content
         .flatMap((item) => {
           if (item.type === "text") return [item.text];
+          if (item.type === "attachment") {
+            return [
+              `[attachment: ${item.attachment.fileName} (${item.attachment.mimeType})]`,
+            ];
+          }
           return [activityContinuationSummary(item.activity)];
         })
         .join("\n");
@@ -285,6 +297,11 @@ export async function buildApp({
   workerBridge,
 }: BuildAppOptions) {
   const app = Fastify({ logger });
+  app.addContentTypeParser(
+    "application/octet-stream",
+    { bodyLimit: MAX_ATTACHMENT_BYTES, parseAs: "buffer" },
+    (_request, body, done) => done(null, body),
+  );
   const bridge = workerBridge ?? new WorkerBridge();
   const surfaceRelay = new RemoteSurfaceRelay(bridge);
   const repository = database.repository;
@@ -953,6 +970,24 @@ export async function buildApp({
     );
   };
 
+  const resolvePromptAttachments = async (
+    context: ChatExecutionContext,
+    attachmentIds: string[],
+  ) => {
+    const attachments = await repository.getChatAttachments(
+      LOCAL_USER_ID,
+      context.chatId,
+      attachmentIds,
+    );
+    if (attachments.length !== attachmentIds.length) {
+      throw new Error("One or more attachments are unavailable.");
+    }
+    if (attachments.some(({ workerId }) => workerId !== context.workerId)) {
+      throw new Error("Attachments belong to another worker.");
+    }
+    return attachments;
+  };
+
   const dispatchNextQueuedPrompt = async (chatId: string): Promise<void> => {
     if (dispatchingChats.has(chatId)) {
       pendingQueueDispatches.add(chatId);
@@ -987,6 +1022,7 @@ export async function buildApp({
       }
       await beginTurn(context, {
         text: prompt.text,
+        attachmentIds: prompt.attachments.map(({ id }) => id),
         modelId: prompt.modelId,
         idempotencyKey: `queue:${prompt.id}`,
       });
@@ -1003,7 +1039,9 @@ export async function buildApp({
 
   async function beginTurn(
     context: ChatExecutionContext,
-    input: ChatTurnCreate,
+    input: Omit<ChatTurnCreate, "attachmentIds"> & {
+      attachmentIds?: string[];
+    },
     options: {
       acquiringActor?: "agent" | "user";
       messageRole?: "system" | "user";
@@ -1018,6 +1056,10 @@ export async function buildApp({
     const modelId = await resolveModelId(context, input.modelId);
     const runtimes =
       options.runtimes ?? (await availableModelRuntimes(context, modelId));
+    const attachments = await resolvePromptAttachments(
+      context,
+      input.attachmentIds ?? [],
+    );
     const execution = await repository.startChatExecutionLane(
       LOCAL_USER_ID,
       context.chatId,
@@ -1044,7 +1086,15 @@ export async function buildApp({
         execution.chatId,
         {
           role: options.messageRole ?? "user",
-          content: [{ type: "text", text: input.text }],
+          content: [
+            ...(input.text
+              ? [{ type: "text" as const, text: input.text }]
+              : []),
+            ...attachments.map((attachment) => ({
+              type: "attachment" as const,
+              attachment: chatAttachmentSummarySchema.parse(attachment),
+            })),
+          ],
           idempotencyKey: input.idempotencyKey,
         },
         attribution,
@@ -1076,12 +1126,13 @@ export async function buildApp({
           const canResume = runtime.routeId === execution.modelRouteId;
           const threadId = canResume ? execution.threadId : null;
           const finalAgentTurns = new Set<string>();
+          const requestedPrompt =
+            options.workerPrompt ??
+            (input.text ||
+              "Review the attached files and respond to the user.");
           const workerPrompt = threadId
-            ? (options.workerPrompt ?? input.text)
-            : continuationPrompt(
-                priorMessages,
-                options.workerPrompt ?? input.text,
-              );
+            ? requestedPrompt
+            : continuationPrompt(priorMessages, requestedPrompt);
           await repository.setMessageModelRoute(
             userMessage.id,
             modelId,
@@ -1110,6 +1161,13 @@ export async function buildApp({
                 worktreeMode: execution.worktreeMode,
                 worktreePolicy: execution.worktreePolicy,
                 prompt: workerPrompt,
+                attachments: attachments.map((attachment) => ({
+                  id: attachment.id,
+                  fileName: attachment.fileName,
+                  mimeType: attachment.mimeType,
+                  sizeBytes: attachment.sizeBytes,
+                  kind: attachment.kind,
+                })),
                 skillNames: mentionedSkillNames(input.text),
                 model: runtime.model,
                 provider: runtime.provider,
@@ -4739,6 +4797,197 @@ export async function buildApp({
     },
   );
 
+  app.post<{ Body: Buffer; Params: { chatId: string } }>(
+    "/api/chats/:chatId/attachments",
+    async (request, reply) => {
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) return reply.code(404).send({ error: "Chat not found." });
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      const encodedFileName = request.headers["x-cantrip-file-name"];
+      let fileName: string;
+      try {
+        fileName = decodeURIComponent(
+          typeof encodedFileName === "string" ? encodedFileName : "",
+        ).trim();
+      } catch {
+        fileName = "";
+      }
+      const mimeHeader = request.headers["x-cantrip-mime-type"];
+      const mimeType =
+        typeof mimeHeader === "string" &&
+        /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/u.test(mimeHeader)
+          ? mimeHeader
+          : "application/octet-stream";
+      const kind = chatAttachmentKindSchema.safeParse(
+        request.headers["x-cantrip-attachment-kind"],
+      );
+      const source = chatAttachmentSourceSchema.safeParse(
+        request.headers["x-cantrip-attachment-source"],
+      );
+      if (
+        !fileName ||
+        fileName.length > 200 ||
+        !kind.success ||
+        !source.success ||
+        !Buffer.isBuffer(request.body) ||
+        request.body.byteLength > MAX_ATTACHMENT_BYTES
+      ) {
+        return reply.code(400).send({ error: "Invalid attachment upload." });
+      }
+
+      const attachmentId = randomUUID();
+      try {
+        await bridge.request(context.workerId, {
+          type: "attachment.upload.begin",
+          chatId: context.chatId,
+          attachmentId,
+          fileName,
+          sizeBytes: request.body.byteLength,
+        });
+        for (
+          let offset = 0, chunkIndex = 0;
+          offset < request.body.byteLength;
+          offset += ATTACHMENT_CHUNK_BYTES, chunkIndex += 1
+        ) {
+          await bridge.request(context.workerId, {
+            type: "attachment.upload.chunk",
+            chatId: context.chatId,
+            attachmentId,
+            chunkIndex,
+            data: request.body
+              .subarray(offset, offset + ATTACHMENT_CHUNK_BYTES)
+              .toString("base64"),
+          });
+        }
+        const uploaded = workerAttachmentUploadResultSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "attachment.upload.complete",
+            chatId: context.chatId,
+            attachmentId,
+          }),
+        );
+        const previewText =
+          kind.data === "text"
+            ? request.body.toString("utf8", 0, 16_000).slice(0, 8_000)
+            : null;
+        const attachment = await repository.createChatAttachment(
+          LOCAL_USER_ID,
+          context.chatId,
+          {
+            id: attachmentId,
+            workerId: context.workerId,
+            fileName,
+            mimeType,
+            sizeBytes: uploaded.sizeBytes,
+            kind: kind.data,
+            source: source.data,
+            previewText,
+            sha256: uploaded.sha256,
+          },
+        );
+        if (!attachment) throw new Error("Chat not found.");
+        return reply
+          .code(201)
+          .send(chatAttachmentSummarySchema.parse(attachment));
+      } catch (error) {
+        try {
+          await bridge.request(context.workerId, {
+            type: "attachment.delete",
+            chatId: context.chatId,
+            attachmentId,
+          });
+        } catch {
+          // Cleanup is best effort if the worker disconnected mid-upload.
+        }
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{ Params: { attachmentId: string } }>(
+    "/api/attachments/:attachmentId/content",
+    async (request, reply) => {
+      const attachment = await repository.getChatAttachment(
+        LOCAL_USER_ID,
+        request.params.attachmentId,
+      );
+      if (!attachment) {
+        return reply.code(404).send({ error: "Attachment not found." });
+      }
+      if (!bridge.isConnected(attachment.workerId)) {
+        return reply.code(503).send({ error: "Attachment worker is offline." });
+      }
+      try {
+        const chunks: Buffer[] = [];
+        let offset = 0;
+        let expectedSize = attachment.sizeBytes;
+        while (offset < expectedSize || (expectedSize === 0 && offset === 0)) {
+          const chunk = workerAttachmentReadResultSchema.parse(
+            await bridge.request(attachment.workerId, {
+              type: "attachment.read",
+              chatId: attachment.chatId,
+              attachmentId: attachment.id,
+              fileName: attachment.fileName,
+              offset,
+              limit: ATTACHMENT_CHUNK_BYTES,
+            }),
+          );
+          expectedSize = chunk.sizeBytes;
+          const bytes = Buffer.from(chunk.data, "base64");
+          chunks.push(bytes);
+          offset += bytes.byteLength;
+          if (chunk.eof) break;
+          if (bytes.byteLength === 0) {
+            throw new Error("Attachment worker returned an empty chunk.");
+          }
+        }
+        const content = Buffer.concat(chunks);
+        if (content.byteLength !== expectedSize) {
+          throw new Error("Attachment content was truncated.");
+        }
+        return reply
+          .header("cache-control", "private, max-age=60")
+          .header(
+            "content-disposition",
+            `inline; filename*=UTF-8''${encodeURIComponent(attachment.fileName)}`,
+          )
+          .type(attachment.mimeType)
+          .send(content);
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.delete<{ Params: { attachmentId: string } }>(
+    "/api/attachments/:attachmentId",
+    async (request, reply) => {
+      const attachment = await repository.getChatAttachment(
+        LOCAL_USER_ID,
+        request.params.attachmentId,
+      );
+      if (!attachment) {
+        return reply.code(404).send({ error: "Attachment not found." });
+      }
+      if (bridge.isConnected(attachment.workerId)) {
+        await bridge.request(attachment.workerId, {
+          type: "attachment.delete",
+          chatId: attachment.chatId,
+          attachmentId: attachment.id,
+        });
+      }
+      await repository.deleteChatAttachment(LOCAL_USER_ID, attachment.id);
+      return reply.code(204).send();
+    },
+  );
+
   app.patch<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/model",
     async (request, reply) => {
@@ -4883,8 +5132,13 @@ export async function buildApp({
       );
       if (!context) return reply.code(404).send({ error: "Chat not found." });
       let modelId: string;
+      let attachments: Awaited<ReturnType<typeof resolvePromptAttachments>>;
       try {
         modelId = await resolveModelId(context, input.data.modelId);
+        attachments = await resolvePromptAttachments(
+          context,
+          input.data.attachmentIds,
+        );
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
       }
@@ -4893,6 +5147,9 @@ export async function buildApp({
         context.chatId,
         input.data,
         modelId,
+        attachments.map((attachment) =>
+          chatAttachmentSummarySchema.parse(attachment),
+        ),
       );
       if (!prompt) return reply.code(404).send({ error: "Chat not found." });
       if (!prompt.frozen) void dispatchNextQueuedPrompt(context.chatId);
@@ -4925,10 +5182,45 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
+      const current = await repository.getQueuedPrompt(
+        LOCAL_USER_ID,
+        request.params.promptId,
+      );
+      if (!current) {
+        return reply.code(404).send({ error: "Queued prompt not found." });
+      }
+      let attachments:
+        Awaited<ReturnType<typeof resolvePromptAttachments>> | undefined;
+      if (input.data.attachmentIds !== undefined) {
+        const context = await repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          current.chatId,
+        );
+        if (!context) return reply.code(404).send({ error: "Chat not found." });
+        try {
+          attachments = await resolvePromptAttachments(
+            context,
+            input.data.attachmentIds,
+          );
+        } catch (error) {
+          return reply.code(409).send({ error: errorMessage(error) });
+        }
+      }
+      if (
+        !(input.data.text ?? current.text) &&
+        (attachments ?? current.attachments).length === 0
+      ) {
+        return reply
+          .code(400)
+          .send({ error: "A prompt needs text or at least one attachment." });
+      }
       const prompt = await repository.updateQueuedPrompt(
         LOCAL_USER_ID,
         request.params.promptId,
         input.data,
+        attachments?.map((attachment) =>
+          chatAttachmentSummarySchema.parse(attachment),
+        ),
       );
       if (!prompt) {
         return reply.code(404).send({ error: "Queued prompt not found." });
@@ -4980,11 +5272,24 @@ export async function buildApp({
           }
           const runtime = await runtimeForContext(context);
           if (!runtime) throw new Error("Selected model was not found.");
+          const attachments = await resolvePromptAttachments(
+            context,
+            queued.attachments.map(({ id }) => id),
+          );
           await bridge.request(context.workerId, {
             type: "chat.steer",
             chatId: context.chatId,
             threadId: context.threadId,
-            prompt: queued.text,
+            prompt:
+              queued.text ||
+              "Review the attached files and respond to the user.",
+            attachments: attachments.map((attachment) => ({
+              id: attachment.id,
+              fileName: attachment.fileName,
+              mimeType: attachment.mimeType,
+              sizeBytes: attachment.sizeBytes,
+              kind: attachment.kind,
+            })),
             model: runtime.model,
             provider: runtime.provider,
           });
@@ -4993,7 +5298,15 @@ export async function buildApp({
             context.chatId,
             {
               role: "user",
-              content: [{ type: "text", text: queued.text }],
+              content: [
+                ...(queued.text
+                  ? [{ type: "text" as const, text: queued.text }]
+                  : []),
+                ...queued.attachments.map((attachment) => ({
+                  type: "attachment" as const,
+                  attachment,
+                })),
+              ],
               idempotencyKey: `steer:${queued.id}`,
             },
             context.executionLaneId
@@ -5020,6 +5333,7 @@ export async function buildApp({
           }
           message = await beginTurn(context, {
             text: queued.text,
+            attachmentIds: queued.attachments.map(({ id }) => id),
             modelId: queued.modelId,
             idempotencyKey: `queue:${queued.id}`,
           });
@@ -5063,8 +5377,13 @@ export async function buildApp({
       }
       if (context.automationPaused || chatIsExecuting(context.status)) {
         let modelId: string;
+        let attachments: Awaited<ReturnType<typeof resolvePromptAttachments>>;
         try {
           modelId = await resolveModelId(context, input.data.modelId);
+          attachments = await resolvePromptAttachments(
+            context,
+            input.data.attachmentIds,
+          );
         } catch (error) {
           return reply.code(409).send({ error: errorMessage(error) });
         }
@@ -5073,6 +5392,9 @@ export async function buildApp({
           context.chatId,
           { ...input.data, modelId, frozen: false, worktreeId: null },
           modelId,
+          attachments.map((attachment) =>
+            chatAttachmentSummarySchema.parse(attachment),
+          ),
         );
         return prompt
           ? reply.code(202).send(

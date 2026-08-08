@@ -13,6 +13,7 @@ import type {
   CodexSkill,
   CompactAgentThreadOptions,
   GoalRuntimeOptions,
+  RuntimeChatAttachment,
   RunAgentTurnOptions,
 } from "./app-server.js";
 
@@ -102,6 +103,9 @@ export interface CodexRuntime {
     chatId: string,
     threadId: string | null,
     prompt: string,
+    attachments?: RuntimeChatAttachment[],
+    model?: RunAgentTurnOptions["model"],
+    provider?: RunAgentTurnOptions["provider"],
   ): Promise<{ steered: true; turnId: string }>;
   diagnostics(): CodexRuntimeDiagnostic[];
   close(): void;

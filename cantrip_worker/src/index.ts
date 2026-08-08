@@ -3,6 +3,7 @@ import path from "node:path";
 
 import type { WorkerCommand, WorkerEvent } from "@cantrip/protocol";
 
+import { AttachmentStore } from "./attachment-store.js";
 import { codexAccountHome } from "./codex/account-home.js";
 import { CodexAppServer, codexRuntimeId } from "./codex/app-server.js";
 import { CodexAuthClient } from "./codex/auth-client.js";
@@ -50,6 +51,7 @@ async function start(): Promise<void> {
   let commandChannelStarted = false;
   let lastConnectionError: string | null = null;
   let stopping = false;
+  const attachments = new AttachmentStore(config.dataDirectory);
   const github = new GithubClient(config.dataDirectory);
   const codexAuthClients = new Map<string, CodexAuthClient>();
   const codexRuntimes = new Map<string, CodexRuntime>();
@@ -197,6 +199,41 @@ async function start(): Promise<void> {
           model: command.model,
           provider: command.provider,
         });
+      case "attachment.upload.begin":
+        await attachments.begin(
+          command.chatId,
+          command.attachmentId,
+          command.fileName,
+          command.sizeBytes,
+        );
+        return { accepted: true };
+      case "attachment.upload.chunk":
+        await attachments.append(
+          command.chatId,
+          command.attachmentId,
+          command.chunkIndex,
+          Buffer.from(command.data, "base64"),
+        );
+        return { accepted: true };
+      case "attachment.upload.complete":
+        return attachments.complete(command.chatId, command.attachmentId);
+      case "attachment.read": {
+        const result = await attachments.read(
+          command.chatId,
+          command.attachmentId,
+          command.fileName,
+          command.offset,
+          command.limit,
+        );
+        return {
+          data: Buffer.from(result.bytes).toString("base64"),
+          eof: result.eof,
+          sizeBytes: result.sizeBytes,
+        };
+      }
+      case "attachment.delete":
+        await attachments.remove(command.chatId, command.attachmentId);
+        return { accepted: true };
       case "terminal.open":
         if (command.launch.type === "codex") {
           const runtime = runtimeFor(command.launch);
@@ -274,6 +311,14 @@ async function start(): Promise<void> {
         runtime.setChatPaused(command.chatId, pausedChats.has(command.chatId));
         return runtime.runTurn({
           automationPaused: pausedChats.has(command.chatId),
+          attachments: command.attachments.map((attachment) => ({
+            ...attachment,
+            path: attachments.resolve(
+              command.chatId,
+              attachment.id,
+              attachment.fileName,
+            ),
+          })),
           chatId: command.chatId,
           clientMessageId: command.clientMessageId,
           cwd: command.cwd,
@@ -442,6 +487,16 @@ async function start(): Promise<void> {
           command.chatId,
           command.threadId,
           command.prompt,
+          command.attachments.map((attachment) => ({
+            ...attachment,
+            path: attachments.resolve(
+              command.chatId,
+              attachment.id,
+              attachment.fileName,
+            ),
+          })),
+          command.model,
+          command.provider,
         );
       case "chat.sync":
         return runtimeFor(command).syncThread({

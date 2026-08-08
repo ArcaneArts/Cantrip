@@ -1118,6 +1118,32 @@ export const terminalOpenResultSchema = z.discriminatedUnion("status", [
 
 export const chatMessageRoleSchema = z.enum(["user", "assistant", "system"]);
 export const agentMessagePhaseSchema = z.enum(["commentary", "final_answer"]);
+export const chatAttachmentKindSchema = z.enum([
+  "audio",
+  "file",
+  "image",
+  "text",
+]);
+export const chatAttachmentSourceSchema = z.enum(["file", "paste"]);
+export const chatAttachmentSummarySchema = z.object({
+  id: z.string().min(1),
+  chatId: z.string().min(1),
+  fileName: z.string().min(1).max(200),
+  mimeType: z.string().min(1).max(200),
+  sizeBytes: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(25 * 1_024 * 1_024),
+  kind: chatAttachmentKindSchema,
+  source: chatAttachmentSourceSchema,
+  status: z.enum(["ready", "failed"]),
+  previewText: z.string().max(8_000).nullable(),
+  createdAt: z.string().datetime(),
+});
+export const chatAttachmentListSchema = z
+  .array(chatAttachmentSummarySchema)
+  .max(20);
 export const agentActivityStatusSchema = z.enum([
   "running",
   "completed",
@@ -1301,6 +1327,10 @@ export const chatMessageContentSchema = z.array(
     z.object({
       type: z.literal("activity"),
       activity: agentActivitySchema,
+    }),
+    z.object({
+      type: z.literal("attachment"),
+      attachment: chatAttachmentSummarySchema,
     }),
   ]),
 );
@@ -1664,16 +1694,23 @@ export const agentWorktreeToolResultSchema = z.object({
 
 export const chatMessageListSchema = z.array(chatMessageSchema);
 
-export const chatTurnCreateSchema = z.object({
-  text: z.string().trim().min(1).max(100_000),
-  idempotencyKey: z.string().min(1).max(200),
-  modelId: z.string().min(1).optional(),
-});
+export const chatTurnCreateSchema = z
+  .object({
+    text: z.string().trim().max(100_000).default(""),
+    attachmentIds: z.array(z.string().min(1)).max(20).default([]),
+    idempotencyKey: z.string().min(1).max(200),
+    modelId: z.string().min(1).optional(),
+  })
+  .refine(
+    ({ attachmentIds, text }) => text.length > 0 || attachmentIds.length > 0,
+    { message: "A prompt needs text or at least one attachment." },
+  );
 
 export const queuedPromptSchema = z.object({
   id: z.string().min(1),
   chatId: z.string().min(1),
-  text: z.string().trim().min(1).max(100_000),
+  text: z.string().trim().max(100_000),
+  attachments: chatAttachmentListSchema.default([]),
   modelId: z.string().min(1),
   worktreeId: z.string().min(1).nullable(),
   position: z.number().int().nonnegative(),
@@ -1691,12 +1728,17 @@ export const queuedPromptCreateSchema = chatTurnCreateSchema.extend({
 
 export const queuedPromptUpdateSchema = z
   .object({
-    text: z.string().trim().min(1).max(100_000).optional(),
+    text: z.string().trim().max(100_000).optional(),
+    attachmentIds: z.array(z.string().min(1)).max(20).optional(),
     frozen: z.boolean().optional(),
   })
-  .refine((value) => value.text !== undefined || value.frozen !== undefined, {
-    message: "At least one queued prompt field is required.",
-  });
+  .refine(
+    (value) =>
+      value.text !== undefined ||
+      value.attachmentIds !== undefined ||
+      value.frozen !== undefined,
+    { message: "At least one queued prompt field is required." },
+  );
 
 export const queuedPromptOrderSchema = z.object({
   ids: z.array(z.string().min(1)).max(1_000),
@@ -2083,6 +2125,26 @@ const workerRuntimeProviderSchema = z.object({
   apiKey: z.string().min(1).nullable(),
 });
 
+export const workerChatAttachmentSchema = z.object({
+  id: z.string().min(1).max(200),
+  fileName: chatAttachmentSummarySchema.shape.fileName,
+  mimeType: chatAttachmentSummarySchema.shape.mimeType,
+  sizeBytes: chatAttachmentSummarySchema.shape.sizeBytes,
+  kind: chatAttachmentKindSchema,
+});
+
+export const workerAttachmentUploadResultSchema = z.object({
+  path: z.string().min(1),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/u),
+  sizeBytes: chatAttachmentSummarySchema.shape.sizeBytes,
+});
+
+export const workerAttachmentReadResultSchema = z.object({
+  data: z.string().max(400_000),
+  eof: z.boolean(),
+  sizeBytes: chatAttachmentSummarySchema.shape.sizeBytes,
+});
+
 export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("codex.auth.status"),
@@ -2219,6 +2281,42 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     provider: workerRuntimeProviderSchema,
   }),
   z.object({
+    type: z.literal("attachment.upload.begin"),
+    chatId: z.string().min(1).max(200),
+    attachmentId: z.string().min(1).max(200),
+    fileName: chatAttachmentSummarySchema.shape.fileName,
+    sizeBytes: chatAttachmentSummarySchema.shape.sizeBytes,
+  }),
+  z.object({
+    type: z.literal("attachment.upload.chunk"),
+    chatId: z.string().min(1).max(200),
+    attachmentId: z.string().min(1).max(200),
+    chunkIndex: z.number().int().nonnegative(),
+    data: z.string().max(400_000),
+  }),
+  z.object({
+    type: z.literal("attachment.upload.complete"),
+    chatId: z.string().min(1).max(200),
+    attachmentId: z.string().min(1).max(200),
+  }),
+  z.object({
+    type: z.literal("attachment.read"),
+    chatId: z.string().min(1).max(200),
+    attachmentId: z.string().min(1).max(200),
+    fileName: chatAttachmentSummarySchema.shape.fileName,
+    offset: z.number().int().nonnegative(),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(256 * 1_024),
+  }),
+  z.object({
+    type: z.literal("attachment.delete"),
+    chatId: z.string().min(1).max(200),
+    attachmentId: z.string().min(1).max(200),
+  }),
+  z.object({
     type: z.literal("terminal.open"),
     terminalId: z.string().min(1),
     attachmentId: z.string().min(1),
@@ -2298,6 +2396,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     worktreePolicy: worktreePolicySchema,
     threadId: z.string().min(1).nullable(),
     prompt: z.string().min(1),
+    attachments: z.array(workerChatAttachmentSchema).max(20).default([]),
     skillNames: z.array(z.string().min(1)).max(64).default([]),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
@@ -2409,6 +2508,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     chatId: z.string().min(1),
     threadId: z.string().min(1).nullable(),
     prompt: z.string().trim().min(1).max(100_000),
+    attachments: z.array(workerChatAttachmentSchema).max(20).default([]),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
   }),
@@ -2679,6 +2779,9 @@ export type CodexEventCorrelation = z.infer<typeof codexEventCorrelationSchema>;
 export type ChatMessageContent = z.infer<typeof chatMessageContentSchema>;
 export type ChatMessageCreate = z.infer<typeof chatMessageCreateSchema>;
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
+export type ChatAttachmentKind = z.infer<typeof chatAttachmentKindSchema>;
+export type ChatAttachmentSource = z.infer<typeof chatAttachmentSourceSchema>;
+export type ChatAttachmentSummary = z.infer<typeof chatAttachmentSummarySchema>;
 export type ChatExecutionLaneActor = z.infer<
   typeof chatExecutionLaneActorSchema
 >;
@@ -2761,6 +2864,13 @@ export type NormalizedAgentMessage = z.infer<
 >;
 export type AgentThreadSync = z.infer<typeof agentThreadSyncSchema>;
 export type AgentThreadSyncItem = z.infer<typeof agentThreadSyncItemSchema>;
+export type WorkerChatAttachment = z.infer<typeof workerChatAttachmentSchema>;
+export type WorkerAttachmentUploadResult = z.infer<
+  typeof workerAttachmentUploadResultSchema
+>;
+export type WorkerAttachmentReadResult = z.infer<
+  typeof workerAttachmentReadResultSchema
+>;
 export type WorkerCommand = z.infer<typeof workerCommandSchema>;
 export type WorkerEvent = z.infer<typeof workerEventSchema>;
 export type WorkerRequestEnvelope = z.infer<typeof workerRequestEnvelopeSchema>;

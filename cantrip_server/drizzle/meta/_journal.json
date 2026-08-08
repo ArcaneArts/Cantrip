@@ -183,6 +183,13 @@
       "when": 1786214252003,
       "tag": "0025_chat_permission_profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1786217770718,
+      "tag": "0026_green_khan",
+      "breakpoints": true
     }
   ]
 }
