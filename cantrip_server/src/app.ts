@@ -19,9 +19,19 @@ import {
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   codexCustomizationInventorySchema,
+  codexExternalImportApplySchema,
   codexExternalImportPreviewSchema,
+  codexExternalImportStatusSchema,
+  codexMcpOauthStartResultSchema,
+  codexMcpOauthStartSchema,
+  codexMcpOauthStatusSchema,
+  codexMcpReloadResultSchema,
   codexMcpResourceReadRequestSchema,
   codexMcpResourceReadSchema,
+  codexSkillConfigResultSchema,
+  codexSkillConfigUpdateSchema,
+  codexSkillRootsResultSchema,
+  codexSkillRootsUpdateSchema,
   chatCompactAcceptedSchema,
   chatAttachmentKindSchema,
   chatAttachmentSourceSchema,
@@ -4943,6 +4953,270 @@ export async function buildApp({
           ...input.data,
         });
         return reply.send(codexMcpResourceReadSchema.parse(resource));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.patch<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/customizations/skill",
+    async (request, reply) => {
+      const input = codexSkillConfigUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) return reply.code(404).send({ error: "Chat not found." });
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const runtime = await runtimeForContext(context);
+        if (!runtime) {
+          return reply
+            .code(409)
+            .send({ error: "Choose a model before configuring skills." });
+        }
+        const result = await bridge.request(context.workerId, {
+          type: "customization.skill.configure",
+          cwd: context.cwd,
+          ...input.data,
+          model: runtime.model,
+          provider: runtime.provider,
+        });
+        return reply.send(codexSkillConfigResultSchema.parse(result));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.put<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/customizations/skill-roots",
+    async (request, reply) => {
+      const input = codexSkillRootsUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) return reply.code(404).send({ error: "Chat not found." });
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const runtime = await runtimeForContext(context);
+        if (!runtime) {
+          return reply
+            .code(409)
+            .send({ error: "Choose a model before configuring skill roots." });
+        }
+        const result = await bridge.request(context.workerId, {
+          type: "customization.skill-roots.set",
+          cwd: context.cwd,
+          roots: input.data.roots,
+          model: runtime.model,
+          provider: runtime.provider,
+        });
+        return reply.send(codexSkillRootsResultSchema.parse(result));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/customizations/mcp-oauth",
+    async (request, reply) => {
+      const input = codexMcpOauthStartSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) return reply.code(404).send({ error: "Chat not found." });
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const runtime = await runtimeForContext(context);
+        if (!runtime) {
+          return reply
+            .code(409)
+            .send({ error: "Choose a model before authorizing MCP servers." });
+        }
+        const result = await bridge.request(context.workerId, {
+          type: "customization.mcp.oauth.start",
+          cwd: context.cwd,
+          server: input.data.server,
+          model: runtime.model,
+          provider: runtime.provider,
+        });
+        return reply.send(codexMcpOauthStartResultSchema.parse(result));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { chatId: string };
+    Querystring: { server?: string };
+  }>(
+    "/api/chats/:chatId/customizations/mcp-oauth/status",
+    async (request, reply) => {
+      const input = codexMcpOauthStartSchema.safeParse(request.query);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) return reply.code(404).send({ error: "Chat not found." });
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const runtime = await runtimeForContext(context);
+        if (!runtime) {
+          return reply
+            .code(409)
+            .send({ error: "Choose a model before checking MCP OAuth." });
+        }
+        const result = await bridge.request(context.workerId, {
+          type: "customization.mcp.oauth.status",
+          cwd: context.cwd,
+          server: input.data.server,
+          model: runtime.model,
+          provider: runtime.provider,
+        });
+        return reply.send(codexMcpOauthStatusSchema.parse(result));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/customizations/mcp-reload",
+    async (request, reply) => {
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) return reply.code(404).send({ error: "Chat not found." });
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const runtime = await runtimeForContext(context);
+        if (!runtime) {
+          return reply
+            .code(409)
+            .send({ error: "Choose a model before reloading MCP servers." });
+        }
+        const result = await bridge.request(context.workerId, {
+          type: "customization.mcp.reload",
+          cwd: context.cwd,
+          model: runtime.model,
+          provider: runtime.provider,
+        });
+        return reply.send(codexMcpReloadResultSchema.parse(result));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/customizations/external-import",
+    async (request, reply) => {
+      const input = codexExternalImportApplySchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) return reply.code(404).send({ error: "Chat not found." });
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const runtime = await runtimeForContext(context);
+        if (!runtime) {
+          return reply.code(409).send({
+            error: "Choose a model before importing external configuration.",
+          });
+        }
+        const result = await bridge.request(context.workerId, {
+          type: "customization.external.apply",
+          cwd: context.cwd,
+          itemIds: input.data.itemIds,
+          model: runtime.model,
+          provider: runtime.provider,
+        });
+        return reply
+          .code(202)
+          .send(codexExternalImportStatusSchema.parse(result));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { chatId: string };
+    Querystring: { importId?: string };
+  }>(
+    "/api/chats/:chatId/customizations/external-import/status",
+    async (request, reply) => {
+      const importId = codexExternalImportStatusSchema.shape.importId.safeParse(
+        request.query.importId,
+      );
+      if (!importId.success) {
+        return reply.code(400).send(invalidBody(importId.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) return reply.code(404).send({ error: "Chat not found." });
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const runtime = await runtimeForContext(context);
+        if (!runtime) {
+          return reply.code(409).send({
+            error: "Choose a model before checking an external import.",
+          });
+        }
+        const result = await bridge.request(context.workerId, {
+          type: "customization.external.status",
+          cwd: context.cwd,
+          importId: importId.data,
+          model: runtime.model,
+          provider: runtime.provider,
+        });
+        return reply.send(codexExternalImportStatusSchema.parse(result));
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
         return reply.code(status).send({ error: errorMessage(error) });

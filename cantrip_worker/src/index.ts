@@ -216,6 +216,45 @@ async function start(): Promise<void> {
           server: command.server,
           uri: command.uri,
         });
+      case "customization.skill.configure":
+        return runtimeFor(command).configureSkill({
+          cwd: command.cwd,
+          model: command.model,
+          provider: command.provider,
+          path: command.path,
+          enabled: command.enabled,
+        });
+      case "customization.skill-roots.set":
+        return runtimeFor(command).setSkillRoots({
+          cwd: command.cwd,
+          model: command.model,
+          provider: command.provider,
+          roots: command.roots,
+        });
+      case "customization.mcp.oauth.start":
+        return runtimeFor(command).startMcpOauth({
+          cwd: command.cwd,
+          model: command.model,
+          provider: command.provider,
+          server: command.server,
+        });
+      case "customization.mcp.oauth.status":
+        return runtimeFor(command).mcpOauthStatus(command.server);
+      case "customization.mcp.reload":
+        return runtimeFor(command).reloadMcpServers({
+          cwd: command.cwd,
+          model: command.model,
+          provider: command.provider,
+        });
+      case "customization.external.apply":
+        return runtimeFor(command).applyExternalAgentConfig({
+          cwd: command.cwd,
+          model: command.model,
+          provider: command.provider,
+          itemIds: command.itemIds,
+        });
+      case "customization.external.status":
+        return runtimeFor(command).externalImportStatus(command.importId);
       case "permission-profiles.list":
         return runtimeFor(command).listPermissionProfiles({
           cwd: command.cwd,

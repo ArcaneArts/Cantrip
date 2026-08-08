@@ -1,17 +1,29 @@
 import { createHash } from "node:crypto";
+import { realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
 import {
   codexCustomizationCapabilitiesSchema,
   codexCustomizationInventorySchema,
+  codexExternalImportPreviewItemSchema,
+  codexExternalImportStatusSchema,
   codexExternalImportPreviewSchema,
+  codexMcpOauthStartResultSchema,
+  codexMcpOauthStatusSchema,
   codexMcpServerSchema,
   codexMcpResourceReadSchema,
+  codexSkillConfigResultSchema,
+  codexSkillRootsResultSchema,
   type CodexCustomizationCapabilities,
   type CodexCustomizationInventory,
   type CodexExternalImportPreview,
+  type CodexExternalImportStatus,
+  type CodexMcpOauthStartResult,
+  type CodexMcpOauthStatus,
   type CodexMcpResourceRead,
   type CodexRuntimeReport,
+  type CodexSkillConfigResult,
+  type CodexSkillRootsResult,
   type CustomizationCapability,
 } from "@cantrip/protocol";
 
@@ -74,6 +86,19 @@ function methodCapability(
   );
 }
 
+function methodsCapability(
+  report: CodexRuntimeReport,
+  methods: readonly string[],
+  description: string,
+  stability: CustomizationCapability["stability"] = "stable",
+): CustomizationCapability {
+  return capability(
+    codexMethodsAvailable(report, methods),
+    `The installed Codex runtime is missing one or more methods required for ${description}.`,
+    stability,
+  );
+}
+
 function featureCapability(
   report: CodexRuntimeReport,
   feature: string,
@@ -127,7 +152,11 @@ export function customizationCapabilities(
     ),
     skills: {
       list: methodCapability(report, "skills/list"),
-      configure: methodCapability(report, "skills/config/write"),
+      configure: methodsCapability(
+        report,
+        ["skills/list", "skills/config/write"],
+        "validated skill configuration",
+      ),
       extraRoots: methodCapability(report, "skills/extraRoots/set"),
     },
     mcp: {
@@ -148,9 +177,10 @@ export function customizationCapabilities(
         "externalAgentConfig/detect",
         "experimental",
       ),
-      apply: methodCapability(
+      apply: methodsCapability(
         report,
-        "externalAgentConfig/import",
+        ["externalAgentConfig/detect", "externalAgentConfig/import"],
+        "reviewed external configuration imports",
         "experimental",
       ),
     },
@@ -214,6 +244,66 @@ export function parseSkillInventory(response: unknown, cwd: string) {
     ),
     errors,
   };
+}
+
+export function skillPathForConfiguration(
+  response: unknown,
+  cwd: string,
+  requestedPath: string,
+): string {
+  const requested = path.resolve(requestedPath);
+  const skill = parseSkillInventory(response, cwd).items.find(
+    (candidate) => path.resolve(candidate.path) === requested,
+  );
+  if (!skill) {
+    throw new Error(
+      "The requested skill path is not present in this project's native Codex inventory.",
+    );
+  }
+  return skill.path;
+}
+
+function pathWithin(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return (
+    relative === "" ||
+    (!relative.startsWith(`..${path.sep}`) && relative !== "..")
+  );
+}
+
+export async function resolveProjectSkillRoots(
+  cwd: string,
+  roots: string[],
+): Promise<CodexSkillRootsResult> {
+  const canonicalCwd = await realpath(cwd);
+  const resolved: string[] = [];
+  for (const root of roots) {
+    const candidate = await realpath(path.resolve(cwd, root));
+    if (!pathWithin(canonicalCwd, candidate)) {
+      throw new Error(
+        "Extra skill roots must resolve within the selected project checkout.",
+      );
+    }
+    if (!(await stat(candidate)).isDirectory()) {
+      throw new Error(`Extra skill root is not a directory: ${root}`);
+    }
+    if (!resolved.includes(candidate)) resolved.push(candidate);
+  }
+  return codexSkillRootsResultSchema.parse({ roots: resolved });
+}
+
+export function parseSkillConfigResult(
+  response: unknown,
+  skillPath: string,
+): CodexSkillConfigResult {
+  const effectiveEnabled = record(response)?.effectiveEnabled;
+  if (typeof effectiveEnabled !== "boolean") {
+    throw new Error("Codex returned an invalid skill configuration result.");
+  }
+  return codexSkillConfigResultSchema.parse({
+    path: skillPath,
+    effectiveEnabled,
+  });
 }
 
 export function parseHookInventory(response: unknown, cwd: string) {
@@ -361,12 +451,14 @@ export function customizationInventory(input: {
   report: CodexRuntimeReport;
   cwd: string;
   skillsResponse: unknown;
+  skillRoots?: string[];
   hooksResponse: unknown;
   mcpServers: unknown[];
 }): CodexCustomizationInventory {
   return codexCustomizationInventorySchema.parse({
     capabilities: customizationCapabilities(input.report),
     skills: parseSkillInventory(input.skillsResponse, input.cwd),
+    skillRoots: input.skillRoots ?? [],
     hooks: parseHookInventory(input.hooksResponse, input.cwd),
     mcpServers: input.mcpServers,
   });
@@ -385,6 +477,14 @@ const externalItemTypes = new Set([
   "SESSIONS",
 ]);
 
+type ExternalPreviewItem = CodexExternalImportPreview["items"][number];
+
+export interface ProjectExternalImportCandidate {
+  id: string;
+  item: UnknownRecord;
+  preview: ExternalPreviewItem;
+}
+
 function detailNames(value: unknown, key: string): string[] {
   const values = record(value)?.[key];
   if (!Array.isArray(values)) return [];
@@ -394,13 +494,13 @@ function detailNames(value: unknown, key: string): string[] {
   });
 }
 
-export function parseExternalImportPreview(
+export function projectExternalImportCandidates(
   response: unknown,
   cwd: string,
-): CodexExternalImportPreview {
+): ProjectExternalImportCandidate[] {
   const items = record(response)?.items;
   const resolvedCwd = path.resolve(cwd);
-  const normalized = Array.isArray(items)
+  return Array.isArray(items)
     ? items.flatMap((value, index) => {
         const item = record(value);
         const itemType = item ? string(item.itemType) : null;
@@ -423,50 +523,185 @@ export function parseExternalImportPreview(
           description: string(item.description) ?? "",
           index,
         });
+        const id = createHash("sha256")
+          .update(stableKey)
+          .digest("hex")
+          .slice(0, 24);
         return [
           {
-            id: createHash("sha256")
-              .update(stableKey)
-              .digest("hex")
-              .slice(0, 24),
-            itemType,
-            description: string(item.description) ?? "",
-            cwd: resolvedCwd,
-            details: details
-              ? {
-                  pluginNames: plugins.flatMap((candidate) => {
-                    const plugin = record(candidate);
-                    const marketplace = string(plugin?.marketplaceName);
-                    const names = Array.isArray(plugin?.pluginNames)
-                      ? plugin.pluginNames.filter(
-                          (name): name is string => typeof name === "string",
-                        )
-                      : [];
-                    return names.map((name) =>
-                      marketplace ? `${marketplace}/${name}` : name,
-                    );
-                  }),
-                  skillNames: detailNames(details, "skills"),
-                  sessionCount: Array.isArray(details.sessions)
-                    ? details.sessions.length
-                    : 0,
-                  mcpServerNames: detailNames(details, "mcpServers"),
-                  hookNames: detailNames(details, "hooks"),
-                  subagentNames: detailNames(details, "subagents"),
-                  commandNames: detailNames(details, "commands"),
-                  memoryFiles: memory.flatMap((entry) => {
-                    const file = string(entry);
-                    return file ? [path.basename(file)] : [];
-                  }),
-                }
-              : null,
+            id,
+            item,
+            preview: codexExternalImportPreviewItemSchema.parse({
+              id,
+              itemType,
+              description: string(item.description) ?? "",
+              cwd: resolvedCwd,
+              details: details
+                ? {
+                    pluginNames: plugins.flatMap((candidate) => {
+                      const plugin = record(candidate);
+                      const marketplace = string(plugin?.marketplaceName);
+                      const names = Array.isArray(plugin?.pluginNames)
+                        ? plugin.pluginNames.filter(
+                            (name): name is string => typeof name === "string",
+                          )
+                        : [];
+                      return names.map((name) =>
+                        marketplace ? `${marketplace}/${name}` : name,
+                      );
+                    }),
+                    skillNames: detailNames(details, "skills"),
+                    sessionCount: Array.isArray(details.sessions)
+                      ? details.sessions.length
+                      : 0,
+                    mcpServerNames: detailNames(details, "mcpServers"),
+                    hookNames: detailNames(details, "hooks"),
+                    subagentNames: detailNames(details, "subagents"),
+                    commandNames: detailNames(details, "commands"),
+                    memoryFiles: memory.flatMap((entry) => {
+                      const file = string(entry);
+                      return file ? [path.basename(file)] : [];
+                    }),
+                  }
+                : null,
+            }),
           },
         ];
       })
     : [];
+}
+
+export function parseExternalImportPreview(
+  response: unknown,
+  cwd: string,
+): CodexExternalImportPreview {
   return codexExternalImportPreviewSchema.parse({
     sourceScope: "project",
-    items: normalized,
+    items: projectExternalImportCandidates(response, cwd).map(
+      ({ preview }) => preview,
+    ),
+  });
+}
+
+export function selectExternalImportItems(
+  response: unknown,
+  cwd: string,
+  selectedIds: string[],
+): UnknownRecord[] {
+  if (new Set(selectedIds).size !== selectedIds.length) {
+    throw new Error("External import selections must be unique.");
+  }
+  const candidates = new Map(
+    projectExternalImportCandidates(response, cwd).map((candidate) => [
+      candidate.id,
+      candidate,
+    ]),
+  );
+  const selected = selectedIds.map((id) => candidates.get(id));
+  if (selected.some((candidate) => !candidate)) {
+    throw new Error(
+      "One or more external configuration candidates changed; preview again before importing.",
+    );
+  }
+  const confirmed = selected as ProjectExternalImportCandidate[];
+  if (
+    confirmed.some(({ item, preview }) => {
+      const plugins = record(item.details)?.plugins;
+      return (
+        preview.itemType === "PLUGINS" ||
+        (Array.isArray(plugins) && plugins.length > 0)
+      );
+    })
+  ) {
+    throw new Error(
+      "Plugin imports are disabled while the official App Server plugin contract is unsuitable for production clients.",
+    );
+  }
+  return confirmed.map(({ item }) => item);
+}
+
+export function parseMcpOauthStart(
+  response: unknown,
+  server: string,
+): CodexMcpOauthStartResult {
+  const authorizationUrl = string(record(response)?.authorizationUrl);
+  if (!authorizationUrl) {
+    throw new Error("Codex did not return an MCP authorization URL.");
+  }
+  const parsedUrl = new URL(authorizationUrl);
+  const localHttp =
+    parsedUrl.protocol === "http:" &&
+    ["127.0.0.1", "::1", "localhost"].includes(parsedUrl.hostname);
+  if (parsedUrl.protocol !== "https:" && !localHttp) {
+    throw new Error("Codex returned an unsupported MCP authorization URL.");
+  }
+  return codexMcpOauthStartResultSchema.parse({
+    server,
+    authorizationUrl,
+    status: "pending",
+  });
+}
+
+export function parseMcpOauthCompletion(params: unknown): CodexMcpOauthStatus {
+  const value = record(params);
+  const server = value ? string(value.name) : null;
+  if (!server || typeof value?.success !== "boolean") {
+    throw new Error("Codex returned an invalid MCP OAuth completion event.");
+  }
+  return codexMcpOauthStatusSchema.parse({
+    server,
+    status: value.success ? "succeeded" : "failed",
+    error: value.success
+      ? null
+      : "MCP authorization failed. Review the authorization page and try again.",
+  });
+}
+
+export function parseExternalImportStatus(
+  value: unknown,
+  status: "pending" | "completed",
+): CodexExternalImportStatus {
+  const response = record(value);
+  const importId = response ? string(response.importId) : null;
+  if (!response || !importId) {
+    throw new Error("Codex returned an invalid external import identifier.");
+  }
+  const rawResults = response.itemTypeResults;
+  const results = Array.isArray(rawResults)
+    ? rawResults.flatMap((candidate) => {
+        const result = record(candidate);
+        const itemType = result ? string(result.itemType) : null;
+        if (!result || !itemType || !externalItemTypes.has(itemType)) return [];
+        const successes = Array.isArray(result.successes)
+          ? result.successes.length
+          : 0;
+        const failures = Array.isArray(result.failures)
+          ? result.failures.slice(0, 100).flatMap((failureValue) => {
+              const failure = record(failureValue);
+              if (!failure) return [];
+              const errorType = string(failure.errorType)?.slice(0, 120);
+              const subErrorType = string(failure.subErrorType)?.slice(0, 120);
+              const classification = [errorType, subErrorType]
+                .filter((part): part is string => Boolean(part))
+                .join(" / ");
+              return [
+                {
+                  failureStage:
+                    string(failure.failureStage)?.slice(0, 200) ?? "unknown",
+                  message: classification
+                    ? `Codex import failed (${classification}).`
+                    : "Codex reported an import failure.",
+                },
+              ];
+            })
+          : [];
+        return [{ itemType, successCount: successes, failures }];
+      })
+    : [];
+  return codexExternalImportStatusSchema.parse({
+    importId,
+    status,
+    results: results.slice(0, 100),
   });
 }
 

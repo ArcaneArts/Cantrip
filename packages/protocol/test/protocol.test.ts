@@ -9,6 +9,8 @@ import {
   agentWorktreeToolResultSchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
+  codexExternalImportApplySchema,
+  codexMcpOauthStatusSchema,
   codexMcpResourceReadRequestSchema,
   chatAttachmentSummarySchema,
   chatExecutionLaneSummarySchema,
@@ -92,6 +94,40 @@ describe("Cantrip protocol", () => {
         uri: "x".repeat(8_193),
       }),
     ).toThrow();
+    expect(
+      workerCommandSchema.parse({
+        type: "customization.skill.configure",
+        ...runtime,
+        path: "/workspace/Cantrip/.agents/review/SKILL.md",
+        enabled: false,
+      }).type,
+    ).toBe("customization.skill.configure");
+    expect(
+      workerCommandSchema.parse({
+        type: "customization.mcp.oauth.status",
+        ...runtime,
+        server: "docs",
+      }).type,
+    ).toBe("customization.mcp.oauth.status");
+    expect(
+      codexMcpOauthStatusSchema.parse({
+        server: "docs",
+        status: "succeeded",
+        error: null,
+      }).status,
+    ).toBe("succeeded");
+    expect(
+      codexExternalImportApplySchema.safeParse({
+        itemIds: ["candidate-1", "candidate-1"],
+      }).success,
+    ).toBe(false);
+    expect(
+      workerCommandSchema.parse({
+        type: "customization.external.apply",
+        ...runtime,
+        itemIds: ["candidate-1"],
+      }).type,
+    ).toBe("customization.external.apply");
   });
 
   it("models capability-gated chat permission profiles", () => {
