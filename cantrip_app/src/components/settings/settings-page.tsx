@@ -65,6 +65,44 @@ const reasoningOptions: Array<ReasoningEffort | ""> = [
   "xhigh",
 ];
 
+type ProviderSetupKind = ModelProviderKind | "openai" | "openrouter" | "xai";
+
+const providerSetups: Record<
+  Exclude<ProviderSetupKind, "chatgpt" | "openai-compatible">,
+  { baseUrl: string; kind: ModelProviderKind; label: string }
+> = {
+  ollama: {
+    baseUrl: "http://127.0.0.1:11434/v1",
+    kind: "ollama",
+    label: "Ollama",
+  },
+  openrouter: {
+    baseUrl: "https://openrouter.ai/api/v1",
+    kind: "openai-compatible",
+    label: "OpenRouter",
+  },
+  xai: {
+    baseUrl: "https://api.x.ai/v1",
+    kind: "openai-compatible",
+    label: "xAI / Grok",
+  },
+  openai: {
+    baseUrl: "https://api.openai.com/v1",
+    kind: "openai-compatible",
+    label: "OpenAI API",
+  },
+};
+
+function providerSetupFor(provider: ModelProviderSummary): ProviderSetupKind {
+  if (provider.kind === "chatgpt" || provider.kind === "ollama") {
+    return provider.kind;
+  }
+  const match = Object.entries(providerSetups).find(
+    ([key, setup]) => key !== "ollama" && setup.baseUrl === provider.baseUrl,
+  );
+  return (match?.[0] as ProviderSetupKind | undefined) ?? "openai-compatible";
+}
+
 function errorText(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
@@ -212,6 +250,8 @@ export function SettingsPage() {
     useState<ModelProviderSummary | null>(null);
   const [providerName, setProviderName] = useState("");
   const [providerKind, setProviderKind] = useState<ModelProviderKind>("ollama");
+  const [providerSetup, setProviderSetup] =
+    useState<ProviderSetupKind>("ollama");
   const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:11434/v1");
   const [apiKey, setApiKey] = useState("");
   const [removeApiKey, setRemoveApiKey] = useState(false);
@@ -266,6 +306,7 @@ export function SettingsPage() {
         setEditingProvider(provider);
         setProviderName(provider.name);
         setProviderKind(provider.kind);
+        setProviderSetup(provider.kind);
         setBaseUrl(provider.baseUrl);
         return;
       }
@@ -324,6 +365,7 @@ export function SettingsPage() {
     setEditingProvider(provider);
     setProviderName(provider?.name ?? "");
     setProviderKind(provider?.kind ?? "ollama");
+    setProviderSetup(provider ? providerSetupFor(provider) : "ollama");
     setBaseUrl(provider?.baseUrl ?? "http://127.0.0.1:11434/v1");
     setApiKey("");
     setRemoveApiKey(false);
@@ -735,24 +777,33 @@ export function SettingsPage() {
               </Field>
               <Field label="Provider type">
                 <select
-                  value={providerKind}
+                  value={providerSetup}
                   onChange={(event) => {
-                    const kind = event.target.value as ModelProviderKind;
-                    setProviderKind(kind);
-                    if (!editingProvider) {
-                      setBaseUrl(
-                        kind === "chatgpt"
-                          ? "https://api.openai.com/v1"
-                          : kind === "ollama"
-                            ? "http://127.0.0.1:11434/v1"
-                            : "https://",
-                      );
+                    const setup = event.target.value as ProviderSetupKind;
+                    setProviderSetup(setup);
+                    if (setup === "chatgpt") {
+                      setProviderKind("chatgpt");
+                      setBaseUrl("https://api.openai.com/v1");
+                      if (!providerName.trim()) setProviderName("ChatGPT");
+                    } else if (setup === "openai-compatible") {
+                      setProviderKind("openai-compatible");
+                      if (!editingProvider) setBaseUrl("https://");
+                    } else {
+                      const preset = providerSetups[setup];
+                      setProviderKind(preset.kind);
+                      setBaseUrl(preset.baseUrl);
+                      if (!providerName.trim()) setProviderName(preset.label);
                     }
                   }}
                   className={inputClass}
                 >
                   <option value="ollama">Ollama</option>
-                  <option value="openai-compatible">OpenAI compatible</option>
+                  <option value="openrouter">OpenRouter</option>
+                  <option value="xai">xAI / Grok</option>
+                  <option value="openai">OpenAI API</option>
+                  <option value="openai-compatible">
+                    Custom OpenAI compatible
+                  </option>
                   <option value="chatgpt">ChatGPT Account</option>
                 </select>
               </Field>
@@ -763,13 +814,22 @@ export function SettingsPage() {
                       required
                       type="url"
                       value={baseUrl}
-                      onChange={(event) => setBaseUrl(event.target.value)}
+                      onChange={(event) => {
+                        setBaseUrl(event.target.value);
+                        if (
+                          providerSetup !== "ollama" &&
+                          providerSetup !== "openai-compatible"
+                        ) {
+                          setProviderSetup("openai-compatible");
+                          setProviderKind("openai-compatible");
+                        }
+                      }}
                       className={inputClass}
                       placeholder="https://openrouter.ai/api/v1"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Enter the API root; Cantrip adds /responses. OpenRouter
-                      uses https://openrouter.ai/api/v1.
+                      Choose a preset above or edit its API root. Cantrip adds
+                      the Responses endpoint.
                     </p>
                   </div>
                 </Field>

@@ -1,4 +1,6 @@
 import type { BrowserSummary } from "@cantrip/protocol";
+import { isTauri } from "@tauri-apps/api/core";
+import type { Webview } from "@tauri-apps/api/webview";
 import {
   ArrowLeft,
   ArrowRight,
@@ -31,6 +33,13 @@ function normalizeAddress(value: string): string | null {
   }
 }
 
+function nativeBrowserLabel(browserId: string): string {
+  return `cantrip-browser-${browserId}-${crypto.randomUUID()}`.replace(
+    /[^A-Za-z0-9-/:_]/g,
+    "-",
+  );
+}
+
 export function browserUrlIsLocal(value: string): boolean {
   const url = new URL(value);
   const hostname = url.hostname.toLowerCase();
@@ -49,6 +58,11 @@ export function browserUrlIsLocal(value: string): boolean {
   );
 }
 
+interface NativeWebviewHandle {
+  label: string;
+  webview: Webview;
+}
+
 export function BrowserView({
   browser,
   onNavigate,
@@ -56,13 +70,25 @@ export function BrowserView({
   browser: BrowserSummary;
   onNavigate(url: string): void;
 }) {
+  const desktop = isTauri();
   const [address, setAddress] = useState(browser.url);
   const [entries, setEntries] = useState([browser.url]);
   const [entryIndex, setEntryIndex] = useState(0);
+  const [nativeUrl, setNativeUrl] = useState(browser.url);
+  const [nativeReady, setNativeReady] = useState(false);
+  const [nativeError, setNativeError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [invalidAddress, setInvalidAddress] = useState(false);
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const currentUrl = entries[entryIndex] ?? browser.url;
+  const nativeSurfaceRef = useRef<HTMLDivElement>(null);
+  const nativeWebviewRef = useRef<NativeWebviewHandle | null>(null);
+  const onNavigateRef = useRef(onNavigate);
+  onNavigateRef.current = onNavigate;
+
+  const usingNative = desktop && !nativeError;
+  const currentUrl = usingNative
+    ? nativeUrl
+    : (entries[entryIndex] ?? browser.url);
   const localFrame = browserUrlIsLocal(currentUrl);
   const frameUrl = localFrame ? currentUrl : browserProxyUrl(currentUrl);
 
@@ -70,8 +96,125 @@ export function BrowserView({
     setAddress(browser.url);
     setEntries([browser.url]);
     setEntryIndex(0);
+    setNativeUrl(browser.url);
+    setNativeReady(false);
+    setNativeError(null);
     setInvalidAddress(false);
   }, [browser.id]);
+
+  useEffect(() => {
+    if (!desktop) return;
+    const surface = nativeSurfaceRef.current;
+    if (!surface) return;
+
+    let disposed = false;
+    let resizeObserver: ResizeObserver | null = null;
+    let pollTimer: number | null = null;
+    let removeWindowListeners: (() => void) | null = null;
+    const label = nativeBrowserLabel(browser.id);
+
+    const start = async () => {
+      const [
+        { LogicalPosition, LogicalSize },
+        { invoke },
+        { Webview },
+        windowApi,
+      ] = await Promise.all([
+        import("@tauri-apps/api/dpi"),
+        import("@tauri-apps/api/core"),
+        import("@tauri-apps/api/webview"),
+        import("@tauri-apps/api/window"),
+      ]);
+      const initialBounds = surface.getBoundingClientRect();
+      const webview = new Webview(windowApi.getCurrentWindow(), label, {
+        url: browser.url,
+        x: initialBounds.left,
+        y: initialBounds.top,
+        width: Math.max(1, initialBounds.width),
+        height: Math.max(1, initialBounds.height),
+        focus: true,
+        devtools: true,
+        zoomHotkeysEnabled: true,
+      });
+      nativeWebviewRef.current = { label, webview };
+
+      await new Promise<void>((resolve, reject) => {
+        void webview.once("tauri://created", () => resolve());
+        void webview.once<unknown>("tauri://error", (event) => {
+          reject(
+            new Error(
+              typeof event.payload === "string"
+                ? event.payload
+                : "The native browser webview could not be created.",
+            ),
+          );
+        });
+      });
+      if (disposed) {
+        await webview.close();
+        return;
+      }
+
+      const syncBounds = async () => {
+        const bounds = surface.getBoundingClientRect();
+        if (bounds.width < 1 || bounds.height < 1) return;
+        await Promise.all([
+          webview.setPosition(new LogicalPosition(bounds.left, bounds.top)),
+          webview.setSize(new LogicalSize(bounds.width, bounds.height)),
+        ]);
+      };
+      const scheduleBounds = () => void syncBounds().catch(() => undefined);
+      resizeObserver = new ResizeObserver(scheduleBounds);
+      resizeObserver.observe(surface);
+      window.addEventListener("resize", scheduleBounds);
+      window.addEventListener("scroll", scheduleBounds, true);
+      removeWindowListeners = () => {
+        window.removeEventListener("resize", scheduleBounds);
+        window.removeEventListener("scroll", scheduleBounds, true);
+      };
+      await syncBounds();
+      setNativeReady(true);
+
+      let lastUrl = browser.url;
+      const syncUrl = async () => {
+        const url = await invoke<string>("browser_webview_url", { label });
+        const normalized = normalizeAddress(url);
+        if (!normalized || normalized === lastUrl) return;
+        lastUrl = normalized;
+        setNativeUrl(normalized);
+        setAddress(normalized);
+        onNavigateRef.current(normalized);
+      };
+      pollTimer = window.setInterval(
+        () => void syncUrl().catch(() => undefined),
+        500,
+      );
+    };
+
+    void start().catch(async (error: unknown) => {
+      const handle = nativeWebviewRef.current;
+      if (handle?.label === label) {
+        nativeWebviewRef.current = null;
+        await handle.webview.close().catch(() => undefined);
+      }
+      if (!disposed) {
+        setNativeReady(false);
+        setNativeError(error instanceof Error ? error.message : String(error));
+      }
+    });
+
+    return () => {
+      disposed = true;
+      resizeObserver?.disconnect();
+      removeWindowListeners?.();
+      if (pollTimer !== null) window.clearInterval(pollTimer);
+      const handle = nativeWebviewRef.current;
+      if (handle?.label === label) {
+        nativeWebviewRef.current = null;
+        void handle.webview.close().catch(() => undefined);
+      }
+    };
+  }, [browser.id, desktop]);
 
   const visit = useCallback(
     (url: string) => {
@@ -85,6 +228,7 @@ export function BrowserView({
   );
 
   useEffect(() => {
+    if (usingNative) return;
     const receiveNavigation = (event: MessageEvent) => {
       if (event.source !== frameRef.current?.contentWindow) return;
       const data = event.data as { type?: unknown; url?: unknown } | null;
@@ -98,13 +242,39 @@ export function BrowserView({
     };
     window.addEventListener("message", receiveNavigation);
     return () => window.removeEventListener("message", receiveNavigation);
-  }, [visit]);
+  }, [usingNative, visit]);
+
+  const invokeNative = async (
+    command: "browser_webview_action" | "browser_webview_navigate",
+    values: Record<string, unknown>,
+  ) => {
+    const handle = nativeWebviewRef.current;
+    if (!handle || !nativeReady) return;
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke(command, { label: handle.label, ...values });
+  };
+
+  const navigateNative = async (url: string) => {
+    setNativeUrl(url);
+    setAddress(url);
+    setInvalidAddress(false);
+    onNavigate(url);
+    await invokeNative("browser_webview_navigate", { url });
+  };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const normalized = normalizeAddress(address);
     if (!normalized) {
       setInvalidAddress(true);
+      return;
+    }
+    if (usingNative) {
+      if (normalized === currentUrl) {
+        void invokeNative("browser_webview_action", { action: "reload" });
+      } else {
+        void navigateNative(normalized);
+      }
       return;
     }
     if (normalized === currentUrl) {
@@ -124,6 +294,30 @@ export function BrowserView({
     onNavigate(url);
   };
 
+  const goBack = () => {
+    if (usingNative) {
+      void invokeNative("browser_webview_action", { action: "back" });
+      return;
+    }
+    move(entryIndex - 1);
+  };
+
+  const goForward = () => {
+    if (usingNative) {
+      void invokeNative("browser_webview_action", { action: "forward" });
+      return;
+    }
+    move(entryIndex + 1);
+  };
+
+  const reload = () => {
+    if (usingNative) {
+      void invokeNative("browser_webview_action", { action: "reload" });
+      return;
+    }
+    setReloadKey((value) => value + 1);
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
       <div className="flex h-12 shrink-0 items-center gap-1.5 border-b bg-background px-3">
@@ -132,8 +326,8 @@ export function BrowserView({
           size="icon"
           variant="ghost"
           className="size-8"
-          disabled={entryIndex === 0}
-          onClick={() => move(entryIndex - 1)}
+          disabled={!usingNative && entryIndex === 0}
+          onClick={goBack}
         >
           <ArrowLeft className="size-4" />
           <span className="sr-only">Back</span>
@@ -143,8 +337,8 @@ export function BrowserView({
           size="icon"
           variant="ghost"
           className="size-8"
-          disabled={entryIndex >= entries.length - 1}
-          onClick={() => move(entryIndex + 1)}
+          disabled={!usingNative && entryIndex >= entries.length - 1}
+          onClick={goForward}
         >
           <ArrowRight className="size-4" />
           <span className="sr-only">Forward</span>
@@ -154,7 +348,7 @@ export function BrowserView({
           size="icon"
           variant="ghost"
           className="size-8"
-          onClick={() => setReloadKey((value) => value + 1)}
+          onClick={reload}
         >
           <RotateCw className="size-3.5" />
           <span className="sr-only">Reload</span>
@@ -194,20 +388,33 @@ export function BrowserView({
           Enter a valid HTTP or HTTPS address.
         </p>
       ) : null}
+      {nativeError ? (
+        <p className="shrink-0 border-b bg-amber-500/10 px-4 py-1.5 text-xs text-amber-700 dark:text-amber-300">
+          Native browser unavailable; using the web fallback. {nativeError}
+        </p>
+      ) : null}
       <div className="relative min-h-0 flex-1 bg-white">
-        <iframe
-          ref={frameRef}
-          key={`${frameUrl}:${reloadKey}`}
-          title={browser.title}
-          src={frameUrl}
-          className="absolute inset-0 size-full border-0"
-          referrerPolicy="strict-origin-when-cross-origin"
-          sandbox={
-            localFrame
-              ? "allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
-              : "allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-scripts"
-          }
-        />
+        {desktop && !nativeError ? (
+          <div
+            ref={nativeSurfaceRef}
+            className="absolute inset-0 bg-white"
+            aria-label={`${browser.title} native browser surface`}
+          />
+        ) : (
+          <iframe
+            ref={frameRef}
+            key={`${frameUrl}:${reloadKey}`}
+            title={browser.title}
+            src={frameUrl}
+            className="absolute inset-0 size-full border-0"
+            referrerPolicy="strict-origin-when-cross-origin"
+            sandbox={
+              localFrame
+                ? "allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
+                : "allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-scripts"
+            }
+          />
+        )}
       </div>
     </div>
   );

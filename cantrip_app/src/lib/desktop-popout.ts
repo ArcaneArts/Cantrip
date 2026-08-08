@@ -1,16 +1,10 @@
 import { isTauri } from "@tauri-apps/api/core";
 
-export type DesktopPopoutTarget =
-  | {
-      kind: "browser" | "chat" | "explorer" | "terminal";
-      projectId: string;
-      tabId: string;
-    }
-  | {
-      kind: "git";
-      projectId: string;
-      view: "commits" | "issues";
-    };
+export type DesktopPopoutTarget = {
+  kind: "browser" | "chat" | "explorer" | "terminal" | "view";
+  projectId: string;
+  tabId: string;
+};
 
 const targetParameter = "cantrip-popout";
 
@@ -22,17 +16,12 @@ export function parseDesktopPopoutTarget(
   const projectId = parameters.get("project");
   if (!projectId) return null;
 
-  if (kind === "git") {
-    const view = parameters.get("view");
-    if (view !== "commits" && view !== "issues") return null;
-    return { kind, projectId, view };
-  }
-
   if (
     kind !== "browser" &&
     kind !== "chat" &&
     kind !== "explorer" &&
-    kind !== "terminal"
+    kind !== "terminal" &&
+    kind !== "view"
   ) {
     return null;
   }
@@ -46,8 +35,7 @@ export function desktopPopoutSearch(target: DesktopPopoutTarget): string {
     [targetParameter]: target.kind,
     project: target.projectId,
   });
-  if (target.kind === "git") parameters.set("view", target.view);
-  else parameters.set("tab", target.tabId);
+  parameters.set("tab", target.tabId);
   return `?${parameters.toString()}`;
 }
 

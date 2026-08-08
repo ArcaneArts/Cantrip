@@ -166,13 +166,66 @@ export interface RunAgentTurnOptions {
   model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
   provider: Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
   prompt: string;
+  skillNames: string[];
   threadId: string | null;
   onActivity?: (activity: AgentActivity) => void;
 }
 
+export interface CodexSkill {
+  name: string;
+  description: string;
+  displayName: string | null;
+  path: string | null;
+}
+
+export function parseCodexSkills(response: unknown, cwd: string): CodexSkill[] {
+  if (!response || typeof response !== "object") return [];
+  const data = (response as { data?: unknown }).data;
+  if (!Array.isArray(data)) return [];
+  const requestedCwd = path.resolve(cwd);
+  const group = data.find(
+    (candidate) =>
+      candidate &&
+      typeof candidate === "object" &&
+      typeof (candidate as { cwd?: unknown }).cwd === "string" &&
+      path.resolve((candidate as { cwd: string }).cwd) === requestedCwd,
+  ) as { skills?: unknown } | undefined;
+  if (!Array.isArray(group?.skills)) return [];
+
+  const skills = new Map<string, CodexSkill>();
+  for (const candidate of group.skills) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const skill = candidate as {
+      description?: unknown;
+      enabled?: unknown;
+      interface?: { displayName?: unknown } | null;
+      name?: unknown;
+      path?: unknown;
+    };
+    if (skill.enabled === false || typeof skill.name !== "string") continue;
+    const name = skill.name.trim();
+    if (!name || skills.has(name)) continue;
+    skills.set(name, {
+      name,
+      description:
+        typeof skill.description === "string" ? skill.description : "",
+      displayName:
+        typeof skill.interface?.displayName === "string"
+          ? skill.interface.displayName
+          : null,
+      path: typeof skill.path === "string" ? skill.path : null,
+    });
+  }
+  return [...skills.values()].sort((left, right) =>
+    (left.displayName ?? left.name).localeCompare(
+      right.displayName ?? right.name,
+    ),
+  );
+}
+
 export type CompactAgentThreadOptions = Omit<
   RunAgentTurnOptions,
-  "chatId" | "clientMessageId" | "onActivity" | "prompt"
+  "chatId" | "clientMessageId" | "onActivity" | "prompt" | "skillNames"
 > & {
   threadId: string;
 };
@@ -407,10 +460,24 @@ export class CodexAppServer {
       };
     });
 
+    const availableSkills = options.skillNames.length
+      ? await this.listSkills(options)
+      : [];
+    const selectedSkills = new Map(
+      availableSkills.map((skill) => [skill.name, skill]),
+    );
     const response = (await this.request("turn/start", {
       threadId,
       clientUserMessageId: `cantrip:${options.clientMessageId}`,
-      input: [{ type: "text", text: options.prompt, text_elements: [] }],
+      input: [
+        { type: "text", text: options.prompt, text_elements: [] },
+        ...options.skillNames.flatMap((name) => {
+          const skill = selectedSkills.get(name);
+          return skill?.path
+            ? [{ type: "skill", name: skill.name, path: skill.path }]
+            : [];
+        }),
+      ],
       model: options.model.name,
     })) as TurnStartResponse;
     if (!activeTurn) {
@@ -418,6 +485,18 @@ export class CodexAppServer {
     }
     this.#activeTurns.set(response.turn.id, activeTurn);
     return completion;
+  }
+
+  async listSkills(
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
+    forceReload = false,
+  ): Promise<CodexSkill[]> {
+    await this.ensureStarted(options.model, options.provider);
+    const response = await this.request("skills/list", {
+      cwds: [options.cwd],
+      forceReload,
+    });
+    return parseCodexSkills(response, options.cwd);
   }
 
   async remoteEndpoint(

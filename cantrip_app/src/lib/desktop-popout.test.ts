@@ -12,8 +12,8 @@ describe("desktop pop-out targets", () => {
     { kind: "terminal", projectId: "project one", tabId: "terminal:1" },
     { kind: "explorer", projectId: "project one", tabId: "explorer_1" },
     { kind: "browser", projectId: "project one", tabId: "browser-1" },
-    { kind: "git", projectId: "project one", view: "commits" },
-    { kind: "git", projectId: "project one", view: "issues" },
+    { kind: "view", projectId: "project one", tabId: "history-1" },
+    { kind: "view", projectId: "project one", tabId: "issues-1" },
   ];
 
   it.each(targets)("round-trips $kind targets", (target) => {

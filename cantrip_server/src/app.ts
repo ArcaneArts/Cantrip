@@ -50,11 +50,16 @@ import {
   modelProviderCreateSchema,
   modelProviderSummarySchema,
   modelProviderUpdateSchema,
+  mentionedSkillNames,
   orderedIdsSchema,
   projectCloneResultSchema,
   projectListSchema,
   projectRemoveSchema,
   projectSummarySchema,
+  projectViewCreateSchema,
+  projectViewListSchema,
+  projectViewSummarySchema,
+  projectViewUpdateSchema,
   queuedPromptCreateSchema,
   queuedPromptListSchema,
   queuedPromptOrderSchema,
@@ -62,6 +67,7 @@ import {
   queuedPromptUpdateSchema,
   serverBootstrapSchema,
   settingsBundleSchema,
+  skillListSchema,
   systemHealthSchema,
   terminalClientMessageSchema,
   terminalCreateSchema,
@@ -393,6 +399,7 @@ export async function buildApp({
                 cwd: context.cwd,
                 threadId,
                 prompt: workerPrompt,
+                skillNames: mentionedSkillNames(input.text),
                 model: runtime.model,
                 provider: runtime.provider,
               },
@@ -1406,6 +1413,63 @@ export async function buildApp({
         : reply.code(404).send({ error: "Browser not found." }),
   );
 
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/views",
+    async (request, reply) =>
+      reply.send(
+        projectViewListSchema.parse(
+          await repository.listProjectViews(
+            LOCAL_USER_ID,
+            request.params.projectId,
+          ),
+        ),
+      ),
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/views",
+    async (request, reply) => {
+      const input = projectViewCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const view = await repository.createProjectView(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        input.data,
+      );
+      return view
+        ? reply.code(201).send(projectViewSummarySchema.parse(view))
+        : reply.code(404).send({ error: "Project source not found." });
+    },
+  );
+
+  app.patch<{ Params: { viewId: string } }>(
+    "/api/project-views/:viewId",
+    async (request, reply) => {
+      const input = projectViewUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const view = await repository.updateProjectView(
+        LOCAL_USER_ID,
+        request.params.viewId,
+        input.data,
+      );
+      return view
+        ? reply.send(projectViewSummarySchema.parse(view))
+        : reply.code(404).send({ error: "Project view not found." });
+    },
+  );
+
+  app.delete<{ Params: { viewId: string } }>(
+    "/api/project-views/:viewId",
+    async (request, reply) =>
+      (await repository.deleteProjectView(LOCAL_USER_ID, request.params.viewId))
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "Project view not found." }),
+  );
+
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/explorers",
     async (request, reply) => {
@@ -1899,6 +1963,38 @@ export async function buildApp({
         request.params.chatId,
       );
       return reply.send(chatMessageListSchema.parse(messages));
+    },
+  );
+
+  app.get<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/skills",
+    async (request, reply) => {
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) return reply.code(404).send({ error: "Chat not found." });
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const runtime = await runtimeForContext(context);
+        if (!runtime) {
+          return reply
+            .code(409)
+            .send({ error: "Choose a model before listing skills." });
+        }
+        const skills = await bridge.request(context.workerId, {
+          type: "skills.list",
+          cwd: context.cwd,
+          model: runtime.model,
+          provider: runtime.provider,
+        });
+        return reply.send(skillListSchema.parse(skills));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
     },
   );
 

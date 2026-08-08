@@ -4,6 +4,7 @@ import {
   changedFiles,
   codexEndpointFromLine,
   codexModelProviderName,
+  parseCodexSkills,
 } from "../src/codex/app-server.js";
 
 describe("changedFiles", () => {
@@ -54,5 +55,44 @@ describe("codexEndpointFromLine", () => {
         "  \u001b[2mlistening on:\u001b[0m \u001b[32mws://127.0.0.1:54321\u001b[0m",
       ),
     ).toBe("ws://127.0.0.1:54321");
+  });
+});
+
+describe("parseCodexSkills", () => {
+  it("returns enabled skills for the requested working directory", () => {
+    expect(
+      parseCodexSkills(
+        {
+          data: [
+            {
+              cwd: "/workspace",
+              skills: [
+                {
+                  name: "skill-creator",
+                  description: "Create reusable skills",
+                  path: "/skills/skill-creator/SKILL.md",
+                  enabled: true,
+                  interface: { displayName: "Skill Creator" },
+                },
+                {
+                  name: "disabled",
+                  description: "Disabled",
+                  path: "/skills/disabled/SKILL.md",
+                  enabled: false,
+                },
+              ],
+            },
+          ],
+        },
+        "/workspace",
+      ),
+    ).toEqual([
+      {
+        name: "skill-creator",
+        description: "Create reusable skills",
+        displayName: "Skill Creator",
+        path: "/skills/skill-creator/SKILL.md",
+      },
+    ]);
   });
 });

@@ -271,6 +271,22 @@ export const browsers = pgTable("browsers", {
     .defaultNow(),
 });
 
+export const projectViews = pgTable("project_views", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  kind: text("kind").notNull(),
+  position: integer("position").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export const chatRuntimeSessions = pgTable(
   "chat_runtime_sessions",
   {

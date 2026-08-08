@@ -125,6 +125,12 @@ async function start(): Promise<void> {
         return listExplorerDirectory(command.root, command.path);
       case "explorer.file.read":
         return readExplorerFile(command.root, command.path);
+      case "skills.list":
+        return runtimeFor(command).listSkills({
+          cwd: command.cwd,
+          model: command.model,
+          provider: command.provider,
+        });
       case "terminal.open":
         if (command.launch.type === "codex") {
           const runtime = runtimeFor(command.launch);
@@ -188,6 +194,7 @@ async function start(): Promise<void> {
           model: command.model,
           provider: command.provider,
           prompt: command.prompt,
+          skillNames: command.skillNames,
           threadId: command.threadId,
           onActivity: (activity) => emit({ type: "agent.activity", activity }),
         });

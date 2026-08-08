@@ -320,7 +320,12 @@ export async function runGitAction(
       output = await runGit(cwd, ["commit", "-m", action.message]);
       break;
     case "pull":
-      output = await runGit(cwd, ["pull", "--ff-only"]);
+      output = [
+        await runGit(cwd, ["fetch", "--all", "--prune"]),
+        await runGit(cwd, ["pull", "--ff-only"]),
+      ]
+        .filter(Boolean)
+        .join("\n");
       break;
     case "push": {
       const upstream = await gitOutput(cwd, [

@@ -21,13 +21,15 @@ import type {
   ChatSummary,
   ExplorerSummary,
   ProjectSummary,
+  ProjectViewSummary,
   TerminalSummary,
 } from "@cantrip/protocol";
 import {
   CircleAlert,
+  CircleDot,
   FolderGit2,
   FolderTree,
-  GitBranch,
+  GitCommitHorizontal,
   Globe2,
   GripVertical,
   Loader2,
@@ -58,6 +60,7 @@ const chatId = (id: string) => `chat:${id}`;
 const terminalId = (id: string) => `terminal:${id}`;
 const explorerId = (id: string) => `explorer:${id}`;
 const browserId = (id: string) => `browser:${id}`;
+const viewId = (id: string) => `view:${id}`;
 const menuContentClass =
   "z-50 min-w-36 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
 const menuItemClass =
@@ -500,6 +503,116 @@ function BrowserTab({
   );
 }
 
+function ProjectViewTab({
+  active,
+  editing,
+  onDelete,
+  onRename,
+  onSelect,
+  renameValue,
+  setRenameValue,
+  submitRename,
+  view,
+}: {
+  active: boolean;
+  editing: boolean;
+  onDelete(): void;
+  onRename(): void;
+  onSelect(): void;
+  renameValue: string;
+  setRenameValue(value: string): void;
+  submitRename(): void;
+  view: ProjectViewSummary;
+}) {
+  const sortable = useSortable({ id: viewId(view.id) });
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(sortable.transform),
+    transition: sortable.transition,
+    opacity: sortable.isDragging ? 0.25 : 1,
+    zIndex: sortable.isDragging ? 10 : undefined,
+  };
+  const Icon = view.kind === "history" ? GitCommitHorizontal : CircleDot;
+  return (
+    <div
+      ref={sortable.setNodeRef}
+      style={style}
+      className={cn(
+        "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
+        active && "bg-muted text-foreground",
+      )}
+    >
+      <DragHandle
+        attributes={sortable.attributes}
+        listeners={sortable.listeners}
+      />
+      {editing ? (
+        <input
+          autoFocus
+          value={renameValue}
+          onChange={(event) => setRenameValue(event.target.value)}
+          onBlur={submitRename}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") submitRename();
+            if (event.key === "Escape") onRename();
+          }}
+          className="h-7 min-w-0 flex-1 rounded border bg-background px-2 text-xs text-foreground outline-none ring-ring focus:ring-2"
+          aria-label={`Rename ${view.title}`}
+        />
+      ) : (
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
+          onClick={onSelect}
+          onDoubleClick={(event) => {
+            event.preventDefault();
+            onRename();
+          }}
+        >
+          <Icon className="size-3.5 shrink-0" />
+          <span className="truncate">{view.title}</span>
+        </button>
+      )}
+      {!editing ? (
+        <DropdownMenuPrimitive.Root>
+          <DropdownMenuPrimitive.Trigger asChild>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
+            >
+              <MoreHorizontal className="size-3.5" />
+              <span className="sr-only">Actions for {view.title}</span>
+            </Button>
+          </DropdownMenuPrimitive.Trigger>
+          <DropdownMenuPrimitive.Portal>
+            <DropdownMenuPrimitive.Content
+              align="start"
+              className={menuContentClass}
+            >
+              <DropdownMenuPrimitive.Item
+                className={menuItemClass}
+                onSelect={onRename}
+              >
+                <Pencil className="size-4" /> Rename
+              </DropdownMenuPrimitive.Item>
+              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+              <DropdownMenuPrimitive.Item
+                className={cn(
+                  menuItemClass,
+                  "text-destructive focus:bg-destructive/10",
+                )}
+                onSelect={onDelete}
+              >
+                <Trash2 className="size-4" /> Delete
+              </DropdownMenuPrimitive.Item>
+            </DropdownMenuPrimitive.Content>
+          </DropdownMenuPrimitive.Portal>
+        </DropdownMenuPrimitive.Root>
+      ) : null}
+    </div>
+  );
+}
+
 function SortableProject({
   active,
   children,
@@ -507,12 +620,13 @@ function SortableProject({
   creatingBrowser,
   creatingExplorer,
   creatingTerminal,
-  historyActive,
+  creatingView,
   onCreateChat,
   onCreateBrowser,
   onCreateExplorer,
+  onCreateHistory,
+  onCreateIssues,
   onCreateTerminal,
-  onOpenHistory,
   onRemove,
   onSelect,
   project,
@@ -523,12 +637,13 @@ function SortableProject({
   creatingBrowser: boolean;
   creatingExplorer: boolean;
   creatingTerminal: boolean;
-  historyActive: boolean;
+  creatingView: boolean;
   onCreateChat(): void;
   onCreateBrowser(): void;
   onCreateExplorer(): void;
+  onCreateHistory(): void;
+  onCreateIssues(): void;
   onCreateTerminal(): void;
-  onOpenHistory(): void;
   onRemove(): void;
   onSelect(): void;
   project: ProjectSummary;
@@ -582,22 +697,6 @@ function SortableProject({
             </span>
           ) : null}
         </button>
-        <button
-          type="button"
-          title={`Git history for ${project.name}`}
-          disabled={!project.source}
-          onClick={(event) => {
-            event.stopPropagation();
-            onOpenHistory();
-          }}
-          className={cn(
-            "mr-1 grid size-7 shrink-0 place-items-center rounded text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100 focus:opacity-100 disabled:pointer-events-none disabled:opacity-0 [@media(pointer:coarse)]:opacity-100",
-            historyActive && "bg-background text-foreground opacity-100",
-          )}
-        >
-          <GitBranch className="size-3.5" />
-          <span className="sr-only">Git history for {project.name}</span>
-        </button>
         {project.source ? (
           <DropdownMenuPrimitive.Root>
             <DropdownMenuPrimitive.Trigger asChild>
@@ -605,7 +704,7 @@ function SortableProject({
                 type="button"
                 title={`Add to ${project.name}`}
                 onClick={(event) => event.stopPropagation()}
-                className="mr-1 grid size-7 shrink-0 place-items-center rounded text-muted-foreground hover:bg-background hover:text-foreground"
+                className="mr-1 grid size-7 shrink-0 place-items-center rounded text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
               >
                 <Plus className="size-3.5" />
                 <span className="sr-only">Add to {project.name}</span>
@@ -644,6 +743,20 @@ function SortableProject({
                   onSelect={onCreateBrowser}
                 >
                   <Plus className="size-4" /> Browser
+                </DropdownMenuPrimitive.Item>
+                <DropdownMenuPrimitive.Item
+                  className={menuItemClass}
+                  disabled={creatingView}
+                  onSelect={onCreateHistory}
+                >
+                  <Plus className="size-4" /> History
+                </DropdownMenuPrimitive.Item>
+                <DropdownMenuPrimitive.Item
+                  className={menuItemClass}
+                  disabled={creatingView || !project.github}
+                  onSelect={onCreateIssues}
+                >
+                  <Plus className="size-4" /> Issues
                 </DropdownMenuPrimitive.Item>
               </DropdownMenuPrimitive.Content>
             </DropdownMenuPrimitive.Portal>
@@ -696,34 +809,40 @@ export function ProjectChatList({
   creatingChat,
   creatingExplorer,
   creatingTerminal,
+  creatingView,
   explorers,
-  gitHistoryProjectId,
+  projectViews,
   onCreateChat,
   onCreateBrowser,
   onCreateExplorer,
+  onCreateHistory,
+  onCreateIssues,
   onDeleteChat,
   onDeleteBrowser,
   onDeleteExplorer,
+  onDeleteProjectView,
   onDuplicateChat,
   onCreateTerminal,
   onDeleteTerminal,
-  onOpenGitHistory,
   onRemoveProject,
   onRenameChat,
   onRenameBrowser,
   onRenameExplorer,
+  onRenameProjectView,
   onRenameTerminal,
   onReorderTabs,
   onReorderProjects,
   onSelectChat,
   onSelectBrowser,
   onSelectExplorer,
+  onSelectProjectView,
   onSelectTerminal,
   onSelectProject,
   projects,
   selectedChatId,
   selectedBrowserId,
   selectedExplorerId,
+  selectedProjectViewId,
   selectedProjectId,
   selectedTerminalId,
   terminals,
@@ -734,37 +853,43 @@ export function ProjectChatList({
   creatingChat: boolean;
   creatingExplorer: boolean;
   creatingTerminal: boolean;
+  creatingView: boolean;
   explorers: ExplorerSummary[];
+  projectViews: ProjectViewSummary[];
   onCreateChat(projectId: string): void;
   onCreateBrowser(projectId: string): void;
   onCreateExplorer(projectId: string): void;
+  onCreateHistory(projectId: string): void;
+  onCreateIssues(projectId: string): void;
   onDeleteChat(chatId: string): void;
   onDeleteBrowser(browserId: string): void;
   onDeleteExplorer(explorerId: string): void;
+  onDeleteProjectView(viewId: string): void;
   onDuplicateChat(chatId: string): void;
   onCreateTerminal(projectId: string): void;
   onDeleteTerminal(terminalId: string): void;
-  onOpenGitHistory(projectId: string): void;
   onRemoveProject(projectId: string, deleteLocalFiles: boolean): void;
   onRenameChat(chatId: string, title: string): void;
   onRenameBrowser(browserId: string, title: string): void;
   onRenameExplorer(explorerId: string, title: string): void;
+  onRenameProjectView(viewId: string, title: string): void;
   onRenameTerminal(terminalId: string, title: string): void;
   onReorderTabs(projectId: string, ids: string[]): void;
   onReorderProjects(ids: string[]): void;
   onSelectChat(chatId: string): void;
   onSelectBrowser(browserId: string): void;
   onSelectExplorer(explorerId: string): void;
+  onSelectProjectView(viewId: string): void;
   onSelectTerminal(terminalId: string): void;
   onSelectProject(projectId: string): void;
   projects: ProjectSummary[];
   selectedChatId: string | null;
   selectedBrowserId: string | null;
   selectedExplorerId: string | null;
+  selectedProjectViewId: string | null;
   selectedProjectId: string | null;
   selectedTerminalId: string | null;
   terminals: TerminalSummary[];
-  gitHistoryProjectId?: string | null;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -778,6 +903,9 @@ export function ProjectChatList({
   const [editingTerminalId, setEditingTerminalId] = useState<string | null>(
     null,
   );
+  const [editingProjectViewId, setEditingProjectViewId] = useState<
+    string | null
+  >(null);
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ChatSummary | null>(null);
   const [deleteBrowserTarget, setDeleteBrowserTarget] =
@@ -786,6 +914,8 @@ export function ProjectChatList({
     useState<ExplorerSummary | null>(null);
   const [deleteTerminalTarget, setDeleteTerminalTarget] =
     useState<TerminalSummary | null>(null);
+  const [deleteProjectViewTarget, setDeleteProjectViewTarget] =
+    useState<ProjectViewSummary | null>(null);
   const [removeProjectTarget, setRemoveProjectTarget] =
     useState<ProjectSummary | null>(null);
   const [deleteLocalFiles, setDeleteLocalFiles] = useState(false);
@@ -815,6 +945,12 @@ export function ProjectChatList({
         browser: BrowserSummary;
         position: number;
       }
+    | {
+        id: string;
+        kind: "view";
+        view: ProjectViewSummary;
+        position: number;
+      }
   > = [
     ...chats.map((chat) => ({
       id: chatId(chat.id),
@@ -839,6 +975,12 @@ export function ProjectChatList({
       kind: "browser" as const,
       browser,
       position: browser.position,
+    })),
+    ...projectViews.map((view) => ({
+      id: viewId(view.id),
+      kind: "view" as const,
+      view,
+      position: view.position,
     })),
   ].sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
 
@@ -894,6 +1036,19 @@ export function ProjectChatList({
     setEditingBrowserId(null);
     if (title && title !== browser.title) onRenameBrowser(browser.id, title);
   };
+  const beginProjectViewRename = (view: ProjectViewSummary) => {
+    if (editingProjectViewId === view.id) {
+      setEditingProjectViewId(null);
+      return;
+    }
+    setEditingProjectViewId(view.id);
+    setRenameValue(view.title);
+  };
+  const finishProjectViewRename = (view: ProjectViewSummary) => {
+    const title = renameValue.trim();
+    setEditingProjectViewId(null);
+    if (title && title !== view.title) onRenameProjectView(view.id, title);
+  };
   const handleDragStart = (event: DragStartEvent) => {
     setActiveDrag(String(event.active.id));
   };
@@ -939,6 +1094,9 @@ export function ProjectChatList({
   const draggedBrowser = browsers.find(
     (browser) => browserId(browser.id) === activeDrag,
   );
+  const draggedProjectView = projectViews.find(
+    (view) => viewId(view.id) === activeDrag,
+  );
 
   return (
     <>
@@ -964,13 +1122,14 @@ export function ProjectChatList({
                 creatingBrowser={creatingBrowser}
                 creatingExplorer={creatingExplorer}
                 creatingTerminal={creatingTerminal}
-                historyActive={gitHistoryProjectId === project.id}
+                creatingView={creatingView}
                 onCreateChat={() => onCreateChat(project.id)}
                 onCreateBrowser={() => onCreateBrowser(project.id)}
                 onCreateExplorer={() => onCreateExplorer(project.id)}
+                onCreateHistory={() => onCreateHistory(project.id)}
+                onCreateIssues={() => onCreateIssues(project.id)}
                 onCreateTerminal={() => onCreateTerminal(project.id)}
                 onSelect={() => onSelectProject(project.id)}
-                onOpenHistory={() => onOpenGitHistory(project.id)}
                 onRemove={() => {
                   setDeleteLocalFiles(false);
                   setRemoveProjectTarget(project);
@@ -1034,7 +1193,7 @@ export function ProjectChatList({
                               setDeleteExplorerTarget(tab.explorer)
                             }
                           />
-                        ) : (
+                        ) : tab.kind === "browser" ? (
                           <BrowserTab
                             key={tab.id}
                             browser={tab.browser}
@@ -1048,6 +1207,23 @@ export function ProjectChatList({
                             onSelect={() => onSelectBrowser(tab.browser.id)}
                             onRename={() => beginBrowserRename(tab.browser)}
                             onDelete={() => setDeleteBrowserTarget(tab.browser)}
+                          />
+                        ) : (
+                          <ProjectViewTab
+                            key={tab.id}
+                            view={tab.view}
+                            active={tab.view.id === selectedProjectViewId}
+                            editing={editingProjectViewId === tab.view.id}
+                            renameValue={renameValue}
+                            setRenameValue={setRenameValue}
+                            submitRename={() =>
+                              finishProjectViewRename(tab.view)
+                            }
+                            onSelect={() => onSelectProjectView(tab.view.id)}
+                            onRename={() => beginProjectViewRename(tab.view)}
+                            onDelete={() =>
+                              setDeleteProjectViewTarget(tab.view)
+                            }
                           />
                         ),
                       )}
@@ -1083,6 +1259,15 @@ export function ProjectChatList({
             <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
               <Globe2 className="size-3.5" />
               <span className="truncate">{draggedBrowser.title}</span>
+            </div>
+          ) : draggedProjectView ? (
+            <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
+              {draggedProjectView.kind === "history" ? (
+                <GitCommitHorizontal className="size-3.5" />
+              ) : (
+                <CircleDot className="size-3.5" />
+              )}
+              <span className="truncate">{draggedProjectView.title}</span>
             </div>
           ) : null}
         </DragOverlay>
@@ -1252,6 +1437,36 @@ export function ProjectChatList({
                 if (deleteBrowserTarget)
                   onDeleteBrowser(deleteBrowserTarget.id);
                 setDeleteBrowserTarget(null);
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(deleteProjectViewTarget)}
+        onOpenChange={(open) => !open && setDeleteProjectViewTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {deleteProjectViewTarget?.title}?</DialogTitle>
+            <DialogDescription>
+              This removes the tab only. It does not change repository history
+              or GitHub issues.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteProjectViewTarget) {
+                  onDeleteProjectView(deleteProjectViewTarget.id);
+                }
+                setDeleteProjectViewTarget(null);
               }}
             >
               Delete

@@ -29,6 +29,9 @@ import type {
   QueuedPromptUpdate,
   ProjectCloneResult,
   ProjectSummary,
+  ProjectViewCreate,
+  ProjectViewSummary,
+  ProjectViewUpdate,
   SettingsBundle,
   TerminalCreate,
   TerminalSummary,
@@ -213,6 +216,20 @@ function toBrowserSummary(
     url: browser.url,
     createdAt: toISOString(browser.createdAt),
     updatedAt: toISOString(browser.updatedAt),
+  };
+}
+
+function toProjectViewSummary(
+  view: typeof schema.projectViews.$inferSelect,
+): ProjectViewSummary {
+  return {
+    id: view.id,
+    projectId: view.projectId,
+    title: view.title,
+    kind: view.kind as ProjectViewSummary["kind"],
+    position: view.position,
+    createdAt: toISOString(view.createdAt),
+    updatedAt: toISOString(view.updatedAt),
   };
 }
 
@@ -1151,7 +1168,7 @@ export class ServerRepository {
       return null;
     }
 
-    const [lastChats, lastTerminals, lastExplorers, lastBrowsers] =
+    const [lastChats, lastTerminals, lastExplorers, lastBrowsers, lastViews] =
       await Promise.all([
         this.database
           .select({ position: schema.chats.position })
@@ -1177,6 +1194,12 @@ export class ServerRepository {
           .where(eq(schema.browsers.projectId, projectId))
           .orderBy(desc(schema.browsers.position))
           .limit(1),
+        this.database
+          .select({ position: schema.projectViews.position })
+          .from(schema.projectViews)
+          .where(eq(schema.projectViews.projectId, projectId))
+          .orderBy(desc(schema.projectViews.position))
+          .limit(1),
       ]);
     const result = await this.database
       .insert(schema.chats)
@@ -1190,6 +1213,7 @@ export class ServerRepository {
             lastTerminals[0]?.position ?? -1,
             lastExplorers[0]?.position ?? -1,
             lastBrowsers[0]?.position ?? -1,
+            lastViews[0]?.position ?? -1,
           ) + 1,
         activeWorkerId: source.workerId,
       })
@@ -1244,7 +1268,7 @@ export class ServerRepository {
     const source = rows[0]?.source;
     if (!source) return null;
 
-    const [lastChats, lastTerminals, lastExplorers, lastBrowsers] =
+    const [lastChats, lastTerminals, lastExplorers, lastBrowsers, lastViews] =
       await Promise.all([
         this.database
           .select({ position: schema.chats.position })
@@ -1270,6 +1294,12 @@ export class ServerRepository {
           .where(eq(schema.browsers.projectId, projectId))
           .orderBy(desc(schema.browsers.position))
           .limit(1),
+        this.database
+          .select({ position: schema.projectViews.position })
+          .from(schema.projectViews)
+          .where(eq(schema.projectViews.projectId, projectId))
+          .orderBy(desc(schema.projectViews.position))
+          .limit(1),
       ]);
     const result = await this.database
       .insert(schema.terminals)
@@ -1283,6 +1313,7 @@ export class ServerRepository {
             lastTerminals[0]?.position ?? -1,
             lastExplorers[0]?.position ?? -1,
             lastBrowsers[0]?.position ?? -1,
+            lastViews[0]?.position ?? -1,
           ) + 1,
         activeWorkerId: source.workerId,
       })
@@ -1376,7 +1407,7 @@ export class ServerRepository {
   ): Promise<ExplorerSummary | null> {
     const source = await this.getProjectSource(ownerId, projectId);
     if (!source) return null;
-    const [lastChats, lastTerminals, lastExplorers, lastBrowsers] =
+    const [lastChats, lastTerminals, lastExplorers, lastBrowsers, lastViews] =
       await Promise.all([
         this.database
           .select({ position: schema.chats.position })
@@ -1402,6 +1433,12 @@ export class ServerRepository {
           .where(eq(schema.browsers.projectId, projectId))
           .orderBy(desc(schema.browsers.position))
           .limit(1),
+        this.database
+          .select({ position: schema.projectViews.position })
+          .from(schema.projectViews)
+          .where(eq(schema.projectViews.projectId, projectId))
+          .orderBy(desc(schema.projectViews.position))
+          .limit(1),
       ]);
     const result = await this.database
       .insert(schema.explorers)
@@ -1415,6 +1452,7 @@ export class ServerRepository {
             lastTerminals[0]?.position ?? -1,
             lastExplorers[0]?.position ?? -1,
             lastBrowsers[0]?.position ?? -1,
+            lastViews[0]?.position ?? -1,
           ) + 1,
         activeWorkerId: source.workerId,
       })
@@ -1502,7 +1540,7 @@ export class ServerRepository {
     input: BrowserCreate,
   ): Promise<BrowserSummary | null> {
     if (!(await this.getProjectSource(ownerId, projectId))) return null;
-    const [lastChats, lastTerminals, lastExplorers, lastBrowsers] =
+    const [lastChats, lastTerminals, lastExplorers, lastBrowsers, lastViews] =
       await Promise.all([
         this.database
           .select({ position: schema.chats.position })
@@ -1528,6 +1566,12 @@ export class ServerRepository {
           .where(eq(schema.browsers.projectId, projectId))
           .orderBy(desc(schema.browsers.position))
           .limit(1),
+        this.database
+          .select({ position: schema.projectViews.position })
+          .from(schema.projectViews)
+          .where(eq(schema.projectViews.projectId, projectId))
+          .orderBy(desc(schema.projectViews.position))
+          .limit(1),
       ]);
     const result = await this.database
       .insert(schema.browsers)
@@ -1541,6 +1585,7 @@ export class ServerRepository {
             lastTerminals[0]?.position ?? -1,
             lastExplorers[0]?.position ?? -1,
             lastBrowsers[0]?.position ?? -1,
+            lastViews[0]?.position ?? -1,
           ) + 1,
       })
       .returning();
@@ -1568,6 +1613,131 @@ export class ServerRepository {
       .where(eq(schema.browsers.id, browserId))
       .returning({ id: schema.browsers.id });
     return result.length === 1;
+  }
+
+  async listProjectViews(
+    ownerId: string,
+    projectId: string,
+  ): Promise<ProjectViewSummary[]> {
+    const rows = await this.database
+      .select({ view: schema.projectViews })
+      .from(schema.projectViews)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.projectViews.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.projectViews.projectId, projectId))
+      .orderBy(
+        asc(schema.projectViews.position),
+        asc(schema.projectViews.createdAt),
+      );
+    return rows.map(({ view }) => toProjectViewSummary(view));
+  }
+
+  async createProjectView(
+    ownerId: string,
+    projectId: string,
+    input: ProjectViewCreate,
+  ): Promise<ProjectViewSummary | null> {
+    if (!(await this.getProjectSource(ownerId, projectId))) return null;
+    const [lastChats, lastTerminals, lastExplorers, lastBrowsers, lastViews] =
+      await Promise.all([
+        this.database
+          .select({ position: schema.chats.position })
+          .from(schema.chats)
+          .where(eq(schema.chats.projectId, projectId))
+          .orderBy(desc(schema.chats.position))
+          .limit(1),
+        this.database
+          .select({ position: schema.terminals.position })
+          .from(schema.terminals)
+          .where(eq(schema.terminals.projectId, projectId))
+          .orderBy(desc(schema.terminals.position))
+          .limit(1),
+        this.database
+          .select({ position: schema.explorers.position })
+          .from(schema.explorers)
+          .where(eq(schema.explorers.projectId, projectId))
+          .orderBy(desc(schema.explorers.position))
+          .limit(1),
+        this.database
+          .select({ position: schema.browsers.position })
+          .from(schema.browsers)
+          .where(eq(schema.browsers.projectId, projectId))
+          .orderBy(desc(schema.browsers.position))
+          .limit(1),
+        this.database
+          .select({ position: schema.projectViews.position })
+          .from(schema.projectViews)
+          .where(eq(schema.projectViews.projectId, projectId))
+          .orderBy(desc(schema.projectViews.position))
+          .limit(1),
+      ]);
+    const result = await this.database
+      .insert(schema.projectViews)
+      .values({
+        id: randomUUID(),
+        projectId,
+        title: input.title,
+        kind: input.kind,
+        position:
+          Math.max(
+            lastChats[0]?.position ?? -1,
+            lastTerminals[0]?.position ?? -1,
+            lastExplorers[0]?.position ?? -1,
+            lastBrowsers[0]?.position ?? -1,
+            lastViews[0]?.position ?? -1,
+          ) + 1,
+      })
+      .returning();
+    return toProjectViewSummary(
+      firstOrThrow(result, "creating a project view"),
+    );
+  }
+
+  async updateProjectView(
+    ownerId: string,
+    viewId: string,
+    input: ProjectViewUpdate,
+  ): Promise<ProjectViewSummary | null> {
+    if (!(await this.projectViewIsOwnedBy(ownerId, viewId))) return null;
+    const result = await this.database
+      .update(schema.projectViews)
+      .set({ title: input.title, updatedAt: new Date() })
+      .where(eq(schema.projectViews.id, viewId))
+      .returning();
+    return result[0] ? toProjectViewSummary(result[0]) : null;
+  }
+
+  async deleteProjectView(ownerId: string, viewId: string): Promise<boolean> {
+    if (!(await this.projectViewIsOwnedBy(ownerId, viewId))) return false;
+    const result = await this.database
+      .delete(schema.projectViews)
+      .where(eq(schema.projectViews.id, viewId))
+      .returning({ id: schema.projectViews.id });
+    return result.length === 1;
+  }
+
+  private async projectViewIsOwnedBy(
+    ownerId: string,
+    viewId: string,
+  ): Promise<boolean> {
+    const rows = await this.database
+      .select({ id: schema.projectViews.id })
+      .from(schema.projectViews)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.projectViews.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.projectViews.id, viewId))
+      .limit(1);
+    return rows.length === 1;
   }
 
   private async browserIsOwnedBy(
@@ -1744,7 +1914,7 @@ export class ServerRepository {
               ),
         )
         .orderBy(asc(schema.chatMessages.sequence));
-      const [lastChats, lastTerminals, lastExplorers, lastBrowsers] =
+      const [lastChats, lastTerminals, lastExplorers, lastBrowsers, lastViews] =
         await Promise.all([
           transaction
             .select({ position: schema.chats.position })
@@ -1770,6 +1940,12 @@ export class ServerRepository {
             .where(eq(schema.browsers.projectId, row.chat.projectId))
             .orderBy(desc(schema.browsers.position))
             .limit(1),
+          transaction
+            .select({ position: schema.projectViews.position })
+            .from(schema.projectViews)
+            .where(eq(schema.projectViews.projectId, row.chat.projectId))
+            .orderBy(desc(schema.projectViews.position))
+            .limit(1),
         ]);
       const chatResult = await transaction
         .insert(schema.chats)
@@ -1783,6 +1959,7 @@ export class ServerRepository {
               lastTerminals[0]?.position ?? -1,
               lastExplorers[0]?.position ?? -1,
               lastBrowsers[0]?.position ?? -1,
+              lastViews[0]?.position ?? -1,
             ) + 1,
           activeWorkerId: row.source.workerId,
           modelId: row.chat.modelId,
@@ -1835,7 +2012,7 @@ export class ServerRepository {
     projectId: string,
     input: OrderedIds,
   ): Promise<boolean> {
-    const [chatRows, terminalRows, explorerRows, browserRows] =
+    const [chatRows, terminalRows, explorerRows, browserRows, viewRows] =
       await Promise.all([
         this.database
           .select({ id: schema.chats.id })
@@ -1886,12 +2063,24 @@ export class ServerRepository {
             ),
           )
           .where(eq(schema.browsers.projectId, projectId)),
+        this.database
+          .select({ id: schema.projectViews.id })
+          .from(schema.projectViews)
+          .innerJoin(
+            schema.projects,
+            and(
+              eq(schema.projects.id, projectId),
+              eq(schema.projects.ownerId, ownerId),
+            ),
+          )
+          .where(eq(schema.projectViews.projectId, projectId)),
       ]);
     const expected = new Set([
       ...chatRows.map(({ id }) => `chat:${id}`),
       ...terminalRows.map(({ id }) => `terminal:${id}`),
       ...explorerRows.map(({ id }) => `explorer:${id}`),
       ...browserRows.map(({ id }) => `browser:${id}`),
+      ...viewRows.map(({ id }) => `view:${id}`),
     ]);
     if (
       expected.size !== input.ids.length ||
@@ -1919,11 +2108,16 @@ export class ServerRepository {
             .update(schema.explorers)
             .set({ position })
             .where(eq(schema.explorers.id, id));
-        } else {
+        } else if (kind === "browser") {
           await transaction
             .update(schema.browsers)
             .set({ position })
             .where(eq(schema.browsers.id, id));
+        } else {
+          await transaction
+            .update(schema.projectViews)
+            .set({ position })
+            .where(eq(schema.projectViews.id, id));
         }
       }
     });

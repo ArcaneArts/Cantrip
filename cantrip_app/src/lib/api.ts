@@ -31,10 +31,13 @@ import {
   orderedIdsSchema,
   projectListSchema,
   projectSummarySchema,
+  projectViewListSchema,
+  projectViewSummarySchema,
   queuedPromptListSchema,
   queuedPromptSchema,
   serverBootstrapSchema,
   settingsBundleSchema,
+  skillListSchema,
   systemHealthSchema,
   terminalListSchema,
   terminalSummarySchema,
@@ -47,6 +50,7 @@ import type {
   ModelProfileUpdate,
   ModelProviderCreate,
   ModelProviderUpdate,
+  ProjectViewKind,
   UserSettingsUpdate,
 } from "@cantrip/protocol";
 
@@ -412,6 +416,40 @@ export async function deleteBrowser(browserId: string) {
   });
 }
 
+export async function getProjectViews(projectId: string) {
+  return projectViewListSchema.parse(
+    await request(`/api/projects/${encodeURIComponent(projectId)}/views`),
+  );
+}
+
+export async function createProjectView(
+  projectId: string,
+  kind: ProjectViewKind,
+  title: string,
+) {
+  return projectViewSummarySchema.parse(
+    await post(`/api/projects/${encodeURIComponent(projectId)}/views`, {
+      kind,
+      title,
+    }),
+  );
+}
+
+export async function renameProjectView(viewId: string, title: string) {
+  return projectViewSummarySchema.parse(
+    await request(`/api/project-views/${encodeURIComponent(viewId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    }),
+  );
+}
+
+export async function deleteProjectView(viewId: string) {
+  await request(`/api/project-views/${encodeURIComponent(viewId)}`, {
+    method: "DELETE",
+  });
+}
+
 export async function getExplorerDirectory(explorerId: string, path: string) {
   return explorerDirectorySchema.parse(
     await request(
@@ -510,6 +548,12 @@ export async function reorderProjectTabs(projectId: string, ids: string[]) {
 export async function getMessages(chatId: string) {
   return chatMessageListSchema.parse(
     await request(`/api/chats/${encodeURIComponent(chatId)}/messages`),
+  );
+}
+
+export async function getSkills(chatId: string) {
+  return skillListSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/skills`),
   );
 }
 

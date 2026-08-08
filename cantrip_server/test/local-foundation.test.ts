@@ -24,10 +24,13 @@ import {
   modelProviderSummarySchema,
   projectListSchema,
   projectSummarySchema,
+  projectViewListSchema,
+  projectViewSummarySchema,
   queuedPromptListSchema,
   queuedPromptSchema,
   serverBootstrapSchema,
   settingsBundleSchema,
+  skillListSchema,
   terminalListSchema,
   terminalSummarySchema,
   workerListSchema,
@@ -63,6 +66,7 @@ const turnModelIds: string[] = [];
 const turnProviderIds: string[] = [];
 const turnRouteIds: string[] = [];
 const turnPrompts: string[] = [];
+const turnSkillNames: string[][] = [];
 const turnTimeouts: Array<number | null | undefined> = [];
 const deletedProjectPaths: string[] = [];
 const authProviderIds: string[] = [];
@@ -293,6 +297,14 @@ const workerBridge = {
           size: 18,
           markdown: true,
         };
+      case "skills.list":
+        return [
+          {
+            name: "skill-creator",
+            displayName: "Skill Creator",
+            description: "Create reusable skills",
+          },
+        ];
       case "terminal.open":
         return { status: "detached" };
       case "terminal.detach":
@@ -306,6 +318,7 @@ const workerBridge = {
         turnProviderIds.push(command.provider.id);
         turnRouteIds.push(command.model.routeId);
         turnPrompts.push(command.prompt);
+        turnSkillNames.push(command.skillNames);
         turnTimeouts.push(options?.timeoutMs);
         await options?.onEvent?.({
           type: "agent.activity",
@@ -822,9 +835,25 @@ describe("local server foundation", () => {
     expect(selectedChat).toMatchObject({
       modelId: selectedModel.id,
     });
+    expect(
+      skillListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${chat.id}/skills`,
+          })
+        ).json(),
+      ),
+    ).toEqual([
+      {
+        name: "skill-creator",
+        displayName: "Skill Creator",
+        description: "Create reusable skills",
+      },
+    ]);
 
     const messagePayload = {
-      text: "Persist this message.",
+      text: "$skill-creator Persist this message.",
       idempotencyKey: "first-message",
     };
     const firstMessage = chatMessageSchema.parse(
@@ -858,6 +887,7 @@ describe("local server foundation", () => {
       expect(messages).toHaveLength(4);
     });
     expect(turnRequests).toBe(1);
+    expect(turnSkillNames[0]).toEqual(["skill-creator"]);
     expect(turnTimeouts).toEqual([null]);
     expect(turnModelIds).toContain(selectedModel.id);
     expect(
@@ -1037,6 +1067,26 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toMatchObject({ title: "Docs", url: "https://example.com/docs" });
+    const projectView = projectViewSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/views`,
+          payload: { kind: "history", title: "History" },
+        })
+      ).json(),
+    );
+    expect(
+      projectViewSummarySchema.parse(
+        (
+          await firstApp.inject({
+            method: "PATCH",
+            url: `/api/project-views/${projectView.id}`,
+            payload: { title: "Repository history" },
+          })
+        ).json(),
+      ),
+    ).toMatchObject({ kind: "history", title: "Repository history" });
     expect(
       await firstApp.inject({
         method: "PATCH",
@@ -1046,6 +1096,7 @@ describe("local server foundation", () => {
             `chat:${duplicatedChat.id}`,
             `terminal:${reorderedTerminal.id}`,
             `browser:${browser.id}`,
+            `view:${projectView.id}`,
             `explorer:${explorer.id}`,
             `chat:${forkedChat.id}`,
             `chat:${chat.id}`,
@@ -1065,8 +1116,8 @@ describe("local server foundation", () => {
       reorderedChats.map(({ id, position }) => ({ id, position })),
     ).toEqual([
       { id: duplicatedChat.id, position: 0 },
-      { id: forkedChat.id, position: 4 },
-      { id: chat.id, position: 5 },
+      { id: forkedChat.id, position: 5 },
+      { id: chat.id, position: 6 },
     ]);
     expect(
       terminalListSchema.parse(
@@ -1087,7 +1138,7 @@ describe("local server foundation", () => {
           })
         ).json(),
       ),
-    ).toMatchObject([{ id: explorer.id, position: 3 }]);
+    ).toMatchObject([{ id: explorer.id, position: 4 }]);
     expect(
       browserListSchema.parse(
         (
@@ -1098,6 +1149,16 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toMatchObject([{ id: browser.id, position: 2 }]);
+    expect(
+      projectViewListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/views`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject([{ id: projectView.id, position: 3 }]);
     const linkedConsole = terminalSummarySchema.parse(
       (
         await firstApp.inject({

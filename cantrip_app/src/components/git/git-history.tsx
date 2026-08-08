@@ -4,9 +4,15 @@ import type {
   GithubIssueState,
   ProjectSummary,
 } from "@cantrip/protocol";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
-  CircleDot,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
   FileDiff,
   GitBranch,
   GitCommitHorizontal,
@@ -16,7 +22,12 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { getGitHistory, getGithubIssues, getGitStatus } from "@/lib/api";
+import {
+  getGitHistory,
+  getGithubIssues,
+  getGitStatus,
+  runGitAction,
+} from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -137,7 +148,15 @@ function RefLabel({ gitRef }: { gitRef: GitRef }) {
   );
 }
 
-function CommitGraph({ row, width }: { row: GraphRow; width: number }) {
+function CommitGraph({
+  connectFromTop = false,
+  row,
+  width,
+}: {
+  connectFromTop?: boolean;
+  row: GraphRow;
+  width: number;
+}) {
   const x = (lane: number) => 10 + lane * 16;
   return (
     <svg
@@ -146,7 +165,7 @@ function CommitGraph({ row, width }: { row: GraphRow; width: number }) {
       className="block overflow-visible"
       aria-hidden="true"
     >
-      {!row.introduced ? (
+      {!row.introduced || connectFromTop ? (
         <path
           d={`M ${x(row.lane)} -1 L ${x(row.lane)} 16`}
           fill="none"
@@ -188,35 +207,33 @@ function CommitGraph({ row, width }: { row: GraphRow; width: number }) {
 }
 
 export interface GitHistoryHeaderState {
-  activeView: "commits" | "issues";
   branch: string;
-  changesCount: number;
-  changesOpen: boolean;
+  canPush: boolean;
   commitsLoaded: number;
   head: string | null;
   isFetching: boolean;
   issueCount: number | null;
   issueState: GithubIssueState;
+  isGitActionPending: boolean;
+  pull(): void;
+  push(): void;
   refresh(): void;
-  toggleChanges(): void;
 }
 
 export function GitHistoryView({
-  initialView = "commits",
   onHeaderChange,
   project,
   standalone = false,
+  view,
 }: {
-  initialView?: "commits" | "issues";
   onHeaderChange(state: GitHistoryHeaderState | null): void;
   project: ProjectSummary;
   standalone?: boolean;
+  view: "history" | "issues";
 }) {
+  const queryClient = useQueryClient();
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const [changesOpen, setChangesOpen] = useState(false);
-  const [activeView, setActiveView] = useState<"commits" | "issues">(
-    initialView,
-  );
   const [issueState, setIssueState] = useState<GithubIssueState>("open");
   const history = useInfiniteQuery({
     initialPageParam: 0,
@@ -230,9 +247,18 @@ export function GitHistoryView({
     refetchInterval: 2_000,
   });
   const issues = useQuery({
-    enabled: Boolean(project.github),
+    enabled: view === "issues" && Boolean(project.github),
     queryFn: () => getGithubIssues(project.id, issueState),
     queryKey: ["github-issues", project.id, issueState],
+  });
+  const gitAction = useMutation({
+    mutationFn: (type: "pull" | "push") => runGitAction(project.id, { type }),
+    onSuccess: (result) => {
+      queryClient.setQueryData(["git-status", project.id], result.status);
+      void queryClient.invalidateQueries({
+        queryKey: ["git-history", project.id],
+      });
+    },
   });
   const commits = useMemo(
     () => history.data?.pages.flatMap((page) => page.commits) ?? [],
@@ -243,37 +269,46 @@ export function GitHistoryView({
   const graphAreaWidth = Math.min(220, Math.max(150, graphWidth + 108));
   const historyColumns = `${graphAreaWidth}px minmax(320px, 1fr) 150px 82px`;
   const firstPage = history.data?.pages[0];
+  const stagedCount =
+    status.data?.files.filter((file) => file.staged).length ?? 0;
+  const unstagedCount =
+    status.data?.files.filter((file) => file.unstaged).length ?? 0;
 
   useEffect(() => {
     if (!firstPage) return;
     onHeaderChange({
-      activeView,
       branch: firstPage.branch,
-      changesCount: status.data?.files.length ?? 0,
-      changesOpen,
+      canPush: Boolean(
+        status.data?.head &&
+        status.data.branch &&
+        (status.data.ahead > 0 ||
+          (!status.data.upstream &&
+            status.data.branches.some((branch) => branch.kind === "remote"))),
+      ),
       commitsLoaded: commits.length,
       head: firstPage.head,
-      isFetching:
-        activeView === "commits" ? history.isFetching : issues.isFetching,
+      isFetching: view === "history" ? history.isFetching : issues.isFetching,
       issueCount: issues.data?.total ?? null,
       issueState,
+      isGitActionPending: gitAction.isPending,
+      pull: () => gitAction.mutate("pull"),
+      push: () => gitAction.mutate("push"),
       refresh: () => {
-        if (activeView === "commits") {
+        if (view === "history") {
           void history.refetch();
           void status.refetch();
         } else {
           void issues.refetch();
         }
       },
-      toggleChanges: () => setChangesOpen((open) => !open),
     });
   }, [
-    activeView,
-    changesOpen,
     commits.length,
     firstPage,
     history.isFetching,
     history.refetch,
+    gitAction.isPending,
+    gitAction.mutate,
     issueState,
     issues.data?.total,
     issues.isFetching,
@@ -281,6 +316,12 @@ export function GitHistoryView({
     onHeaderChange,
     status.data?.files.length,
     status.refetch,
+    status.data?.ahead,
+    status.data?.branch,
+    status.data?.branches,
+    status.data?.head,
+    status.data?.upstream,
+    view,
   ]);
 
   useEffect(() => {
@@ -304,75 +345,71 @@ export function GitHistoryView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-11 shrink-0 items-end gap-1 border-b px-4">
-        <button
-          type="button"
-          onClick={() => setActiveView("commits")}
-          className={cn(
-            "flex h-10 items-center gap-2 border-b-2 px-3 text-sm text-muted-foreground",
-            activeView === "commits"
-              ? "border-foreground font-medium text-foreground"
-              : "border-transparent hover:text-foreground",
-          )}
-        >
-          <GitCommitHorizontal className="size-4" />
-          Commits
-          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums">
-            {firstPage?.totalCount ?? "…"}
-          </span>
-        </button>
-        <button
-          type="button"
-          disabled={!project.github}
-          onClick={() => setActiveView("issues")}
-          className={cn(
-            "flex h-10 items-center gap-2 border-b-2 px-3 text-sm text-muted-foreground disabled:opacity-40",
-            activeView === "issues"
-              ? "border-foreground font-medium text-foreground"
-              : "border-transparent hover:text-foreground",
-          )}
-        >
-          <CircleDot className="size-4" />
-          Issues
-          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums">
-            {issues.data?.total ?? (issues.isLoading ? "…" : 0)}
-          </span>
-        </button>
-        {standalone && activeView === "commits" ? (
-          <div className="ml-auto flex h-10 items-center gap-1">
-            <Button
-              size="sm"
-              variant={changesOpen ? "outline" : "ghost"}
-              onClick={() => setChangesOpen((open) => !open)}
-              title="Show working changes"
-            >
-              <FileDiff className="size-4" />
-              {status.data?.files.length ?? 0} changes
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="size-8"
-              disabled={history.isFetching || status.isFetching}
-              onClick={() => {
-                void history.refetch();
-                void status.refetch();
-              }}
-              title="Refresh Git history"
-            >
-              <RefreshCw
-                className={cn(
-                  "size-4",
-                  (history.isFetching || status.isFetching) && "animate-spin",
-                )}
-              />
-              <span className="sr-only">Refresh Git history</span>
-            </Button>
-          </div>
-        ) : null}
-      </div>
+      {standalone ? (
+        <div className="flex h-11 shrink-0 items-center justify-end gap-1 border-b px-3">
+          {view === "history" ? (
+            <>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={gitAction.isPending}
+                onClick={() => gitAction.mutate("pull")}
+              >
+                <ArrowDownToLine className="size-4" /> Pull
+              </Button>
+              {Boolean(
+                status.data?.head &&
+                status.data.branch &&
+                (status.data.ahead > 0 ||
+                  (!status.data.upstream &&
+                    status.data.branches.some(
+                      (branch) => branch.kind === "remote",
+                    ))),
+              ) ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={gitAction.isPending}
+                  onClick={() => gitAction.mutate("push")}
+                >
+                  <ArrowUpFromLine className="size-4" /> Push
+                </Button>
+              ) : null}
+            </>
+          ) : null}
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-8"
+            disabled={history.isFetching || status.isFetching}
+            onClick={() =>
+              view === "history"
+                ? (void history.refetch(), void status.refetch())
+                : void issues.refetch()
+            }
+            title="Refresh"
+          >
+            <RefreshCw
+              className={cn(
+                "size-4",
+                (view === "history"
+                  ? history.isFetching || status.isFetching
+                  : issues.isFetching) && "animate-spin",
+              )}
+            />
+            <span className="sr-only">Refresh</span>
+          </Button>
+        </div>
+      ) : null}
+      {gitAction.error ? (
+        <p className="shrink-0 bg-destructive/10 px-4 py-2 text-xs text-destructive">
+          {gitAction.error instanceof Error
+            ? gitAction.error.message
+            : "Git sync failed."}
+        </p>
+      ) : null}
 
-      {activeView === "issues" ? (
+      {view === "issues" ? (
         <GithubIssuesView
           error={issues.error}
           isFetching={issues.isFetching}
@@ -414,6 +451,68 @@ export function GitHistoryView({
                   <span>Author</span>
                   <span className="text-right">When</span>
                 </div>
+                {status.data?.files.length ? (
+                  <button
+                    type="button"
+                    data-high-contrast-row
+                    className="grid h-8 w-full items-center bg-muted/45 px-4 text-left hover:bg-muted/70"
+                    style={{ gridTemplateColumns: historyColumns }}
+                    onClick={() => setChangesOpen(true)}
+                    title="Open staged and unstaged working changes"
+                  >
+                    <div className="relative flex h-8 min-w-0 items-center">
+                      <svg
+                        width={graphWidth}
+                        height="32"
+                        className="shrink-0 overflow-visible"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M 10 16 L 10 33"
+                          fill="none"
+                          stroke="var(--muted-foreground)"
+                          strokeWidth="2"
+                          strokeDasharray="2 3"
+                        />
+                        <circle
+                          cx="10"
+                          cy="16"
+                          r="5"
+                          fill="var(--background)"
+                          stroke="var(--muted-foreground)"
+                          strokeWidth="2"
+                          strokeDasharray="2 2"
+                        />
+                      </svg>
+                      <span className="absolute left-7 inline-flex h-4 items-center rounded bg-muted px-1.5 text-[9px] font-medium text-muted-foreground">
+                        // WIP
+                      </span>
+                    </div>
+                    <div className="flex min-w-0 items-center gap-2 pr-4">
+                      <FileDiff className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="truncate font-medium">
+                        {status.data.files.length} working{" "}
+                        {status.data.files.length === 1 ? "change" : "changes"}
+                      </span>
+                      {unstagedCount ? (
+                        <span className="shrink-0 text-amber-600 dark:text-amber-400">
+                          {unstagedCount} unstaged
+                        </span>
+                      ) : null}
+                      {stagedCount ? (
+                        <span className="shrink-0 text-emerald-600 dark:text-emerald-400">
+                          {stagedCount} staged
+                        </span>
+                      ) : null}
+                    </div>
+                    <span className="truncate text-muted-foreground">
+                      Working tree
+                    </span>
+                    <span className="text-right text-[10px] text-muted-foreground">
+                      now
+                    </span>
+                  </button>
+                ) : null}
                 {graph.rows.map((row, index) => {
                   const day = row.commit.authoredAt.slice(0, 10);
                   const previousDay = graph.rows[
@@ -434,7 +533,13 @@ export function GitHistoryView({
                     >
                       <div className="relative h-8 min-w-0 overflow-visible">
                         <div className="absolute inset-y-0 left-0 z-[1] flex items-center">
-                          <CommitGraph row={row} width={graphWidth} />
+                          <CommitGraph
+                            row={row}
+                            width={graphWidth}
+                            connectFromTop={
+                              index === 0 && Boolean(status.data?.files.length)
+                            }
+                          />
                         </div>
                         {row.commit.refs.length ? (
                           <div

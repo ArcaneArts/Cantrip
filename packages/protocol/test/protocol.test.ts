@@ -4,6 +4,7 @@ import {
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   gitActionSchema,
+  mentionedSkillNames,
   normalizeResponsesBaseUrl,
   queuedPromptSchema,
   serverBootstrapSchema,
@@ -91,6 +92,15 @@ describe("Cantrip protocol", () => {
       },
     });
     expect(compact.type).toBe("chat.interrupt");
+  });
+
+  it("extracts unique explicit skill mentions", () => {
+    expect(
+      mentionedSkillNames(
+        "Use $skill-creator and $browser:control-in-app-browser, then $skill-creator again.",
+      ),
+    ).toEqual(["skill-creator", "browser:control-in-app-browser"]);
+    expect(mentionedSkillNames("The total costs$20.")).toEqual([]);
   });
 
   it("validates worker-backed Git actions", () => {

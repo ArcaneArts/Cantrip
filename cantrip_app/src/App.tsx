@@ -6,18 +6,22 @@ import type {
   GithubRepository,
   ModelProfileSummary,
   ProjectSummary,
+  ProjectViewKind,
+  ProjectViewSummary,
   QueuedPrompt,
   SettingsBundle,
+  SkillSummary,
   TerminalSummary,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
   Bot,
   Check,
   CircleAlert,
   Copy,
   ExternalLink,
-  FileDiff,
   FolderGit2,
   FolderTree,
   GitFork,
@@ -48,6 +52,12 @@ import {
 import { Activity, ActivityGroup } from "@/components/chat/activity";
 import { Markdown } from "@/components/chat/markdown";
 import { PromptQueue } from "@/components/chat/prompt-queue";
+import {
+  activeSkillMention,
+  filterSkills,
+  insertSkillMention,
+  skillMentionSegments,
+} from "@/components/chat/skill-mentions";
 import { buildChatTimeline } from "@/components/chat/timeline";
 import {
   filterSlashCommands,
@@ -82,11 +92,13 @@ import {
   createChatConsole,
   createExplorer,
   createGithubProject,
+  createProjectView,
   createTerminal,
   compactChat,
   deleteChat,
   deleteBrowser,
   deleteExplorer,
+  deleteProjectView,
   deleteTerminal,
   deleteQueuedPrompt,
   forkChat,
@@ -98,13 +110,16 @@ import {
   getGithubStatus,
   getMessages,
   getProjects,
+  getProjectViews,
   getQueuedPrompts,
   getServerBootstrap,
   getSettings,
+  getSkills,
   getTerminals,
   getWorkers,
   renameChat,
   renameExplorer,
+  renameProjectView,
   renameTerminal,
   removeProject,
   reorderProjectTabs,
@@ -542,8 +557,14 @@ function ChatTranscript({
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [commandNotice, setCommandNotice] = useState<string | null>(null);
   const [slashMenuDismissed, setSlashMenuDismissed] = useState(false);
+  const [skillMenuDismissed, setSkillMenuDismissed] = useState(false);
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
+  const [selectedSkillIndex, setSelectedSkillIndex] = useState(0);
+  const [composerCaret, setComposerCaret] = useState(0);
+  const [composerScrollTop, setComposerScrollTop] = useState(0);
   const commandListRef = useRef<HTMLDivElement>(null);
+  const skillListRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const selectedModelId =
     chat.modelId ?? settings?.preferences.defaultModelId ?? "";
   const selectedModel = settings?.models.find(
@@ -577,6 +598,13 @@ function ChatTranscript({
     queryKey: ["prompt-queue", chat.id],
     refetchInterval: chat.status === "running" ? 750 : 3_000,
   });
+  const skills = useQuery({
+    enabled: Boolean(selectedModelId && draft.includes("$")),
+    queryFn: () => getSkills(chat.id),
+    queryKey: ["skills", chat.id, selectedModelId],
+    retry: false,
+    staleTime: 30_000,
+  });
   const timeline = useMemo(
     () => buildChatTimeline(messages.data ?? []),
     [messages.data],
@@ -588,6 +616,24 @@ function ChatTranscript({
   );
   const slashMenuOpen =
     !slashMenuDismissed && slashQuery !== null && slashSuggestions.length > 0;
+  const skillMention = useMemo(
+    () => activeSkillMention(draft, composerCaret),
+    [composerCaret, draft],
+  );
+  const skillSuggestions = useMemo(
+    () =>
+      skillMention ? filterSkills(skills.data ?? [], skillMention.query) : [],
+    [skillMention, skills.data],
+  );
+  const skillMenuOpen =
+    !skillMenuDismissed && skillMention !== null && skillSuggestions.length > 0;
+  const skillMenuLoading =
+    !skillMenuDismissed && skillMention !== null && skills.isFetching;
+  const skillMenuVisible = skillMenuOpen || skillMenuLoading;
+  const highlightedDraft = useMemo(
+    () => skillMentionSegments(draft, skills.data ?? []),
+    [draft, skills.data],
+  );
   const latestAssistantText = useMemo(
     () =>
       [...(messages.data ?? [])]
@@ -670,6 +716,10 @@ function ChatTranscript({
   }, [slashQuery]);
 
   useEffect(() => {
+    setSelectedSkillIndex(0);
+  }, [skillMention?.query]);
+
+  useEffect(() => {
     if (!slashMenuOpen) return;
     commandListRef.current
       ?.querySelector<HTMLElement>(
@@ -677,6 +727,13 @@ function ChatTranscript({
       )
       ?.scrollIntoView({ block: "nearest" });
   }, [selectedCommandIndex, slashMenuOpen]);
+
+  useEffect(() => {
+    if (!skillMenuOpen) return;
+    skillListRef.current
+      ?.querySelector<HTMLElement>(`[data-skill-index="${selectedSkillIndex}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [selectedSkillIndex, skillMenuOpen]);
 
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
@@ -748,6 +805,19 @@ function ChatTranscript({
       const prompt = prompts[name];
       if (prompt) send.mutate(prompt);
     }
+  };
+
+  const chooseSkill = (skill: SkillSummary) => {
+    if (!skillMention) return;
+    const inserted = insertSkillMention(draft, skillMention, skill.name);
+    setDraft(inserted.text);
+    setComposerCaret(inserted.caret);
+    setSkillMenuDismissed(true);
+    setCommandNotice(null);
+    window.requestAnimationFrame(() => {
+      composerRef.current?.focus();
+      composerRef.current?.setSelectionRange(inserted.caret, inserted.caret);
+    });
   };
 
   return (
@@ -928,6 +998,62 @@ function ChatTranscript({
               ))}
             </div>
           ) : null}
+          {skillMenuVisible ? (
+            <div
+              id="skill-mention-menu"
+              ref={skillListRef}
+              role="listbox"
+              aria-label="Skills"
+              className="chat-composer-surface absolute inset-x-0 bottom-[calc(100%+0.5rem)] max-h-72 overflow-y-auto rounded-xl border p-1.5 shadow-2xl"
+            >
+              {skillMenuLoading && skillSuggestions.length === 0 ? (
+                <div
+                  role="status"
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground"
+                >
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Loading project skills…
+                </div>
+              ) : null}
+              {skillSuggestions.map((skill, index) => (
+                <button
+                  key={skill.name}
+                  id={`skill-mention-${index}`}
+                  data-skill-index={index}
+                  role="option"
+                  aria-selected={index === selectedSkillIndex}
+                  type="button"
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left",
+                    index === selectedSkillIndex
+                      ? "bg-accent text-accent-foreground"
+                      : "text-foreground hover:bg-accent/60",
+                  )}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setSelectedSkillIndex(index)}
+                  onClick={() => chooseSkill(skill)}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 items-baseline gap-2">
+                      <span className="truncate font-mono text-sm font-medium text-violet-500 dark:text-violet-400">
+                        ${skill.name}
+                      </span>
+                      {skill.displayName && skill.displayName !== skill.name ? (
+                        <span className="truncate text-xs text-muted-foreground">
+                          {skill.displayName}
+                        </span>
+                      ) : null}
+                    </span>
+                    {skill.description ? (
+                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                        {skill.description}
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
           <PromptQueue
             prompts={queuedPrompts.data ?? []}
             editingPromptId={editingPrompt?.id ?? null}
@@ -970,63 +1096,142 @@ function ChatTranscript({
           />
           <div className="chat-composer-surface flex items-end gap-2 rounded-2xl border p-2 shadow-xl shadow-background/20 focus-within:ring-2 focus-within:ring-ring">
             <div className="min-w-0 flex-1">
-              <textarea
-                rows={1}
-                value={draft}
-                aria-autocomplete="list"
-                aria-controls={slashMenuOpen ? "slash-command-menu" : undefined}
-                aria-activedescendant={
-                  slashMenuOpen
-                    ? `slash-command-${selectedCommandIndex}`
-                    : undefined
-                }
-                onChange={(event) => {
-                  setDraft(event.target.value);
-                  setSlashMenuDismissed(false);
-                  setCommandNotice(null);
-                }}
-                onKeyDown={(event) => {
-                  if (slashMenuOpen && event.key === "ArrowDown") {
-                    event.preventDefault();
-                    setSelectedCommandIndex((index) =>
-                      Math.min(index + 1, slashSuggestions.length - 1),
-                    );
-                    return;
+              <div className="relative min-h-10 overflow-hidden">
+                {draft ? (
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 overflow-hidden px-2 py-2 text-sm leading-5 text-foreground whitespace-pre-wrap break-words"
+                  >
+                    <div
+                      style={{
+                        transform: `translateY(-${composerScrollTop}px)`,
+                      }}
+                    >
+                      {highlightedDraft.map((segment, index) =>
+                        segment.skill ? (
+                          <span
+                            key={`${index}:${segment.text}`}
+                            className="rounded-sm bg-violet-500/15 text-violet-600 dark:text-violet-400"
+                          >
+                            {segment.text}
+                          </span>
+                        ) : (
+                          <span key={`${index}:${segment.text}`}>
+                            {segment.text}
+                          </span>
+                        ),
+                      )}
+                      {draft.endsWith("\n") ? "\u00a0" : null}
+                    </div>
+                  </div>
+                ) : null}
+                <textarea
+                  ref={composerRef}
+                  rows={1}
+                  value={draft}
+                  aria-autocomplete="list"
+                  aria-controls={
+                    skillMenuVisible
+                      ? "skill-mention-menu"
+                      : slashMenuOpen
+                        ? "slash-command-menu"
+                        : undefined
                   }
-                  if (slashMenuOpen && event.key === "ArrowUp") {
-                    event.preventDefault();
-                    setSelectedCommandIndex((index) => Math.max(index - 1, 0));
-                    return;
+                  aria-activedescendant={
+                    skillMenuOpen
+                      ? `skill-mention-${selectedSkillIndex}`
+                      : slashMenuOpen
+                        ? `slash-command-${selectedCommandIndex}`
+                        : undefined
                   }
-                  if (slashMenuOpen && event.key === "Escape") {
-                    event.preventDefault();
-                    setSlashMenuDismissed(true);
-                    return;
+                  onChange={(event) => {
+                    setDraft(event.target.value);
+                    setComposerCaret(event.target.selectionStart);
+                    setSlashMenuDismissed(false);
+                    setSkillMenuDismissed(false);
+                    setCommandNotice(null);
+                  }}
+                  onSelect={(event) => {
+                    setComposerCaret(event.currentTarget.selectionStart);
+                  }}
+                  onScroll={(event) => {
+                    setComposerScrollTop(event.currentTarget.scrollTop);
+                  }}
+                  onKeyDown={(event) => {
+                    if (skillMenuOpen && event.key === "ArrowDown") {
+                      event.preventDefault();
+                      setSelectedSkillIndex((index) =>
+                        Math.min(index + 1, skillSuggestions.length - 1),
+                      );
+                      return;
+                    }
+                    if (skillMenuOpen && event.key === "ArrowUp") {
+                      event.preventDefault();
+                      setSelectedSkillIndex((index) => Math.max(index - 1, 0));
+                      return;
+                    }
+                    if (skillMenuOpen && event.key === "Escape") {
+                      event.preventDefault();
+                      setSkillMenuDismissed(true);
+                      return;
+                    }
+                    if (
+                      skillMenuOpen &&
+                      (event.key === "Tab" ||
+                        (event.key === "Enter" && !event.shiftKey))
+                    ) {
+                      event.preventDefault();
+                      const skill = skillSuggestions[selectedSkillIndex];
+                      if (skill) chooseSkill(skill);
+                      return;
+                    }
+                    if (slashMenuOpen && event.key === "ArrowDown") {
+                      event.preventDefault();
+                      setSelectedCommandIndex((index) =>
+                        Math.min(index + 1, slashSuggestions.length - 1),
+                      );
+                      return;
+                    }
+                    if (slashMenuOpen && event.key === "ArrowUp") {
+                      event.preventDefault();
+                      setSelectedCommandIndex((index) =>
+                        Math.max(index - 1, 0),
+                      );
+                      return;
+                    }
+                    if (slashMenuOpen && event.key === "Escape") {
+                      event.preventDefault();
+                      setSlashMenuDismissed(true);
+                      return;
+                    }
+                    if (
+                      slashMenuOpen &&
+                      (event.key === "Tab" ||
+                        (event.key === "Enter" && !event.shiftKey))
+                    ) {
+                      event.preventDefault();
+                      const suggestion = slashSuggestions[selectedCommandIndex];
+                      if (suggestion) void executeSlashCommand(suggestion);
+                      return;
+                    }
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      submit();
+                    }
+                  }}
+                  placeholder={
+                    editingPrompt
+                      ? "Edit queued prompt…"
+                      : chat.status === "running"
+                        ? "Queue a follow-up…"
+                        : "Ask Cantrip to work on this repository…"
                   }
-                  if (
-                    slashMenuOpen &&
-                    (event.key === "Tab" ||
-                      (event.key === "Enter" && !event.shiftKey))
-                  ) {
-                    event.preventDefault();
-                    const suggestion = slashSuggestions[selectedCommandIndex];
-                    if (suggestion) void executeSlashCommand(suggestion);
-                    return;
-                  }
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    submit();
-                  }
-                }}
-                placeholder={
-                  editingPrompt
-                    ? "Edit queued prompt…"
-                    : chat.status === "running"
-                      ? "Queue a follow-up…"
-                      : "Ask Cantrip to work on this repository…"
-                }
-                className="max-h-48 min-h-10 w-full resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-muted-foreground"
-              />
+                  className={cn(
+                    "relative max-h-48 min-h-10 w-full resize-none bg-transparent px-2 py-2 text-sm leading-5 outline-none placeholder:text-muted-foreground",
+                    draft && "text-transparent caret-foreground",
+                  )}
+                />
+              </div>
               <div className="flex min-w-0 items-center gap-2 border-t px-1 pt-2">
                 <select
                   aria-label="Chat model"
@@ -1044,9 +1249,6 @@ function ChatTranscript({
                     </option>
                   ))}
                 </select>
-                <span className="text-[11px] text-muted-foreground">
-                  Applies to the next message
-                </span>
               </div>
             </div>
             <Button
@@ -1094,11 +1296,7 @@ function ChatTranscript({
             <p className="mt-2 text-center text-[11px] text-muted-foreground">
               {commandNotice}
             </p>
-          ) : (
-            <p className="mt-2 text-center text-[11px] text-muted-foreground">
-              Enter to send · Shift+Enter for a new line · / for commands
-            </p>
-          )}
+          ) : null}
         </div>
       </form>
     </div>
@@ -1129,12 +1327,12 @@ export function App() {
   const [selectedTerminalId, setSelectedTerminalId] = useState<string | null>(
     popoutTarget?.kind === "terminal" ? popoutTarget.tabId : null,
   );
+  const [selectedProjectViewId, setSelectedProjectViewId] = useState<
+    string | null
+  >(popoutTarget?.kind === "view" ? popoutTarget.tabId : null);
   const [showImporter, setShowImporter] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
-  const [gitHistoryProjectId, setGitHistoryProjectId] = useState<string | null>(
-    popoutTarget?.kind === "git" ? popoutTarget.projectId : null,
-  );
   const [gitHistoryHeader, setGitHistoryHeader] =
     useState<GitHistoryHeaderState | null>(null);
   const [popoutPending, setPopoutPending] = useState(false);
@@ -1142,7 +1340,7 @@ export function App() {
 
   const openCreatedTab = (
     projectId: string,
-    kind: "browser" | "chat" | "explorer" | "terminal",
+    kind: "browser" | "chat" | "explorer" | "terminal" | "view",
     tabId: string,
   ) => {
     setSelectedProjectId(projectId);
@@ -1150,7 +1348,7 @@ export function App() {
     setSelectedTerminalId(kind === "terminal" ? tabId : null);
     setSelectedExplorerId(kind === "explorer" ? tabId : null);
     setSelectedBrowserId(kind === "browser" ? tabId : null);
-    setGitHistoryProjectId(null);
+    setSelectedProjectViewId(kind === "view" ? tabId : null);
     setShowImporter(false);
     setShowSettings(false);
     setMobileNavigationOpen(false);
@@ -1196,6 +1394,12 @@ export function App() {
     enabled: Boolean(selectedProjectId),
     queryFn: () => getBrowsers(selectedProjectId!),
     queryKey: ["browsers", selectedProjectId],
+    refetchInterval: 1_000,
+  });
+  const projectViews = useQuery({
+    enabled: Boolean(selectedProjectId),
+    queryFn: () => getProjectViews(selectedProjectId!),
+    queryKey: ["project-views", selectedProjectId],
     refetchInterval: 1_000,
   });
   const newChat = useMutation({
@@ -1272,6 +1476,33 @@ export function App() {
       openCreatedTab(browser.projectId, "browser", browser.id);
       void queryClient.invalidateQueries({
         queryKey: ["browsers", browser.projectId],
+      });
+    },
+  });
+  const newProjectView = useMutation({
+    mutationFn: ({
+      projectId,
+      kind,
+    }: {
+      projectId: string;
+      kind: ProjectViewKind;
+    }) =>
+      createProjectView(
+        projectId,
+        kind,
+        kind === "history" ? "History" : "Issues",
+      ),
+    onSuccess: (view) => {
+      queryClient.setQueryData<ProjectViewSummary[]>(
+        ["project-views", view.projectId],
+        (current = []) =>
+          [...current.filter((item) => item.id !== view.id), view].sort(
+            (left, right) => left.position - right.position,
+          ),
+      );
+      openCreatedTab(view.projectId, "view", view.id);
+      void queryClient.invalidateQueries({
+        queryKey: ["project-views", view.projectId],
       });
     },
   });
@@ -1385,6 +1616,25 @@ export function App() {
       });
     },
   });
+  const renameProjectViewMutation = useMutation({
+    mutationFn: ({ viewId, title }: { viewId: string; title: string }) =>
+      renameProjectView(viewId, title),
+    onSuccess: (renamed) =>
+      queryClient.setQueryData<ProjectViewSummary[]>(
+        ["project-views", renamed.projectId],
+        (current = []) =>
+          current.map((view) => (view.id === renamed.id ? renamed : view)),
+      ),
+  });
+  const deleteProjectViewMutation = useMutation({
+    mutationFn: deleteProjectView,
+    onSuccess: async (_value, deletedId) => {
+      if (selectedProjectViewId === deletedId) setSelectedProjectViewId(null);
+      await queryClient.invalidateQueries({
+        queryKey: ["project-views", selectedProjectId],
+      });
+    },
+  });
   const removeProjectMutation = useMutation({
     mutationFn: ({
       projectId,
@@ -1400,8 +1650,8 @@ export function App() {
         setSelectedTerminalId(null);
         setSelectedExplorerId(null);
         setSelectedBrowserId(null);
+        setSelectedProjectViewId(null);
       }
-      if (gitHistoryProjectId === projectId) setGitHistoryProjectId(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["projects"] }),
         queryClient.invalidateQueries({ queryKey: ["github-repositories"] }),
@@ -1433,11 +1683,13 @@ export function App() {
       const terminalKey = ["terminals", projectId] as const;
       const explorerKey = ["explorers", projectId] as const;
       const browserKey = ["browsers", projectId] as const;
+      const viewKey = ["project-views", projectId] as const;
       await Promise.all([
         queryClient.cancelQueries({ queryKey: chatKey }),
         queryClient.cancelQueries({ queryKey: terminalKey }),
         queryClient.cancelQueries({ queryKey: explorerKey }),
         queryClient.cancelQueries({ queryKey: browserKey }),
+        queryClient.cancelQueries({ queryKey: viewKey }),
       ]);
       const previousChats = queryClient.getQueryData<ChatSummary[]>(chatKey);
       const previousTerminals =
@@ -1446,6 +1698,8 @@ export function App() {
         queryClient.getQueryData<ExplorerSummary[]>(explorerKey);
       const previousBrowsers =
         queryClient.getQueryData<BrowserSummary[]>(browserKey);
+      const previousViews =
+        queryClient.getQueryData<ProjectViewSummary[]>(viewKey);
       const positions = new Map(ids.map((id, position) => [id, position]));
       queryClient.setQueryData<ChatSummary[]>(chatKey, (current = []) =>
         current
@@ -1482,15 +1736,25 @@ export function App() {
           }))
           .sort((a, b) => a.position - b.position),
       );
+      queryClient.setQueryData<ProjectViewSummary[]>(viewKey, (current = []) =>
+        current
+          .map((view) => ({
+            ...view,
+            position: positions.get(`view:${view.id}`) ?? view.position,
+          }))
+          .sort((a, b) => a.position - b.position),
+      );
       return {
         browserKey,
         chatKey,
         explorerKey,
         terminalKey,
+        viewKey,
         previousChats,
         previousBrowsers,
         previousExplorers,
         previousTerminals,
+        previousViews,
       };
     },
     onError: (_error, _input, context) => {
@@ -1507,6 +1771,7 @@ export function App() {
         context?.browserKey ?? [],
         context?.previousBrowsers,
       );
+      queryClient.setQueryData(context?.viewKey ?? [], context?.previousViews);
     },
     onSettled: (_data, _error, input) =>
       Promise.all([
@@ -1520,6 +1785,9 @@ export function App() {
         queryClient.invalidateQueries({
           queryKey: ["browsers", input.projectId],
         }),
+        queryClient.invalidateQueries({
+          queryKey: ["project-views", input.projectId],
+        }),
       ]),
   });
 
@@ -1527,9 +1795,10 @@ export function App() {
   const selectedProject = projects.data?.find(
     (project) => project.id === selectedProjectId,
   );
-  const gitHistoryProject = projects.data?.find(
-    (project) => project.id === gitHistoryProjectId,
+  const selectedProjectView = projectViews.data?.find(
+    (view) => view.id === selectedProjectViewId,
   );
+  const gitHistoryProject = selectedProjectView ? selectedProject : undefined;
   const selectedChat = chats.data?.find((chat) => chat.id === selectedChatId);
   const selectedTerminal = terminals.data?.find(
     (terminal) => terminal.id === selectedTerminalId,
@@ -1549,11 +1818,14 @@ export function App() {
     title: string;
   } | null>(() => {
     if (showImporter || showSettings) return null;
-    if (gitHistoryProject) {
-      const view = gitHistoryHeader?.activeView ?? "commits";
+    if (gitHistoryProject && selectedProjectView) {
       return {
-        target: { kind: "git", projectId: gitHistoryProject.id, view },
-        title: view === "issues" ? "Issues" : "Commits",
+        target: {
+          kind: "view",
+          projectId: gitHistoryProject.id,
+          tabId: selectedProjectView.id,
+        },
+        title: selectedProjectView.title,
       };
     }
     if (selectedBrowser) {
@@ -1600,12 +1872,12 @@ export function App() {
     }
     return null;
   }, [
-    gitHistoryHeader?.activeView,
     gitHistoryProject,
     linkedConsoleChat?.title,
     selectedBrowser,
     selectedChat,
     selectedExplorer,
+    selectedProjectView,
     selectedTerminal,
     showImporter,
     showSettings,
@@ -1670,7 +1942,7 @@ export function App() {
   ]);
 
   useEffect(() => {
-    if (showImporter || showSettings) setGitHistoryProjectId(null);
+    if (showImporter || showSettings) setSelectedProjectViewId(null);
   }, [showImporter, showSettings]);
 
   useEffect(() => {
@@ -1687,7 +1959,13 @@ export function App() {
   }, [projects.data, selectedProjectId]);
 
   useEffect(() => {
-    if (!chats.data || !terminals.data || !explorers.data || !browsers.data)
+    if (
+      !chats.data ||
+      !terminals.data ||
+      !explorers.data ||
+      !browsers.data ||
+      !projectViews.data
+    )
       return;
     if (chats.data.some((chat) => chat.id === selectedChatId)) return;
     if (terminals.data.some((terminal) => terminal.id === selectedTerminalId))
@@ -1695,6 +1973,8 @@ export function App() {
     if (explorers.data.some((explorer) => explorer.id === selectedExplorerId))
       return;
     if (browsers.data.some((browser) => browser.id === selectedBrowserId))
+      return;
+    if (projectViews.data.some((view) => view.id === selectedProjectViewId))
       return;
     const first = [
       ...chats.data.map((chat) => ({
@@ -1723,18 +2003,26 @@ export function App() {
         kind: "browser",
         position: browser.position,
       })),
+      ...projectViews.data.map((view) => ({
+        id: view.id,
+        kind: "view",
+        position: view.position,
+      })),
     ].sort((left, right) => left.position - right.position)[0];
     setSelectedChatId(first?.kind === "chat" ? first.id : null);
     setSelectedTerminalId(first?.kind === "terminal" ? first.id : null);
     setSelectedExplorerId(first?.kind === "explorer" ? first.id : null);
     setSelectedBrowserId(first?.kind === "browser" ? first.id : null);
+    setSelectedProjectViewId(first?.kind === "view" ? first.id : null);
   }, [
     browsers.data,
     chats.data,
     explorers.data,
+    projectViews.data,
     selectedChatId,
     selectedBrowserId,
     selectedExplorerId,
+    selectedProjectViewId,
     selectedTerminalId,
     terminals.data,
   ]);
@@ -1780,20 +2068,28 @@ export function App() {
               projects={projects.data ?? []}
               chats={chats.data ?? []}
               explorers={explorers.data ?? []}
+              projectViews={projectViews.data ?? []}
               terminals={terminals.data ?? []}
               selectedProjectId={selectedProjectId}
               selectedBrowserId={selectedBrowserId}
               selectedChatId={selectedChatId}
               selectedExplorerId={selectedExplorerId}
+              selectedProjectViewId={selectedProjectViewId}
               selectedTerminalId={selectedTerminalId}
-              gitHistoryProjectId={gitHistoryProjectId}
               creatingChat={newChat.isPending}
               creatingBrowser={newBrowser.isPending}
               creatingExplorer={newExplorer.isPending}
               creatingTerminal={newTerminal.isPending}
+              creatingView={newProjectView.isPending}
               onCreateChat={(projectId) => newChat.mutate(projectId)}
               onCreateBrowser={(projectId) => newBrowser.mutate(projectId)}
               onCreateExplorer={(projectId) => newExplorer.mutate(projectId)}
+              onCreateHistory={(projectId) =>
+                newProjectView.mutate({ projectId, kind: "history" })
+              }
+              onCreateIssues={(projectId) =>
+                newProjectView.mutate({ projectId, kind: "issues" })
+              }
               onCreateTerminal={(projectId) => newTerminal.mutate(projectId)}
               onRenameChat={(chatId, title) =>
                 renameChatMutation.mutate({ chatId, title })
@@ -1812,18 +2108,18 @@ export function App() {
               onDeleteExplorer={(explorerId) =>
                 deleteExplorerMutation.mutate(explorerId)
               }
+              onRenameProjectView={(viewId, title) =>
+                renameProjectViewMutation.mutate({ viewId, title })
+              }
+              onDeleteProjectView={(viewId) =>
+                deleteProjectViewMutation.mutate(viewId)
+              }
               onRenameTerminal={(terminalId, title) =>
                 renameTerminalMutation.mutate({ terminalId, title })
               }
               onDeleteTerminal={(terminalId) =>
                 deleteTerminalMutation.mutate(terminalId)
               }
-              onOpenGitHistory={(projectId) => {
-                setSelectedProjectId(projectId);
-                setGitHistoryProjectId(projectId);
-                setShowImporter(false);
-                setShowSettings(false);
-              }}
               onRemoveProject={(projectId, deleteLocalFiles) =>
                 removeProjectMutation.mutate({ projectId, deleteLocalFiles })
               }
@@ -1832,7 +2128,7 @@ export function App() {
                 reorderTabsMutation.mutate({ projectId, ids })
               }
               onSelectProject={(projectId) => {
-                setGitHistoryProjectId(null);
+                setSelectedProjectViewId(null);
                 setSelectedProjectId(projectId);
                 setSelectedChatId(null);
                 setSelectedTerminalId(null);
@@ -1842,7 +2138,7 @@ export function App() {
                 setShowSettings(false);
               }}
               onSelectChat={(chatId) => {
-                setGitHistoryProjectId(null);
+                setSelectedProjectViewId(null);
                 setSelectedTerminalId(null);
                 setSelectedExplorerId(null);
                 setSelectedBrowserId(null);
@@ -1851,7 +2147,7 @@ export function App() {
                 setShowSettings(false);
               }}
               onSelectTerminal={(terminalId) => {
-                setGitHistoryProjectId(null);
+                setSelectedProjectViewId(null);
                 setSelectedChatId(null);
                 setSelectedExplorerId(null);
                 setSelectedBrowserId(null);
@@ -1860,7 +2156,7 @@ export function App() {
                 setShowSettings(false);
               }}
               onSelectExplorer={(explorerId) => {
-                setGitHistoryProjectId(null);
+                setSelectedProjectViewId(null);
                 setSelectedChatId(null);
                 setSelectedTerminalId(null);
                 setSelectedBrowserId(null);
@@ -1869,11 +2165,20 @@ export function App() {
                 setShowSettings(false);
               }}
               onSelectBrowser={(browserId) => {
-                setGitHistoryProjectId(null);
+                setSelectedProjectViewId(null);
                 setSelectedChatId(null);
                 setSelectedTerminalId(null);
                 setSelectedExplorerId(null);
                 setSelectedBrowserId(browserId);
+                setShowImporter(false);
+                setShowSettings(false);
+              }}
+              onSelectProjectView={(viewId) => {
+                setSelectedChatId(null);
+                setSelectedTerminalId(null);
+                setSelectedExplorerId(null);
+                setSelectedBrowserId(null);
+                setSelectedProjectViewId(viewId);
                 setShowImporter(false);
                 setShowSettings(false);
               }}
@@ -1919,9 +2224,7 @@ export function App() {
                     : showSettings
                       ? "Settings"
                       : gitHistoryProject
-                        ? gitHistoryHeader?.activeView === "issues"
-                          ? "Git issues"
-                          : "Git history"
+                        ? (selectedProjectView?.title ?? "Git")
                         : selectedBrowser
                           ? selectedBrowser.title
                           : selectedExplorer
@@ -1962,7 +2265,7 @@ export function App() {
                     {gitHistoryProject.github?.nameWithOwner ??
                       gitHistoryProject.name}
                     {gitHistoryHeader ? (
-                      gitHistoryHeader.activeView === "issues" ? (
+                      selectedProjectView?.kind === "issues" ? (
                         ` · ${gitHistoryHeader.issueCount ?? "…"} ${gitHistoryHeader.issueState} issues`
                       ) : (
                         <>
@@ -2004,18 +2307,29 @@ export function App() {
                 </Button>
               ) : null}
               {gitHistoryProject &&
-              gitHistoryHeader?.activeView === "commits" ? (
+              selectedProjectView?.kind === "history" &&
+              gitHistoryHeader ? (
                 <>
                   <Button
                     size="icon"
-                    variant={gitHistoryHeader.changesOpen ? "outline" : "ghost"}
-                    onClick={gitHistoryHeader.toggleChanges}
+                    variant="ghost"
+                    disabled={gitHistoryHeader.isGitActionPending}
+                    onClick={gitHistoryHeader.pull}
                   >
-                    <FileDiff className="size-4" />
-                    <span className="sr-only">
-                      Show {gitHistoryHeader.changesCount} working changes
-                    </span>
+                    <ArrowDownToLine className="size-4" />
+                    <span className="sr-only">Fetch and pull</span>
                   </Button>
+                  {gitHistoryHeader.canPush ? (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      disabled={gitHistoryHeader.isGitActionPending}
+                      onClick={gitHistoryHeader.push}
+                    >
+                      <ArrowUpFromLine className="size-4" />
+                      <span className="sr-only">Push</span>
+                    </Button>
+                  ) : null}
                   <Button
                     size="icon"
                     variant="ghost"
@@ -2106,17 +2420,29 @@ export function App() {
             </div>
             <div className="ml-auto hidden items-center gap-2 md:flex">
               {gitHistoryProject &&
-              gitHistoryHeader?.activeView === "commits" ? (
+              selectedProjectView?.kind === "history" &&
+              gitHistoryHeader ? (
                 <>
                   <Button
                     size="sm"
-                    variant={gitHistoryHeader.changesOpen ? "outline" : "ghost"}
-                    onClick={gitHistoryHeader.toggleChanges}
-                    title="Show working changes"
+                    variant="ghost"
+                    disabled={gitHistoryHeader.isGitActionPending}
+                    onClick={gitHistoryHeader.pull}
+                    title="Fetch remotes and pull"
                   >
-                    <FileDiff className="size-4" />
-                    {gitHistoryHeader.changesCount} changes
+                    <ArrowDownToLine className="size-4" /> Pull
                   </Button>
+                  {gitHistoryHeader.canPush ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={gitHistoryHeader.isGitActionPending}
+                      onClick={gitHistoryHeader.push}
+                      title="Push local commits"
+                    >
+                      <ArrowUpFromLine className="size-4" /> Push
+                    </Button>
+                  ) : null}
                   <Button
                     size="icon"
                     variant="ghost"
@@ -2232,9 +2558,7 @@ export function App() {
           />
         ) : gitHistoryProject ? (
           <GitHistoryView
-            initialView={
-              popoutTarget?.kind === "git" ? popoutTarget.view : undefined
-            }
+            view={selectedProjectView?.kind ?? "history"}
             standalone={isPopout}
             project={gitHistoryProject}
             onHeaderChange={setGitHistoryHeader}
@@ -2447,20 +2771,28 @@ export function App() {
               projects={projects.data ?? []}
               chats={chats.data ?? []}
               explorers={explorers.data ?? []}
+              projectViews={projectViews.data ?? []}
               terminals={terminals.data ?? []}
               selectedProjectId={selectedProjectId}
               selectedBrowserId={selectedBrowserId}
               selectedChatId={selectedChatId}
               selectedExplorerId={selectedExplorerId}
+              selectedProjectViewId={selectedProjectViewId}
               selectedTerminalId={selectedTerminalId}
-              gitHistoryProjectId={gitHistoryProjectId}
               creatingChat={newChat.isPending}
               creatingBrowser={newBrowser.isPending}
               creatingExplorer={newExplorer.isPending}
               creatingTerminal={newTerminal.isPending}
+              creatingView={newProjectView.isPending}
               onCreateChat={(projectId) => newChat.mutate(projectId)}
               onCreateBrowser={(projectId) => newBrowser.mutate(projectId)}
               onCreateExplorer={(projectId) => newExplorer.mutate(projectId)}
+              onCreateHistory={(projectId) =>
+                newProjectView.mutate({ projectId, kind: "history" })
+              }
+              onCreateIssues={(projectId) =>
+                newProjectView.mutate({ projectId, kind: "issues" })
+              }
               onCreateTerminal={(projectId) => newTerminal.mutate(projectId)}
               onRenameChat={(chatId, title) =>
                 renameChatMutation.mutate({ chatId, title })
@@ -2479,19 +2811,18 @@ export function App() {
               onDeleteExplorer={(explorerId) =>
                 deleteExplorerMutation.mutate(explorerId)
               }
+              onRenameProjectView={(viewId, title) =>
+                renameProjectViewMutation.mutate({ viewId, title })
+              }
+              onDeleteProjectView={(viewId) =>
+                deleteProjectViewMutation.mutate(viewId)
+              }
               onRenameTerminal={(terminalId, title) =>
                 renameTerminalMutation.mutate({ terminalId, title })
               }
               onDeleteTerminal={(terminalId) =>
                 deleteTerminalMutation.mutate(terminalId)
               }
-              onOpenGitHistory={(projectId) => {
-                setSelectedProjectId(projectId);
-                setGitHistoryProjectId(projectId);
-                setMobileNavigationOpen(false);
-                setShowImporter(false);
-                setShowSettings(false);
-              }}
               onRemoveProject={(projectId, deleteLocalFiles) => {
                 removeProjectMutation.mutate({ projectId, deleteLocalFiles });
                 setMobileNavigationOpen(false);
@@ -2501,7 +2832,7 @@ export function App() {
                 reorderTabsMutation.mutate({ projectId, ids })
               }
               onSelectProject={(projectId) => {
-                setGitHistoryProjectId(null);
+                setSelectedProjectViewId(null);
                 setSelectedProjectId(projectId);
                 setSelectedChatId(null);
                 setSelectedTerminalId(null);
@@ -2509,7 +2840,7 @@ export function App() {
                 setSelectedBrowserId(null);
               }}
               onSelectChat={(chatId) => {
-                setGitHistoryProjectId(null);
+                setSelectedProjectViewId(null);
                 setSelectedTerminalId(null);
                 setSelectedExplorerId(null);
                 setSelectedBrowserId(null);
@@ -2519,7 +2850,7 @@ export function App() {
                 setShowSettings(false);
               }}
               onSelectTerminal={(terminalId) => {
-                setGitHistoryProjectId(null);
+                setSelectedProjectViewId(null);
                 setSelectedChatId(null);
                 setSelectedExplorerId(null);
                 setSelectedBrowserId(null);
@@ -2529,7 +2860,7 @@ export function App() {
                 setShowSettings(false);
               }}
               onSelectExplorer={(explorerId) => {
-                setGitHistoryProjectId(null);
+                setSelectedProjectViewId(null);
                 setSelectedChatId(null);
                 setSelectedTerminalId(null);
                 setSelectedBrowserId(null);
@@ -2539,11 +2870,21 @@ export function App() {
                 setShowSettings(false);
               }}
               onSelectBrowser={(browserId) => {
-                setGitHistoryProjectId(null);
+                setSelectedProjectViewId(null);
                 setSelectedChatId(null);
                 setSelectedTerminalId(null);
                 setSelectedExplorerId(null);
                 setSelectedBrowserId(browserId);
+                setMobileNavigationOpen(false);
+                setShowImporter(false);
+                setShowSettings(false);
+              }}
+              onSelectProjectView={(viewId) => {
+                setSelectedChatId(null);
+                setSelectedTerminalId(null);
+                setSelectedExplorerId(null);
+                setSelectedBrowserId(null);
+                setSelectedProjectViewId(viewId);
                 setMobileNavigationOpen(false);
                 setShowImporter(false);
                 setShowSettings(false);
