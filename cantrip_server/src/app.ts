@@ -16,6 +16,11 @@ import {
   browserListSchema,
   browserSummarySchema,
   browserUpdateSchema,
+  codeSessionListSchema,
+  codeTabCreateSchema,
+  codeTabListSchema,
+  codeTabSummarySchema,
+  codeTabUpdateSchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   codexCustomizationInventorySchema,
@@ -182,6 +187,7 @@ import type { ServerConfig } from "./config.js";
 import type { DatabaseConnection } from "./db/index.js";
 import {
   AgentInteractionConflictError,
+  CodeCapabilityUnavailableError,
   ExecutionLaneConflictError,
   LOCAL_USER_ID,
   type ChatExecutionContext,
@@ -642,10 +648,11 @@ export async function buildApp({
           blockers &&
           (blockers.activeChatIds.length ||
             blockers.activeLeaseChatIds.length ||
+            blockers.boundCodeTabIds.length ||
             blockers.runningTerminalIds.length)
         ) {
           throw new Error(
-            "The worktree is still used by a chat, lease, or terminal.",
+            "The worktree is still used by a chat, lease, Code tab, or terminal. Retarget or delete bound Code tabs before removal.",
           );
         }
         const status = worktreeStatusResultSchema.parse(
@@ -1639,6 +1646,11 @@ export async function buildApp({
               : ["websocket"],
             relayOnly: true,
           },
+          code: {
+            enabled: true,
+            transport: "web-proxy",
+            isolatedOrigin: true,
+          },
         },
       }),
     );
@@ -2559,10 +2571,11 @@ export async function buildApp({
               blockers &&
               (blockers.activeChatIds.length > 0 ||
                 blockers.activeLeaseChatIds.length > 0 ||
+                blockers.boundCodeTabIds.length > 0 ||
                 blockers.runningTerminalIds.length > 0)
             ) {
               throw new Error(
-                "Stop active chats and terminals and release the worktree lease before removal.",
+                "Stop active chats and terminals, release the worktree lease, and retarget or delete bound Code tabs before removal.",
               );
             }
             const previousState = context.worktree.lifecycleState;
@@ -3322,6 +3335,107 @@ export async function buildApp({
       );
       return reply.send(explorerListSchema.parse(explorers));
     },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/code-tabs",
+    async (request, reply) =>
+      reply.send(
+        codeTabListSchema.parse(
+          await repository.listCodeTabs(
+            LOCAL_USER_ID,
+            request.params.projectId,
+          ),
+        ),
+      ),
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/code-tabs",
+    async (request, reply) => {
+      const input = codeTabCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const codeTab = await repository.createCodeTab(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          input.data,
+        );
+        return codeTab
+          ? reply.code(201).send(codeTabSummarySchema.parse(codeTab))
+          : reply
+              .code(404)
+              .send({ error: "Project source or worktree not found." });
+      } catch (error) {
+        if (error instanceof CodeCapabilityUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.patch<{ Params: { codeTabId: string } }>(
+    "/api/code-tabs/:codeTabId",
+    async (request, reply) => {
+      const input = codeTabUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const codeTab = await repository.updateCodeTab(
+        LOCAL_USER_ID,
+        request.params.codeTabId,
+        input.data,
+      );
+      return codeTab
+        ? reply.send(codeTabSummarySchema.parse(codeTab))
+        : reply.code(404).send({ error: "Code tab not found." });
+    },
+  );
+
+  app.patch<{ Params: { codeTabId: string } }>(
+    "/api/code-tabs/:codeTabId/worktree",
+    async (request, reply) => {
+      const input = worktreeSelectionSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const codeTab = await repository.updateCodeTabWorktree(
+          LOCAL_USER_ID,
+          request.params.codeTabId,
+          input.data,
+        );
+        return codeTab
+          ? reply.send(codeTabSummarySchema.parse(codeTab))
+          : reply.code(404).send({ error: "Code tab or worktree not found." });
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{ Params: { codeTabId: string } }>(
+    "/api/code-tabs/:codeTabId/sessions",
+    async (request, reply) => {
+      const sessions = await repository.listCodeSessions(
+        LOCAL_USER_ID,
+        request.params.codeTabId,
+      );
+      return sessions
+        ? reply.send(codeSessionListSchema.parse(sessions))
+        : reply.code(404).send({ error: "Code tab not found." });
+    },
+  );
+
+  app.delete<{ Params: { codeTabId: string } }>(
+    "/api/code-tabs/:codeTabId",
+    async (request, reply) =>
+      (await repository.deleteCodeTab(LOCAL_USER_ID, request.params.codeTabId))
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "Code tab not found." }),
   );
 
   app.get<{ Params: { projectId: string } }>(

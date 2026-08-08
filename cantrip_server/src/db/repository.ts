@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   agentInteractionRequestSchema,
   normalizeResponsesBaseUrl,
+  unavailableCodeCapabilities,
 } from "@cantrip/protocol";
 import type {
   AgentInteractionRequest,
@@ -27,6 +28,12 @@ import type {
   ChatSummary,
   ChatUpdate,
   ChatWorktreeUpdate,
+  CodeCapabilities,
+  CodeEditorBuild,
+  CodeSessionSummary,
+  CodeTabCreate,
+  CodeTabSummary,
+  CodeTabUpdate,
   ExplorerCreate,
   ExplorerSummary,
   ExplorerUpdate,
@@ -133,6 +140,7 @@ export interface ChatAttachmentRecord extends ChatAttachmentSummary {
 
 export class ExecutionLaneConflictError extends Error {}
 export class AgentInteractionConflictError extends Error {}
+export class CodeCapabilityUnavailableError extends Error {}
 
 export interface TerminalExecutionContext {
   cwd: string;
@@ -168,6 +176,7 @@ export interface ProjectWorktreeExecutionContext {
 export interface WorktreeRemovalBlockers {
   activeChatIds: string[];
   activeLeaseChatIds: string[];
+  boundCodeTabIds: string[];
   runningTerminalIds: string[];
 }
 
@@ -201,6 +210,14 @@ export interface ExplorerExecutionContext {
   explorerId: string;
   root: string;
   workerId: string;
+}
+
+export interface CodeTabExecutionContext {
+  capabilities: CodeCapabilities;
+  codeTab: CodeTabSummary;
+  cwd: string;
+  workerId: string;
+  worktreeId: string;
 }
 
 export interface RemoteSurfaceExecutionContext {
@@ -415,6 +432,56 @@ function toProjectViewSummary(
   };
 }
 
+function toCodeTabSummary(
+  codeTab: typeof schema.codeTabs.$inferSelect,
+): CodeTabSummary {
+  return {
+    id: codeTab.id,
+    projectId: codeTab.projectId,
+    title: codeTab.title,
+    position: codeTab.position,
+    activeWorkerId: codeTab.activeWorkerId,
+    worktreeId: codeTab.worktreeId,
+    profileId: codeTab.profileId,
+    themeMode: codeTab.themeMode as CodeTabSummary["themeMode"],
+    status: codeTab.status as CodeTabSummary["status"],
+    lastError: codeTab.lastError,
+    createdAt: toISOString(codeTab.createdAt),
+    updatedAt: toISOString(codeTab.updatedAt),
+  };
+}
+
+function toCodeSessionSummary(
+  session: typeof schema.codeSessions.$inferSelect,
+): CodeSessionSummary {
+  return {
+    id: session.id,
+    codeTabId: session.codeTabId,
+    projectId: session.projectId,
+    workerId: session.workerId,
+    worktreeId: session.worktreeId,
+    profileId: session.profileId,
+    editorBuild: {
+      version: session.editorVersion,
+      upstreamRevision: session.editorUpstreamRevision,
+      patchset: session.editorPatchset,
+      fingerprint: session.editorFingerprint,
+    },
+    status: session.status as CodeSessionSummary["status"],
+    processInstanceId: session.processInstanceId,
+    lastAttachmentAt: session.lastAttachmentAt
+      ? toISOString(session.lastAttachmentAt)
+      : null,
+    lastStartedAt: session.lastStartedAt
+      ? toISOString(session.lastStartedAt)
+      : null,
+    stoppedAt: session.stoppedAt ? toISOString(session.stoppedAt) : null,
+    lastError: session.lastError,
+    createdAt: toISOString(session.createdAt),
+    updatedAt: toISOString(session.updatedAt),
+  };
+}
+
 function toWorkerSummary(
   worker: typeof schema.workers.$inferSelect,
 ): WorkerSummary {
@@ -426,6 +493,7 @@ function toWorkerSummary(
     codexVersion: worker.codexVersion,
     codexRuntime: worker.codexRuntime,
     remoteSurfaces: worker.remoteSurfaceCapabilities,
+    code: worker.codeCapabilities,
     startedAt: toISOString(worker.startedAt),
     lastSeenAt: toISOString(worker.lastSeenAt),
     online: Date.now() - worker.lastSeenAt.getTime() <= ONLINE_WINDOW_MS,
@@ -1286,6 +1354,7 @@ export class ServerRepository {
         codexVersion: heartbeat.codexVersion,
         codexRuntime: heartbeat.codexRuntime,
         remoteSurfaceCapabilities: heartbeat.remoteSurfaces,
+        codeCapabilities: heartbeat.code ?? unavailableCodeCapabilities,
         startedAt: new Date(heartbeat.startedAt),
         lastSeenAt: now,
         updatedAt: now,
@@ -1299,6 +1368,7 @@ export class ServerRepository {
           codexVersion: heartbeat.codexVersion,
           codexRuntime: heartbeat.codexRuntime,
           remoteSurfaceCapabilities: heartbeat.remoteSurfaces,
+          codeCapabilities: heartbeat.code ?? unavailableCodeCapabilities,
           startedAt: new Date(heartbeat.startedAt),
           lastSeenAt: now,
           updatedAt: now,
@@ -1668,7 +1738,7 @@ export class ServerRepository {
       worktreeId,
     );
     if (!context) return null;
-    const [chats, leases, terminals] = await Promise.all([
+    const [chats, leases, terminals, codeTabs] = await Promise.all([
       this.database
         .select({ id: schema.chats.id })
         .from(schema.chats)
@@ -1696,10 +1766,15 @@ export class ServerRepository {
             eq(schema.terminals.status, "running"),
           ),
         ),
+      this.database
+        .select({ id: schema.codeTabs.id })
+        .from(schema.codeTabs)
+        .where(eq(schema.codeTabs.worktreeId, worktreeId)),
     ]);
     return {
       activeChatIds: chats.map(({ id }) => id),
       activeLeaseChatIds: leases.map(({ chatId }) => chatId),
+      boundCodeTabIds: codeTabs.map(({ id }) => id),
       runningTerminalIds: terminals.map(({ id }) => id),
     };
   }
@@ -2735,6 +2810,48 @@ export class ServerRepository {
     return deleted.length === 1;
   }
 
+  private async nextProjectTabPosition(projectId: string): Promise<number> {
+    const positions = await Promise.all([
+      this.database
+        .select({ position: schema.chats.position })
+        .from(schema.chats)
+        .where(eq(schema.chats.projectId, projectId))
+        .orderBy(desc(schema.chats.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.terminals.position })
+        .from(schema.terminals)
+        .where(eq(schema.terminals.projectId, projectId))
+        .orderBy(desc(schema.terminals.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.explorers.position })
+        .from(schema.explorers)
+        .where(eq(schema.explorers.projectId, projectId))
+        .orderBy(desc(schema.explorers.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.codeTabs.position })
+        .from(schema.codeTabs)
+        .where(eq(schema.codeTabs.projectId, projectId))
+        .orderBy(desc(schema.codeTabs.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.browsers.position })
+        .from(schema.browsers)
+        .where(eq(schema.browsers.projectId, projectId))
+        .orderBy(desc(schema.browsers.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.projectViews.position })
+        .from(schema.projectViews)
+        .where(eq(schema.projectViews.projectId, projectId))
+        .orderBy(desc(schema.projectViews.position))
+        .limit(1),
+    ]);
+    return Math.max(...positions.map((rows) => rows[0]?.position ?? -1)) + 1;
+  }
+
   async listChats(ownerId: string, projectId: string): Promise<ChatSummary[]> {
     const rows = await this.database
       .select({ chat: schema.chats })
@@ -2778,39 +2895,7 @@ export class ServerRepository {
       return null;
     }
 
-    const [lastChats, lastTerminals, lastExplorers, lastBrowsers, lastViews] =
-      await Promise.all([
-        this.database
-          .select({ position: schema.chats.position })
-          .from(schema.chats)
-          .where(eq(schema.chats.projectId, projectId))
-          .orderBy(desc(schema.chats.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.explorers.position })
-          .from(schema.explorers)
-          .where(eq(schema.explorers.projectId, projectId))
-          .orderBy(desc(schema.explorers.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.terminals.position })
-          .from(schema.terminals)
-          .where(eq(schema.terminals.projectId, projectId))
-          .orderBy(desc(schema.terminals.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.browsers.position })
-          .from(schema.browsers)
-          .where(eq(schema.browsers.projectId, projectId))
-          .orderBy(desc(schema.browsers.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.projectViews.position })
-          .from(schema.projectViews)
-          .where(eq(schema.projectViews.projectId, projectId))
-          .orderBy(desc(schema.projectViews.position))
-          .limit(1),
-      ]);
+    const position = await this.nextProjectTabPosition(projectId);
     return this.database.transaction(async (transaction) => {
       const result = await transaction
         .insert(schema.chats)
@@ -2818,14 +2903,7 @@ export class ServerRepository {
           id: randomUUID(),
           projectId,
           title: input.title,
-          position:
-            Math.max(
-              lastChats[0]?.position ?? -1,
-              lastTerminals[0]?.position ?? -1,
-              lastExplorers[0]?.position ?? -1,
-              lastBrowsers[0]?.position ?? -1,
-              lastViews[0]?.position ?? -1,
-            ) + 1,
+          position,
           activeWorkerId: workerId,
           activeWorktreeId: worktreeId,
           worktreeMode: input.worktreeMode,
@@ -2898,53 +2976,14 @@ export class ServerRepository {
     )
       return null;
 
-    const [lastChats, lastTerminals, lastExplorers, lastBrowsers, lastViews] =
-      await Promise.all([
-        this.database
-          .select({ position: schema.chats.position })
-          .from(schema.chats)
-          .where(eq(schema.chats.projectId, projectId))
-          .orderBy(desc(schema.chats.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.explorers.position })
-          .from(schema.explorers)
-          .where(eq(schema.explorers.projectId, projectId))
-          .orderBy(desc(schema.explorers.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.terminals.position })
-          .from(schema.terminals)
-          .where(eq(schema.terminals.projectId, projectId))
-          .orderBy(desc(schema.terminals.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.browsers.position })
-          .from(schema.browsers)
-          .where(eq(schema.browsers.projectId, projectId))
-          .orderBy(desc(schema.browsers.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.projectViews.position })
-          .from(schema.projectViews)
-          .where(eq(schema.projectViews.projectId, projectId))
-          .orderBy(desc(schema.projectViews.position))
-          .limit(1),
-      ]);
+    const position = await this.nextProjectTabPosition(projectId);
     const result = await this.database
       .insert(schema.terminals)
       .values({
         id: randomUUID(),
         projectId,
         title: input.title,
-        position:
-          Math.max(
-            lastChats[0]?.position ?? -1,
-            lastTerminals[0]?.position ?? -1,
-            lastExplorers[0]?.position ?? -1,
-            lastBrowsers[0]?.position ?? -1,
-            lastViews[0]?.position ?? -1,
-          ) + 1,
+        position,
         activeWorkerId: workerId,
         worktreeId,
       })
@@ -3100,53 +3139,14 @@ export class ServerRepository {
       (selected && selected.worktree.lifecycleState !== "ready")
     )
       return null;
-    const [lastChats, lastTerminals, lastExplorers, lastBrowsers, lastViews] =
-      await Promise.all([
-        this.database
-          .select({ position: schema.chats.position })
-          .from(schema.chats)
-          .where(eq(schema.chats.projectId, projectId))
-          .orderBy(desc(schema.chats.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.terminals.position })
-          .from(schema.terminals)
-          .where(eq(schema.terminals.projectId, projectId))
-          .orderBy(desc(schema.terminals.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.explorers.position })
-          .from(schema.explorers)
-          .where(eq(schema.explorers.projectId, projectId))
-          .orderBy(desc(schema.explorers.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.browsers.position })
-          .from(schema.browsers)
-          .where(eq(schema.browsers.projectId, projectId))
-          .orderBy(desc(schema.browsers.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.projectViews.position })
-          .from(schema.projectViews)
-          .where(eq(schema.projectViews.projectId, projectId))
-          .orderBy(desc(schema.projectViews.position))
-          .limit(1),
-      ]);
+    const position = await this.nextProjectTabPosition(projectId);
     const result = await this.database
       .insert(schema.explorers)
       .values({
         id: randomUUID(),
         projectId,
         title: input.title,
-        position:
-          Math.max(
-            lastChats[0]?.position ?? -1,
-            lastTerminals[0]?.position ?? -1,
-            lastExplorers[0]?.position ?? -1,
-            lastBrowsers[0]?.position ?? -1,
-            lastViews[0]?.position ?? -1,
-          ) + 1,
+        position,
         activeWorkerId: workerId,
         worktreeId,
       })
@@ -3249,6 +3249,241 @@ export class ServerRepository {
     return result.length === 1;
   }
 
+  async listCodeTabs(
+    ownerId: string,
+    projectId: string,
+  ): Promise<CodeTabSummary[]> {
+    const rows = await this.database
+      .select({ codeTab: schema.codeTabs })
+      .from(schema.codeTabs)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.codeTabs.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.codeTabs.projectId, projectId))
+      .orderBy(asc(schema.codeTabs.position), asc(schema.codeTabs.createdAt));
+    return rows.map(({ codeTab }) => toCodeTabSummary(codeTab));
+  }
+
+  async createCodeTab(
+    ownerId: string,
+    projectId: string,
+    input: CodeTabCreate,
+  ): Promise<CodeTabSummary | null> {
+    const selected = input.worktreeId
+      ? await this.getProjectWorktreeContext(
+          ownerId,
+          projectId,
+          input.worktreeId,
+        )
+      : null;
+    const source = input.worktreeId
+      ? null
+      : await this.getProjectSource(ownerId, projectId);
+    const workerId = selected?.workerId ?? source?.workerId;
+    const worktreeId = selected?.worktree.id ?? source?.worktreeId;
+    if (
+      !workerId ||
+      !worktreeId ||
+      (selected && selected.worktree.lifecycleState !== "ready")
+    ) {
+      return null;
+    }
+    const workerRows = await this.database
+      .select({ codeCapabilities: schema.workers.codeCapabilities })
+      .from(schema.workers)
+      .where(
+        and(
+          eq(schema.workers.id, workerId),
+          eq(schema.workers.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    const capabilities = workerRows[0]?.codeCapabilities;
+    if (!capabilities?.available) {
+      throw new CodeCapabilityUnavailableError(
+        capabilities?.reason ?? "Cantrip Code is unavailable on this worker.",
+      );
+    }
+    const result = await this.database
+      .insert(schema.codeTabs)
+      .values({
+        id: randomUUID(),
+        projectId,
+        title: input.title,
+        position: await this.nextProjectTabPosition(projectId),
+        activeWorkerId: workerId,
+        worktreeId,
+        profileId: input.profileId,
+        themeMode: input.themeMode,
+      })
+      .returning();
+    return toCodeTabSummary(firstOrThrow(result, "creating a Code tab"));
+  }
+
+  async getCodeTabExecutionContext(
+    ownerId: string,
+    codeTabId: string,
+  ): Promise<CodeTabExecutionContext | null> {
+    const rows = await this.database
+      .select({
+        codeTab: schema.codeTabs,
+        worktree: schema.projectWorktrees,
+        codeCapabilities: schema.workers.codeCapabilities,
+      })
+      .from(schema.codeTabs)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.codeTabs.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .innerJoin(
+        schema.projectWorktrees,
+        eq(schema.projectWorktrees.id, schema.codeTabs.worktreeId),
+      )
+      .innerJoin(
+        schema.workers,
+        eq(schema.workers.id, schema.codeTabs.activeWorkerId),
+      )
+      .where(eq(schema.codeTabs.id, codeTabId))
+      .limit(1);
+    const row = rows[0];
+    return row
+      ? {
+          capabilities: row.codeCapabilities,
+          codeTab: toCodeTabSummary(row.codeTab),
+          cwd: row.worktree.absolutePath,
+          workerId: row.codeTab.activeWorkerId,
+          worktreeId: row.worktree.id,
+        }
+      : null;
+  }
+
+  async updateCodeTab(
+    ownerId: string,
+    codeTabId: string,
+    input: CodeTabUpdate,
+  ): Promise<CodeTabSummary | null> {
+    if (!(await this.getCodeTabExecutionContext(ownerId, codeTabId))) {
+      return null;
+    }
+    const result = await this.database
+      .update(schema.codeTabs)
+      .set({ ...input, updatedAt: new Date() })
+      .where(eq(schema.codeTabs.id, codeTabId))
+      .returning();
+    return result[0] ? toCodeTabSummary(result[0]) : null;
+  }
+
+  async updateCodeTabWorktree(
+    ownerId: string,
+    codeTabId: string,
+    input: WorktreeSelection,
+  ): Promise<CodeTabSummary | null> {
+    const context = await this.getCodeTabExecutionContext(ownerId, codeTabId);
+    if (!context) return null;
+    if (
+      context.codeTab.status === "starting" ||
+      context.codeTab.status === "running"
+    ) {
+      throw new Error("Stop Cantrip Code before changing its worktree.");
+    }
+    const target = await this.getProjectWorktreeContext(
+      ownerId,
+      context.codeTab.projectId,
+      input.worktreeId,
+    );
+    if (!target || target.worktree.lifecycleState !== "ready") return null;
+    const result = await this.database
+      .update(schema.codeTabs)
+      .set({
+        activeWorkerId: target.workerId,
+        worktreeId: target.worktree.id,
+        status: "idle",
+        lastError: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.codeTabs.id, codeTabId))
+      .returning();
+    return result[0] ? toCodeTabSummary(result[0]) : null;
+  }
+
+  async deleteCodeTab(
+    ownerId: string,
+    codeTabId: string,
+  ): Promise<CodeTabExecutionContext | null> {
+    const context = await this.getCodeTabExecutionContext(ownerId, codeTabId);
+    if (!context) return null;
+    await this.database
+      .delete(schema.codeTabs)
+      .where(eq(schema.codeTabs.id, codeTabId));
+    return context;
+  }
+
+  async listCodeSessions(
+    ownerId: string,
+    codeTabId: string,
+  ): Promise<CodeSessionSummary[] | null> {
+    if (!(await this.getCodeTabExecutionContext(ownerId, codeTabId))) {
+      return null;
+    }
+    const rows = await this.database
+      .select()
+      .from(schema.codeSessions)
+      .where(eq(schema.codeSessions.codeTabId, codeTabId))
+      .orderBy(
+        desc(schema.codeSessions.updatedAt),
+        desc(schema.codeSessions.createdAt),
+      );
+    return rows.map(toCodeSessionSummary);
+  }
+
+  async getOrCreateCodeSession(
+    ownerId: string,
+    codeTabId: string,
+    editorBuild: CodeEditorBuild,
+  ): Promise<CodeSessionSummary | null> {
+    const context = await this.getCodeTabExecutionContext(ownerId, codeTabId);
+    if (!context) return null;
+    const existing = await this.database
+      .select()
+      .from(schema.codeSessions)
+      .where(
+        and(
+          eq(schema.codeSessions.codeTabId, codeTabId),
+          eq(schema.codeSessions.workerId, context.workerId),
+          eq(schema.codeSessions.worktreeId, context.worktreeId),
+          eq(schema.codeSessions.profileId, context.codeTab.profileId),
+          eq(schema.codeSessions.editorFingerprint, editorBuild.fingerprint),
+        ),
+      )
+      .limit(1);
+    if (existing[0]) return toCodeSessionSummary(existing[0]);
+    const inserted = await this.database
+      .insert(schema.codeSessions)
+      .values({
+        id: randomUUID(),
+        codeTabId,
+        projectId: context.codeTab.projectId,
+        workerId: context.workerId,
+        worktreeId: context.worktreeId,
+        profileId: context.codeTab.profileId,
+        editorVersion: editorBuild.version,
+        editorUpstreamRevision: editorBuild.upstreamRevision,
+        editorPatchset: editorBuild.patchset,
+        editorFingerprint: editorBuild.fingerprint,
+      })
+      .returning();
+    return toCodeSessionSummary(
+      firstOrThrow(inserted, "creating a Code session"),
+    );
+  }
+
   async listBrowsers(
     ownerId: string,
     projectId: string,
@@ -3275,39 +3510,7 @@ export class ServerRepository {
   ): Promise<BrowserSummary | null> {
     const source = await this.getProjectSource(ownerId, projectId);
     if (!source) return null;
-    const [lastChats, lastTerminals, lastExplorers, lastBrowsers, lastViews] =
-      await Promise.all([
-        this.database
-          .select({ position: schema.chats.position })
-          .from(schema.chats)
-          .where(eq(schema.chats.projectId, projectId))
-          .orderBy(desc(schema.chats.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.terminals.position })
-          .from(schema.terminals)
-          .where(eq(schema.terminals.projectId, projectId))
-          .orderBy(desc(schema.terminals.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.explorers.position })
-          .from(schema.explorers)
-          .where(eq(schema.explorers.projectId, projectId))
-          .orderBy(desc(schema.explorers.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.browsers.position })
-          .from(schema.browsers)
-          .where(eq(schema.browsers.projectId, projectId))
-          .orderBy(desc(schema.browsers.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.projectViews.position })
-          .from(schema.projectViews)
-          .where(eq(schema.projectViews.projectId, projectId))
-          .orderBy(desc(schema.projectViews.position))
-          .limit(1),
-      ]);
+    const position = await this.nextProjectTabPosition(projectId);
     return this.database.transaction(async (transaction) => {
       const browserId = randomUUID();
       const result = await transaction
@@ -3316,14 +3519,7 @@ export class ServerRepository {
           id: browserId,
           projectId,
           title: input.title,
-          position:
-            Math.max(
-              lastChats[0]?.position ?? -1,
-              lastTerminals[0]?.position ?? -1,
-              lastExplorers[0]?.position ?? -1,
-              lastBrowsers[0]?.position ?? -1,
-              lastViews[0]?.position ?? -1,
-            ) + 1,
+          position,
         })
         .returning();
       const browser = firstOrThrow(result, "creating a browser");
@@ -3680,15 +3876,7 @@ export class ServerRepository {
     desktopId: string,
     workerId: string,
   ): Promise<RemoteDesktopSummary | null> {
-    const [
-      projectRows,
-      workerRows,
-      lastChats,
-      lastTerminals,
-      lastExplorers,
-      lastBrowsers,
-      lastViews,
-    ] = await Promise.all([
+    const [projectRows, workerRows] = await Promise.all([
       this.database
         .select({ id: schema.projects.id })
         .from(schema.projects)
@@ -3709,46 +3897,9 @@ export class ServerRepository {
           ),
         )
         .limit(1),
-      this.database
-        .select({ position: schema.chats.position })
-        .from(schema.chats)
-        .where(eq(schema.chats.projectId, projectId))
-        .orderBy(desc(schema.chats.position))
-        .limit(1),
-      this.database
-        .select({ position: schema.terminals.position })
-        .from(schema.terminals)
-        .where(eq(schema.terminals.projectId, projectId))
-        .orderBy(desc(schema.terminals.position))
-        .limit(1),
-      this.database
-        .select({ position: schema.explorers.position })
-        .from(schema.explorers)
-        .where(eq(schema.explorers.projectId, projectId))
-        .orderBy(desc(schema.explorers.position))
-        .limit(1),
-      this.database
-        .select({ position: schema.browsers.position })
-        .from(schema.browsers)
-        .where(eq(schema.browsers.projectId, projectId))
-        .orderBy(desc(schema.browsers.position))
-        .limit(1),
-      this.database
-        .select({ position: schema.projectViews.position })
-        .from(schema.projectViews)
-        .where(eq(schema.projectViews.projectId, projectId))
-        .orderBy(desc(schema.projectViews.position))
-        .limit(1),
     ]);
     if (!projectRows[0] || !workerRows[0]) return null;
-    const position =
-      Math.max(
-        lastChats[0]?.position ?? -1,
-        lastTerminals[0]?.position ?? -1,
-        lastExplorers[0]?.position ?? -1,
-        lastBrowsers[0]?.position ?? -1,
-        lastViews[0]?.position ?? -1,
-      ) + 1;
+    const position = await this.nextProjectTabPosition(projectId);
     await this.database.transaction(async (transaction) => {
       await transaction.insert(schema.projectViews).values({
         id: desktopId,
@@ -3820,39 +3971,7 @@ export class ServerRepository {
         (selected && selected.worktree.lifecycleState !== "ready"))
     )
       return null;
-    const [lastChats, lastTerminals, lastExplorers, lastBrowsers, lastViews] =
-      await Promise.all([
-        this.database
-          .select({ position: schema.chats.position })
-          .from(schema.chats)
-          .where(eq(schema.chats.projectId, projectId))
-          .orderBy(desc(schema.chats.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.terminals.position })
-          .from(schema.terminals)
-          .where(eq(schema.terminals.projectId, projectId))
-          .orderBy(desc(schema.terminals.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.explorers.position })
-          .from(schema.explorers)
-          .where(eq(schema.explorers.projectId, projectId))
-          .orderBy(desc(schema.explorers.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.browsers.position })
-          .from(schema.browsers)
-          .where(eq(schema.browsers.projectId, projectId))
-          .orderBy(desc(schema.browsers.position))
-          .limit(1),
-        this.database
-          .select({ position: schema.projectViews.position })
-          .from(schema.projectViews)
-          .where(eq(schema.projectViews.projectId, projectId))
-          .orderBy(desc(schema.projectViews.position))
-          .limit(1),
-      ]);
+    const position = await this.nextProjectTabPosition(projectId);
     const result = await this.database
       .insert(schema.projectViews)
       .values({
@@ -3861,14 +3980,7 @@ export class ServerRepository {
         title: input.title,
         kind: input.kind,
         worktreeId: input.kind === "history" ? worktreeId : null,
-        position:
-          Math.max(
-            lastChats[0]?.position ?? -1,
-            lastTerminals[0]?.position ?? -1,
-            lastExplorers[0]?.position ?? -1,
-            lastBrowsers[0]?.position ?? -1,
-            lastViews[0]?.position ?? -1,
-          ) + 1,
+        position,
       })
       .returning();
     return toProjectViewSummary(
@@ -4356,39 +4468,51 @@ export class ServerRepository {
               ),
         )
         .orderBy(asc(schema.chatMessages.sequence));
-      const [lastChats, lastTerminals, lastExplorers, lastBrowsers, lastViews] =
-        await Promise.all([
-          transaction
-            .select({ position: schema.chats.position })
-            .from(schema.chats)
-            .where(eq(schema.chats.projectId, row.chat.projectId))
-            .orderBy(desc(schema.chats.position))
-            .limit(1),
-          transaction
-            .select({ position: schema.explorers.position })
-            .from(schema.explorers)
-            .where(eq(schema.explorers.projectId, row.chat.projectId))
-            .orderBy(desc(schema.explorers.position))
-            .limit(1),
-          transaction
-            .select({ position: schema.terminals.position })
-            .from(schema.terminals)
-            .where(eq(schema.terminals.projectId, row.chat.projectId))
-            .orderBy(desc(schema.terminals.position))
-            .limit(1),
-          transaction
-            .select({ position: schema.browsers.position })
-            .from(schema.browsers)
-            .where(eq(schema.browsers.projectId, row.chat.projectId))
-            .orderBy(desc(schema.browsers.position))
-            .limit(1),
-          transaction
-            .select({ position: schema.projectViews.position })
-            .from(schema.projectViews)
-            .where(eq(schema.projectViews.projectId, row.chat.projectId))
-            .orderBy(desc(schema.projectViews.position))
-            .limit(1),
-        ]);
+      const [
+        lastChats,
+        lastTerminals,
+        lastExplorers,
+        lastCodeTabs,
+        lastBrowsers,
+        lastViews,
+      ] = await Promise.all([
+        transaction
+          .select({ position: schema.chats.position })
+          .from(schema.chats)
+          .where(eq(schema.chats.projectId, row.chat.projectId))
+          .orderBy(desc(schema.chats.position))
+          .limit(1),
+        transaction
+          .select({ position: schema.terminals.position })
+          .from(schema.terminals)
+          .where(eq(schema.terminals.projectId, row.chat.projectId))
+          .orderBy(desc(schema.terminals.position))
+          .limit(1),
+        transaction
+          .select({ position: schema.explorers.position })
+          .from(schema.explorers)
+          .where(eq(schema.explorers.projectId, row.chat.projectId))
+          .orderBy(desc(schema.explorers.position))
+          .limit(1),
+        transaction
+          .select({ position: schema.codeTabs.position })
+          .from(schema.codeTabs)
+          .where(eq(schema.codeTabs.projectId, row.chat.projectId))
+          .orderBy(desc(schema.codeTabs.position))
+          .limit(1),
+        transaction
+          .select({ position: schema.browsers.position })
+          .from(schema.browsers)
+          .where(eq(schema.browsers.projectId, row.chat.projectId))
+          .orderBy(desc(schema.browsers.position))
+          .limit(1),
+        transaction
+          .select({ position: schema.projectViews.position })
+          .from(schema.projectViews)
+          .where(eq(schema.projectViews.projectId, row.chat.projectId))
+          .orderBy(desc(schema.projectViews.position))
+          .limit(1),
+      ]);
       const chatResult = await transaction
         .insert(schema.chats)
         .values({
@@ -4400,6 +4524,7 @@ export class ServerRepository {
               lastChats[0]?.position ?? -1,
               lastTerminals[0]?.position ?? -1,
               lastExplorers[0]?.position ?? -1,
+              lastCodeTabs[0]?.position ?? -1,
               lastBrowsers[0]?.position ?? -1,
               lastViews[0]?.position ?? -1,
             ) + 1,
@@ -4474,73 +4599,91 @@ export class ServerRepository {
     projectId: string,
     input: OrderedIds,
   ): Promise<boolean> {
-    const [chatRows, terminalRows, explorerRows, browserRows, viewRows] =
-      await Promise.all([
-        this.database
-          .select({ id: schema.chats.id })
-          .from(schema.chats)
-          .innerJoin(
-            schema.projects,
-            and(
-              eq(schema.projects.id, projectId),
-              eq(schema.projects.ownerId, ownerId),
-            ),
-          )
-          .where(eq(schema.chats.projectId, projectId)),
-        this.database
-          .select({ id: schema.terminals.id })
-          .from(schema.terminals)
-          .innerJoin(
-            schema.projects,
-            and(
-              eq(schema.projects.id, projectId),
-              eq(schema.projects.ownerId, ownerId),
-            ),
-          )
-          .where(
-            and(
-              eq(schema.terminals.projectId, projectId),
-              isNull(schema.terminals.linkedChatId),
-            ),
+    const [
+      chatRows,
+      terminalRows,
+      explorerRows,
+      codeRows,
+      browserRows,
+      viewRows,
+    ] = await Promise.all([
+      this.database
+        .select({ id: schema.chats.id })
+        .from(schema.chats)
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, projectId),
+            eq(schema.projects.ownerId, ownerId),
           ),
-        this.database
-          .select({ id: schema.explorers.id })
-          .from(schema.explorers)
-          .innerJoin(
-            schema.projects,
-            and(
-              eq(schema.projects.id, projectId),
-              eq(schema.projects.ownerId, ownerId),
-            ),
-          )
-          .where(eq(schema.explorers.projectId, projectId)),
-        this.database
-          .select({ id: schema.browsers.id })
-          .from(schema.browsers)
-          .innerJoin(
-            schema.projects,
-            and(
-              eq(schema.projects.id, projectId),
-              eq(schema.projects.ownerId, ownerId),
-            ),
-          )
-          .where(eq(schema.browsers.projectId, projectId)),
-        this.database
-          .select({ id: schema.projectViews.id })
-          .from(schema.projectViews)
-          .innerJoin(
-            schema.projects,
-            and(
-              eq(schema.projects.id, projectId),
-              eq(schema.projects.ownerId, ownerId),
-            ),
-          )
-          .where(eq(schema.projectViews.projectId, projectId)),
-      ]);
+        )
+        .where(eq(schema.chats.projectId, projectId)),
+      this.database
+        .select({ id: schema.terminals.id })
+        .from(schema.terminals)
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(
+          and(
+            eq(schema.terminals.projectId, projectId),
+            isNull(schema.terminals.linkedChatId),
+          ),
+        ),
+      this.database
+        .select({ id: schema.explorers.id })
+        .from(schema.explorers)
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.explorers.projectId, projectId)),
+      this.database
+        .select({ id: schema.codeTabs.id })
+        .from(schema.codeTabs)
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.codeTabs.projectId, projectId)),
+      this.database
+        .select({ id: schema.browsers.id })
+        .from(schema.browsers)
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.browsers.projectId, projectId)),
+      this.database
+        .select({ id: schema.projectViews.id })
+        .from(schema.projectViews)
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.projectViews.projectId, projectId)),
+    ]);
     const expected = new Set([
       ...chatRows.map(({ id }) => `chat:${id}`),
       ...terminalRows.map(({ id }) => `terminal:${id}`),
       ...explorerRows.map(({ id }) => `explorer:${id}`),
+      ...codeRows.map(({ id }) => `code:${id}`),
       ...browserRows.map(({ id }) => `browser:${id}`),
       ...viewRows.map(({ id }) => `view:${id}`),
     ]);
@@ -4570,6 +4713,11 @@ export class ServerRepository {
             .update(schema.explorers)
             .set({ position })
             .where(eq(schema.explorers.id, id));
+        } else if (kind === "code") {
+          await transaction
+            .update(schema.codeTabs)
+            .set({ position })
+            .where(eq(schema.codeTabs.id, id));
         } else if (kind === "browser") {
           await transaction
             .update(schema.browsers)
