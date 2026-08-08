@@ -308,6 +308,49 @@ export const projectSourceSummarySchema = z.object({
   displayPath: z.string().min(1),
 });
 
+export const worktreePolicySchema = z.enum([
+  "direct",
+  "agent-managed",
+  "required-for-writes",
+]);
+export const worktreeOriginSchema = z.enum([
+  "cantrip",
+  "agent",
+  "user",
+  "external",
+]);
+export const worktreeLifecycleStateSchema = z.enum([
+  "creating",
+  "ready",
+  "missing",
+  "prunable",
+  "removing",
+]);
+
+export const projectWorktreeSummarySchema = z.object({
+  id: z.string().min(1),
+  projectSourceId: z.string().min(1),
+  projectId: z.string().min(1),
+  workerId: z.string().min(1),
+  name: z.string().min(1),
+  path: z.string().min(1),
+  displayPath: z.string().min(1),
+  isPrimary: z.boolean(),
+  isDefault: z.boolean(),
+  origin: worktreeOriginSchema,
+  lifecycleState: worktreeLifecycleStateSchema,
+  branch: z.string().min(1).nullable(),
+  head: z.string().min(1).nullable(),
+  detached: z.boolean(),
+  locked: z.boolean(),
+  lockReason: z.string().min(1).nullable(),
+  lastScannedAt: z.string().datetime().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const projectWorktreeListSchema = z.array(projectWorktreeSummarySchema);
+
 export const projectSetupStatusSchema = z.enum(["cloning", "ready", "failed"]);
 
 export const projectSummarySchema = z.object({
@@ -316,6 +359,7 @@ export const projectSummarySchema = z.object({
   position: z.number().int().nonnegative(),
   setupStatus: projectSetupStatusSchema,
   setupError: z.string().min(1).nullable(),
+  worktreePolicy: worktreePolicySchema,
   github: z
     .object({
       repositoryId: z.string().min(1),
@@ -353,6 +397,8 @@ export const chatSummarySchema = z.object({
   position: z.number().int().nonnegative(),
   status: z.enum(["idle", "running", "offline", "failed"]),
   activeWorkerId: z.string().min(1).nullable(),
+  activeWorktreeId: z.string().min(1),
+  worktreeMode: z.enum(["agent-managed", "pinned"]),
   modelId: z.string().min(1).nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -375,6 +421,7 @@ export const terminalSummarySchema = z.object({
   position: z.number().int().nonnegative(),
   status: z.enum(["idle", "running", "exited", "offline", "failed"]),
   activeWorkerId: z.string().min(1),
+  worktreeId: z.string().min(1),
   linkedChatId: z.string().min(1).nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -396,6 +443,7 @@ export const explorerSummarySchema = z.object({
   title: z.string().min(1),
   position: z.number().int().nonnegative(),
   activeWorkerId: z.string().min(1),
+  worktreeId: z.string().min(1),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -443,6 +491,7 @@ export const projectViewSummarySchema = z.object({
   projectId: z.string().min(1),
   title: z.string().min(1),
   kind: projectViewKindSchema,
+  worktreeId: z.string().min(1).nullable(),
   position: z.number().int().nonnegative(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -558,6 +607,8 @@ export const chatMessageSchema = chatMessageCreateSchema
   .extend({
     id: z.string().min(1),
     chatId: z.string().min(1),
+    worktreeId: z.string().min(1),
+    executionLaneId: z.string().min(1).nullable(),
     sequence: z.number().int().positive(),
     modelId: z.string().min(1).nullable(),
     modelRouteId: z.string().min(1).nullable(),
@@ -566,6 +617,35 @@ export const chatMessageSchema = chatMessageCreateSchema
     providerModelName: z.string().min(1).nullable(),
     createdAt: z.string().datetime(),
   });
+
+export const chatExecutionLaneActorSchema = z.enum(["agent", "user"]);
+export const chatExecutionLaneStateSchema = z.enum([
+  "active",
+  "suspended",
+  "delivering",
+  "released",
+]);
+export const chatExecutionLaneSummarySchema = z.object({
+  id: z.string().min(1),
+  chatId: z.string().min(1),
+  worktreeId: z.string().min(1),
+  workerId: z.string().min(1),
+  acquiringActor: chatExecutionLaneActorSchema,
+  purpose: z.string().min(1).nullable(),
+  state: chatExecutionLaneStateSchema,
+  baseRevision: z.string().min(1).nullable(),
+  startingHead: z.string().min(1).nullable(),
+  runtimeSessionId: z.string().min(1).nullable(),
+  codexThreadId: z.string().min(1).nullable(),
+  createdAt: z.string().datetime(),
+  activatedAt: z.string().datetime().nullable(),
+  releasedAt: z.string().datetime().nullable(),
+  updatedAt: z.string().datetime(),
+});
+
+export const chatExecutionLaneListSchema = z.array(
+  chatExecutionLaneSummarySchema,
+);
 
 export const chatMessageListSchema = z.array(chatMessageSchema);
 
@@ -1017,6 +1097,14 @@ export type UserSettings = z.infer<typeof userSettingsSchema>;
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
 export type SettingsBundle = z.infer<typeof settingsBundleSchema>;
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
+export type WorktreePolicy = z.infer<typeof worktreePolicySchema>;
+export type WorktreeOrigin = z.infer<typeof worktreeOriginSchema>;
+export type WorktreeLifecycleState = z.infer<
+  typeof worktreeLifecycleStateSchema
+>;
+export type ProjectWorktreeSummary = z.infer<
+  typeof projectWorktreeSummarySchema
+>;
 export type GithubAuthStatus = z.infer<typeof githubAuthStatusSchema>;
 export type GithubRepository = z.infer<typeof githubRepositorySchema>;
 export type GithubIssueState = z.infer<typeof githubIssueStateSchema>;
@@ -1065,6 +1153,15 @@ export type TerminalOpenResult = z.infer<typeof terminalOpenResultSchema>;
 export type ChatMessageContent = z.infer<typeof chatMessageContentSchema>;
 export type ChatMessageCreate = z.infer<typeof chatMessageCreateSchema>;
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
+export type ChatExecutionLaneActor = z.infer<
+  typeof chatExecutionLaneActorSchema
+>;
+export type ChatExecutionLaneState = z.infer<
+  typeof chatExecutionLaneStateSchema
+>;
+export type ChatExecutionLaneSummary = z.infer<
+  typeof chatExecutionLaneSummarySchema
+>;
 export type ChatTurnCreate = z.infer<typeof chatTurnCreateSchema>;
 export type QueuedPrompt = z.infer<typeof queuedPromptSchema>;
 export type QueuedPromptCreate = z.infer<typeof queuedPromptCreateSchema>;

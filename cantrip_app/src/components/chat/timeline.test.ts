@@ -12,6 +12,8 @@ function message(
   return {
     id,
     chatId: "chat-1",
+    worktreeId: "worktree-primary",
+    executionLaneId: null,
     sequence: 1,
     role,
     createdAt,
