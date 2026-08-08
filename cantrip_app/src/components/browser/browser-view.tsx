@@ -41,6 +41,7 @@ import {
 } from "@/lib/remote-surface-webrtc";
 
 const decoder = new TextDecoder();
+const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
 
 export function normalizeBrowserAddress(value: string): string | null {
   const candidate = /^[a-z][a-z\d+.-]*:/i.test(value.trim())
@@ -198,6 +199,10 @@ export function BrowserView({
         return true;
       }
       if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+      if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) {
+        socket.close(1013, "Remote Surface connection is congested");
+        return false;
+      }
       socket.send(
         Uint8Array.from(encodeRemoteSurfaceFrame(header, payload)).buffer,
       );

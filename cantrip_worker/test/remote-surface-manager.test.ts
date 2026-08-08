@@ -125,4 +125,32 @@ describe("RemoteSurfaceManager", () => {
       }),
     ).rejects.toThrow(/limit of 1/i);
   });
+
+  it("bounds independent client attachments to one surface", async () => {
+    const session = {
+      configuration: attachCommand.configuration,
+      transport: "websocket" as const,
+      attach() {},
+      close() {},
+      detach() {},
+      handleFrame() {},
+      resume() {},
+      suspend() {},
+    } satisfies RemoteSurfaceSession;
+    const manager = new RemoteSurfaceManager({
+      browser: { open: async () => session },
+    });
+    for (let index = 1; index <= 4; index += 1) {
+      await manager.attach({
+        ...attachCommand,
+        attachmentId: `attachment-${index}`,
+      });
+    }
+    await expect(
+      manager.attach({
+        ...attachCommand,
+        attachmentId: "attachment-5",
+      }),
+    ).rejects.toThrow(/4 active attachments/i);
+  });
 });

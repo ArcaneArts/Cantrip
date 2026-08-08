@@ -184,11 +184,13 @@ export class WorkerBridge implements WorkerCommandBus {
     payload: Uint8Array,
   ): boolean {
     const socket = this.#sockets.get(workerId);
-    if (
-      !socket ||
-      socket.readyState !== 1 ||
-      socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES
-    ) {
+    if (!socket || socket.readyState !== 1) {
+      return false;
+    }
+    if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) {
+      if (header.channel !== "frame" && header.channel !== "cursor") {
+        socket.close(1013, "Remote Surface worker channel is congested");
+      }
       return false;
     }
     try {

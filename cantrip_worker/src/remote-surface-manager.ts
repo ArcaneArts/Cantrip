@@ -15,6 +15,8 @@ import {
 
 type AttachCommand = Extract<WorkerCommand, { type: "surface.attach" }>;
 
+const MAX_ATTACHMENTS_PER_SURFACE = 4;
+
 export interface RemoteSurfaceAttachment {
   id: string;
   viewport: RemoteSurfaceViewport;
@@ -119,6 +121,15 @@ export class RemoteSurfaceManager {
     ) {
       throw new Error(
         "Remote Surface kind changed while its session was live.",
+      );
+    }
+
+    if (
+      !managed.attachments.has(command.attachmentId) &&
+      managed.attachments.size >= MAX_ATTACHMENTS_PER_SURFACE
+    ) {
+      throw new Error(
+        `Remote Surface ${command.surfaceId} already has ${MAX_ATTACHMENTS_PER_SURFACE} active attachments.`,
       );
     }
 

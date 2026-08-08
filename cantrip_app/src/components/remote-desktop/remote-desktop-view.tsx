@@ -22,10 +22,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { remoteSurfaceWebSocketUrl } from "@/lib/api";
 import { RemoteSurfaceRfbChannel } from "@/lib/remote-surface-rfb-channel";
-import { RemoteSurfaceWebRtcClient } from "@/lib/remote-surface-webrtc";
+import {
+  RemoteSurfaceWebRtcClient,
+  type RemoteSurfaceWebRtcState,
+} from "@/lib/remote-surface-webrtc";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
 
 export function RemoteDesktopView({
   desktop,
@@ -42,6 +46,7 @@ export function RemoteDesktopView({
   const lastInboundSequenceRef = useRef(-1);
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rfbReconnectAttemptRef = useRef(0);
   const rfbReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -57,6 +62,8 @@ export function RemoteDesktopView({
   const [error, setError] = useState<string | null>(desktop.lastError);
   const [remoteClipboard, setRemoteClipboard] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [transportState, setTransportState] =
+    useState<RemoteSurfaceWebRtcState | null>(null);
 
   const sendFrame = useCallback(
     (
@@ -79,6 +86,10 @@ export function RemoteDesktopView({
       }
       const socket = socketRef.current;
       if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+      if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) {
+        socket.close(1013, "Remote Surface connection is congested");
+        return false;
+      }
       socket.send(
         Uint8Array.from(encodeRemoteSurfaceFrame(header, payload)).buffer,
       );
@@ -115,6 +126,7 @@ export function RemoteDesktopView({
       reconnectAttemptRef.current ? "reconnecting" : "connecting",
     );
     setError(null);
+    setTransportState(null);
     attachmentIdRef.current = null;
     sequenceRef.current = 0;
     lastInboundSequenceRef.current = -1;
@@ -162,6 +174,7 @@ export function RemoteDesktopView({
       rfb.resizeSession = true;
       rfb.addEventListener("connect", () => {
         wasConnectedRef.current = true;
+        rfbReconnectAttemptRef.current = 0;
         setVncStatus("connected");
         setError(null);
       });
@@ -205,10 +218,15 @@ export function RemoteDesktopView({
         return;
       }
       setVncStatus("reconnecting");
+      const delay = Math.min(
+        1_000 * 2 ** rfbReconnectAttemptRef.current,
+        10_000,
+      );
+      rfbReconnectAttemptRef.current += 1;
       rfbReconnectTimerRef.current = setTimeout(() => {
         rfbReconnectTimerRef.current = null;
         startRfb();
-      }, 1_000);
+      }, delay);
     };
 
     const handleFrame = (bytes: Uint8Array) => {
@@ -270,7 +288,7 @@ export function RemoteDesktopView({
                   true,
                 );
               },
-              onState: () => undefined,
+              onState: setTransportState,
             });
             webRtcRef.current = client;
             void client.start();
@@ -323,6 +341,7 @@ export function RemoteDesktopView({
 
   const reconnect = () => {
     explicitDisconnectRef.current = false;
+    rfbReconnectAttemptRef.current = 0;
     setConnectionKey((key) => key + 1);
   };
 
@@ -440,6 +459,11 @@ export function RemoteDesktopView({
         {notice ? (
           <div className="pointer-events-none absolute bottom-4 right-4 rounded-md bg-background/90 px-3 py-2 text-xs text-foreground shadow-lg backdrop-blur-xl">
             {notice}
+          </div>
+        ) : null}
+        {connectionState === "ready" && transportState === "fallback" ? (
+          <div className="pointer-events-none absolute left-4 top-3 rounded-md bg-background/80 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur-xl">
+            WebSocket stream
           </div>
         ) : null}
       </div>

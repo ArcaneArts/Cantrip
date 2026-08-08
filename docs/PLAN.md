@@ -167,6 +167,12 @@ server persists only opaque references. Cantrip intentionally does not enable
 or configure an operating system's screen-sharing service. TLS/VenCrypt and
 automatic desktop provisioning remain future adapter work.
 
+Operational limits currently bound a worker to four live Remote Surface
+sessions and each surface to four attachments. Binary payloads are capped at 4
+MiB and WebSocket queues at 8 MiB. Browser visual frames may be discarded under
+pressure; reliable control and RFB congestion resets the connection instead of
+silently corrupting the stream. Clients use bounded exponential reconnects.
+
 ## 5. Monorepo layout
 
 The three named directories are independently runnable deployables. Shared code lives in small internal packages rather than introducing imports between deployables.
