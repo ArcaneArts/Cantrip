@@ -59,6 +59,12 @@ code checks the negotiated method map and fails explicitly when a known method
 is unavailable. Experimental APIs are requested only when the initialization
 probe accepts that capability.
 
+Permission profiles are additionally gated on experimental API negotiation and
+`permissionProfile/list`. When available, Cantrip pages the advertised profiles
+for the active checkout and uses the selected profile on thread start/resume.
+When unavailable, it keeps the legacy sandbox path rather than sending an
+unrecognized profile field.
+
 ## Diagnostics and schema drift
 
 The adapter validates JSON-RPC envelope shape before dispatch. It keeps the most

@@ -176,6 +176,13 @@
       "when": 1786213333830,
       "tag": "0024_last_starfox",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786214252003,
+      "tag": "0025_chat_permission_profiles",
+      "breakpoints": true
     }
   ]
 }

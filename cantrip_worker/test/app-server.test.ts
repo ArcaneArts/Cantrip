@@ -10,6 +10,7 @@ import {
   CodexAppServer,
   codexEndpointFromLine,
   codexModelProviderName,
+  codexThreadPermissionParams,
   codexWorktreeTurnPolicy,
   codexWorkspaceContext,
   executeDynamicWorktreeTool,
@@ -296,6 +297,36 @@ describe("codexWorktreeTurnPolicy", () => {
     expect(policy.additionalContext["cantrip.worktree-policy"].value).toContain(
       "pinned to the current worktree",
     );
+  });
+
+  it("omits the legacy sandbox payload when a permission profile is active", () => {
+    expect(
+      codexWorktreeTurnPolicy({
+        cwd: "/workspace/project",
+        isPrimary: true,
+        worktreeMode: "agent-managed",
+        worktreePolicy: "required-for-writes",
+        permissionProfileActive: true,
+      }),
+    ).toEqual({
+      additionalContext: {
+        "cantrip.worktree-policy": {
+          kind: "application",
+          value: expect.stringContaining("Primary is inspection-only"),
+        },
+      },
+    });
+  });
+});
+
+describe("Codex permission profile params", () => {
+  it("never composes beta permission profiles with the legacy sandbox", () => {
+    expect(codexThreadPermissionParams(":read-only", true)).toEqual({
+      permissions: ":read-only",
+    });
+    expect(codexThreadPermissionParams(":read-only", false)).toEqual({
+      sandbox: "workspace-write",
+    });
   });
 });
 

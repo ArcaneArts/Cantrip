@@ -29,6 +29,7 @@ import {
   gitActionSchema,
   mentionedSkillNames,
   normalizeResponsesBaseUrl,
+  chatPermissionProfileStateSchema,
   queuedPromptSchema,
   projectWorktreeSummarySchema,
   remoteDesktopCreateSchema,
@@ -47,6 +48,21 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("models capability-gated chat permission profiles", () => {
+    expect(
+      chatPermissionProfileStateSchema.parse({
+        available: true,
+        profiles: [
+          { id: ":workspace", description: "Workspace writes", allowed: true },
+        ],
+        selectedId: ":workspace",
+        effectiveId: ":read-only",
+        forcedByWorktreePolicy: true,
+        reason: null,
+      }),
+    ).toMatchObject({ effectiveId: ":read-only" });
+  });
+
   it("validates durable structured agent interaction requests", () => {
     const request = {
       id: "request-1",
@@ -278,6 +294,7 @@ describe("Cantrip protocol", () => {
           baseUrl: "https://api.openai.com/v1",
           apiKey: null,
         },
+        permissionProfileId: ":workspace",
       }).type,
     ).toBe("chat.compact");
   });
@@ -309,6 +326,7 @@ describe("Cantrip protocol", () => {
         baseUrl: "https://api.openai.com/v1",
         apiKey: null,
       },
+      permissionProfileId: ":read-only",
       planMode: "plan",
       automationPaused: true,
     });
@@ -442,6 +460,7 @@ describe("Cantrip protocol", () => {
           baseUrl: "https://api.openai.com/v1",
           apiKey: null,
         },
+        permissionProfileId: ":workspace",
       }).type,
     ).toBe("chat.goal.create");
     expect(

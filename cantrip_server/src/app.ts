@@ -28,6 +28,8 @@ import {
   chatPlanAnswerSchema,
   chatPlanStateSchema,
   chatPlanUpdateSchema,
+  chatPermissionProfileStateSchema,
+  chatPermissionProfileUpdateSchema,
   chatPauseStateSchema,
   chatPauseUpdateSchema,
   chatCreateSchema,
@@ -87,6 +89,7 @@ import {
   projectViewListSchema,
   projectViewSummarySchema,
   projectViewUpdateSchema,
+  permissionProfileCapabilitySchema,
   queuedPromptCreateSchema,
   queuedPromptListSchema,
   queuedPromptOrderSchema,
@@ -170,6 +173,20 @@ function errorMessage(error: unknown): string {
 
 function chatIsExecuting(status: ChatSummary["status"]): boolean {
   return status === "running" || status === "waiting-for-approval";
+}
+
+const DEFAULT_PERMISSION_PROFILE_ID = ":workspace";
+
+function effectivePermissionProfile(context: ChatExecutionContext) {
+  const selectedId =
+    context.permissionProfileId ?? DEFAULT_PERMISSION_PROFILE_ID;
+  const forcedByWorktreePolicy =
+    context.isPrimary && context.worktreePolicy === "required-for-writes";
+  return {
+    selectedId,
+    effectiveId: forcedByWorktreePolicy ? ":read-only" : selectedId,
+    forcedByWorktreePolicy,
+  };
 }
 
 function requiredToolString(
@@ -715,6 +732,44 @@ export async function buildApp({
     return repository.getModelRuntime(LOCAL_USER_ID, modelId);
   };
 
+  const permissionProfileState = async (context: ChatExecutionContext) => {
+    const selection = effectivePermissionProfile(context);
+    if (!bridge.isConnected(context.workerId)) {
+      return chatPermissionProfileStateSchema.parse({
+        ...selection,
+        available: false,
+        profiles: [],
+        reason:
+          "Project worker is offline; the legacy sandbox policy remains active.",
+      });
+    }
+    try {
+      const runtime = await runtimeForContext(context);
+      if (!runtime) {
+        throw new Error("Choose a model before listing permission profiles.");
+      }
+      const capability = permissionProfileCapabilitySchema.parse(
+        await bridge.request(context.workerId, {
+          type: "permission-profiles.list",
+          cwd: context.cwd,
+          model: runtime.model,
+          provider: runtime.provider,
+        }),
+      );
+      return chatPermissionProfileStateSchema.parse({
+        ...selection,
+        ...capability,
+      });
+    } catch (error) {
+      return chatPermissionProfileStateSchema.parse({
+        ...selection,
+        available: false,
+        profiles: [],
+        reason: `Permission profiles are unavailable: ${errorMessage(error)}`,
+      });
+    }
+  };
+
   const continuePendingWorktreeTransition = async (
     chatId: string,
   ): Promise<boolean> => {
@@ -1025,6 +1080,8 @@ export async function buildApp({
                 skillNames: mentionedSkillNames(input.text),
                 model: runtime.model,
                 provider: runtime.provider,
+                permissionProfileId:
+                  effectivePermissionProfile(execution).effectiveId,
                 planMode: execution.planMode,
                 automationPaused: execution.automationPaused,
               },
@@ -1287,6 +1344,7 @@ export async function buildApp({
           threadId: context.threadId,
           model: runtime.model,
           provider: runtime.provider,
+          permissionProfileId: effectivePermissionProfile(context).effectiveId,
         }),
       );
       if (result.goal?.status === "active") {
@@ -3867,6 +3925,7 @@ export async function buildApp({
         threadId: context.threadId,
         model: runtime.model,
         provider: runtime.provider,
+        permissionProfileId: effectivePermissionProfile(context).effectiveId,
       });
       return reply.send(chatCompactAcceptedSchema.parse(result));
     },
@@ -4028,6 +4087,8 @@ export async function buildApp({
               fallbackMode: context.planMode,
               model: runtime.model,
               provider: runtime.provider,
+              permissionProfileId:
+                effectivePermissionProfile(context).effectiveId,
             })) as { mode?: unknown };
             const mode = chatPlanUpdateSchema.safeParse({ mode: result.mode });
             if (mode.success && mode.data.mode !== context.planMode) {
@@ -4087,6 +4148,7 @@ export async function buildApp({
           mode: input.data.mode,
           model: runtime.model,
           provider: runtime.provider,
+          permissionProfileId: effectivePermissionProfile(context).effectiveId,
         })) as { mode: unknown; threadId: unknown };
         const nativeMode = chatPlanUpdateSchema.parse({ mode: result.mode });
         if (typeof result.threadId !== "string" || !result.threadId) {
@@ -4228,6 +4290,7 @@ export async function buildApp({
           threadId: context.threadId,
           model: runtime.model,
           provider: runtime.provider,
+          permissionProfileId: effectivePermissionProfile(context).effectiveId,
         });
         return reply.send(chatGoalResponseSchema.parse(result));
       } catch (error) {
@@ -4276,6 +4339,8 @@ export async function buildApp({
             tokenBudget: input.data.tokenBudget ?? null,
             model: runtime.model,
             provider: runtime.provider,
+            permissionProfileId:
+              effectivePermissionProfile(context).effectiveId,
           }),
         );
         if (!result.goal) {
@@ -4341,6 +4406,8 @@ export async function buildApp({
             status: input.data.status,
             model: runtime.model,
             provider: runtime.provider,
+            permissionProfileId:
+              effectivePermissionProfile(context).effectiveId,
           }),
         );
         if (
@@ -4397,6 +4464,7 @@ export async function buildApp({
           threadId: context.threadId,
           model: runtime.model,
           provider: runtime.provider,
+          permissionProfileId: effectivePermissionProfile(context).effectiveId,
         });
         return reply.send(chatGoalClearSchema.parse(result));
       } catch (error) {
@@ -4616,6 +4684,104 @@ export async function buildApp({
         return reply.code(404).send({ error: "Chat or model not found." });
       }
       return reply.send(chatSummarySchema.parse(result));
+    },
+  );
+
+  app.get<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/permission-profiles",
+    async (request, reply) => {
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      return reply.send(await permissionProfileState(context));
+    },
+  );
+
+  app.patch<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/permission-profile",
+    async (request, reply) => {
+      const input = chatPermissionProfileUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      if (chatIsExecuting(context.status)) {
+        return reply
+          .code(409)
+          .send({ error: "Wait for the active turn or approval to finish." });
+      }
+      const capability = await permissionProfileState(context);
+      if (!capability.available) {
+        return reply.code(409).send({
+          error: capability.reason ?? "Permission profiles are unavailable.",
+        });
+      }
+      const profile = capability.profiles.find(
+        (candidate) => candidate.id === input.data.id,
+      );
+      if (!profile) {
+        return reply
+          .code(400)
+          .send({ error: "Codex did not advertise that permission profile." });
+      }
+      if (!profile.allowed) {
+        return reply
+          .code(409)
+          .send({ error: "That permission profile is not allowed here." });
+      }
+      const latest = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        context.chatId,
+      );
+      if (!latest) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      if (chatIsExecuting(latest.status)) {
+        return reply
+          .code(409)
+          .send({ error: "Wait for the active turn or approval to finish." });
+      }
+      const updated = await repository.setChatPermissionProfile(
+        LOCAL_USER_ID,
+        context.chatId,
+        profile.id,
+      );
+      if (!updated) {
+        const current = await repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          context.chatId,
+        );
+        return current
+          ? reply.code(409).send({
+              error: "The chat started executing before the profile changed.",
+            })
+          : reply.code(404).send({ error: "Chat source not found." });
+      }
+      const refreshed = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        context.chatId,
+      );
+      if (!refreshed) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      return reply.send(
+        chatPermissionProfileStateSchema.parse({
+          ...effectivePermissionProfile(refreshed),
+          available: true,
+          profiles: capability.profiles,
+          reason: null,
+        }),
+      );
     },
   );
 

@@ -15,6 +15,7 @@ import {
   chatMessageListSchema,
   chatMessageSchema,
   chatPauseStateSchema,
+  chatPermissionProfileStateSchema,
   chatPlanStateSchema,
   chatSummarySchema,
   explorerDirectorySchema,
@@ -85,6 +86,7 @@ let compactRequests = 0;
 const turnModelIds: string[] = [];
 const turnProviderIds: string[] = [];
 const turnRouteIds: string[] = [];
+const turnPermissionProfileIds: string[] = [];
 const turnPrompts: string[] = [];
 const turnSkillNames: string[][] = [];
 const turnTimeouts: Array<number | null | undefined> = [];
@@ -360,6 +362,33 @@ const workerBridge = {
             description: "Create reusable skills",
           },
         ];
+      case "permission-profiles.list":
+        return {
+          available: true,
+          profiles: [
+            {
+              id: ":read-only",
+              description: "Inspection only",
+              allowed: true,
+            },
+            {
+              id: ":workspace",
+              description: "Workspace writes",
+              allowed: true,
+            },
+            {
+              id: ":danger-full-access",
+              description: "Unrestricted access",
+              allowed: true,
+            },
+            {
+              id: ":blocked",
+              description: "Disabled by policy",
+              allowed: false,
+            },
+          ],
+          reason: null,
+        };
       case "terminal.open":
         return { status: "detached" };
       case "terminal.detach":
@@ -382,6 +411,7 @@ const workerBridge = {
         turnModelIds.push(command.model.id);
         turnProviderIds.push(command.provider.id);
         turnRouteIds.push(command.model.routeId);
+        turnPermissionProfileIds.push(command.permissionProfileId);
         turnPrompts.push(command.prompt);
         turnSkillNames.push(command.skillNames);
         turnTimeouts.push(options?.timeoutMs);
@@ -1247,6 +1277,68 @@ describe("local server foundation", () => {
       modelId: selectedModel.id,
     });
 
+    expect(
+      chatPermissionProfileStateSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${chat.id}/permission-profiles`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject({
+      available: true,
+      selectedId: ":workspace",
+      effectiveId: ":workspace",
+      forcedByWorktreePolicy: false,
+    });
+    const selectedPermissionProfile = chatPermissionProfileStateSchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/chats/${chat.id}/permission-profile`,
+          payload: { id: ":danger-full-access" },
+        })
+      ).json(),
+    );
+    expect(selectedPermissionProfile).toMatchObject({
+      selectedId: ":danger-full-access",
+      effectiveId: ":danger-full-access",
+    });
+    expect(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/chats/${chat.id}/permission-profile`,
+          payload: { id: ":blocked" },
+        })
+      ).statusCode,
+    ).toBe(409);
+    await firstApp.inject({
+      method: "PATCH",
+      url: `/api/projects/${project.id}/worktree-policy`,
+      payload: { policy: "required-for-writes" },
+    });
+    expect(
+      chatPermissionProfileStateSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${chat.id}/permission-profiles`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject({
+      selectedId: ":danger-full-access",
+      effectiveId: ":read-only",
+      forcedByWorktreePolicy: true,
+    });
+    await firstApp.inject({
+      method: "PATCH",
+      url: `/api/projects/${project.id}/worktree-policy`,
+      payload: { policy: "agent-managed" },
+    });
+
     const approvalInput: AgentInteractionRequestCreate = {
       requestKey: "runtime-1:approval-1",
       projectId: project.id,
@@ -1306,6 +1398,15 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toMatchObject([{ id: approval.id, status: "pending" }]);
+    expect(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/chats/${chat.id}/permission-profile`,
+          payload: { id: ":workspace" },
+        })
+      ).statusCode,
+    ).toBe(409);
 
     expect(
       (
@@ -1611,6 +1712,7 @@ describe("local server foundation", () => {
     expect(turnSkillNames[0]).toEqual(["skill-creator"]);
     expect(turnTimeouts).toEqual([null]);
     expect(turnModelIds).toContain(selectedModel.id);
+    expect(turnPermissionProfileIds[0]).toBe(":danger-full-access");
     expect(
       await firstApp.inject({
         method: "POST",

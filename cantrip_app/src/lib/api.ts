@@ -22,6 +22,8 @@ import {
   chatPlanUpdateSchema,
   chatPauseStateSchema,
   chatPauseUpdateSchema,
+  chatPermissionProfileStateSchema,
+  chatPermissionProfileUpdateSchema,
   chatPromptSteerResultSchema,
   chatPromptSubmitResultSchema,
   explorerDirectorySchema,
@@ -844,6 +846,26 @@ export async function setChatPaused(chatId: string, paused: boolean) {
       method: "PATCH",
       body: JSON.stringify(chatPauseUpdateSchema.parse({ paused })),
     }),
+  );
+}
+
+export async function getChatPermissionProfiles(chatId: string) {
+  return chatPermissionProfileStateSchema.parse(
+    await request(
+      `/api/chats/${encodeURIComponent(chatId)}/permission-profiles`,
+    ),
+  );
+}
+
+export async function updateChatPermissionProfile(chatId: string, id: string) {
+  return chatPermissionProfileStateSchema.parse(
+    await request(
+      `/api/chats/${encodeURIComponent(chatId)}/permission-profile`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(chatPermissionProfileUpdateSchema.parse({ id })),
+      },
+    ),
   );
 }
 
