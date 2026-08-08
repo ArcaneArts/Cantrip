@@ -99,6 +99,7 @@ import {
   GitHistoryView,
   type GitHistoryHeaderState,
 } from "@/components/git/git-history";
+import type { ExplorerHeaderState } from "@/components/explorer/explorer-view";
 import { ProjectChatList } from "@/components/sidebar/project-chat-list";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { ServerSwitcher } from "@/components/servers/server-switcher";
@@ -2045,6 +2046,8 @@ export function App() {
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [gitHistoryHeader, setGitHistoryHeader] =
     useState<GitHistoryHeaderState | null>(null);
+  const [explorerHeader, setExplorerHeader] =
+    useState<ExplorerHeaderState | null>(null);
   const [popoutPending, setPopoutPending] = useState(false);
   const [popoutError, setPopoutError] = useState<string | null>(null);
   const [worktreeCreateTarget, setWorktreeCreateTarget] =
@@ -2802,6 +2805,9 @@ export function App() {
   const activeWorktree = worktrees.data?.find(
     (worktree) => worktree.id === activeWorktreeId,
   );
+  const explorerDisplayPath = selectedExplorer
+    ? `${activeWorktree?.displayPath ?? selectedProject?.source?.displayPath ?? "Explorer"}${explorerHeader?.directoryPath ? `/${explorerHeader.directoryPath}` : ""}`
+    : null;
   const bindChatWorktree = (
     chat: ChatSummary,
     worktreeId: string,
@@ -3377,9 +3383,7 @@ export function App() {
                 ) : selectedBrowser ? (
                   selectedBrowser.url
                 ) : selectedExplorer ? (
-                  (activeWorktree?.displayPath ??
-                  selectedProject?.source?.displayPath ??
-                  "Explorer")
+                  explorerDisplayPath
                 ) : selectedTerminal ? (
                   selectedTerminal.linkedChatId ? (
                     (activeWorktree?.displayPath ??
@@ -3450,6 +3454,22 @@ export function App() {
                     <span className="sr-only">Refresh Git history</span>
                   </Button>
                 </>
+              ) : null}
+              {selectedExplorer && explorerHeader ? (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  disabled={explorerHeader.isFetching}
+                  onClick={explorerHeader.refresh}
+                >
+                  <RefreshCw
+                    className={cn(
+                      "size-4",
+                      explorerHeader.isFetching && "animate-spin",
+                    )}
+                  />
+                  <span className="sr-only">Refresh folder</span>
+                </Button>
               ) : null}
               {activePopout ? (
                 <Button
@@ -3577,6 +3597,23 @@ export function App() {
                   </Button>
                 </>
               ) : null}
+              {selectedExplorer && explorerHeader ? (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  disabled={explorerHeader.isFetching}
+                  onClick={explorerHeader.refresh}
+                  title="Refresh folder"
+                >
+                  <RefreshCw
+                    className={cn(
+                      "size-4",
+                      explorerHeader.isFetching && "animate-spin",
+                    )}
+                  />
+                  <span className="sr-only">Refresh folder</span>
+                </Button>
+              ) : null}
               {activePopout ? (
                 <Button
                   size="icon"
@@ -3687,6 +3724,27 @@ export function App() {
               <span className="sr-only">
                 {linkedConsoleChat ? "Show chat" : "Show Codex console"}
               </span>
+            </Button>
+          </div>
+        ) : null}
+
+        {isPopout && selectedExplorer && explorerHeader ? (
+          <div className="absolute right-3 top-3 z-40">
+            <Button
+              size="icon"
+              variant="outline"
+              className="size-9 bg-background/75 shadow-md backdrop-blur-xl"
+              disabled={explorerHeader.isFetching}
+              onClick={explorerHeader.refresh}
+              title="Refresh folder"
+            >
+              <RefreshCw
+                className={cn(
+                  "size-4",
+                  explorerHeader.isFetching && "animate-spin",
+                )}
+              />
+              <span className="sr-only">Refresh folder</span>
             </Button>
           </div>
         ) : null}
@@ -3816,7 +3874,10 @@ export function App() {
               </div>
             }
           >
-            <ExplorerView explorer={selectedExplorer} />
+            <ExplorerView
+              explorer={selectedExplorer}
+              onHeaderChange={setExplorerHeader}
+            />
           </Suspense>
         ) : selectedTerminal ? (
           <Suspense

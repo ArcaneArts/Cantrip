@@ -1,20 +1,24 @@
 import type { ExplorerEntry, ExplorerSummary } from "@cantrip/protocol";
 import { useQuery } from "@tanstack/react-query";
 import {
-  ChevronRight,
   File,
   FileCode2,
   FileText,
   Folder,
   FolderOpen,
   Loader2,
-  RefreshCw,
 } from "lucide-react";
 import { Highlight, themes, type Language } from "prism-react-renderer";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Markdown } from "@/components/chat/markdown";
-import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { getExplorerDirectory, getExplorerFile } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -118,7 +122,19 @@ function SourceView({ code, path }: { code: string; path: string }) {
   );
 }
 
-export function ExplorerView({ explorer }: { explorer: ExplorerSummary }) {
+export interface ExplorerHeaderState {
+  directoryPath: string;
+  isFetching: boolean;
+  refresh(): void;
+}
+
+export function ExplorerView({
+  explorer,
+  onHeaderChange,
+}: {
+  explorer: ExplorerSummary;
+  onHeaderChange(state: ExplorerHeaderState | null): void;
+}) {
   const [directoryPath, setDirectoryPath] = useState("");
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [markdownMode, setMarkdownMode] = useState<"preview" | "source">(
@@ -133,16 +149,6 @@ export function ExplorerView({ explorer }: { explorer: ExplorerSummary }) {
     queryFn: () => getExplorerFile(explorer.id, selectedFile!),
     queryKey: ["explorer-file", explorer.id, selectedFile],
   });
-  const breadcrumbs = useMemo(() => {
-    const parts = directoryPath.split("/").filter(Boolean);
-    return [
-      { label: "Project", path: "" },
-      ...parts.map((part, index) => ({
-        label: part,
-        path: parts.slice(0, index + 1).join("/"),
-      })),
-    ];
-  }, [directoryPath]);
 
   useEffect(() => {
     setDirectoryPath("");
@@ -150,10 +156,23 @@ export function ExplorerView({ explorer }: { explorer: ExplorerSummary }) {
     setMarkdownMode("preview");
   }, [explorer.id]);
 
+  useEffect(() => {
+    onHeaderChange({
+      directoryPath,
+      isFetching: directory.isFetching,
+      refresh: () => {
+        void directory.refetch();
+      },
+    });
+  }, [directory.isFetching, directory.refetch, directoryPath, onHeaderChange]);
+
+  useEffect(() => {
+    return () => onHeaderChange(null);
+  }, [explorer.id, onHeaderChange]);
+
   const openEntry = (entry: ExplorerEntry) => {
     if (entry.kind === "directory") {
       setDirectoryPath(entry.path);
-      setSelectedFile(null);
       return;
     }
     if (!entry.viewable) return;
@@ -162,125 +181,89 @@ export function ExplorerView({ explorer }: { explorer: ExplorerSummary }) {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-      <aside className="flex h-60 shrink-0 flex-col border-b bg-background sm:h-auto sm:w-72 sm:border-b-0 sm:border-r">
-        <div className="flex h-10 shrink-0 items-center gap-1 border-b px-2">
-          <div className="flex min-w-0 flex-1 items-center overflow-hidden text-xs">
-            {breadcrumbs.map((crumb, index) => (
-              <div
-                key={crumb.path || "root"}
-                className="flex min-w-0 items-center"
+    <div className="min-h-0 flex-1 overflow-y-auto p-2 sm:p-3">
+      {directory.isLoading ? (
+        <div className="grid h-32 place-items-center text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" />
+        </div>
+      ) : directory.isError ? (
+        <p className="p-3 text-xs leading-5 text-destructive">
+          {directory.error instanceof Error
+            ? directory.error.message
+            : "Folder could not be loaded."}
+        </p>
+      ) : (
+        <>
+          {directoryPath ? (
+            <button
+              type="button"
+              className="flex h-9 w-full items-center gap-2 rounded-md px-3 text-left text-sm text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+              onClick={() =>
+                setDirectoryPath(
+                  directoryPath.split("/").slice(0, -1).join("/"),
+                )
+              }
+            >
+              <FolderOpen className="size-4 shrink-0" />
+              <span>..</span>
+            </button>
+          ) : null}
+          {directory.data?.entries.map((entry) => {
+            const Icon = entryIcon(entry);
+            return (
+              <button
+                key={entry.path}
+                type="button"
+                className={cn(
+                  "flex h-9 w-full items-center gap-2 rounded-md px-3 text-left text-sm text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+                  entry.kind === "file" &&
+                    !entry.viewable &&
+                    "cursor-default opacity-45 hover:bg-transparent hover:text-muted-foreground",
+                )}
+                onClick={() => openEntry(entry)}
+                title={
+                  entry.viewable || entry.kind === "directory"
+                    ? entry.path
+                    : `${entry.path} · Preview unavailable`
+                }
               >
-                {index > 0 ? (
-                  <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
+                <Icon className="size-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+                {entry.size !== null ? (
+                  <span className="shrink-0 text-[10px] text-muted-foreground/60">
+                    {formatSize(entry.size)}
+                  </span>
                 ) : null}
-                <button
-                  type="button"
-                  className="truncate rounded px-1 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  onClick={() => {
-                    setDirectoryPath(crumb.path);
-                    setSelectedFile(null);
-                  }}
-                >
-                  {crumb.label}
-                </button>
-              </div>
-            ))}
-          </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="size-7"
-            disabled={directory.isFetching}
-            onClick={() => directory.refetch()}
-          >
-            <RefreshCw
-              className={cn("size-3.5", directory.isFetching && "animate-spin")}
-            />
-            <span className="sr-only">Refresh folder</span>
-          </Button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-          {directory.isLoading ? (
-            <div className="grid h-24 place-items-center text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" />
+              </button>
+            );
+          })}
+          {directory.data?.entries.length === 0 ? (
+            <div className="grid h-32 place-items-center text-sm text-muted-foreground">
+              This folder is empty.
             </div>
-          ) : directory.isError ? (
-            <p className="p-3 text-xs leading-5 text-destructive">
-              {directory.error instanceof Error
-                ? directory.error.message
-                : "Folder could not be loaded."}
+          ) : null}
+          {directory.data?.truncated ? (
+            <p className="px-3 py-2 text-[10px] text-muted-foreground">
+              Showing the first 1,000 entries.
             </p>
-          ) : (
-            <>
-              {directoryPath ? (
-                <button
-                  type="button"
-                  className="flex h-8 w-full items-center gap-2 rounded px-2 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-                  onClick={() => {
-                    setDirectoryPath(
-                      directoryPath.split("/").slice(0, -1).join("/"),
-                    );
-                    setSelectedFile(null);
-                  }}
-                >
-                  <FolderOpen className="size-4" /> ..
-                </button>
-              ) : null}
-              {directory.data?.entries.map((entry) => {
-                const Icon = entryIcon(entry);
-                const selected = selectedFile === entry.path;
-                return (
-                  <button
-                    key={entry.path}
-                    type="button"
-                    className={cn(
-                      "flex h-8 w-full items-center gap-2 rounded px-2 text-left text-xs",
-                      selected
-                        ? "bg-muted text-foreground"
-                        : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
-                      entry.kind === "file" &&
-                        !entry.viewable &&
-                        "cursor-default opacity-45 hover:bg-transparent hover:text-muted-foreground",
-                    )}
-                    onClick={() => openEntry(entry)}
-                    title={
-                      entry.viewable || entry.kind === "directory"
-                        ? entry.path
-                        : `${entry.path} · Preview unavailable`
-                    }
-                  >
-                    <Icon className="size-4 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate">
-                      {entry.name}
-                    </span>
-                    {entry.size !== null ? (
-                      <span className="shrink-0 text-[9px] text-muted-foreground/60">
-                        {formatSize(entry.size)}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-              {directory.data?.truncated ? (
-                <p className="p-2 text-[10px] text-muted-foreground">
-                  Showing the first 1,000 entries.
-                </p>
-              ) : null}
-            </>
-          )}
-        </div>
-      </aside>
+          ) : null}
+        </>
+      )}
 
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {selectedFile ? (
-          <>
-            <header className="flex h-10 shrink-0 items-center justify-between gap-3 border-b px-3">
+      <Dialog
+        open={Boolean(selectedFile)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedFile(null);
+        }}
+      >
+        <DialogContent className="flex h-[min(86svh,900px)] max-w-5xl flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b px-5 py-4 pr-12">
+            <div className="flex min-w-0 items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-2">
-                <FileText className="size-3.5 shrink-0 text-muted-foreground" />
-                <span className="truncate text-xs font-medium">
-                  {selectedFile}
-                </span>
+                <FileText className="size-4 shrink-0 text-muted-foreground" />
+                <DialogTitle className="truncate text-sm">
+                  {selectedFile ?? "File preview"}
+                </DialogTitle>
                 {file.data ? (
                   <span className="shrink-0 text-[10px] text-muted-foreground">
                     {formatSize(file.data.size)}
@@ -288,7 +271,7 @@ export function ExplorerView({ explorer }: { explorer: ExplorerSummary }) {
                 ) : null}
               </div>
               {file.data?.markdown ? (
-                <div className="flex rounded-md border bg-muted/30 p-0.5">
+                <div className="flex shrink-0 rounded-md border bg-muted/30 p-0.5">
                   {(["preview", "source"] as const).map((mode) => (
                     <button
                       key={mode}
@@ -305,42 +288,32 @@ export function ExplorerView({ explorer }: { explorer: ExplorerSummary }) {
                   ))}
                 </div>
               ) : null}
-            </header>
-            <div className="min-h-0 flex-1 overflow-auto">
-              {file.isLoading ? (
-                <div className="grid h-full place-items-center text-muted-foreground">
-                  <Loader2 className="size-5 animate-spin" />
-                </div>
-              ) : file.isError ? (
-                <p className="m-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-                  {file.error instanceof Error
-                    ? file.error.message
-                    : "File could not be loaded."}
-                </p>
-              ) : file.data?.markdown && markdownMode === "preview" ? (
-                <article className="mx-auto max-w-4xl p-6 sm:p-10">
-                  <Markdown>{file.data.content}</Markdown>
-                </article>
-              ) : file.data ? (
-                <SourceView code={file.data.content} path={file.data.path} />
-              ) : null}
             </div>
-          </>
-        ) : (
-          <div className="grid flex-1 place-items-center p-6 text-center">
-            <div>
-              <div className="mx-auto grid size-11 place-items-center rounded-xl border bg-card">
-                <FolderOpen className="size-5" />
+            <DialogDescription className="sr-only">
+              Read-only preview of the selected project file.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {file.isLoading ? (
+              <div className="grid h-full place-items-center text-muted-foreground">
+                <Loader2 className="size-5 animate-spin" />
               </div>
-              <p className="mt-3 text-sm font-medium">Choose a text file</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Markdown opens in preview mode. Other supported text files use
-                syntax highlighting.
+            ) : file.isError ? (
+              <p className="m-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+                {file.error instanceof Error
+                  ? file.error.message
+                  : "File could not be loaded."}
               </p>
-            </div>
+            ) : file.data?.markdown && markdownMode === "preview" ? (
+              <article className="mx-auto max-w-4xl p-6 sm:p-10">
+                <Markdown>{file.data.content}</Markdown>
+              </article>
+            ) : file.data ? (
+              <SourceView code={file.data.content} path={file.data.path} />
+            ) : null}
           </div>
-        )}
-      </section>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
