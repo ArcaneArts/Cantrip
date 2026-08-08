@@ -68,6 +68,46 @@ interface BrowserPoint {
   y: number;
 }
 
+interface BrowserWindowGeometry {
+  innerPosition: BrowserPoint;
+  innerSize: { height: number; width: number };
+  outerPosition: BrowserPoint;
+  outerSize: { height: number; width: number };
+  scaleFactor: number;
+}
+
+export function nativeBrowserContentOffset(
+  geometry: BrowserWindowGeometry,
+): BrowserPoint {
+  const positionOffset = {
+    x:
+      (geometry.innerPosition.x - geometry.outerPosition.x) /
+      geometry.scaleFactor,
+    y:
+      (geometry.innerPosition.y - geometry.outerPosition.y) /
+      geometry.scaleFactor,
+  };
+  const sideFrameInset = Math.max(
+    0,
+    (geometry.outerSize.width - geometry.innerSize.width) /
+      (2 * geometry.scaleFactor),
+  );
+  const topFrameInset = Math.max(
+    0,
+    (geometry.outerSize.height - geometry.innerSize.height) /
+      geometry.scaleFactor -
+      sideFrameInset,
+  );
+
+  // Some native window styles report matching inner and outer origins even
+  // though the content view starts below the titlebar. Deriving the fallback
+  // from frame dimensions works across WKWebView, WebView2, and WebKitGTK.
+  return {
+    x: Math.max(positionOffset.x, sideFrameInset),
+    y: Math.max(positionOffset.y, topFrameInset),
+  };
+}
+
 export function nativeBrowserSurfacePosition(
   bounds: Pick<DOMRect, "left" | "top">,
   contentOffset: BrowserPoint,
@@ -76,17 +116,6 @@ export function nativeBrowserSurfacePosition(
     x: bounds.left + contentOffset.x,
     y: bounds.top + contentOffset.y,
   };
-}
-
-export function browserOverlayIsOpen(root: ParentNode): boolean {
-  return Array.from(
-    root.querySelectorAll<HTMLElement>(
-      '[role="dialog"], [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper]',
-    ),
-  ).some(
-    (element) =>
-      element.dataset.state !== "closed" && element.getClientRects().length > 0,
-  );
 }
 
 export function BrowserView({
@@ -135,7 +164,6 @@ export function BrowserView({
 
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
-    let overlayObserver: MutationObserver | null = null;
     let pollTimer: number | null = null;
     let removeWindowListeners: (() => void) | null = null;
     const label = nativeBrowserLabel(browser.id);
@@ -154,15 +182,26 @@ export function BrowserView({
       ]);
       const currentWindow = windowApi.getCurrentWindow();
       const contentOffset = async (): Promise<BrowserPoint> => {
-        const [innerPosition, outerPosition, scaleFactor] = await Promise.all([
+        const [
+          innerPosition,
+          outerPosition,
+          innerSize,
+          outerSize,
+          scaleFactor,
+        ] = await Promise.all([
           currentWindow.innerPosition(),
           currentWindow.outerPosition(),
+          currentWindow.innerSize(),
+          currentWindow.outerSize(),
           currentWindow.scaleFactor(),
         ]);
-        return {
-          x: (innerPosition.x - outerPosition.x) / scaleFactor,
-          y: (innerPosition.y - outerPosition.y) / scaleFactor,
-        };
+        return nativeBrowserContentOffset({
+          innerPosition,
+          innerSize,
+          outerPosition,
+          outerSize,
+          scaleFactor,
+        });
       };
       const initialBounds = surface.getBoundingClientRect();
       const initialPosition = nativeBrowserSurfacePosition(
@@ -197,7 +236,6 @@ export function BrowserView({
         await webview.close();
         return;
       }
-
       const syncBounds = async () => {
         const bounds = surface.getBoundingClientRect();
         if (bounds.width < 1 || bounds.height < 1) return;
@@ -221,35 +259,6 @@ export function BrowserView({
       };
       await syncBounds();
 
-      let requestedVisible = true;
-      let appliedVisible = true;
-      let syncingVisibility = false;
-      const flushVisibility = async () => {
-        if (syncingVisibility) return;
-        syncingVisibility = true;
-        try {
-          while (!disposed && appliedVisible !== requestedVisible) {
-            const nextVisible = requestedVisible;
-            if (nextVisible) await webview.show();
-            else await webview.hide();
-            appliedVisible = nextVisible;
-          }
-        } finally {
-          syncingVisibility = false;
-        }
-      };
-      const syncOverlayVisibility = () => {
-        requestedVisible = !browserOverlayIsOpen(document);
-        void flushVisibility().catch(() => undefined);
-      };
-      overlayObserver = new MutationObserver(syncOverlayVisibility);
-      overlayObserver.observe(document.body, {
-        attributes: true,
-        childList: true,
-        subtree: true,
-        attributeFilter: ["data-state", "hidden", "style"],
-      });
-      syncOverlayVisibility();
       setNativeReady(true);
 
       let lastUrl = browser.url;
@@ -283,7 +292,6 @@ export function BrowserView({
     return () => {
       disposed = true;
       resizeObserver?.disconnect();
-      overlayObserver?.disconnect();
       removeWindowListeners?.();
       if (pollTimer !== null) window.clearInterval(pollTimer);
       const handle = nativeWebviewRef.current;

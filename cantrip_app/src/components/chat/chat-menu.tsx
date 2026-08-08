@@ -99,7 +99,7 @@ export function ChatDropdownMenu({
         </Button>
       </DropdownMenuPrimitive.Trigger>
       <DropdownMenuPrimitive.Portal>
-        <DropdownMenuPrimitive.Content align="start" className={contentClass}>
+        <DropdownMenuPrimitive.Content align="end" className={contentClass}>
           <DropdownItems {...actions} />
         </DropdownMenuPrimitive.Content>
       </DropdownMenuPrimitive.Portal>

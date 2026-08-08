@@ -258,7 +258,7 @@ function TerminalTab({
           </DropdownMenuPrimitive.Trigger>
           <DropdownMenuPrimitive.Portal>
             <DropdownMenuPrimitive.Content
-              align="start"
+              align="end"
               className={menuContentClass}
             >
               <DropdownMenuPrimitive.Item
@@ -367,7 +367,7 @@ function ExplorerTab({
           </DropdownMenuPrimitive.Trigger>
           <DropdownMenuPrimitive.Portal>
             <DropdownMenuPrimitive.Content
-              align="start"
+              align="end"
               className={menuContentClass}
             >
               <DropdownMenuPrimitive.Item
@@ -476,7 +476,7 @@ function BrowserTab({
           </DropdownMenuPrimitive.Trigger>
           <DropdownMenuPrimitive.Portal>
             <DropdownMenuPrimitive.Content
-              align="start"
+              align="end"
               className={menuContentClass}
             >
               <DropdownMenuPrimitive.Item
@@ -586,7 +586,7 @@ function ProjectViewTab({
           </DropdownMenuPrimitive.Trigger>
           <DropdownMenuPrimitive.Portal>
             <DropdownMenuPrimitive.Content
-              align="start"
+              align="end"
               className={menuContentClass}
             >
               <DropdownMenuPrimitive.Item

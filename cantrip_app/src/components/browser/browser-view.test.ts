@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  browserOverlayIsOpen,
   browserUrlIsLocal,
+  nativeBrowserContentOffset,
   nativeBrowserSurfacePosition,
 } from "./browser-view";
 
@@ -30,30 +30,16 @@ describe("nativeBrowserSurfacePosition", () => {
   });
 });
 
-describe("browserOverlayIsOpen", () => {
-  it("detects visible application menus above a native browser", () => {
-    const root = {
-      querySelectorAll: () => [
-        {
-          dataset: { state: "open" },
-          getClientRects: () => [{ width: 120, height: 90 }],
-        },
-      ],
-    } as unknown as ParentNode;
-
-    expect(browserOverlayIsOpen(root)).toBe(true);
-  });
-
-  it("ignores closed overlays", () => {
-    const root = {
-      querySelectorAll: () => [
-        {
-          dataset: { state: "closed" },
-          getClientRects: () => [{ width: 300, height: 200 }],
-        },
-      ],
-    } as unknown as ParentNode;
-
-    expect(browserOverlayIsOpen(root)).toBe(false);
+describe("nativeBrowserContentOffset", () => {
+  it("derives a titlebar inset when native window origins match", () => {
+    expect(
+      nativeBrowserContentOffset({
+        innerPosition: { x: 100, y: 100 },
+        innerSize: { width: 2560, height: 1538 },
+        outerPosition: { x: 100, y: 100 },
+        outerSize: { width: 2560, height: 1600 },
+        scaleFactor: 2,
+      }),
+    ).toEqual({ x: 0, y: 31 });
   });
 });
