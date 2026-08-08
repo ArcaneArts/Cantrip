@@ -1335,9 +1335,12 @@ export const chatMessageContentSchema = z.array(
   ]),
 );
 
+export const chatTurnModeSchema = z.enum(["default", "plan", "goal"]);
+
 export const chatMessageCreateSchema = z.object({
   role: chatMessageRoleSchema,
   content: chatMessageContentSchema.min(1),
+  mode: chatTurnModeSchema.optional(),
   idempotencyKey: z.string().min(1).max(200).optional(),
 });
 
@@ -1349,6 +1352,7 @@ export const chatMessageSchema = chatMessageCreateSchema
     worktreeId: z.string().min(1),
     executionLaneId: z.string().min(1).nullable(),
     sequence: z.number().int().positive(),
+    mode: chatTurnModeSchema.default("default"),
     modelId: z.string().min(1).nullable(),
     modelRouteId: z.string().min(1).nullable(),
     providerId: z.string().min(1).nullable(),
@@ -1698,19 +1702,24 @@ export const chatTurnCreateSchema = z
   .object({
     text: z.string().trim().max(100_000).default(""),
     attachmentIds: z.array(z.string().min(1)).max(20).default([]),
+    mode: chatTurnModeSchema.default("default"),
     idempotencyKey: z.string().min(1).max(200),
     modelId: z.string().min(1).optional(),
   })
   .refine(
     ({ attachmentIds, text }) => text.length > 0 || attachmentIds.length > 0,
     { message: "A prompt needs text or at least one attachment." },
-  );
+  )
+  .refine(({ mode, text }) => mode !== "goal" || text.length > 0, {
+    message: "Goal mode needs a text objective.",
+  });
 
 export const queuedPromptSchema = z.object({
   id: z.string().min(1),
   chatId: z.string().min(1),
   text: z.string().trim().max(100_000),
   attachments: chatAttachmentListSchema.default([]),
+  mode: chatTurnModeSchema.default("default"),
   modelId: z.string().min(1),
   worktreeId: z.string().min(1).nullable(),
   position: z.number().int().nonnegative(),
@@ -1730,12 +1739,14 @@ export const queuedPromptUpdateSchema = z
   .object({
     text: z.string().trim().max(100_000).optional(),
     attachmentIds: z.array(z.string().min(1)).max(20).optional(),
+    mode: chatTurnModeSchema.optional(),
     frozen: z.boolean().optional(),
   })
   .refine(
     (value) =>
       value.text !== undefined ||
       value.attachmentIds !== undefined ||
+      value.mode !== undefined ||
       value.frozen !== undefined,
     { message: "At least one queued prompt field is required." },
   );
@@ -2833,6 +2844,7 @@ export type AgentWorktreeToolResult = z.infer<
   typeof agentWorktreeToolResultSchema
 >;
 export type ChatTurnCreate = z.infer<typeof chatTurnCreateSchema>;
+export type ChatTurnMode = z.infer<typeof chatTurnModeSchema>;
 export type QueuedPrompt = z.infer<typeof queuedPromptSchema>;
 export type QueuedPromptCreate = z.infer<typeof queuedPromptCreateSchema>;
 export type QueuedPromptUpdate = z.infer<typeof queuedPromptUpdateSchema>;

@@ -976,7 +976,11 @@ describe("Cantrip protocol", () => {
         attachmentIds: ["attachment-1"],
         idempotencyKey: "attachment-turn-1",
       }),
-    ).toMatchObject({ text: "", attachmentIds: ["attachment-1"] });
+    ).toMatchObject({
+      text: "",
+      attachmentIds: ["attachment-1"],
+      mode: "default",
+    });
     expect(
       chatTurnCreateSchema.safeParse({
         text: "",
@@ -984,6 +988,20 @@ describe("Cantrip protocol", () => {
         idempotencyKey: "empty-turn",
       }).success,
     ).toBe(false);
+    expect(
+      chatTurnCreateSchema.safeParse({
+        attachmentIds: ["attachment-1"],
+        mode: "goal",
+        idempotencyKey: "attachment-goal",
+      }).success,
+    ).toBe(false);
+    expect(
+      chatTurnCreateSchema.parse({
+        text: "Ship the feature",
+        mode: "goal",
+        idempotencyKey: "goal-turn",
+      }).mode,
+    ).toBe("goal");
 
     const attachment = chatAttachmentSummarySchema.parse({
       id: "attachment-1",

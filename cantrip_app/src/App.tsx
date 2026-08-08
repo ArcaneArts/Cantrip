@@ -5,6 +5,7 @@ import type {
   ChatMessage,
   ChatPlanAnswer,
   ChatSummary,
+  ChatTurnMode,
   ExplorerSummary,
   GithubRepository,
   ModelProfileSummary,
@@ -39,7 +40,6 @@ import {
   GitBranch,
   Globe2,
   Loader2,
-  ListChecks,
   Lock,
   MessageSquare,
   PanelLeft,
@@ -50,7 +50,6 @@ import {
   Send,
   Settings,
   SquareTerminal,
-  Target,
   User,
   WandSparkles,
 } from "lucide-react";
@@ -137,7 +136,6 @@ import {
   createTerminal,
   compactChat,
   clearChatGoal,
-  createChatGoal,
   deleteChat,
   deleteChatAttachment,
   deleteBrowser,
@@ -183,7 +181,6 @@ import {
   syncChat,
   updateChatModel,
   updateChatGoal,
-  updateChatPlan,
   updateChatPermissionProfile,
   updateChatWorktree,
   updateBrowser,
@@ -674,7 +671,7 @@ function ChatTranscript({
 }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
-  const [goalDialogOpen, setGoalDialogOpen] = useState(false);
+  const [composerMode, setComposerMode] = useState<ChatTurnMode>("default");
   const [editingPrompt, setEditingPrompt] = useState<{
     id: string;
     frozen: boolean;
@@ -921,18 +918,23 @@ function ChatTranscript({
   const send = useMutation({
     mutationFn: ({
       attachmentIds,
+      mode,
       text,
     }: {
       attachmentIds: string[];
+      mode: ChatTurnMode;
       text: string;
-    }) => startTurn(chat.id, text, selectedModelId, attachmentIds),
+    }) => startTurn(chat.id, text, selectedModelId, attachmentIds, mode),
     onSuccess: async () => {
       setDraft("");
+      setComposerMode("default");
       clearDraftAttachments();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
         queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
         queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
+        queryClient.invalidateQueries({ queryKey: ["goal", chat.id] }),
+        queryClient.invalidateQueries({ queryKey: ["plan", chat.id] }),
       ]);
     },
   });
@@ -942,7 +944,12 @@ function ChatTranscript({
       input,
     }: {
       id: string;
-      input: { attachmentIds?: string[]; text?: string; frozen?: boolean };
+      input: {
+        attachmentIds?: string[];
+        text?: string;
+        mode?: ChatTurnMode;
+        frozen?: boolean;
+      };
     }) => updateQueuedPrompt(id, input),
     onSuccess: async () => {
       await Promise.all([
@@ -992,18 +999,6 @@ function ChatTranscript({
     mutationFn: () => compactChat(chat.id),
     onSuccess: () => setCommandNotice("Conversation context compacted."),
   });
-  const createGoal = useMutation({
-    mutationFn: (input: { objective: string; tokenBudget?: number | null }) =>
-      createChatGoal(chat.id, input),
-    onSuccess: async () => {
-      setGoalDialogOpen(false);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["goal", chat.id] }),
-        queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
-        queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
-      ]);
-    },
-  });
   const updateGoal = useMutation({
     mutationFn: (status: "active" | "paused") =>
       updateChatGoal(chat.id, { status }),
@@ -1030,15 +1025,6 @@ function ChatTranscript({
         queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
         queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
       ]);
-    },
-  });
-  const setPlanMode = useMutation({
-    mutationFn: (mode: "default" | "plan") => updateChatPlan(chat.id, { mode }),
-    onSuccess: async (state) => {
-      queryClient.setQueryData(["plan", chat.id], state);
-      await queryClient.invalidateQueries({
-        queryKey: ["chats", chat.projectId],
-      });
     },
   });
   const [answerPlanPending, setAnswerPlanPending] = useState(false);
@@ -1155,6 +1141,7 @@ function ChatTranscript({
           id: editingPrompt.id,
           input: {
             text,
+            mode: composerMode,
             attachmentIds: readyAttachments.map(
               ({ attachment }) => attachment.id,
             ),
@@ -1165,6 +1152,7 @@ function ChatTranscript({
           onSuccess: () => {
             setEditingPrompt(null);
             setDraft("");
+            setComposerMode("default");
             clearDraftAttachments();
           },
         },
@@ -1173,6 +1161,7 @@ function ChatTranscript({
     }
     send.mutate({
       text,
+      mode: composerMode,
       attachmentIds: readyAttachments.map(({ attachment }) => attachment.id),
     });
   };
@@ -1186,21 +1175,11 @@ function ChatTranscript({
     if (name === "compact") {
       compact.mutate();
     } else if (name === "goal") {
-      if (goalState.data?.goal) {
-        setCommandNotice(
-          `Goal is ${goalState.data.goal.status}: ${goalState.data.goal.objective}`,
-        );
-      } else {
-        setGoalDialogOpen(true);
-      }
+      setComposerMode("goal");
+      setCommandNotice("Goal mode selected for the next message.");
     } else if (name === "plan") {
-      if (chat.status === "running") {
-        setCommandNotice("Plan Mode cannot be changed during an active turn.");
-      } else {
-        setPlanMode.mutate(
-          planState.data?.mode === "plan" ? "default" : "plan",
-        );
-      }
+      setComposerMode("plan");
+      setCommandNotice("Plan mode selected for the next message.");
     } else if (name === "pause") {
       setAutomationPaused.mutate(!chat.automationPaused);
     } else if (name === "copy") {
@@ -1233,7 +1212,9 @@ function ChatTranscript({
           "Review the current working tree for defects, regressions, and missing tests. Do not modify files.",
       };
       const prompt = prompts[name];
-      if (prompt) send.mutate({ text: prompt, attachmentIds: [] });
+      if (prompt) {
+        send.mutate({ text: prompt, attachmentIds: [], mode: composerMode });
+      }
     }
   };
 
@@ -1315,6 +1296,19 @@ function ChatTranscript({
                       "max-w-[85%] overflow-hidden rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-destructive",
                   )}
                 >
+                  {user && message.mode !== "default" ? (
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "mb-2 h-5 capitalize",
+                        message.mode === "goal"
+                          ? "border-violet-500/30 text-violet-600 dark:text-violet-400"
+                          : "border-sky-500/30 text-sky-600 dark:text-sky-400",
+                      )}
+                    >
+                      {message.mode} mode
+                    </Badge>
+                  ) : null}
                   <MessageContent message={message} />
                   {user && message.providerName ? (
                     <p className="mt-1.5 truncate text-[10px] text-muted-foreground">
@@ -1510,24 +1504,15 @@ function ChatTranscript({
           ) : null}
           <GoalPanel
             error={
-              createGoal.isError
-                ? errorText(createGoal.error)
-                : updateGoal.isError
-                  ? errorText(updateGoal.error)
-                  : clearGoal.isError
-                    ? errorText(clearGoal.error)
-                    : null
+              updateGoal.isError
+                ? errorText(updateGoal.error)
+                : clearGoal.isError
+                  ? errorText(clearGoal.error)
+                  : null
             }
             goal={goalState.data?.goal ?? null}
-            open={goalDialogOpen}
-            pending={
-              createGoal.isPending ||
-              updateGoal.isPending ||
-              clearGoal.isPending
-            }
+            pending={updateGoal.isPending || clearGoal.isPending}
             onClear={() => clearGoal.mutate()}
-            onCreate={(input) => createGoal.mutate(input)}
-            onOpenChange={setGoalDialogOpen}
             onUpdate={(status) => updateGoal.mutate(status)}
           />
           <AgentInteractionPanel
@@ -1555,6 +1540,10 @@ function ChatTranscript({
           <PromptQueue
             prompts={queuedPrompts.data ?? []}
             editingPromptId={editingPrompt?.id ?? null}
+            executing={
+              chat.status === "running" ||
+              chat.status === "waiting-for-approval"
+            }
             disabled={
               updatePrompt.isPending ||
               removePrompt.isPending ||
@@ -1565,6 +1554,7 @@ function ChatTranscript({
             onEdit={(prompt) => {
               setEditingPrompt({ id: prompt.id, frozen: prompt.frozen });
               setDraft(prompt.text);
+              setComposerMode(prompt.mode);
               clearDraftAttachments();
               setDraftAttachments(
                 prompt.attachments.map((attachment) => ({
@@ -1814,11 +1804,15 @@ function ChatTranscript({
                   placeholder={
                     editingPrompt
                       ? "Edit queued prompt…"
-                      : chat.automationPaused
-                        ? "Queue a prompt while paused…"
-                        : chat.status === "running"
-                          ? "Queue a follow-up…"
-                          : "Ask Cantrip to work on this repository…"
+                      : composerMode === "goal"
+                        ? "Describe the goal Codex should pursue…"
+                        : composerMode === "plan"
+                          ? "Describe what Codex should plan…"
+                          : chat.automationPaused
+                            ? "Queue a prompt while paused…"
+                            : chat.status === "running"
+                              ? "Queue a follow-up…"
+                              : "Ask Cantrip to work on this repository…"
                   }
                   className={cn(
                     "relative max-h-48 min-h-10 w-full resize-none bg-transparent px-2 py-2 text-sm leading-5 outline-none placeholder:text-muted-foreground",
@@ -1879,55 +1873,25 @@ function ChatTranscript({
                   pending={selectPermissionProfile.isPending}
                   onChange={(id) => selectPermissionProfile.mutate(id)}
                 />
-                {!goalState.data?.goal ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 px-2 text-xs text-muted-foreground"
-                    disabled={
-                      !selectedModelId ||
-                      chat.status === "running" ||
-                      chat.status === "waiting-for-approval" ||
-                      chat.automationPaused
-                    }
-                    onClick={() => setGoalDialogOpen(true)}
-                  >
-                    <Target className="size-3.5" />
-                    Goal
-                  </Button>
-                ) : null}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={
-                    planState.data?.mode === "plan" ? "outline" : "ghost"
+                <select
+                  aria-label="Message mode"
+                  value={composerMode}
+                  onChange={(event) =>
+                    setComposerMode(event.target.value as ChatTurnMode)
                   }
                   className={cn(
-                    "h-7 px-2 text-xs",
-                    planState.data?.mode === "plan"
-                      ? "text-sky-600 dark:text-sky-400"
-                      : "text-muted-foreground",
+                    "h-7 shrink-0 rounded-md border bg-transparent px-2 text-xs font-medium outline-none",
+                    composerMode === "goal"
+                      ? "border-violet-500/30 text-violet-600 dark:text-violet-400"
+                      : composerMode === "plan"
+                        ? "border-sky-500/30 text-sky-600 dark:text-sky-400"
+                        : "text-muted-foreground",
                   )}
-                  disabled={
-                    !selectedModelId ||
-                    chat.status === "running" ||
-                    chat.status === "waiting-for-approval" ||
-                    setPlanMode.isPending
-                  }
-                  onClick={() =>
-                    setPlanMode.mutate(
-                      planState.data?.mode === "plan" ? "default" : "plan",
-                    )
-                  }
                 >
-                  {setPlanMode.isPending ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <ListChecks className="size-3.5" />
-                  )}
-                  Plan
-                </Button>
+                  <option value="default">Mode: Default</option>
+                  <option value="plan">Mode: Plan</option>
+                  <option value="goal">Mode: Goal</option>
+                </select>
                 <Button
                   type="button"
                   size="sm"
@@ -2017,7 +1981,6 @@ function ChatTranscript({
           removePrompt.isError ||
           steerPrompt.isError ||
           reorderPrompts.isError ||
-          setPlanMode.isError ||
           setAutomationPaused.isError ||
           selectPermissionProfile.isError ? (
             <p className="mt-2 text-xs text-destructive">
@@ -2029,7 +1992,6 @@ function ChatTranscript({
                   removePrompt.error ??
                   steerPrompt.error ??
                   reorderPrompts.error ??
-                  setPlanMode.error ??
                   setAutomationPaused.error ??
                   selectPermissionProfile.error,
               )}

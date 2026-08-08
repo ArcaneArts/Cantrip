@@ -24,8 +24,8 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   { name: "diff", description: "Review the current Git working-tree diff" },
   { name: "init", description: "Generate an AGENTS.md scaffold" },
   { name: "fork", description: "Fork the current chat" },
-  { name: "goal", description: "Start or inspect a long-running Codex goal" },
-  { name: "plan", description: "Toggle Codex Plan Mode for this chat" },
+  { name: "goal", description: "Use Goal mode for the next message" },
+  { name: "plan", description: "Use Plan mode for the next message" },
   {
     name: "pause",
     description: "Pause or resume queued and automatic chat work",

@@ -74,6 +74,7 @@ import type {
   ChatGoalUpdate,
   ChatPlanAnswer,
   ChatPlanUpdate,
+  ChatTurnMode,
   GitAction,
   GithubIssueState,
   ModelProfileCreate,
@@ -939,11 +940,13 @@ export async function startTurn(
   text: string,
   modelId: string,
   attachmentIds: string[] = [],
+  mode: ChatTurnMode = "default",
 ) {
   return chatPromptSubmitResultSchema.parse(
     await post(`/api/chats/${encodeURIComponent(chatId)}/turns`, {
       text,
       attachmentIds,
+      mode,
       modelId,
       idempotencyKey: crypto.randomUUID(),
     }),
@@ -958,7 +961,12 @@ export async function getQueuedPrompts(chatId: string) {
 
 export async function updateQueuedPrompt(
   promptId: string,
-  input: { attachmentIds?: string[]; text?: string; frozen?: boolean },
+  input: {
+    attachmentIds?: string[];
+    text?: string;
+    mode?: ChatTurnMode;
+    frozen?: boolean;
+  },
 ) {
   return queuedPromptSchema.parse(
     await request(`/api/queued-prompts/${encodeURIComponent(promptId)}`, {

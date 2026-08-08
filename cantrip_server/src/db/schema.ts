@@ -5,6 +5,7 @@ import type {
   ChatAttachmentSource,
   ChatAttachmentSummary,
   ChatMessageContent,
+  ChatTurnMode,
   CodexRuntimeReport,
   PendingPlanQuestion,
   PlanStep,
@@ -574,6 +575,7 @@ export const chatMessages = pgTable(
     ),
     sequence: bigserial("sequence", { mode: "number" }).notNull(),
     role: text("role").notNull(),
+    mode: text("mode").$type<ChatTurnMode>().notNull().default("default"),
     content: jsonb("content").$type<ChatMessageContent>().notNull(),
     modelId: text("model_id").references(() => modelProfiles.id, {
       onDelete: "set null",
@@ -642,6 +644,7 @@ export const queuedPrompts = pgTable(
       .notNull()
       .references(() => chats.id, { onDelete: "cascade" }),
     text: text("text").notNull(),
+    mode: text("mode").$type<ChatTurnMode>().notNull().default("default"),
     attachments: jsonb("attachments")
       .$type<ChatAttachmentSummary[]>()
       .notNull()
