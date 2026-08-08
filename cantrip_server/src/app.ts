@@ -1020,9 +1020,10 @@ export async function buildApp({
         );
         if (!context) return;
       }
-      await beginTurn(context, {
+      await beginPromptTurn(context, {
         text: prompt.text,
         attachmentIds: prompt.attachments.map(({ id }) => id),
+        mode: prompt.mode,
         modelId: prompt.modelId,
         idempotencyKey: `queue:${prompt.id}`,
       });
@@ -1039,8 +1040,9 @@ export async function buildApp({
 
   async function beginTurn(
     context: ChatExecutionContext,
-    input: Omit<ChatTurnCreate, "attachmentIds"> & {
+    input: Omit<ChatTurnCreate, "attachmentIds" | "mode"> & {
       attachmentIds?: string[];
+      mode?: ChatTurnCreate["mode"];
     },
     options: {
       acquiringActor?: "agent" | "user";
@@ -1060,6 +1062,8 @@ export async function buildApp({
       context,
       input.attachmentIds ?? [],
     );
+    const turnMode = input.mode ?? "default";
+    const turnPlanMode = turnMode === "plan" ? "plan" : "default";
     const execution = await repository.startChatExecutionLane(
       LOCAL_USER_ID,
       context.chatId,
@@ -1077,6 +1081,11 @@ export async function buildApp({
     let priorMessages: ChatMessage[];
     let userMessage: ChatMessage;
     try {
+      await repository.updateChatPlanMode(
+        LOCAL_USER_ID,
+        execution.chatId,
+        turnPlanMode,
+      );
       priorMessages = await repository.listMessages(
         LOCAL_USER_ID,
         execution.chatId,
@@ -1086,6 +1095,7 @@ export async function buildApp({
         execution.chatId,
         {
           role: options.messageRole ?? "user",
+          mode: options.messageRole === "system" ? undefined : turnMode,
           content: [
             ...(input.text
               ? [{ type: "text" as const, text: input.text }]
@@ -1173,7 +1183,7 @@ export async function buildApp({
                 provider: runtime.provider,
                 permissionProfileId:
                   effectivePermissionProfile(execution).effectiveId,
-                planMode: execution.planMode,
+                planMode: turnPlanMode,
                 automationPaused: execution.automationPaused,
               },
               {
@@ -1436,6 +1446,59 @@ export async function buildApp({
     };
   }
 
+  async function beginGoalTurn(
+    context: ChatExecutionContext,
+    input: ChatTurnCreate,
+  ): Promise<ChatMessage> {
+    if (!input.text) throw new Error("Goal mode needs a text objective.");
+    if (!bridge.isConnected(context.workerId)) {
+      throw new Error("Project worker is offline.");
+    }
+    await resolvePromptAttachments(context, input.attachmentIds);
+    const modelId = await resolveModelId(context, input.modelId);
+    const runtime = (await availableModelRuntimes(context, modelId))[0]!;
+    const result = chatGoalResponseSchema.parse(
+      await bridge.request(context.workerId, {
+        type: "chat.goal.create",
+        chatId: context.chatId,
+        cwd: context.cwd,
+        threadId: context.threadId,
+        objective: input.text,
+        tokenBudget: null,
+        model: runtime.model,
+        provider: runtime.provider,
+        permissionProfileId: effectivePermissionProfile(context).effectiveId,
+      }),
+    );
+    if (!result.goal) throw new Error("Codex did not create the goal.");
+    await repository.updateChatRuntime(
+      context.chatId,
+      context.workerId,
+      context.worktreeId,
+      result.goal.threadId,
+      runtime.routeId,
+    );
+    const updatedContext = await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      context.chatId,
+    );
+    if (!updatedContext) throw new Error("Chat source not found.");
+    return beginTurn(
+      updatedContext,
+      { ...input, modelId, mode: "goal" },
+      { purpose: "Codex goal", runtimes: [runtime] },
+    );
+  }
+
+  function beginPromptTurn(
+    context: ChatExecutionContext,
+    input: ChatTurnCreate,
+  ): Promise<ChatMessage> {
+    return input.mode === "goal"
+      ? beginGoalTurn(context, input)
+      : beginTurn(context, input);
+  }
+
   const resumeChatAutomation = async (chatId: string): Promise<void> => {
     let context = await repository.getChatExecutionContext(
       LOCAL_USER_ID,
@@ -1478,6 +1541,7 @@ export async function buildApp({
           context,
           {
             text: `Resume goal: ${result.goal.objective}`,
+            mode: "goal",
             modelId,
             idempotencyKey: `chat-resume:${result.goal.updatedAt}:${randomUUID()}`,
           },
@@ -4487,6 +4551,7 @@ export async function buildApp({
           updatedContext,
           {
             text: input.data.objective,
+            mode: "goal",
             modelId,
             idempotencyKey: `goal:${result.goal.createdAt}:${randomUUID()}`,
           },
@@ -4546,6 +4611,7 @@ export async function buildApp({
             context,
             {
               text: `Resume goal: ${result.goal.objective}`,
+              mode: "goal",
               modelId,
               idempotencyKey: `goal-resume:${result.goal.updatedAt}:${randomUUID()}`,
             },
@@ -5262,6 +5328,11 @@ export async function buildApp({
       try {
         let message: ChatMessage;
         if (chatIsExecuting(context.status)) {
+          if (queued.mode !== "default") {
+            throw new Error(
+              "Plan and Goal mode prompts cannot steer an active turn. Leave this prompt queued for the next turn.",
+            );
+          }
           if (queued.worktreeId && queued.worktreeId !== context.worktreeId) {
             throw new Error(
               "This prompt is pinned to another worktree and cannot steer the active turn.",
@@ -5298,6 +5369,7 @@ export async function buildApp({
             context.chatId,
             {
               role: "user",
+              mode: queued.mode,
               content: [
                 ...(queued.text
                   ? [{ type: "text" as const, text: queued.text }]
@@ -5331,9 +5403,10 @@ export async function buildApp({
             if (!selected) throw new Error("Worktree could not be selected.");
             context = selected;
           }
-          message = await beginTurn(context, {
+          message = await beginPromptTurn(context, {
             text: queued.text,
             attachmentIds: queued.attachments.map(({ id }) => id),
+            mode: queued.mode,
             modelId: queued.modelId,
             idempotencyKey: `queue:${queued.id}`,
           });
@@ -5407,7 +5480,7 @@ export async function buildApp({
       }
 
       try {
-        const message = await beginTurn(context, input.data);
+        const message = await beginPromptTurn(context, input.data);
         return reply.code(202).send(
           chatPromptSubmitResultSchema.parse({
             status: "started",

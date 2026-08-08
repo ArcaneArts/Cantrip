@@ -91,6 +91,7 @@ const turnPermissionProfileIds: string[] = [];
 const turnPrompts: string[] = [];
 const turnSkillNames: string[][] = [];
 const turnAttachmentIds: string[][] = [];
+const turnPlanModes: PlanMode[] = [];
 const turnTimeouts: Array<number | null | undefined> = [];
 const deletedProjectPaths: string[] = [];
 const authProviderIds: string[] = [];
@@ -474,8 +475,10 @@ const workerBridge = {
           turnAttachmentIds.push(
             command.attachments.map((attachment) => attachment.id),
           );
+          turnPlanModes.push(command.planMode);
           turnTimeouts.push(options?.timeoutMs);
         }
+        codexPlanMode = command.planMode;
         if (command.prompt === "Finish the long-running goal") {
           await options?.onEvent?.({
             type: "agent.checkpoint",
@@ -2533,6 +2536,7 @@ describe("local server foundation", () => {
           url: `/api/chats/${queueChat.id}/turns`,
           payload: {
             text: "Second follow-up",
+            mode: "plan",
             idempotencyKey: "queued-second",
           },
         })
@@ -2570,8 +2574,15 @@ describe("local server foundation", () => {
       id: secondQueued.id,
       position: 0,
       frozen: true,
+      mode: "plan",
       text: "Edited second follow-up",
     });
+    expect(
+      await firstApp.inject({
+        method: "POST",
+        url: `/api/queued-prompts/${secondQueued.id}/steer`,
+      }),
+    ).toMatchObject({ statusCode: 409 });
     await firstApp.inject({
       method: "PATCH",
       url: `/api/queued-prompts/${firstQueued.id}`,
@@ -2651,6 +2662,23 @@ describe("local server foundation", () => {
       );
       expect(remaining).toHaveLength(0);
     });
+    expect(
+      chatMessageListSchema
+        .parse(
+          (
+            await firstApp.inject({
+              method: "GET",
+              url: `/api/chats/${queueChat.id}/messages`,
+            })
+          ).json(),
+        )
+        .find((message) =>
+          message.content.some(
+            (item) =>
+              item.type === "text" && item.text === "Edited second follow-up",
+          ),
+        )?.mode,
+    ).toBe("plan");
 
     const routedModel = modelProfileSummarySchema.parse(
       (
@@ -2724,30 +2752,19 @@ describe("local server foundation", () => {
       url: `/api/chats/${planChat.id}/model`,
       payload: { modelId: selectedModel.id },
     });
-    expect(
-      chatPlanStateSchema.parse(
-        (
-          await firstApp.inject({
-            method: "PATCH",
-            url: `/api/chats/${planChat.id}/plan`,
-            payload: { mode: "plan" },
-          })
-        ).json(),
-      ).mode,
-    ).toBe("plan");
-    expect(
-      (
-        await firstApp.inject({
-          method: "POST",
-          url: `/api/chats/${planChat.id}/turns`,
-          payload: {
-            text: "Draft a deployment plan",
-            idempotencyKey: "plan-turn",
-            modelId: selectedModel.id,
-          },
-        })
-      ).statusCode,
-    ).toBe(202);
+    const planTurn = await firstApp.inject({
+      method: "POST",
+      url: `/api/chats/${planChat.id}/turns`,
+      payload: {
+        text: "Draft a deployment plan",
+        mode: "plan",
+        idempotencyKey: "plan-turn",
+        modelId: selectedModel.id,
+      },
+    });
+    expect(planTurn.statusCode).toBe(202);
+    expect(chatMessageSchema.parse(planTurn.json().message).mode).toBe("plan");
+    await vi.waitFor(() => expect(turnPlanModes.at(-1)).toBe("plan"));
     const pendingPlan = await vi.waitFor(async () => {
       const state = chatPlanStateSchema.parse(
         (
@@ -2824,6 +2841,30 @@ describe("local server foundation", () => {
         hasPendingPlanQuestion: false,
       });
     });
+    const defaultTurn = await firstApp.inject({
+      method: "POST",
+      url: `/api/chats/${planChat.id}/turns`,
+      payload: {
+        text: "Implement the approved plan",
+        idempotencyKey: "default-after-plan",
+        modelId: selectedModel.id,
+      },
+    });
+    expect(defaultTurn.statusCode).toBe(202);
+    expect(chatMessageSchema.parse(defaultTurn.json().message).mode).toBe(
+      "default",
+    );
+    await vi.waitFor(() => expect(turnPlanModes.at(-1)).toBe("default"));
+    expect(
+      chatPlanStateSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${planChat.id}/plan`,
+          })
+        ).json(),
+      ).mode,
+    ).toBe("default");
 
     const goalChat = chatSummarySchema.parse(
       (
@@ -2849,22 +2890,34 @@ describe("local server foundation", () => {
         ).json(),
       ).goal,
     ).toBeNull();
-    const createdGoal = chatGoalResponseSchema.parse(
-      (
-        await firstApp.inject({
-          method: "POST",
-          url: `/api/chats/${goalChat.id}/goal`,
-          payload: {
-            objective: "Finish the long-running goal",
-            tokenBudget: 50_000,
-          },
-        })
-      ).json(),
-    ).goal;
+    const goalTurn = await firstApp.inject({
+      method: "POST",
+      url: `/api/chats/${goalChat.id}/turns`,
+      payload: {
+        text: "Finish the long-running goal",
+        mode: "goal",
+        idempotencyKey: "goal-mode-turn",
+        modelId: selectedModel.id,
+      },
+    });
+    expect(goalTurn.statusCode).toBe(202);
+    expect(chatMessageSchema.parse(goalTurn.json().message).mode).toBe("goal");
+    const createdGoal = await vi.waitFor(async () => {
+      const goal = chatGoalResponseSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${goalChat.id}/goal`,
+          })
+        ).json(),
+      ).goal;
+      expect(goal).not.toBeNull();
+      return goal;
+    });
     expect(createdGoal).toMatchObject({
       objective: "Finish the long-running goal",
       status: "active",
-      tokenBudget: 50_000,
+      tokenBudget: null,
     });
     await vi.waitFor(() =>
       expect(turnPrompts).toContain("Finish the long-running goal"),

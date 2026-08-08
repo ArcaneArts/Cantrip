@@ -10,7 +10,7 @@ The project is inspired by the Codex desktop experience, but its architecture is
 
 Cantrip organizes work into GitHub-backed projects. Each project has one source folder owned by a worker and can contain an ordered mix of:
 
-- Codex chats with phased Markdown responses, normalized plans/reasoning/tools/subagents/usage activity, arbitrary file attachments, large-paste attachments, per-message model selection, steering, prompt queues, cooperative pause/resume, compaction commands, forking, renaming, and duplication.
+- Codex chats with phased Markdown responses, normalized plans/reasoning/tools/subagents/usage activity, arbitrary file attachments, large-paste attachments, per-message Default/Plan/Goal modes, model selection, steering, prompt queues, cooperative pause/resume, compaction commands, forking, renaming, and duplication.
 - Real PTY terminal tabs that run in the project folder on the worker.
 - Read-only Explorer tabs with a source or Markdown preview for supported text files.
 - Worker-streamed Browser tabs for project-related web pages.

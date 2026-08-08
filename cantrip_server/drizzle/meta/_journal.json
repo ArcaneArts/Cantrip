@@ -190,6 +190,13 @@
       "when": 1786217770718,
       "tag": "0026_green_khan",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1786219107999,
+      "tag": "0027_message_turn_modes",
+      "breakpoints": true
     }
   ]
 }

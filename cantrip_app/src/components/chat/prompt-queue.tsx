@@ -38,6 +38,7 @@ const menuItemClass =
 
 function PromptRow({
   disabled,
+  executing,
   onDelete,
   onEdit,
   onFreeze,
@@ -45,6 +46,7 @@ function PromptRow({
   prompt,
 }: {
   disabled: boolean;
+  executing: boolean;
   onDelete(): void;
   onEdit(): void;
   onFreeze(): void;
@@ -81,6 +83,18 @@ function PromptRow({
       <span className="min-w-0 flex-1 truncate" title={prompt.text}>
         {prompt.text || "Attachment prompt"}
       </span>
+      {prompt.mode !== "default" ? (
+        <span
+          className={cn(
+            "shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium capitalize",
+            prompt.mode === "goal"
+              ? "border-violet-500/30 text-violet-600 dark:text-violet-400"
+              : "border-sky-500/30 text-sky-600 dark:text-sky-400",
+          )}
+        >
+          {prompt.mode}
+        </span>
+      ) : null}
       {prompt.attachments.length > 0 ? (
         <span
           className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground"
@@ -94,7 +108,14 @@ function PromptRow({
         size="sm"
         variant="ghost"
         className="h-7 shrink-0 gap-1.5 px-2 text-xs text-muted-foreground"
-        disabled={disabled}
+        disabled={disabled || (executing && prompt.mode !== "default")}
+        title={
+          !executing
+            ? "Start this queued prompt"
+            : prompt.mode === "default"
+              ? "Steer the active turn"
+              : `${prompt.mode === "goal" ? "Goal" : "Plan"} mode starts with the next turn and cannot steer an active turn`
+        }
         onClick={onSteer}
       >
         <CornerDownRight className="size-3.5" /> Steer
@@ -151,6 +172,7 @@ function PromptRow({
 export function PromptQueue({
   disabled,
   editingPromptId,
+  executing,
   onDelete,
   onEdit,
   onFreeze,
@@ -160,6 +182,7 @@ export function PromptQueue({
 }: {
   disabled: boolean;
   editingPromptId: string | null;
+  executing: boolean;
   onDelete(prompt: QueuedPrompt): void;
   onEdit(prompt: QueuedPrompt): void;
   onFreeze(prompt: QueuedPrompt): void;
@@ -203,6 +226,7 @@ export function PromptQueue({
               key={prompt.id}
               prompt={prompt}
               disabled={disabled}
+              executing={executing}
               onDelete={() => onDelete(prompt)}
               onEdit={() => onEdit(prompt)}
               onFreeze={() => onFreeze(prompt)}

@@ -16,6 +16,7 @@ function message(
     executionLaneId: null,
     sequence: 1,
     role,
+    mode: "default",
     createdAt,
     content,
     modelId: null,

@@ -673,6 +673,7 @@ function toChatMessage(
     executionLaneId: message.executionLaneId,
     sequence: message.sequence,
     role: message.role as ChatMessage["role"],
+    mode: message.mode,
     content: message.content,
     modelId: message.modelId,
     modelRouteId: message.modelRouteId,
@@ -709,6 +710,7 @@ function toQueuedPrompt(
     id: prompt.id,
     chatId: prompt.chatId,
     text: prompt.text,
+    mode: prompt.mode,
     attachments: prompt.attachments,
     modelId: prompt.modelId,
     worktreeId: prompt.worktreeId,
@@ -4422,6 +4424,7 @@ export class ServerRepository {
             worktreeId: message.worktreeId,
             executionLaneId: null,
             role: message.role,
+            mode: message.mode,
             content: message.content,
             createdAt: message.createdAt,
           })),
@@ -5370,6 +5373,7 @@ export class ServerRepository {
         id: randomUUID(),
         chatId,
         text: input.text,
+        mode: input.mode,
         attachments,
         modelId,
         worktreeId: input.worktreeId,
@@ -5405,6 +5409,7 @@ export class ServerRepository {
       .update(schema.queuedPrompts)
       .set({
         ...(input.text !== undefined ? { text: input.text } : {}),
+        ...(input.mode !== undefined ? { mode: input.mode } : {}),
         ...(input.frozen !== undefined ? { frozen: input.frozen } : {}),
         ...(attachments !== undefined ? { attachments } : {}),
         updatedAt: new Date(),
@@ -5541,6 +5546,7 @@ export class ServerRepository {
         worktreeId: attribution?.worktreeId ?? chat[0].worktreeId,
         executionLaneId: activeLanes[0]?.id ?? null,
         role: input.role,
+        mode: input.mode ?? "default",
         content: input.content,
         idempotencyKey: input.idempotencyKey ?? null,
       })
@@ -5587,7 +5593,11 @@ export class ServerRepository {
 
     const result = await this.database
       .update(schema.chatMessages)
-      .set({ role: input.role, content: input.content })
+      .set({
+        role: input.role,
+        mode: input.mode ?? existing.mode,
+        content: input.content,
+      })
       .where(eq(schema.chatMessages.id, existing.id))
       .returning();
     await this.database
