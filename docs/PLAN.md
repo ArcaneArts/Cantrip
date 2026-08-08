@@ -131,6 +131,23 @@ In the current local mode, the server binds to loopback, uses one stable anonymo
 
 Package versions should be pinned during scaffolding rather than embedded in this plan. The root `packageManager` field and lockfile will define the reproducible toolchain.
 
+### 4.5 Worker-owned Remote Surfaces
+
+Browser and remote-desktop tabs use the worker-owned Remote Surface
+architecture recorded in
+[ADR 0002](adr/0002-worker-owned-remote-surfaces.md). The server stores the
+durable session and authorizes attachments, while the selected worker owns
+Chromium/CDP or the configured VNC/RFB connection. Apps never receive a worker
+origin or raw CDP endpoint.
+
+Every surface has a versioned control plane and binary data plane. Authenticated
+WebSocket relay is the mandatory fallback. WebRTC is preferred when negotiation
+succeeds, with signaling through the server and relay-only TURN support for
+deployments that prohibit direct app-to-worker traffic. Browser frames and VNC
+content render inside the ordinary React tree so the same UI works in Vite,
+Tauri, Capacitor, and popout windows without iframe rewriting or native-webview
+layering.
+
 ## 5. Monorepo layout
 
 The three named directories are independently runnable deployables. Shared code lives in small internal packages rather than introducing imports between deployables.

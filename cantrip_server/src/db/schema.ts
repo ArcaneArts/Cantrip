@@ -1,4 +1,8 @@
-import type { ChatMessageContent } from "@cantrip/protocol";
+import type {
+  ChatMessageContent,
+  RemoteSurfaceCapabilities,
+  RemoteSurfaceConfiguration,
+} from "@cantrip/protocol";
 import { sql } from "drizzle-orm";
 import {
   bigserial,
@@ -130,6 +134,15 @@ export const workers = pgTable("workers", {
   platform: text("platform").notNull(),
   architecture: text("architecture").notNull(),
   codexVersion: text("codex_version"),
+  remoteSurfaceCapabilities: jsonb("remote_surface_capabilities")
+    .$type<RemoteSurfaceCapabilities>()
+    .notNull()
+    .default({
+      browser: false,
+      vnc: false,
+      transports: ["websocket"],
+      maxSessions: 4,
+    }),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -319,6 +332,33 @@ export const browsers = pgTable("browsers", {
   title: text("title").notNull(),
   position: integer("position").notNull().default(0),
   url: text("url").notNull().default("https://example.com/"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const remoteSurfaces = pgTable("remote_surfaces", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  workerId: text("worker_id")
+    .notNull()
+    .references(() => workers.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(),
+  title: text("title").notNull(),
+  status: text("status").notNull().default("idle"),
+  preferredTransport: text("preferred_transport")
+    .notNull()
+    .default("websocket"),
+  configuration: jsonb("configuration")
+    .$type<RemoteSurfaceConfiguration>()
+    .notNull(),
+  lastError: text("last_error"),
+  lastConnectedAt: timestamp("last_connected_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

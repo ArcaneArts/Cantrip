@@ -1,0 +1,103 @@
+import { describe, expect, it, vi } from "vitest";
+
+import {
+  RemoteSurfaceManager,
+  type RemoteSurfaceAdapter,
+  type RemoteSurfaceSession,
+} from "../src/remote-surface-manager.js";
+
+const attachCommand = {
+  type: "surface.attach" as const,
+  surfaceId: "surface-1",
+  attachmentId: "attachment-1",
+  projectId: "project-1",
+  configuration: {
+    kind: "browser" as const,
+    initialUrl: "https://example.com/",
+    profileId: null,
+  },
+  preferredTransport: "websocket" as const,
+  viewport: { width: 1_280, height: 720, devicePixelRatio: 2 },
+};
+
+describe("RemoteSurfaceManager", () => {
+  it("routes ordered frames through a reusable worker-owned session", async () => {
+    const handleFrame = vi.fn();
+    const attach = vi.fn();
+    const detach = vi.fn();
+    let emit:
+      | ((attachmentId: string, channel: "frame", payload: Uint8Array) => void)
+      | undefined;
+    const session: RemoteSurfaceSession = {
+      configuration: attachCommand.configuration,
+      transport: "websocket",
+      attach,
+      close: vi.fn(),
+      detach,
+      handleFrame,
+      resume: vi.fn(),
+      suspend: vi.fn(),
+    };
+    const adapter: RemoteSurfaceAdapter = {
+      async open(_command, send) {
+        emit = send as typeof emit;
+        return session;
+      },
+    };
+    const manager = new RemoteSurfaceManager({ browser: adapter });
+    const outbound = vi.fn(() => true);
+    manager.setFrameEmitter(outbound);
+
+    await expect(manager.attach(attachCommand)).resolves.toEqual({
+      accepted: true,
+      transport: "websocket",
+    });
+    expect(attach).toHaveBeenCalledWith({
+      id: "attachment-1",
+      viewport: attachCommand.viewport,
+    });
+
+    await manager.handleFrame(
+      {
+        protocolVersion: 1,
+        surfaceId: "surface-1",
+        attachmentId: "attachment-1",
+        sequence: 4,
+        channel: "control",
+      },
+      new Uint8Array([1]),
+    );
+    await manager.handleFrame(
+      {
+        protocolVersion: 1,
+        surfaceId: "surface-1",
+        attachmentId: "attachment-1",
+        sequence: 3,
+        channel: "control",
+      },
+      new Uint8Array([2]),
+    );
+    expect(handleFrame).toHaveBeenCalledTimes(1);
+
+    emit?.("attachment-1", "frame", new Uint8Array([9, 8]));
+    expect(outbound).toHaveBeenCalledWith(
+      expect.objectContaining({
+        surfaceId: "surface-1",
+        attachmentId: "attachment-1",
+        sequence: 0,
+        channel: "frame",
+      }),
+      new Uint8Array([9, 8]),
+    );
+
+    await manager.detach("surface-1", "attachment-1");
+    expect(detach).toHaveBeenCalledWith("attachment-1");
+  });
+
+  it("rejects kinds for which the worker has no adapter", async () => {
+    const manager = new RemoteSurfaceManager();
+    await expect(manager.attach(attachCommand)).rejects.toThrow(
+      /does not support browser/i,
+    );
+  });
+});

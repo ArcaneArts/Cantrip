@@ -28,6 +28,10 @@ import type {
   QueuedPromptCreate,
   QueuedPromptOrder,
   QueuedPromptUpdate,
+  RemoteSurfaceCreate,
+  RemoteSurfaceStatus,
+  RemoteSurfaceSummary,
+  RemoteSurfaceUpdate,
   ProjectCloneResult,
   ProjectSummary,
   ProjectWorktreeSummary,
@@ -99,6 +103,11 @@ export interface GithubProjectExecutionContext {
 export interface ExplorerExecutionContext {
   explorerId: string;
   root: string;
+  workerId: string;
+}
+
+export interface RemoteSurfaceExecutionContext {
+  surface: RemoteSurfaceSummary;
   workerId: string;
 }
 
@@ -306,9 +315,32 @@ function toWorkerSummary(
     platform: worker.platform,
     architecture: worker.architecture,
     codexVersion: worker.codexVersion,
+    remoteSurfaces: worker.remoteSurfaceCapabilities,
     startedAt: toISOString(worker.startedAt),
     lastSeenAt: toISOString(worker.lastSeenAt),
     online: Date.now() - worker.lastSeenAt.getTime() <= ONLINE_WINDOW_MS,
+  };
+}
+
+function toRemoteSurfaceSummary(
+  surface: typeof schema.remoteSurfaces.$inferSelect,
+): RemoteSurfaceSummary {
+  return {
+    id: surface.id,
+    projectId: surface.projectId,
+    workerId: surface.workerId,
+    kind: surface.kind as RemoteSurfaceSummary["kind"],
+    title: surface.title,
+    status: surface.status as RemoteSurfaceSummary["status"],
+    preferredTransport:
+      surface.preferredTransport as RemoteSurfaceSummary["preferredTransport"],
+    configuration: surface.configuration,
+    lastError: surface.lastError,
+    lastConnectedAt: surface.lastConnectedAt
+      ? toISOString(surface.lastConnectedAt)
+      : null,
+    createdAt: toISOString(surface.createdAt),
+    updatedAt: toISOString(surface.updatedAt),
   };
 }
 
@@ -919,6 +951,7 @@ export class ServerRepository {
         platform: heartbeat.platform,
         architecture: heartbeat.architecture,
         codexVersion: heartbeat.codexVersion,
+        remoteSurfaceCapabilities: heartbeat.remoteSurfaces,
         startedAt: new Date(heartbeat.startedAt),
         lastSeenAt: now,
         updatedAt: now,
@@ -930,6 +963,7 @@ export class ServerRepository {
           platform: heartbeat.platform,
           architecture: heartbeat.architecture,
           codexVersion: heartbeat.codexVersion,
+          remoteSurfaceCapabilities: heartbeat.remoteSurfaces,
           startedAt: new Date(heartbeat.startedAt),
           lastSeenAt: now,
           updatedAt: now,
@@ -1758,6 +1792,163 @@ export class ServerRepository {
       .where(eq(schema.browsers.id, browserId))
       .returning({ id: schema.browsers.id });
     return result.length === 1;
+  }
+
+  async listRemoteSurfaces(
+    ownerId: string,
+    projectId: string,
+  ): Promise<RemoteSurfaceSummary[]> {
+    const rows = await this.database
+      .select({ surface: schema.remoteSurfaces })
+      .from(schema.remoteSurfaces)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.remoteSurfaces.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.remoteSurfaces.projectId, projectId))
+      .orderBy(
+        asc(schema.remoteSurfaces.createdAt),
+        asc(schema.remoteSurfaces.id),
+      );
+    return rows.map(({ surface }) => toRemoteSurfaceSummary(surface));
+  }
+
+  async createRemoteSurface(
+    ownerId: string,
+    projectId: string,
+    input: RemoteSurfaceCreate,
+  ): Promise<RemoteSurfaceSummary | null> {
+    const [projectRows, workerRows] = await Promise.all([
+      this.database
+        .select({ id: schema.projects.id })
+        .from(schema.projects)
+        .where(
+          and(
+            eq(schema.projects.id, projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .limit(1),
+      this.database
+        .select({ id: schema.workers.id })
+        .from(schema.workers)
+        .where(
+          and(
+            eq(schema.workers.id, input.workerId),
+            eq(schema.workers.ownerId, ownerId),
+          ),
+        )
+        .limit(1),
+    ]);
+    if (!projectRows[0] || !workerRows[0]) return null;
+    const result = await this.database
+      .insert(schema.remoteSurfaces)
+      .values({
+        id: randomUUID(),
+        projectId,
+        workerId: input.workerId,
+        kind: input.configuration.kind,
+        title: input.title,
+        configuration: input.configuration,
+      })
+      .returning();
+    return toRemoteSurfaceSummary(
+      firstOrThrow(result, "creating a Remote Surface"),
+    );
+  }
+
+  async getRemoteSurfaceExecutionContext(
+    ownerId: string,
+    surfaceId: string,
+  ): Promise<RemoteSurfaceExecutionContext | null> {
+    const rows = await this.database
+      .select({ surface: schema.remoteSurfaces })
+      .from(schema.remoteSurfaces)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.remoteSurfaces.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .innerJoin(
+        schema.workers,
+        and(
+          eq(schema.workers.id, schema.remoteSurfaces.workerId),
+          eq(schema.workers.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.remoteSurfaces.id, surfaceId))
+      .limit(1);
+    const surface = rows[0]?.surface;
+    return surface
+      ? { surface: toRemoteSurfaceSummary(surface), workerId: surface.workerId }
+      : null;
+  }
+
+  async updateRemoteSurface(
+    ownerId: string,
+    surfaceId: string,
+    input: RemoteSurfaceUpdate,
+  ): Promise<RemoteSurfaceSummary | null> {
+    const context = await this.getRemoteSurfaceExecutionContext(
+      ownerId,
+      surfaceId,
+    );
+    if (
+      !context ||
+      (input.configuration && input.configuration.kind !== context.surface.kind)
+    ) {
+      return null;
+    }
+    const result = await this.database
+      .update(schema.remoteSurfaces)
+      .set({ ...input, updatedAt: new Date() })
+      .where(eq(schema.remoteSurfaces.id, surfaceId))
+      .returning();
+    return result[0] ? toRemoteSurfaceSummary(result[0]) : null;
+  }
+
+  async setRemoteSurfaceStatus(
+    surfaceId: string,
+    status: RemoteSurfaceStatus,
+    lastError: string | null = null,
+  ): Promise<void> {
+    await this.database
+      .update(schema.remoteSurfaces)
+      .set({
+        status,
+        lastError,
+        lastConnectedAt: status === "active" ? new Date() : undefined,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.remoteSurfaces.id, surfaceId));
+  }
+
+  async resetTransientRemoteSurfaceStatuses(): Promise<void> {
+    await this.database.execute(sql`
+      update ${schema.remoteSurfaces}
+      set status = 'idle', last_error = null, updated_at = now()
+      where status in ('connecting', 'active', 'offline')
+    `);
+  }
+
+  async deleteRemoteSurface(
+    ownerId: string,
+    surfaceId: string,
+  ): Promise<RemoteSurfaceExecutionContext | null> {
+    const context = await this.getRemoteSurfaceExecutionContext(
+      ownerId,
+      surfaceId,
+    );
+    if (!context) return null;
+    await this.database
+      .delete(schema.remoteSurfaces)
+      .where(eq(schema.remoteSurfaces.id, surfaceId));
+    return context;
   }
 
   async listProjectViews(
