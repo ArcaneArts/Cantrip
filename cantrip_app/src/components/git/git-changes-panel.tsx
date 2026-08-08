@@ -19,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { runGitAction } from "@/lib/api";
+import { runProjectWorktreeGitAction } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 function errorText(error: unknown): string {
@@ -102,10 +102,14 @@ export function GitChangesPanel({
   onClose,
   projectId,
   status,
+  worktreeId,
+  worktreeName,
 }: {
   onClose(): void;
   projectId: string;
   status: GitStatus;
+  worktreeId: string;
+  worktreeName: string;
 }) {
   const queryClient = useQueryClient();
   const [commitMessage, setCommitMessage] = useState("");
@@ -113,9 +117,13 @@ export function GitChangesPanel({
   const [newBranchName, setNewBranchName] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const action = useMutation({
-    mutationFn: (input: GitAction) => runGitAction(projectId, input),
+    mutationFn: (input: GitAction) =>
+      runProjectWorktreeGitAction(projectId, worktreeId, input),
     onSuccess: (result, input) => {
-      queryClient.setQueryData(["git-status", projectId], result.status);
+      queryClient.setQueryData(
+        ["worktree-status", projectId, worktreeId],
+        result.status,
+      );
       setNotice(result.output || "Git operation complete.");
       if (input.type === "commit") setCommitMessage("");
       if (input.type === "createBranch") {
@@ -123,7 +131,7 @@ export function GitChangesPanel({
         setNewBranchOpen(false);
       }
       void queryClient.invalidateQueries({
-        queryKey: ["git-history", projectId],
+        queryKey: ["worktree-history", projectId, worktreeId],
       });
     },
   });
@@ -154,7 +162,9 @@ export function GitChangesPanel({
     <aside className="absolute inset-y-0 right-0 z-20 flex w-full max-w-sm flex-col border-l bg-background shadow-2xl md:relative md:z-auto md:w-96 md:shadow-none">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold">Working changes</p>
+          <p className="truncate text-sm font-semibold">
+            Working changes · {worktreeName}
+          </p>
           <p className="truncate text-[10px] text-muted-foreground">
             {status.files.length} changed{" "}
             {status.files.length === 1 ? "file" : "files"}

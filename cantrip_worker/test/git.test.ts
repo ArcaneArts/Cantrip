@@ -111,6 +111,64 @@ describe("Git history", () => {
     ).toEqual(["Feature", "First"]);
   });
 
+  it("includes explicitly supplied detached worktree revisions", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "README.md"), "main\n");
+    await execFileAsync("git", ["-C", directory, "add", "README.md"]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Main"]);
+    await execFileAsync("git", ["-C", directory, "switch", "--detach"]);
+    await writeFile(path.join(directory, "README.md"), "detached\n");
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "commit",
+      "-am",
+      "Detached worktree",
+    ]);
+    const { stdout } = await execFileAsync("git", [
+      "-C",
+      directory,
+      "rev-parse",
+      "HEAD",
+    ]);
+    const detachedHead = stdout.trim();
+    await execFileAsync("git", ["-C", directory, "switch", "main"]);
+
+    const withoutDetached = await readGitHistory(directory, 20);
+    expect(withoutDetached.commits.map(({ hash }) => hash)).not.toContain(
+      detachedHead,
+    );
+    const withDetached = await readGitHistory(directory, 20, 0, [
+      detachedHead,
+      "f".repeat(40),
+    ]);
+    expect(withDetached.commits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          hash: detachedHead,
+          subject: "Detached worktree",
+        }),
+      ]),
+    );
+    expect(withDetached.totalCount).toBe(2);
+  });
+
   it("stages, unstages, commits, and switches branches", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
     directories.push(directory);

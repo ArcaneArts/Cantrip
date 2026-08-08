@@ -141,7 +141,12 @@ async function start(): Promise<void> {
       case "project.files.delete":
         return github.deleteRepository(command.path);
       case "git.history":
-        return readGitHistory(command.cwd, command.limit, command.cursor);
+        return readGitHistory(
+          command.cwd,
+          command.limit,
+          command.cursor,
+          command.revisions,
+        );
       case "git.status":
         return readGitStatus(command.cwd);
       case "git.action":

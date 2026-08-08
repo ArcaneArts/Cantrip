@@ -117,12 +117,28 @@ export async function readGitHistory(
   cwd: string,
   limit: number,
   cursor = 0,
+  revisions: string[] = [],
 ): Promise<GitHistory> {
+  const verifiedRevisions = (
+    await Promise.all(
+      [...new Set(revisions)].map(async (revision) => ({
+        revision,
+        exists: await gitSucceeds(cwd, [
+          "cat-file",
+          "-e",
+          `${revision}^{commit}`,
+        ]),
+      })),
+    )
+  )
+    .filter(({ exists }) => exists)
+    .map(({ revision }) => revision);
+  const revisionArgs = ["--all", ...verifiedRevisions];
   const [branch, head, remotes, totalCountText] = await Promise.all([
     gitOutput(cwd, ["branch", "--show-current"]),
     gitOutput(cwd, ["rev-parse", "--verify", "HEAD"]).catch(() => ""),
     gitOutput(cwd, ["remote"]).catch(() => ""),
-    gitOutput(cwd, ["rev-list", "--all", "--count"]).catch(() => "0"),
+    gitOutput(cwd, ["rev-list", "--count", ...revisionArgs]).catch(() => "0"),
   ]);
   const remoteNames = new Set(remotes.split("\n").filter(Boolean));
   let logOutput = "";
@@ -136,6 +152,7 @@ export async function readGitHistory(
       `--max-count=${limit + 1}`,
       "--date=iso-strict",
       "--pretty=format:%H%x00%h%x00%P%x00%an%x00%ae%x00%aI%x00%s%x00%D%x1e",
+      ...revisionArgs,
     ]);
   } catch (error) {
     const stderr = (error as { stderr?: string }).stderr ?? "";

@@ -260,6 +260,90 @@ export async function createProjectWorktree(
   );
 }
 
+export async function reconcileProjectWorktrees(projectId: string) {
+  return projectWorktreeListSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/reconcile`,
+      {},
+    ),
+  );
+}
+
+export async function getProjectWorktreeHistory(
+  projectId: string,
+  worktreeId: string,
+  cursor = 0,
+) {
+  return gitHistorySchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/history?cursor=${cursor}&limit=100`,
+    ),
+  );
+}
+
+export async function runProjectWorktreeGitAction(
+  projectId: string,
+  worktreeId: string,
+  action: GitAction,
+) {
+  return gitActionResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/actions`,
+      action,
+    ),
+  );
+}
+
+export async function lockProjectWorktree(
+  projectId: string,
+  worktreeId: string,
+  reason: string | null,
+) {
+  return projectWorktreeSummarySchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/lock`,
+      { reason },
+    ),
+  );
+}
+
+export async function unlockProjectWorktree(
+  projectId: string,
+  worktreeId: string,
+) {
+  return projectWorktreeSummarySchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/unlock`,
+      {},
+    ),
+  );
+}
+
+export async function pruneProjectWorktrees(
+  projectId: string,
+  allowExternal: boolean,
+) {
+  return projectWorktreeListSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/prune`,
+      { allowExternal },
+    ),
+  );
+}
+
+export async function removeProjectWorktree(
+  projectId: string,
+  worktreeId: string,
+  input: { allowExternal: boolean; force: boolean },
+) {
+  return projectWorktreeSummarySchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}`,
+      { method: "DELETE", body: JSON.stringify(input) },
+    ),
+  );
+}
+
 export async function getGitHistory(projectId: string, cursor = 0) {
   return gitHistorySchema.parse(
     await request(
@@ -359,11 +443,13 @@ export async function createChat(
   projectId: string,
   title: string,
   worktreeId?: string,
+  worktreeMode?: "agent-managed" | "pinned",
 ) {
   return chatSummarySchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/chats`, {
       title,
       ...(worktreeId ? { worktreeId } : {}),
+      ...(worktreeMode ? { worktreeMode } : {}),
     }),
   );
 }
