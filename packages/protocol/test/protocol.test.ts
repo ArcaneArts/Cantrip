@@ -49,6 +49,7 @@ import {
   unprobedCodexRuntimeReport,
   userSettingsSchema,
   workerCommandSchema,
+  workerEventSchema,
   worktreeInventorySchema,
   workerEventEnvelopeSchema,
   workerHeartbeatSchema,
@@ -447,6 +448,72 @@ describe("Cantrip protocol", () => {
       worktreePolicy: "required-for-writes",
       planMode: "plan",
       automationPaused: true,
+    });
+  });
+
+  it("keeps workflow node execution distinct and attempt-attributed", () => {
+    const command = workerCommandSchema.parse({
+      type: "workflow.node.execute",
+      workflowRunId: "run-1",
+      runNodeId: "run-node-1",
+      attemptId: "attempt-1",
+      idempotencyKey: "execute-1",
+      worktreeId: null,
+      cwd: "/workspace",
+      threadId: null,
+      prompt: "Review this project.",
+      developerInstructions: "Return only the requested JSON.",
+      skillNames: ["review"],
+      outputSchema: { type: "object" },
+      mutationMode: "read-only",
+      networkAccess: "none",
+      approvalMode: "interactive",
+      permissionProfileId: ":read-only",
+      timeoutMs: 60_000,
+      model: {
+        id: "model-1",
+        routeId: "route-1",
+        name: "gpt-test",
+        reasoningEffort: null,
+      },
+      provider: {
+        id: "provider-1",
+        name: "ChatGPT",
+        kind: "chatgpt",
+        baseUrl: "https://api.openai.com/v1",
+        apiKey: null,
+      },
+    });
+    expect(command).toMatchObject({
+      type: "workflow.node.execute",
+      attemptId: "attempt-1",
+    });
+
+    expect(
+      workerCommandSchema.parse({
+        type: "workflow.node.interrupt",
+        workflowRunId: "run-1",
+        runNodeId: "run-node-1",
+        attemptId: "attempt-1",
+        threadId: "thread-1",
+        model: command.model,
+        provider: command.provider,
+      }).type,
+    ).toBe("workflow.node.interrupt");
+    expect(
+      workerEventSchema.parse({
+        type: "workflow.node.activity",
+        attemptId: "attempt-1",
+        activity: {
+          type: "reasoning",
+          id: "activity-1",
+          status: "running",
+          summary: ["Reviewing"],
+        },
+      }),
+    ).toMatchObject({
+      type: "workflow.node.activity",
+      attemptId: "attempt-1",
     });
   });
 

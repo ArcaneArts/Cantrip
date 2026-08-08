@@ -475,6 +475,67 @@ async function start(): Promise<void> {
           },
         });
       }
+      case "workflow.node.execute":
+        return runtimeFor(command).runWorkflowNode({
+          workflowRunId: command.workflowRunId,
+          runNodeId: command.runNodeId,
+          attemptId: command.attemptId,
+          idempotencyKey: command.idempotencyKey,
+          worktreeId: command.worktreeId,
+          cwd: command.cwd,
+          threadId: command.threadId,
+          prompt: command.prompt,
+          developerInstructions: command.developerInstructions,
+          skillNames: command.skillNames,
+          outputSchema: command.outputSchema,
+          mutationMode: command.mutationMode,
+          networkAccess: command.networkAccess,
+          approvalMode: command.approvalMode,
+          permissionProfileId: command.permissionProfileId,
+          timeoutMs: command.timeoutMs,
+          model: command.model,
+          provider: command.provider,
+          onActivity: (activity) =>
+            emit({
+              type: "workflow.node.activity",
+              attemptId: command.attemptId,
+              activity,
+            }),
+          onMessage: (message) =>
+            emit({
+              type: "workflow.node.message",
+              attemptId: command.attemptId,
+              message,
+            }),
+          onInteractionRequest: (request) =>
+            emit({
+              type: "workflow.node.interaction.requested",
+              attemptId: command.attemptId,
+              request,
+            }),
+          onInteractionCleared: (requestKey) =>
+            emit({
+              type: "workflow.node.interaction.cleared",
+              attemptId: command.attemptId,
+              requestKey,
+            }),
+          onInteractionExpired: (requestKey) =>
+            emit({
+              type: "workflow.node.interaction.expired",
+              attemptId: command.attemptId,
+              requestKey,
+            }),
+          onPlan: ({ explanation, steps, turnId }) =>
+            emit({
+              type: "workflow.node.plan.updated",
+              attemptId: command.attemptId,
+              explanation,
+              steps,
+              turnId,
+            }),
+        });
+      case "workflow.node.interrupt":
+        return runtimeFor(command).interruptThread(command.threadId);
       case "chat.pause.set":
         if (command.paused) {
           pausedChats.add(command.chatId);

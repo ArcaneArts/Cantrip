@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  workflowNodeExecutionRequestSchema,
+  workflowNodeExecutionResultSchema,
+} from "./workflows.js";
+
 export const protocolVersionSchema = z.literal(1);
 export const databaseEngineSchema = z.enum(["pglite", "postgres"]);
 export const deploymentModeSchema = z.enum(["local", "hosted"]);
@@ -2836,6 +2841,20 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     planMode: planModeSchema,
     automationPaused: z.boolean().default(false),
   }),
+  workflowNodeExecutionRequestSchema.extend({
+    type: z.literal("workflow.node.execute"),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
+    type: z.literal("workflow.node.interrupt"),
+    workflowRunId: z.string().min(1).max(200),
+    runNodeId: z.string().min(1).max(200),
+    attemptId: z.string().min(1).max(200),
+    threadId: z.string().min(1).max(200),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
   z.object({
     type: z.literal("chat.pause.set"),
     chatId: z.string().min(1),
@@ -3023,6 +3042,38 @@ export const workerEventSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("agent.interaction.expired"),
+    requestKey: z.string().min(1).max(200),
+  }),
+  z.object({
+    type: z.literal("workflow.node.activity"),
+    attemptId: z.string().min(1).max(200),
+    activity: agentActivitySchema,
+  }),
+  z.object({
+    type: z.literal("workflow.node.message"),
+    attemptId: z.string().min(1).max(200),
+    message: normalizedAgentMessageSchema,
+  }),
+  z.object({
+    type: z.literal("workflow.node.plan.updated"),
+    attemptId: z.string().min(1).max(200),
+    turnId: z.string().min(1),
+    explanation: z.string().nullable(),
+    steps: z.array(planStepSchema),
+  }),
+  z.object({
+    type: z.literal("workflow.node.interaction.requested"),
+    attemptId: z.string().min(1).max(200),
+    request: agentInteractionRuntimeRequestSchema,
+  }),
+  z.object({
+    type: z.literal("workflow.node.interaction.cleared"),
+    attemptId: z.string().min(1).max(200),
+    requestKey: z.string().min(1).max(200),
+  }),
+  z.object({
+    type: z.literal("workflow.node.interaction.expired"),
+    attemptId: z.string().min(1).max(200),
     requestKey: z.string().min(1).max(200),
   }),
   z.object({
@@ -3308,6 +3359,9 @@ export type ChatPlanUpdate = z.infer<typeof chatPlanUpdateSchema>;
 export type ChatPlanAnswer = z.infer<typeof chatPlanAnswerSchema>;
 export type ChatPlanAccepted = z.infer<typeof chatPlanAcceptedSchema>;
 export type AgentTurnResult = z.infer<typeof agentTurnResultSchema>;
+export type WorkflowNodeExecutionWorkerResult = z.infer<
+  typeof workflowNodeExecutionResultSchema
+>;
 export type AgentActivity = z.infer<typeof agentActivitySchema>;
 export type NormalizedAgentMessage = z.infer<
   typeof normalizedAgentMessageSchema

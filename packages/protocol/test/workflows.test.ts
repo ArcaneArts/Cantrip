@@ -6,6 +6,9 @@ import {
   workflowDefinitionQuerySchema,
   workflowGraphSchema,
   workflowJsonValueSchema,
+  workflowNodeExecutionRequestSchema,
+  workflowNodeExecutionResultSchema,
+  workflowNodeInterruptResultSchema,
   workflowPermissionRequirementsSchema,
   workflowRevisionNodeSchema,
   workflowRunCreateSchema,
@@ -325,6 +328,69 @@ describe("workflow protocol", () => {
         idempotencyKey: "update-1",
       }).success,
     ).toBe(false);
+  });
+
+  it("bounds workflow node execution commands and structured results", () => {
+    expect(
+      workflowNodeExecutionRequestSchema.parse({
+        workflowRunId: "run-1",
+        runNodeId: "run-node-1",
+        attemptId: "attempt-1",
+        idempotencyKey: "execute-1",
+        worktreeId: null,
+        cwd: "/workspace",
+        threadId: null,
+        prompt: "Inspect the project.",
+        developerInstructions: null,
+        skillNames: ["review"],
+        outputSchema: { type: "object" },
+        mutationMode: "read-only",
+        networkAccess: "none",
+        approvalMode: "interactive",
+        permissionProfileId: ":read-only",
+        timeoutMs: 60_000,
+      }),
+    ).toMatchObject({
+      attemptId: "attempt-1",
+      mutationMode: "read-only",
+      skillNames: ["review"],
+    });
+    expect(
+      workflowNodeExecutionRequestSchema.safeParse({
+        workflowRunId: "run-1",
+        runNodeId: "run-node-1",
+        attemptId: "attempt-1",
+        idempotencyKey: "execute-1",
+        cwd: "/workspace",
+        prompt: "Inspect the project.",
+        mutationMode: "read-only",
+        networkAccess: "none",
+        approvalMode: "interactive",
+        timeoutMs: 999,
+      }).success,
+    ).toBe(false);
+
+    expect(
+      workflowNodeExecutionResultSchema.parse({
+        threadId: "thread-1",
+        turnId: "turn-1",
+        text: '{"ok":true}',
+        structuredResult: { ok: true },
+        measuredUsage: {
+          inputTokens: 12,
+          outputTokens: 5,
+          cachedInputTokens: 2,
+          totalTokens: 17,
+          durationMs: 250,
+          estimatedCostUsd: null,
+          costAvailable: false,
+        },
+        status: "completed",
+      }).structuredResult,
+    ).toEqual({ ok: true });
+    expect(
+      workflowNodeInterruptResultSchema.parse({ interrupted: true }),
+    ).toEqual({ interrupted: true });
   });
 
   it("parses representative run creation and materialized run details", () => {
