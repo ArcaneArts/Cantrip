@@ -538,6 +538,8 @@ export const chatSummarySchema = z.object({
   activeWorktreeId: z.string().min(1),
   worktreeMode: z.enum(["agent-managed", "pinned"]),
   modelId: z.string().min(1).nullable(),
+  planMode: z.enum(["default", "plan"]),
+  hasPendingPlanQuestion: z.boolean(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -1294,6 +1296,54 @@ export const chatGoalClearSchema = z.object({
   cleared: z.boolean(),
 });
 
+export const planModeSchema = z.enum(["default", "plan"]);
+
+export const planStepSchema = z.object({
+  step: z.string().min(1),
+  status: z.enum(["pending", "inProgress", "completed"]),
+});
+
+export const planQuestionOptionSchema = z.object({
+  label: z.string().min(1),
+  description: z.string(),
+});
+
+export const planQuestionSchema = z.object({
+  id: z.string().min(1),
+  header: z.string().min(1),
+  question: z.string().min(1),
+  isOther: z.boolean(),
+  isSecret: z.boolean(),
+  options: z.array(planQuestionOptionSchema).min(1).nullable(),
+});
+
+export const pendingPlanQuestionSchema = z.object({
+  id: z.string().min(1),
+  threadId: z.string().min(1),
+  turnId: z.string().min(1),
+  itemId: z.string().min(1),
+  questions: z.array(planQuestionSchema).min(1).max(3),
+  createdAt: z.string().datetime(),
+});
+
+export const chatPlanStateSchema = z.object({
+  mode: planModeSchema,
+  explanation: z.string().nullable(),
+  steps: z.array(planStepSchema),
+  question: pendingPlanQuestionSchema.nullable(),
+});
+
+export const chatPlanUpdateSchema = z.object({ mode: planModeSchema });
+
+export const chatPlanAnswerSchema = z.object({
+  answers: z.record(
+    z.string().min(1),
+    z.array(z.string().trim().min(1).max(10_000)).min(1).max(16),
+  ),
+});
+
+export const chatPlanAcceptedSchema = z.object({ accepted: z.literal(true) });
+
 export const githubWorkerRepositorySchema = githubRepositorySchema.omit({
   imported: true,
 });
@@ -1757,6 +1807,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     skillNames: z.array(z.string().min(1)).max(64).default([]),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
+    planMode: planModeSchema,
   }),
   z.object({
     type: z.literal("chat.compact"),
@@ -1809,6 +1860,29 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     provider: workerRuntimeProviderSchema,
   }),
   z.object({
+    type: z.literal("chat.plan.get"),
+    cwd: z.string().min(1),
+    threadId: z.string().min(1).nullable(),
+    fallbackMode: planModeSchema,
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
+    type: z.literal("chat.plan.set"),
+    cwd: z.string().min(1),
+    threadId: z.string().min(1).nullable(),
+    mode: planModeSchema,
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
+    type: z.literal("chat.plan.answer"),
+    questionId: z.string().min(1),
+    answers: chatPlanAnswerSchema.shape.answers,
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
     type: z.literal("chat.steer"),
     chatId: z.string().min(1),
     threadId: z.string().min(1).nullable(),
@@ -1857,6 +1931,20 @@ export const workerEventSchema = z.discriminatedUnion("type", [
     type: z.literal("agent.checkpoint"),
     turnId: z.string().min(1),
     text: z.string(),
+  }),
+  z.object({
+    type: z.literal("agent.plan.updated"),
+    turnId: z.string().min(1),
+    explanation: z.string().nullable(),
+    steps: z.array(planStepSchema),
+  }),
+  z.object({
+    type: z.literal("agent.plan.question"),
+    question: pendingPlanQuestionSchema,
+  }),
+  z.object({
+    type: z.literal("agent.plan.question-resolved"),
+    questionId: z.string().min(1),
   }),
   z.object({
     type: z.literal("terminal.output"),
@@ -2069,6 +2157,15 @@ export type ChatGoalResponse = z.infer<typeof chatGoalResponseSchema>;
 export type ChatGoalCreate = z.infer<typeof chatGoalCreateSchema>;
 export type ChatGoalUpdate = z.infer<typeof chatGoalUpdateSchema>;
 export type ChatGoalClear = z.infer<typeof chatGoalClearSchema>;
+export type PlanMode = z.infer<typeof planModeSchema>;
+export type PlanStep = z.infer<typeof planStepSchema>;
+export type PlanQuestionOption = z.infer<typeof planQuestionOptionSchema>;
+export type PlanQuestion = z.infer<typeof planQuestionSchema>;
+export type PendingPlanQuestion = z.infer<typeof pendingPlanQuestionSchema>;
+export type ChatPlanState = z.infer<typeof chatPlanStateSchema>;
+export type ChatPlanUpdate = z.infer<typeof chatPlanUpdateSchema>;
+export type ChatPlanAnswer = z.infer<typeof chatPlanAnswerSchema>;
+export type ChatPlanAccepted = z.infer<typeof chatPlanAcceptedSchema>;
 export type AgentTurnResult = z.infer<typeof agentTurnResultSchema>;
 export type AgentActivity = z.infer<typeof agentActivitySchema>;
 export type AgentThreadSync = z.infer<typeof agentThreadSyncSchema>;

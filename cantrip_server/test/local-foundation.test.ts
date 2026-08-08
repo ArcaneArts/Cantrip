@@ -12,6 +12,7 @@ import {
   chatGoalResponseSchema,
   chatMessageListSchema,
   chatMessageSchema,
+  chatPlanStateSchema,
   chatSummarySchema,
   explorerDirectorySchema,
   explorerFileSchema,
@@ -45,6 +46,7 @@ import {
   workerListSchema,
 } from "@cantrip/protocol";
 import type { ThreadGoal } from "@cantrip/protocol";
+import type { PlanMode } from "@cantrip/protocol";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "../src/app.js";
@@ -84,6 +86,8 @@ const authProviderIds: string[] = [];
 const exhaustedProviderIds = new Set<string>();
 const steeredPrompts: string[] = [];
 let codexGoal: ThreadGoal | null = null;
+let codexPlanMode: PlanMode = "default";
+let releasePlanQuestion: (() => void) | null = null;
 const issueComments: string[] = [];
 const closedIssues: Array<{ comment: string | null; number: number }> = [];
 const relayedSurfaceFrames: Array<{
@@ -374,6 +378,45 @@ const workerBridge = {
             text: "Finished the first goal milestone.",
           });
         }
+        if (command.prompt === "Draft a deployment plan") {
+          await options?.onEvent?.({
+            type: "agent.plan.updated",
+            turnId: "plan-turn-1",
+            explanation: "Choose the deployment topology.",
+            steps: [
+              { step: "Inspect the runtime", status: "completed" },
+              { step: "Choose a topology", status: "inProgress" },
+            ],
+          });
+          await options?.onEvent?.({
+            type: "agent.plan.question",
+            question: {
+              id: "plan-question-1",
+              threadId: command.threadId ?? "codex-plan-thread-1",
+              turnId: "plan-turn-1",
+              itemId: "plan-item-1",
+              createdAt: "2026-08-08T12:00:00.000Z",
+              questions: [
+                {
+                  id: "topology",
+                  header: "Topology",
+                  question: "Which topology should the plan target?",
+                  isOther: true,
+                  isSecret: false,
+                  options: [
+                    {
+                      label: "Four nodes",
+                      description: "Load balance across four servers.",
+                    },
+                  ],
+                },
+              ],
+            },
+          });
+          await new Promise<void>((resolve) => {
+            releasePlanQuestion = resolve;
+          });
+        }
         await options?.onEvent?.({
           type: "agent.activity",
           activity: {
@@ -447,6 +490,18 @@ const workerBridge = {
       case "chat.goal.clear":
         codexGoal = null;
         return { cleared: true };
+      case "chat.plan.get":
+        return { mode: codexPlanMode, threadId: command.threadId };
+      case "chat.plan.set":
+        codexPlanMode = command.mode;
+        return {
+          mode: codexPlanMode,
+          threadId: command.threadId ?? "codex-plan-thread-1",
+        };
+      case "chat.plan.answer":
+        releasePlanQuestion?.();
+        releasePlanQuestion = null;
+        return { accepted: true };
       case "chat.steer":
         steeredPrompts.push(command.prompt);
         return { steered: true, turnId: "turn-held" };
@@ -1736,6 +1791,109 @@ describe("local server foundation", () => {
     });
     await vi.waitFor(() => expect(turnProviderIds.at(-1)).toBe(provider.id));
     expect(turnRouteIds.at(-1)).toBe(routedModel.routes[1]?.id);
+
+    const planChat = chatSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/chats`,
+          payload: { title: "Deployment plan" },
+        })
+      ).json(),
+    );
+    await firstApp.inject({
+      method: "PATCH",
+      url: `/api/chats/${planChat.id}/model`,
+      payload: { modelId: selectedModel.id },
+    });
+    expect(
+      chatPlanStateSchema.parse(
+        (
+          await firstApp.inject({
+            method: "PATCH",
+            url: `/api/chats/${planChat.id}/plan`,
+            payload: { mode: "plan" },
+          })
+        ).json(),
+      ).mode,
+    ).toBe("plan");
+    expect(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/chats/${planChat.id}/turns`,
+          payload: {
+            text: "Draft a deployment plan",
+            idempotencyKey: "plan-turn",
+            modelId: selectedModel.id,
+          },
+        })
+      ).statusCode,
+    ).toBe(202);
+    const pendingPlan = await vi.waitFor(async () => {
+      const state = chatPlanStateSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${planChat.id}/plan`,
+          })
+        ).json(),
+      );
+      expect(state.question?.id).toBe("plan-question-1");
+      return state;
+    });
+    expect(pendingPlan.steps).toMatchObject([
+      { status: "completed" },
+      { status: "inProgress" },
+    ]);
+    expect(
+      chatPlanStateSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${planChat.id}/plan`,
+          })
+        ).json(),
+      ).question?.id,
+    ).toBe("plan-question-1");
+    expect(
+      chatListSchema
+        .parse(
+          (
+            await firstApp.inject({
+              method: "GET",
+              url: `/api/projects/${project.id}/chats`,
+            })
+          ).json(),
+        )
+        .find(({ id }) => id === planChat.id)?.hasPendingPlanQuestion,
+    ).toBe(true);
+    expect(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/chats/${planChat.id}/plan/answer`,
+          payload: { answers: { topology: ["Four nodes"] } },
+        })
+      ).json(),
+    ).toEqual({ accepted: true });
+    await vi.waitFor(async () => {
+      const current = chatListSchema
+        .parse(
+          (
+            await firstApp.inject({
+              method: "GET",
+              url: `/api/projects/${project.id}/chats`,
+            })
+          ).json(),
+        )
+        .find(({ id }) => id === planChat.id);
+      expect(current).toMatchObject({
+        status: "idle",
+        planMode: "plan",
+        hasPendingPlanQuestion: false,
+      });
+    });
 
     const goalChat = chatSummarySchema.parse(
       (

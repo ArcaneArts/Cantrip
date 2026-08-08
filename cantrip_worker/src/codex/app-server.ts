@@ -15,6 +15,8 @@ import {
   agentTurnResultSchema,
   chatGoalClearSchema,
   chatGoalResponseSchema,
+  chatPlanAcceptedSchema,
+  pendingPlanQuestionSchema,
   normalizeResponsesBaseUrl,
   threadGoalSchema,
   type AgentActivity,
@@ -25,6 +27,10 @@ import {
   type AgentTurnResult,
   type ChatGoalResponse,
   type CodexRuntimeReport,
+  type ChatPlanAnswer,
+  type PendingPlanQuestion,
+  type PlanMode,
+  type PlanStep,
   type ThreadGoal,
   type WorkerCommand,
 } from "@cantrip/protocol";
@@ -68,6 +74,7 @@ export type WorktreeToolHandler = (input: {
 interface ActiveTurn {
   baseline: WorkspaceSnapshot;
   chatId: string;
+  collaborationMode: NativeCollaborationMode | null;
   cwd: string;
   delta: string;
   diffChanges: Array<{ kind: "add" | "delete" | "update"; path: string }>;
@@ -75,6 +82,13 @@ interface ActiveTurn {
   model: RunAgentTurnOptions["model"];
   onActivity?: (activity: AgentActivity) => void;
   onCheckpoint?: (checkpoint: { text: string; turnId: string }) => void;
+  onPlan?: (plan: {
+    explanation: string | null;
+    steps: PlanStep[];
+    turnId: string;
+  }) => void;
+  onPlanQuestion?: (question: PendingPlanQuestion) => void;
+  onPlanQuestionResolved?: (questionId: string) => void;
   onWorktreeToolCall?: WorktreeToolHandler;
   reject(error: Error): void;
   resolve(result: AgentTurnResult): void;
@@ -88,6 +102,7 @@ interface ThreadTurn {
   id: string;
   items: Array<
     | (AgentMessageItem & { id: string })
+    | PlanItem
     | CommandExecutionItem
     | FileChangeItem
     | {
@@ -256,6 +271,13 @@ export function codexWorkspaceContext(cwd: string): {
   return { cwd: resolved, runtimeWorkspaceRoots: [resolved] };
 }
 
+export function planQuestionId(
+  params: Pick<ToolRequestUserInputParams, "threadId" | "turnId" | "itemId">,
+  rpcId: number | string,
+): string {
+  return `${params.threadId}:${params.turnId}:${params.itemId}:${String(rpcId)}`;
+}
+
 interface ThreadResponse {
   thread: { id: string };
 }
@@ -305,8 +327,14 @@ interface AgentMessageItem {
   type: "agentMessage";
 }
 
+interface PlanItem {
+  id: string;
+  text: string;
+  type: "plan";
+}
+
 interface ItemLifecycleParams {
-  item: AgentMessageItem | CommandExecutionItem | FileChangeItem;
+  item: AgentMessageItem | CommandExecutionItem | FileChangeItem | PlanItem;
   threadId: string;
   turnId: string;
 }
@@ -327,12 +355,61 @@ interface ThreadGoalClearedParams {
   threadId: string;
 }
 
+interface NativeCollaborationMode {
+  mode: PlanMode;
+  settings: {
+    model: string;
+    reasoning_effort: RunAgentTurnOptions["model"]["reasoningEffort"];
+    developer_instructions: null;
+  };
+}
+
+interface NativeCollaborationModeListResponse {
+  data: Array<{
+    mode: PlanMode | null;
+    model: string | null;
+    reasoning_effort: RunAgentTurnOptions["model"]["reasoningEffort"];
+  }>;
+}
+
+interface ThreadSettingsUpdatedParams {
+  threadId: string;
+  threadSettings: { collaborationMode: NativeCollaborationMode };
+}
+
+interface TurnPlanUpdatedParams {
+  threadId: string;
+  turnId: string;
+  explanation: string | null;
+  plan: PlanStep[];
+}
+
+interface ToolRequestUserInputParams {
+  threadId: string;
+  turnId: string;
+  itemId: string;
+  questions: PendingPlanQuestion["questions"];
+  autoResolutionMs: number | null;
+}
+
+interface ServerRequestResolvedParams {
+  threadId: string;
+  requestId: number | string;
+}
+
+interface NativePendingPlanQuestion {
+  activeTurnId: string;
+  question: PendingPlanQuestion;
+  rpcId: number | string;
+}
+
 export interface RunAgentTurnOptions {
   chatId: string;
   clientMessageId: string;
   cwd: string;
   isPrimary: Extract<WorkerCommand, { type: "chat.turn" }>["isPrimary"];
   model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
+  planMode: Extract<WorkerCommand, { type: "chat.turn" }>["planMode"];
   provider: Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
   prompt: string;
   skillNames: string[];
@@ -344,6 +421,9 @@ export interface RunAgentTurnOptions {
   >["worktreePolicy"];
   onActivity?: (activity: AgentActivity) => void;
   onCheckpoint?: ActiveTurn["onCheckpoint"];
+  onPlan?: ActiveTurn["onPlan"];
+  onPlanQuestion?: ActiveTurn["onPlanQuestion"];
+  onPlanQuestionResolved?: ActiveTurn["onPlanQuestionResolved"];
   onWorktreeToolCall?: ActiveTurn["onWorktreeToolCall"];
 }
 
@@ -837,10 +917,12 @@ function toActivity(
 
 export class CodexAppServer implements CodexRuntime {
   readonly #activeTurns = new Map<string, ActiveTurn>();
+  readonly #collaborationModes = new Map<string, PlanMode>();
   readonly #externalTurnBaselines = new Map<string, Set<string>>();
   readonly #goals = new Map<string, ThreadGoal>();
   readonly #loadedThreads = new Set<string>();
   readonly #pending = new Map<number, PendingRpcRequest>();
+  readonly #pendingPlanQuestions = new Map<string, NativePendingPlanQuestion>();
   readonly #runtimeDiagnostics: CodexRuntimeDiagnostic[] = [];
   #child: ChildProcessWithoutNullStreams | null = null;
   #remoteUrl: string | null = null;
@@ -873,6 +955,18 @@ export class CodexAppServer implements CodexRuntime {
     if (this.methodAvailable("thread/goal/get")) {
       await this.refreshGoal(threadId);
     }
+    const collaborationMode = this.methodAvailable("collaborationMode/list")
+      ? await this.updatePlanModeOnThread(
+          threadId,
+          options.planMode,
+          options.model,
+        )
+      : null;
+    if (options.planMode === "plan" && !collaborationMode) {
+      throw new Error(
+        "Plan Mode is unavailable in the installed Codex runtime.",
+      );
+    }
 
     if (this.hasActiveThread(threadId)) {
       throw new Error(`Codex thread ${threadId} already has an active turn.`);
@@ -883,6 +977,7 @@ export class CodexAppServer implements CodexRuntime {
       activeTurn = {
         baseline,
         chatId: options.chatId,
+        collaborationMode,
         cwd: options.cwd,
         delta: "",
         diffChanges: [],
@@ -890,6 +985,9 @@ export class CodexAppServer implements CodexRuntime {
         model: options.model,
         onActivity: options.onActivity,
         onCheckpoint: options.onCheckpoint,
+        onPlan: options.onPlan,
+        onPlanQuestion: options.onPlanQuestion,
+        onPlanQuestionResolved: options.onPlanQuestionResolved,
         onWorktreeToolCall: options.onWorktreeToolCall,
         reject,
         resolve,
@@ -918,6 +1016,7 @@ export class CodexAppServer implements CodexRuntime {
         }),
       ],
       model: options.model.name,
+      ...(collaborationMode ? { collaborationMode } : {}),
     })) as TurnStartResponse;
     if (!activeTurn) {
       throw new Error("Could not initialize the Codex turn.");
@@ -1104,6 +1203,62 @@ export class CodexAppServer implements CodexRuntime {
     return response;
   }
 
+  async getPlanMode(
+    options: GoalRuntimeOptions & { fallbackMode: PlanMode },
+  ): Promise<{ mode: PlanMode; threadId: string | null }> {
+    await this.ensureStarted(options.model, options.provider);
+    const threadId = await this.loadThread(options, false);
+    if (!threadId) {
+      return { mode: options.fallbackMode, threadId: null };
+    }
+    const knownMode = this.#collaborationModes.get(threadId);
+    if (knownMode) return { mode: knownMode, threadId };
+    await this.updatePlanModeOnThread(
+      threadId,
+      options.fallbackMode,
+      options.model,
+    );
+    return { mode: options.fallbackMode, threadId };
+  }
+
+  async setPlanMode(
+    options: GoalRuntimeOptions & { mode: PlanMode },
+  ): Promise<{ mode: PlanMode; threadId: string }> {
+    await this.ensureStarted(options.model, options.provider);
+    const threadId = await this.loadThread(options);
+    if (!threadId) {
+      throw new Error("Could not start a Codex thread for Plan Mode.");
+    }
+    await this.updatePlanModeOnThread(threadId, options.mode, options.model);
+    return { mode: options.mode, threadId };
+  }
+
+  async answerPlanQuestion(
+    questionId: string,
+    answers: ChatPlanAnswer["answers"],
+  ): Promise<{ accepted: true }> {
+    const pending = this.#pendingPlanQuestions.get(questionId);
+    if (!pending) {
+      throw new Error("The Plan Mode question is no longer pending.");
+    }
+    this.send({
+      id: pending.rpcId,
+      result: {
+        answers: Object.fromEntries(
+          Object.entries(answers).map(([id, values]) => [
+            id,
+            { answers: values },
+          ]),
+        ),
+      },
+    });
+    this.#pendingPlanQuestions.delete(questionId);
+    this.#activeTurns
+      .get(pending.activeTurnId)
+      ?.onPlanQuestionResolved?.(questionId);
+    return chatPlanAcceptedSchema.parse({ accepted: true });
+  }
+
   async interruptThread(threadId: string): Promise<{ interrupted: boolean }> {
     const active = [...this.#activeTurns.entries()].find(
       ([, turn]) => turn.threadId === threadId,
@@ -1196,6 +1351,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#remoteUrl = null;
     this.#runtimeId = null;
     this.#loadedThreads.clear();
+    this.#collaborationModes.clear();
     this.#externalTurnBaselines.clear();
     socket?.close();
     child?.kill("SIGINT");
@@ -1252,6 +1408,46 @@ export class CodexAppServer implements CodexRuntime {
     );
   }
 
+  private async collaborationMode(
+    mode: PlanMode,
+    model: RunAgentTurnOptions["model"],
+  ): Promise<NativeCollaborationMode> {
+    const response = (await this.request(
+      "collaborationMode/list",
+      {},
+    )) as NativeCollaborationModeListResponse;
+    const preset = response.data.find((candidate) => candidate.mode === mode);
+    if (!preset) {
+      throw new Error(`Codex does not advertise ${mode} collaboration mode.`);
+    }
+    return {
+      mode,
+      settings: {
+        model: preset.model ?? model.name,
+        reasoning_effort:
+          preset.reasoning_effort ??
+          (mode === "plan" ? "medium" : model.reasoningEffort),
+        developer_instructions: null,
+      },
+    };
+  }
+
+  private async updatePlanModeOnThread(
+    threadId: string,
+    mode: PlanMode,
+    model: RunAgentTurnOptions["model"],
+  ): Promise<NativeCollaborationMode> {
+    const collaborationMode = await this.collaborationMode(mode, model);
+    if (this.#collaborationModes.get(threadId) !== mode) {
+      await this.request("thread/settings/update", {
+        threadId,
+        collaborationMode,
+      });
+      this.#collaborationModes.set(threadId, mode);
+    }
+    return collaborationMode;
+  }
+
   private syncTurn(turn: ThreadTurn, cwd: string) {
     const items = turn.items.flatMap((item): AgentThreadSyncItem[] => {
       if (item.type === "userMessage") {
@@ -1274,6 +1470,12 @@ export class CodexAppServer implements CodexRuntime {
                 phase: item.phase ?? null,
               },
             ]
+          : [];
+      }
+      if (item.type === "plan") {
+        const text = item.text?.trim();
+        return text
+          ? [{ type: "agentMessage", id: item.id, text, phase: "final_answer" }]
           : [];
       }
       if (item.type === "commandExecution" || item.type === "fileChange") {
@@ -1412,6 +1614,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#runtimeId = null;
       this.#starting = null;
       this.#loadedThreads.clear();
+      this.#collaborationModes.clear();
       this.#externalTurnBaselines.clear();
       this.#goals.clear();
       this.#child?.kill("SIGINT");
@@ -1552,6 +1755,41 @@ export class CodexAppServer implements CodexRuntime {
       return;
     }
 
+    if (message.method === "thread/settings/updated") {
+      const params = message.params as ThreadSettingsUpdatedParams;
+      this.#collaborationModes.set(
+        params.threadId,
+        params.threadSettings.collaborationMode.mode,
+      );
+      return;
+    }
+
+    if (message.method === "turn/plan/updated") {
+      const params = message.params as TurnPlanUpdatedParams;
+      this.#activeTurns.get(params.turnId)?.onPlan?.({
+        explanation: params.explanation,
+        steps: params.plan,
+        turnId: params.turnId,
+      });
+      return;
+    }
+
+    if (message.method === "serverRequest/resolved") {
+      const params = message.params as ServerRequestResolvedParams;
+      const pending = [...this.#pendingPlanQuestions.entries()].find(
+        ([, candidate]) =>
+          candidate.question.threadId === params.threadId &&
+          String(candidate.rpcId) === String(params.requestId),
+      );
+      if (pending) {
+        this.#pendingPlanQuestions.delete(pending[0]);
+        this.#activeTurns
+          .get(pending[1].activeTurnId)
+          ?.onPlanQuestionResolved?.(pending[0]);
+      }
+      return;
+    }
+
     if (message.method === "item/agentMessage/delta") {
       const params = message.params as AgentMessageDeltaParams;
       const active = this.#activeTurns.get(params.turnId);
@@ -1587,8 +1825,9 @@ export class CodexAppServer implements CodexRuntime {
       const active = this.#activeTurns.get(params.turnId);
       if (
         active &&
-        params.item.type === "agentMessage" &&
-        params.item.phase !== "commentary" &&
+        ((params.item.type === "agentMessage" &&
+          params.item.phase !== "commentary") ||
+          params.item.type === "plan") &&
         typeof params.item.text === "string"
       ) {
         active.finalText = params.item.text;
@@ -1678,6 +1917,9 @@ export class CodexAppServer implements CodexRuntime {
               },
             ],
             model: active.model.name,
+            ...(active.collaborationMode
+              ? { collaborationMode: active.collaborationMode }
+              : {}),
           })) as TurnStartResponse;
           this.#activeTurns.set(continued.turn.id, active);
           return;
@@ -1738,6 +1980,35 @@ export class CodexAppServer implements CodexRuntime {
       this.send({ id: message.id, result: { decision: "decline" } });
       return;
     }
+    if (message.method === "item/tool/requestUserInput") {
+      const params = message.params as ToolRequestUserInputParams;
+      const active = this.#activeTurns.get(params.turnId);
+      if (!active) {
+        this.send({
+          id: message.id,
+          error: { code: -32602, message: "No active Cantrip plan turn." },
+        });
+        return;
+      }
+      const id = planQuestionId(params, message.id);
+      const question = pendingPlanQuestionSchema.parse({
+        id,
+        threadId: params.threadId,
+        turnId: params.turnId,
+        itemId: params.itemId,
+        questions: params.questions,
+        createdAt: new Date().toISOString(),
+      });
+      this.#pendingPlanQuestions.set(id, {
+        activeTurnId: params.turnId,
+        question,
+        rpcId: message.id,
+      });
+      active.onPlanQuestion?.(question);
+      // Deliberately do not answer or schedule auto-resolution. The App Server
+      // request remains pending until answerPlanQuestion receives human input.
+      return;
+    }
     if (message.method === "item/tool/call") {
       const params = message.params as DynamicToolCallParams;
       const active = this.#activeTurns.get(params.turnId);
@@ -1790,9 +2061,16 @@ export class CodexAppServer implements CodexRuntime {
       pending.reject(error);
     }
     this.#pending.clear();
+    for (const [questionId, pending] of this.#pendingPlanQuestions) {
+      this.#activeTurns
+        .get(pending.activeTurnId)
+        ?.onPlanQuestionResolved?.(questionId);
+    }
+    this.#pendingPlanQuestions.clear();
     for (const active of this.#activeTurns.values()) {
       active.reject(error);
     }
     this.#activeTurns.clear();
+    this.#collaborationModes.clear();
   }
 }

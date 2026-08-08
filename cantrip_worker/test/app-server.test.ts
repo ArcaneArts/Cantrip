@@ -16,6 +16,7 @@ import {
   isKnownCodexNotificationMethod,
   parseCodexRpcMessage,
   parseCodexSkills,
+  planQuestionId,
 } from "../src/codex/app-server.js";
 
 describe("Cantrip dynamic worktree tools", () => {
@@ -274,6 +275,7 @@ describe("Codex runtime compatibility enforcement", () => {
         chatId: "chat-1",
         clientMessageId: "message-1",
         cwd: "/private/tmp/cantrip-runtime-test",
+        isPrimary: true,
         model: {
           id: "model-1",
           routeId: "route-1",
@@ -287,10 +289,24 @@ describe("Codex runtime compatibility enforcement", () => {
           baseUrl: "https://api.openai.com/v1",
           apiKey: null,
         },
+        planMode: "default",
         prompt: "Inspect the project",
         skillNames: [],
         threadId: null,
+        worktreeMode: "agent-managed",
+        worktreePolicy: "required-for-writes",
       }),
     ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.146\.0/u);
+  });
+});
+
+describe("Codex Plan Mode", () => {
+  it("uses a stable request identity without encoding any timeout", () => {
+    expect(
+      planQuestionId(
+        { threadId: "thread-1", turnId: "turn-1", itemId: "item-1" },
+        42,
+      ),
+    ).toBe("thread-1:turn-1:item-1:42");
   });
 });

@@ -269,6 +269,7 @@ async function start(): Promise<void> {
           isPrimary: command.isPrimary,
           model: command.model,
           provider: command.provider,
+          planMode: command.planMode,
           prompt: command.prompt,
           skillNames: command.skillNames,
           threadId: command.threadId,
@@ -277,6 +278,12 @@ async function start(): Promise<void> {
           onActivity: (activity) => emit({ type: "agent.activity", activity }),
           onCheckpoint: ({ text, turnId }) =>
             emit({ type: "agent.checkpoint", text, turnId }),
+          onPlan: ({ explanation, steps, turnId }) =>
+            emit({ type: "agent.plan.updated", explanation, steps, turnId }),
+          onPlanQuestion: (question) =>
+            emit({ type: "agent.plan.question", question }),
+          onPlanQuestionResolved: (questionId) =>
+            emit({ type: "agent.plan.question-resolved", questionId }),
           onWorktreeToolCall: async ({
             arguments: toolArguments,
             callId,
@@ -362,6 +369,27 @@ async function start(): Promise<void> {
           provider: command.provider,
           threadId: command.threadId,
         });
+      case "chat.plan.get":
+        return runtimeFor(command).getPlanMode({
+          cwd: command.cwd,
+          fallbackMode: command.fallbackMode,
+          model: command.model,
+          provider: command.provider,
+          threadId: command.threadId,
+        });
+      case "chat.plan.set":
+        return runtimeFor(command).setPlanMode({
+          cwd: command.cwd,
+          mode: command.mode,
+          model: command.model,
+          provider: command.provider,
+          threadId: command.threadId,
+        });
+      case "chat.plan.answer":
+        return runtimeFor(command).answerPlanQuestion(
+          command.questionId,
+          command.answers,
+        );
       case "chat.steer":
         return runtimeFor(command).steerThread(
           command.chatId,

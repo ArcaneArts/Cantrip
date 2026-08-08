@@ -13,6 +13,10 @@ import {
   chatSummarySchema,
   chatCompactAcceptedSchema,
   chatInterruptAcceptedSchema,
+  chatPlanAcceptedSchema,
+  chatPlanAnswerSchema,
+  chatPlanStateSchema,
+  chatPlanUpdateSchema,
   chatPromptSteerResultSchema,
   chatPromptSubmitResultSchema,
   explorerDirectorySchema,
@@ -56,6 +60,8 @@ import type {
   ChatWorktreeUpdate,
   ChatGoalCreate,
   ChatGoalUpdate,
+  ChatPlanAnswer,
+  ChatPlanUpdate,
   GitAction,
   GithubIssueState,
   ModelProfileCreate,
@@ -780,6 +786,30 @@ export async function clearChatGoal(chatId: string) {
     await request(`/api/chats/${encodeURIComponent(chatId)}/goal`, {
       method: "DELETE",
     }),
+  );
+}
+
+export async function getChatPlan(chatId: string) {
+  return chatPlanStateSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/plan`),
+  );
+}
+
+export async function updateChatPlan(chatId: string, input: ChatPlanUpdate) {
+  return chatPlanStateSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/plan`, {
+      method: "PATCH",
+      body: JSON.stringify(chatPlanUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function answerChatPlan(chatId: string, input: ChatPlanAnswer) {
+  return chatPlanAcceptedSchema.parse(
+    await post(
+      `/api/chats/${encodeURIComponent(chatId)}/plan/answer`,
+      chatPlanAnswerSchema.parse(input),
+    ),
   );
 }
 

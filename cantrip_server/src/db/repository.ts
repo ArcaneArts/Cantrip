@@ -9,6 +9,7 @@ import type {
   ChatExecutionLaneSummary,
   ChatFork,
   ChatModelUpdate,
+  ChatPlanState,
   ChatMessage,
   ChatMessageCreate,
   ChatSummary,
@@ -25,6 +26,9 @@ import type {
   ModelProviderSummary,
   ModelProviderUpdate,
   ModelRouteSummary,
+  PendingPlanQuestion,
+  PlanMode,
+  PlanStep,
   OrderedIds,
   QueuedPrompt,
   QueuedPromptCreate,
@@ -84,6 +88,8 @@ export interface ChatExecutionContext {
   status: ChatSummary["status"];
   modelId: string | null;
   modelRouteId: string | null;
+  planMode: PlanMode;
+  pendingPlanQuestion: PendingPlanQuestion | null;
   projectId: string;
   threadId: string | null;
   workerId: string;
@@ -301,6 +307,8 @@ function toChatSummary(chat: typeof schema.chats.$inferSelect): ChatSummary {
     activeWorktreeId: chat.activeWorktreeId,
     worktreeMode: chat.worktreeMode as ChatSummary["worktreeMode"],
     modelId: chat.modelId,
+    planMode: chat.planMode as ChatSummary["planMode"],
+    hasPendingPlanQuestion: chat.pendingPlanQuestion !== null,
     createdAt: toISOString(chat.createdAt),
     updatedAt: toISOString(chat.updatedAt),
   };
@@ -1667,6 +1675,8 @@ export class ServerRepository {
           status: "running",
           modelId: row.chat.modelId,
           modelRouteId: runtime.modelRouteId,
+          planMode: row.chat.planMode as PlanMode,
+          pendingPlanQuestion: row.chat.pendingPlanQuestion,
           projectId: row.chat.projectId,
           threadId: runtime.codexThreadId,
           workerId: row.worktree.workerId,
@@ -4320,6 +4330,78 @@ export class ServerRepository {
     return toChatSummary(firstOrThrow(result, "selecting a chat model"));
   }
 
+  async getChatPlanState(
+    ownerId: string,
+    chatId: string,
+  ): Promise<ChatPlanState | null> {
+    const rows = await this.database
+      .select({ chat: schema.chats })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.chats.id, chatId))
+      .limit(1);
+    const chat = rows[0]?.chat;
+    return chat
+      ? {
+          mode: chat.planMode as PlanMode,
+          explanation: chat.planExplanation,
+          steps: chat.planSteps,
+          question: chat.pendingPlanQuestion,
+        }
+      : null;
+  }
+
+  async updateChatPlanMode(
+    ownerId: string,
+    chatId: string,
+    mode: PlanMode,
+  ): Promise<ChatPlanState | null> {
+    const current = await this.getChatPlanState(ownerId, chatId);
+    if (!current) return null;
+    await this.database
+      .update(schema.chats)
+      .set({
+        planMode: mode,
+        ...(mode === "default"
+          ? { planExplanation: null, planSteps: [], pendingPlanQuestion: null }
+          : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.chats.id, chatId));
+    return this.getChatPlanState(ownerId, chatId);
+  }
+
+  async updateChatPlanSnapshot(
+    chatId: string,
+    explanation: string | null,
+    steps: PlanStep[],
+  ): Promise<void> {
+    await this.database
+      .update(schema.chats)
+      .set({
+        planExplanation: explanation,
+        planSteps: steps,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.chats.id, chatId));
+  }
+
+  async setPendingPlanQuestion(
+    chatId: string,
+    question: PendingPlanQuestion | null,
+  ): Promise<void> {
+    await this.database
+      .update(schema.chats)
+      .set({ pendingPlanQuestion: question, updatedAt: new Date() })
+      .where(eq(schema.chats.id, chatId));
+  }
+
   async getChatExecutionContext(
     ownerId: string,
     chatId: string,
@@ -4375,6 +4457,8 @@ export class ServerRepository {
       isPrimary: row.worktree.isPrimary,
       modelId: row.chat.modelId,
       modelRouteId: row.runtime?.modelRouteId ?? null,
+      planMode: row.chat.planMode as PlanMode,
+      pendingPlanQuestion: row.chat.pendingPlanQuestion,
       projectId: row.chat.projectId,
       status: row.chat.status as ChatSummary["status"],
       threadId: row.runtime?.codexThreadId ?? null,

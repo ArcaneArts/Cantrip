@@ -23,7 +23,14 @@ describe("slash commands", () => {
       ({ invocation }) => invocation,
     );
     expect(commands).toEqual(
-      expect.arrayContaining(["/compact", "/fork", "/goal", "/new", "/review"]),
+      expect.arrayContaining([
+        "/compact",
+        "/fork",
+        "/goal",
+        "/new",
+        "/plan",
+        "/review",
+      ]),
     );
     expect(SLASH_COMMANDS.length).toBeGreaterThanOrEqual(10);
   });

@@ -1,6 +1,7 @@
 import type {
   BrowserSummary,
   ChatMessage,
+  ChatPlanAnswer,
   ChatSummary,
   ExplorerSummary,
   GithubRepository,
@@ -36,6 +37,7 @@ import {
   GitBranch,
   Globe2,
   Loader2,
+  ListChecks,
   Lock,
   MessageSquare,
   PanelLeft,
@@ -60,6 +62,7 @@ import {
 
 import { Activity, ActivityGroup } from "@/components/chat/activity";
 import { GoalPanel } from "@/components/chat/goal-panel";
+import { PlanPanel } from "@/components/chat/plan-panel";
 import { Markdown } from "@/components/chat/markdown";
 import { PromptQueue } from "@/components/chat/prompt-queue";
 import {
@@ -103,6 +106,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   createBrowser,
+  answerChatPlan,
   createChat,
   createChatConsole,
   createExplorer,
@@ -123,6 +127,7 @@ import {
   forkChat,
   getChats,
   getChatGoal,
+  getChatPlan,
   getBrowsers,
   getCachedGithubRepositories,
   getExplorers,
@@ -153,6 +158,7 @@ import {
   syncChat,
   updateChatModel,
   updateChatGoal,
+  updateChatPlan,
   updateChatWorktree,
   updateBrowser,
   updateExplorerWorktree,
@@ -653,6 +659,12 @@ function ChatTranscript({
     refetchInterval: chat.status === "running" ? 750 : 3_000,
     retry: false,
   });
+  const planState = useQuery({
+    queryFn: () => getChatPlan(chat.id),
+    queryKey: ["plan", chat.id],
+    refetchInterval: chat.status === "running" ? 750 : 3_000,
+    retry: false,
+  });
   const skills = useQuery({
     enabled: Boolean(selectedModelId && draft.includes("$")),
     queryFn: () => getSkills(chat.id),
@@ -794,6 +806,26 @@ function ChatTranscript({
       await queryClient.invalidateQueries({ queryKey: ["goal", chat.id] });
     },
   });
+  const setPlanMode = useMutation({
+    mutationFn: (mode: "default" | "plan") => updateChatPlan(chat.id, { mode }),
+    onSuccess: async (state) => {
+      queryClient.setQueryData(["plan", chat.id], state);
+      await queryClient.invalidateQueries({
+        queryKey: ["chats", chat.projectId],
+      });
+    },
+  });
+  const answerPlan = useMutation({
+    mutationFn: (answers: ChatPlanAnswer["answers"]) =>
+      answerChatPlan(chat.id, { answers }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["plan", chat.id] }),
+        queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
+        queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
+      ]);
+    },
+  });
 
   useEffect(() => {
     setSelectedCommandIndex(0);
@@ -864,6 +896,14 @@ function ChatTranscript({
         );
       } else {
         setGoalDialogOpen(true);
+      }
+    } else if (name === "plan") {
+      if (chat.status === "running") {
+        setCommandNotice("Plan Mode cannot be changed during an active turn.");
+      } else {
+        setPlanMode.mutate(
+          planState.data?.mode === "plan" ? "default" : "plan",
+        );
       }
     } else if (name === "copy") {
       if (!latestAssistantText) {
@@ -1039,7 +1079,9 @@ function ChatTranscript({
               <div className="grid size-7 place-items-center rounded-lg border bg-card">
                 <Loader2 className="size-3.5 animate-spin" />
               </div>
-              {selectedModel?.name ?? "Agent"} is working through Codex…
+              {planState.data?.question
+                ? "Codex is waiting for your plan answer…"
+                : `${selectedModel?.name ?? "Agent"} is working through Codex…`}
             </div>
           ) : null}
         </div>
@@ -1168,6 +1210,14 @@ function ChatTranscript({
             onOpenChange={setGoalDialogOpen}
             onUpdate={(status) => updateGoal.mutate(status)}
           />
+          {planState.data ? (
+            <PlanPanel
+              state={planState.data}
+              pending={answerPlan.isPending}
+              error={answerPlan.isError ? errorText(answerPlan.error) : null}
+              onAnswer={(answers) => answerPlan.mutate(answers)}
+            />
+          ) : null}
           <PromptQueue
             prompts={queuedPrompts.data ?? []}
             editingPromptId={editingPrompt?.id ?? null}
@@ -1376,6 +1426,36 @@ function ChatTranscript({
                     Goal
                   </Button>
                 ) : null}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={
+                    planState.data?.mode === "plan" ? "outline" : "ghost"
+                  }
+                  className={cn(
+                    "h-7 px-2 text-xs",
+                    planState.data?.mode === "plan"
+                      ? "text-sky-600 dark:text-sky-400"
+                      : "text-muted-foreground",
+                  )}
+                  disabled={
+                    !selectedModelId ||
+                    chat.status === "running" ||
+                    setPlanMode.isPending
+                  }
+                  onClick={() =>
+                    setPlanMode.mutate(
+                      planState.data?.mode === "plan" ? "default" : "plan",
+                    )
+                  }
+                >
+                  {setPlanMode.isPending ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <ListChecks className="size-3.5" />
+                  )}
+                  Plan
+                </Button>
               </div>
             </div>
             <Button
@@ -1403,7 +1483,8 @@ function ChatTranscript({
           updatePrompt.isError ||
           removePrompt.isError ||
           steerPrompt.isError ||
-          reorderPrompts.isError ? (
+          reorderPrompts.isError ||
+          setPlanMode.isError ? (
             <p className="mt-2 text-xs text-destructive">
               {errorText(
                 send.error ??
@@ -1412,7 +1493,8 @@ function ChatTranscript({
                   updatePrompt.error ??
                   removePrompt.error ??
                   steerPrompt.error ??
-                  reorderPrompts.error,
+                  reorderPrompts.error ??
+                  setPlanMode.error,
               )}
             </p>
           ) : editingPrompt ? (

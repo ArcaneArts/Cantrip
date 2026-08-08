@@ -31,6 +31,7 @@ import {
   Check,
   CircleAlert,
   CircleDot,
+  CircleHelp,
   FolderGit2,
   FolderTree,
   GitCommitHorizontal,
@@ -182,7 +183,12 @@ function SortableChat({
           >
             <MessageSquare className="size-3.5 shrink-0" />
             <span className="truncate">{chat.title}</span>
-            {chat.status === "running" ? (
+            {chat.hasPendingPlanQuestion ? (
+              <CircleHelp
+                className="ml-auto size-3.5 text-amber-500"
+                aria-label="Codex is waiting for a Plan Mode answer"
+              />
+            ) : chat.status === "running" ? (
               <Loader2 className="ml-auto size-3 animate-spin" />
             ) : null}
           </button>
