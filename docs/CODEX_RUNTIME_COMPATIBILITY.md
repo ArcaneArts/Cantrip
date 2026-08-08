@@ -73,6 +73,12 @@ enabled and not in the `deprecated` or `removed` stage. Read and mutation
 methods are tracked independently so a runtime can remain inspectable while a
 write control degrades to disabled.
 
+Product stability may be stricter than method discovery. In particular, the
+tested 0.146.1 runtime advertises plugin methods, but the official App Server
+contract still labels them under development and unsuitable for production
+clients. Cantrip retains those methods in diagnostics while disabling plugin
+product controls. See [Codex-native customization](CODEX_NATIVE_CUSTOMIZATION.md).
+
 Permission profiles are additionally gated on experimental API negotiation and
 `permissionProfile/list`. When available, Cantrip pages the advertised profiles
 for the active checkout and uses the selected profile on thread start/resume.

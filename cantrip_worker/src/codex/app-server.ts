@@ -33,8 +33,11 @@ import {
   type AgentThreadSyncItem,
   type AgentTurnResult,
   type ChatGoalResponse,
+  type CodexCustomizationInventory,
+  type CodexExternalImportPreview,
   type CodexRuntimeReport,
   type CodexEventCorrelation,
+  type CodexMcpResourceRead,
   type ChatPlanAnswer,
   type NormalizedAgentMessage,
   type PendingPlanQuestion,
@@ -48,6 +51,12 @@ import {
 import WebSocket, { type RawData } from "ws";
 
 import type { CodexRuntime, CodexRuntimeDiagnostic } from "./runtime.js";
+import {
+  customizationInventory,
+  parseExternalImportPreview,
+  parseMcpResourceRead,
+  parseMcpServerPage,
+} from "./customization.js";
 
 export interface RpcError {
   code: number;
@@ -1825,6 +1834,91 @@ export class CodexAppServer implements CodexRuntime {
       forceReload,
     });
     return parseCodexSkills(response, options.cwd);
+  }
+
+  async readCustomizationInventory(
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
+    forceReload = false,
+  ): Promise<CodexCustomizationInventory> {
+    await this.ensureStarted(options.model, options.provider);
+    const skillsResponse = this.methodAvailable("skills/list")
+      ? await this.request("skills/list", {
+          cwds: [options.cwd],
+          forceReload,
+        })
+      : { data: [{ cwd: options.cwd, skills: [], errors: [] }] };
+    const hooksResponse = this.methodAvailable("hooks/list")
+      ? await this.request("hooks/list", { cwds: [options.cwd] })
+      : {
+          data: [{ cwd: options.cwd, hooks: [], warnings: [], errors: [] }],
+        };
+    const mcpServers: CodexCustomizationInventory["mcpServers"] = [];
+    if (this.methodAvailable("mcpServerStatus/list")) {
+      let cursor: string | null = null;
+      const seenCursors = new Set<string>();
+      do {
+        const page = parseMcpServerPage(
+          await this.request("mcpServerStatus/list", {
+            cursor,
+            limit: 100,
+            detail: "full",
+            threadId: null,
+          }),
+        );
+        mcpServers.push(...page.servers);
+        cursor = page.nextCursor;
+        if (cursor && seenCursors.has(cursor)) {
+          throw new Error("Codex returned a repeated MCP status cursor.");
+        }
+        if (cursor) seenCursors.add(cursor);
+      } while (cursor);
+    }
+    return customizationInventory({
+      report: this.compatibility,
+      cwd: options.cwd,
+      skillsResponse,
+      hooksResponse,
+      mcpServers,
+    });
+  }
+
+  async previewExternalAgentConfig(
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
+  ): Promise<CodexExternalImportPreview> {
+    if (!this.methodAvailable("externalAgentConfig/detect")) {
+      throw new Error(
+        "The installed Codex runtime does not support external-agent configuration detection.",
+      );
+    }
+    await this.ensureStarted(options.model, options.provider);
+    const response = await this.request("externalAgentConfig/detect", {
+      includeHome: false,
+      cwds: [options.cwd],
+      maxSessionAgeDays: 30,
+      maxSessions: 50,
+    });
+    return parseExternalImportPreview(response, options.cwd);
+  }
+
+  async readMcpResource(
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider"> & {
+      server: string;
+      uri: string;
+    },
+  ): Promise<CodexMcpResourceRead> {
+    if (!this.methodAvailable("mcpServer/resource/read")) {
+      throw new Error(
+        "The installed Codex runtime does not support MCP resource reads.",
+      );
+    }
+    await this.ensureStarted(options.model, options.provider);
+    return parseMcpResourceRead(
+      await this.request("mcpServer/resource/read", {
+        threadId: null,
+        server: options.server,
+        uri: options.uri,
+      }),
+    );
   }
 
   async listPermissionProfiles(

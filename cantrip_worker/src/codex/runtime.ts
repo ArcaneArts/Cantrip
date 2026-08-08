@@ -4,6 +4,9 @@ import type {
   AgentTurnResult,
   ChatGoalResponse,
   ChatPlanAnswer,
+  CodexCustomizationInventory,
+  CodexExternalImportPreview,
+  CodexMcpResourceRead,
   CodexRuntimeReport,
   PermissionProfileCapability,
   PlanMode,
@@ -40,6 +43,19 @@ export interface CodexRuntime {
     options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
     forceReload?: boolean,
   ): Promise<CodexSkill[]>;
+  readCustomizationInventory(
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
+    forceReload?: boolean,
+  ): Promise<CodexCustomizationInventory>;
+  previewExternalAgentConfig(
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
+  ): Promise<CodexExternalImportPreview>;
+  readMcpResource(
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider"> & {
+      server: string;
+      uri: string;
+    },
+  ): Promise<CodexMcpResourceRead>;
   listPermissionProfiles(
     options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
   ): Promise<PermissionProfileCapability>;

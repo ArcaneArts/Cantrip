@@ -9,6 +9,7 @@ import {
   agentWorktreeToolResultSchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
+  codexMcpResourceReadRequestSchema,
   chatAttachmentSummarySchema,
   chatExecutionLaneSummarySchema,
   chatGoalCreateSchema,
@@ -50,6 +51,49 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("validates native customization worker commands and bounded MCP reads", () => {
+    const runtime = {
+      cwd: "/workspace/Cantrip",
+      model: {
+        id: "model-1",
+        routeId: "route-1",
+        name: "gpt-5.6-sol",
+        reasoningEffort: "high" as const,
+      },
+      provider: {
+        id: "provider-1",
+        name: "ChatGPT",
+        kind: "chatgpt" as const,
+        baseUrl: "https://api.openai.com/v1",
+        apiKey: null,
+      },
+    };
+    expect(
+      workerCommandSchema.parse({
+        type: "customization.inventory.read",
+        ...runtime,
+      }),
+    ).toMatchObject({ forceReload: false });
+    expect(
+      workerCommandSchema.parse({
+        type: "customization.external.preview",
+        ...runtime,
+      }).type,
+    ).toBe("customization.external.preview");
+    expect(
+      codexMcpResourceReadRequestSchema.parse({
+        server: "docs",
+        uri: "docs://readme",
+      }),
+    ).toEqual({ server: "docs", uri: "docs://readme" });
+    expect(() =>
+      codexMcpResourceReadRequestSchema.parse({
+        server: "docs",
+        uri: "x".repeat(8_193),
+      }),
+    ).toThrow();
+  });
+
   it("models capability-gated chat permission profiles", () => {
     expect(
       chatPermissionProfileStateSchema.parse({

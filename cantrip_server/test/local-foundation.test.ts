@@ -8,6 +8,9 @@ import {
   agentThreadSyncSchema,
   browserListSchema,
   browserSummarySchema,
+  codexCustomizationInventorySchema,
+  codexExternalImportPreviewSchema,
+  codexMcpResourceReadSchema,
   chatAttachmentSummarySchema,
   decodeRemoteSurfaceFrame,
   encodeRemoteSurfaceFrame,
@@ -419,6 +422,123 @@ const workerBridge = {
             description: "Create reusable skills",
           },
         ];
+      case "customization.inventory.read": {
+        const available = {
+          available: true,
+          reason: null,
+          stability: "stable" as const,
+        };
+        const unsupported = {
+          available: false,
+          reason: "Not supported by this runtime.",
+          stability: "unsupported" as const,
+        };
+        return {
+          capabilities: {
+            isolatedCodexHome: true,
+            collaborationModes: { ...available, stability: "experimental" },
+            threadGoals: available,
+            nativeSubagents: available,
+            customAgents: unsupported,
+            hooks: available,
+            skills: {
+              list: available,
+              configure: available,
+              extraRoots: available,
+            },
+            mcp: {
+              status: available,
+              resourceRead: available,
+              oauth: available,
+              reload: available,
+            },
+            plugins: {
+              list: unsupported,
+              read: unsupported,
+              install: unsupported,
+              uninstall: unsupported,
+            },
+            externalImports: {
+              detect: { ...available, stability: "experimental" },
+              apply: { ...available, stability: "experimental" },
+            },
+          },
+          skills: {
+            items: [
+              {
+                name: "skill-creator",
+                displayName: "Skill Creator",
+                description: "Create reusable skills",
+                path: path.join(command.cwd, ".agents/skills/skill-creator"),
+                scope: "repo",
+                enabled: true,
+              },
+            ],
+            errors: [],
+          },
+          hooks: { items: [], warnings: [], errors: [] },
+          mcpServers: [
+            {
+              name: "docs",
+              serverInfo: null,
+              authStatus: "oAuth",
+              tools: [
+                {
+                  name: "search",
+                  title: null,
+                  description: "Search documentation",
+                  inputSchema: { type: "object" },
+                  outputSchema: null,
+                },
+              ],
+              resources: [
+                {
+                  uri: "docs://readme",
+                  name: "README",
+                  title: null,
+                  description: null,
+                  mimeType: "text/markdown",
+                  size: null,
+                },
+              ],
+              resourceTemplates: [],
+            },
+          ],
+        };
+      }
+      case "customization.external.preview":
+        return {
+          sourceScope: "project",
+          items: [
+            {
+              id: "external-command-preview",
+              itemType: "COMMANDS",
+              description: "Claude commands",
+              cwd: command.cwd,
+              details: {
+                pluginNames: [],
+                skillNames: [],
+                sessionCount: 0,
+                mcpServerNames: [],
+                hookNames: [],
+                subagentNames: [],
+                commandNames: ["release"],
+                memoryFiles: [],
+              },
+            },
+          ],
+        };
+      case "customization.mcp.resource.read":
+        return {
+          contents: [
+            {
+              type: "text",
+              uri: command.uri,
+              mimeType: "text/markdown",
+              text: "# Cantrip",
+            },
+          ],
+        };
       case "permission-profiles.list":
         return {
           available: true,
@@ -1932,6 +2052,59 @@ describe("local server foundation", () => {
         description: "Create reusable skills",
       },
     ]);
+
+    const customizationInventory = codexCustomizationInventorySchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/chats/${chat.id}/customizations?refresh=true`,
+        })
+      ).json(),
+    );
+    expect(customizationInventory).toMatchObject({
+      capabilities: {
+        isolatedCodexHome: true,
+        nativeSubagents: { available: true },
+        customAgents: { available: false },
+        plugins: { install: { available: false } },
+      },
+      skills: { items: [{ name: "skill-creator", enabled: true }] },
+      mcpServers: [{ name: "docs", resources: [{ uri: "docs://readme" }] }],
+    });
+    const externalPreview = codexExternalImportPreviewSchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/chats/${chat.id}/customizations/external-preview`,
+        })
+      ).json(),
+    );
+    expect(externalPreview.items).toEqual([
+      expect.objectContaining({
+        itemType: "COMMANDS",
+        details: expect.objectContaining({ commandNames: ["release"] }),
+      }),
+    ]);
+    expect(
+      codexMcpResourceReadSchema.parse(
+        (
+          await firstApp.inject({
+            method: "POST",
+            url: `/api/chats/${chat.id}/customizations/mcp-resource`,
+            payload: { server: "docs", uri: "docs://readme" },
+          })
+        ).json(),
+      ),
+    ).toEqual({
+      contents: [
+        {
+          type: "text",
+          uri: "docs://readme",
+          mimeType: "text/markdown",
+          text: "# Cantrip",
+        },
+      ],
+    });
 
     const messagePayload = {
       text: "$skill-creator Persist this message.",

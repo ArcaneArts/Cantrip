@@ -193,6 +193,29 @@ async function start(): Promise<void> {
           model: command.model,
           provider: command.provider,
         });
+      case "customization.inventory.read":
+        return runtimeFor(command).readCustomizationInventory(
+          {
+            cwd: command.cwd,
+            model: command.model,
+            provider: command.provider,
+          },
+          command.forceReload,
+        );
+      case "customization.external.preview":
+        return runtimeFor(command).previewExternalAgentConfig({
+          cwd: command.cwd,
+          model: command.model,
+          provider: command.provider,
+        });
+      case "customization.mcp.resource.read":
+        return runtimeFor(command).readMcpResource({
+          cwd: command.cwd,
+          model: command.model,
+          provider: command.provider,
+          server: command.server,
+          uri: command.uri,
+        });
       case "permission-profiles.list":
         return runtimeFor(command).listPermissionProfiles({
           cwd: command.cwd,
