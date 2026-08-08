@@ -42,6 +42,7 @@ import {
   type PlanMode,
   type PlanStep,
   type ThreadGoal,
+  type WorkerChatAttachment,
   type WorkerCommand,
 } from "@cantrip/protocol";
 import WebSocket, { type RawData } from "ws";
@@ -833,6 +834,7 @@ interface NativePendingAgentInteraction {
 }
 
 export interface RunAgentTurnOptions {
+  attachments?: RuntimeChatAttachment[];
   chatId: string;
   clientMessageId: string;
   cwd: string;
@@ -866,6 +868,10 @@ export interface RunAgentTurnOptions {
   onPlanQuestion?: ActiveTurn["onPlanQuestion"];
   onPlanQuestionResolved?: ActiveTurn["onPlanQuestionResolved"];
   onWorktreeToolCall?: ActiveTurn["onWorktreeToolCall"];
+}
+
+export interface RuntimeChatAttachment extends WorkerChatAttachment {
+  path: string;
 }
 
 export type GoalRuntimeOptions = Pick<
@@ -1673,6 +1679,7 @@ export class CodexAppServer implements CodexRuntime {
   readonly #collaborationModes = new Map<string, PlanMode>();
   readonly #externalTurnBaselines = new Map<string, Set<string>>();
   readonly #goals = new Map<string, ThreadGoal>();
+  readonly #imageSupport = new Map<string, boolean>();
   readonly #loadedThreads = new Set<string>();
   readonly #permissionProfilesByThread = new Map<string, string>();
   readonly #pending = new Map<number, PendingRpcRequest>();
@@ -1785,7 +1792,12 @@ export class CodexAppServer implements CodexRuntime {
       }),
       clientUserMessageId: `cantrip:${options.clientMessageId}`,
       input: [
-        { type: "text", text: options.prompt, text_elements: [] },
+        ...(await this.turnAttachmentInputs(
+          options.prompt,
+          options.attachments ?? [],
+          options.model,
+          options.provider,
+        )),
         ...options.skillNames.flatMap((name) => {
           const skill = selectedSkills.get(name);
           return skill?.path
@@ -2120,6 +2132,9 @@ export class CodexAppServer implements CodexRuntime {
     chatId: string,
     threadId: string | null,
     prompt: string,
+    attachments: RuntimeChatAttachment[] = [],
+    model?: RunAgentTurnOptions["model"],
+    provider?: RunAgentTurnOptions["provider"],
   ): Promise<{ steered: true; turnId: string }> {
     const active = [...this.#activeTurns.entries()].find(
       ([, turn]) =>
@@ -2131,7 +2146,12 @@ export class CodexAppServer implements CodexRuntime {
     const activeThreadId = active[1].threadId;
     const result = (await this.request("turn/steer", {
       threadId: activeThreadId,
-      input: [{ type: "text", text: prompt, text_elements: [] }],
+      input: await this.turnAttachmentInputs(
+        prompt,
+        attachments,
+        model,
+        provider,
+      ),
       expectedTurnId: active[0],
     })) as { turnId: string };
     return { steered: true, turnId: result.turnId };
@@ -2150,6 +2170,74 @@ export class CodexAppServer implements CodexRuntime {
     this.#permissionProfilesByThread.clear();
     this.#externalTurnBaselines.clear();
     this.#goals.clear();
+    this.#imageSupport.clear();
+  }
+
+  private async turnAttachmentInputs(
+    prompt: string,
+    attachments: RuntimeChatAttachment[],
+    model?: RunAgentTurnOptions["model"],
+    provider?: RunAgentTurnOptions["provider"],
+  ): Promise<Array<Record<string, unknown>>> {
+    const references = attachments.map(
+      (attachment) =>
+        `- ${attachment.fileName} (${attachment.mimeType}, ${attachment.sizeBytes} bytes): ${attachment.path}`,
+    );
+    const text = references.length
+      ? `${prompt}\n\nAttachments are stored outside the repository on this worker. Read them from these paths as needed:\n${references.join("\n")}`
+      : prompt;
+    const imageSupport =
+      model && provider && attachments.some(({ kind }) => kind === "image")
+        ? await this.modelSupportsImages(model, provider)
+        : false;
+    return [
+      { type: "text", text, text_elements: [] },
+      ...(imageSupport
+        ? attachments.flatMap((attachment) =>
+            attachment.kind === "image"
+              ? [{ type: "localImage", path: attachment.path }]
+              : [],
+          )
+        : []),
+    ];
+  }
+
+  private async modelSupportsImages(
+    model: RunAgentTurnOptions["model"],
+    provider: RunAgentTurnOptions["provider"],
+  ): Promise<boolean> {
+    const key = `${provider.id}:${model.name}`;
+    const cached = this.#imageSupport.get(key);
+    if (cached !== undefined) return cached;
+    let supported = provider.kind === "chatgpt";
+    if (this.methodAvailable("model/list")) {
+      try {
+        const response = (await this.request("model/list", {
+          includeHidden: true,
+          limit: 100,
+        })) as {
+          data?: Array<{
+            id?: string;
+            inputModalities?: string[];
+            model?: string;
+          }>;
+        };
+        const entry = response.data?.find(
+          (candidate) =>
+            candidate.id === model.name || candidate.model === model.name,
+        );
+        if (entry) {
+          supported =
+            entry.inputModalities === undefined ||
+            entry.inputModalities.includes("image");
+        }
+      } catch {
+        // ChatGPT defaults remain backward compatible; unknown custom routes
+        // retain path-based access without risking an unsupported image input.
+      }
+    }
+    this.#imageSupport.set(key, supported);
+    return supported;
   }
 
   private async ensureStarted(

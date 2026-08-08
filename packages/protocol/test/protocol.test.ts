@@ -9,6 +9,7 @@ import {
   agentWorktreeToolResultSchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
+  chatAttachmentSummarySchema,
   chatExecutionLaneSummarySchema,
   chatGoalCreateSchema,
   chatGoalResponseSchema,
@@ -16,6 +17,7 @@ import {
   chatPlanStateSchema,
   chatPauseStateSchema,
   chatPauseUpdateSchema,
+  chatTurnCreateSchema,
   decodeRemoteSurfaceFrame,
   desktopStreamSettingsSchema,
   encodeRemoteSurfaceFrame,
@@ -966,5 +968,84 @@ describe("Cantrip protocol", () => {
         },
       }).type,
     ).toBe("chat.steer");
+  });
+
+  it("validates attachment-only turns and worker attachment commands", () => {
+    expect(
+      chatTurnCreateSchema.parse({
+        attachmentIds: ["attachment-1"],
+        idempotencyKey: "attachment-turn-1",
+      }),
+    ).toMatchObject({ text: "", attachmentIds: ["attachment-1"] });
+    expect(
+      chatTurnCreateSchema.safeParse({
+        text: "",
+        attachmentIds: [],
+        idempotencyKey: "empty-turn",
+      }).success,
+    ).toBe(false);
+
+    const attachment = chatAttachmentSummarySchema.parse({
+      id: "attachment-1",
+      chatId: "chat-1",
+      fileName: "diagram.png",
+      mimeType: "image/png",
+      sizeBytes: 12,
+      kind: "image",
+      source: "file",
+      status: "ready",
+      previewText: null,
+      createdAt: "2026-08-08T12:00:00.000Z",
+    });
+    expect(attachment.kind).toBe("image");
+    expect(
+      workerCommandSchema.parse({
+        type: "attachment.upload.chunk",
+        chatId: "chat-1",
+        attachmentId: attachment.id,
+        chunkIndex: 0,
+        data: Buffer.from("diagram").toString("base64"),
+      }).type,
+    ).toBe("attachment.upload.chunk");
+    expect(
+      workerCommandSchema.parse({
+        type: "chat.turn",
+        chatId: "chat-1",
+        clientMessageId: "message-1",
+        executionLaneId: "lane-1",
+        worktreeId: "worktree-1",
+        threadId: null,
+        prompt: "Review the diagram.",
+        attachments: [
+          {
+            id: attachment.id,
+            fileName: attachment.fileName,
+            mimeType: attachment.mimeType,
+            sizeBytes: attachment.sizeBytes,
+            kind: attachment.kind,
+          },
+        ],
+        cwd: "/workspace",
+        isPrimary: false,
+        permissionProfileId: ":workspace",
+        planMode: "default",
+        worktreeMode: "agent-managed",
+        worktreePolicy: "agent-managed",
+        skillNames: [],
+        model: {
+          id: "model-1",
+          routeId: "route-1",
+          name: "gpt-5.6-sol",
+          reasoningEffort: "high",
+        },
+        provider: {
+          id: "provider-1",
+          name: "ChatGPT",
+          kind: "chatgpt",
+          baseUrl: "https://api.openai.com/v1",
+          apiKey: null,
+        },
+      }).attachments,
+    ).toHaveLength(1);
   });
 });

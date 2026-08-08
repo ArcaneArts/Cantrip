@@ -21,6 +21,7 @@ import {
   CornerDownRight,
   GripVertical,
   MoreHorizontal,
+  Paperclip,
   Pencil,
   Snowflake,
   Trash2,
@@ -78,8 +79,16 @@ function PromptRow({
         <Snowflake className="size-3.5 shrink-0 text-muted-foreground" />
       ) : null}
       <span className="min-w-0 flex-1 truncate" title={prompt.text}>
-        {prompt.text}
+        {prompt.text || "Attachment prompt"}
       </span>
+      {prompt.attachments.length > 0 ? (
+        <span
+          className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground"
+          title={prompt.attachments.map(({ fileName }) => fileName).join(", ")}
+        >
+          <Paperclip className="size-3" /> {prompt.attachments.length}
+        </span>
+      ) : null}
       <Button
         type="button"
         size="sm"
@@ -205,7 +214,14 @@ export function PromptQueue({
           {active ? (
             <div className="flex h-9 items-center gap-2 rounded-lg border bg-popover px-2 text-sm shadow-xl">
               <GripVertical className="size-3.5 text-muted-foreground" />
-              <span className="max-w-lg truncate">{active.text}</span>
+              <span className="max-w-lg truncate">
+                {active.text || "Attachment prompt"}
+              </span>
+              {active.attachments.length > 0 ? (
+                <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                  <Paperclip className="size-3" /> {active.attachments.length}
+                </span>
+              ) : null}
             </div>
           ) : null}
         </DragOverlay>

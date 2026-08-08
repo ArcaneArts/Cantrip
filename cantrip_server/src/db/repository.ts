@@ -14,6 +14,9 @@ import type {
   BrowserCreate,
   BrowserSummary,
   BrowserUpdate,
+  ChatAttachmentKind,
+  ChatAttachmentSource,
+  ChatAttachmentSummary,
   ChatCreate,
   ChatExecutionLaneSummary,
   ChatFork,
@@ -119,6 +122,11 @@ export interface ChatExecutionContext {
   worktreeId: string;
   worktreeMode: ChatSummary["worktreeMode"];
   worktreePolicy: WorktreePolicy;
+}
+
+export interface ChatAttachmentRecord extends ChatAttachmentSummary {
+  sha256: string;
+  workerId: string;
 }
 
 export class ExecutionLaneConflictError extends Error {}
@@ -675,6 +683,25 @@ function toChatMessage(
   };
 }
 
+function toChatAttachment(
+  attachment: typeof schema.chatAttachments.$inferSelect,
+): ChatAttachmentRecord {
+  return {
+    id: attachment.id,
+    chatId: attachment.chatId,
+    workerId: attachment.workerId,
+    fileName: attachment.fileName,
+    mimeType: attachment.mimeType,
+    sizeBytes: attachment.sizeBytes,
+    kind: attachment.kind,
+    source: attachment.source,
+    status: attachment.status as ChatAttachmentSummary["status"],
+    previewText: attachment.previewText,
+    sha256: attachment.sha256,
+    createdAt: toISOString(attachment.createdAt),
+  };
+}
+
 function toQueuedPrompt(
   prompt: typeof schema.queuedPrompts.$inferSelect,
 ): QueuedPrompt {
@@ -682,6 +709,7 @@ function toQueuedPrompt(
     id: prompt.id,
     chatId: prompt.chatId,
     text: prompt.text,
+    attachments: prompt.attachments,
     modelId: prompt.modelId,
     worktreeId: prompt.worktreeId,
     position: prompt.position,
@@ -5104,6 +5132,116 @@ export class ServerRepository {
     return toAgentInteractionRequest(rows[0]);
   }
 
+  async createChatAttachment(
+    ownerId: string,
+    chatId: string,
+    input: {
+      fileName: string;
+      id: string;
+      kind: ChatAttachmentKind;
+      mimeType: string;
+      previewText: string | null;
+      sha256: string;
+      sizeBytes: number;
+      source: ChatAttachmentSource;
+      workerId: string;
+    },
+  ): Promise<ChatAttachmentRecord | null> {
+    const owned = await this.database
+      .select({ id: schema.chats.id })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.chats.id, chatId))
+      .limit(1);
+    if (!owned[0]) return null;
+    const rows = await this.database
+      .insert(schema.chatAttachments)
+      .values({
+        ...input,
+        chatId,
+        status: "ready",
+      })
+      .returning();
+    return toChatAttachment(firstOrThrow(rows, "creating an attachment"));
+  }
+
+  async getChatAttachment(
+    ownerId: string,
+    attachmentId: string,
+  ): Promise<ChatAttachmentRecord | null> {
+    const rows = await this.database
+      .select({ attachment: schema.chatAttachments })
+      .from(schema.chatAttachments)
+      .innerJoin(
+        schema.chats,
+        eq(schema.chats.id, schema.chatAttachments.chatId),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.chatAttachments.id, attachmentId))
+      .limit(1);
+    return rows[0] ? toChatAttachment(rows[0].attachment) : null;
+  }
+
+  async getChatAttachments(
+    ownerId: string,
+    chatId: string,
+    attachmentIds: string[],
+  ): Promise<ChatAttachmentRecord[]> {
+    if (attachmentIds.length === 0) return [];
+    const rows = await this.database
+      .select({ attachment: schema.chatAttachments })
+      .from(schema.chatAttachments)
+      .innerJoin(
+        schema.chats,
+        and(
+          eq(schema.chats.id, schema.chatAttachments.chatId),
+          eq(schema.chats.id, chatId),
+        ),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(inArray(schema.chatAttachments.id, attachmentIds));
+    const byId = new Map(
+      rows.map(({ attachment }) => [
+        attachment.id,
+        toChatAttachment(attachment),
+      ]),
+    );
+    return attachmentIds.flatMap((id) => {
+      const attachment = byId.get(id);
+      return attachment ? [attachment] : [];
+    });
+  }
+
+  async deleteChatAttachment(
+    ownerId: string,
+    attachmentId: string,
+  ): Promise<ChatAttachmentRecord | null> {
+    const attachment = await this.getChatAttachment(ownerId, attachmentId);
+    if (!attachment) return null;
+    await this.database
+      .delete(schema.chatAttachments)
+      .where(eq(schema.chatAttachments.id, attachmentId));
+    return attachment;
+  }
+
   async listMessages(ownerId: string, chatId: string): Promise<ChatMessage[]> {
     const rows = await this.database
       .select({ message: schema.chatMessages })
@@ -5169,6 +5307,7 @@ export class ServerRepository {
     chatId: string,
     input: QueuedPromptCreate,
     modelId: string,
+    attachments: ChatAttachmentSummary[] = [],
   ): Promise<QueuedPrompt | null> {
     const chat = await this.database
       .select({ id: schema.chats.id, projectId: schema.chats.projectId })
@@ -5231,6 +5370,7 @@ export class ServerRepository {
         id: randomUUID(),
         chatId,
         text: input.text,
+        attachments,
         modelId,
         worktreeId: input.worktreeId,
         position: (last[0]?.position ?? -1) + 1,
@@ -5245,6 +5385,7 @@ export class ServerRepository {
     ownerId: string,
     promptId: string,
     input: QueuedPromptUpdate,
+    attachments?: ChatAttachmentSummary[],
   ): Promise<QueuedPrompt | null> {
     const owned = await this.database
       .select({ id: schema.queuedPrompts.id })
@@ -5262,7 +5403,12 @@ export class ServerRepository {
     if (!owned[0]) return null;
     const result = await this.database
       .update(schema.queuedPrompts)
-      .set({ ...input, updatedAt: new Date() })
+      .set({
+        ...(input.text !== undefined ? { text: input.text } : {}),
+        ...(input.frozen !== undefined ? { frozen: input.frozen } : {}),
+        ...(attachments !== undefined ? { attachments } : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(schema.queuedPrompts.id, promptId))
       .returning();
     return result[0] ? toQueuedPrompt(result[0]) : null;

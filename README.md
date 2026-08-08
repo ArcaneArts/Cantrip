@@ -10,7 +10,7 @@ The project is inspired by the Codex desktop experience, but its architecture is
 
 Cantrip organizes work into GitHub-backed projects. Each project has one source folder owned by a worker and can contain an ordered mix of:
 
-- Codex chats with phased Markdown responses, normalized plans/reasoning/tools/subagents/usage activity, per-message model selection, steering, prompt queues, cooperative pause/resume, compaction commands, forking, renaming, and duplication.
+- Codex chats with phased Markdown responses, normalized plans/reasoning/tools/subagents/usage activity, arbitrary file attachments, large-paste attachments, per-message model selection, steering, prompt queues, cooperative pause/resume, compaction commands, forking, renaming, and duplication.
 - Real PTY terminal tabs that run in the project folder on the worker.
 - Read-only Explorer tabs with a source or Markdown preview for supported text files.
 - Worker-streamed Browser tabs for project-related web pages.
@@ -59,13 +59,13 @@ The React frontend is the control surface. Vite provides the browser development
 
 The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings, stores projects and durable conversation history, tracks worker presence, persists worktree observations and chat execution leases, and routes every file, terminal, Git, and Codex operation to the correct worker checkout.
 
-Local development uses embedded PGlite under `.cantrip/dev/`. A PostgreSQL `DATABASE_URL` can be supplied for a standalone database. Source files are not copied into the server database.
+Local development uses embedded PGlite under `.cantrip/dev/`. A PostgreSQL `DATABASE_URL` can be supplied for a standalone database. Source files and attachment bytes are not copied into the server database. The server stores attachment metadata with conversation history and relays bounded upload and preview chunks to the owning worker.
 
 ### `cantrip_worker`
 
 The worker is the machine that actually performs work. It owns project source folders and their physical Git worktrees, clones repositories, runs Git and GitHub CLI operations, provides filesystem access, hosts PTY processes, supervises worktree-specific Codex runtimes, runs Browser-tab Chromium sessions, and captures and controls its own desktop for Remote Desktop tabs. Provider URLs and Browser-tab addresses are resolved from the worker machine, which is important once the server and worker live on different hosts.
 
-Workers communicate through the server. There is intentionally no app-to-worker connection mode.
+Chat attachments are staged beneath the worker's private Cantrip data directory, outside project sources and Git worktrees. Workers communicate through the server. There is intentionally no app-to-worker connection mode. See [ADR 0003](docs/adr/0003-worker-owned-chat-attachments.md) for the attachment transport, model-capability fallback, limits, and storage boundary.
 
 ### `packages/protocol`
 

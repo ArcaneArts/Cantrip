@@ -1,6 +1,7 @@
 import type {
   AgentInteractionResponse,
   BrowserSummary,
+  ChatAttachmentSummary,
   ChatMessage,
   ChatPlanAnswer,
   ChatSummary,
@@ -64,6 +65,18 @@ import {
 } from "react";
 
 import { Activity, ActivityGroup } from "@/components/chat/activity";
+import {
+  AttachmentPreview,
+  AttachmentViewerDialog,
+} from "@/components/chat/attachment-preview";
+import {
+  attachmentKind,
+  insertComposerText,
+  MAX_ATTACHMENT_BYTES,
+  MAX_COMPOSER_ATTACHMENTS,
+  largePasteFileName,
+  shouldAttachPastedText,
+} from "@/components/chat/attachment-utils";
 import { AgentInteractionPanel } from "@/components/chat/agent-interaction-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
 import { PlanPanel } from "@/components/chat/plan-panel";
@@ -112,6 +125,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   createBrowser,
+  chatAttachmentContentUrl,
   answerChatPlan,
   createChat,
   createChatConsole,
@@ -125,6 +139,7 @@ import {
   clearChatGoal,
   createChatGoal,
   deleteChat,
+  deleteChatAttachment,
   deleteBrowser,
   deleteExplorer,
   deleteProjectView,
@@ -177,6 +192,7 @@ import {
   updateProjectWorktreePolicy,
   updateQueuedPrompt,
   updateTerminalWorktree,
+  uploadChatAttachment,
 } from "@/lib/api";
 import {
   isDesktopRuntime,
@@ -232,32 +248,63 @@ type WorktreeBindingTarget =
       tabId: string;
     };
 
+interface ComposerAttachmentState {
+  attachment: ChatAttachmentSummary;
+  contentUrl: string;
+  error: string | null;
+  localPreview: boolean;
+  uploading: boolean;
+}
+
 function MessageContent({ message }: { message: ChatMessage }) {
+  const [viewingAttachment, setViewingAttachment] =
+    useState<ChatAttachmentSummary | null>(null);
   return (
-    <div className="min-w-0 max-w-full space-y-3">
-      {message.content.map((item, index) =>
-        item.type === "text" ? (
-          item.phase === "commentary" ? (
-            <div
-              key={`text:${index}`}
-              className="rounded-lg border-l-2 border-muted-foreground/30 bg-muted/30 px-3 py-2 text-muted-foreground"
-            >
-              <p className="mb-1 text-[10px] font-medium uppercase tracking-wide">
-                Commentary
-              </p>
-              <Markdown>{item.text}</Markdown>
-            </div>
+    <>
+      <div className="min-w-0 max-w-full space-y-3">
+        {message.content.map((item, index) =>
+          item.type === "text" ? (
+            item.phase === "commentary" ? (
+              <div
+                key={`text:${index}`}
+                className="rounded-lg border-l-2 border-muted-foreground/30 bg-muted/30 px-3 py-2 text-muted-foreground"
+              >
+                <p className="mb-1 text-[10px] font-medium uppercase tracking-wide">
+                  Commentary
+                </p>
+                <Markdown>{item.text}</Markdown>
+              </div>
+            ) : (
+              <Markdown key={`text:${index}`}>{item.text}</Markdown>
+            )
+          ) : item.type === "attachment" ? (
+            <AttachmentPreview
+              key={`attachment:${item.attachment.id}`}
+              attachment={item.attachment}
+              contentUrl={chatAttachmentContentUrl(item.attachment.id)}
+              onOpen={() => setViewingAttachment(item.attachment)}
+            />
           ) : (
-            <Markdown key={`text:${index}`}>{item.text}</Markdown>
-          )
-        ) : (
-          <Activity
-            key={`activity:${item.activity.id}`}
-            activity={item.activity}
-          />
-        ),
-      )}
-    </div>
+            <Activity
+              key={`activity:${item.activity.id}`}
+              activity={item.activity}
+            />
+          ),
+        )}
+      </div>
+      <AttachmentViewerDialog
+        attachment={viewingAttachment}
+        contentUrl={
+          viewingAttachment
+            ? chatAttachmentContentUrl(viewingAttachment.id)
+            : null
+        }
+        open={viewingAttachment !== null}
+        onOpenChange={(open) => {
+          if (!open) setViewingAttachment(null);
+        }}
+      />
+    </>
   );
 }
 
@@ -640,14 +687,31 @@ function ChatTranscript({
   const [selectedSkillIndex, setSelectedSkillIndex] = useState(0);
   const [composerCaret, setComposerCaret] = useState(0);
   const [composerScrollTop, setComposerScrollTop] = useState(0);
+  const [draftAttachments, setDraftAttachments] = useState<
+    ComposerAttachmentState[]
+  >([]);
+  const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
+  const [draggingFiles, setDraggingFiles] = useState(false);
+  const [viewingAttachment, setViewingAttachment] =
+    useState<ChatAttachmentSummary | null>(null);
   const commandListRef = useRef<HTMLDivElement>(null);
   const skillListRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const selectedModelId =
     chat.modelId ?? settings?.preferences.defaultModelId ?? "";
   const selectedModel = settings?.models.find(
     (model) => model.id === selectedModelId,
   );
+  const imageSupportUncertain =
+    draftAttachments.some(({ attachment }) => attachment.kind === "image") &&
+    selectedModel?.routes.some((route) => {
+      if (!route.enabled) return false;
+      return (
+        settings?.providers.find(({ id }) => id === route.providerId)?.kind !==
+        "chatgpt"
+      );
+    });
   const messages = useQuery({
     queryFn: () => getMessages(chat.id),
     queryKey: ["messages", chat.id],
@@ -752,10 +816,119 @@ function ChatTranscript({
         .join("\n\n") ?? "",
     [messages.data],
   );
+  const clearDraftAttachments = () => {
+    setDraftAttachments((current) => {
+      for (const item of current) {
+        if (item.localPreview) URL.revokeObjectURL(item.contentUrl);
+      }
+      return [];
+    });
+  };
+  const attachFiles = async (
+    requestedFiles: File[],
+    source: "file" | "paste" = "file",
+  ) => {
+    setAttachmentNotice(null);
+    const slots = Math.max(
+      0,
+      MAX_COMPOSER_ATTACHMENTS - draftAttachments.length,
+    );
+    const accepted = requestedFiles
+      .slice(0, slots)
+      .filter((file) => file.size <= MAX_ATTACHMENT_BYTES);
+    if (requestedFiles.length > slots) {
+      setAttachmentNotice(
+        `A prompt can include up to ${MAX_COMPOSER_ATTACHMENTS} attachments.`,
+      );
+    } else if (accepted.length !== requestedFiles.length) {
+      setAttachmentNotice("Attachments must be 25 MB or smaller.");
+    }
+    const pending = await Promise.all(
+      accepted.map(async (file): Promise<ComposerAttachmentState> => {
+        const kind = attachmentKind(file.name, file.type);
+        const previewText =
+          kind === "text"
+            ? (await file.slice(0, 16_000).text()).slice(0, 8_000)
+            : null;
+        return {
+          attachment: {
+            id: `local-${crypto.randomUUID()}`,
+            chatId: chat.id,
+            fileName: file.name,
+            mimeType: file.type || "application/octet-stream",
+            sizeBytes: file.size,
+            kind,
+            source,
+            status: "ready",
+            previewText,
+            createdAt: new Date().toISOString(),
+          },
+          contentUrl: URL.createObjectURL(file),
+          error: null,
+          localPreview: true,
+          uploading: true,
+        };
+      }),
+    );
+    setDraftAttachments((current) => [...current, ...pending]);
+    await Promise.all(
+      pending.map(async (pendingItem, index) => {
+        const file = accepted[index]!;
+        try {
+          const uploaded = await uploadChatAttachment(
+            chat.id,
+            file,
+            pendingItem.attachment.kind,
+            source,
+          );
+          URL.revokeObjectURL(pendingItem.contentUrl);
+          setDraftAttachments((current) =>
+            current.map((item) =>
+              item.attachment.id === pendingItem.attachment.id
+                ? {
+                    attachment: uploaded,
+                    contentUrl: chatAttachmentContentUrl(uploaded.id),
+                    error: null,
+                    localPreview: false,
+                    uploading: false,
+                  }
+                : item,
+            ),
+          );
+        } catch (error) {
+          setDraftAttachments((current) =>
+            current.map((item) =>
+              item.attachment.id === pendingItem.attachment.id
+                ? { ...item, error: errorText(error), uploading: false }
+                : item,
+            ),
+          );
+        }
+      }),
+    );
+  };
+  const removeDraftAttachment = (item: ComposerAttachmentState) => {
+    setDraftAttachments((current) =>
+      current.filter(({ attachment }) => attachment.id !== item.attachment.id),
+    );
+    if (item.localPreview) URL.revokeObjectURL(item.contentUrl);
+    if (!item.attachment.id.startsWith("local-")) {
+      void deleteChatAttachment(item.attachment.id).catch((error: unknown) =>
+        setAttachmentNotice(errorText(error)),
+      );
+    }
+  };
   const send = useMutation({
-    mutationFn: (text: string) => startTurn(chat.id, text, selectedModelId),
+    mutationFn: ({
+      attachmentIds,
+      text,
+    }: {
+      attachmentIds: string[];
+      text: string;
+    }) => startTurn(chat.id, text, selectedModelId, attachmentIds),
     onSuccess: async () => {
       setDraft("");
+      clearDraftAttachments();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
         queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
@@ -769,7 +942,7 @@ function ChatTranscript({
       input,
     }: {
       id: string;
-      input: { text?: string; frozen?: boolean };
+      input: { attachmentIds?: string[]; text?: string; frozen?: boolean };
     }) => updateQueuedPrompt(id, input),
     onSuccess: async () => {
       await Promise.all([
@@ -963,12 +1136,16 @@ function ChatTranscript({
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
     const text = draft.trim();
+    const readyAttachments = draftAttachments.filter(
+      ({ error, uploading }) => !error && !uploading,
+    );
     if (
-      !text ||
+      (!text && readyAttachments.length === 0) ||
       !selectedModelId ||
       send.isPending ||
       selectModel.isPending ||
-      updatePrompt.isPending
+      updatePrompt.isPending ||
+      draftAttachments.some(({ error, uploading }) => error || uploading)
     ) {
       return;
     }
@@ -976,18 +1153,28 @@ function ChatTranscript({
       updatePrompt.mutate(
         {
           id: editingPrompt.id,
-          input: { text, frozen: editingPrompt.frozen },
+          input: {
+            text,
+            attachmentIds: readyAttachments.map(
+              ({ attachment }) => attachment.id,
+            ),
+            frozen: editingPrompt.frozen,
+          },
         },
         {
           onSuccess: () => {
             setEditingPrompt(null);
             setDraft("");
+            clearDraftAttachments();
           },
         },
       );
       return;
     }
-    send.mutate(text);
+    send.mutate({
+      text,
+      attachmentIds: readyAttachments.map(({ attachment }) => attachment.id),
+    });
   };
 
   const executeSlashCommand = async ({ command }: SlashCommandSuggestion) => {
@@ -1046,7 +1233,7 @@ function ChatTranscript({
           "Review the current working tree for defects, regressions, and missing tests. Do not modify files.",
       };
       const prompt = prompts[name];
-      if (prompt) send.mutate(prompt);
+      if (prompt) send.mutate({ text: prompt, attachmentIds: [] });
     }
   };
 
@@ -1378,6 +1565,16 @@ function ChatTranscript({
             onEdit={(prompt) => {
               setEditingPrompt({ id: prompt.id, frozen: prompt.frozen });
               setDraft(prompt.text);
+              clearDraftAttachments();
+              setDraftAttachments(
+                prompt.attachments.map((attachment) => ({
+                  attachment,
+                  contentUrl: chatAttachmentContentUrl(attachment.id),
+                  error: null,
+                  localPreview: false,
+                  uploading: false,
+                })),
+              );
               updatePrompt.mutate({
                 id: prompt.id,
                 input: { frozen: true },
@@ -1405,8 +1602,61 @@ function ChatTranscript({
               reorderPrompts.mutate(ids);
             }}
           />
-          <div className="chat-composer-surface flex items-end gap-2 rounded-2xl border p-2 shadow-xl shadow-background/20 focus-within:ring-2 focus-within:ring-ring">
+          <div
+            className={cn(
+              "chat-composer-surface relative flex items-end gap-2 rounded-2xl border p-2 shadow-xl shadow-background/20 focus-within:ring-2 focus-within:ring-ring",
+              draggingFiles && "ring-2 ring-primary",
+            )}
+            onDragEnter={(event) => {
+              if (event.dataTransfer.types.includes("Files")) {
+                event.preventDefault();
+                setDraggingFiles(true);
+              }
+            }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                setDraggingFiles(false);
+              }
+            }}
+            onDragOver={(event) => {
+              if (event.dataTransfer.types.includes("Files")) {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "copy";
+              }
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDraggingFiles(false);
+              if (event.dataTransfer.files.length > 0) {
+                void attachFiles([...event.dataTransfer.files]);
+              }
+            }}
+          >
+            {draggingFiles ? (
+              <div className="pointer-events-none absolute inset-1 z-20 grid place-items-center rounded-xl bg-background/85 text-sm font-medium backdrop-blur-sm">
+                Drop files to attach
+              </div>
+            ) : null}
             <div className="min-w-0 flex-1">
+              {draftAttachments.length > 0 ? (
+                <div className="flex max-h-44 flex-wrap gap-2 overflow-y-auto px-1 pb-2">
+                  {draftAttachments.map((item) => (
+                    <AttachmentPreview
+                      key={item.attachment.id}
+                      attachment={item.attachment}
+                      contentUrl={item.contentUrl}
+                      error={item.error}
+                      uploading={item.uploading}
+                      onOpen={() => {
+                        if (!item.uploading && !item.error) {
+                          setViewingAttachment(item.attachment);
+                        }
+                      }}
+                      onRemove={() => removeDraftAttachment(item)}
+                    />
+                  ))}
+                </div>
+              ) : null}
               <div className="relative min-h-10 overflow-hidden">
                 {draft ? (
                   <div
@@ -1455,6 +1705,37 @@ function ChatTranscript({
                         ? `slash-command-${selectedCommandIndex}`
                         : undefined
                   }
+                  onPaste={(event) => {
+                    const files = [...event.clipboardData.files];
+                    if (files.length > 0) {
+                      event.preventDefault();
+                      void attachFiles(files);
+                      return;
+                    }
+                    const pastedText =
+                      event.clipboardData.getData("text/plain");
+                    if (!shouldAttachPastedText(pastedText)) return;
+                    event.preventDefault();
+                    const fileName = largePasteFileName();
+                    const file = new File([pastedText], fileName, {
+                      type: "text/plain",
+                    });
+                    const inserted = insertComposerText(
+                      draft,
+                      `Read attachment ${fileName}`,
+                      event.currentTarget.selectionStart,
+                      event.currentTarget.selectionEnd,
+                    );
+                    setDraft(inserted.text);
+                    setComposerCaret(inserted.caret);
+                    window.requestAnimationFrame(() => {
+                      composerRef.current?.setSelectionRange(
+                        inserted.caret,
+                        inserted.caret,
+                      );
+                    });
+                    void attachFiles([file], "paste");
+                  }}
                   onChange={(event) => {
                     setDraft(event.target.value);
                     setComposerCaret(event.target.selectionStart);
@@ -1546,6 +1827,29 @@ function ChatTranscript({
                 />
               </div>
               <div className="flex min-w-0 items-center gap-2 border-t px-1 pt-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => {
+                    if (event.target.files?.length) {
+                      void attachFiles([...event.target.files]);
+                    }
+                    event.target.value = "";
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="size-7 shrink-0 text-muted-foreground"
+                  title="Attach files"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Plus className="size-4" />
+                  <span className="sr-only">Attach files</span>
+                </Button>
                 <select
                   aria-label="Chat model"
                   value={selectedModelId}
@@ -1659,7 +1963,13 @@ function ChatTranscript({
               size="icon"
               type="submit"
               disabled={
-                !draft.trim() ||
+                (!draft.trim() &&
+                  !draftAttachments.some(
+                    ({ error, uploading }) => !error && !uploading,
+                  )) ||
+                draftAttachments.some(
+                  ({ error, uploading }) => Boolean(error) || uploading,
+                ) ||
                 !selectedModelId ||
                 send.isPending ||
                 selectModel.isPending ||
@@ -1674,6 +1984,32 @@ function ChatTranscript({
               <span className="sr-only">Send prompt</span>
             </Button>
           </div>
+          <AttachmentViewerDialog
+            attachment={viewingAttachment}
+            contentUrl={
+              viewingAttachment
+                ? (draftAttachments.find(
+                    ({ attachment }) => attachment.id === viewingAttachment.id,
+                  )?.contentUrl ??
+                  chatAttachmentContentUrl(viewingAttachment.id))
+                : null
+            }
+            open={viewingAttachment !== null}
+            onOpenChange={(open) => {
+              if (!open) setViewingAttachment(null);
+            }}
+          />
+          {imageSupportUncertain ? (
+            <p className="mt-2 text-center text-[11px] text-amber-700 dark:text-amber-300">
+              Image support will be detected for this model. If unavailable, the
+              agent will receive the worker-local file path instead.
+            </p>
+          ) : null}
+          {attachmentNotice ? (
+            <p className="mt-2 text-center text-[11px] text-destructive">
+              {attachmentNotice}
+            </p>
+          ) : null}
           {send.isError ||
           selectModel.isError ||
           compact.isError ||
@@ -3506,6 +3842,7 @@ export function App() {
           </Suspense>
         ) : selectedChat ? (
           <ChatTranscript
+            key={selectedChat.id}
             chat={selectedChat}
             settings={settings.data}
             syncEnabled={

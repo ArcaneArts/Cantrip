@@ -1,6 +1,9 @@
 import type {
   AgentInteractionRequestPayload,
   AgentInteractionResponse,
+  ChatAttachmentKind,
+  ChatAttachmentSource,
+  ChatAttachmentSummary,
   ChatMessageContent,
   CodexRuntimeReport,
   PendingPlanQuestion,
@@ -596,6 +599,41 @@ export const chatMessages = pgTable(
   ],
 );
 
+export const chatAttachments = pgTable(
+  "chat_attachments",
+  {
+    id: text("id").primaryKey(),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    fileName: text("file_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    kind: text("kind").$type<ChatAttachmentKind>().notNull(),
+    source: text("source").$type<ChatAttachmentSource>().notNull(),
+    status: text("status").notNull().default("ready"),
+    previewText: text("preview_text"),
+    sha256: text("sha256").notNull(),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("chat_attachments_chat_created_index").on(
+      table.chatId,
+      table.createdAt,
+    ),
+    index("chat_attachments_worker_index").on(table.workerId),
+  ],
+);
+
 export const queuedPrompts = pgTable(
   "queued_prompts",
   {
@@ -604,6 +642,10 @@ export const queuedPrompts = pgTable(
       .notNull()
       .references(() => chats.id, { onDelete: "cascade" }),
     text: text("text").notNull(),
+    attachments: jsonb("attachments")
+      .$type<ChatAttachmentSummary[]>()
+      .notNull()
+      .default([]),
     modelId: text("model_id")
       .notNull()
       .references(() => modelProfiles.id, { onDelete: "restrict" }),

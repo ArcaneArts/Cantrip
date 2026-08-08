@@ -8,6 +8,7 @@ import {
   agentThreadSyncSchema,
   browserListSchema,
   browserSummarySchema,
+  chatAttachmentSummarySchema,
   decodeRemoteSurfaceFrame,
   encodeRemoteSurfaceFrame,
   chatListSchema,
@@ -89,11 +90,13 @@ const turnRouteIds: string[] = [];
 const turnPermissionProfileIds: string[] = [];
 const turnPrompts: string[] = [];
 const turnSkillNames: string[][] = [];
+const turnAttachmentIds: string[][] = [];
 const turnTimeouts: Array<number | null | undefined> = [];
 const deletedProjectPaths: string[] = [];
 const authProviderIds: string[] = [];
 const exhaustedProviderIds = new Set<string>();
 const steeredPrompts: string[] = [];
+const steeredAttachmentIds: string[][] = [];
 const pauseCommands: Array<{ chatId: string; paused: boolean }> = [];
 let codexGoal: ThreadGoal | null = null;
 let codexPlanMode: PlanMode = "default";
@@ -110,6 +113,11 @@ const relayedSurfaceFrames: Array<{
 const surfaceAttachCommands: Array<
   Extract<WorkerCommand, { type: "surface.attach" }>
 > = [];
+const attachmentUploads = new Map<
+  string,
+  { chunks: Buffer[]; fileName: string; sizeBytes: number }
+>();
+const attachmentFiles = new Map<string, Buffer>();
 const surfaceFrameListeners = new Set<
   (
     header: Parameters<WorkerCommandBus["sendSurfaceFrame"]>[1],
@@ -142,6 +150,54 @@ const workerBridge = {
   },
   async request(_workerId, command, options) {
     switch (command.type) {
+      case "attachment.upload.begin":
+        attachmentUploads.set(command.attachmentId, {
+          chunks: [],
+          fileName: command.fileName,
+          sizeBytes: command.sizeBytes,
+        });
+        return { accepted: true };
+      case "attachment.upload.chunk": {
+        const upload = attachmentUploads.get(command.attachmentId);
+        if (!upload) throw new Error("Attachment upload was not started.");
+        upload.chunks[command.chunkIndex] = Buffer.from(command.data, "base64");
+        return { accepted: true };
+      }
+      case "attachment.upload.complete": {
+        const upload = attachmentUploads.get(command.attachmentId);
+        if (!upload) throw new Error("Attachment upload was not started.");
+        const bytes = Buffer.concat(upload.chunks);
+        attachmentFiles.set(command.attachmentId, bytes);
+        attachmentUploads.delete(command.attachmentId);
+        return {
+          path: path.join(
+            dataDirectory,
+            "attachments",
+            command.chatId,
+            command.attachmentId,
+            upload.fileName,
+          ),
+          sha256: "0".repeat(64),
+          sizeBytes: bytes.byteLength,
+        };
+      }
+      case "attachment.read": {
+        const bytes = attachmentFiles.get(command.attachmentId);
+        if (!bytes) throw new Error("Attachment was not found.");
+        const chunk = bytes.subarray(
+          command.offset,
+          command.offset + command.limit,
+        );
+        return {
+          data: chunk.toString("base64"),
+          eof: command.offset + chunk.byteLength >= bytes.byteLength,
+          sizeBytes: bytes.byteLength,
+        };
+      }
+      case "attachment.delete":
+        attachmentUploads.delete(command.attachmentId);
+        attachmentFiles.delete(command.attachmentId);
+        return { accepted: true };
       case "codex.auth.status":
         authProviderIds.push(command.providerId);
         return {
@@ -415,6 +471,9 @@ const workerBridge = {
           turnPermissionProfileIds.push(command.permissionProfileId);
           turnPrompts.push(command.prompt);
           turnSkillNames.push(command.skillNames);
+          turnAttachmentIds.push(
+            command.attachments.map((attachment) => attachment.id),
+          );
           turnTimeouts.push(options?.timeoutMs);
         }
         if (command.prompt === "Finish the long-running goal") {
@@ -714,6 +773,9 @@ const workerBridge = {
         return { accepted: true };
       case "chat.steer":
         steeredPrompts.push(command.prompt);
+        steeredAttachmentIds.push(
+          command.attachments.map((attachment) => attachment.id),
+        );
         return { steered: true, turnId: "turn-held" };
       case "chat.sync":
         return {
@@ -1428,6 +1490,36 @@ describe("local server foundation", () => {
       payload: { title: "Foundation" },
     });
     const chat = chatSummarySchema.parse(chatResponse.json());
+    const attachmentText = "A durable worker-owned attachment.";
+    const uploadedAttachment = chatAttachmentSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/chats/${chat.id}/attachments`,
+          headers: {
+            "content-type": "application/octet-stream",
+            "x-cantrip-file-name": encodeURIComponent("notes.txt"),
+            "x-cantrip-mime-type": "text/plain",
+            "x-cantrip-attachment-kind": "text",
+            "x-cantrip-attachment-source": "paste",
+          },
+          payload: Buffer.from(attachmentText),
+        })
+      ).json(),
+    );
+    expect(uploadedAttachment).toMatchObject({
+      chatId: chat.id,
+      fileName: "notes.txt",
+      kind: "text",
+      previewText: attachmentText,
+      source: "paste",
+    });
+    const attachmentContent = await firstApp.inject({
+      method: "GET",
+      url: `/api/attachments/${uploadedAttachment.id}/content`,
+    });
+    expect(attachmentContent.statusCode).toBe(200);
+    expect(attachmentContent.body).toBe(attachmentText);
     const selectedChat = chatSummarySchema.parse(
       (
         await firstApp.inject({
@@ -1840,6 +1932,7 @@ describe("local server foundation", () => {
 
     const messagePayload = {
       text: "$skill-creator Persist this message.",
+      attachmentIds: [uploadedAttachment.id],
       idempotencyKey: "first-message",
     };
     const firstMessage = chatMessageSchema.parse(
@@ -1874,6 +1967,11 @@ describe("local server foundation", () => {
     });
     expect(turnRequests).toBe(1);
     expect(turnSkillNames[0]).toEqual(["skill-creator"]);
+    expect(turnAttachmentIds[0]).toEqual([uploadedAttachment.id]);
+    expect(firstMessage.content).toContainEqual({
+      type: "attachment",
+      attachment: uploadedAttachment,
+    });
     expect(turnTimeouts).toEqual([null]);
     expect(turnModelIds).toContain(selectedModel.id);
     expect(turnPermissionProfileIds[0]).toBe(":danger-full-access");
@@ -2391,6 +2489,22 @@ describe("local server foundation", () => {
       url: `/api/chats/${queueChat.id}/model`,
       payload: { modelId: selectedModel.id },
     });
+    const queuedAttachment = chatAttachmentSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/chats/${queueChat.id}/attachments`,
+          headers: {
+            "content-type": "application/octet-stream",
+            "x-cantrip-file-name": encodeURIComponent("queued.txt"),
+            "x-cantrip-mime-type": "text/plain",
+            "x-cantrip-attachment-kind": "text",
+            "x-cantrip-attachment-source": "file",
+          },
+          payload: Buffer.from("queued attachment"),
+        })
+      ).json(),
+    );
     await firstApp.inject({
       method: "POST",
       url: `/api/chats/${queueChat.id}/turns`,
@@ -2403,10 +2517,15 @@ describe("local server foundation", () => {
         await firstApp.inject({
           method: "POST",
           url: `/api/chats/${queueChat.id}/turns`,
-          payload: { text: "First follow-up", idempotencyKey: "queued-first" },
+          payload: {
+            text: "First follow-up",
+            attachmentIds: [queuedAttachment.id],
+            idempotencyKey: "queued-first",
+          },
         })
       ).json().prompt,
     );
+    expect(firstQueued.attachments).toEqual([queuedAttachment]);
     const secondQueued = queuedPromptSchema.parse(
       (
         await firstApp.inject({
@@ -2465,6 +2584,7 @@ describe("local server foundation", () => {
       }),
     ).toMatchObject({ statusCode: 200 });
     expect(steeredPrompts).toContain("First follow-up");
+    expect(steeredAttachmentIds).toContainEqual([queuedAttachment.id]);
 
     expect(
       chatPauseStateSchema.parse(
