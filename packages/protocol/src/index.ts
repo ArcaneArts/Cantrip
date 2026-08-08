@@ -1239,6 +1239,7 @@ export const projectCloneResultSchema = z.object({
   reused: z.boolean().default(false),
   updated: z.boolean().default(false),
   warning: z.string().min(1).nullable().default(null),
+  worktreePolicy: worktreePolicySchema.nullable().optional(),
 });
 
 export const projectRemoveSchema = z.object({
@@ -1690,6 +1691,9 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     executionLaneId: z.string().min(1),
     worktreeId: z.string().min(1),
     cwd: z.string().min(1),
+    isPrimary: z.boolean(),
+    worktreeMode: z.enum(["agent-managed", "pinned"]),
+    worktreePolicy: worktreePolicySchema,
     threadId: z.string().min(1).nullable(),
     prompt: z.string().min(1),
     skillNames: z.array(z.string().min(1)).max(64).default([]),

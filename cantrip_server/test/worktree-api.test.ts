@@ -461,7 +461,10 @@ describe.sequential("server worktree control plane", () => {
     expect(command).toMatchObject({
       chatId: first.id,
       cwd: primaryPath,
+      isPrimary: true,
       worktreeId: primaryId,
+      worktreeMode: "agent-managed",
+      worktreePolicy: "required-for-writes",
     });
     expect(command.executionLaneId).toBeTruthy();
     const messages = chatMessageListSchema.parse(
@@ -631,12 +634,16 @@ describe.sequential("server worktree control plane", () => {
     expect(originCommand).toMatchObject({
       chatId: chat.id,
       cwd: primaryPath,
+      isPrimary: true,
       worktreeId: primaryId,
+      worktreePolicy: "required-for-writes",
     });
     expect(continuationCommand).toMatchObject({
       chatId: chat.id,
       cwd: target.path,
+      isPrimary: false,
       worktreeId: targetId,
+      worktreePolicy: "required-for-writes",
     });
     expect(continuationCommand!.executionLaneId).not.toBe(
       originCommand!.executionLaneId,

@@ -55,6 +55,7 @@ import type {
   WorkerSummary,
   WorkerWorktreeSummary,
   WorktreeInventory,
+  WorktreePolicy,
   WorktreeSelection,
 } from "@cantrip/protocol";
 import { and, asc, desc, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
@@ -89,6 +90,7 @@ export interface ChatExecutionContext {
   workerId: string;
   worktreeId: string;
   worktreeMode: ChatSummary["worktreeMode"];
+  worktreePolicy: WorktreePolicy;
 }
 
 export class ExecutionLaneConflictError extends Error {}
@@ -1537,6 +1539,7 @@ export class ServerRepository {
         const rows = await transaction
           .select({
             chat: schema.chats,
+            project: schema.projects,
             worktree: schema.projectWorktrees,
             runtime: schema.chatRuntimeSessions,
           })
@@ -1670,6 +1673,7 @@ export class ServerRepository {
           workerId: row.worktree.workerId,
           worktreeId: row.worktree.id,
           worktreeMode: row.chat.worktreeMode as ChatSummary["worktreeMode"],
+          worktreePolicy: row.project.worktreePolicy as WorktreePolicy,
         };
       });
     } catch (error) {
@@ -2372,6 +2376,7 @@ export class ServerRepository {
         .set({
           setupStatus: "ready",
           setupError: null,
+          worktreePolicy: clone.worktreePolicy ?? projectRows[0].worktreePolicy,
           updatedAt: new Date(),
         })
         .where(eq(schema.projects.id, projectId))
@@ -4329,6 +4334,7 @@ export class ServerRepository {
       .select({
         chat: schema.chats,
         lane: schema.chatExecutionLanes,
+        project: schema.projects,
         worktree: schema.projectWorktrees,
         runtime: schema.chatRuntimeSessions,
       })
@@ -4381,6 +4387,7 @@ export class ServerRepository {
       workerId: row.worktree.workerId,
       worktreeId: row.worktree.id,
       worktreeMode: row.chat.worktreeMode as ChatSummary["worktreeMode"],
+      worktreePolicy: row.project.worktreePolicy as WorktreePolicy,
     };
   }
 

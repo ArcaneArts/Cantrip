@@ -15,7 +15,7 @@ Cantrip organizes work into GitHub-backed projects. Each project has one source 
 - Read-only Explorer tabs with a source or Markdown preview for supported text files.
 - Worker-streamed Browser tabs for project-related web pages.
 - Remote Desktop tabs for worker-reachable VNC/RFB endpoints.
-- Git history with a branch graph, refs and tags, current checkout state, staged and unstaged changes, commits, branches, pull/push operations, and GitHub issue browsing and management.
+- Git history with a branch graph, refs and tags, every known worktree HEAD, per-worktree WIP state, staged and unstaged changes, commits, branches, pull/push operations, and GitHub issue browsing and management.
 
 Settings are stored by the server for the current Cantrip identity rather than in browser cookies. They include System/Light/Dark appearance, optional high contrast, model providers, models, and the default model. Provider support currently includes:
 
@@ -57,13 +57,13 @@ The React frontend is the control surface. Vite provides the browser development
 
 ### `cantrip_server`
 
-The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings, stores projects and durable conversation history, tracks worker presence, and routes every file, terminal, Git, and Codex operation to the correct worker.
+The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings, stores projects and durable conversation history, tracks worker presence, persists worktree observations and chat execution leases, and routes every file, terminal, Git, and Codex operation to the correct worker checkout.
 
 Local development uses embedded PGlite under `.cantrip/dev/`. A PostgreSQL `DATABASE_URL` can be supplied for a standalone database. Source files are not copied into the server database.
 
 ### `cantrip_worker`
 
-The worker is the machine that actually performs work. It owns project source folders, clones repositories, runs Git and GitHub CLI operations, provides filesystem access, hosts PTY processes, supervises Codex runtimes, runs Browser-tab Chromium sessions, and connects to configured VNC/RFB endpoints. Provider URLs, Browser-tab addresses, and Remote Desktop hosts such as `localhost` are resolved from the worker machine, which is important once the server and worker live on different hosts.
+The worker is the machine that actually performs work. It owns project source folders and their physical Git worktrees, clones repositories, runs Git and GitHub CLI operations, provides filesystem access, hosts PTY processes, supervises worktree-specific Codex runtimes, runs Browser-tab Chromium sessions, and connects to configured VNC/RFB endpoints. Provider URLs, Browser-tab addresses, and Remote Desktop hosts such as `localhost` are resolved from the worker machine, which is important once the server and worker live on different hosts.
 
 Workers communicate through the server. There is intentionally no app-to-worker connection mode.
 
@@ -78,6 +78,35 @@ The current local mode has one anonymous Cantrip user and no Cantrip sign-in scr
 The architecture leaves room for a future cloud server to route several outbound-connected workers—for example, a desktop, laptop, and VPS—to web, desktop, and mobile clients. That mode will require real accounts, worker enrollment, secure remote transport, and possibly a relay. Those capabilities should not be inferred from the current local development authentication.
 
 Conversation history and configuration live on the server, so they remain readable when a worker is unavailable. Project files and live runtime state remain on the worker. Moving a conversation to another worker will therefore require a compatible checkout and an explicit handoff rather than pretending that uncommitted files moved automatically.
+
+## Agent-managed worktrees
+
+Every GitHub-backed project has a non-removable **Primary** worktree at the
+project source path. Additional worktrees are worker-created checkouts beneath
+Cantrip's private worker data directory, or external checkouts discovered by
+Git reconciliation. The app never chooses an unrestricted filesystem path.
+
+Chats default to **Agent managed**. Such a chat may inspect Primary, ask
+Cantrip's Codex-native worktree tools to acquire or create an isolated lane,
+finish the current turn, and continue transparently in a worktree-specific
+runtime. **Pinned** chats stay on the checkout selected by the user until they
+are returned to Agent managed. One server-owned transcript spans every lane,
+and past messages retain the worktree and execution-lane attribution that
+produced them.
+
+The sidebar remains flat: a compact worktree icon appears only on secondary
+checkout tabs. The active Chat, Terminal, Explorer, and History header contains
+a worktree control. Terminals and Explorers are physically bound to one
+checkout; linked Codex consoles follow their parent chat. Browser and Issues
+tabs remain project-level. History selects one checkout for Git actions while
+showing markers and virtual WIP rows for every known worktree.
+
+Worktree removal never deletes its branch. Primary cannot be removed, dirty or
+locked worktrees require explicit handling, running chats and terminals block
+unsafe removal, and external worktrees require explicit authorization. Server
+metadata remains visible while a worker is offline. See
+[docs/WORKTREES.md](docs/WORKTREES.md) for user behavior, safety rules, API
+boundaries, and the development test matrix.
 
 ## Repository layout
 
@@ -260,6 +289,9 @@ pnpm typecheck
 pnpm format
 pnpm format:check
 ```
+
+Worktree-focused tests and manual PGlite/PostgreSQL checks are documented in
+[docs/WORKTREES.md](docs/WORKTREES.md#development-validation).
 
 To verify only the Tauri Rust shell:
 

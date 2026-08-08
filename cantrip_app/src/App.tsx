@@ -15,6 +15,7 @@ import type {
   SettingsBundle,
   SkillSummary,
   TerminalSummary,
+  WorktreePolicy,
 } from "@cantrip/protocol";
 import {
   useMutation,
@@ -158,6 +159,7 @@ import {
   updateBrowser,
   updateExplorerWorktree,
   updateProjectViewWorktree,
+  updateProjectWorktreePolicy,
   updateQueuedPrompt,
   updateTerminalWorktree,
 } from "@/lib/api";
@@ -2017,6 +2019,21 @@ export function App() {
       ]);
     },
   });
+  const updateProjectWorktreePolicyMutation = useMutation({
+    mutationFn: ({
+      projectId,
+      policy,
+    }: {
+      projectId: string;
+      policy: WorktreePolicy;
+    }) => updateProjectWorktreePolicy(projectId, policy),
+    onSuccess: (updated) =>
+      queryClient.setQueryData<ProjectSummary[]>(["projects"], (current = []) =>
+        current.map((project) =>
+          project.id === updated.id ? updated : project,
+        ),
+      ),
+  });
   const reorderProjectsMutation = useMutation({
     mutationFn: (ids: string[]) => reorderProjects(ids),
     onMutate: async (ids) => {
@@ -2580,6 +2597,12 @@ export function App() {
               }
               onRemoveProject={(projectId, deleteLocalFiles) =>
                 removeProjectMutation.mutate({ projectId, deleteLocalFiles })
+              }
+              onSetProjectWorktreePolicy={(projectId, policy) =>
+                updateProjectWorktreePolicyMutation.mutate({
+                  projectId,
+                  policy,
+                })
               }
               onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
               onReorderTabs={(projectId, ids) =>
@@ -3490,6 +3513,13 @@ export function App() {
               }
               onRemoveProject={(projectId, deleteLocalFiles) => {
                 removeProjectMutation.mutate({ projectId, deleteLocalFiles });
+                setMobileNavigationOpen(false);
+              }}
+              onSetProjectWorktreePolicy={(projectId, policy) => {
+                updateProjectWorktreePolicyMutation.mutate({
+                  projectId,
+                  policy,
+                });
                 setMobileNavigationOpen(false);
               }}
               onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}

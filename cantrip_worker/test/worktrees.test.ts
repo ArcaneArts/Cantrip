@@ -1,5 +1,12 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -242,6 +249,47 @@ describe("worker Git worktrees", () => {
         path.join(first.root, "arbitrary"),
       ),
     ).rejects.toThrow("not a worktree of this project source");
+    const crossRepositoryLink = path.join(first.root, "linked-second-repo");
+    await symlink(second.repository, crossRepositoryLink, "dir");
+    await expect(
+      first.manager.status(first.repository, crossRepositoryLink),
+    ).rejects.toThrow("not a worktree of this project source");
+  });
+
+  it("serializes colliding creates and surfaces branches checked out elsewhere", async () => {
+    const { manager, repository } = await createRepository();
+    await expect(
+      manager.create(repository, "primary-collision", "Primary collision", {
+        type: "existingBranch",
+        branch: "main",
+      }),
+    ).rejects.toThrow(/already (?:checked out|used by worktree)/iu);
+
+    const results = await Promise.allSettled([
+      manager.create(repository, "collision-one", "Collision one", {
+        type: "newBranch",
+        branch: "agent/collision",
+        startPoint: null,
+      }),
+      manager.create(repository, "collision-two", "Collision two", {
+        type: "newBranch",
+        branch: "agent/collision",
+        startPoint: null,
+      }),
+    ]);
+    expect(results.map(({ status }) => status).sort()).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
+    const rejection = results.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    expect(String(rejection?.reason)).toMatch(/already exists/iu);
+    expect(
+      (await manager.list(repository)).worktrees.filter(
+        ({ branch }) => branch === "agent/collision",
+      ),
+    ).toHaveLength(1);
   });
 
   it("reports and prunes stale missing worktree metadata", async () => {

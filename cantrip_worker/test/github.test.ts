@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { GithubClient } from "../src/github.js";
+import { GithubClient, readProjectWorktreePolicy } from "../src/github.js";
 
 const directories: string[] = [];
 const originalPath = process.env.PATH;
@@ -19,6 +19,29 @@ afterEach(async () => {
 });
 
 describe("GitHub project files", () => {
+  it("reads an optional repository worktree policy without trusting invalid files", async () => {
+    const repository = await mkdtemp(
+      path.join(tmpdir(), "cantrip-project-policy-test-"),
+    );
+    directories.push(repository);
+    const policyDirectory = path.join(repository, ".cantrip");
+    await mkdir(policyDirectory);
+    const policyPath = path.join(policyDirectory, "project.json");
+    await writeFile(
+      policyPath,
+      JSON.stringify({ worktreePolicy: "required-for-writes" }),
+    );
+    await expect(readProjectWorktreePolicy(repository)).resolves.toEqual({
+      policy: "required-for-writes",
+      warning: null,
+    });
+
+    await writeFile(policyPath, JSON.stringify({ worktreePolicy: "unsafe" }));
+    await expect(readProjectWorktreePolicy(repository)).resolves.toEqual({
+      policy: null,
+      warning: expect.stringContaining("worktreePolicy is invalid"),
+    });
+  });
   it("lists issue-only results and supports issue detail mutations", async () => {
     const dataDirectory = await mkdtemp(
       path.join(tmpdir(), "cantrip-github-issues-test-"),

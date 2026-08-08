@@ -99,6 +99,9 @@ cargo check --manifest-path cantrip_app/src-tauri/Cargo.toml
 git diff --check
 ```
 
+Changes to worktree persistence, routing, worker Git behavior, or History must
+also follow the focused matrix in [the worktree guide](../WORKTREES.md#development-validation).
+
 Do not claim validation that did not run. Inspect the final diff and branch
 status before committing.
 

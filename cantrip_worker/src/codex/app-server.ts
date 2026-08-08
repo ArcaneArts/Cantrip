@@ -205,11 +205,17 @@ export interface RunAgentTurnOptions {
   chatId: string;
   clientMessageId: string;
   cwd: string;
+  isPrimary: Extract<WorkerCommand, { type: "chat.turn" }>["isPrimary"];
   model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
   provider: Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
   prompt: string;
   skillNames: string[];
   threadId: string | null;
+  worktreeMode: Extract<WorkerCommand, { type: "chat.turn" }>["worktreeMode"];
+  worktreePolicy: Extract<
+    WorkerCommand,
+    { type: "chat.turn" }
+  >["worktreePolicy"];
   onActivity?: (activity: AgentActivity) => void;
   onCheckpoint?: ActiveTurn["onCheckpoint"];
   onWorktreeToolCall?: ActiveTurn["onWorktreeToolCall"];
@@ -376,6 +382,45 @@ export const CANTRIP_WORKTREE_DYNAMIC_TOOLS = [
 const CANTRIP_WORKTREE_DEVELOPER_INSTRUCTIONS =
   "Cantrip owns Git worktree paths and execution lanes. Use the cantrip_worktree_* tools instead of invoking git worktree directly. A successful acquire, switch, or release schedules a safe runtime transition; immediately finish the current turn after that tool returns so Cantrip can checkpoint and continue in the selected worktree. Never claim that CWD changed inside the current turn.";
 
+export function codexWorktreeTurnPolicy(
+  options: Pick<
+    RunAgentTurnOptions,
+    "cwd" | "isPrimary" | "worktreeMode" | "worktreePolicy"
+  >,
+) {
+  const cwd = path.resolve(options.cwd);
+  const primaryIsReadOnly =
+    options.isPrimary && options.worktreePolicy === "required-for-writes";
+  const modeInstruction =
+    options.worktreeMode === "pinned"
+      ? "This chat is pinned to the current worktree. Do not acquire or switch worktrees unless the user first returns the chat to Agent managed mode."
+      : "This chat is Agent managed and may use Cantrip worktree tools when isolation is appropriate.";
+  const policyInstruction = primaryIsReadOnly
+    ? "The project policy is Required for writes and this turn is on Primary. Primary is inspection-only: do not mutate files or Git state here. Before writing, acquire, create, or switch to a secondary worktree with a Cantrip tool, then finish this turn so Cantrip can continue safely."
+    : options.worktreePolicy === "direct"
+      ? "The project policy is Direct. Writes are permitted in the current checkout, including Primary."
+      : options.worktreePolicy === "required-for-writes"
+        ? "The project policy is Required for writes and this turn is in a secondary worktree, so writes are permitted here."
+        : "The project policy is Agent managed. You may work in the current checkout or acquire a secondary worktree when the task benefits from isolation.";
+  return {
+    additionalContext: {
+      "cantrip.worktree-policy": {
+        kind: "application",
+        value: `${policyInstruction} ${modeInstruction}`,
+      },
+    },
+    sandboxPolicy: primaryIsReadOnly
+      ? { type: "readOnly", networkAccess: false }
+      : {
+          type: "workspaceWrite",
+          writableRoots: [cwd],
+          networkAccess: false,
+          excludeTmpdirEnvVar: false,
+          excludeSlashTmp: false,
+        },
+  } as const;
+}
+
 export async function executeDynamicWorktreeTool(
   handler: WorktreeToolHandler | undefined,
   params: DynamicToolCallParams,
@@ -473,9 +518,9 @@ export function parseCodexSkills(response: unknown, cwd: string): CodexSkill[] {
   );
 }
 
-export type CompactAgentThreadOptions = Omit<
+export type CompactAgentThreadOptions = Pick<
   RunAgentTurnOptions,
-  "chatId" | "clientMessageId" | "onActivity" | "prompt" | "skillNames"
+  "cwd" | "model" | "provider"
 > & {
   threadId: string;
 };
@@ -724,6 +769,7 @@ export class CodexAppServer {
     const response = (await this.request("turn/start", {
       threadId,
       ...codexWorkspaceContext(options.cwd),
+      ...codexWorktreeTurnPolicy(options),
       clientUserMessageId: `cantrip:${options.clientMessageId}`,
       input: [
         { type: "text", text: options.prompt, text_elements: [] },

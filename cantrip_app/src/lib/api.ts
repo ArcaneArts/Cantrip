@@ -66,6 +66,7 @@ import type {
   ProjectWorktreeCreate,
   RemoteDesktopCreate,
   UserSettingsUpdate,
+  WorktreePolicy,
 } from "@cantrip/protocol";
 
 const serverUrl = (import.meta.env.VITE_CANTRIP_SERVER_URL ?? "").replace(
@@ -436,6 +437,21 @@ export async function createGithubProject(input: {
 }) {
   return projectSummarySchema.parse(
     await post("/api/projects/from-github", input),
+  );
+}
+
+export async function updateProjectWorktreePolicy(
+  projectId: string,
+  policy: WorktreePolicy,
+) {
+  return projectSummarySchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktree-policy`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ policy }),
+      },
+    ),
   );
 }
 
