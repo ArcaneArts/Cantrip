@@ -6,7 +6,8 @@ import type { WorkerCommand, WorkerEvent } from "@cantrip/protocol";
 import { codexAccountHome } from "./codex/account-home.js";
 import { CodexAppServer, codexRuntimeId } from "./codex/app-server.js";
 import { CodexAuthClient } from "./codex/auth-client.js";
-import { discoverCodexVersion } from "./codex/discovery.js";
+import { discoverCodexRuntime } from "./codex/discovery.js";
+import type { CodexRuntime } from "./codex/runtime.js";
 import { invokeCantripWorktreeTool } from "./codex/worktree-tool-client.js";
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
 import { readWorkerConfig } from "./config.js";
@@ -28,7 +29,11 @@ const HEARTBEAT_INTERVAL_MS = 5_000;
 
 async function start(): Promise<void> {
   const config = readWorkerConfig();
-  const codexVersion = await discoverCodexVersion(config.codexBinary);
+  const codexHome = path.join(config.dataDirectory, "codex-home");
+  const codexRuntime = await discoverCodexRuntime(
+    config.codexBinary,
+    path.join(config.dataDirectory, "codex-compatibility-probe"),
+  );
   const browserAdapter = new BrowserRemoteSurfaceAdapter({
     dataDirectory: config.dataDirectory,
   });
@@ -36,7 +41,7 @@ async function start(): Promise<void> {
   const vncAdapter = new VncRemoteSurfaceAdapter(vncSecrets);
   const heartbeat = createHeartbeat(
     config,
-    codexVersion,
+    codexRuntime,
     new Date().toISOString(),
     {
       browser: browserAdapter.available,
@@ -50,9 +55,8 @@ async function start(): Promise<void> {
   let lastConnectionError: string | null = null;
   let stopping = false;
   const github = new GithubClient(config.dataDirectory);
-  const codexHome = path.join(config.dataDirectory, "codex-home");
   const codexAuthClients = new Map<string, CodexAuthClient>();
-  const codexRuntimes = new Map<string, CodexAppServer>();
+  const codexRuntimes = new Map<string, CodexRuntime>();
   const terminals = new TerminalManager();
   const remoteSurfaces = new RemoteSurfaceManager({
     browser: browserAdapter,
@@ -91,6 +95,7 @@ async function start(): Promise<void> {
         command.provider.kind === "chatgpt"
           ? accountHomeFor(command.provider.id)
           : codexHome,
+        codexRuntime,
       );
       codexRuntimes.set(runtimeId, runtime);
     }
@@ -393,7 +398,7 @@ async function start(): Promise<void> {
   );
 
   console.log(
-    `[cantrip_worker] Starting ${heartbeat.name} (${heartbeat.workerId}); Codex: ${codexVersion ?? "not found"}; Browser: ${browserAdapter.executable ?? "Chromium not found"}`,
+    `[cantrip_worker] Starting ${heartbeat.name} (${heartbeat.workerId}); Codex: ${codexRuntime.version?.raw ?? "not found"} (${codexRuntime.compatibility}); Browser: ${browserAdapter.executable ?? "Chromium not found"}`,
   );
 
   const publish = async () => {

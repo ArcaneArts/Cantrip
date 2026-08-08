@@ -29,6 +29,7 @@ import {
   systemHealthSchema,
   terminalClientMessageSchema,
   terminalServerMessageSchema,
+  unprobedCodexRuntimeReport,
   workerCommandSchema,
   worktreeInventorySchema,
   workerEventEnvelopeSchema,
@@ -382,6 +383,7 @@ describe("Cantrip protocol", () => {
     });
 
     expect(heartbeat.workerId).toBe("local-worker");
+    expect(heartbeat.codexRuntime).toEqual(unprobedCodexRuntimeReport);
     expect(heartbeat.remoteSurfaces).toMatchObject({
       browser: false,
       vnc: false,

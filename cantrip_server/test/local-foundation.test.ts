@@ -41,6 +41,7 @@ import {
   skillListSchema,
   terminalListSchema,
   terminalSummarySchema,
+  unprobedCodexRuntimeReport,
   workerListSchema,
 } from "@cantrip/protocol";
 import type { ThreadGoal } from "@cantrip/protocol";
@@ -654,6 +655,7 @@ describe("local server foundation", () => {
         platform: "darwin",
         architecture: "arm64",
         codexVersion: "codex-cli 1.0.0",
+        codexRuntime: unprobedCodexRuntimeReport,
         remoteSurfaces: {
           browser: true,
           vnc: true,
@@ -1905,6 +1907,7 @@ describe("local server foundation", () => {
 
     expect(projects).toHaveLength(1);
     expect(workers).toHaveLength(1);
+    expect(workers[0]?.codexRuntime).toEqual(unprobedCodexRuntimeReport);
     expect(messages.slice(0, 4)).toMatchObject([
       firstMessage,
       {

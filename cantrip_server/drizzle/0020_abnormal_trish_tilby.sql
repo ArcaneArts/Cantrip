@@ -1,0 +1,1 @@
+ALTER TABLE "workers" ADD COLUMN "codex_runtime" jsonb DEFAULT '{"adapter":"app-server","compatibility":"missing","version":null,"testedRange":">=0.146.0 <0.147.0","initialize":null,"methods":{},"features":[],"degradedReasons":["This worker has not reported runtime compatibility."]}'::jsonb NOT NULL;
