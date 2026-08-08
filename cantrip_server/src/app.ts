@@ -170,6 +170,12 @@ import {
   workflowRevisionCreateSchema,
   workflowRevisionListSchema,
   workflowRevisionSchema,
+  workflowRunCreateSchema,
+  workflowRunDetailSchema,
+  workflowRunEventPageSchema,
+  workflowRunEventQuerySchema,
+  workflowRunListSchema,
+  workflowRunQuerySchema,
 } from "@cantrip/protocol/workflows";
 
 import type { ServerConfig } from "./config.js";
@@ -181,6 +187,7 @@ import {
   type ChatExecutionContext,
   type ModelRuntime,
 } from "./db/repository.js";
+import { WorkflowRunConflictError } from "./db/workflow-runs.js";
 import { WorkflowConflictError } from "./db/workflows.js";
 import {
   WorkerBridge,
@@ -2226,6 +2233,82 @@ export async function buildApp({
         : reply.code(404).send({ error: "Workflow revision not found." });
     },
   );
+
+  app.get<{
+    Querystring: {
+      limit?: string;
+      projectId?: string;
+      recoveryState?: string;
+      status?: string;
+      workflowId?: string;
+    };
+  }>("/api/workflow-runs", async (request, reply) => {
+    const query = workflowRunQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.code(400).send(invalidBody(query.error.issues));
+    }
+    return reply.send(
+      workflowRunListSchema.parse(
+        await repository.workflowRuns.listRuns(LOCAL_USER_ID, query.data),
+      ),
+    );
+  });
+
+  app.post("/api/workflow-runs", async (request, reply) => {
+    const input = workflowRunCreateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const result = await repository.workflowRuns.createRun(
+        LOCAL_USER_ID,
+        input.data,
+      );
+      return result
+        ? reply
+            .code(result.created ? 201 : 200)
+            .send(workflowRunDetailSchema.parse(result.run))
+        : reply
+            .code(404)
+            .send({ error: "Workflow revision or project not found." });
+    } catch (error) {
+      if (error instanceof WorkflowRunConflictError) {
+        return reply.code(409).send({ error: error.message });
+      }
+      throw error;
+    }
+  });
+
+  app.get<{ Params: { runId: string } }>(
+    "/api/workflow-runs/:runId",
+    async (request, reply) => {
+      const run = await repository.workflowRuns.getRun(
+        LOCAL_USER_ID,
+        request.params.runId,
+      );
+      return run
+        ? reply.send(workflowRunDetailSchema.parse(run))
+        : reply.code(404).send({ error: "Workflow run not found." });
+    },
+  );
+
+  app.get<{
+    Params: { runId: string };
+    Querystring: { afterSequence?: string; limit?: string };
+  }>("/api/workflow-runs/:runId/events", async (request, reply) => {
+    const query = workflowRunEventQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.code(400).send(invalidBody(query.error.issues));
+    }
+    const events = await repository.workflowRuns.listEvents(
+      LOCAL_USER_ID,
+      request.params.runId,
+      query.data,
+    );
+    return events
+      ? reply.send(workflowRunEventPageSchema.parse(events))
+      : reply.code(404).send({ error: "Workflow run not found." });
+  });
 
   app.patch<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/worktree-policy",
