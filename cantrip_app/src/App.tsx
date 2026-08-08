@@ -11,6 +11,7 @@ import type {
   ProjectViewKind,
   ProjectViewSummary,
   QueuedPrompt,
+  RemoteDesktopCreate,
   SettingsBundle,
   SkillSummary,
   TerminalSummary,
@@ -75,6 +76,7 @@ import {
   GitHistoryView,
   type GitHistoryHeaderState,
 } from "@/components/git/git-history";
+import { CreateRemoteDesktopDialog } from "@/components/remote-desktop/create-remote-desktop-dialog";
 import { ProjectChatList } from "@/components/sidebar/project-chat-list";
 import { SettingsPage } from "@/components/settings/settings-page";
 import {
@@ -106,6 +108,7 @@ import {
   createGithubProject,
   createProjectWorktree,
   createProjectView,
+  createRemoteDesktop,
   createTerminal,
   compactChat,
   deleteChat,
@@ -126,6 +129,7 @@ import {
   getProjectWorktrees,
   getProjectWorktreeStatus,
   getProjectViews,
+  getRemoteDesktop,
   getQueuedPrompts,
   getServerBootstrap,
   getSettings,
@@ -180,6 +184,11 @@ const ExplorerView = lazy(() =>
 const BrowserView = lazy(() =>
   import("@/components/browser/browser-view").then((module) => ({
     default: module.BrowserView,
+  })),
+);
+const RemoteDesktopView = lazy(() =>
+  import("@/components/remote-desktop/remote-desktop-view").then((module) => ({
+    default: module.RemoteDesktopView,
   })),
 );
 
@@ -1365,6 +1374,9 @@ export function App() {
   >(popoutTarget?.kind === "view" ? popoutTarget.tabId : null);
   const [showImporter, setShowImporter] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [remoteDesktopProjectId, setRemoteDesktopProjectId] = useState<
+    string | null
+  >(null);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [gitHistoryHeader, setGitHistoryHeader] =
     useState<GitHistoryHeaderState | null>(null);
@@ -1470,6 +1482,15 @@ export function App() {
     queryFn: () => getProjectViews(selectedProjectId!),
     queryKey: ["project-views", selectedProjectId],
     refetchInterval: 1_000,
+  });
+  const selectedProjectViewForQuery = projectViews.data?.find(
+    (view) => view.id === selectedProjectViewId,
+  );
+  const remoteDesktop = useQuery({
+    enabled: selectedProjectViewForQuery?.kind === "remote-desktop",
+    queryFn: () => getRemoteDesktop(selectedProjectViewId!),
+    queryKey: ["remote-desktop", selectedProjectViewId],
+    refetchInterval: 2_000,
   });
   const newChat = useMutation({
     mutationFn: (projectId: string) => createChat(projectId, "New chat"),
@@ -1710,6 +1731,40 @@ export function App() {
           created,
         ],
       );
+    },
+  });
+  const newRemoteDesktop = useMutation({
+    mutationFn: ({
+      input,
+      projectId,
+    }: {
+      input: RemoteDesktopCreate;
+      projectId: string;
+    }) => createRemoteDesktop(projectId, input),
+    onSuccess: (desktop) => {
+      queryClient.setQueryData<ProjectViewSummary[]>(
+        ["project-views", desktop.projectId],
+        (current = []) =>
+          [
+            ...current.filter((item) => item.id !== desktop.id),
+            {
+              id: desktop.id,
+              projectId: desktop.projectId,
+              title: desktop.title,
+              kind: "remote-desktop" as const,
+              worktreeId: null,
+              position: desktop.position,
+              createdAt: desktop.createdAt,
+              updatedAt: desktop.updatedAt,
+            },
+          ].sort((left, right) => left.position - right.position),
+      );
+      queryClient.setQueryData(["remote-desktop", desktop.id], desktop);
+      setRemoteDesktopProjectId(null);
+      openCreatedTab(desktop.projectId, "view", desktop.id);
+      void queryClient.invalidateQueries({
+        queryKey: ["project-views", desktop.projectId],
+      });
     },
   });
   const renameChatMutation = useMutation({
@@ -2004,7 +2059,11 @@ export function App() {
   const selectedProjectView = projectViews.data?.find(
     (view) => view.id === selectedProjectViewId,
   );
-  const gitHistoryProject = selectedProjectView ? selectedProject : undefined;
+  const gitHistoryProject =
+    selectedProjectView?.kind === "history" ||
+    selectedProjectView?.kind === "issues"
+      ? selectedProject
+      : undefined;
   const selectedChat = chats.data?.find((chat) => chat.id === selectedChatId);
   const selectedTerminal = terminals.data?.find(
     (terminal) => terminal.id === selectedTerminalId,
@@ -2093,11 +2152,11 @@ export function App() {
     title: string;
   } | null>(() => {
     if (showImporter || showSettings) return null;
-    if (gitHistoryProject && selectedProjectView) {
+    if (selectedProjectView && selectedProject) {
       return {
         target: {
           kind: "view",
-          projectId: gitHistoryProject.id,
+          projectId: selectedProject.id,
           tabId: selectedProjectView.id,
         },
         title: selectedProjectView.title,
@@ -2147,7 +2206,6 @@ export function App() {
     }
     return null;
   }, [
-    gitHistoryProject,
     linkedConsoleChat?.title,
     selectedBrowser,
     selectedChat,
@@ -2357,6 +2415,7 @@ export function App() {
               creatingChat={newChat.isPending}
               creatingBrowser={newBrowser.isPending}
               creatingExplorer={newExplorer.isPending}
+              creatingRemoteDesktop={newRemoteDesktop.isPending}
               creatingTerminal={newTerminal.isPending}
               creatingView={newProjectView.isPending}
               onCreateChat={(projectId) => newChat.mutate(projectId)}
@@ -2370,6 +2429,10 @@ export function App() {
               onCreateIssues={(projectId) =>
                 newProjectView.mutate({ projectId, kind: "issues" })
               }
+              onCreateRemoteDesktop={(projectId) => {
+                newRemoteDesktop.reset();
+                setRemoteDesktopProjectId(projectId);
+              }}
               onCreateTerminal={(projectId) =>
                 newTerminal.mutate({ projectId })
               }
@@ -2522,18 +2585,20 @@ export function App() {
                       ? "Settings"
                       : gitHistoryProject
                         ? (selectedProjectView?.title ?? "Git")
-                        : selectedBrowser
-                          ? selectedBrowser.title
-                          : selectedExplorer
-                            ? selectedExplorer.title
-                            : selectedTerminal
-                              ? selectedTerminal.linkedChatId
-                                ? (linkedConsoleChat?.title ?? "Chat")
-                                : selectedTerminal.title
-                              : selectedChat
-                                ? selectedChat.title
-                                : (selectedProject?.github?.nameWithOwner ??
-                                  "Cantrip")}
+                        : selectedProjectView?.kind === "remote-desktop"
+                          ? selectedProjectView.title
+                          : selectedBrowser
+                            ? selectedBrowser.title
+                            : selectedExplorer
+                              ? selectedExplorer.title
+                              : selectedTerminal
+                                ? selectedTerminal.linkedChatId
+                                  ? (linkedConsoleChat?.title ?? "Chat")
+                                  : selectedTerminal.title
+                                : selectedChat
+                                  ? selectedChat.title
+                                  : (selectedProject?.github?.nameWithOwner ??
+                                    "Cantrip")}
                 </span>
                 {!showImporter &&
                 !showSettings &&
@@ -2618,6 +2683,13 @@ export function App() {
                       )
                     ) : null}
                   </>
+                ) : selectedProjectView?.kind === "remote-desktop" ? (
+                  remoteDesktop.data ? (
+                    remoteDesktop.data.displayName ||
+                    `${remoteDesktop.data.host}:${remoteDesktop.data.port}`
+                  ) : (
+                    "Worker-hosted VNC/RFB session"
+                  )
                 ) : selectedBrowser ? (
                   selectedBrowser.url
                 ) : selectedExplorer ? (
@@ -2905,6 +2977,26 @@ export function App() {
             projects={projects.data ?? []}
             workerId={onlineWorker?.workerId ?? null}
           />
+        ) : selectedProjectView?.kind === "remote-desktop" ? (
+          remoteDesktop.data ? (
+            <Suspense
+              fallback={
+                <div className="grid flex-1 place-items-center text-muted-foreground">
+                  <Loader2 className="size-5 animate-spin" />
+                </div>
+              }
+            >
+              <RemoteDesktopView desktop={remoteDesktop.data} />
+            </Suspense>
+          ) : remoteDesktop.isError ? (
+            <div className="grid flex-1 place-items-center p-6 text-center text-sm text-destructive">
+              {errorText(remoteDesktop.error)}
+            </div>
+          ) : (
+            <div className="grid flex-1 place-items-center text-muted-foreground">
+              <Loader2 className="size-5 animate-spin" />
+            </div>
+          )
         ) : gitHistoryProject ? (
           <GitHistoryView
             view={selectedProjectView?.kind ?? "history"}
@@ -3166,6 +3258,7 @@ export function App() {
               creatingChat={newChat.isPending}
               creatingBrowser={newBrowser.isPending}
               creatingExplorer={newExplorer.isPending}
+              creatingRemoteDesktop={newRemoteDesktop.isPending}
               creatingTerminal={newTerminal.isPending}
               creatingView={newProjectView.isPending}
               onCreateChat={(projectId) => newChat.mutate(projectId)}
@@ -3179,6 +3272,10 @@ export function App() {
               onCreateIssues={(projectId) =>
                 newProjectView.mutate({ projectId, kind: "issues" })
               }
+              onCreateRemoteDesktop={(projectId) => {
+                newRemoteDesktop.reset();
+                setRemoteDesktopProjectId(projectId);
+              }}
               onCreateTerminal={(projectId) =>
                 newTerminal.mutate({ projectId })
               }
@@ -3297,6 +3394,35 @@ export function App() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <CreateRemoteDesktopDialog
+        open={Boolean(remoteDesktopProjectId)}
+        pending={newRemoteDesktop.isPending}
+        error={
+          newRemoteDesktop.isError ? errorText(newRemoteDesktop.error) : null
+        }
+        workers={workers.data ?? []}
+        defaultWorkerId={
+          projects.data?.find(
+            (project) => project.id === remoteDesktopProjectId,
+          )?.source?.workerId ??
+          onlineWorker?.workerId ??
+          null
+        }
+        onOpenChange={(open) => {
+          if (!open) {
+            setRemoteDesktopProjectId(null);
+            newRemoteDesktop.reset();
+          }
+        }}
+        onSubmit={(input) => {
+          if (!remoteDesktopProjectId) return;
+          newRemoteDesktop.mutate({
+            projectId: remoteDesktopProjectId,
+            input,
+          });
+        }}
+      />
     </main>
   );
 }

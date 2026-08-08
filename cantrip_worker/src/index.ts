@@ -17,6 +17,11 @@ import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
 import { TerminalManager } from "./terminal-manager.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
 import { WorkerConnection } from "./transport.js";
+import {
+  VncRemoteSurfaceAdapter,
+  probeVncEndpoint,
+} from "./vnc/vnc-adapter.js";
+import { VncSecretStore } from "./vnc/secret-store.js";
 import { WorktreeManager } from "./worktrees.js";
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
@@ -27,13 +32,15 @@ async function start(): Promise<void> {
   const browserAdapter = new BrowserRemoteSurfaceAdapter({
     dataDirectory: config.dataDirectory,
   });
+  const vncSecrets = new VncSecretStore(config.dataDirectory);
+  const vncAdapter = new VncRemoteSurfaceAdapter(vncSecrets);
   const heartbeat = createHeartbeat(
     config,
     codexVersion,
     new Date().toISOString(),
     {
       browser: browserAdapter.available,
-      vnc: false,
+      vnc: vncAdapter.available,
       transports: ["websocket", "webrtc"],
       maxSessions: 4,
     },
@@ -47,7 +54,10 @@ async function start(): Promise<void> {
   const codexAuthClients = new Map<string, CodexAuthClient>();
   const codexRuntimes = new Map<string, CodexAppServer>();
   const terminals = new TerminalManager();
-  const remoteSurfaces = new RemoteSurfaceManager({ browser: browserAdapter });
+  const remoteSurfaces = new RemoteSurfaceManager({
+    browser: browserAdapter,
+    vnc: vncAdapter,
+  });
   const worktrees = new WorktreeManager(config.dataDirectory);
 
   const accountHomeFor = (providerId: string) =>
@@ -243,6 +253,15 @@ async function start(): Promise<void> {
       case "surface.close":
         await remoteSurfaces.close(command.surfaceId);
         return { accepted: true };
+      case "surface.vnc.secret.set":
+        return {
+          secretRef: await vncSecrets.set(command.surfaceId, command.password),
+        };
+      case "surface.vnc.secret.delete":
+        await vncSecrets.delete(command.secretRef);
+        return { accepted: true };
+      case "surface.vnc.probe":
+        return probeVncEndpoint(command.host, command.port);
       case "chat.turn":
         return runtimeFor(command).runTurn({
           chatId: command.chatId,

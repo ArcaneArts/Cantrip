@@ -36,6 +36,7 @@ import {
   GripVertical,
   Loader2,
   MessageSquare,
+  MonitorUp,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -594,7 +595,12 @@ function ProjectViewTab({
     opacity: sortable.isDragging ? 0.25 : 1,
     zIndex: sortable.isDragging ? 10 : undefined,
   };
-  const Icon = view.kind === "history" ? GitCommitHorizontal : CircleDot;
+  const Icon =
+    view.kind === "history"
+      ? GitCommitHorizontal
+      : view.kind === "issues"
+        ? CircleDot
+        : MonitorUp;
   return (
     <div
       ref={sortable.setNodeRef}
@@ -689,6 +695,7 @@ function SortableProject({
   creatingChat,
   creatingBrowser,
   creatingExplorer,
+  creatingRemoteDesktop,
   creatingTerminal,
   creatingView,
   onCreateChat,
@@ -696,6 +703,7 @@ function SortableProject({
   onCreateExplorer,
   onCreateHistory,
   onCreateIssues,
+  onCreateRemoteDesktop,
   onCreateTerminal,
   onRemove,
   onSelect,
@@ -706,6 +714,7 @@ function SortableProject({
   creatingChat: boolean;
   creatingBrowser: boolean;
   creatingExplorer: boolean;
+  creatingRemoteDesktop: boolean;
   creatingTerminal: boolean;
   creatingView: boolean;
   onCreateChat(): void;
@@ -713,6 +722,7 @@ function SortableProject({
   onCreateExplorer(): void;
   onCreateHistory(): void;
   onCreateIssues(): void;
+  onCreateRemoteDesktop(): void;
   onCreateTerminal(): void;
   onRemove(): void;
   onSelect(): void;
@@ -828,6 +838,13 @@ function SortableProject({
                 >
                   <Plus className="size-4" /> Issues
                 </DropdownMenuPrimitive.Item>
+                <DropdownMenuPrimitive.Item
+                  className={menuItemClass}
+                  disabled={creatingRemoteDesktop}
+                  onSelect={onCreateRemoteDesktop}
+                >
+                  <Plus className="size-4" /> Remote Desktop
+                </DropdownMenuPrimitive.Item>
               </DropdownMenuPrimitive.Content>
             </DropdownMenuPrimitive.Portal>
           </DropdownMenuPrimitive.Root>
@@ -878,6 +895,7 @@ export function ProjectChatList({
   creatingBrowser,
   creatingChat,
   creatingExplorer,
+  creatingRemoteDesktop,
   creatingTerminal,
   creatingView,
   explorers,
@@ -888,6 +906,7 @@ export function ProjectChatList({
   onCreateExplorer,
   onCreateHistory,
   onCreateIssues,
+  onCreateRemoteDesktop,
   onDeleteChat,
   onDeleteBrowser,
   onDeleteExplorer,
@@ -930,6 +949,7 @@ export function ProjectChatList({
   creatingBrowser: boolean;
   creatingChat: boolean;
   creatingExplorer: boolean;
+  creatingRemoteDesktop: boolean;
   creatingTerminal: boolean;
   creatingView: boolean;
   explorers: ExplorerSummary[];
@@ -944,6 +964,7 @@ export function ProjectChatList({
   onCreateExplorer(projectId: string): void;
   onCreateHistory(projectId: string): void;
   onCreateIssues(projectId: string): void;
+  onCreateRemoteDesktop(projectId: string): void;
   onDeleteChat(chatId: string): void;
   onDeleteBrowser(browserId: string): void;
   onDeleteExplorer(explorerId: string): void;
@@ -1214,6 +1235,7 @@ export function ProjectChatList({
                 creatingChat={creatingChat}
                 creatingBrowser={creatingBrowser}
                 creatingExplorer={creatingExplorer}
+                creatingRemoteDesktop={creatingRemoteDesktop}
                 creatingTerminal={creatingTerminal}
                 creatingView={creatingView}
                 onCreateChat={() => onCreateChat(project.id)}
@@ -1221,6 +1243,7 @@ export function ProjectChatList({
                 onCreateExplorer={() => onCreateExplorer(project.id)}
                 onCreateHistory={() => onCreateHistory(project.id)}
                 onCreateIssues={() => onCreateIssues(project.id)}
+                onCreateRemoteDesktop={() => onCreateRemoteDesktop(project.id)}
                 onCreateTerminal={() => onCreateTerminal(project.id)}
                 onSelect={() => onSelectProject(project.id)}
                 onRemove={() => {
@@ -1410,8 +1433,10 @@ export function ProjectChatList({
             <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
               {draggedProjectView.kind === "history" ? (
                 <GitCommitHorizontal className="size-3.5" />
-              ) : (
+              ) : draggedProjectView.kind === "issues" ? (
                 <CircleDot className="size-3.5" />
+              ) : (
+                <MonitorUp className="size-3.5" />
               )}
               <span className="truncate">{draggedProjectView.title}</span>
             </div>

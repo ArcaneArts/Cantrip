@@ -560,6 +560,32 @@ export const browserSummarySchema = z.object({
 
 export const browserListSchema = z.array(browserSummarySchema);
 
+export const remoteDesktopCreateSchema = z.object({
+  title: z.string().trim().min(1).max(200).default("Remote Desktop"),
+  workerId: z.string().min(1),
+  host: z.string().trim().min(1).max(253),
+  port: z.number().int().min(1).max(65_535).default(5_900),
+  displayName: z.string().trim().min(1).max(200).nullable().default(null),
+  password: z.string().max(1_024).nullable().default(null),
+});
+
+export const remoteDesktopSummarySchema = z.object({
+  id: z.string().min(1),
+  projectId: z.string().min(1),
+  title: z.string().min(1),
+  position: z.number().int().nonnegative(),
+  workerId: z.string().min(1),
+  host: z.string().min(1),
+  port: z.number().int().min(1).max(65_535),
+  displayName: z.string().nullable(),
+  status: remoteSurfaceStatusSchema,
+  lastError: z.string().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const remoteDesktopListSchema = z.array(remoteDesktopSummarySchema);
+
 export const remoteSurfaceConfigurationSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("browser"),
@@ -649,6 +675,32 @@ export const remoteSurfaceControlSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("suspend") }),
   z.object({ type: z.literal("resume") }),
 ]);
+
+export const remoteVncClientMessageSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("connect") }),
+  z.object({ type: z.literal("disconnect") }),
+]);
+
+export const remoteVncServerMessageSchema = z.object({
+  type: z.literal("vnc-state"),
+  status: z.enum([
+    "connecting",
+    "connected",
+    "disconnected",
+    "reconnecting",
+    "error",
+  ]),
+  message: z.string().max(2_048).nullable(),
+});
+
+export const remoteVncSecretResultSchema = z.object({
+  secretRef: z.string().min(1),
+});
+
+export const remoteVncProbeResultSchema = z.object({
+  reachable: z.boolean(),
+  message: z.string().max(2_048).nullable(),
+});
 
 export const remoteBrowserClientMessageSchema = z.discriminatedUnion("type", [
   z.object({
@@ -851,7 +903,11 @@ export function decodeRemoteSurfaceFrame(frame: Uint8Array): {
   };
 }
 
-export const projectViewKindSchema = z.enum(["history", "issues"]);
+export const projectViewKindSchema = z.enum([
+  "history",
+  "issues",
+  "remote-desktop",
+]);
 
 export const projectViewCreateSchema = z.object({
   title: z.string().trim().min(1).max(200),
@@ -1573,6 +1629,20 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     surfaceId: z.string().min(1),
   }),
   z.object({
+    type: z.literal("surface.vnc.secret.set"),
+    surfaceId: z.string().min(1),
+    password: z.string().max(1_024),
+  }),
+  z.object({
+    type: z.literal("surface.vnc.secret.delete"),
+    secretRef: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("surface.vnc.probe"),
+    host: z.string().trim().min(1).max(253),
+    port: z.number().int().min(1).max(65_535),
+  }),
+  z.object({
     type: z.literal("chat.turn"),
     chatId: z.string().min(1),
     clientMessageId: z.string().min(1),
@@ -1755,6 +1825,8 @@ export type ExplorerSummary = z.infer<typeof explorerSummarySchema>;
 export type BrowserCreate = z.infer<typeof browserCreateSchema>;
 export type BrowserUpdate = z.infer<typeof browserUpdateSchema>;
 export type BrowserSummary = z.infer<typeof browserSummarySchema>;
+export type RemoteDesktopCreate = z.infer<typeof remoteDesktopCreateSchema>;
+export type RemoteDesktopSummary = z.infer<typeof remoteDesktopSummarySchema>;
 export type RemoteSurfaceConfiguration = z.infer<
   typeof remoteSurfaceConfigurationSchema
 >;
@@ -1778,6 +1850,14 @@ export type RemoteSurfaceAttachResult = z.infer<
   typeof remoteSurfaceAttachResultSchema
 >;
 export type RemoteSurfaceControl = z.infer<typeof remoteSurfaceControlSchema>;
+export type RemoteVncClientMessage = z.infer<
+  typeof remoteVncClientMessageSchema
+>;
+export type RemoteVncServerMessage = z.infer<
+  typeof remoteVncServerMessageSchema
+>;
+export type RemoteVncSecretResult = z.infer<typeof remoteVncSecretResultSchema>;
+export type RemoteVncProbeResult = z.infer<typeof remoteVncProbeResultSchema>;
 export type RemoteBrowserClientMessage = z.infer<
   typeof remoteBrowserClientMessageSchema
 >;

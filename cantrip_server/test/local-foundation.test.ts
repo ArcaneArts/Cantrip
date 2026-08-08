@@ -30,6 +30,8 @@ import {
   projectViewSummarySchema,
   queuedPromptListSchema,
   queuedPromptSchema,
+  remoteDesktopListSchema,
+  remoteDesktopSummarySchema,
   remoteSurfaceListSchema,
   remoteSurfaceConnectionMessageSchema,
   remoteSurfaceSummarySchema,
@@ -85,6 +87,8 @@ const relayedSurfaceFrames: Array<{
   sequence: number;
   payload: number[];
 }> = [];
+const storedVncSecrets: string[] = [];
+const deletedVncSecretRefs: string[] = [];
 const surfaceFrameListeners = new Set<
   (
     header: Parameters<WorkerCommandBus["sendSurfaceFrame"]>[1],
@@ -351,6 +355,14 @@ const workerBridge = {
       case "surface.resume":
       case "surface.close":
         return { accepted: true };
+      case "surface.vnc.secret.set":
+        storedVncSecrets.push(command.password);
+        return { secretRef: "vnc-secret-test" };
+      case "surface.vnc.secret.delete":
+        deletedVncSecretRefs.push(command.secretRef);
+        return { accepted: true };
+      case "surface.vnc.probe":
+        return { reachable: true, message: null };
       case "chat.turn":
         turnRequests += 1;
         turnModelIds.push(command.model.id);
@@ -1413,6 +1425,60 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toMatchObject([{ id: projectView.id, position: 3 }]);
+    const remoteDesktop = remoteDesktopSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/remote-desktops`,
+          payload: {
+            title: "Desk Mac mini",
+            workerId: "test-worker",
+            host: "127.0.0.1",
+            port: 5900,
+            displayName: "Local screen",
+            password: "worker-only-secret",
+          },
+        })
+      ).json(),
+    );
+    expect(remoteDesktop).toMatchObject({
+      projectId: project.id,
+      workerId: "test-worker",
+      host: "127.0.0.1",
+      port: 5900,
+      status: "idle",
+    });
+    expect(JSON.stringify(remoteDesktop)).not.toContain("worker-only-secret");
+    expect(storedVncSecrets).toEqual(["worker-only-secret"]);
+    expect(
+      remoteDesktopListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/remote-desktops`,
+          })
+        ).json(),
+      ),
+    ).toContainEqual(expect.objectContaining({ id: remoteDesktop.id }));
+    expect(
+      projectViewListSchema
+        .parse(
+          (
+            await firstApp.inject({
+              method: "GET",
+              url: `/api/projects/${project.id}/views`,
+            })
+          ).json(),
+        )
+        .find(({ id }) => id === remoteDesktop.id),
+    ).toMatchObject({ kind: "remote-desktop", title: "Desk Mac mini" });
+    expect(
+      await firstApp.inject({
+        method: "DELETE",
+        url: `/api/project-views/${remoteDesktop.id}`,
+      }),
+    ).toMatchObject({ statusCode: 204 });
+    expect(deletedVncSecretRefs).toEqual(["vnc-secret-test"]);
     const linkedConsole = terminalSummarySchema.parse(
       (
         await firstApp.inject({

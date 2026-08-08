@@ -155,8 +155,17 @@ clipboard actions, responsive viewport updates, and one canvas client shared
 by Vite, Tauri, and popouts. The obsolete iframe proxy and Tauri child-webview
 paths have been removed. WebRTC uses server-minted short-lived TURN REST
 credentials, relay-only ICE, separate visual and reliable control data
-channels, and automatic WebSocket fallback. Configured VNC/RFB is the next
-Remote Surface delivery slice.
+channels, and automatic WebSocket fallback.
+
+The configured VNC/RFB slice is implemented as the `remote-desktop` project
+tab type. The app uses noVNC as a normal React renderer while a worker-side RFB
+3.8 authentication gateway connects to the configured endpoint. Each client
+attachment has an independent RFB connection, allowing main and popout windows
+to reconnect safely. The gateway currently supports unauthenticated and
+classic VNC-password endpoints; passwords are private worker secrets and the
+server persists only opaque references. Cantrip intentionally does not enable
+or configure an operating system's screen-sharing service. TLS/VenCrypt and
+automatic desktop provisioning remain future adapter work.
 
 ## 5. Monorepo layout
 
