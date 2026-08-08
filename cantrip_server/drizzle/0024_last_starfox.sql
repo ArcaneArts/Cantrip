@@ -1,0 +1,2 @@
+ALTER TABLE "user_settings" ADD COLUMN "desktop_frame_rate" integer DEFAULT 30 NOT NULL;--> statement-breakpoint
+ALTER TABLE "user_settings" ADD COLUMN "desktop_stream_quality" text DEFAULT 'adaptive' NOT NULL;

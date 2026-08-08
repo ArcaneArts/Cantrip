@@ -92,6 +92,15 @@ Browser adapter. There is no desktop listener and no directly reachable worker
 port. Main, popout, browser, Tauri, and future Capacitor clients therefore use
 one canvas renderer and the same app-to-server-to-worker path.
 
+Desktop capture and input are separate backends. A native XCap-based capture
+source and Sharp JPEG encoder run as a bounded pipeline, targeting 30 FPS by
+default and up to 60 FPS when requested. A compatibility screenshot source is
+retained for unsupported hosts. The server injects the account's frame-rate and
+quality preferences into each authorized attachment. The worker adapts JPEG
+quality and encoded width from payload size, transport pressure, and bounded
+client render feedback. The app retains only the newest undecoded frame, so a
+slow decoder drops visual history instead of increasing control latency.
+
 The operating system remains the final authority. macOS requires Screen
 Recording and Accessibility grants for the worker process; Windows uses native
 desktop APIs; Linux requires a supported graphical session. A failed capture

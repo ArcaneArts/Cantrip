@@ -58,7 +58,21 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
       scroll: vi.fn(async () => textResult()),
       type: vi.fn(async () => textResult()),
     } satisfies DesktopAutomationClient;
-    const adapter = new ManagedDesktopRemoteSurfaceAdapter(async () => client);
+    const capture = vi.fn(async () => ({
+      width: 1_920,
+      height: 1_080,
+      rgba: new Uint8Array(1_920 * 4),
+    }));
+    const encode = vi.fn(async () => new Uint8Array([1, 2, 3]));
+    const adapter = new ManagedDesktopRemoteSurfaceAdapter(
+      async () => client,
+      async () => ({
+        backend: "native",
+        display: { width: 1_920, height: 1_080 },
+        capture,
+        encode,
+      }),
+    );
     await adapter.initialize();
     expect(adapter.available).toBe(true);
     await expect(adapter.probe()).resolves.toEqual({
@@ -77,8 +91,12 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
         preferredTransport: "websocket",
         viewport: { width: 1_280, height: 720, devicePixelRatio: 1 },
         webrtc: null,
+        desktopStream: { targetFps: 60, quality: "adaptive" },
       },
-      (_attachmentId, channel, payload) => emissions.push({ channel, payload }),
+      (_attachmentId, channel, payload) => {
+        emissions.push({ channel, payload });
+        return true;
+      },
     );
     session.attach({
       id: "attachment-1",
@@ -86,6 +104,11 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
     });
     await eventually(() =>
       emissions.some(({ channel }) => channel === "frame"),
+    );
+    await eventually(() => capture.mock.calls.length >= 4);
+    expect(encode).toHaveBeenCalledWith(
+      expect.objectContaining({ width: 1_920, height: 1_080 }),
+      expect.objectContaining({ quality: expect.any(Number), width: 1_280 }),
     );
     const state = emissions.find(({ channel }) => channel === "control");
     expect(

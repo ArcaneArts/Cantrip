@@ -173,6 +173,14 @@ worker-owned desktop surface. The worker sends compressed display frames and
 accepts pointer, keyboard, and explicit clipboard messages. No desktop port,
 password, or worker address exists in the app contract.
 
+The desktop data plane uses pipelined native capture and JPEG encoding with a
+30 FPS default and a best-effort 60 FPS ceiling. Server-owned user settings
+select the target frame rate and adaptive quality profile. Payload size,
+transport backpressure, and client render feedback tune quality and resolution;
+the app keeps only the newest undecoded frame to bound visual latency. A slower
+compatibility capture backend remains available when the fast native module is
+unsupported.
+
 Operational limits currently bound a worker to four live Remote Surface
 sessions and each surface to four attachments. Binary payloads are capped at 4
 MiB and WebSocket queues at 8 MiB. Browser visual frames may be discarded under

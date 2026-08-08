@@ -52,6 +52,7 @@ import type {
   AgentInteractionRequestCreate,
   PlanMode,
   ThreadGoal,
+  WorkerCommand,
 } from "@cantrip/protocol";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
@@ -102,6 +103,9 @@ const relayedSurfaceFrames: Array<{
   sequence: number;
   payload: number[];
 }> = [];
+const surfaceAttachCommands: Array<
+  Extract<WorkerCommand, { type: "surface.attach" }>
+> = [];
 const surfaceFrameListeners = new Set<
   (
     header: Parameters<WorkerCommandBus["sendSurfaceFrame"]>[1],
@@ -362,6 +366,7 @@ const workerBridge = {
       case "terminal.close":
         return { accepted: true };
       case "surface.attach":
+        surfaceAttachCommands.push(command);
         return { accepted: true, transport: "websocket" };
       case "surface.detach":
       case "surface.suspend":
@@ -576,6 +581,8 @@ describe("local server foundation", () => {
     expect(initialSettings.preferences).toMatchObject({
       theme: "system",
       highContrast: false,
+      desktopFrameRate: 30,
+      desktopStreamQuality: "adaptive",
       defaultModelId: expect.any(String),
     });
     const provider = modelProviderSummarySchema.parse(
@@ -670,6 +677,8 @@ describe("local server foundation", () => {
           payload: {
             theme: "dark",
             highContrast: true,
+            desktopFrameRate: 60,
+            desktopStreamQuality: "balanced",
             defaultModelId: selectedModel.id,
           },
         })
@@ -678,6 +687,8 @@ describe("local server foundation", () => {
     expect(updatedSettings.preferences).toEqual({
       theme: "dark",
       highContrast: true,
+      desktopFrameRate: 60,
+      desktopStreamQuality: "balanced",
       defaultModelId: selectedModel.id,
     });
     const chatGptProvider = modelProviderSummarySchema.parse(
@@ -1820,6 +1831,29 @@ describe("local server foundation", () => {
         )
         .find(({ id }) => id === remoteDesktop.id),
     ).toMatchObject({ kind: "remote-desktop", title: "Remote Desktop" });
+    let resolveDesktopReady: ((message: unknown) => void) | null = null;
+    const desktopReadyPromise = new Promise<unknown>((resolve) => {
+      resolveDesktopReady = resolve;
+    });
+    const desktopSocket = await firstApp.injectWS(
+      `/api/remote-surfaces/${remoteDesktop.id}/connect`,
+      { headers: { origin: "http://127.0.0.1:5173" } },
+      {
+        onInit(socket) {
+          socket.once("message", (data) =>
+            resolveDesktopReady?.(JSON.parse(data.toString())),
+          );
+        },
+      },
+    );
+    expect(
+      remoteSurfaceConnectionMessageSchema.parse(await desktopReadyPromise),
+    ).toMatchObject({ type: "ready", surfaceId: remoteDesktop.id });
+    expect(surfaceAttachCommands.at(-1)?.desktopStream).toEqual({
+      targetFps: 60,
+      quality: "balanced",
+    });
+    desktopSocket.terminate();
     expect(
       await firstApp.inject({
         method: "DELETE",
@@ -2395,6 +2429,8 @@ describe("local server foundation", () => {
     expect(restoredSettings.preferences).toEqual({
       theme: "dark",
       highContrast: true,
+      desktopFrameRate: 60,
+      desktopStreamQuality: "balanced",
       defaultModelId: selectedModel.id,
     });
     expect(
