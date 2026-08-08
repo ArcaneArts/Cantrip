@@ -16,6 +16,7 @@ import { sql } from "drizzle-orm";
 import {
   bigserial,
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -669,6 +670,634 @@ export const queuedPrompts = pgTable(
     uniqueIndex("queued_prompts_chat_idempotency_unique").on(
       table.chatId,
       table.idempotencyKey,
+    ),
+  ],
+);
+
+export const workflowDefinitions = pgTable(
+  "workflow_definitions",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "cascade",
+    }),
+    scope: text("scope").notNull(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    source: text("source").notNull().default("cantrip"),
+    provenance: jsonb("provenance")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    trustState: text("trust_state").notNull().default("untrusted"),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("workflow_definitions_personal_slug_unique")
+      .on(table.ownerId, table.slug)
+      .where(sql`${table.scope} = 'personal' AND ${table.projectId} IS NULL`),
+    uniqueIndex("workflow_definitions_project_slug_unique")
+      .on(table.projectId, table.slug)
+      .where(
+        sql`${table.scope} = 'project' AND ${table.projectId} IS NOT NULL`,
+      ),
+    index("workflow_definitions_owner_scope_index").on(
+      table.ownerId,
+      table.scope,
+      table.archivedAt,
+    ),
+    index("workflow_definitions_project_index").on(
+      table.projectId,
+      table.archivedAt,
+    ),
+    check(
+      "workflow_definitions_scope_check",
+      sql`${table.scope} IN ('personal', 'project')`,
+    ),
+    check(
+      "workflow_definitions_scope_project_check",
+      sql`(${table.scope} = 'personal' AND ${table.projectId} IS NULL) OR (${table.scope} = 'project' AND ${table.projectId} IS NOT NULL)`,
+    ),
+    check(
+      "workflow_definitions_trust_state_check",
+      sql`${table.trustState} IN ('untrusted', 'trusted', 'modified', 'blocked')`,
+    ),
+  ],
+);
+
+export const workflowRevisions = pgTable(
+  "workflow_revisions",
+  {
+    id: text("id").primaryKey(),
+    workflowId: text("workflow_id")
+      .notNull()
+      .references(() => workflowDefinitions.id, { onDelete: "cascade" }),
+    revision: integer("revision").notNull(),
+    definition: jsonb("definition").$type<Record<string, unknown>>().notNull(),
+    declaredInputs: jsonb("declared_inputs")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    declaredOutputs: jsonb("declared_outputs")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    defaults: jsonb("defaults")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    permissionRequirements: jsonb("permission_requirements")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    source: text("source").notNull(),
+    provenance: jsonb("provenance")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    trustState: text("trust_state").notNull().default("untrusted"),
+    contentHash: text("content_hash").notNull(),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("workflow_revisions_workflow_revision_unique").on(
+      table.workflowId,
+      table.revision,
+    ),
+    uniqueIndex("workflow_revisions_workflow_hash_unique").on(
+      table.workflowId,
+      table.contentHash,
+    ),
+    index("workflow_revisions_workflow_created_index").on(
+      table.workflowId,
+      table.createdAt,
+    ),
+    check("workflow_revisions_revision_check", sql`${table.revision} > 0`),
+    check(
+      "workflow_revisions_trust_state_check",
+      sql`${table.trustState} IN ('untrusted', 'trusted', 'modified', 'blocked')`,
+    ),
+  ],
+);
+
+export const workflowRevisionNodes = pgTable(
+  "workflow_revision_nodes",
+  {
+    id: text("id").primaryKey(),
+    revisionId: text("revision_id")
+      .notNull()
+      .references(() => workflowRevisions.id, { onDelete: "cascade" }),
+    nodeKey: text("node_key").notNull(),
+    nodeType: text("node_type").notNull(),
+    name: text("name").notNull(),
+    position: integer("position").notNull(),
+    configuration: jsonb("configuration")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    inputSchema: jsonb("input_schema")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    outputSchema: jsonb("output_schema")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    permissionRequirements: jsonb("permission_requirements")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    mutationMode: text("mutation_mode").notNull().default("read-only"),
+    modelRouteId: text("model_route_id").references(() => modelRoutes.id, {
+      onDelete: "set null",
+    }),
+    permissionProfileId: text("permission_profile_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("workflow_revision_nodes_key_unique").on(
+      table.revisionId,
+      table.nodeKey,
+    ),
+    uniqueIndex("workflow_revision_nodes_position_unique").on(
+      table.revisionId,
+      table.position,
+    ),
+    check(
+      "workflow_revision_nodes_position_check",
+      sql`${table.position} >= 0`,
+    ),
+    check(
+      "workflow_revision_nodes_mutation_mode_check",
+      sql`${table.mutationMode} IN ('read-only', 'write')`,
+    ),
+  ],
+);
+
+export const workflowRevisionEdges = pgTable(
+  "workflow_revision_edges",
+  {
+    id: text("id").primaryKey(),
+    revisionId: text("revision_id")
+      .notNull()
+      .references(() => workflowRevisions.id, { onDelete: "cascade" }),
+    fromNodeId: text("from_node_id")
+      .notNull()
+      .references(() => workflowRevisionNodes.id, { onDelete: "cascade" }),
+    toNodeId: text("to_node_id")
+      .notNull()
+      .references(() => workflowRevisionNodes.id, { onDelete: "cascade" }),
+    sourceOutput: text("source_output"),
+    targetInput: text("target_input"),
+    condition: jsonb("condition").$type<Record<string, unknown>>(),
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("workflow_revision_edges_from_index").on(
+      table.revisionId,
+      table.fromNodeId,
+      table.position,
+    ),
+    index("workflow_revision_edges_to_index").on(
+      table.revisionId,
+      table.toNodeId,
+    ),
+    check(
+      "workflow_revision_edges_position_check",
+      sql`${table.position} >= 0`,
+    ),
+    check(
+      "workflow_revision_edges_not_self_check",
+      sql`${table.fromNodeId} <> ${table.toNodeId}`,
+    ),
+  ],
+);
+
+export const workflowRuns = pgTable(
+  "workflow_runs",
+  {
+    id: text("id").primaryKey(),
+    workflowId: text("workflow_id")
+      .notNull()
+      .references(() => workflowDefinitions.id, { onDelete: "restrict" }),
+    workflowRevisionId: text("workflow_revision_id")
+      .notNull()
+      .references(() => workflowRevisions.id, { onDelete: "restrict" }),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    status: text("status").notNull().default("queued"),
+    triggerType: text("trigger_type").notNull().default("manual"),
+    triggerId: text("trigger_id"),
+    triggerProvenance: jsonb("trigger_provenance")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    idempotencyKey: text("idempotency_key").notNull(),
+    structuredInput: jsonb("structured_input").$type<unknown>().notNull(),
+    structuredResult: jsonb("structured_result").$type<unknown>(),
+    budget: jsonb("budget")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    measuredUsage: jsonb("measured_usage")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    permissionManifest: jsonb("permission_manifest")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    selectedModelRouteId: text("selected_model_route_id").references(
+      () => modelRoutes.id,
+      { onDelete: "set null" },
+    ),
+    selectedPermissionProfileId: text("selected_permission_profile_id"),
+    workerId: text("worker_id").references(() => workers.id, {
+      onDelete: "set null",
+    }),
+    worktreeId: text("worktree_id").references(() => projectWorktrees.id, {
+      onDelete: "set null",
+    }),
+    codexThreadId: text("codex_thread_id"),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    pauseReason: text("pause_reason"),
+    cancelReason: text("cancel_reason"),
+    recoveryState: text("recovery_state").notNull().default("stable"),
+    queuedAt: timestamp("queued_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    pausedAt: timestamp("paused_at", { withTimezone: true }),
+    cancelRequestedAt: timestamp("cancel_requested_at", {
+      withTimezone: true,
+    }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("workflow_runs_owner_idempotency_unique").on(
+      table.ownerId,
+      table.idempotencyKey,
+    ),
+    index("workflow_runs_workflow_created_index").on(
+      table.workflowId,
+      table.createdAt,
+    ),
+    index("workflow_runs_project_status_index").on(
+      table.projectId,
+      table.status,
+      table.createdAt,
+    ),
+    index("workflow_runs_recovery_index").on(
+      table.recoveryState,
+      table.updatedAt,
+    ),
+    check(
+      "workflow_runs_status_check",
+      sql`${table.status} IN ('queued', 'running', 'waiting', 'paused', 'cancelling', 'cancelled', 'failed', 'completed', 'recovering')`,
+    ),
+    check(
+      "workflow_runs_recovery_state_check",
+      sql`${table.recoveryState} IN ('stable', 'pending', 'recovering', 'blocked')`,
+    ),
+  ],
+);
+
+export const workflowRunNodes = pgTable(
+  "workflow_run_nodes",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => workflowRuns.id, { onDelete: "cascade" }),
+    revisionNodeId: text("revision_node_id")
+      .notNull()
+      .references(() => workflowRevisionNodes.id, { onDelete: "restrict" }),
+    nodeKey: text("node_key").notNull(),
+    nodeType: text("node_type").notNull(),
+    status: text("status").notNull().default("blocked"),
+    dependencyState: jsonb("dependency_state")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    structuredInput: jsonb("structured_input").$type<unknown>().notNull(),
+    structuredResult: jsonb("structured_result").$type<unknown>(),
+    budget: jsonb("budget")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    measuredUsage: jsonb("measured_usage")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    permissionManifest: jsonb("permission_manifest")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    workerId: text("worker_id").references(() => workers.id, {
+      onDelete: "set null",
+    }),
+    worktreeId: text("worktree_id").references(() => projectWorktrees.id, {
+      onDelete: "set null",
+    }),
+    modelRouteId: text("model_route_id").references(() => modelRoutes.id, {
+      onDelete: "set null",
+    }),
+    permissionProfileId: text("permission_profile_id"),
+    codexThreadId: text("codex_thread_id"),
+    codexTurnId: text("codex_turn_id"),
+    writeCapable: boolean("write_capable").notNull().default(false),
+    executionLeaseKey: text("execution_lease_key"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    notBefore: timestamp("not_before", { withTimezone: true }),
+    timeoutAt: timestamp("timeout_at", { withTimezone: true }),
+    readyAt: timestamp("ready_at", { withTimezone: true }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    waitingAt: timestamp("waiting_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("workflow_run_nodes_key_unique").on(table.runId, table.nodeKey),
+    uniqueIndex("workflow_run_nodes_revision_node_unique").on(
+      table.runId,
+      table.revisionNodeId,
+    ),
+    index("workflow_run_nodes_status_index").on(table.runId, table.status),
+    index("workflow_run_nodes_worker_status_index").on(
+      table.workerId,
+      table.status,
+    ),
+    index("workflow_run_nodes_worktree_status_index").on(
+      table.worktreeId,
+      table.status,
+    ),
+    check(
+      "workflow_run_nodes_status_check",
+      sql`${table.status} IN ('blocked', 'ready', 'queued', 'running', 'waiting-for-approval', 'paused', 'cancelling', 'cancelled', 'failed', 'completed', 'retrying', 'recovering', 'skipped')`,
+    ),
+    check(
+      "workflow_run_nodes_attempt_count_check",
+      sql`${table.attemptCount} >= 0`,
+    ),
+  ],
+);
+
+export const workflowRunNodeDependencies = pgTable(
+  "workflow_run_node_dependencies",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => workflowRuns.id, { onDelete: "cascade" }),
+    revisionEdgeId: text("revision_edge_id").references(
+      () => workflowRevisionEdges.id,
+      { onDelete: "set null" },
+    ),
+    fromNodeId: text("from_node_id")
+      .notNull()
+      .references(() => workflowRunNodes.id, { onDelete: "cascade" }),
+    toNodeId: text("to_node_id")
+      .notNull()
+      .references(() => workflowRunNodes.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("blocked"),
+    resultMapping: jsonb("result_mapping")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    satisfiedAt: timestamp("satisfied_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("workflow_run_node_dependencies_edge_unique").on(
+      table.runId,
+      table.fromNodeId,
+      table.toNodeId,
+    ),
+    index("workflow_run_node_dependencies_target_index").on(
+      table.runId,
+      table.toNodeId,
+      table.status,
+    ),
+    check(
+      "workflow_run_node_dependencies_status_check",
+      sql`${table.status} IN ('blocked', 'ready', 'satisfied', 'failed', 'skipped')`,
+    ),
+    check(
+      "workflow_run_node_dependencies_not_self_check",
+      sql`${table.fromNodeId} <> ${table.toNodeId}`,
+    ),
+  ],
+);
+
+export const workflowNodeAttempts = pgTable(
+  "workflow_node_attempts",
+  {
+    id: text("id").primaryKey(),
+    runNodeId: text("run_node_id")
+      .notNull()
+      .references(() => workflowRunNodes.id, { onDelete: "cascade" }),
+    attempt: integer("attempt").notNull(),
+    status: text("status").notNull().default("queued"),
+    idempotencyKey: text("idempotency_key").notNull(),
+    structuredInput: jsonb("structured_input").$type<unknown>().notNull(),
+    structuredResult: jsonb("structured_result").$type<unknown>(),
+    measuredUsage: jsonb("measured_usage")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    workerId: text("worker_id").references(() => workers.id, {
+      onDelete: "set null",
+    }),
+    worktreeId: text("worktree_id").references(() => projectWorktrees.id, {
+      onDelete: "set null",
+    }),
+    modelRouteId: text("model_route_id").references(() => modelRoutes.id, {
+      onDelete: "set null",
+    }),
+    permissionProfileId: text("permission_profile_id"),
+    codexThreadId: text("codex_thread_id"),
+    codexTurnId: text("codex_turn_id"),
+    startingRevision: text("starting_revision"),
+    endingRevision: text("ending_revision"),
+    worktreeDirty: boolean("worktree_dirty"),
+    producedChanges: jsonb("produced_changes")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("workflow_node_attempts_number_unique").on(
+      table.runNodeId,
+      table.attempt,
+    ),
+    uniqueIndex("workflow_node_attempts_idempotency_unique").on(
+      table.runNodeId,
+      table.idempotencyKey,
+    ),
+    index("workflow_node_attempts_recovery_index").on(
+      table.status,
+      table.heartbeatAt,
+    ),
+    check("workflow_node_attempts_attempt_check", sql`${table.attempt} > 0`),
+    check(
+      "workflow_node_attempts_status_check",
+      sql`${table.status} IN ('queued', 'running', 'waiting-for-approval', 'cancelled', 'failed', 'completed', 'timed-out', 'interrupted', 'orphaned')`,
+    ),
+  ],
+);
+
+export const workflowRunEvents = pgTable(
+  "workflow_run_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => workflowRuns.id, { onDelete: "cascade" }),
+    runNodeId: text("run_node_id").references(() => workflowRunNodes.id, {
+      onDelete: "set null",
+    }),
+    attemptId: text("attempt_id").references(() => workflowNodeAttempts.id, {
+      onDelete: "set null",
+    }),
+    sequence: integer("sequence").notNull(),
+    eventKey: text("event_key").notNull(),
+    type: text("type").notNull(),
+    payload: jsonb("payload")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    actorType: text("actor_type").notNull(),
+    actorId: text("actor_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("workflow_run_events_sequence_unique").on(
+      table.runId,
+      table.sequence,
+    ),
+    uniqueIndex("workflow_run_events_key_unique").on(
+      table.runId,
+      table.eventKey,
+    ),
+    index("workflow_run_events_node_created_index").on(
+      table.runNodeId,
+      table.createdAt,
+    ),
+    index("workflow_run_events_type_created_index").on(
+      table.type,
+      table.createdAt,
+    ),
+    check("workflow_run_events_sequence_check", sql`${table.sequence} >= 0`),
+  ],
+);
+
+export const workflowApprovalGates = pgTable(
+  "workflow_approval_gates",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => workflowRuns.id, { onDelete: "cascade" }),
+    runNodeId: text("run_node_id").references(() => workflowRunNodes.id, {
+      onDelete: "set null",
+    }),
+    gateKey: text("gate_key").notNull(),
+    status: text("status").notNull().default("pending"),
+    prompt: text("prompt").notNull(),
+    permissionManifest: jsonb("permission_manifest")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    interactionRequestId: text("interaction_request_id").references(
+      () => agentInteractionRequests.id,
+      { onDelete: "set null" },
+    ),
+    requestedByType: text("requested_by_type").notNull(),
+    requestedById: text("requested_by_id"),
+    decision: text("decision"),
+    decidedByUserId: text("decided_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    decisionReason: text("decision_reason"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("workflow_approval_gates_key_unique").on(
+      table.runId,
+      table.gateKey,
+    ),
+    uniqueIndex("workflow_approval_gates_interaction_unique").on(
+      table.interactionRequestId,
+    ),
+    index("workflow_approval_gates_status_expiry_index").on(
+      table.status,
+      table.expiresAt,
+    ),
+    check(
+      "workflow_approval_gates_status_check",
+      sql`${table.status} IN ('pending', 'approved', 'denied', 'expired', 'cancelled')`,
+    ),
+    check(
+      "workflow_approval_gates_decision_check",
+      sql`${table.decision} IS NULL OR ${table.decision} IN ('approved', 'denied')`,
     ),
   ],
 );
