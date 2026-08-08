@@ -29,20 +29,34 @@ export const CODEX_CORE_METHODS = [
   "turn/interrupt",
 ] as const;
 
+export const CODEX_CUSTOMIZATION_METHODS = {
+  collaboration: ["collaborationMode/list"],
+  goals: ["thread/goal/get", "thread/goal/set", "thread/goal/clear"],
+  hooks: ["hooks/list"],
+  skills: ["skills/list", "skills/config/write", "skills/extraRoots/set"],
+  mcp: [
+    "mcpServerStatus/list",
+    "mcpServer/oauth/login",
+    "mcpServer/resource/read",
+    "config/mcpServer/reload",
+  ],
+  plugins: ["plugin/list", "plugin/read", "plugin/install", "plugin/uninstall"],
+  externalImports: [
+    "externalAgentConfig/detect",
+    "externalAgentConfig/import",
+    "externalAgentConfig/import/readHistories",
+    "externalAgentConfig/import/recordHistory",
+  ],
+  configuration: ["config/read"],
+} as const;
+
 export const CODEX_OPTIONAL_METHODS = [
   "thread/compact/start",
-  "skills/list",
   "model/list",
   "experimentalFeature/list",
-  "thread/goal/get",
-  "thread/goal/set",
-  "thread/goal/clear",
-  "hooks/list",
   "permissionProfile/list",
-  "collaborationMode/list",
-  "plugin/list",
   "app/list",
-  "externalAgentConfig/detect",
+  ...Object.values(CODEX_CUSTOMIZATION_METHODS).flat(),
 ] as const;
 
 const PROBED_METHODS = [...CODEX_CORE_METHODS, ...CODEX_OPTIONAL_METHODS];
@@ -67,6 +81,25 @@ interface RuntimeAssessmentInput {
   methods?: Record<string, CodexRuntimeMethodState>;
   features?: CodexRuntimeFeature[];
   errors?: string[];
+}
+
+export function codexMethodsAvailable(
+  report: CodexRuntimeReport,
+  methods: readonly string[],
+): boolean {
+  return methods.every((method) => report.methods[method] === "available");
+}
+
+export function codexFeatureUsable(
+  report: CodexRuntimeReport,
+  name: string,
+): boolean {
+  const feature = report.features.find((candidate) => candidate.name === name);
+  return Boolean(
+    feature?.enabled &&
+    feature.stage !== "deprecated" &&
+    feature.stage !== "removed",
+  );
 }
 
 interface RpcError {
