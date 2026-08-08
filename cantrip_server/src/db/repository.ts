@@ -53,7 +53,7 @@ import type {
   WorktreeInventory,
   WorktreeSelection,
 } from "@cantrip/protocol";
-import { and, asc, desc, eq, isNull, lte, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -75,13 +75,19 @@ type ProjectWorktreeRow = typeof schema.projectWorktrees.$inferSelect;
 export interface ChatExecutionContext {
   chatId: string;
   cwd: string;
+  executionLaneId: string | null;
+  isPrimary: boolean;
   status: ChatSummary["status"];
   modelId: string | null;
   modelRouteId: string | null;
+  projectId: string;
   threadId: string | null;
   workerId: string;
   worktreeId: string;
+  worktreeMode: ChatSummary["worktreeMode"];
 }
+
+export class ExecutionLaneConflictError extends Error {}
 
 export interface TerminalExecutionContext {
   cwd: string;
@@ -117,6 +123,24 @@ export interface WorktreeRemovalBlockers {
   activeChatIds: string[];
   activeLeaseChatIds: string[];
   runningTerminalIds: string[];
+}
+
+export interface ChatExecutionAttribution {
+  executionLaneId: string;
+  worktreeId: string;
+}
+
+export interface ChatExecutionLaneContext {
+  chat: ChatSummary;
+  lane: ChatExecutionLaneSummary;
+  sourcePath: string;
+  worktree: ProjectWorktreeSummary;
+}
+
+export interface ChatExecutionLaneReleaseResult {
+  chat: ChatSummary;
+  lane: ChatExecutionLaneSummary;
+  returnedToPrimary: boolean;
 }
 
 export interface ExplorerExecutionContext {
@@ -235,6 +259,7 @@ function toChatExecutionLaneSummary(
     workerId: lane.workerId,
     acquiringActor:
       lane.acquiringActor as ChatExecutionLaneSummary["acquiringActor"],
+    exclusive: lane.exclusive,
     purpose: lane.purpose,
     state: lane.state as ChatExecutionLaneSummary["state"],
     baseRevision: lane.baseRevision,
@@ -437,6 +462,7 @@ function toQueuedPrompt(
     chatId: prompt.chatId,
     text: prompt.text,
     modelId: prompt.modelId,
+    worktreeId: prompt.worktreeId,
     position: prompt.position,
     frozen: prompt.frozen,
     createdAt: toISOString(prompt.createdAt),
@@ -1373,6 +1399,422 @@ export class ServerRepository {
     return rows.map(({ lane }) => toChatExecutionLaneSummary(lane));
   }
 
+  async resetInterruptedChatExecutions(): Promise<void> {
+    const now = new Date();
+    await this.database.transaction(async (transaction) => {
+      await transaction
+        .update(schema.chatExecutionLanes)
+        .set({ state: "suspended", updatedAt: now })
+        .where(eq(schema.chatExecutionLanes.state, "active"));
+      await transaction
+        .update(schema.chats)
+        .set({ status: "failed", updatedAt: now })
+        .where(eq(schema.chats.status, "running"));
+      await transaction
+        .update(schema.chatRuntimeSessions)
+        .set({ status: "detached", updatedAt: now })
+        .where(
+          inArray(schema.chatRuntimeSessions.status, ["starting", "running"]),
+        );
+    });
+  }
+
+  async startChatExecutionLane(
+    ownerId: string,
+    chatId: string,
+    acquiringActor: ChatExecutionLaneSummary["acquiringActor"],
+    purpose: string,
+  ): Promise<ChatExecutionContext | null> {
+    try {
+      return await this.database.transaction(async (transaction) => {
+        const rows = await transaction
+          .select({
+            chat: schema.chats,
+            worktree: schema.projectWorktrees,
+            runtime: schema.chatRuntimeSessions,
+          })
+          .from(schema.chats)
+          .innerJoin(
+            schema.projects,
+            and(
+              eq(schema.projects.id, schema.chats.projectId),
+              eq(schema.projects.ownerId, ownerId),
+            ),
+          )
+          .innerJoin(
+            schema.projectWorktrees,
+            eq(schema.projectWorktrees.id, schema.chats.activeWorktreeId),
+          )
+          .leftJoin(
+            schema.chatRuntimeSessions,
+            and(
+              eq(schema.chatRuntimeSessions.chatId, schema.chats.id),
+              eq(
+                schema.chatRuntimeSessions.workerId,
+                schema.projectWorktrees.workerId,
+              ),
+              eq(
+                schema.chatRuntimeSessions.worktreeId,
+                schema.projectWorktrees.id,
+              ),
+            ),
+          )
+          .where(eq(schema.chats.id, chatId))
+          .limit(1);
+        const row = rows[0];
+        if (!row) return null;
+        if (row.worktree.lifecycleState !== "ready") {
+          throw new ExecutionLaneConflictError(
+            "The selected worktree is not ready for execution.",
+          );
+        }
+
+        const claimed = await transaction
+          .update(schema.chats)
+          .set({ status: "running", updatedAt: new Date() })
+          .where(
+            and(
+              eq(schema.chats.id, chatId),
+              ne(schema.chats.status, "running"),
+            ),
+          )
+          .returning({ id: schema.chats.id });
+        if (!claimed[0]) {
+          throw new ExecutionLaneConflictError(
+            "This chat already has an active execution.",
+          );
+        }
+
+        let runtime = row.runtime;
+        if (!runtime) {
+          const inserted = await transaction
+            .insert(schema.chatRuntimeSessions)
+            .values({
+              id: randomUUID(),
+              chatId,
+              workerId: row.worktree.workerId,
+              worktreeId: row.worktree.id,
+            })
+            .returning();
+          runtime = firstOrThrow(inserted, "creating an execution runtime");
+        }
+
+        const existing = await transaction
+          .select()
+          .from(schema.chatExecutionLanes)
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.chatId, chatId),
+              eq(schema.chatExecutionLanes.worktreeId, row.worktree.id),
+              ne(schema.chatExecutionLanes.state, "released"),
+            ),
+          )
+          .orderBy(desc(schema.chatExecutionLanes.createdAt))
+          .limit(1);
+        const now = new Date();
+        let lane: typeof schema.chatExecutionLanes.$inferSelect;
+        if (existing[0]) {
+          const activated = await transaction
+            .update(schema.chatExecutionLanes)
+            .set({
+              acquiringActor,
+              exclusive: !row.worktree.isPrimary,
+              purpose,
+              state: "active",
+              activatedAt: now,
+              releasedAt: null,
+              runtimeSessionId: runtime.id,
+              codexThreadId: runtime.codexThreadId,
+              updatedAt: now,
+            })
+            .where(eq(schema.chatExecutionLanes.id, existing[0].id))
+            .returning();
+          lane = firstOrThrow(activated, "activating an execution lane");
+        } else {
+          const inserted = await transaction
+            .insert(schema.chatExecutionLanes)
+            .values({
+              id: randomUUID(),
+              chatId,
+              worktreeId: row.worktree.id,
+              workerId: row.worktree.workerId,
+              acquiringActor,
+              exclusive: !row.worktree.isPrimary,
+              purpose,
+              state: "active",
+              startingHead: row.worktree.head,
+              runtimeSessionId: runtime.id,
+              codexThreadId: runtime.codexThreadId,
+              activatedAt: now,
+            })
+            .returning();
+          lane = firstOrThrow(inserted, "creating an execution lane");
+        }
+        return {
+          chatId,
+          cwd: row.worktree.absolutePath,
+          executionLaneId: lane.id,
+          isPrimary: row.worktree.isPrimary,
+          status: "running",
+          modelId: row.chat.modelId,
+          modelRouteId: runtime.modelRouteId,
+          projectId: row.chat.projectId,
+          threadId: runtime.codexThreadId,
+          workerId: row.worktree.workerId,
+          worktreeId: row.worktree.id,
+          worktreeMode: row.chat.worktreeMode as ChatSummary["worktreeMode"],
+        };
+      });
+    } catch (error) {
+      if (error instanceof ExecutionLaneConflictError) throw error;
+      if (
+        /unique|duplicate/i.test(error instanceof Error ? error.message : "")
+      ) {
+        throw new ExecutionLaneConflictError(
+          "The worktree is already leased by another chat.",
+        );
+      }
+      throw error;
+    }
+  }
+
+  async finishChatExecutionLane(
+    chatId: string,
+    laneId: string,
+    status: ChatSummary["status"],
+  ): Promise<void> {
+    const now = new Date();
+    await this.database.transaction(async (transaction) => {
+      await transaction
+        .update(schema.chatExecutionLanes)
+        .set({ state: "suspended", updatedAt: now })
+        .where(
+          and(
+            eq(schema.chatExecutionLanes.id, laneId),
+            eq(schema.chatExecutionLanes.chatId, chatId),
+            eq(schema.chatExecutionLanes.state, "active"),
+          ),
+        );
+      await transaction
+        .update(schema.chats)
+        .set({ status, updatedAt: now })
+        .where(eq(schema.chats.id, chatId));
+    });
+  }
+
+  async getChatExecutionLaneContext(
+    ownerId: string,
+    chatId: string,
+    laneId: string,
+  ): Promise<ChatExecutionLaneContext | null> {
+    const rows = await this.database
+      .select({
+        chat: schema.chats,
+        lane: schema.chatExecutionLanes,
+        sourcePath: schema.projectSources.absolutePath,
+        worktree: schema.projectWorktrees,
+      })
+      .from(schema.chatExecutionLanes)
+      .innerJoin(
+        schema.chats,
+        eq(schema.chats.id, schema.chatExecutionLanes.chatId),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .innerJoin(
+        schema.projectWorktrees,
+        eq(schema.projectWorktrees.id, schema.chatExecutionLanes.worktreeId),
+      )
+      .innerJoin(
+        schema.projectSources,
+        eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
+      )
+      .where(
+        and(
+          eq(schema.chatExecutionLanes.id, laneId),
+          eq(schema.chatExecutionLanes.chatId, chatId),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    return row
+      ? {
+          chat: toChatSummary(row.chat),
+          lane: toChatExecutionLaneSummary(row.lane),
+          sourcePath: row.sourcePath,
+          worktree: toProjectWorktreeSummary(row.worktree, row.chat.projectId),
+        }
+      : null;
+  }
+
+  async releaseChatExecutionLane(
+    ownerId: string,
+    chatId: string,
+    laneId: string,
+    returnToPrimary: boolean,
+  ): Promise<ChatExecutionLaneReleaseResult | null> {
+    const context = await this.getChatExecutionLaneContext(
+      ownerId,
+      chatId,
+      laneId,
+    );
+    if (!context) return null;
+    if (context.chat.status === "running" || context.lane.state === "active") {
+      throw new ExecutionLaneConflictError(
+        "Finish the active chat execution before releasing its lane.",
+      );
+    }
+    const consoles = await this.database
+      .select({ status: schema.terminals.status })
+      .from(schema.terminals)
+      .where(eq(schema.terminals.linkedChatId, chatId));
+    if (consoles.some(({ status }) => status === "running")) {
+      throw new ExecutionLaneConflictError(
+        "Stop the linked Codex console before releasing its lane.",
+      );
+    }
+
+    return this.database.transaction(async (transaction) => {
+      const releasedRows = await transaction
+        .update(schema.chatExecutionLanes)
+        .set({
+          state: "released",
+          releasedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.chatExecutionLanes.id, laneId),
+            ne(schema.chatExecutionLanes.state, "released"),
+          ),
+        )
+        .returning();
+      const released = releasedRows[0] ?? null;
+      if (!released) {
+        return {
+          chat: context.chat,
+          lane: context.lane,
+          returnedToPrimary: false,
+        };
+      }
+
+      let returnedToPrimary = false;
+      if (
+        returnToPrimary &&
+        !context.worktree.isPrimary &&
+        context.chat.activeWorktreeId === context.worktree.id
+      ) {
+        const primaryRows = await transaction
+          .select({ worktree: schema.projectWorktrees })
+          .from(schema.projectWorktrees)
+          .innerJoin(
+            schema.projectSources,
+            and(
+              eq(
+                schema.projectSources.id,
+                schema.projectWorktrees.projectSourceId,
+              ),
+              eq(schema.projectSources.projectId, context.chat.projectId),
+            ),
+          )
+          .where(eq(schema.projectWorktrees.isPrimary, true))
+          .limit(1);
+        const primary = primaryRows[0]?.worktree;
+        if (!primary || primary.lifecycleState !== "ready") {
+          throw new ExecutionLaneConflictError(
+            "Primary is not ready, so this lane cannot be released safely.",
+          );
+        }
+        await transaction
+          .insert(schema.chatRuntimeSessions)
+          .values({
+            id: randomUUID(),
+            chatId,
+            workerId: primary.workerId,
+            worktreeId: primary.id,
+          })
+          .onConflictDoNothing({
+            target: [
+              schema.chatRuntimeSessions.chatId,
+              schema.chatRuntimeSessions.workerId,
+              schema.chatRuntimeSessions.worktreeId,
+            ],
+          });
+        const runtimes = await transaction
+          .select()
+          .from(schema.chatRuntimeSessions)
+          .where(
+            and(
+              eq(schema.chatRuntimeSessions.chatId, chatId),
+              eq(schema.chatRuntimeSessions.workerId, primary.workerId),
+              eq(schema.chatRuntimeSessions.worktreeId, primary.id),
+            ),
+          )
+          .limit(1);
+        const runtime = firstOrThrow(runtimes, "selecting the Primary runtime");
+        const primaryLane = await transaction
+          .select({ id: schema.chatExecutionLanes.id })
+          .from(schema.chatExecutionLanes)
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.chatId, chatId),
+              eq(schema.chatExecutionLanes.worktreeId, primary.id),
+              ne(schema.chatExecutionLanes.state, "released"),
+            ),
+          )
+          .limit(1);
+        if (!primaryLane[0]) {
+          await transaction.insert(schema.chatExecutionLanes).values({
+            id: randomUUID(),
+            chatId,
+            worktreeId: primary.id,
+            workerId: primary.workerId,
+            acquiringActor: "user",
+            exclusive: false,
+            purpose: "Returned to Primary after lane release",
+            state: "suspended",
+            startingHead: primary.head,
+            runtimeSessionId: runtime.id,
+            codexThreadId: runtime.codexThreadId,
+          });
+        }
+        await transaction
+          .update(schema.terminals)
+          .set({
+            activeWorkerId: primary.workerId,
+            worktreeId: primary.id,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.terminals.linkedChatId, chatId));
+        await transaction
+          .update(schema.chats)
+          .set({
+            activeWorkerId: primary.workerId,
+            activeWorktreeId: primary.id,
+            worktreeMode: "agent-managed",
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.chats.id, chatId));
+        returnedToPrimary = true;
+      }
+      const chats = await transaction
+        .select()
+        .from(schema.chats)
+        .where(eq(schema.chats.id, chatId))
+        .limit(1);
+      return {
+        chat: toChatSummary(firstOrThrow(chats, "selecting a released chat")),
+        lane: toChatExecutionLaneSummary(released),
+        returnedToPrimary,
+      };
+    });
+  }
+
   async getGithubProjectExecutionContext(
     ownerId: string,
     projectId: string,
@@ -1623,6 +2065,8 @@ export class ServerRepository {
       : await this.getProjectSource(ownerId, projectId);
     const worktreeId = selected?.worktree.id ?? primary?.worktreeId;
     const workerId = selected?.workerId ?? primary?.workerId;
+    const isPrimary = selected?.worktree.isPrimary ?? true;
+    const startingHead = selected?.worktree.head ?? null;
     if (
       !worktreeId ||
       !workerId ||
@@ -1664,33 +2108,48 @@ export class ServerRepository {
           .orderBy(desc(schema.projectViews.position))
           .limit(1),
       ]);
-    const result = await this.database
-      .insert(schema.chats)
-      .values({
+    return this.database.transaction(async (transaction) => {
+      const result = await transaction
+        .insert(schema.chats)
+        .values({
+          id: randomUUID(),
+          projectId,
+          title: input.title,
+          position:
+            Math.max(
+              lastChats[0]?.position ?? -1,
+              lastTerminals[0]?.position ?? -1,
+              lastExplorers[0]?.position ?? -1,
+              lastBrowsers[0]?.position ?? -1,
+              lastViews[0]?.position ?? -1,
+            ) + 1,
+          activeWorkerId: workerId,
+          activeWorktreeId: worktreeId,
+          worktreeMode: input.worktreeMode,
+        })
+        .returning();
+      const chat = firstOrThrow(result, "creating a chat");
+      const runtimeSessionId = randomUUID();
+      await transaction.insert(schema.chatRuntimeSessions).values({
+        id: runtimeSessionId,
+        chatId: chat.id,
+        workerId,
+        worktreeId,
+      });
+      await transaction.insert(schema.chatExecutionLanes).values({
         id: randomUUID(),
-        projectId,
-        title: input.title,
-        position:
-          Math.max(
-            lastChats[0]?.position ?? -1,
-            lastTerminals[0]?.position ?? -1,
-            lastExplorers[0]?.position ?? -1,
-            lastBrowsers[0]?.position ?? -1,
-            lastViews[0]?.position ?? -1,
-          ) + 1,
-        activeWorkerId: workerId,
-        activeWorktreeId: worktreeId,
-        worktreeMode: input.worktreeMode,
-      })
-      .returning();
-    const chat = firstOrThrow(result, "creating a chat");
-    await this.database.insert(schema.chatRuntimeSessions).values({
-      id: randomUUID(),
-      chatId: chat.id,
-      workerId,
-      worktreeId,
+        chatId: chat.id,
+        worktreeId,
+        workerId,
+        acquiringActor: "user",
+        exclusive: !isPrimary,
+        purpose: "Initial chat worktree",
+        state: "suspended",
+        startingHead,
+        runtimeSessionId,
+      });
+      return toChatSummary(chat);
     });
-    return toChatSummary(chat);
   }
 
   async listTerminals(
@@ -2751,18 +3210,28 @@ export class ServerRepository {
 
     const changingWorktree = chat.activeWorktreeId !== target.worktree.id;
     if (changingWorktree && chat.status === "running") {
-      throw new Error(
+      throw new ExecutionLaneConflictError(
         "Wait for the active chat turn before switching worktrees.",
       );
     }
     if (changingWorktree) {
-      const [lanes, consoles] = await Promise.all([
+      const [activeLanes, reservations, consoles] = await Promise.all([
         this.database
           .select({ id: schema.chatExecutionLanes.id })
           .from(schema.chatExecutionLanes)
           .where(
             and(
               eq(schema.chatExecutionLanes.chatId, chatId),
+              eq(schema.chatExecutionLanes.state, "active"),
+            ),
+          ),
+        this.database
+          .select({ chatId: schema.chatExecutionLanes.chatId })
+          .from(schema.chatExecutionLanes)
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.worktreeId, target.worktree.id),
+              eq(schema.chatExecutionLanes.exclusive, true),
               ne(schema.chatExecutionLanes.state, "released"),
             ),
           ),
@@ -2771,13 +3240,21 @@ export class ServerRepository {
           .from(schema.terminals)
           .where(eq(schema.terminals.linkedChatId, chatId)),
       ]);
-      if (lanes.length > 0) {
-        throw new Error(
-          "Release the active chat execution lane before switching.",
+      if (activeLanes.length > 0) {
+        throw new ExecutionLaneConflictError(
+          "Finish the active chat execution before switching worktrees.",
+        );
+      }
+      const owner = reservations.find(
+        ({ chatId: ownerId }) => ownerId !== chatId,
+      );
+      if (owner) {
+        throw new ExecutionLaneConflictError(
+          `Worktree is exclusively leased to chat ${owner.chatId}.`,
         );
       }
       if (consoles.some(({ terminal }) => terminal.status === "running")) {
-        throw new Error(
+        throw new ExecutionLaneConflictError(
           "Stop the linked Codex console before switching worktrees.",
         );
       }
@@ -2799,6 +3276,54 @@ export class ServerRepository {
             schema.chatRuntimeSessions.worktreeId,
           ],
         });
+      const runtimes = await transaction
+        .select()
+        .from(schema.chatRuntimeSessions)
+        .where(
+          and(
+            eq(schema.chatRuntimeSessions.chatId, chatId),
+            eq(schema.chatRuntimeSessions.workerId, target.workerId),
+            eq(schema.chatRuntimeSessions.worktreeId, target.worktree.id),
+          ),
+        )
+        .limit(1);
+      const runtime = firstOrThrow(runtimes, "selecting a worktree runtime");
+      const existingLanes = await transaction
+        .select()
+        .from(schema.chatExecutionLanes)
+        .where(
+          and(
+            eq(schema.chatExecutionLanes.chatId, chatId),
+            eq(schema.chatExecutionLanes.worktreeId, target.worktree.id),
+            ne(schema.chatExecutionLanes.state, "released"),
+          ),
+        )
+        .orderBy(desc(schema.chatExecutionLanes.createdAt))
+        .limit(1);
+      if (!existingLanes[0]) {
+        await transaction.insert(schema.chatExecutionLanes).values({
+          id: randomUUID(),
+          chatId,
+          worktreeId: target.worktree.id,
+          workerId: target.workerId,
+          acquiringActor: "user",
+          exclusive: !target.worktree.isPrimary,
+          purpose: "Selected by user",
+          state: "suspended",
+          startingHead: target.worktree.head,
+          runtimeSessionId: runtime.id,
+          codexThreadId: runtime.codexThreadId,
+        });
+      } else {
+        await transaction
+          .update(schema.chatExecutionLanes)
+          .set({
+            runtimeSessionId: runtime.id,
+            codexThreadId: runtime.codexThreadId,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.chatExecutionLanes.id, existingLanes[0].id));
+      }
       if (changingWorktree) {
         await transaction
           .update(schema.terminals)
@@ -2971,11 +3496,24 @@ export class ServerRepository {
         })
         .returning();
       const fork = firstOrThrow(chatResult, "forking a chat");
+      const runtimeSessionId = randomUUID();
       await transaction.insert(schema.chatRuntimeSessions).values({
-        id: randomUUID(),
+        id: runtimeSessionId,
         chatId: fork.id,
         workerId: target.workerId,
         worktreeId: target.id,
+      });
+      await transaction.insert(schema.chatExecutionLanes).values({
+        id: randomUUID(),
+        chatId: fork.id,
+        worktreeId: target.id,
+        workerId: target.workerId,
+        acquiringActor: "user",
+        exclusive: !target.isPrimary,
+        purpose: `Forked from ${row.chat.id}`,
+        state: "suspended",
+        startingHead: target.head,
+        runtimeSessionId,
       });
       if (sourceMessages.length > 0) {
         await transaction.insert(schema.chatMessages).values(
@@ -3172,6 +3710,7 @@ export class ServerRepository {
     const rows = await this.database
       .select({
         chat: schema.chats,
+        lane: schema.chatExecutionLanes,
         worktree: schema.projectWorktrees,
         runtime: schema.chatRuntimeSessions,
       })
@@ -3198,6 +3737,13 @@ export class ServerRepository {
           eq(schema.chatRuntimeSessions.worktreeId, schema.projectWorktrees.id),
         ),
       )
+      .leftJoin(
+        schema.chatExecutionLanes,
+        and(
+          eq(schema.chatExecutionLanes.chatId, schema.chats.id),
+          eq(schema.chatExecutionLanes.state, "active"),
+        ),
+      )
       .where(eq(schema.chats.id, chatId))
       .limit(1);
     const row = rows[0];
@@ -3207,12 +3753,16 @@ export class ServerRepository {
     return {
       chatId: row.chat.id,
       cwd: row.worktree.absolutePath,
+      executionLaneId: row.lane?.id ?? null,
+      isPrimary: row.worktree.isPrimary,
       modelId: row.chat.modelId,
       modelRouteId: row.runtime?.modelRouteId ?? null,
+      projectId: row.chat.projectId,
       status: row.chat.status as ChatSummary["status"],
       threadId: row.runtime?.codexThreadId ?? null,
       workerId: row.worktree.workerId,
       worktreeId: row.worktree.id,
+      worktreeMode: row.chat.worktreeMode as ChatSummary["worktreeMode"],
     };
   }
 
@@ -3224,7 +3774,7 @@ export class ServerRepository {
     modelRouteId: string,
     status = "ready",
   ): Promise<void> {
-    await this.database
+    const rows = await this.database
       .insert(schema.chatRuntimeSessions)
       .values({
         id: randomUUID(),
@@ -3247,7 +3797,24 @@ export class ServerRepository {
           status,
           updatedAt: new Date(),
         },
-      });
+      })
+      .returning();
+    const runtime = firstOrThrow(rows, "updating a chat runtime");
+    await this.database
+      .update(schema.chatExecutionLanes)
+      .set({
+        runtimeSessionId: runtime.id,
+        codexThreadId: threadId,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.chatExecutionLanes.chatId, chatId),
+          eq(schema.chatExecutionLanes.workerId, workerId),
+          eq(schema.chatExecutionLanes.worktreeId, worktreeId),
+          eq(schema.chatExecutionLanes.state, "active"),
+        ),
+      );
   }
 
   async setChatStatus(
@@ -3327,7 +3894,7 @@ export class ServerRepository {
     modelId: string,
   ): Promise<QueuedPrompt | null> {
     const chat = await this.database
-      .select({ id: schema.chats.id })
+      .select({ id: schema.chats.id, projectId: schema.chats.projectId })
       .from(schema.chats)
       .innerJoin(
         schema.projects,
@@ -3339,6 +3906,29 @@ export class ServerRepository {
       .where(eq(schema.chats.id, chatId))
       .limit(1);
     if (!chat[0]) return null;
+    if (input.worktreeId) {
+      const target = await this.database
+        .select({ id: schema.projectWorktrees.id })
+        .from(schema.projectWorktrees)
+        .innerJoin(
+          schema.projectSources,
+          and(
+            eq(
+              schema.projectSources.id,
+              schema.projectWorktrees.projectSourceId,
+            ),
+            eq(schema.projectSources.projectId, chat[0].projectId),
+          ),
+        )
+        .where(
+          and(
+            eq(schema.projectWorktrees.id, input.worktreeId),
+            eq(schema.projectWorktrees.lifecycleState, "ready"),
+          ),
+        )
+        .limit(1);
+      if (!target[0]) return null;
+    }
 
     const existing = await this.database
       .select()
@@ -3365,6 +3955,7 @@ export class ServerRepository {
         chatId,
         text: input.text,
         modelId,
+        worktreeId: input.worktreeId,
         position: (last[0]?.position ?? -1) + 1,
         frozen: input.frozen,
         idempotencyKey: input.idempotencyKey,
@@ -3451,6 +4042,7 @@ export class ServerRepository {
     ownerId: string,
     chatId: string,
     input: ChatMessageCreate,
+    attribution?: ChatExecutionAttribution,
   ): Promise<ChatMessage | null> {
     const chat = await this.database
       .select({
@@ -3471,17 +4063,36 @@ export class ServerRepository {
       return null;
     }
 
-    const activeLanes = await this.database
-      .select({ id: schema.chatExecutionLanes.id })
-      .from(schema.chatExecutionLanes)
-      .where(
-        and(
-          eq(schema.chatExecutionLanes.chatId, chatId),
-          eq(schema.chatExecutionLanes.worktreeId, chat[0].worktreeId),
-          eq(schema.chatExecutionLanes.state, "active"),
-        ),
-      )
-      .limit(1);
+    const activeLanes = attribution
+      ? await this.database
+          .select({
+            id: schema.chatExecutionLanes.id,
+            worktreeId: schema.chatExecutionLanes.worktreeId,
+          })
+          .from(schema.chatExecutionLanes)
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.id, attribution.executionLaneId),
+              eq(schema.chatExecutionLanes.chatId, chatId),
+              eq(schema.chatExecutionLanes.worktreeId, attribution.worktreeId),
+            ),
+          )
+          .limit(1)
+      : await this.database
+          .select({
+            id: schema.chatExecutionLanes.id,
+            worktreeId: schema.chatExecutionLanes.worktreeId,
+          })
+          .from(schema.chatExecutionLanes)
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.chatId, chatId),
+              eq(schema.chatExecutionLanes.worktreeId, chat[0].worktreeId),
+              eq(schema.chatExecutionLanes.state, "active"),
+            ),
+          )
+          .limit(1);
+    if (attribution && !activeLanes[0]) return null;
 
     if (input.idempotencyKey) {
       const existing = await this.database
@@ -3504,7 +4115,7 @@ export class ServerRepository {
       .values({
         id: randomUUID(),
         chatId,
-        worktreeId: chat[0].worktreeId,
+        worktreeId: attribution?.worktreeId ?? chat[0].worktreeId,
         executionLaneId: activeLanes[0]?.id ?? null,
         role: input.role,
         content: input.content,
@@ -3540,6 +4151,7 @@ export class ServerRepository {
     ownerId: string,
     chatId: string,
     input: ChatMessageCreate & { idempotencyKey: string },
+    attribution?: ChatExecutionAttribution,
   ): Promise<ChatMessage | null> {
     const existing = await this.getMessageByIdempotencyKey(
       ownerId,
@@ -3547,7 +4159,7 @@ export class ServerRepository {
       input.idempotencyKey,
     );
     if (!existing) {
-      return this.appendMessage(ownerId, chatId, input);
+      return this.appendMessage(ownerId, chatId, input, attribution);
     }
 
     const result = await this.database

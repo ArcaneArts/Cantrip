@@ -898,6 +898,7 @@ export const chatExecutionLaneSummarySchema = z.object({
   worktreeId: z.string().min(1),
   workerId: z.string().min(1),
   acquiringActor: chatExecutionLaneActorSchema,
+  exclusive: z.boolean(),
   purpose: z.string().min(1).nullable(),
   state: chatExecutionLaneStateSchema,
   baseRevision: z.string().min(1).nullable(),
@@ -914,6 +915,11 @@ export const chatExecutionLaneListSchema = z.array(
   chatExecutionLaneSummarySchema,
 );
 
+export const chatExecutionLaneReleaseSchema = z.object({
+  allowDirty: z.boolean().default(false),
+  returnToPrimary: z.boolean().default(true),
+});
+
 export const chatMessageListSchema = z.array(chatMessageSchema);
 
 export const chatTurnCreateSchema = z.object({
@@ -927,6 +933,7 @@ export const queuedPromptSchema = z.object({
   chatId: z.string().min(1),
   text: z.string().trim().min(1).max(100_000),
   modelId: z.string().min(1),
+  worktreeId: z.string().min(1).nullable(),
   position: z.number().int().nonnegative(),
   frozen: z.boolean(),
   createdAt: z.string().datetime(),
@@ -937,6 +944,7 @@ export const queuedPromptListSchema = z.array(queuedPromptSchema);
 
 export const queuedPromptCreateSchema = chatTurnCreateSchema.extend({
   frozen: z.boolean().default(false),
+  worktreeId: z.string().min(1).nullable().default(null),
 });
 
 export const queuedPromptUpdateSchema = z
@@ -1422,6 +1430,8 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("chat.turn"),
     chatId: z.string().min(1),
     clientMessageId: z.string().min(1),
+    executionLaneId: z.string().min(1),
+    worktreeId: z.string().min(1),
     cwd: z.string().min(1),
     threadId: z.string().min(1).nullable(),
     prompt: z.string().min(1),
@@ -1643,6 +1653,9 @@ export type ChatExecutionLaneState = z.infer<
 >;
 export type ChatExecutionLaneSummary = z.infer<
   typeof chatExecutionLaneSummarySchema
+>;
+export type ChatExecutionLaneRelease = z.infer<
+  typeof chatExecutionLaneReleaseSchema
 >;
 export type ChatTurnCreate = z.infer<typeof chatTurnCreateSchema>;
 export type QueuedPrompt = z.infer<typeof queuedPromptSchema>;

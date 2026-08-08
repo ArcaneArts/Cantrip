@@ -14,6 +14,8 @@ import {
   chatCompactAcceptedSchema,
   chatInterruptAcceptedSchema,
   chatCreateSchema,
+  chatExecutionLaneListSchema,
+  chatExecutionLaneReleaseSchema,
   chatForkSchema,
   chatListSchema,
   chatMessageCreateSchema,
@@ -109,6 +111,7 @@ import { fetchBrowserPage } from "./browser-proxy.js";
 import type { ServerConfig } from "./config.js";
 import type { DatabaseConnection } from "./db/index.js";
 import {
+  ExecutionLaneConflictError,
   LOCAL_USER_ID,
   type ChatExecutionContext,
   type ModelRuntime,
@@ -186,6 +189,7 @@ export async function buildApp({
   );
   await repository.ensureBrowserRemoteSurfaces(LOCAL_USER_ID);
   await repository.resetTransientRemoteSurfaceStatuses();
+  await repository.resetInterruptedChatExecutions();
 
   await app.register(cors, {
     credentials: true,
@@ -357,7 +361,7 @@ export async function buildApp({
     }
     dispatchingChats.add(chatId);
     try {
-      const context = await repository.getChatExecutionContext(
+      let context = await repository.getChatExecutionContext(
         LOCAL_USER_ID,
         chatId,
       );
@@ -366,6 +370,17 @@ export async function buildApp({
         await repository.listQueuedPrompts(LOCAL_USER_ID, chatId)
       ).find((candidate) => !candidate.frozen);
       if (!prompt) return;
+      if (prompt.worktreeId && prompt.worktreeId !== context.worktreeId) {
+        await repository.updateChatWorktree(LOCAL_USER_ID, chatId, {
+          worktreeId: prompt.worktreeId,
+          mode: context.worktreeMode,
+        });
+        context = await repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          chatId,
+        );
+        if (!context) return;
+      }
       await beginTurn(context, {
         text: prompt.text,
         modelId: prompt.modelId,
@@ -391,37 +406,63 @@ export async function buildApp({
     }
     const modelId = await resolveModelId(context, input.modelId);
     const runtimes = await availableModelRuntimes(context, modelId);
-    const priorMessages = await repository.listMessages(
+    const execution = await repository.startChatExecutionLane(
       LOCAL_USER_ID,
       context.chatId,
+      "user",
+      "Chat turn",
     );
-    const userMessage = await repository.appendMessage(
-      LOCAL_USER_ID,
-      context.chatId,
-      {
-        role: "user",
-        content: [{ type: "text", text: input.text }],
-        idempotencyKey: input.idempotencyKey,
-      },
-    );
-    if (!userMessage) {
-      throw new Error("Chat not found.");
+    if (!execution || !execution.executionLaneId) {
+      throw new Error("Chat execution lane could not be acquired.");
     }
-    await repository.setMessageModelRoute(
-      userMessage.id,
-      modelId,
-      runtimes[0]!,
-    );
-    await repository.setChatModel(LOCAL_USER_ID, context.chatId, { modelId });
-    await repository.setChatStatus(context.chatId, "running");
+    const executionLaneId = execution.executionLaneId;
+    const attribution = {
+      executionLaneId,
+      worktreeId: execution.worktreeId,
+    };
+    let priorMessages: ChatMessage[];
+    let userMessage: ChatMessage;
+    try {
+      priorMessages = await repository.listMessages(
+        LOCAL_USER_ID,
+        execution.chatId,
+      );
+      const appended = await repository.appendMessage(
+        LOCAL_USER_ID,
+        execution.chatId,
+        {
+          role: "user",
+          content: [{ type: "text", text: input.text }],
+          idempotencyKey: input.idempotencyKey,
+        },
+        attribution,
+      );
+      if (!appended) throw new Error("Chat not found.");
+      userMessage = appended;
+      await repository.setMessageModelRoute(
+        userMessage.id,
+        modelId,
+        runtimes[0]!,
+      );
+      await repository.setChatModel(LOCAL_USER_ID, execution.chatId, {
+        modelId,
+      });
+    } catch (error) {
+      await repository.finishChatExecutionLane(
+        execution.chatId,
+        executionLaneId,
+        "failed",
+      );
+      throw error;
+    }
 
     void (async () => {
       let anyActivity = false;
       try {
         for (const [index, runtime] of runtimes.entries()) {
           let attemptActivity = false;
-          const canResume = runtime.routeId === context.modelRouteId;
-          const threadId = canResume ? context.threadId : null;
+          const canResume = runtime.routeId === execution.modelRouteId;
+          const threadId = canResume ? execution.threadId : null;
           const workerPrompt = threadId
             ? input.text
             : continuationPrompt(priorMessages, input.text);
@@ -431,21 +472,23 @@ export async function buildApp({
             runtime,
           );
           await repository.updateChatRuntime(
-            context.chatId,
-            context.workerId,
-            context.worktreeId,
+            execution.chatId,
+            execution.workerId,
+            execution.worktreeId,
             threadId,
             runtime.routeId,
             "starting",
           );
           try {
             const rawResult = await bridge.request(
-              context.workerId,
+              execution.workerId,
               {
                 type: "chat.turn",
-                chatId: context.chatId,
+                chatId: execution.chatId,
                 clientMessageId: userMessage.id,
-                cwd: context.cwd,
+                cwd: execution.cwd,
+                executionLaneId,
+                worktreeId: execution.worktreeId,
                 threadId,
                 prompt: workerPrompt,
                 skillNames: mentionedSkillNames(input.text),
@@ -460,12 +503,13 @@ export async function buildApp({
                   anyActivity = true;
                   await repository.upsertMessage(
                     LOCAL_USER_ID,
-                    context.chatId,
+                    execution.chatId,
                     {
                       role: "assistant",
                       content: [{ type: "activity", activity: event.activity }],
                       idempotencyKey: `activity:${userMessage.id}:${event.activity.id}`,
                     },
+                    attribution,
                   );
                 },
               },
@@ -473,24 +517,34 @@ export async function buildApp({
             const result = agentTurnResultSchema.parse(rawResult);
             routeCooldowns.delete(runtime.routeId);
             await repository.updateChatRuntime(
-              context.chatId,
-              context.workerId,
-              context.worktreeId,
+              execution.chatId,
+              execution.workerId,
+              execution.worktreeId,
               result.threadId,
               runtime.routeId,
             );
-            await repository.appendMessage(LOCAL_USER_ID, context.chatId, {
-              role: "assistant",
-              content: [
-                {
-                  type: "text",
-                  text: result.text || "The agent completed without a message.",
-                },
-              ],
-              idempotencyKey: `assistant:${userMessage.id}`,
-            });
-            await repository.setChatStatus(context.chatId, "idle");
-            void dispatchNextQueuedPrompt(context.chatId);
+            await repository.appendMessage(
+              LOCAL_USER_ID,
+              execution.chatId,
+              {
+                role: "assistant",
+                content: [
+                  {
+                    type: "text",
+                    text:
+                      result.text || "The agent completed without a message.",
+                  },
+                ],
+                idempotencyKey: `assistant:${userMessage.id}`,
+              },
+              attribution,
+            );
+            await repository.finishChatExecutionLane(
+              execution.chatId,
+              executionLaneId,
+              "idle",
+            );
+            void dispatchNextQueuedPrompt(execution.chatId);
             return;
           } catch (error) {
             const canRetry =
@@ -504,7 +558,7 @@ export async function buildApp({
             );
             app.log.warn(
               {
-                chatId: context.chatId,
+                chatId: execution.chatId,
                 err: error,
                 providerId: runtime.provider.id,
                 routeId: runtime.routeId,
@@ -514,37 +568,43 @@ export async function buildApp({
           }
         }
       } catch (error: unknown) {
-        if (!anyActivity && context.modelRouteId) {
+        if (!anyActivity && execution.modelRouteId) {
           await repository.updateChatRuntime(
-            context.chatId,
-            context.workerId,
-            context.worktreeId,
-            context.threadId,
-            context.modelRouteId,
+            execution.chatId,
+            execution.workerId,
+            execution.worktreeId,
+            execution.threadId,
+            execution.modelRouteId,
           );
         }
         const interrupted = /interrupted/i.test(errorMessage(error));
         app.log.error(
-          { chatId: context.chatId, err: error },
+          { chatId: execution.chatId, err: error },
           "Agent turn failed",
         );
-        await repository.appendMessage(LOCAL_USER_ID, context.chatId, {
-          role: "system",
-          content: [
-            {
-              type: "text",
-              text: interrupted
-                ? "Turn interrupted."
-                : `Agent failed: ${errorMessage(error)}`,
-            },
-          ],
-          idempotencyKey: `error:${userMessage.id}`,
-        });
-        await repository.setChatStatus(
-          context.chatId,
+        await repository.appendMessage(
+          LOCAL_USER_ID,
+          execution.chatId,
+          {
+            role: "system",
+            content: [
+              {
+                type: "text",
+                text: interrupted
+                  ? "Turn interrupted."
+                  : `Agent failed: ${errorMessage(error)}`,
+              },
+            ],
+            idempotencyKey: `error:${userMessage.id}`,
+          },
+          attribution,
+        );
+        await repository.finishChatExecutionLane(
+          execution.chatId,
+          executionLaneId,
           interrupted ? "idle" : "failed",
         );
-        void dispatchNextQueuedPrompt(context.chatId);
+        void dispatchNextQueuedPrompt(execution.chatId);
       }
     })();
 
@@ -1736,15 +1796,27 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const chat = await repository.createChat(
-        LOCAL_USER_ID,
-        request.params.projectId,
-        input.data,
-      );
-      if (!chat) {
-        return reply.code(404).send({ error: "Project source not found" });
+      try {
+        const chat = await repository.createChat(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          input.data,
+        );
+        if (!chat) {
+          return reply.code(404).send({ error: "Project source not found" });
+        }
+        return reply.code(201).send(chatSummarySchema.parse(chat));
+      } catch (error) {
+        if (
+          error instanceof ExecutionLaneConflictError ||
+          /unique|duplicate/i.test(errorMessage(error))
+        ) {
+          return reply.code(409).send({
+            error: "This worktree is already leased by another chat.",
+          });
+        }
+        throw error;
       }
-      return reply.code(201).send(chatSummarySchema.parse(chat));
     },
   );
 
@@ -2663,6 +2735,95 @@ export async function buildApp({
     },
   );
 
+  app.get<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/execution-lanes",
+    async (request, reply) => {
+      const lanes = await repository.listChatExecutionLanes(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      return reply.send(chatExecutionLaneListSchema.parse(lanes));
+    },
+  );
+
+  app.post<{ Params: { chatId: string; laneId: string } }>(
+    "/api/chats/:chatId/execution-lanes/:laneId/release",
+    async (request, reply) => {
+      const input = chatExecutionLaneReleaseSchema.safeParse(
+        request.body ?? {},
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionLaneContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+        request.params.laneId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Execution lane not found." });
+      }
+      if (context.lane.state === "released") {
+        return reply.send({
+          chat: context.chat,
+          lane: context.lane,
+          returnedToPrimary: false,
+        });
+      }
+      try {
+        if (!bridge.isConnected(context.worktree.workerId)) {
+          throw new WorkerUnavailableError("Project worker is offline.");
+        }
+        const status = worktreeStatusResultSchema.parse(
+          await bridge.request(context.worktree.workerId, {
+            type: "worktree.status",
+            sourcePath: context.sourcePath,
+            worktreePath: context.worktree.path,
+          }),
+        );
+        if (status.status.files.length > 0 && !input.data.allowDirty) {
+          return reply.code(409).send({
+            error:
+              "This worktree has uncommitted changes. Pass allowDirty to release it intentionally.",
+          });
+        }
+        const released = await repository.releaseChatExecutionLane(
+          LOCAL_USER_ID,
+          request.params.chatId,
+          request.params.laneId,
+          input.data.returnToPrimary,
+        );
+        if (!released) {
+          return reply.code(404).send({ error: "Execution lane not found." });
+        }
+        await repository.appendMessage(
+          LOCAL_USER_ID,
+          request.params.chatId,
+          {
+            role: "system",
+            content: [
+              {
+                type: "text",
+                text: released.returnedToPrimary
+                  ? `Released ${context.worktree.name}; execution returned to Primary.`
+                  : `Released execution lane for ${context.worktree.name}.`,
+              },
+            ],
+            idempotencyKey: `lane-release:${request.params.laneId}`,
+          },
+          {
+            executionLaneId: request.params.laneId,
+            worktreeId: context.worktree.id,
+          },
+        );
+        return reply.send(released);
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
   app.delete<{ Params: { chatId: string } }>(
     "/api/chats/:chatId",
     async (request, reply) => {
@@ -2686,14 +2847,23 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const chat = await repository.forkChat(
-        LOCAL_USER_ID,
-        request.params.chatId,
-        input.data,
-      );
-      return chat
-        ? reply.code(201).send(chatSummarySchema.parse(chat))
-        : reply.code(404).send({ error: "Chat or message not found." });
+      try {
+        const chat = await repository.forkChat(
+          LOCAL_USER_ID,
+          request.params.chatId,
+          input.data,
+        );
+        return chat
+          ? reply.code(201).send(chatSummarySchema.parse(chat))
+          : reply.code(404).send({ error: "Chat or message not found." });
+      } catch (error) {
+        if (/unique|duplicate/i.test(errorMessage(error))) {
+          return reply.code(409).send({
+            error: "This worktree is already leased by another chat.",
+          });
+        }
+        throw error;
+      }
     },
   );
 
@@ -2802,49 +2972,93 @@ export async function buildApp({
           provider: runtime.provider,
         }),
       );
+      let syncExecution = context;
+      if (sync.status === "running" && !context.executionLaneId) {
+        const acquired = await repository.startChatExecutionLane(
+          LOCAL_USER_ID,
+          context.chatId,
+          "agent",
+          "Linked Codex console turn",
+        );
+        if (acquired) syncExecution = acquired;
+      }
+      const syncAttribution = syncExecution.executionLaneId
+        ? {
+            executionLaneId: syncExecution.executionLaneId,
+            worktreeId: syncExecution.worktreeId,
+          }
+        : undefined;
       for (const turn of sync.turns) {
         for (const item of turn.items) {
           if (item.type === "userMessage") {
-            await repository.upsertMessage(LOCAL_USER_ID, context.chatId, {
-              role: "user",
-              content: [{ type: "text", text: item.text }],
-              idempotencyKey: `codex-sync:${turn.id}:${item.id}`,
-            });
+            await repository.upsertMessage(
+              LOCAL_USER_ID,
+              context.chatId,
+              {
+                role: "user",
+                content: [{ type: "text", text: item.text }],
+                idempotencyKey: `codex-sync:${turn.id}:${item.id}`,
+              },
+              syncAttribution,
+            );
           } else if (
             item.type === "agentMessage" &&
             item.phase !== "commentary"
           ) {
-            await repository.upsertMessage(LOCAL_USER_ID, context.chatId, {
-              role: "assistant",
-              content: [{ type: "text", text: item.text }],
-              idempotencyKey: `codex-sync:${turn.id}:${item.id}`,
-            });
+            await repository.upsertMessage(
+              LOCAL_USER_ID,
+              context.chatId,
+              {
+                role: "assistant",
+                content: [{ type: "text", text: item.text }],
+                idempotencyKey: `codex-sync:${turn.id}:${item.id}`,
+              },
+              syncAttribution,
+            );
           } else if (item.type === "activity") {
-            await repository.upsertMessage(LOCAL_USER_ID, context.chatId, {
-              role: "assistant",
-              content: [{ type: "activity", activity: item.activity }],
-              idempotencyKey: `codex-sync:${turn.id}:${item.activity.id}`,
-            });
+            await repository.upsertMessage(
+              LOCAL_USER_ID,
+              context.chatId,
+              {
+                role: "assistant",
+                content: [{ type: "activity", activity: item.activity }],
+                idempotencyKey: `codex-sync:${turn.id}:${item.activity.id}`,
+              },
+              syncAttribution,
+            );
           }
         }
         if (turn.status === "failed" || turn.status === "interrupted") {
-          await repository.upsertMessage(LOCAL_USER_ID, context.chatId, {
-            role: "system",
-            content: [
-              {
-                type: "text",
-                text:
-                  turn.status === "interrupted"
-                    ? "Turn interrupted in the Codex console."
-                    : "The Codex console turn failed.",
-              },
-            ],
-            idempotencyKey: `codex-sync:${turn.id}:status`,
-          });
+          await repository.upsertMessage(
+            LOCAL_USER_ID,
+            context.chatId,
+            {
+              role: "system",
+              content: [
+                {
+                  type: "text",
+                  text:
+                    turn.status === "interrupted"
+                      ? "Turn interrupted in the Codex console."
+                      : "The Codex console turn failed.",
+                },
+              ],
+              idempotencyKey: `codex-sync:${turn.id}:status`,
+            },
+            syncAttribution,
+          );
         }
       }
       if (sync.turns.length > 0) {
-        await repository.setChatStatus(context.chatId, sync.status);
+        if (syncExecution.executionLaneId && sync.status !== "running") {
+          await repository.finishChatExecutionLane(
+            context.chatId,
+            syncExecution.executionLaneId,
+            sync.status,
+          );
+        } else {
+          await repository.setChatStatus(context.chatId, sync.status);
+        }
         if (sync.status === "idle")
           void dispatchNextQueuedPrompt(context.chatId);
       }
@@ -3038,7 +3252,7 @@ export async function buildApp({
       if (!queued) {
         return reply.code(404).send({ error: "Queued prompt not found." });
       }
-      const context = await repository.getChatExecutionContext(
+      let context = await repository.getChatExecutionContext(
         LOCAL_USER_ID,
         queued.chatId,
       );
@@ -3047,6 +3261,11 @@ export async function buildApp({
       try {
         let message: ChatMessage;
         if (context.status === "running") {
+          if (queued.worktreeId && queued.worktreeId !== context.worktreeId) {
+            throw new Error(
+              "This prompt is pinned to another worktree and cannot steer the active turn.",
+            );
+          }
           if (!bridge.isConnected(context.workerId)) {
             throw new Error("The active Codex thread is unavailable.");
           }
@@ -3068,10 +3287,28 @@ export async function buildApp({
               content: [{ type: "text", text: queued.text }],
               idempotencyKey: `steer:${queued.id}`,
             },
+            context.executionLaneId
+              ? {
+                  executionLaneId: context.executionLaneId,
+                  worktreeId: context.worktreeId,
+                }
+              : undefined,
           );
           if (!appended) throw new Error("Chat not found.");
           message = appended;
         } else {
+          if (queued.worktreeId && queued.worktreeId !== context.worktreeId) {
+            await repository.updateChatWorktree(LOCAL_USER_ID, context.chatId, {
+              worktreeId: queued.worktreeId,
+              mode: context.worktreeMode,
+            });
+            const selected = await repository.getChatExecutionContext(
+              LOCAL_USER_ID,
+              context.chatId,
+            );
+            if (!selected) throw new Error("Worktree could not be selected.");
+            context = selected;
+          }
           message = await beginTurn(context, {
             text: queued.text,
             modelId: queued.modelId,
@@ -3125,7 +3362,7 @@ export async function buildApp({
         const prompt = await repository.createQueuedPrompt(
           LOCAL_USER_ID,
           context.chatId,
-          { ...input.data, modelId, frozen: false },
+          { ...input.data, modelId, frozen: false, worktreeId: null },
           modelId,
         );
         return prompt
