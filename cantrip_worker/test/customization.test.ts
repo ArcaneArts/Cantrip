@@ -1,3 +1,7 @@
+import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { codexRuntimeReportSchema } from "@cantrip/protocol";
@@ -5,11 +9,18 @@ import { codexRuntimeReportSchema } from "@cantrip/protocol";
 import {
   customizationCapabilities,
   customizationInventory,
+  parseExternalImportStatus,
   parseExternalImportPreview,
   parseHookInventory,
+  parseMcpOauthCompletion,
+  parseMcpOauthStart,
   parseMcpResourceRead,
   parseMcpServerPage,
+  parseSkillConfigResult,
   parseSkillInventory,
+  resolveProjectSkillRoots,
+  selectExternalImportItems,
+  skillPathForConfiguration,
 } from "../src/codex/customization.js";
 
 const methods = {
@@ -88,6 +99,17 @@ describe("Codex customization inventory", () => {
     });
     expect(partial.skills.list.available).toBe(true);
     expect(partial.skills.configure.available).toBe(false);
+
+    const missingRead = customizationCapabilities({
+      ...report,
+      methods: {
+        ...report.methods,
+        "skills/list": "unavailable",
+        "externalAgentConfig/detect": "unavailable",
+      },
+    });
+    expect(missingRead.skills.configure.available).toBe(false);
+    expect(missingRead.externalImports.apply.available).toBe(false);
   });
 
   it("normalizes enabled and disabled skills with discovery errors", () => {
@@ -128,6 +150,71 @@ describe("Codex customization inventory", () => {
       ],
       errors: [{ path: "broken/SKILL.md", message: "Invalid metadata" }],
     });
+  });
+
+  it("configures only a skill path returned by the current project inventory", () => {
+    const response = {
+      data: [
+        {
+          cwd: "/workspace/project",
+          skills: [
+            {
+              name: "review",
+              description: "Review changes",
+              path: "/workspace/project/.agents/skills/review/SKILL.md",
+              scope: "repo",
+              enabled: true,
+            },
+          ],
+          errors: [],
+        },
+      ],
+    };
+    expect(
+      skillPathForConfiguration(
+        response,
+        "/workspace/project",
+        "/workspace/project/.agents/skills/review/../review/SKILL.md",
+      ),
+    ).toBe("/workspace/project/.agents/skills/review/SKILL.md");
+    expect(() =>
+      skillPathForConfiguration(
+        response,
+        "/workspace/project",
+        "/workspace/other/SKILL.md",
+      ),
+    ).toThrow(/not present/u);
+    expect(
+      parseSkillConfigResult({ effectiveEnabled: false }, "skill/SKILL.md"),
+    ).toEqual({ path: "skill/SKILL.md", effectiveEnabled: false });
+  });
+
+  it("canonicalizes and confines extra skill roots to the selected project", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-skill-roots-"));
+    try {
+      const project = path.join(root, "project");
+      const skills = path.join(project, "skills");
+      const outside = path.join(root, "outside");
+      await mkdir(skills, { recursive: true });
+      await mkdir(outside);
+      await symlink(
+        outside,
+        path.join(project, "linked-outside"),
+        process.platform === "win32" ? "junction" : "dir",
+      );
+
+      await expect(
+        resolveProjectSkillRoots(project, ["skills", "./skills"]),
+      ).resolves.toEqual({ roots: [await realpath(skills)] });
+      await expect(
+        resolveProjectSkillRoots(project, ["../outside"]),
+      ).rejects.toThrow(/within the selected project/u);
+      await expect(
+        resolveProjectSkillRoots(project, ["linked-outside"]),
+      ).rejects.toThrow(/within the selected project/u);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("preserves trusted hook inspection fields without executing hooks", () => {
@@ -298,16 +385,149 @@ describe("Codex customization inventory", () => {
     });
   });
 
+  it("re-detects opaque external selections and blocks plugin imports", () => {
+    const response = {
+      items: [
+        {
+          itemType: "COMMANDS",
+          description: "Claude commands",
+          cwd: "/workspace/project",
+          details: {
+            plugins: [],
+            skills: [],
+            sessions: [],
+            mcpServers: [],
+            hooks: [],
+            subagents: [],
+            commands: [{ name: "release" }],
+            memory: [],
+          },
+        },
+        {
+          itemType: "PLUGINS",
+          description: "Claude plugins",
+          cwd: "/workspace/project",
+          details: {
+            plugins: [
+              { marketplaceName: "official", pluginNames: ["example"] },
+            ],
+            skills: [],
+            sessions: [],
+            mcpServers: [],
+            hooks: [],
+            subagents: [],
+            commands: [],
+            memory: [],
+          },
+        },
+      ],
+    };
+    const preview = parseExternalImportPreview(response, "/workspace/project");
+    expect(
+      selectExternalImportItems(response, "/workspace/project", [
+        preview.items[0]!.id,
+      ]),
+    ).toEqual([response.items[0]]);
+    expect(() =>
+      selectExternalImportItems(response, "/workspace/project", ["stale"]),
+    ).toThrow(/preview again/u);
+    expect(() =>
+      selectExternalImportItems(response, "/workspace/project", [
+        preview.items[1]!.id,
+      ]),
+    ).toThrow(/Plugin imports are disabled/u);
+  });
+
+  it("normalizes OAuth and asynchronous import completion without paths", () => {
+    expect(
+      parseMcpOauthStart(
+        { authorizationUrl: "https://auth.example.test/authorize" },
+        "docs",
+      ),
+    ).toMatchObject({ server: "docs", status: "pending" });
+    expect(() =>
+      parseMcpOauthStart({ authorizationUrl: "file:///tmp/token" }, "docs"),
+    ).toThrow(/unsupported/u);
+    expect(() =>
+      parseMcpOauthStart(
+        { authorizationUrl: "http://auth.example.test/authorize" },
+        "docs",
+      ),
+    ).toThrow(/unsupported/u);
+    expect(
+      parseMcpOauthCompletion({
+        name: "docs",
+        success: false,
+        error: "Denied",
+      }),
+    ).toEqual({
+      server: "docs",
+      status: "failed",
+      error:
+        "MCP authorization failed. Review the authorization page and try again.",
+    });
+
+    const status = parseExternalImportStatus(
+      {
+        importId: "import-1",
+        itemTypeResults: [
+          {
+            itemType: "COMMANDS",
+            successes: [
+              {
+                cwd: "/workspace/project",
+                source: "/workspace/project/.claude/commands/release.md",
+                target: "/isolated/codex-home/skills/release/SKILL.md",
+              },
+            ],
+            failures: [
+              {
+                failureStage: "write",
+                message:
+                  "Could not convert /workspace/project/.claude/commands/broken.md.",
+                cwd: "/workspace/project",
+                source: "/workspace/project/.claude/commands/broken.md",
+              },
+            ],
+          },
+        ],
+      },
+      "completed",
+    );
+    expect(status).toEqual({
+      importId: "import-1",
+      status: "completed",
+      results: [
+        {
+          itemType: "COMMANDS",
+          successCount: 1,
+          failures: [
+            {
+              failureStage: "write",
+              message: "Codex reported an import failure.",
+            },
+          ],
+        },
+      ],
+    });
+    expect(JSON.stringify(status)).not.toContain("/workspace");
+    expect(JSON.stringify(status)).not.toContain("codex-home");
+  });
+
   it("validates the combined response and limits MCP resource payloads", () => {
     expect(
       customizationInventory({
         report,
         cwd: "/workspace/project",
         skillsResponse: { data: [] },
+        skillRoots: ["/workspace/project/shared-skills"],
         hooksResponse: { data: [] },
         mcpServers: [],
       }),
-    ).toMatchObject({ capabilities: { isolatedCodexHome: true } });
+    ).toMatchObject({
+      capabilities: { isolatedCodexHome: true },
+      skillRoots: ["/workspace/project/shared-skills"],
+    });
     expect(
       parseMcpResourceRead({
         contents: [

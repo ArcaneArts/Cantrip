@@ -9,8 +9,14 @@ import {
   browserListSchema,
   browserSummarySchema,
   codexCustomizationInventorySchema,
+  codexExternalImportStatusSchema,
   codexExternalImportPreviewSchema,
+  codexMcpOauthStartResultSchema,
+  codexMcpOauthStatusSchema,
+  codexMcpReloadResultSchema,
   codexMcpResourceReadSchema,
+  codexSkillConfigResultSchema,
+  codexSkillRootsResultSchema,
   chatAttachmentSummarySchema,
   decodeRemoteSurfaceFrame,
   encodeRemoteSurfaceFrame,
@@ -536,6 +542,39 @@ const workerBridge = {
               uri: command.uri,
               mimeType: "text/markdown",
               text: "# Cantrip",
+            },
+          ],
+        };
+      case "customization.skill.configure":
+        return {
+          path: command.path,
+          effectiveEnabled: command.enabled,
+        };
+      case "customization.skill-roots.set":
+        return {
+          roots: command.roots.map((root) => path.resolve(command.cwd, root)),
+        };
+      case "customization.mcp.oauth.start":
+        return {
+          server: command.server,
+          authorizationUrl: `https://auth.example.test/${command.server}`,
+          status: "pending",
+        };
+      case "customization.mcp.oauth.status":
+        return { server: command.server, status: "succeeded", error: null };
+      case "customization.mcp.reload":
+        return { reloaded: true };
+      case "customization.external.apply":
+        return { importId: "import-1", status: "pending", results: [] };
+      case "customization.external.status":
+        return {
+          importId: command.importId,
+          status: "completed",
+          results: [
+            {
+              itemType: "COMMANDS",
+              successCount: 1,
+              failures: [],
             },
           ],
         };
@@ -2104,6 +2143,86 @@ describe("local server foundation", () => {
           text: "# Cantrip",
         },
       ],
+    });
+
+    expect(
+      codexSkillConfigResultSchema.parse(
+        (
+          await firstApp.inject({
+            method: "PATCH",
+            url: `/api/chats/${chat.id}/customizations/skill`,
+            payload: {
+              path: customizationInventory.skills.items[0]!.path,
+              enabled: false,
+            },
+          })
+        ).json(),
+      ),
+    ).toMatchObject({ effectiveEnabled: false });
+    expect(
+      codexSkillRootsResultSchema.parse(
+        (
+          await firstApp.inject({
+            method: "PUT",
+            url: `/api/chats/${chat.id}/customizations/skill-roots`,
+            payload: { roots: [".agents/skills"] },
+          })
+        ).json(),
+      ).roots[0],
+    ).toMatch(/\.agents\/skills$/u);
+    expect(
+      codexMcpOauthStartResultSchema.parse(
+        (
+          await firstApp.inject({
+            method: "POST",
+            url: `/api/chats/${chat.id}/customizations/mcp-oauth`,
+            payload: { server: "docs" },
+          })
+        ).json(),
+      ),
+    ).toMatchObject({ server: "docs", status: "pending" });
+    expect(
+      codexMcpOauthStatusSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${chat.id}/customizations/mcp-oauth/status?server=docs`,
+          })
+        ).json(),
+      ).status,
+    ).toBe("succeeded");
+    expect(
+      codexMcpReloadResultSchema.parse(
+        (
+          await firstApp.inject({
+            method: "POST",
+            url: `/api/chats/${chat.id}/customizations/mcp-reload`,
+          })
+        ).json(),
+      ).reloaded,
+    ).toBe(true);
+    const importStarted = codexExternalImportStatusSchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/chats/${chat.id}/customizations/external-import`,
+          payload: { itemIds: [externalPreview.items[0]!.id] },
+        })
+      ).json(),
+    );
+    expect(importStarted.status).toBe("pending");
+    expect(
+      codexExternalImportStatusSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${chat.id}/customizations/external-import/status?importId=${importStarted.importId}`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject({
+      status: "completed",
+      results: [{ itemType: "COMMANDS", successCount: 1 }],
     });
 
     const messagePayload = {

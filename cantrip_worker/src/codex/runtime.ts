@@ -6,8 +6,14 @@ import type {
   ChatPlanAnswer,
   CodexCustomizationInventory,
   CodexExternalImportPreview,
+  CodexExternalImportStatus,
+  CodexMcpOauthStartResult,
+  CodexMcpOauthStatus,
+  CodexMcpReloadResult,
   CodexMcpResourceRead,
   CodexRuntimeReport,
+  CodexSkillConfigResult,
+  CodexSkillRootsResult,
   PermissionProfileCapability,
   PlanMode,
 } from "@cantrip/protocol";
@@ -56,6 +62,32 @@ export interface CodexRuntime {
       uri: string;
     },
   ): Promise<CodexMcpResourceRead>;
+  configureSkill(
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider"> & {
+      path: string;
+      enabled: boolean;
+    },
+  ): Promise<CodexSkillConfigResult>;
+  setSkillRoots(
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider"> & {
+      roots: string[];
+    },
+  ): Promise<CodexSkillRootsResult>;
+  startMcpOauth(
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider"> & {
+      server: string;
+    },
+  ): Promise<CodexMcpOauthStartResult>;
+  mcpOauthStatus(server: string): CodexMcpOauthStatus;
+  reloadMcpServers(
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
+  ): Promise<CodexMcpReloadResult>;
+  applyExternalAgentConfig(
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider"> & {
+      itemIds: string[];
+    },
+  ): Promise<CodexExternalImportStatus>;
+  externalImportStatus(importId: string): CodexExternalImportStatus;
   listPermissionProfiles(
     options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
   ): Promise<PermissionProfileCapability>;

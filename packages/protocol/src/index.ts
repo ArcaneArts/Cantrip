@@ -345,6 +345,7 @@ export const codexCustomizationInventorySchema = z.object({
     items: z.array(codexSkillInventoryItemSchema),
     errors: z.array(codexInventoryErrorSchema),
   }),
+  skillRoots: z.array(z.string().min(1).max(8_192)).max(32).default([]),
   hooks: z.object({
     items: z.array(codexHookInventoryItemSchema),
     warnings: z.array(z.string()),
@@ -412,6 +413,75 @@ export const codexMcpResourceReadSchema = z.object({
 export const codexMcpResourceReadRequestSchema = z.object({
   server: z.string().trim().min(1).max(256),
   uri: z.string().trim().min(1).max(8_192),
+});
+
+export const codexSkillConfigUpdateSchema = z.object({
+  path: z.string().trim().min(1).max(8_192),
+  enabled: z.boolean(),
+});
+
+export const codexSkillConfigResultSchema = z.object({
+  path: z.string().min(1).max(8_192),
+  effectiveEnabled: z.boolean(),
+});
+
+export const codexSkillRootsUpdateSchema = z.object({
+  roots: z.array(z.string().trim().min(1).max(8_192)).max(32),
+});
+
+export const codexSkillRootsResultSchema = z.object({
+  roots: z.array(z.string().min(1)).max(32),
+});
+
+export const codexMcpOauthStartSchema = z.object({
+  server: z.string().trim().min(1).max(256),
+});
+
+export const codexMcpOauthStartResultSchema = z.object({
+  server: z.string().min(1).max(256),
+  authorizationUrl: z.string().url().max(8_192),
+  status: z.literal("pending"),
+});
+
+export const codexMcpOauthStatusSchema = z.object({
+  server: z.string().min(1).max(256),
+  status: z.enum(["pending", "succeeded", "failed", "unknown"]),
+  error: z.string().max(2_000).nullable(),
+});
+
+export const codexMcpReloadResultSchema = z.object({
+  reloaded: z.literal(true),
+});
+
+export const codexExternalImportApplySchema = z
+  .object({
+    itemIds: z.array(z.string().min(1).max(200)).min(1).max(100),
+  })
+  .superRefine(({ itemIds }, context) => {
+    if (new Set(itemIds).size !== itemIds.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Import item ids must be unique.",
+        path: ["itemIds"],
+      });
+    }
+  });
+
+export const codexExternalImportFailureSchema = z.object({
+  failureStage: z.string().max(200),
+  message: z.string().max(2_000),
+});
+
+export const codexExternalImportTypeResultSchema = z.object({
+  itemType: codexExternalImportItemTypeSchema,
+  successCount: z.number().int().nonnegative(),
+  failures: z.array(codexExternalImportFailureSchema).max(100),
+});
+
+export const codexExternalImportStatusSchema = z.object({
+  importId: z.string().min(1).max(200),
+  status: z.enum(["pending", "completed", "unknown"]),
+  results: z.array(codexExternalImportTypeResultSchema).max(100),
 });
 
 export function mentionedSkillNames(text: string): string[] {
@@ -2511,6 +2581,55 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     provider: workerRuntimeProviderSchema,
   }),
   z.object({
+    type: z.literal("customization.skill.configure"),
+    cwd: z.string().min(1),
+    path: codexSkillConfigUpdateSchema.shape.path,
+    enabled: z.boolean(),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
+    type: z.literal("customization.skill-roots.set"),
+    cwd: z.string().min(1),
+    roots: codexSkillRootsUpdateSchema.shape.roots,
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
+    type: z.literal("customization.mcp.oauth.start"),
+    cwd: z.string().min(1),
+    server: codexMcpOauthStartSchema.shape.server,
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
+    type: z.literal("customization.mcp.oauth.status"),
+    cwd: z.string().min(1),
+    server: codexMcpOauthStartSchema.shape.server,
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
+    type: z.literal("customization.mcp.reload"),
+    cwd: z.string().min(1),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
+    type: z.literal("customization.external.apply"),
+    cwd: z.string().min(1),
+    itemIds: codexExternalImportApplySchema.shape.itemIds,
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
+    type: z.literal("customization.external.status"),
+    cwd: z.string().min(1),
+    importId: codexExternalImportStatusSchema.shape.importId,
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
     type: z.literal("permission-profiles.list"),
     cwd: z.string().min(1),
     model: workerRuntimeModelSchema,
@@ -3127,6 +3246,29 @@ export type CodexExternalImportPreview = z.infer<
 export type CodexMcpResourceRead = z.infer<typeof codexMcpResourceReadSchema>;
 export type CodexMcpResourceReadRequest = z.infer<
   typeof codexMcpResourceReadRequestSchema
+>;
+export type CodexSkillConfigUpdate = z.infer<
+  typeof codexSkillConfigUpdateSchema
+>;
+export type CodexSkillConfigResult = z.infer<
+  typeof codexSkillConfigResultSchema
+>;
+export type CodexSkillRootsUpdate = z.infer<typeof codexSkillRootsUpdateSchema>;
+export type CodexSkillRootsResult = z.infer<typeof codexSkillRootsResultSchema>;
+export type CodexMcpOauthStart = z.infer<typeof codexMcpOauthStartSchema>;
+export type CodexMcpOauthStartResult = z.infer<
+  typeof codexMcpOauthStartResultSchema
+>;
+export type CodexMcpOauthStatus = z.infer<typeof codexMcpOauthStatusSchema>;
+export type CodexMcpReloadResult = z.infer<typeof codexMcpReloadResultSchema>;
+export type CodexExternalImportApply = z.infer<
+  typeof codexExternalImportApplySchema
+>;
+export type CodexExternalImportTypeResult = z.infer<
+  typeof codexExternalImportTypeResultSchema
+>;
+export type CodexExternalImportStatus = z.infer<
+  typeof codexExternalImportStatusSchema
 >;
 export type WorkerAttachmentUploadResult = z.infer<
   typeof workerAttachmentUploadResultSchema
