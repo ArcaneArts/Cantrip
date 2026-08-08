@@ -1,0 +1,12 @@
+{
+  "id": "0001-preserve-darwin-native-build-flags",
+  "title": "Preserve explicit native compiler flags in build dependencies",
+  "reason": "The pinned native dependencies are installed before extensions can run, and Apple Clang from Xcode 26 needs a C++20/fmt compatibility definition supplied by Cantrip's build driver. Upstream currently erases CXXFLAGS specifically for build dependencies.",
+  "upstreamCommit": "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+  "files": ["build/npm/postinstall.ts"],
+  "validation": [
+    "pnpm code:patch -- --source <prepared-source> --check",
+    "pnpm code:build -- --target darwin-arm64"
+  ],
+  "removal": "Remove after the pinned upstream native dependencies compile with the current Apple Clang without compatibility flags, or upstream preserves explicit CXXFLAGS itself."
+}

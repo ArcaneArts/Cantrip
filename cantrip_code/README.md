@@ -37,6 +37,40 @@ metadata and source manifest, and leaves all Cantrip-owned paths intact. Direct
 patches are applied later to a prepared build tree, never destructively to the
 committed pristine upstream snapshot.
 
+## Build and development
+
+Cantrip compiles OpenVSCode's browser server for the current operating system
+and architecture. The cache key includes the pinned source manifest, patch
+series, product overrides, Cantrip-owned extensions, and native target.
+
+```bash
+pnpm code:build
+pnpm code:ready
+pnpm code:verify
+pnpm code:dev
+pnpm code:clean
+```
+
+`code:build` uses upstream's locked npm dependency graph, non-mangled PR
+compiler, minifier, and native `vscode-reh-web-<platform>-<arch>-min-ci`
+packager. It writes only ignored build and cache directories. A valid build is
+reused until an input changes. Git worktrees share the repository-level
+`.cantrip-code/cache` so sequential PR cycles reuse the same immutable artifact;
+set `CANTRIP_CODE_CACHE_DIR` to place this build cache on another volume.
+`code:verify` hashes the complete cached distribution against its manifest;
+`code:ready` is the intentionally cheaper startup check. `code:dev` hosts the
+cached editor on `127.0.0.1:9888` with isolated development state.
+
+Normal `pnpm dev` and `pnpm devtop` never begin the large editor build. They
+stop with a `pnpm code:build` instruction when the required cache is absent or
+stale. Worker and desktop packaging do build (or reuse) the editor and embed
+that exact immutable distribution.
+
+The editor build bootstraps the exact Node release pinned in upstream's
+`.nvmrc`, verifies it against Node's published SHA-256 inventory, and caches it
+as a build-only toolchain. This keeps OpenVSCode's native dependency compiler
+independent from the Node version running Cantrip or pnpm.
+
 See [`../docs/CODE.md`](../docs/CODE.md) for the complete architecture and
 release policy.
 

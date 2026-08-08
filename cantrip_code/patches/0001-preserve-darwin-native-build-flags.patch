@@ -1,0 +1,13 @@
+diff --git a/build/npm/postinstall.ts b/build/npm/postinstall.ts
+index e9189bb..17765de 100644
+--- a/build/npm/postinstall.ts
++++ b/build/npm/postinstall.ts
+@@ -174,7 +174,7 @@ for (const dir of dirs) {
+		};
+		if (process.env['CC']) { opts.env!['CC'] = 'gcc'; }
+		if (process.env['CXX']) { opts.env!['CXX'] = 'g++'; }
+-		if (process.env['CXXFLAGS']) { opts.env!['CXXFLAGS'] = ''; }
++		if (process.env['CXXFLAGS']) { opts.env!['CXXFLAGS'] = process.env['CXXFLAGS']; }
+		if (process.env['LDFLAGS']) { opts.env!['LDFLAGS'] = ''; }
+ 
+		setNpmrcConfig('build', opts.env!);

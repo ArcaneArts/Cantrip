@@ -3,9 +3,16 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import {
+  CODE_MANIFEST_NAME,
+  assertHostTarget,
+  getBuildIdentity,
+  normalizeTarget,
+  verifyBuild,
+} from "./cantrip-code/build-lib.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const target = process.argv[2];
+const selection = process.argv[2];
 const supportedTargets = new Set([
   "server",
   "worker",
@@ -13,15 +20,36 @@ const supportedTargets = new Set([
   "desktop-runtime",
 ]);
 
-if (!supportedTargets.has(target)) {
+if (!supportedTargets.has(selection)) {
   console.error(
     `Usage: node scripts/package-distributions.mjs <${[...supportedTargets].join("|")}>`,
   );
   process.exit(1);
 }
 
+let requestedTarget;
+for (let index = 3; index < process.argv.length; index += 1) {
+  const argument = process.argv[index];
+  if (argument === "--target") {
+    requestedTarget = process.argv[index + 1];
+    if (!requestedTarget || requestedTarget.startsWith("--")) {
+      console.error("--target requires an operating-system-architecture value");
+      process.exit(1);
+    }
+    index += 1;
+  } else if (argument.startsWith("--target=")) {
+    requestedTarget = argument.slice("--target=".length);
+  } else {
+    console.error(`Unknown packaging argument: ${argument}`);
+    process.exit(1);
+  }
+}
+
+const packageTarget = normalizeTarget(requestedTarget);
+assertHostTarget(packageTarget);
+
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-const platform = `${process.platform}-${process.arch}`;
+const platform = packageTarget.id;
 const codexBuild = path.join(root, "cantrip_codex", ".build", platform);
 const artifacts = path.join(root, "artifacts");
 const runtime = path.join(
@@ -75,7 +103,32 @@ async function packageService(name, destination) {
     path.join(root, "deploy", `${name}.README.md`),
     path.join(destination, "README.md"),
   );
+  if (name === "worker") await bundleCantripCode(destination);
   console.log(`Packaged ${name}: ${path.relative(root, destination)}`);
+}
+
+async function bundleCantripCode(workerDestination) {
+  const identity = await getBuildIdentity(packageTarget);
+  let manifest;
+  try {
+    manifest = await verifyBuild(identity, { full: true });
+  } catch {
+    run(process.execPath, [
+      path.join(root, "scripts", "cantrip-code", "build.mjs"),
+      "--target",
+      packageTarget.id,
+      "--force",
+    ]);
+    manifest = await verifyBuild(identity, { full: true });
+  }
+  const destination = path.join(workerDestination, "resources", "cantrip-code");
+  await rm(destination, { recursive: true, force: true });
+  await mkdir(destination, { recursive: true });
+  await cp(identity.distributionDirectory, destination, { recursive: true });
+  await cp(identity.manifestPath, path.join(destination, CODE_MANIFEST_NAME));
+  console.log(
+    `Bundled Cantrip Code ${manifest.version} ${manifest.fingerprint.slice(0, 12)}`,
+  );
 }
 
 async function buildServices() {
@@ -122,5 +175,5 @@ async function packageDesktopRuntime() {
   );
 }
 
-if (target === "desktop-runtime") await packageDesktopRuntime();
-else await packageStandalone(target);
+if (selection === "desktop-runtime") await packageDesktopRuntime();
+else await packageStandalone(selection);

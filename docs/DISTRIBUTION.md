@@ -10,15 +10,41 @@ runtime used to build it.
 Run packaging on the target operating system because the Worker contains
 native PTY, screen capture, and image modules.
 
-| Command                 | Output                                                            | Host requirement               |
-| ----------------------- | ----------------------------------------------------------------- | ------------------------------ |
-| `pnpm package:server`   | `artifacts/cantrip-server-<os>-<arch>`                            | Node.js 22+ at runtime         |
-| `pnpm package:worker`   | `artifacts/cantrip-worker-<os>-<arch>`                            | Node.js 22+ and Git at runtime |
-| `pnpm package:services` | Both service trees                                                | Same as above                  |
-| `pnpm package:app`      | Tauri bundles under `cantrip_app/src-tauri/target/release/bundle` | Tauri build prerequisites      |
+| Command                 | Output                                                            | Host requirement                               |
+| ----------------------- | ----------------------------------------------------------------- | ---------------------------------------------- |
+| `pnpm package:server`   | `artifacts/cantrip-server-<os>-<arch>`                            | Node.js 22+ at runtime                         |
+| `pnpm package:worker`   | `artifacts/cantrip-worker-<os>-<arch>`                            | Native build host, Node.js 22+, Git at runtime |
+| `pnpm package:services` | Both service trees                                                | Same as above                                  |
+| `pnpm package:app`      | Tauri bundles under `cantrip_app/src-tauri/target/release/bundle` | Tauri build prerequisites                      |
 
 The manual/tag-triggered GitHub Actions workflow runs both packaging jobs on
 macOS, Linux, and Windows and uploads Server, Worker, and Desktop separately.
+
+All packaging commands accept the native target explicitly, for example
+`pnpm package:worker --target darwin-arm64` or
+`pnpm package:app --target darwin-arm64`. Cross-compilation is rejected because
+both the Worker and Cantrip Code contain native modules. `macos-*` and
+`windows-*` are accepted aliases for the runtime target names `darwin-*` and
+`win32-*`.
+
+Worker packages contain `resources/cantrip-code/`, including the compiled
+browser-native editor, its bundled Node runtime, legal notices, and a
+content-hashed compatibility manifest. Packaging invokes `pnpm code:build`
+when the exact target/input fingerprint is not cached. It never downloads or
+updates the editor after the artifact is assembled. Desktop embeds the same
+worker tree, so the standalone Worker and local-only desktop use an identical
+editor compatibility unit.
+
+Local editor builds bootstrap and checksum the Node release recorded in
+`cantrip_code/upstream/.nvmrc`; it is a build-only toolchain independent from
+the Node process running Cantrip. Builds still require the platform's native VS
+Code prerequisites, npm, Git, and network access for the pinned dependency
+graph and Node toolchain. Generated source, dependencies, toolchains, caches,
+and distributions remain ignored.
+
+Cantrip Code artifacts are cached in the repository's shared
+`.cantrip-code/cache` directory across Git worktrees. Set
+`CANTRIP_CODE_CACHE_DIR` when a build host should use another cache volume.
 
 ## Standalone server
 
@@ -61,6 +87,10 @@ packaging smoke tests.
 `pnpm devtop` deliberately does not start a second embedded stack. The Rust
 shell points its Local profile at the externally orchestrated development
 server so TypeScript watchers and Vite hot reload remain fast.
+
+Both `pnpm dev` and `pnpm devtop` perform only a fast Cantrip Code fingerprint
+check. Run `pnpm code:build` once after cloning or whenever the pinned editor,
+patchset, product configuration, extension source, or native target changes.
 
 ## Switching servers
 

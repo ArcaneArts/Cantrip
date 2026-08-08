@@ -1,6 +1,6 @@
 # Cantrip Code Integration Plan
 
-- Status: proposed
+- Status: implementation in progress
 - Scope: browser-native Code OSS workbench hosted by `cantrip_worker`
 - Source location: `cantrip_code/` in the Cantrip monorepo
 - Immediate upstream: OpenVSCode Server
@@ -229,6 +229,16 @@ pnpm code:verify
 2. Reuse a matching cached build when present.
 3. Print a clear `pnpm code:build` instruction when it is missing or stale.
 4. Avoid silently beginning a long Code OSS build as part of normal startup.
+
+The implemented cache lives under ignored `.cantrip-code/cache/builds/`, shared
+through Git's common repository directory so sequential worktrees reuse the
+same immutable artifact. `CANTRIP_CODE_CACHE_DIR` may override the shared state
+root. The cache is keyed by the pinned source manifest, product overrides,
+ordered patch series, bundled extension tree, build schema, platform, and
+architecture. Each cached distribution has a complete file inventory with
+sizes, executable flags, and SHA-256 hashes. Development startup checks
+identity and its entrypoint; release packaging and `code:verify` validate the
+complete inventory.
 
 `pnpm code:dev` may run the editor-specific watch workflow when actively
 developing the fork. Clean CI and release builds always compile from the pinned
