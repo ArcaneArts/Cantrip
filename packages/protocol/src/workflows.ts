@@ -889,6 +889,16 @@ export const workflowRunStatusUpdateSchema = z.object({
   idempotencyKey: z.string().trim().min(1).max(200),
 });
 
+export const workflowRunCancelSchema = z.object({
+  reason: z.string().trim().min(1).max(2_000),
+  idempotencyKey: z.string().trim().min(1).max(200),
+});
+
+export const workflowNodeRetrySchema = z.object({
+  reason: z.string().trim().min(1).max(2_000).nullable().default(null),
+  idempotencyKey: z.string().trim().min(1).max(200),
+});
+
 export const workflowNodeExecutionRequestSchema = z.object({
   workflowRunId: idSchema,
   runNodeId: idSchema,
@@ -1008,6 +1018,8 @@ export type WorkflowRunEventPage = z.infer<typeof workflowRunEventPageSchema>;
 export type WorkflowRunStatusUpdate = z.infer<
   typeof workflowRunStatusUpdateSchema
 >;
+export type WorkflowRunCancel = z.infer<typeof workflowRunCancelSchema>;
+export type WorkflowNodeRetry = z.infer<typeof workflowNodeRetrySchema>;
 export type WorkflowNodeExecutionRequest = z.infer<
   typeof workflowNodeExecutionRequestSchema
 >;

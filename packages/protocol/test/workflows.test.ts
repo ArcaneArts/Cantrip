@@ -10,9 +10,11 @@ import {
   workflowNodeExecutionRequestSchema,
   workflowNodeExecutionResultSchema,
   workflowNodeInterruptResultSchema,
+  workflowNodeRetrySchema,
   workflowPermissionRequirementsSchema,
   workflowRevisionNodeSchema,
   workflowRunCreateSchema,
+  workflowRunCancelSchema,
   workflowRunDetailSchema,
   workflowRunStatusUpdateSchema,
 } from "../src/workflows.js";
@@ -342,6 +344,24 @@ describe("workflow protocol", () => {
         expectedStatus: "queued",
         status: "unknown",
         idempotencyKey: "update-1",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("bounds durable cancellation and explicit retry controls", () => {
+    expect(
+      workflowRunCancelSchema.parse({
+        reason: "No longer needed.",
+        idempotencyKey: "cancel-1",
+      }),
+    ).toEqual({ reason: "No longer needed.", idempotencyKey: "cancel-1" });
+    expect(
+      workflowNodeRetrySchema.parse({ idempotencyKey: "retry-1" }),
+    ).toEqual({ reason: null, idempotencyKey: "retry-1" });
+    expect(
+      workflowRunCancelSchema.safeParse({
+        reason: "",
+        idempotencyKey: "cancel-2",
       }).success,
     ).toBe(false);
   });

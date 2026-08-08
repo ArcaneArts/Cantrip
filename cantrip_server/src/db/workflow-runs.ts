@@ -19,7 +19,9 @@ import {
   type WorkflowBudget,
   type WorkflowJsonObject,
   type WorkflowMeasuredUsage,
+  type WorkflowNodeRetry,
   type WorkflowRun,
+  type WorkflowRunCancel,
   type WorkflowRunCreate,
   type WorkflowRunDetail,
   type WorkflowRunEventPage,
@@ -37,6 +39,7 @@ type WorkflowRunDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type WorkflowRunRow = typeof schema.workflowRuns.$inferSelect;
 
 export class WorkflowRunConflictError extends Error {}
+export class WorkflowControlConflictError extends Error {}
 
 function toISOString(value: Date): string {
   return value.toISOString();
@@ -181,6 +184,21 @@ export interface WorkflowInteractionExecutionContext {
 
 export interface WorkflowAttemptFailureResult {
   retryScheduled: boolean;
+}
+
+export interface WorkflowCancellationExecutionContext {
+  attemptId: string;
+  modelRouteId: string;
+  runId: string;
+  runNodeId: string;
+  threadId: string;
+  workerId: string;
+}
+
+export interface WorkflowCancellationRequestResult {
+  execution: WorkflowCancellationExecutionContext | null;
+  replayed: boolean;
+  run: WorkflowRunDetail;
 }
 
 function jsonObject(value: unknown): Record<string, unknown> {
@@ -1241,6 +1259,350 @@ export class WorkflowRunRepository {
     return rows.length;
   }
 
+  async requestCancellation(
+    ownerId: string,
+    runId: string,
+    input: WorkflowRunCancel,
+  ): Promise<WorkflowCancellationRequestResult | null> {
+    const eventKey = `run-cancel:${input.idempotencyKey}`;
+    const existingEvent = await this.database
+      .select({ payload: schema.workflowRunEvents.payload })
+      .from(schema.workflowRunEvents)
+      .innerJoin(
+        schema.workflowRuns,
+        and(
+          eq(schema.workflowRuns.id, schema.workflowRunEvents.runId),
+          eq(schema.workflowRuns.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.workflowRunEvents.runId, runId),
+          eq(schema.workflowRunEvents.eventKey, eventKey),
+        ),
+      )
+      .limit(1);
+    const controlPayload = {
+      reason: input.reason,
+      idempotencyKey: input.idempotencyKey,
+    };
+    if (existingEvent[0]) {
+      if (
+        canonicalJson(existingEvent[0].payload) !==
+        canonicalJson(controlPayload)
+      ) {
+        throw new WorkflowControlConflictError(
+          "This cancellation idempotency key was already used with different input.",
+        );
+      }
+      const run = await this.getRun(ownerId, runId);
+      return run
+        ? {
+            execution: await this.cancellationContext(run),
+            replayed: true,
+            run,
+          }
+        : null;
+    }
+
+    const detail = await this.getRun(ownerId, runId);
+    if (!detail) return null;
+    if (["completed", "failed", "cancelled"].includes(detail.run.status)) {
+      throw new WorkflowControlConflictError(
+        `A ${detail.run.status} workflow run cannot be cancelled.`,
+      );
+    }
+    const now = new Date();
+    const activeAttempt = [...detail.attempts]
+      .reverse()
+      .find(({ status }) =>
+        ["queued", "running", "waiting-for-approval"].includes(status),
+      );
+    const execution = await this.cancellationContext(detail);
+    await this.database.transaction(async (transaction) => {
+      if (activeAttempt) {
+        const attempts = await transaction
+          .update(schema.workflowNodeAttempts)
+          .set({
+            status: "interrupted",
+            structuredResult: null,
+            errorCode: "cancelled-by-user",
+            errorMessage: input.reason,
+            heartbeatAt: now,
+            completedAt: now,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.workflowNodeAttempts.id, activeAttempt.id),
+              inArray(schema.workflowNodeAttempts.status, [
+                "queued",
+                "running",
+                "waiting-for-approval",
+              ]),
+            ),
+          )
+          .returning({ id: schema.workflowNodeAttempts.id });
+        if (!attempts[0]) {
+          throw new WorkflowControlConflictError(
+            "The workflow attempt reached a terminal state before cancellation could be persisted.",
+          );
+        }
+      }
+      await transaction
+        .update(schema.workflowRunNodes)
+        .set({
+          status: "cancelled",
+          structuredResult: null,
+          executionLeaseKey: null,
+          timeoutAt: null,
+          waitingAt: null,
+          completedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.workflowRunNodes.runId, runId),
+            inArray(schema.workflowRunNodes.status, [
+              "blocked",
+              "ready",
+              "queued",
+              "running",
+              "waiting-for-approval",
+              "paused",
+              "cancelling",
+              "retrying",
+              "recovering",
+            ]),
+          ),
+        );
+      if (detail.nodes.length > 0) {
+        await transaction
+          .update(schema.workflowNodeAttempts)
+          .set({
+            status: "interrupted",
+            structuredResult: null,
+            errorCode: "cancelled-by-user",
+            errorMessage: input.reason,
+            heartbeatAt: now,
+            completedAt: now,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              inArray(
+                schema.workflowNodeAttempts.runNodeId,
+                detail.nodes.map(({ id }) => id),
+              ),
+              inArray(schema.workflowNodeAttempts.status, [
+                "queued",
+                "running",
+                "waiting-for-approval",
+              ]),
+            ),
+          );
+      }
+      const runs = await transaction
+        .update(schema.workflowRuns)
+        .set({
+          status: "cancelled",
+          structuredResult: null,
+          errorCode: "cancelled-by-user",
+          errorMessage: input.reason,
+          cancelReason: input.reason,
+          cancelRequestedAt: now,
+          recoveryState: "stable",
+          completedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.workflowRuns.id, runId),
+            eq(schema.workflowRuns.ownerId, ownerId),
+            inArray(schema.workflowRuns.status, [
+              "queued",
+              "running",
+              "waiting",
+              "paused",
+              "cancelling",
+              "recovering",
+            ]),
+          ),
+        )
+        .returning({ id: schema.workflowRuns.id });
+      if (!runs[0]) {
+        throw new WorkflowControlConflictError(
+          "The workflow run reached a terminal state before cancellation could be persisted.",
+        );
+      }
+    });
+    for (const node of detail.nodes) {
+      await this.terminalizeWorkflowInteractions(runId, node.id, "interrupted");
+    }
+    await this.appendEvent({
+      runId,
+      runNodeId: null,
+      attemptId: null,
+      eventKey,
+      type: "run.cancelled",
+      payload: controlPayload,
+      actorType: "user",
+      actorId: ownerId,
+    });
+    if (activeAttempt) {
+      await this.appendEvent({
+        runId,
+        runNodeId: activeAttempt.runNodeId,
+        attemptId: activeAttempt.id,
+        eventKey: `attempt-interrupted:${activeAttempt.id}`,
+        type: "node.attempt.interrupted",
+        payload: {
+          code: "cancelled-by-user",
+          message: input.reason,
+          retryScheduled: false,
+          nextAttempt: null,
+        },
+        actorType: "user",
+        actorId: ownerId,
+      });
+    }
+    const run = (await this.getRun(ownerId, runId))!;
+    return {
+      execution,
+      replayed: false,
+      run,
+    };
+  }
+
+  async retryNode(
+    ownerId: string,
+    runId: string,
+    runNodeId: string,
+    input: WorkflowNodeRetry,
+  ): Promise<WorkflowRunDetail | null> {
+    const eventKey = `node-retry:${runNodeId}:${input.idempotencyKey}`;
+    const existingEvent = await this.database
+      .select({ payload: schema.workflowRunEvents.payload })
+      .from(schema.workflowRunEvents)
+      .innerJoin(
+        schema.workflowRuns,
+        and(
+          eq(schema.workflowRuns.id, schema.workflowRunEvents.runId),
+          eq(schema.workflowRuns.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.workflowRunEvents.runId, runId),
+          eq(schema.workflowRunEvents.eventKey, eventKey),
+        ),
+      )
+      .limit(1);
+    const controlPayload = {
+      runNodeId,
+      reason: input.reason,
+      idempotencyKey: input.idempotencyKey,
+    };
+    if (existingEvent[0]) {
+      if (
+        canonicalJson(existingEvent[0].payload) !==
+        canonicalJson(controlPayload)
+      ) {
+        throw new WorkflowControlConflictError(
+          "This retry idempotency key was already used with different input.",
+        );
+      }
+      return this.getRun(ownerId, runId);
+    }
+
+    const detail = await this.getRun(ownerId, runId);
+    if (!detail) return null;
+    const node = detail.nodes.find(({ id }) => id === runNodeId);
+    if (!node) return null;
+    if (!["failed", "cancelled", "recovering"].includes(node.status)) {
+      throw new WorkflowControlConflictError(
+        `A ${node.status} workflow node cannot be retried.`,
+      );
+    }
+    if (node.attemptCount >= node.budget.maxAttemptsPerNode) {
+      throw new WorkflowControlConflictError(
+        "The workflow node exhausted its attempt budget.",
+      );
+    }
+    const now = new Date();
+    await this.database.transaction(async (transaction) => {
+      const nodes = await transaction
+        .update(schema.workflowRunNodes)
+        .set({
+          status: "ready",
+          executionLeaseKey: null,
+          notBefore: null,
+          timeoutAt: null,
+          readyAt: now,
+          waitingAt: null,
+          completedAt: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.workflowRunNodes.id, runNodeId),
+            eq(schema.workflowRunNodes.runId, runId),
+            inArray(schema.workflowRunNodes.status, [
+              "failed",
+              "cancelled",
+              "recovering",
+            ]),
+          ),
+        )
+        .returning({ id: schema.workflowRunNodes.id });
+      if (!nodes[0]) {
+        throw new WorkflowControlConflictError(
+          "The workflow node changed state before the retry could be persisted.",
+        );
+      }
+      const runs = await transaction
+        .update(schema.workflowRuns)
+        .set({
+          status: "queued",
+          errorCode: null,
+          errorMessage: null,
+          cancelReason: null,
+          cancelRequestedAt: null,
+          recoveryState: "stable",
+          completedAt: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.workflowRuns.id, runId),
+            eq(schema.workflowRuns.ownerId, ownerId),
+            inArray(schema.workflowRuns.status, [
+              "cancelled",
+              "failed",
+              "recovering",
+            ]),
+          ),
+        )
+        .returning({ id: schema.workflowRuns.id });
+      if (!runs[0]) {
+        throw new WorkflowControlConflictError(
+          "The workflow run changed state before the retry could be persisted.",
+        );
+      }
+    });
+    await this.appendEvent({
+      runId,
+      runNodeId,
+      attemptId: null,
+      eventKey,
+      type: "node.retry.requested",
+      payload: controlPayload,
+      actorType: "user",
+      actorId: ownerId,
+    });
+    return this.getRun(ownerId, runId);
+  }
+
   async getInteractionExecutionContext(
     ownerId: string,
     runId: string,
@@ -1305,6 +1667,32 @@ export class WorkflowRunRepository {
       )
       .returning({ id: schema.agentInteractionRequests.id });
     return rows.length;
+  }
+
+  private async cancellationContext(
+    detail: WorkflowRunDetail,
+  ): Promise<WorkflowCancellationExecutionContext | null> {
+    const attempt = [...detail.attempts]
+      .reverse()
+      .find(({ status }) =>
+        ["queued", "running", "waiting-for-approval"].includes(status),
+      );
+    const node = attempt
+      ? detail.nodes.find(({ id }) => id === attempt.runNodeId)
+      : null;
+    return attempt?.workerId &&
+      attempt.modelRouteId &&
+      attempt.codexThreadId &&
+      node
+      ? {
+          attemptId: attempt.id,
+          modelRouteId: attempt.modelRouteId,
+          runId: detail.run.id,
+          runNodeId: node.id,
+          threadId: attempt.codexThreadId,
+          workerId: attempt.workerId,
+        }
+      : null;
   }
 
   private workerEventAttribution(event: WorkerEvent): {

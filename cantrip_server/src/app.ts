@@ -176,10 +176,12 @@ import {
   workflowRevisionListSchema,
   workflowRevisionSchema,
   workflowRunCreateSchema,
+  workflowRunCancelSchema,
   workflowRunDetailSchema,
   workflowRunEventPageSchema,
   workflowRunEventQuerySchema,
   workflowRunListSchema,
+  workflowNodeRetrySchema,
   workflowRunQuerySchema,
 } from "@cantrip/protocol/workflows";
 
@@ -193,7 +195,10 @@ import {
   type ChatExecutionContext,
   type ModelRuntime,
 } from "./db/repository.js";
-import { WorkflowRunConflictError } from "./db/workflow-runs.js";
+import {
+  WorkflowControlConflictError,
+  WorkflowRunConflictError,
+} from "./db/workflow-runs.js";
 import { WorkflowConflictError } from "./db/workflows.js";
 import {
   WorkerBridge,
@@ -2334,6 +2339,55 @@ export async function buildApp({
       return run
         ? reply.send(workflowRunDetailSchema.parse(run))
         : reply.code(404).send({ error: "Workflow run not found." });
+    },
+  );
+
+  app.post<{ Params: { runId: string } }>(
+    "/api/workflow-runs/:runId/cancel",
+    async (request, reply) => {
+      const input = workflowRunCancelSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const run = await workflowExecutor.cancelRun(
+          request.params.runId,
+          input.data,
+        );
+        return run
+          ? reply.send(workflowRunDetailSchema.parse(run))
+          : reply.code(404).send({ error: "Workflow run not found." });
+      } catch (error) {
+        if (error instanceof WorkflowControlConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: { runId: string; runNodeId: string } }>(
+    "/api/workflow-runs/:runId/nodes/:runNodeId/retry",
+    async (request, reply) => {
+      const input = workflowNodeRetrySchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const run = await workflowExecutor.retryNode(
+          request.params.runId,
+          request.params.runNodeId,
+          input.data,
+        );
+        return run
+          ? reply.send(workflowRunDetailSchema.parse(run))
+          : reply.code(404).send({ error: "Workflow run or node not found." });
+      } catch (error) {
+        if (error instanceof WorkflowControlConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
     },
   );
 
