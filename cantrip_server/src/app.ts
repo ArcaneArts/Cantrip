@@ -983,6 +983,9 @@ export async function buildApp({
                 executionLaneId,
                 worktreeId: execution.worktreeId,
                 threadId,
+                isPrimary: execution.isPrimary,
+                worktreeMode: execution.worktreeMode,
+                worktreePolicy: execution.worktreePolicy,
                 prompt: workerPrompt,
                 skillNames: mentionedSkillNames(input.text),
                 model: runtime.model,
@@ -1170,7 +1173,7 @@ export async function buildApp({
           multipleWorkers: false,
           workerSwitching: false,
           gitSync: false,
-          worktrees: false,
+          worktrees: true,
           remoteSurfaces: {
             enabled: true,
             transports: config.remoteSurfaceWebRtc

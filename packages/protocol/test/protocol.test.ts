@@ -169,6 +169,41 @@ describe("Cantrip protocol", () => {
     ).toBe("chat.compact");
   });
 
+  it("carries project worktree policy into worker-backed turns", () => {
+    const turn = workerCommandSchema.parse({
+      type: "chat.turn",
+      chatId: "chat-1",
+      clientMessageId: "message-1",
+      executionLaneId: "lane-1",
+      worktreeId: "worktree-1",
+      cwd: "/workspace",
+      isPrimary: true,
+      worktreeMode: "agent-managed",
+      worktreePolicy: "required-for-writes",
+      threadId: null,
+      prompt: "Implement this safely.",
+      skillNames: [],
+      model: {
+        id: "model-1",
+        routeId: "route-1",
+        name: "gpt-test",
+        reasoningEffort: null,
+      },
+      provider: {
+        id: "provider-1",
+        name: "ChatGPT",
+        kind: "chatgpt",
+        baseUrl: "https://api.openai.com/v1",
+        apiKey: null,
+      },
+    });
+    expect(turn).toMatchObject({
+      isPrimary: true,
+      worktreeMode: "agent-managed",
+      worktreePolicy: "required-for-writes",
+    });
+  });
+
   it("validates worker-backed chat interruption", () => {
     const compact = workerCommandSchema.parse({
       type: "chat.interrupt",
@@ -436,7 +471,7 @@ describe("Cantrip protocol", () => {
         multipleWorkers: false,
         workerSwitching: false,
         gitSync: false,
-        worktrees: false,
+        worktrees: true,
         remoteSurfaces: {
           enabled: true,
           transports: ["websocket"],
@@ -451,6 +486,7 @@ describe("Cantrip protocol", () => {
       conversations: "server",
       files: "worker",
     });
+    expect(bootstrap.capabilities.worktrees).toBe(true);
   });
 
   it("round-trips versioned binary Remote Surface frames", () => {

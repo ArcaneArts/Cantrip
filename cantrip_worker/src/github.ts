@@ -17,6 +17,7 @@ import {
   githubIssueListSchema,
   githubWorkerRepositoryListSchema,
   projectCloneResultSchema,
+  worktreePolicySchema,
   type GithubAuthStatus,
   type GithubIssueDetail,
   type GithubIssueList,
@@ -24,10 +25,67 @@ import {
   type GithubIssueSummary,
   type GithubWorkerRepository,
   type ProjectCloneResult,
+  type WorktreePolicy,
 } from "@cantrip/protocol";
 
 const execFileAsync = promisify(execFile);
 const SAFE_REPOSITORY_SEGMENT = /^[A-Za-z0-9_.-]+$/;
+const MAX_PROJECT_POLICY_BYTES = 64 * 1024;
+
+export async function readProjectWorktreePolicy(
+  repositoryPath: string,
+): Promise<{
+  policy: WorktreePolicy | null;
+  warning: string | null;
+}> {
+  const policyPath = path.join(repositoryPath, ".cantrip", "project.json");
+  try {
+    const metadata = await lstat(policyPath);
+    if (!metadata.isFile() || metadata.isSymbolicLink()) {
+      return {
+        policy: null,
+        warning:
+          "Ignored .cantrip/project.json because it is not a regular file.",
+      };
+    }
+    if (metadata.size > MAX_PROJECT_POLICY_BYTES) {
+      return {
+        policy: null,
+        warning: "Ignored .cantrip/project.json because it exceeds 64 KiB.",
+      };
+    }
+    const document = JSON.parse(await readFile(policyPath, "utf8")) as unknown;
+    if (
+      !document ||
+      typeof document !== "object" ||
+      !("worktreePolicy" in document)
+    ) {
+      return {
+        policy: null,
+        warning:
+          "Ignored .cantrip/project.json because worktreePolicy is missing.",
+      };
+    }
+    const policy = worktreePolicySchema.safeParse(
+      (document as { worktreePolicy?: unknown }).worktreePolicy,
+    );
+    return policy.success
+      ? { policy: policy.data, warning: null }
+      : {
+          policy: null,
+          warning:
+            "Ignored .cantrip/project.json because worktreePolicy is invalid.",
+        };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { policy: null, warning: null };
+    }
+    return {
+      policy: null,
+      warning: `Ignored .cantrip/project.json: ${(error as Error).message}`,
+    };
+  }
+}
 
 interface GithubApiRepository {
   default_branch?: unknown;
@@ -441,12 +499,16 @@ export class GithubClient {
       });
     }
 
+    const projectPolicy = await readProjectWorktreePolicy(target);
+    warning =
+      [warning, projectPolicy.warning].filter(Boolean).join(" ") || null;
     return projectCloneResultSchema.parse({
       path: target,
       displayPath: `${owner}/${repository}`,
       reused,
       updated,
       warning,
+      worktreePolicy: projectPolicy.policy,
     });
   }
 }

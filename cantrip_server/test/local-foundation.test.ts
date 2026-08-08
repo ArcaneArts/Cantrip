@@ -510,6 +510,7 @@ describe("local server foundation", () => {
       currentUser: { kind: "anonymous" },
     });
     expect(bootstrap.routing.directWorkerConnections).toBe(false);
+    expect(bootstrap.capabilities.worktrees).toBe(true);
 
     const initialSettings = settingsBundleSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),

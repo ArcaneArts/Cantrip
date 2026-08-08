@@ -5,6 +5,7 @@ import {
   changedFiles,
   codexEndpointFromLine,
   codexModelProviderName,
+  codexWorktreeTurnPolicy,
   codexWorkspaceContext,
   executeDynamicWorktreeTool,
   GOAL_CONTINUATION_PROMPT,
@@ -73,6 +74,46 @@ describe("codexWorkspaceContext", () => {
       cwd: "/tmp/project/worktree",
       runtimeWorkspaceRoots: ["/tmp/project/worktree"],
     });
+  });
+});
+
+describe("codexWorktreeTurnPolicy", () => {
+  it("enforces inspection-only Primary for required-for-writes projects", () => {
+    expect(
+      codexWorktreeTurnPolicy({
+        cwd: "/workspace/project",
+        isPrimary: true,
+        worktreeMode: "agent-managed",
+        worktreePolicy: "required-for-writes",
+      }),
+    ).toEqual({
+      additionalContext: {
+        "cantrip.worktree-policy": {
+          kind: "application",
+          value: expect.stringContaining("Primary is inspection-only"),
+        },
+      },
+      sandboxPolicy: { type: "readOnly", networkAccess: false },
+    });
+  });
+
+  it("grants checkout-scoped writes outside Primary and explains pinned mode", () => {
+    const policy = codexWorktreeTurnPolicy({
+      cwd: "/workspace/project/../project/feature",
+      isPrimary: false,
+      worktreeMode: "pinned",
+      worktreePolicy: "required-for-writes",
+    });
+    expect(policy.sandboxPolicy).toEqual({
+      type: "workspaceWrite",
+      writableRoots: ["/workspace/project/feature"],
+      networkAccess: false,
+      excludeTmpdirEnvVar: false,
+      excludeSlashTmp: false,
+    });
+    expect(policy.additionalContext["cantrip.worktree-policy"].value).toContain(
+      "pinned to the current worktree",
+    );
   });
 });
 

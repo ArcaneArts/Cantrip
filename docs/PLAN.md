@@ -173,6 +173,31 @@ MiB and WebSocket queues at 8 MiB. Browser visual frames may be discarded under
 pressure; reliable control and RFB congestion resets the connection instead of
 silently corrupting the stream. Clients use bounded exponential reconnects.
 
+### 4.6 Agent-managed Git worktrees
+
+A logical project owns one worker source, and that source owns one non-removable
+Primary checkout plus zero or more physical Git worktrees. The worker controls
+all canonical paths and validates every checkout against Git's common
+directory. The server stores observed metadata for offline rendering and owns
+chat execution leases; it does not copy files or accept app-selected target
+paths.
+
+Chats default to Agent managed and may transition between worktrees only at a
+turn boundary. Pinned chats remain on one selected checkout. Codex runtime
+sessions are keyed by chat, worker, and worktree, while a single durable chat
+transcript records the originating execution lane for every message and
+activity. Terminals and Explorers bind to a worktree, linked consoles inherit
+their chat's active lane, History selects a checkout for Git actions, and
+Browser/Issues remain project-level. The detailed runtime decision is recorded
+in [ADR 0001](adr/0001-agent-managed-worktree-execution.md).
+
+Codex receives Cantrip-native dynamic tools for listing, acquiring, creating,
+switching, inspecting, releasing, and removing worktrees. A transition
+scheduled during a turn is checkpointed and applied before the continuation
+turn; Cantrip never represents an in-flight CWD mutation as successful. The
+flat sidebar exposes only compact secondary-worktree state, while History
+renders every known HEAD and dirty WIP lane.
+
 ## 5. Monorepo layout
 
 The three named directories are independently runnable deployables. Shared code lives in small internal packages rather than introducing imports between deployables.
@@ -234,9 +259,11 @@ The database is the source of truth for Cantrip entities. Exact columns can evol
 | `workers` | Owner, display name, status, platform, capabilities, protocol version, public key, last seen time. |
 | `worker_credentials` | Hashed/encrypted enrollment material and rotation metadata; never raw provider secrets. |
 | `projects` | Server-owned logical project name, owner, settings, and optional default worker/source binding. |
-| `project_sources` | The single worker-owned folder for an MVP project: canonical path, display path, repository fingerprint, Git metadata, and allowed access policy. Future replicas/worktrees require a separate explicit model. |
+| `project_sources` | One worker-owned installation of a logical repository: canonical path, display path, repository fingerprint, Git metadata, and allowed access policy. |
+| `project_worktrees` | Durable observations for Primary, Cantrip-managed, agent, user, and external checkouts: worker/path ownership, branch/HEAD, lifecycle, lock, detached, and scan state. |
 | `chats` | Server-owned logical conversation with project, title, active worker, runtime profile, status, model, and event cursor. |
-| `chat_runtime_sessions` | Mapping from one logical chat to a worker-specific Codex thread/session, active model route, source binding, status, and replay/handoff metadata. |
+| `chat_execution_lanes` | Historical and active chat/worktree leases with actor, purpose, transition state, base/starting revision, runtime association, and lifecycle timestamps. |
+| `chat_runtime_sessions` | Mapping from one logical chat to a worker- and worktree-specific Codex thread/session, active model route, status, and replay/handoff metadata. |
 | `chat_messages` | Ordered server-held conversation history that remains readable independently of worker availability, including the concrete model route/provider audit for dispatched user turns. |
 | `turns` | Cantrip projection of Codex turns, status, timestamps, usage, and error summary. |
 | `chat_inputs` | Durable prompt queue with mode, ordering key, idempotency key, delivery state, and optional expected turn ID. |
@@ -251,7 +278,7 @@ A project source path is meaningful only on its worker. Two workers may bind the
 
 The server keeps the ordered transcript and enough normalized events to render a chat while its worker is offline. The worker keeps the Codex rollout/session files required to resume model context. If those files are lost, the transcript remains viewable. A later handoff can attach the logical chat to another worker by creating a new runtime session from server history, provided that worker has a matching source binding. The UI must distinguish a seamless session resume from a history-based handoff.
 
-Git-aware worker synchronization is a later subsystem. It may coordinate repository remotes, commits, revisions, branches, and worktrees so compatible checkouts exist on several workers, but Cantrip must never assume that equal project IDs imply equal files. Uncommitted changes require an explicit transfer strategy and are out of scope for the local foundation.
+Local worktree isolation is implemented within one worker source. Cross-worker Git synchronization remains a later subsystem: it may coordinate repository remotes, commits, and compatible checkouts across workers, but Cantrip must never assume that equal project IDs imply equal files. Uncommitted changes require an explicit transfer strategy and are outside the current worktree model.
 
 ### 6.1 GitHub-backed project creation
 
@@ -609,7 +636,7 @@ Exit: browser, desktop, and mobile clients share the same protocol and can recon
 
 - Add organization roles only with a complete tenancy model.
 - Add chat fork/branch and export/import.
-- Add Git-assisted cross-worker synchronization, worktree workflows, and explicit handling for uncommitted changes.
+- Extend the implemented local worktree workflows with Git-assisted cross-worker synchronization and explicit transfer handling for uncommitted changes.
 - Add richer file previews, plugins/skills controls, and scheduled tasks as demand warrants.
 - Add protocol compatibility matrices, upgrade tooling, load tests, and disaster-recovery exercises.
 
@@ -623,6 +650,8 @@ The first meaningful release is complete when all of the following are true:
 - A user can choose an accessible GitHub repository, create a unique single-source project and chat, and run a real Codex turn.
 - The UI accurately streams and restores messages, plans, command output, file changes, diffs, approvals, errors, and completion state.
 - Steering targets the active turn; queued prompts survive restart and run in the chosen order.
+- Every project source has Primary; chats can be Agent managed or Pinned; Codex-native tools can move managed chats through isolated worktree runtimes without changing an in-flight CWD.
+- Terminal, Explorer, linked console, and History operations resolve through their explicit worktree, while the flat sidebar and History graph retain offline and historical worktree context.
 - Interrupt and explicit context compaction work and leave the chat resumable.
 - Restarting the browser, server, worker, or Codex runtime does not duplicate completed inputs or lose accepted queued inputs.
 - Conversation history remains readable from PGlite when the worker is stopped; files remain worker-only.
