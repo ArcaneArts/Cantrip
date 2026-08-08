@@ -88,6 +88,7 @@ import {
 } from "@/components/git/git-history";
 import { ProjectChatList } from "@/components/sidebar/project-chat-list";
 import { SettingsPage } from "@/components/settings/settings-page";
+import { ServerSwitcher } from "@/components/servers/server-switcher";
 import {
   WorktreeControl,
   WorktreeCreateDialog,
@@ -2937,16 +2938,13 @@ export function App() {
           </nav>
 
           <div className="border-t p-3">
-            <div className="flex items-center gap-3 rounded-lg px-2 py-2">
-              <div className="grid size-8 place-items-center rounded-full bg-muted">
-                <User className="size-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium">Local User</p>
-                <p className="truncate text-[11px] text-muted-foreground">
-                  {onlineWorker?.name ?? "Worker offline"}
-                </p>
-              </div>
+            <div className="flex items-center gap-1">
+              <ServerSwitcher
+                currentUserName={
+                  bootstrap.data?.auth.currentUser.displayName ?? "Cantrip User"
+                }
+                workerName={onlineWorker?.name ?? "Worker offline"}
+              />
               <Button
                 size="icon"
                 variant="ghost"

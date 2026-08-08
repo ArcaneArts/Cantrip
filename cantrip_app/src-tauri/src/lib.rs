@@ -1,7 +1,232 @@
+use std::{
+    fs::{self, File, OpenOptions},
+    net::{TcpListener, TcpStream},
+    path::Path,
+    process::{Child, Command, Stdio},
+    sync::Mutex,
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
+
+use tauri::{Manager, RunEvent, State};
+
+struct ManagedRuntime {
+    children: Mutex<Vec<Child>>,
+    server_url: String,
+}
+
+#[tauri::command]
+fn local_server_url(runtime: State<'_, ManagedRuntime>) -> String {
+    runtime.server_url.clone()
+}
+
+fn open_log(path: &Path) -> Result<File, String> {
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|error| format!("Could not open {}: {error}", path.display()))
+}
+
+fn spawn_node_service(
+    node: &Path,
+    directory: &Path,
+    log_path: &Path,
+    environment: &[(&str, String)],
+) -> Result<Child, String> {
+    let stdout = open_log(log_path)?;
+    let stderr = stdout
+        .try_clone()
+        .map_err(|error| format!("Could not clone log handle: {error}"))?;
+    let mut command = Command::new(node);
+    command
+        .arg(directory.join("dist/index.js"))
+        .current_dir(directory)
+        .stdout(Stdio::from(stdout))
+        .stderr(Stdio::from(stderr));
+    for (key, value) in environment {
+        command.env(key, value);
+    }
+    command.spawn().map_err(|error| {
+        format!(
+            "Could not start service in {}: {error}",
+            directory.display()
+        )
+    })
+}
+
+fn wait_for_server(child: &mut Child, port: u16) -> Result<(), String> {
+    for _ in 0..100 {
+        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            return Ok(());
+        }
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|error| format!("Could not inspect local server: {error}"))?
+        {
+            return Err(format!(
+                "The bundled Cantrip Server exited during startup ({status})."
+            ));
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    Err("The bundled Cantrip Server did not become ready within 10 seconds.".into())
+}
+
+fn terminate_child(child: &mut Child) {
+    if child.try_wait().ok().flatten().is_some() {
+        return;
+    }
+    #[cfg(unix)]
+    {
+        let _ = Command::new("kill")
+            .args(["-TERM", &child.id().to_string()])
+            .status();
+        for _ in 0..20 {
+            if child.try_wait().ok().flatten().is_some() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
+    #[cfg(windows)]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .status();
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
+    if cfg!(mobile) {
+        return Ok(ManagedRuntime {
+            children: Mutex::new(Vec::new()),
+            server_url: std::env::var("CANTRIP_SERVER_URL").unwrap_or_default(),
+        });
+    }
+    if cfg!(debug_assertions) {
+        return Ok(ManagedRuntime {
+            children: Mutex::new(Vec::new()),
+            server_url: std::env::var("CANTRIP_SERVER_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:4310".into()),
+        });
+    }
+
+    let resources = app
+        .path()
+        .resource_dir()
+        .map_err(|error| format!("Could not resolve bundled resources: {error}"))?
+        .join("runtime");
+    let data = match std::env::var_os("CANTRIP_DESKTOP_DATA_DIR") {
+        Some(directory) => directory.into(),
+        None => app
+            .path()
+            .app_data_dir()
+            .map_err(|error| format!("Could not resolve application data: {error}"))?,
+    };
+    let logs = data.join("logs");
+    fs::create_dir_all(&logs)
+        .map_err(|error| format!("Could not create {}: {error}", logs.display()))?;
+
+    let node_name = if cfg!(windows) { "node.exe" } else { "node" };
+    let node = resources.join(node_name);
+    let listener = TcpListener::bind(("127.0.0.1", 0))
+        .map_err(|error| format!("Could not reserve a local server port: {error}"))?;
+    let port = listener
+        .local_addr()
+        .map_err(|error| format!("Could not read reserved local port: {error}"))?
+        .port();
+    drop(listener);
+
+    let server_url = format!("http://127.0.0.1:{port}");
+    let token_seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let worker_token = format!("desktop-{}-{token_seed}", std::process::id());
+    let server_directory = resources.join("server");
+    let worker_directory = resources.join("worker");
+    let mut server = spawn_node_service(
+        &node,
+        &server_directory,
+        &logs.join("server.log"),
+        &[
+            ("CANTRIP_SERVER_HOST", "127.0.0.1".into()),
+            ("CANTRIP_SERVER_PORT", port.to_string()),
+            ("CANTRIP_DEPLOYMENT_MODE", "local".into()),
+            ("CANTRIP_BOOTSTRAP_MODE", "tauri".into()),
+            ("CANTRIP_AUTH_MODE", "none".into()),
+            (
+                "CANTRIP_DATA_DIR",
+                data.join("server").to_string_lossy().into_owned(),
+            ),
+            ("CANTRIP_WORKER_TOKEN", worker_token.clone()),
+        ],
+    )?;
+    if let Err(error) = wait_for_server(&mut server, port) {
+        terminate_child(&mut server);
+        return Err(error);
+    }
+
+    let worker = match spawn_node_service(
+        &node,
+        &worker_directory,
+        &logs.join("worker.log"),
+        &[
+            ("CANTRIP_SERVER_URL", server_url.clone()),
+            ("CANTRIP_WORKER_TOKEN", worker_token),
+            ("CANTRIP_WORKER_ID", "desktop-local".into()),
+            ("CANTRIP_WORKER_NAME", "Local Worker".into()),
+            (
+                "CANTRIP_WORKER_DATA_DIR",
+                data.join("worker").to_string_lossy().into_owned(),
+            ),
+        ],
+    ) {
+        Ok(worker) => worker,
+        Err(error) => {
+            terminate_child(&mut server);
+            return Err(error);
+        }
+    };
+
+    Ok(ManagedRuntime {
+        children: Mutex::new(vec![server, worker]),
+        server_url,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .run(tauri::generate_context!())
-        .expect("error while running Cantrip");
+        .invoke_handler(tauri::generate_handler![local_server_url])
+        .setup(|app| {
+            let runtime = build_runtime(app).map_err(std::io::Error::other)?;
+            app.manage(runtime);
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building Cantrip");
+
+    #[cfg(desktop)]
+    {
+        let shutdown_handle = app.handle().clone();
+        ctrlc::set_handler(move || shutdown_handle.exit(0))
+            .expect("could not install Cantrip shutdown handler");
+    }
+
+    app.run(|handle, event| {
+        if matches!(event, RunEvent::Exit) {
+            let runtime = handle.state::<ManagedRuntime>();
+            if let Ok(mut children) = runtime.children.lock() {
+                for child in children.iter_mut().rev() {
+                    terminate_child(child);
+                }
+                children.clear();
+            };
+        }
+    });
 }

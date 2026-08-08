@@ -116,7 +116,11 @@ An app starts with only a server origin. Its first request is the server bootstr
 
 Clients must use this document rather than compile-time assumptions about whether the server is embedded, on loopback, or in the cloud. Unsupported secure modes fail closed at server startup; the foundation must not advertise account or password security before it exists.
 
-In the current local mode, the server binds to loopback, uses one stable anonymous local user, requires no sign-in or connection screen, and is started with the worker and Vite app by `pnpm dev`. Tauri will eventually supervise the same local processes directly or through containers. Browser-only and Capacitor builds are clients and never bootstrap Node.js services.
+In local development, the server binds to loopback, uses one stable anonymous local user, requires no sign-in or connection screen, and is started with the worker and Vite app by `pnpm dev`. A packaged Tauri desktop app supervises deployed server and worker trees with a bundled Node runtime and a dynamic loopback port. Browser-only and Capacitor builds are clients and never bootstrap Node.js services.
+
+Server selection is client-bootstrap state because it must exist before a server can be contacted. The main sidebar exposes a built-in Local connection and named remote server origins. Selecting a profile reloads the app against one origin so HTTP and live transports cannot diverge. Profiles intentionally contain no account credentials; the next hosted milestone adds authentication and per-server identities.
+
+Standalone no-auth servers fail closed when hosted mode or a non-loopback bind is requested. `CANTRIP_ALLOW_INSECURE_REMOTE=true` is a temporary explicit acknowledgement for trusted networks or an authenticating reverse proxy, not a security feature.
 
 ### 4.4 Technology choices
 
