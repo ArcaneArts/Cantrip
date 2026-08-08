@@ -40,7 +40,7 @@ Cantrip is split into three deployable applications plus one shared protocol pac
 flowchart LR
     APP["cantrip_app<br/>React + Vite<br/>Browser / Tauri / Capacitor"]
     SERVER["cantrip_server<br/>Fastify + PGlite/PostgreSQL<br/>Identity, configuration, history, routing"]
-    WORKER["cantrip_worker<br/>Node.js<br/>Codex, files, Git, PTYs"]
+    WORKER["cantrip_worker<br/>Node.js<br/>Codex, files, Git, PTYs, Chromium"]
     CODEX["Codex CLI / app-server"]
     FILES["Project source folders"]
 
@@ -62,7 +62,7 @@ Local development uses embedded PGlite under `.cantrip/dev/`. A PostgreSQL `DATA
 
 ### `cantrip_worker`
 
-The worker is the machine that actually performs work. It owns project source folders, clones repositories, runs Git and GitHub CLI operations, provides filesystem access, hosts PTY processes, and supervises Codex runtimes. Provider URLs such as `localhost` are resolved from the worker machine, which is important once the server and worker live on different hosts.
+The worker is the machine that actually performs work. It owns project source folders, clones repositories, runs Git and GitHub CLI operations, provides filesystem access, hosts PTY processes, supervises Codex runtimes, and runs Browser-tab Chromium sessions. Provider URLs and Browser-tab addresses such as `localhost` are resolved from the worker machine, which is important once the server and worker live on different hosts.
 
 Workers communicate through the server. There is intentionally no app-to-worker connection mode.
 
@@ -101,6 +101,10 @@ For browser development:
 - Git.
 - GitHub CLI (`gh`) authenticated with `gh auth login`, or a worker-local `GH_TOKEN`, to list and clone accessible repositories.
 - Codex CLI for Codex-backed chats and ChatGPT account providers.
+- A Chromium-family browser for worker-streamed Browser tabs. Cantrip discovers
+  Chrome, Chromium, Brave, Edge, and Vivaldi in their conventional install
+  locations. Set `CANTRIP_CHROMIUM_EXECUTABLE` to an explicit executable when
+  using another installation or a managed Chromium build.
 - Ollama when testing a local Ollama model.
 
 Desktop development additionally requires the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) for your operating system, including a Rust toolchain and the required macOS, Windows, or Linux system packages.
@@ -129,6 +133,12 @@ This starts the shared protocol watcher, Cantrip server, local worker, and Vite 
 Vite hot module replacement updates the app as frontend files change. The Node server and worker also restart automatically when their source changes. Press `Ctrl+C` once in the root terminal to stop every process started by the command.
 
 Local database files and worker-owned repository clones are stored under `.cantrip/dev/` and are ignored by Git.
+
+Browser tabs launch headless Chromium on the selected worker and render CDP
+screencast frames inside the normal React layout. Navigation and input travel
+through the Cantrip server; the app never receives Chromium's debugging URL.
+Persistent browser profiles live under the worker data directory at
+`.cantrip/dev/worker/browser/profiles/` by default and are ignored by Git.
 
 ## Desktop development with `pnpm devtop`
 

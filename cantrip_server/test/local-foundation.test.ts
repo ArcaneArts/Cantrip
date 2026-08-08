@@ -1277,6 +1277,22 @@ describe("local server foundation", () => {
       ).json(),
     );
     expect(
+      remoteSurfaceListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/remote-surfaces`,
+          })
+        ).json(),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        id: browser.id,
+        kind: "browser",
+        workerId: "test-worker",
+      }),
+    );
+    expect(
       browserSummarySchema.parse(
         (
           await firstApp.inject({
@@ -1287,6 +1303,21 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toMatchObject({ title: "Docs", url: "https://example.com/docs" });
+    expect(
+      remoteSurfaceListSchema
+        .parse(
+          (
+            await firstApp.inject({
+              method: "GET",
+              url: `/api/projects/${project.id}/remote-surfaces`,
+            })
+          ).json(),
+        )
+        .find(({ id }) => id === browser.id)?.configuration,
+    ).toMatchObject({
+      kind: "browser",
+      initialUrl: "https://example.com/docs",
+    });
     const projectView = projectViewSummarySchema.parse(
       (
         await firstApp.inject({

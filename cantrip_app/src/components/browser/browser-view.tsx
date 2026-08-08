@@ -1,11 +1,18 @@
-import type { BrowserSummary } from "@cantrip/protocol";
-import { isTauri } from "@tauri-apps/api/core";
-import type { Webview } from "@tauri-apps/api/webview";
+import {
+  decodeRemoteSurfaceFrame,
+  encodeRemoteSurfaceFrame,
+  remoteBrowserClientMessageSchema,
+  remoteBrowserServerMessageSchema,
+  remoteSurfaceConnectionMessageSchema,
+  type BrowserSummary,
+  type RemoteBrowserClientMessage,
+} from "@cantrip/protocol";
 import {
   ArrowLeft,
   ArrowRight,
   ExternalLink,
   Globe2,
+  Loader2,
   RotateCw,
 } from "lucide-react";
 import {
@@ -14,12 +21,17 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent,
+  type PointerEvent,
+  type WheelEvent,
 } from "react";
 
 import { Button } from "@/components/ui/button";
-import { browserProxyUrl } from "@/lib/api";
+import { remoteSurfaceWebSocketUrl } from "@/lib/api";
 
-function normalizeAddress(value: string): string | null {
+const decoder = new TextDecoder();
+
+export function normalizeBrowserAddress(value: string): string | null {
   const candidate = /^[a-z][a-z\d+.-]*:/i.test(value.trim())
     ? value.trim()
     : `https://${value.trim()}`;
@@ -33,89 +45,47 @@ function normalizeAddress(value: string): string | null {
   }
 }
 
-function nativeBrowserLabel(browserId: string): string {
-  return `cantrip-browser-${browserId}-${crypto.randomUUID()}`.replace(
-    /[^A-Za-z0-9-/:_]/g,
-    "-",
-  );
+export function browserPointerCoordinates(
+  point: { clientX: number; clientY: number },
+  bounds: Pick<DOMRect, "left" | "top" | "width" | "height">,
+  viewport: { width: number; height: number },
+) {
+  return {
+    x: Math.max(
+      0,
+      Math.min(
+        viewport.width,
+        ((point.clientX - bounds.left) / bounds.width) * viewport.width,
+      ),
+    ),
+    y: Math.max(
+      0,
+      Math.min(
+        viewport.height,
+        ((point.clientY - bounds.top) / bounds.height) * viewport.height,
+      ),
+    ),
+  };
 }
 
-export function browserUrlIsLocal(value: string): boolean {
-  const url = new URL(value);
-  const hostname = url.hostname.toLowerCase();
-  if (hostname === "localhost" || hostname.endsWith(".local")) return true;
-  if (hostname === "::1" || hostname === "[::1]") return true;
-  const parts = hostname.split(".").map(Number);
-  const first = parts[0] ?? -1;
-  const second = parts[1] ?? -1;
+function modifiers(event: {
+  altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+}): number {
   return (
-    parts.length === 4 &&
-    (first === 10 ||
-      first === 127 ||
-      (first === 169 && second === 254) ||
-      (first === 172 && second >= 16 && second <= 31) ||
-      (first === 192 && second === 168))
+    (event.altKey ? 1 : 0) |
+    (event.ctrlKey ? 2 : 0) |
+    (event.metaKey ? 4 : 0) |
+    (event.shiftKey ? 8 : 0)
   );
 }
 
-interface NativeWebviewHandle {
-  label: string;
-  webview: Webview;
-}
-
-interface BrowserPoint {
-  x: number;
-  y: number;
-}
-
-interface BrowserWindowGeometry {
-  innerPosition: BrowserPoint;
-  innerSize: { height: number; width: number };
-  outerPosition: BrowserPoint;
-  outerSize: { height: number; width: number };
-  scaleFactor: number;
-}
-
-export function nativeBrowserContentOffset(
-  geometry: BrowserWindowGeometry,
-): BrowserPoint {
-  const positionOffset = {
-    x:
-      (geometry.innerPosition.x - geometry.outerPosition.x) /
-      geometry.scaleFactor,
-    y:
-      (geometry.innerPosition.y - geometry.outerPosition.y) /
-      geometry.scaleFactor,
-  };
-  const sideFrameInset = Math.max(
-    0,
-    (geometry.outerSize.width - geometry.innerSize.width) /
-      (2 * geometry.scaleFactor),
+function pointerButton(button: number) {
+  return (
+    (["left", "middle", "right", "back", "forward"] as const)[button] ?? "none"
   );
-  const topFrameInset = Math.max(
-    0,
-    (geometry.outerSize.height - geometry.innerSize.height) /
-      geometry.scaleFactor -
-      sideFrameInset,
-  );
-
-  // Some native window styles report matching inner and outer origins even
-  // though the content view starts below the titlebar. Deriving the fallback
-  // from frame dimensions works across WKWebView, WebView2, and WebKitGTK.
-  return {
-    x: Math.max(positionOffset.x, sideFrameInset),
-    y: Math.max(positionOffset.y, topFrameInset),
-  };
-}
-
-export function nativeBrowserSurfacePosition(
-  bounds: Pick<DOMRect, "left" | "top">,
-  contentOffset: BrowserPoint,
-): BrowserPoint {
-  return {
-    x: bounds.left + contentOffset.x,
-    y: bounds.top + contentOffset.y,
-  };
 }
 
 export function BrowserView({
@@ -125,295 +95,296 @@ export function BrowserView({
   browser: BrowserSummary;
   onNavigate(url: string): void;
 }) {
-  const desktop = isTauri();
-  const [address, setAddress] = useState(browser.url);
-  const [entries, setEntries] = useState([browser.url]);
-  const [entryIndex, setEntryIndex] = useState(0);
-  const [nativeUrl, setNativeUrl] = useState(browser.url);
-  const [nativeReady, setNativeReady] = useState(false);
-  const [nativeError, setNativeError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
-  const [invalidAddress, setInvalidAddress] = useState(false);
-  const frameRef = useRef<HTMLIFrameElement>(null);
-  const nativeSurfaceRef = useRef<HTMLDivElement>(null);
-  const nativeWebviewRef = useRef<NativeWebviewHandle | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const socketRef = useRef<WebSocket | null>(null);
+  const attachmentIdRef = useRef<string | null>(null);
+  const sequenceRef = useRef(0);
+  const reconnectAttemptRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputFocusedRef = useRef(false);
   const onNavigateRef = useRef(onNavigate);
+  const viewportRef = useRef({
+    width: 1_280,
+    height: 720,
+    devicePixelRatio: window.devicePixelRatio || 1,
+  });
+  const frameChainRef = useRef(Promise.resolve());
+  const [connectionKey, setConnectionKey] = useState(0);
+  const [connectionState, setConnectionState] = useState<
+    "connecting" | "ready" | "reconnecting"
+  >("connecting");
+  const [error, setError] = useState<string | null>(null);
+  const [address, setAddress] = useState(browser.url);
+  const [currentUrl, setCurrentUrl] = useState(browser.url);
+  const [invalidAddress, setInvalidAddress] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [canGoForward, setCanGoForward] = useState(false);
   onNavigateRef.current = onNavigate;
 
-  const usingNative = desktop && !nativeError;
-  const currentUrl = usingNative
-    ? nativeUrl
-    : (entries[entryIndex] ?? browser.url);
-  const localFrame = browserUrlIsLocal(currentUrl);
-  const frameUrl = localFrame ? currentUrl : browserProxyUrl(currentUrl);
+  const send = useCallback(
+    (message: RemoteBrowserClientMessage) => {
+      const socket = socketRef.current;
+      const attachmentId = attachmentIdRef.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN || !attachmentId)
+        return;
+      const frame = encodeRemoteSurfaceFrame(
+        {
+          protocolVersion: 1,
+          surfaceId: browser.id,
+          attachmentId,
+          sequence: sequenceRef.current++,
+          channel: "control",
+        },
+        new TextEncoder().encode(
+          JSON.stringify(remoteBrowserClientMessageSchema.parse(message)),
+        ),
+      );
+      socket.send(Uint8Array.from(frame).buffer);
+    },
+    [browser.id],
+  );
 
   useEffect(() => {
     setAddress(browser.url);
-    setEntries([browser.url]);
-    setEntryIndex(0);
-    setNativeUrl(browser.url);
-    setNativeReady(false);
-    setNativeError(null);
+    setCurrentUrl(browser.url);
     setInvalidAddress(false);
-  }, [browser.id]);
+  }, [browser.id, browser.url]);
 
   useEffect(() => {
-    if (!desktop) return;
-    const surface = nativeSurfaceRef.current;
+    const surface = surfaceRef.current;
     if (!surface) return;
+    const updateViewport = () => {
+      const bounds = surface.getBoundingClientRect();
+      const viewport = {
+        width: Math.max(1, Math.round(bounds.width)),
+        height: Math.max(1, Math.round(bounds.height)),
+        devicePixelRatio: window.devicePixelRatio || 1,
+      };
+      viewportRef.current = viewport;
+      send({ type: "viewport", viewport });
+    };
+    updateViewport();
+    const observer = new ResizeObserver(updateViewport);
+    observer.observe(surface);
+    return () => observer.disconnect();
+  }, [send]);
 
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    setConnectionState(
+      reconnectAttemptRef.current ? "reconnecting" : "connecting",
+    );
+    setError(null);
+    attachmentIdRef.current = null;
+    sequenceRef.current = 0;
+    const socket = new WebSocket(
+      remoteSurfaceWebSocketUrl(browser.id, viewport),
+    );
+    socket.binaryType = "arraybuffer";
+    socketRef.current = socket;
     let disposed = false;
-    let resizeObserver: ResizeObserver | null = null;
-    let pollTimer: number | null = null;
-    let removeWindowListeners: (() => void) | null = null;
-    const label = nativeBrowserLabel(browser.id);
+    let ready = false;
 
-    const start = async () => {
-      const [
-        { LogicalPosition, LogicalSize },
-        { invoke },
-        { Webview },
-        windowApi,
-      ] = await Promise.all([
-        import("@tauri-apps/api/dpi"),
-        import("@tauri-apps/api/core"),
-        import("@tauri-apps/api/webview"),
-        import("@tauri-apps/api/window"),
-      ]);
-      const currentWindow = windowApi.getCurrentWindow();
-      const contentOffset = async (): Promise<BrowserPoint> => {
-        const [
-          innerPosition,
-          outerPosition,
-          innerSize,
-          outerSize,
-          scaleFactor,
-        ] = await Promise.all([
-          currentWindow.innerPosition(),
-          currentWindow.outerPosition(),
-          currentWindow.innerSize(),
-          currentWindow.outerSize(),
-          currentWindow.scaleFactor(),
-        ]);
-        return nativeBrowserContentOffset({
-          innerPosition,
-          innerSize,
-          outerPosition,
-          outerSize,
-          scaleFactor,
-        });
-      };
-      const initialBounds = surface.getBoundingClientRect();
-      const initialPosition = nativeBrowserSurfacePosition(
-        initialBounds,
-        await contentOffset(),
-      );
-      const webview = new Webview(currentWindow, label, {
-        url: browser.url,
-        x: initialPosition.x,
-        y: initialPosition.y,
-        width: Math.max(1, initialBounds.width),
-        height: Math.max(1, initialBounds.height),
-        focus: true,
-        devtools: true,
-        zoomHotkeysEnabled: true,
-      });
-      nativeWebviewRef.current = { label, webview };
-
-      await new Promise<void>((resolve, reject) => {
-        void webview.once("tauri://created", () => resolve());
-        void webview.once<unknown>("tauri://error", (event) => {
-          reject(
-            new Error(
-              typeof event.payload === "string"
-                ? event.payload
-                : "The native browser webview could not be created.",
-            ),
-          );
-        });
-      });
-      if (disposed) {
-        await webview.close();
-        return;
-      }
-      const syncBounds = async () => {
-        const bounds = surface.getBoundingClientRect();
-        if (bounds.width < 1 || bounds.height < 1) return;
-        const position = nativeBrowserSurfacePosition(
-          bounds,
-          await contentOffset(),
-        );
-        await Promise.all([
-          webview.setPosition(new LogicalPosition(position.x, position.y)),
-          webview.setSize(new LogicalSize(bounds.width, bounds.height)),
-        ]);
-      };
-      const scheduleBounds = () => void syncBounds().catch(() => undefined);
-      resizeObserver = new ResizeObserver(scheduleBounds);
-      resizeObserver.observe(surface);
-      window.addEventListener("resize", scheduleBounds);
-      window.addEventListener("scroll", scheduleBounds, true);
-      removeWindowListeners = () => {
-        window.removeEventListener("resize", scheduleBounds);
-        window.removeEventListener("scroll", scheduleBounds, true);
-      };
-      await syncBounds();
-
-      setNativeReady(true);
-
-      let lastUrl = browser.url;
-      const syncUrl = async () => {
-        const url = await invoke<string>("browser_webview_url", { label });
-        const normalized = normalizeAddress(url);
-        if (!normalized || normalized === lastUrl) return;
-        lastUrl = normalized;
-        setNativeUrl(normalized);
-        setAddress(normalized);
-        onNavigateRef.current(normalized);
-      };
-      pollTimer = window.setInterval(
-        () => void syncUrl().catch(() => undefined),
-        500,
-      );
+    const scheduleReconnect = () => {
+      if (disposed || reconnectTimerRef.current) return;
+      const delay = Math.min(500 * 2 ** reconnectAttemptRef.current, 5_000);
+      reconnectAttemptRef.current += 1;
+      setConnectionState("reconnecting");
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null;
+        setConnectionKey((key) => key + 1);
+      }, delay);
     };
 
-    void start().catch(async (error: unknown) => {
-      const handle = nativeWebviewRef.current;
-      if (handle?.label === label) {
-        nativeWebviewRef.current = null;
-        await handle.webview.close().catch(() => undefined);
+    const drawFrame = (payload: Uint8Array) => {
+      const bytes = new Uint8Array(payload);
+      frameChainRef.current = frameChainRef.current
+        .then(async () => {
+          const canvas = canvasRef.current;
+          if (!canvas || disposed) return;
+          const bitmap = await createImageBitmap(
+            new Blob([bytes], { type: "image/jpeg" }),
+          );
+          if (disposed) {
+            bitmap.close();
+            return;
+          }
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
+          bitmap.close();
+        })
+        .catch(() => {
+          if (!disposed)
+            setError("The worker sent an unreadable browser frame.");
+        });
+    };
+
+    socket.addEventListener("message", (event) => {
+      if (typeof event.data === "string") {
+        try {
+          const message = remoteSurfaceConnectionMessageSchema.parse(
+            JSON.parse(event.data),
+          );
+          if (message.type === "ready") {
+            ready = true;
+            reconnectAttemptRef.current = 0;
+            attachmentIdRef.current = message.attachmentId;
+            setConnectionState("ready");
+            send({ type: "viewport", viewport: viewportRef.current });
+          } else {
+            setError(message.message);
+          }
+        } catch {
+          setError("The server sent an invalid browser connection message.");
+        }
+        return;
       }
+      try {
+        const frame = decodeRemoteSurfaceFrame(new Uint8Array(event.data));
+        if (frame.header.surfaceId !== browser.id) return;
+        if (frame.header.channel === "frame") {
+          drawFrame(frame.payload);
+        } else if (frame.header.channel === "control") {
+          const state = remoteBrowserServerMessageSchema.parse(
+            JSON.parse(decoder.decode(frame.payload)),
+          );
+          const normalized = normalizeBrowserAddress(state.url);
+          if (normalized) {
+            setCurrentUrl(normalized);
+            if (!inputFocusedRef.current) setAddress(normalized);
+            if (normalized !== browser.url) onNavigateRef.current(normalized);
+          }
+          setCanGoBack(state.canGoBack);
+          setCanGoForward(state.canGoForward);
+          setLoading(state.loading);
+        }
+      } catch {
+        setError("The server sent an invalid browser frame.");
+      }
+    });
+    socket.addEventListener("close", () => {
+      ready = false;
+      attachmentIdRef.current = null;
+      if (!disposed) scheduleReconnect();
+    });
+    socket.addEventListener("error", () => {
       if (!disposed) {
-        setNativeReady(false);
-        setNativeError(error instanceof Error ? error.message : String(error));
+        setError("Could not connect to the worker browser.");
+        scheduleReconnect();
       }
     });
 
     return () => {
       disposed = true;
-      resizeObserver?.disconnect();
-      removeWindowListeners?.();
-      if (pollTimer !== null) window.clearInterval(pollTimer);
-      const handle = nativeWebviewRef.current;
-      if (handle?.label === label) {
-        nativeWebviewRef.current = null;
-        void handle.webview.close().catch(() => undefined);
+      ready = false;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
       }
+      if (socketRef.current === socket) socketRef.current = null;
+      socket.close(1000, "Browser view closed");
     };
-  }, [browser.id, desktop]);
-
-  const visit = useCallback(
-    (url: string) => {
-      setEntries((current) => [...current.slice(0, entryIndex + 1), url]);
-      setEntryIndex((current) => current + 1);
-      setAddress(url);
-      setInvalidAddress(false);
-      onNavigate(url);
-    },
-    [entryIndex, onNavigate],
-  );
-
-  useEffect(() => {
-    if (usingNative) return;
-    const receiveNavigation = (event: MessageEvent) => {
-      if (event.source !== frameRef.current?.contentWindow) return;
-      const data = event.data as { type?: unknown; url?: unknown } | null;
-      if (
-        data?.type !== "cantrip-browser-navigate" ||
-        typeof data.url !== "string"
-      )
-        return;
-      const normalized = normalizeAddress(data.url);
-      if (normalized) visit(normalized);
-    };
-    window.addEventListener("message", receiveNavigation);
-    return () => window.removeEventListener("message", receiveNavigation);
-  }, [usingNative, visit]);
-
-  const invokeNative = async (
-    command: "browser_webview_action" | "browser_webview_navigate",
-    values: Record<string, unknown>,
-  ) => {
-    const handle = nativeWebviewRef.current;
-    if (!handle || !nativeReady) return;
-    const { invoke } = await import("@tauri-apps/api/core");
-    await invoke(command, { label: handle.label, ...values });
-  };
-
-  const navigateNative = async (url: string) => {
-    setNativeUrl(url);
-    setAddress(url);
-    setInvalidAddress(false);
-    onNavigate(url);
-    await invokeNative("browser_webview_navigate", { url });
-  };
+  }, [browser.id, connectionKey, send]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const normalized = normalizeAddress(address);
+    const normalized = normalizeBrowserAddress(address);
     if (!normalized) {
       setInvalidAddress(true);
       return;
     }
-    if (usingNative) {
-      if (normalized === currentUrl) {
-        void invokeNative("browser_webview_action", { action: "reload" });
-      } else {
-        void navigateNative(normalized);
-      }
-      return;
-    }
-    if (normalized === currentUrl) {
-      setAddress(normalized);
-      setReloadKey((value) => value + 1);
-      return;
-    }
-    visit(normalized);
-  };
-
-  const move = (nextIndex: number) => {
-    const url = entries[nextIndex];
-    if (!url) return;
-    setEntryIndex(nextIndex);
-    setAddress(url);
     setInvalidAddress(false);
-    onNavigate(url);
+    setAddress(normalized);
+    setCurrentUrl(normalized);
+    setLoading(true);
+    onNavigate(normalized);
+    send({ type: "navigate", url: normalized });
   };
 
-  const goBack = () => {
-    if (usingNative) {
-      void invokeNative("browser_webview_action", { action: "back" });
-      return;
+  const pointer = (
+    event: PointerEvent<HTMLCanvasElement>,
+    type: "move" | "down" | "up",
+  ) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (type === "down") {
+      canvas.focus();
+      canvas.setPointerCapture(event.pointerId);
     }
-    move(entryIndex - 1);
+    const position = browserPointerCoordinates(
+      event,
+      canvas.getBoundingClientRect(),
+      viewportRef.current,
+    );
+    send({
+      type: "pointer",
+      event: type,
+      ...position,
+      button: pointerButton(event.button),
+      buttons: event.buttons,
+      clickCount: event.detail,
+      deltaX: 0,
+      deltaY: 0,
+      modifiers: modifiers(event),
+    });
   };
 
-  const goForward = () => {
-    if (usingNative) {
-      void invokeNative("browser_webview_action", { action: "forward" });
-      return;
-    }
-    move(entryIndex + 1);
+  const wheel = (event: WheelEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const position = browserPointerCoordinates(
+      event,
+      canvas.getBoundingClientRect(),
+      viewportRef.current,
+    );
+    send({
+      type: "pointer",
+      event: "wheel",
+      ...position,
+      button: "none",
+      buttons: 0,
+      clickCount: 0,
+      deltaX: event.deltaX,
+      deltaY: event.deltaY,
+      modifiers: modifiers(event),
+    });
   };
 
-  const reload = () => {
-    if (usingNative) {
-      void invokeNative("browser_webview_action", { action: "reload" });
-      return;
-    }
-    setReloadKey((value) => value + 1);
+  const key = (
+    event: KeyboardEvent<HTMLCanvasElement>,
+    type: "down" | "up",
+  ) => {
+    event.preventDefault();
+    send({
+      type: "key",
+      event: type,
+      key: event.key,
+      code: event.code,
+      text:
+        type === "down" &&
+        event.key.length === 1 &&
+        !event.metaKey &&
+        !event.ctrlKey
+          ? event.key
+          : "",
+      modifiers: modifiers(event),
+    });
   };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
-      <div className="flex h-12 shrink-0 items-center gap-1.5 border-b bg-background px-3">
+      <div className="flex h-12 shrink-0 items-center gap-1.5 bg-background px-3">
         <Button
           type="button"
           size="icon"
           variant="ghost"
           className="size-8"
-          disabled={!usingNative && entryIndex === 0}
-          onClick={goBack}
+          disabled={!canGoBack}
+          onClick={() => send({ type: "history", delta: -1 })}
         >
           <ArrowLeft className="size-4" />
           <span className="sr-only">Back</span>
@@ -423,8 +394,8 @@ export function BrowserView({
           size="icon"
           variant="ghost"
           className="size-8"
-          disabled={!usingNative && entryIndex >= entries.length - 1}
-          onClick={goForward}
+          disabled={!canGoForward}
+          onClick={() => send({ type: "history", delta: 1 })}
         >
           <ArrowRight className="size-4" />
           <span className="sr-only">Forward</span>
@@ -434,9 +405,13 @@ export function BrowserView({
           size="icon"
           variant="ghost"
           className="size-8"
-          onClick={reload}
+          onClick={() => send({ type: "reload" })}
         >
-          <RotateCw className="size-3.5" />
+          {loading ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <RotateCw className="size-3.5" />
+          )}
           <span className="sr-only">Reload</span>
         </Button>
         <form className="min-w-0 flex-1" onSubmit={submit}>
@@ -445,6 +420,13 @@ export function BrowserView({
             <input
               aria-label="Address"
               value={address}
+              onFocus={() => {
+                inputFocusedRef.current = true;
+              }}
+              onBlur={() => {
+                inputFocusedRef.current = false;
+                setAddress(currentUrl);
+              }}
               onChange={(event) => {
                 setAddress(event.target.value);
                 setInvalidAddress(false);
@@ -470,37 +452,40 @@ export function BrowserView({
         </Button>
       </div>
       {invalidAddress ? (
-        <p className="shrink-0 border-b bg-destructive/10 px-4 py-1.5 text-xs text-destructive">
+        <p className="shrink-0 bg-destructive/10 px-4 py-1.5 text-xs text-destructive">
           Enter a valid HTTP or HTTPS address.
         </p>
       ) : null}
-      {nativeError ? (
-        <p className="shrink-0 border-b bg-amber-500/10 px-4 py-1.5 text-xs text-amber-700 dark:text-amber-300">
-          Native browser unavailable; using the web fallback. {nativeError}
-        </p>
-      ) : null}
-      <div className="relative min-h-0 flex-1 bg-white">
-        {desktop && !nativeError ? (
-          <div
-            ref={nativeSurfaceRef}
-            className="absolute inset-0 bg-white"
-            aria-label={`${browser.title} native browser surface`}
-          />
-        ) : (
-          <iframe
-            ref={frameRef}
-            key={`${frameUrl}:${reloadKey}`}
-            title={browser.title}
-            src={frameUrl}
-            className="absolute inset-0 size-full border-0"
-            referrerPolicy="strict-origin-when-cross-origin"
-            sandbox={
-              localFrame
-                ? "allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
-                : "allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-scripts"
-            }
-          />
-        )}
+      <div
+        ref={surfaceRef}
+        className="relative min-h-0 flex-1 overflow-hidden bg-black"
+      >
+        <canvas
+          ref={canvasRef}
+          aria-label={`${browser.title} worker browser surface`}
+          className="absolute inset-0 size-full touch-none object-fill outline-none"
+          tabIndex={0}
+          onFocus={() => send({ type: "focus" })}
+          onPointerDown={(event) => pointer(event, "down")}
+          onPointerMove={(event) => pointer(event, "move")}
+          onPointerUp={(event) => pointer(event, "up")}
+          onWheel={wheel}
+          onKeyDown={(event) => key(event, "down")}
+          onKeyUp={(event) => key(event, "up")}
+        />
+        {connectionState !== "ready" ? (
+          <div className="pointer-events-none absolute right-4 top-3 flex items-center gap-2 rounded-md bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur-xl">
+            <Loader2 className="size-3 animate-spin" />
+            {connectionState === "connecting"
+              ? "Starting browser"
+              : "Reconnecting…"}
+          </div>
+        ) : null}
+        {error ? (
+          <div className="pointer-events-none absolute bottom-4 left-1/2 max-w-xl -translate-x-1/2 rounded-md bg-destructive/90 px-3 py-2 text-sm text-destructive-foreground shadow-lg">
+            {error}
+          </div>
+        ) : null}
       </div>
     </div>
   );

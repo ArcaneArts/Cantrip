@@ -7,6 +7,7 @@ import { codexAccountHome } from "./codex/account-home.js";
 import { CodexAppServer, codexRuntimeId } from "./codex/app-server.js";
 import { CodexAuthClient } from "./codex/auth-client.js";
 import { discoverCodexVersion } from "./codex/discovery.js";
+import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
 import { readWorkerConfig } from "./config.js";
 import { listExplorerDirectory, readExplorerFile } from "./explorer.js";
 import { GithubClient } from "./github.js";
@@ -22,10 +23,19 @@ const HEARTBEAT_INTERVAL_MS = 5_000;
 async function start(): Promise<void> {
   const config = readWorkerConfig();
   const codexVersion = await discoverCodexVersion(config.codexBinary);
+  const browserAdapter = new BrowserRemoteSurfaceAdapter({
+    dataDirectory: config.dataDirectory,
+  });
   const heartbeat = createHeartbeat(
     config,
     codexVersion,
     new Date().toISOString(),
+    {
+      browser: browserAdapter.available,
+      vnc: false,
+      transports: ["websocket"],
+      maxSessions: 4,
+    },
   );
   let connected = false;
   let commandChannelStarted = false;
@@ -36,7 +46,7 @@ async function start(): Promise<void> {
   const codexAuthClients = new Map<string, CodexAuthClient>();
   const codexRuntimes = new Map<string, CodexAppServer>();
   const terminals = new TerminalManager();
-  const remoteSurfaces = new RemoteSurfaceManager();
+  const remoteSurfaces = new RemoteSurfaceManager({ browser: browserAdapter });
   const worktrees = new WorktreeManager(config.dataDirectory);
 
   const accountHomeFor = (providerId: string) =>
@@ -278,7 +288,7 @@ async function start(): Promise<void> {
   );
 
   console.log(
-    `[cantrip_worker] Starting ${heartbeat.name} (${heartbeat.workerId}); Codex: ${codexVersion ?? "not found"}`,
+    `[cantrip_worker] Starting ${heartbeat.name} (${heartbeat.workerId}); Codex: ${codexVersion ?? "not found"}; Browser: ${browserAdapter.executable ?? "Chromium not found"}`,
   );
 
   const publish = async () => {

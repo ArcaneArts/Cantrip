@@ -185,8 +185,12 @@ export class WorkerBridge implements WorkerCommandBus {
     ) {
       return false;
     }
-    socket.send(encodeRemoteSurfaceFrame(header, payload), { binary: true });
-    return true;
+    try {
+      socket.send(encodeRemoteSurfaceFrame(header, payload), { binary: true });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   subscribeSurfaceFrames(

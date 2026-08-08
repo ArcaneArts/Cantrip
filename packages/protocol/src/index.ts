@@ -616,6 +616,56 @@ export const remoteSurfaceControlSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("resume") }),
 ]);
 
+export const remoteBrowserClientMessageSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("navigate"),
+    url: z.url().max(4_096),
+  }),
+  z.object({
+    type: z.literal("history"),
+    delta: z.union([z.literal(-1), z.literal(1)]),
+  }),
+  z.object({ type: z.literal("reload") }),
+  z.object({
+    type: z.literal("viewport"),
+    viewport: remoteSurfaceViewportSchema,
+  }),
+  z.object({
+    type: z.literal("pointer"),
+    event: z.enum(["move", "down", "up", "wheel"]),
+    x: z.number().finite().nonnegative(),
+    y: z.number().finite().nonnegative(),
+    button: z
+      .enum(["none", "left", "middle", "right", "back", "forward"])
+      .default("none"),
+    buttons: z.number().int().nonnegative().max(31).default(0),
+    clickCount: z.number().int().min(0).max(3).default(0),
+    deltaX: z.number().finite().default(0),
+    deltaY: z.number().finite().default(0),
+    modifiers: z.number().int().nonnegative().max(15).default(0),
+  }),
+  z.object({
+    type: z.literal("key"),
+    event: z.enum(["down", "up"]),
+    key: z.string().max(100),
+    code: z.string().max(100),
+    text: z.string().max(10).default(""),
+    modifiers: z.number().int().nonnegative().max(15).default(0),
+  }),
+  z.object({ type: z.literal("focus") }),
+]);
+
+export const remoteBrowserServerMessageSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("browser-state"),
+    url: z.string().max(4_096),
+    title: z.string().max(2_000),
+    canGoBack: z.boolean(),
+    canGoForward: z.boolean(),
+    loading: z.boolean(),
+  }),
+]);
+
 export const remoteSurfaceFrameHeaderSchema = z.object({
   protocolVersion: remoteSurfaceProtocolVersionSchema,
   surfaceId: z.string().min(1).max(200),
@@ -1563,6 +1613,12 @@ export type RemoteSurfaceAttachResult = z.infer<
   typeof remoteSurfaceAttachResultSchema
 >;
 export type RemoteSurfaceControl = z.infer<typeof remoteSurfaceControlSchema>;
+export type RemoteBrowserClientMessage = z.infer<
+  typeof remoteBrowserClientMessageSchema
+>;
+export type RemoteBrowserServerMessage = z.infer<
+  typeof remoteBrowserServerMessageSchema
+>;
 export type RemoteSurfaceFrameHeader = z.infer<
   typeof remoteSurfaceFrameHeaderSchema
 >;

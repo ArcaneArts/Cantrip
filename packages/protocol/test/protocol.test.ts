@@ -6,6 +6,8 @@ import {
   chatExecutionLaneSummarySchema,
   decodeRemoteSurfaceFrame,
   encodeRemoteSurfaceFrame,
+  remoteBrowserClientMessageSchema,
+  remoteBrowserServerMessageSchema,
   gitActionSchema,
   mentionedSkillNames,
   normalizeResponsesBaseUrl,
@@ -346,6 +348,28 @@ describe("Cantrip protocol", () => {
     );
     encoded[0] = 0;
     expect(() => decodeRemoteSurfaceFrame(encoded)).toThrow(/magic/i);
+  });
+
+  it("validates remote browser control and navigation state", () => {
+    expect(
+      remoteBrowserClientMessageSchema.parse({
+        type: "pointer",
+        event: "down",
+        x: 12,
+        y: 24,
+        button: "left",
+      }),
+    ).toMatchObject({ buttons: 0, deltaX: 0, deltaY: 0 });
+    expect(
+      remoteBrowserServerMessageSchema.parse({
+        type: "browser-state",
+        url: "about:blank",
+        title: "",
+        canGoBack: false,
+        canGoForward: false,
+        loading: true,
+      }),
+    ).toMatchObject({ url: "about:blank", loading: true });
   });
 
   it("accepts correlated agent activity from a worker", () => {

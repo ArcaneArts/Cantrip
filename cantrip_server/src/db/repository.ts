@@ -2111,7 +2111,8 @@ export class ServerRepository {
     projectId: string,
     input: BrowserCreate,
   ): Promise<BrowserSummary | null> {
-    if (!(await this.getProjectSource(ownerId, projectId))) return null;
+    const source = await this.getProjectSource(ownerId, projectId);
+    if (!source) return null;
     const [lastChats, lastTerminals, lastExplorers, lastBrowsers, lastViews] =
       await Promise.all([
         this.database
@@ -2145,23 +2146,39 @@ export class ServerRepository {
           .orderBy(desc(schema.projectViews.position))
           .limit(1),
       ]);
-    const result = await this.database
-      .insert(schema.browsers)
-      .values({
-        id: randomUUID(),
+    return this.database.transaction(async (transaction) => {
+      const browserId = randomUUID();
+      const result = await transaction
+        .insert(schema.browsers)
+        .values({
+          id: browserId,
+          projectId,
+          title: input.title,
+          position:
+            Math.max(
+              lastChats[0]?.position ?? -1,
+              lastTerminals[0]?.position ?? -1,
+              lastExplorers[0]?.position ?? -1,
+              lastBrowsers[0]?.position ?? -1,
+              lastViews[0]?.position ?? -1,
+            ) + 1,
+        })
+        .returning();
+      const browser = firstOrThrow(result, "creating a browser");
+      await transaction.insert(schema.remoteSurfaces).values({
+        id: browserId,
         projectId,
+        workerId: source.workerId,
+        kind: "browser",
         title: input.title,
-        position:
-          Math.max(
-            lastChats[0]?.position ?? -1,
-            lastTerminals[0]?.position ?? -1,
-            lastExplorers[0]?.position ?? -1,
-            lastBrowsers[0]?.position ?? -1,
-            lastViews[0]?.position ?? -1,
-          ) + 1,
-      })
-      .returning();
-    return toBrowserSummary(firstOrThrow(result, "creating a browser"));
+        configuration: {
+          kind: "browser",
+          initialUrl: browser.url,
+          profileId: null,
+        },
+      });
+      return toBrowserSummary(browser);
+    });
   }
 
   async updateBrowser(
@@ -2170,21 +2187,98 @@ export class ServerRepository {
     input: BrowserUpdate,
   ): Promise<BrowserSummary | null> {
     if (!(await this.browserIsOwnedBy(ownerId, browserId))) return null;
-    const result = await this.database
-      .update(schema.browsers)
-      .set({ ...input, updatedAt: new Date() })
-      .where(eq(schema.browsers.id, browserId))
-      .returning();
-    return result[0] ? toBrowserSummary(result[0]) : null;
+    const surface = await this.getRemoteSurfaceExecutionContext(
+      ownerId,
+      browserId,
+    );
+    return this.database.transaction(async (transaction) => {
+      const result = await transaction
+        .update(schema.browsers)
+        .set({ ...input, updatedAt: new Date() })
+        .where(eq(schema.browsers.id, browserId))
+        .returning();
+      const browser = result[0];
+      if (!browser) return null;
+      await transaction
+        .update(schema.remoteSurfaces)
+        .set({
+          ...(input.title === undefined ? {} : { title: input.title }),
+          ...(input.url === undefined ||
+          surface?.surface.configuration.kind !== "browser"
+            ? {}
+            : {
+                configuration: {
+                  ...surface.surface.configuration,
+                  initialUrl: input.url,
+                },
+              }),
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.remoteSurfaces.id, browserId));
+      return toBrowserSummary(browser);
+    });
   }
 
   async deleteBrowser(ownerId: string, browserId: string): Promise<boolean> {
     if (!(await this.browserIsOwnedBy(ownerId, browserId))) return false;
-    const result = await this.database
-      .delete(schema.browsers)
-      .where(eq(schema.browsers.id, browserId))
-      .returning({ id: schema.browsers.id });
-    return result.length === 1;
+    return this.database.transaction(async (transaction) => {
+      await transaction
+        .delete(schema.remoteSurfaces)
+        .where(eq(schema.remoteSurfaces.id, browserId));
+      const result = await transaction
+        .delete(schema.browsers)
+        .where(eq(schema.browsers.id, browserId))
+        .returning({ id: schema.browsers.id });
+      return result.length === 1;
+    });
+  }
+
+  async ensureBrowserRemoteSurfaces(ownerId: string): Promise<void> {
+    const rows = await this.database
+      .select({
+        browser: schema.browsers,
+        workerId: schema.projectWorktrees.workerId,
+        surfaceId: schema.remoteSurfaces.id,
+      })
+      .from(schema.browsers)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.browsers.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .innerJoin(
+        schema.projectSources,
+        eq(schema.projectSources.projectId, schema.projects.id),
+      )
+      .innerJoin(
+        schema.projectWorktrees,
+        and(
+          eq(schema.projectWorktrees.projectSourceId, schema.projectSources.id),
+          eq(schema.projectWorktrees.isDefault, true),
+        ),
+      )
+      .leftJoin(
+        schema.remoteSurfaces,
+        eq(schema.remoteSurfaces.id, schema.browsers.id),
+      )
+      .where(isNull(schema.remoteSurfaces.id));
+    if (rows.length === 0) return;
+    await this.database.insert(schema.remoteSurfaces).values(
+      rows.map(({ browser, workerId }) => ({
+        id: browser.id,
+        projectId: browser.projectId,
+        workerId,
+        kind: "browser",
+        title: browser.title,
+        configuration: {
+          kind: "browser" as const,
+          initialUrl: browser.url,
+          profileId: null,
+        },
+      })),
+    );
   }
 
   async listRemoteSurfaces(

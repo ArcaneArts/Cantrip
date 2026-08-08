@@ -1,6 +1,10 @@
 import os from "node:os";
 
-import { type WorkerHeartbeat, workerHeartbeatSchema } from "@cantrip/protocol";
+import {
+  type RemoteSurfaceCapabilities,
+  type WorkerHeartbeat,
+  workerHeartbeatSchema,
+} from "@cantrip/protocol";
 
 import type { WorkerConfig } from "./config.js";
 
@@ -8,6 +12,12 @@ export function createHeartbeat(
   config: WorkerConfig,
   codexVersion: string | null,
   startedAt: string,
+  remoteSurfaces: RemoteSurfaceCapabilities = {
+    browser: false,
+    vnc: false,
+    transports: ["websocket"],
+    maxSessions: 4,
+  },
 ): WorkerHeartbeat {
   return workerHeartbeatSchema.parse({
     workerId: config.workerId,
@@ -15,12 +25,7 @@ export function createHeartbeat(
     platform: os.platform(),
     architecture: os.arch(),
     codexVersion,
-    remoteSurfaces: {
-      browser: false,
-      vnc: false,
-      transports: ["websocket"],
-      maxSessions: 4,
-    },
+    remoteSurfaces,
     startedAt,
   });
 }

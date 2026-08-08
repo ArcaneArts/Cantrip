@@ -100,4 +100,29 @@ describe("RemoteSurfaceManager", () => {
       /does not support browser/i,
     );
   });
+
+  it("enforces the worker session limit", async () => {
+    const session = {
+      configuration: attachCommand.configuration,
+      transport: "websocket" as const,
+      attach() {},
+      close() {},
+      detach() {},
+      handleFrame() {},
+      resume() {},
+      suspend() {},
+    } satisfies RemoteSurfaceSession;
+    const manager = new RemoteSurfaceManager(
+      { browser: { open: async () => session } },
+      1,
+    );
+    await manager.attach(attachCommand);
+    await expect(
+      manager.attach({
+        ...attachCommand,
+        surfaceId: "surface-2",
+        attachmentId: "attachment-2",
+      }),
+    ).rejects.toThrow(/limit of 1/i);
+  });
 });
