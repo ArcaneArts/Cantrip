@@ -1,0 +1,556 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import {
+  chatSummarySchema,
+  explorerSummarySchema,
+  gitActionResultSchema,
+  gitHistorySchema,
+  projectViewSummarySchema,
+  projectWorktreeListSchema,
+  projectWorktreeSummarySchema,
+  terminalSummarySchema,
+  worktreeStatusResultSchema,
+  type WorkerWorktreeSummary,
+} from "@cantrip/protocol";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import { buildApp } from "../src/app.js";
+import type { ServerConfig } from "../src/config.js";
+import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
+import { LOCAL_USER_ID } from "../src/db/repository.js";
+import type { WorkerCommandBus } from "../src/workers/bridge.js";
+
+const dataDirectory = await mkdtemp(
+  path.join(tmpdir(), "cantrip-worktree-api-"),
+);
+const primaryPath = path.join(dataDirectory, "repositories", "Cantrip");
+const externalPath = path.join(dataDirectory, "external", "review");
+const config: ServerConfig = {
+  agentModel: "gemma4:26b",
+  agentModelProvider: "ollama",
+  appOrigins: ["http://127.0.0.1:5173"],
+  authMode: "none",
+  bootstrapMode: "pnpm-dev",
+  dataDirectory,
+  deploymentMode: "local",
+  host: "127.0.0.1",
+  ollamaBaseUrl: "http://127.0.0.1:11434/v1",
+  port: 4310,
+  workerToken: "test-worker-token",
+};
+
+let connected = true;
+let activeCreates = 0;
+let maximumConcurrentCreates = 0;
+const gitActionPaths: string[] = [];
+let workerWorktrees: WorkerWorktreeSummary[] = [
+  {
+    path: primaryPath,
+    head: "1111111111111111111111111111111111111111",
+    branch: "main",
+    detached: false,
+    isPrimary: true,
+    managed: true,
+    locked: false,
+    lockReason: null,
+    prunable: false,
+    pruneReason: null,
+    missing: false,
+  },
+];
+
+function inventory() {
+  return {
+    sourcePath: primaryPath,
+    primaryPath,
+    gitCommonDir: path.join(primaryPath, ".git"),
+    managedRoot: path.join(dataDirectory, "worktrees", "fingerprint"),
+    repositoryFingerprint: "a".repeat(64),
+    worktrees: workerWorktrees.map((worktree) => ({ ...worktree })),
+  };
+}
+
+function status(branch = "main") {
+  return {
+    branch,
+    head: "1111111111111111111111111111111111111111",
+    upstream: branch === "main" ? "origin/main" : null,
+    ahead: 0,
+    behind: 0,
+    files: [],
+    branches: [
+      {
+        name: branch,
+        kind: "local" as const,
+        current: true,
+        hash: "1111111111111111111111111111111111111111",
+        upstream: branch === "main" ? "origin/main" : null,
+      },
+    ],
+  };
+}
+
+const workerBridge = {
+  attach() {},
+  close() {},
+  isConnected() {
+    return connected;
+  },
+  sendSurfaceFrame() {
+    return false;
+  },
+  subscribeSurfaceFrames() {
+    return () => undefined;
+  },
+  async request(_workerId, command) {
+    if (!connected) throw new Error("Worker is offline.");
+    switch (command.type) {
+      case "worktree.list":
+      case "worktree.reconcile":
+        return inventory();
+      case "worktree.create": {
+        activeCreates += 1;
+        maximumConcurrentCreates = Math.max(
+          maximumConcurrentCreates,
+          activeCreates,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        const branch =
+          command.mode.type === "detached" ? null : command.mode.branch;
+        const worktree: WorkerWorktreeSummary = {
+          path: path.join(
+            dataDirectory,
+            "worktrees",
+            `${command.name}-${command.worktreeId}`,
+          ),
+          head: "2222222222222222222222222222222222222222",
+          branch,
+          detached: command.mode.type === "detached",
+          isPrimary: false,
+          managed: true,
+          locked: false,
+          lockReason: null,
+          prunable: false,
+          pruneReason: null,
+          missing: false,
+        };
+        workerWorktrees.push(worktree);
+        activeCreates -= 1;
+        return { worktree, inventory: inventory() };
+      }
+      case "worktree.lock":
+      case "worktree.unlock": {
+        const worktree = workerWorktrees.find(
+          (item) => item.path === command.worktreePath,
+        );
+        if (!worktree) throw new Error("Worktree not found.");
+        worktree.locked = command.type === "worktree.lock";
+        worktree.lockReason =
+          command.type === "worktree.lock" ? command.reason : null;
+        return { worktree: { ...worktree }, inventory: inventory() };
+      }
+      case "worktree.remove": {
+        const index = workerWorktrees.findIndex(
+          (item) => item.path === command.worktreePath,
+        );
+        if (index < 0) throw new Error("Worktree not found.");
+        workerWorktrees.splice(index, 1);
+        return { removedPath: command.worktreePath, inventory: inventory() };
+      }
+      case "worktree.prune":
+        return { prunedPaths: [], inventory: inventory() };
+      case "worktree.status": {
+        const worktree = workerWorktrees.find(
+          (item) => item.path === command.worktreePath,
+        );
+        if (!worktree) throw new Error("Worktree not found.");
+        return { worktree, status: status(worktree.branch ?? "HEAD") };
+      }
+      case "git.history":
+        return {
+          branch: "main",
+          head: "1111111111111111111111111111111111111111",
+          totalCount: 1,
+          commits: [
+            {
+              hash: "1111111111111111111111111111111111111111",
+              shortHash: "1111111",
+              parents: [],
+              subject: "Initial commit",
+              authorName: "Cantrip",
+              authorEmail: "test@cantrip.art",
+              authoredAt: "2026-08-08T12:00:00.000Z",
+              refs: [{ name: "HEAD", kind: "head", current: true }],
+              isHead: true,
+            },
+          ],
+          hasMore: false,
+          nextCursor: null,
+        };
+      case "git.action":
+        gitActionPaths.push(command.cwd);
+        return { status: status(), output: "done" };
+      default:
+        throw new Error(`Unexpected command: ${command.type}`);
+    }
+  },
+} satisfies WorkerCommandBus;
+
+let database: DatabaseConnection;
+let app: Awaited<ReturnType<typeof buildApp>>;
+let projectId: string;
+let primaryId: string;
+let managedIds: string[] = [];
+let routedChatId: string;
+let routedTerminalId: string;
+let linkedConsoleId: string;
+
+beforeAll(async () => {
+  database = await connectDatabase(config);
+  await database.repository.recordWorker({
+    workerId: "test-worker",
+    name: "Test Worker",
+    platform: "darwin",
+    architecture: "arm64",
+    codexVersion: "0.146.1",
+    remoteSurfaces: {
+      browser: false,
+      vnc: false,
+      transports: ["websocket"],
+      maxSessions: 1,
+    },
+    startedAt: new Date().toISOString(),
+  });
+  const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
+    workerId: "test-worker",
+    repositoryId: "repo-1",
+    nameWithOwner: "ArcaneArts/Cantrip",
+    url: "https://github.com/ArcaneArts/Cantrip",
+  });
+  projectId = project.id;
+  await database.repository.completeGithubProjectSetup(
+    LOCAL_USER_ID,
+    projectId,
+    "test-worker",
+    {
+      path: primaryPath,
+      displayPath: "ArcaneArts/Cantrip",
+      reused: false,
+      updated: false,
+      warning: null,
+    },
+  );
+  primaryId = (
+    await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId)
+  )[0]!.id;
+  app = await buildApp({
+    config,
+    database,
+    logger: false,
+    workerBridge,
+  });
+});
+
+afterAll(async () => {
+  await app?.close();
+  await rm(dataDirectory, { recursive: true, force: true });
+});
+
+describe.sequential("server worktree control plane", () => {
+  it("renders durable Primary metadata and reconciles external worktrees", async () => {
+    const initial = projectWorktreeListSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/worktrees`,
+        })
+      ).json(),
+    );
+    expect(initial).toHaveLength(1);
+    expect(initial[0]).toMatchObject({
+      id: primaryId,
+      isPrimary: true,
+      origin: "cantrip",
+    });
+    const policyResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/worktree-policy`,
+      payload: { policy: "required-for-writes" },
+    });
+    expect(policyResponse.json()).toMatchObject({
+      id: projectId,
+      worktreePolicy: "required-for-writes",
+    });
+
+    workerWorktrees.push({
+      path: externalPath,
+      head: "3333333333333333333333333333333333333333",
+      branch: "review",
+      detached: false,
+      isPrimary: false,
+      managed: false,
+      locked: false,
+      lockReason: null,
+      prunable: false,
+      pruneReason: null,
+      missing: false,
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/reconcile`,
+    });
+    expect(response.statusCode).toBe(200);
+    const reconciled = projectWorktreeListSchema.parse(response.json());
+    expect(reconciled).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: primaryId, branch: "main" }),
+        expect.objectContaining({
+          path: externalPath,
+          branch: "review",
+          origin: "external",
+        }),
+      ]),
+    );
+  });
+
+  it("serializes concurrent creates and keeps each server identity", async () => {
+    const responses = await Promise.all(
+      ["agent-one", "agent-two"].map((branch) =>
+        app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/worktrees`,
+          payload: {
+            name: branch,
+            mode: { type: "newBranch", branch, startPoint: "main" },
+          },
+        }),
+      ),
+    );
+    expect(responses.map(({ statusCode }) => statusCode)).toEqual([201, 201]);
+    const created = responses.map((response) =>
+      projectWorktreeSummarySchema.parse(response.json()),
+    );
+    managedIds = created.map(({ id }) => id);
+    expect(new Set(managedIds).size).toBe(2);
+    expect(created.every(({ origin }) => origin === "user")).toBe(true);
+    expect(maximumConcurrentCreates).toBe(1);
+  });
+
+  it("routes tabs, forks, and chat transitions through explicit worktrees", async () => {
+    const [firstId, secondId] = managedIds as [string, string];
+    const chatResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/chats`,
+      payload: {
+        title: "Pinned work",
+        worktreeId: firstId,
+        worktreeMode: "pinned",
+      },
+    });
+    const chat = chatSummarySchema.parse(chatResponse.json());
+    routedChatId = chat.id;
+    expect(chat).toMatchObject({
+      activeWorktreeId: firstId,
+      worktreeMode: "pinned",
+    });
+
+    const terminal = terminalSummarySchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/terminals`,
+          payload: { title: "Worktree shell", worktreeId: firstId },
+        })
+      ).json(),
+    );
+    routedTerminalId = terminal.id;
+    expect(terminal.worktreeId).toBe(firstId);
+    const explorer = explorerSummarySchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/explorers`,
+          payload: { title: "Worktree files", worktreeId: secondId },
+        })
+      ).json(),
+    );
+    expect(explorer.worktreeId).toBe(secondId);
+    const history = projectViewSummarySchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/views`,
+          payload: { title: "History", kind: "history", worktreeId: secondId },
+        })
+      ).json(),
+    );
+    expect(history.worktreeId).toBe(secondId);
+
+    const fork = chatSummarySchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/chats/${chat.id}/fork`,
+          payload: {
+            worktreeId: secondId,
+            worktreeMode: "agent-managed",
+          },
+        })
+      ).json(),
+    );
+    expect(fork).toMatchObject({
+      activeWorktreeId: secondId,
+      worktreeMode: "agent-managed",
+    });
+
+    const switched = await app.inject({
+      method: "PATCH",
+      url: `/api/chats/${chat.id}/worktree`,
+      payload: { worktreeId: secondId, mode: "pinned" },
+    });
+    expect(chatSummarySchema.parse(switched.json()).activeWorktreeId).toBe(
+      secondId,
+    );
+
+    await database.repository.setChatStatus(chat.id, "running");
+    const blockedSwitch = await app.inject({
+      method: "PATCH",
+      url: `/api/chats/${chat.id}/worktree`,
+      payload: { worktreeId: primaryId, mode: "agent-managed" },
+    });
+    expect(blockedSwitch.statusCode).toBe(409);
+    await database.repository.setChatStatus(chat.id, "idle");
+
+    const consoleTab = terminalSummarySchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/chats/${chat.id}/console`,
+        })
+      ).json(),
+    );
+    linkedConsoleId = consoleTab.id;
+    expect(consoleTab.worktreeId).toBe(secondId);
+  });
+
+  it("uses exact worktree paths for status, history, and Git actions", async () => {
+    const target = (
+      await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId)
+    ).find(({ id }) => id === managedIds[0])!;
+    const statusResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/status`,
+    });
+    expect(
+      worktreeStatusResultSchema.parse(statusResponse.json()).worktree.path,
+    ).toBe(target.path);
+    const historyResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/history`,
+    });
+    expect(gitHistorySchema.parse(historyResponse.json()).commits).toHaveLength(
+      1,
+    );
+    const actionResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/actions`,
+      payload: { type: "stageAll" },
+    });
+    gitActionResultSchema.parse(actionResponse.json());
+    expect(gitActionPaths.at(-1)).toBe(target.path);
+  });
+
+  it("locks, unlocks, and protects Primary and external removal", async () => {
+    const managedId = managedIds[0]!;
+    const locked = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${managedId}/lock`,
+      payload: { reason: "Review in progress" },
+    });
+    expect(projectWorktreeSummarySchema.parse(locked.json())).toMatchObject({
+      locked: true,
+      lockReason: "Review in progress",
+    });
+    const unlocked = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${managedId}/unlock`,
+    });
+    expect(projectWorktreeSummarySchema.parse(unlocked.json()).locked).toBe(
+      false,
+    );
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/api/projects/${projectId}/worktrees/${primaryId}`,
+        })
+      ).statusCode,
+    ).toBe(409);
+    const external = (
+      await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId)
+    ).find(({ origin }) => origin === "external")!;
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/api/projects/${projectId}/worktrees/${external.id}`,
+        })
+      ).statusCode,
+    ).toBe(409);
+  });
+
+  it("blocks removal while a chat, lease, or terminal is active", async () => {
+    const [firstId, secondId] = managedIds as [string, string];
+    await database.repository.setChatStatus(routedChatId, "running");
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/api/projects/${projectId}/worktrees/${secondId}`,
+        })
+      ).statusCode,
+    ).toBe(409);
+    await database.repository.setChatStatus(routedChatId, "idle");
+
+    await database.repository.setTerminalStatus(linkedConsoleId, "exited");
+    await database.repository.setTerminalStatus(routedTerminalId, "running");
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/api/projects/${projectId}/worktrees/${firstId}`,
+        })
+      ).statusCode,
+    ).toBe(409);
+    await database.repository.setTerminalStatus(routedTerminalId, "exited");
+    const removed = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/${projectId}/worktrees/${firstId}`,
+    });
+    expect(removed.statusCode).toBe(200);
+    expect(projectWorktreeSummarySchema.parse(removed.json())).toMatchObject({
+      id: firstId,
+      lifecycleState: "missing",
+    });
+  });
+
+  it("retains reconciled metadata while the worker is offline", async () => {
+    connected = false;
+    const listed = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees`,
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(
+      projectWorktreeListSchema.parse(listed.json()).length,
+    ).toBeGreaterThan(1);
+    const reconcile = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/reconcile`,
+    });
+    expect(reconcile.statusCode).toBe(502);
+    connected = true;
+  });
+});

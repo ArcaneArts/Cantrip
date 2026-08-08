@@ -7,11 +7,13 @@ import type {
   BrowserUpdate,
   ChatCreate,
   ChatExecutionLaneSummary,
+  ChatFork,
   ChatModelUpdate,
   ChatMessage,
   ChatMessageCreate,
   ChatSummary,
   ChatUpdate,
+  ChatWorktreeUpdate,
   ExplorerCreate,
   ExplorerSummary,
   ExplorerUpdate,
@@ -34,6 +36,7 @@ import type {
   RemoteSurfaceUpdate,
   ProjectCloneResult,
   ProjectSummary,
+  ProjectWorktreePolicyUpdate,
   ProjectWorktreeSummary,
   ProjectViewCreate,
   ProjectViewSummary,
@@ -47,8 +50,10 @@ import type {
   UserSummary,
   WorkerHeartbeat,
   WorkerSummary,
+  WorktreeInventory,
+  WorktreeSelection,
 } from "@cantrip/protocol";
-import { and, asc, desc, eq, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, lte, ne, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -98,6 +103,20 @@ export interface GithubProjectExecutionContext {
   nameWithOwner: string;
   url: string;
   workerId: string;
+}
+
+export interface ProjectWorktreeExecutionContext {
+  projectId: string;
+  projectSourceId: string;
+  sourcePath: string;
+  workerId: string;
+  worktree: ProjectWorktreeSummary;
+}
+
+export interface WorktreeRemovalBlockers {
+  activeChatIds: string[];
+  activeLeaseChatIds: string[];
+  runningTerminalIds: string[];
 }
 
 export interface ExplorerExecutionContext {
@@ -1002,6 +1021,30 @@ export class ServerRepository {
     return rows.map(({ project, source }) => toProjectSummary(project, source));
   }
 
+  async updateProjectWorktreePolicy(
+    ownerId: string,
+    projectId: string,
+    input: ProjectWorktreePolicyUpdate,
+  ): Promise<ProjectSummary | null> {
+    const rows = await this.database
+      .update(schema.projects)
+      .set({ worktreePolicy: input.policy, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .returning();
+    if (!rows[0]) return null;
+    const sources = await this.database
+      .select()
+      .from(schema.projectSources)
+      .where(eq(schema.projectSources.projectId, projectId))
+      .limit(1);
+    return toProjectSummary(rows[0], sources[0] ?? null);
+  }
+
   async getProjectSource(ownerId: string, projectId: string) {
     const rows = await this.database
       .select({
@@ -1018,7 +1061,7 @@ export class ServerRepository {
         schema.projectWorktrees,
         and(
           eq(schema.projectWorktrees.projectSourceId, schema.projectSources.id),
-          eq(schema.projectWorktrees.isDefault, true),
+          eq(schema.projectWorktrees.isPrimary, true),
         ),
       )
       .where(
@@ -1029,6 +1072,48 @@ export class ServerRepository {
       )
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  async getProjectWorktreeContext(
+    ownerId: string,
+    projectId: string,
+    worktreeId: string,
+  ): Promise<ProjectWorktreeExecutionContext | null> {
+    const rows = await this.database
+      .select({
+        projectId: schema.projects.id,
+        source: schema.projectSources,
+        worktree: schema.projectWorktrees,
+      })
+      .from(schema.projectWorktrees)
+      .innerJoin(
+        schema.projectSources,
+        eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.projectSources.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projectWorktrees.id, worktreeId),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    return row
+      ? {
+          projectId: row.projectId,
+          projectSourceId: row.source.id,
+          sourcePath: row.source.absolutePath,
+          workerId: row.worktree.workerId,
+          worktree: toProjectWorktreeSummary(row.worktree, row.projectId),
+        }
+      : null;
   }
 
   async listProjectWorktrees(
@@ -1060,6 +1145,209 @@ export class ServerRepository {
     return rows.map(({ projectId: id, worktree }) =>
       toProjectWorktreeSummary(worktree, id),
     );
+  }
+
+  async reconcileProjectWorktrees(
+    ownerId: string,
+    projectId: string,
+    inventory: WorktreeInventory,
+    created?: {
+      id: string;
+      name: string;
+      origin: ProjectWorktreeSummary["origin"];
+      path: string;
+    },
+  ): Promise<ProjectWorktreeSummary[] | null> {
+    const ownedRows = await this.database
+      .select({ source: schema.projectSources })
+      .from(schema.projectSources)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.projectSources.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.projects.id, projectId))
+      .limit(1);
+    const source = ownedRows[0]?.source;
+    if (!source) return null;
+    const observedPrimaries = inventory.worktrees.filter(
+      ({ isPrimary }) => isPrimary,
+    );
+    if (
+      observedPrimaries.length !== 1 ||
+      observedPrimaries[0]?.path !== inventory.primaryPath
+    ) {
+      throw new Error("Worker inventory did not contain exactly one Primary.");
+    }
+    if (
+      source.repositoryFingerprint &&
+      source.repositoryFingerprint !== inventory.repositoryFingerprint
+    ) {
+      throw new Error(
+        "Worker inventory belongs to a different Git common directory.",
+      );
+    }
+
+    await this.database.transaction(async (transaction) => {
+      const observedAt = new Date();
+      const existing = await transaction
+        .select()
+        .from(schema.projectWorktrees)
+        .where(eq(schema.projectWorktrees.projectSourceId, source.id));
+      const primary = existing.find((item) => item.isPrimary);
+      if (!primary) {
+        throw new Error("Project source has no Primary worktree.");
+      }
+
+      await transaction
+        .update(schema.projectSources)
+        .set({
+          absolutePath: inventory.primaryPath,
+          repositoryFingerprint: inventory.repositoryFingerprint,
+          updatedAt: observedAt,
+        })
+        .where(eq(schema.projectSources.id, source.id));
+
+      const existingByPath = new Map(
+        existing.map((item) => [item.absolutePath, item] as const),
+      );
+      const observedIds = new Set<string>();
+      for (const observed of inventory.worktrees) {
+        const matched = observed.isPrimary
+          ? primary
+          : existingByPath.get(observed.path);
+        const id =
+          matched?.id ??
+          (created?.path === observed.path ? created.id : randomUUID());
+        observedIds.add(id);
+        const lifecycleState = observed.missing
+          ? "missing"
+          : observed.prunable
+            ? "prunable"
+            : "ready";
+        const displayPath =
+          matched?.displayPath ??
+          (observed.isPrimary ? source.displayPath : observed.path);
+        const values = {
+          workerId: source.workerId,
+          name:
+            matched?.name ??
+            (created?.path === observed.path
+              ? created.name
+              : (observed.branch ?? "External worktree")),
+          absolutePath: observed.path,
+          displayPath,
+          isPrimary: observed.isPrimary,
+          isDefault: matched?.isDefault ?? observed.isPrimary,
+          origin:
+            matched?.origin ??
+            (created?.path === observed.path ? created.origin : "external"),
+          lifecycleState,
+          branch: observed.branch,
+          head: observed.head,
+          detached: observed.detached,
+          locked: observed.locked,
+          lockReason: observed.lockReason,
+          lastScannedAt: observedAt,
+          updatedAt: observedAt,
+        };
+        if (matched) {
+          await transaction
+            .update(schema.projectWorktrees)
+            .set(values)
+            .where(eq(schema.projectWorktrees.id, matched.id));
+        } else {
+          await transaction.insert(schema.projectWorktrees).values({
+            id,
+            projectSourceId: source.id,
+            ...values,
+          });
+        }
+      }
+
+      for (const missing of existing) {
+        if (!observedIds.has(missing.id) && !missing.isPrimary) {
+          await transaction
+            .update(schema.projectWorktrees)
+            .set({
+              lifecycleState: "missing",
+              updatedAt: observedAt,
+              lastScannedAt: observedAt,
+            })
+            .where(eq(schema.projectWorktrees.id, missing.id));
+        }
+      }
+    });
+    return this.listProjectWorktrees(ownerId, projectId);
+  }
+
+  async setProjectWorktreeLifecycle(
+    ownerId: string,
+    projectId: string,
+    worktreeId: string,
+    lifecycleState: ProjectWorktreeSummary["lifecycleState"],
+  ): Promise<ProjectWorktreeSummary | null> {
+    const context = await this.getProjectWorktreeContext(
+      ownerId,
+      projectId,
+      worktreeId,
+    );
+    if (!context) return null;
+    const rows = await this.database
+      .update(schema.projectWorktrees)
+      .set({ lifecycleState, updatedAt: new Date() })
+      .where(eq(schema.projectWorktrees.id, worktreeId))
+      .returning();
+    return rows[0] ? toProjectWorktreeSummary(rows[0], projectId) : null;
+  }
+
+  async getWorktreeRemovalBlockers(
+    ownerId: string,
+    projectId: string,
+    worktreeId: string,
+  ): Promise<WorktreeRemovalBlockers | null> {
+    const context = await this.getProjectWorktreeContext(
+      ownerId,
+      projectId,
+      worktreeId,
+    );
+    if (!context) return null;
+    const [chats, leases, terminals] = await Promise.all([
+      this.database
+        .select({ id: schema.chats.id })
+        .from(schema.chats)
+        .where(
+          and(
+            eq(schema.chats.activeWorktreeId, worktreeId),
+            eq(schema.chats.status, "running"),
+          ),
+        ),
+      this.database
+        .select({ chatId: schema.chatExecutionLanes.chatId })
+        .from(schema.chatExecutionLanes)
+        .where(
+          and(
+            eq(schema.chatExecutionLanes.worktreeId, worktreeId),
+            ne(schema.chatExecutionLanes.state, "released"),
+          ),
+        ),
+      this.database
+        .select({ id: schema.terminals.id })
+        .from(schema.terminals)
+        .where(
+          and(
+            eq(schema.terminals.worktreeId, worktreeId),
+            eq(schema.terminals.status, "running"),
+          ),
+        ),
+    ]);
+    return {
+      activeChatIds: chats.map(({ id }) => id),
+      activeLeaseChatIds: leases.map(({ chatId }) => chatId),
+      runningTerminalIds: terminals.map(({ id }) => id),
+    };
   }
 
   async listChatExecutionLanes(
@@ -1323,33 +1611,23 @@ export class ServerRepository {
     projectId: string,
     input: ChatCreate,
   ): Promise<ChatSummary | null> {
-    const projectRows = await this.database
-      .select({
-        source: schema.projectSources,
-        worktree: schema.projectWorktrees,
-      })
-      .from(schema.projects)
-      .innerJoin(
-        schema.projectSources,
-        eq(schema.projectSources.projectId, schema.projects.id),
-      )
-      .innerJoin(
-        schema.projectWorktrees,
-        and(
-          eq(schema.projectWorktrees.projectSourceId, schema.projectSources.id),
-          eq(schema.projectWorktrees.isDefault, true),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.projects.id, projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .limit(1);
-    const source = projectRows[0]?.source;
-    const worktree = projectRows[0]?.worktree;
-    if (!source || !worktree) {
+    const selected = input.worktreeId
+      ? await this.getProjectWorktreeContext(
+          ownerId,
+          projectId,
+          input.worktreeId,
+        )
+      : null;
+    const primary = input.worktreeId
+      ? null
+      : await this.getProjectSource(ownerId, projectId);
+    const worktreeId = selected?.worktree.id ?? primary?.worktreeId;
+    const workerId = selected?.workerId ?? primary?.workerId;
+    if (
+      !worktreeId ||
+      !workerId ||
+      (selected && selected.worktree.lifecycleState !== "ready")
+    ) {
       return null;
     }
 
@@ -1400,16 +1678,17 @@ export class ServerRepository {
             lastBrowsers[0]?.position ?? -1,
             lastViews[0]?.position ?? -1,
           ) + 1,
-        activeWorkerId: source.workerId,
-        activeWorktreeId: worktree.id,
+        activeWorkerId: workerId,
+        activeWorktreeId: worktreeId,
+        worktreeMode: input.worktreeMode,
       })
       .returning();
     const chat = firstOrThrow(result, "creating a chat");
     await this.database.insert(schema.chatRuntimeSessions).values({
       id: randomUUID(),
       chatId: chat.id,
-      workerId: source.workerId,
-      worktreeId: worktree.id,
+      workerId,
+      worktreeId,
     });
     return toChatSummary(chat);
   }
@@ -1438,8 +1717,24 @@ export class ServerRepository {
     projectId: string,
     input: TerminalCreate,
   ): Promise<TerminalSummary | null> {
-    const source = await this.getProjectSource(ownerId, projectId);
-    if (!source) return null;
+    const selected = input.worktreeId
+      ? await this.getProjectWorktreeContext(
+          ownerId,
+          projectId,
+          input.worktreeId,
+        )
+      : null;
+    const source = input.worktreeId
+      ? null
+      : await this.getProjectSource(ownerId, projectId);
+    const workerId = selected?.workerId ?? source?.workerId;
+    const worktreeId = selected?.worktree.id ?? source?.worktreeId;
+    if (
+      !workerId ||
+      !worktreeId ||
+      (selected && selected.worktree.lifecycleState !== "ready")
+    )
+      return null;
 
     const [lastChats, lastTerminals, lastExplorers, lastBrowsers, lastViews] =
       await Promise.all([
@@ -1488,8 +1783,8 @@ export class ServerRepository {
             lastBrowsers[0]?.position ?? -1,
             lastViews[0]?.position ?? -1,
           ) + 1,
-        activeWorkerId: source.workerId,
-        worktreeId: source.worktreeId,
+        activeWorkerId: workerId,
+        worktreeId,
       })
       .returning();
     return toTerminalSummary(firstOrThrow(result, "creating a terminal"));
@@ -1556,6 +1851,51 @@ export class ServerRepository {
     return result[0] ? toTerminalSummary(result[0]) : null;
   }
 
+  async updateTerminalWorktree(
+    ownerId: string,
+    terminalId: string,
+    input: WorktreeSelection,
+  ): Promise<TerminalSummary | null> {
+    const rows = await this.database
+      .select({ terminal: schema.terminals })
+      .from(schema.terminals)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.terminals.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.terminals.id, terminalId))
+      .limit(1);
+    const terminal = rows[0]?.terminal;
+    if (!terminal) return null;
+    if (terminal.linkedChatId) {
+      throw new Error(
+        "Linked Codex consoles inherit their parent chat worktree.",
+      );
+    }
+    if (terminal.status === "running") {
+      throw new Error("Stop the terminal before changing its worktree.");
+    }
+    const target = await this.getProjectWorktreeContext(
+      ownerId,
+      terminal.projectId,
+      input.worktreeId,
+    );
+    if (!target || target.worktree.lifecycleState !== "ready") return null;
+    const updated = await this.database
+      .update(schema.terminals)
+      .set({
+        activeWorkerId: target.workerId,
+        worktreeId: target.worktree.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.terminals.id, terminalId))
+      .returning();
+    return updated[0] ? toTerminalSummary(updated[0]) : null;
+  }
+
   async listExplorers(
     ownerId: string,
     projectId: string,
@@ -1580,8 +1920,24 @@ export class ServerRepository {
     projectId: string,
     input: ExplorerCreate,
   ): Promise<ExplorerSummary | null> {
-    const source = await this.getProjectSource(ownerId, projectId);
-    if (!source) return null;
+    const selected = input.worktreeId
+      ? await this.getProjectWorktreeContext(
+          ownerId,
+          projectId,
+          input.worktreeId,
+        )
+      : null;
+    const source = input.worktreeId
+      ? null
+      : await this.getProjectSource(ownerId, projectId);
+    const workerId = selected?.workerId ?? source?.workerId;
+    const worktreeId = selected?.worktree.id ?? source?.worktreeId;
+    if (
+      !workerId ||
+      !worktreeId ||
+      (selected && selected.worktree.lifecycleState !== "ready")
+    )
+      return null;
     const [lastChats, lastTerminals, lastExplorers, lastBrowsers, lastViews] =
       await Promise.all([
         this.database
@@ -1629,11 +1985,48 @@ export class ServerRepository {
             lastBrowsers[0]?.position ?? -1,
             lastViews[0]?.position ?? -1,
           ) + 1,
-        activeWorkerId: source.workerId,
-        worktreeId: source.worktreeId,
+        activeWorkerId: workerId,
+        worktreeId,
       })
       .returning();
     return toExplorerSummary(firstOrThrow(result, "creating an explorer"));
+  }
+
+  async updateExplorerWorktree(
+    ownerId: string,
+    explorerId: string,
+    input: WorktreeSelection,
+  ): Promise<ExplorerSummary | null> {
+    const rows = await this.database
+      .select({ explorer: schema.explorers })
+      .from(schema.explorers)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.explorers.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.explorers.id, explorerId))
+      .limit(1);
+    const explorer = rows[0]?.explorer;
+    if (!explorer) return null;
+    const target = await this.getProjectWorktreeContext(
+      ownerId,
+      explorer.projectId,
+      input.worktreeId,
+    );
+    if (!target || target.worktree.lifecycleState !== "ready") return null;
+    const updated = await this.database
+      .update(schema.explorers)
+      .set({
+        activeWorkerId: target.workerId,
+        worktreeId: target.worktree.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.explorers.id, explorerId))
+      .returning();
+    return updated[0] ? toExplorerSummary(updated[0]) : null;
   }
 
   async getExplorerExecutionContext(
@@ -1978,8 +2371,25 @@ export class ServerRepository {
     projectId: string,
     input: ProjectViewCreate,
   ): Promise<ProjectViewSummary | null> {
-    const source = await this.getProjectSource(ownerId, projectId);
-    if (!source) return null;
+    const selected =
+      input.kind === "history" && input.worktreeId
+        ? await this.getProjectWorktreeContext(
+            ownerId,
+            projectId,
+            input.worktreeId,
+          )
+        : null;
+    const source =
+      input.kind === "history" && !input.worktreeId
+        ? await this.getProjectSource(ownerId, projectId)
+        : null;
+    const worktreeId = selected?.worktree.id ?? source?.worktreeId ?? null;
+    if (
+      input.kind === "history" &&
+      (!worktreeId ||
+        (selected && selected.worktree.lifecycleState !== "ready"))
+    )
+      return null;
     const [lastChats, lastTerminals, lastExplorers, lastBrowsers, lastViews] =
       await Promise.all([
         this.database
@@ -2020,7 +2430,7 @@ export class ServerRepository {
         projectId,
         title: input.title,
         kind: input.kind,
-        worktreeId: input.kind === "history" ? source.worktreeId : null,
+        worktreeId: input.kind === "history" ? worktreeId : null,
         position:
           Math.max(
             lastChats[0]?.position ?? -1,
@@ -2048,6 +2458,44 @@ export class ServerRepository {
       .where(eq(schema.projectViews.id, viewId))
       .returning();
     return result[0] ? toProjectViewSummary(result[0]) : null;
+  }
+
+  async updateProjectViewWorktree(
+    ownerId: string,
+    viewId: string,
+    input: WorktreeSelection,
+  ): Promise<ProjectViewSummary | null> {
+    const rows = await this.database
+      .select({ view: schema.projectViews })
+      .from(schema.projectViews)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.projectViews.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.projectViews.id, viewId))
+      .limit(1);
+    const view = rows[0]?.view;
+    if (!view) return null;
+    if (view.kind !== "history") {
+      throw new Error(
+        "Issues views are project-level and do not use worktrees.",
+      );
+    }
+    const target = await this.getProjectWorktreeContext(
+      ownerId,
+      view.projectId,
+      input.worktreeId,
+    );
+    if (!target || target.worktree.lifecycleState !== "ready") return null;
+    const updated = await this.database
+      .update(schema.projectViews)
+      .set({ worktreeId: target.worktree.id, updatedAt: new Date() })
+      .where(eq(schema.projectViews.id, viewId))
+      .returning();
+    return updated[0] ? toProjectViewSummary(updated[0]) : null;
   }
 
   async deleteProjectView(ownerId: string, viewId: string): Promise<boolean> {
@@ -2181,6 +2629,106 @@ export class ServerRepository {
     return result[0] ? toChatSummary(result[0]) : null;
   }
 
+  async updateChatWorktree(
+    ownerId: string,
+    chatId: string,
+    input: ChatWorktreeUpdate,
+  ): Promise<ChatSummary | null> {
+    const rows = await this.database
+      .select({ chat: schema.chats })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.chats.id, chatId))
+      .limit(1);
+    const chat = rows[0]?.chat;
+    if (!chat) return null;
+    const target = await this.getProjectWorktreeContext(
+      ownerId,
+      chat.projectId,
+      input.worktreeId,
+    );
+    if (!target || target.worktree.lifecycleState !== "ready") return null;
+
+    const changingWorktree = chat.activeWorktreeId !== target.worktree.id;
+    if (changingWorktree && chat.status === "running") {
+      throw new Error(
+        "Wait for the active chat turn before switching worktrees.",
+      );
+    }
+    if (changingWorktree) {
+      const [lanes, consoles] = await Promise.all([
+        this.database
+          .select({ id: schema.chatExecutionLanes.id })
+          .from(schema.chatExecutionLanes)
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.chatId, chatId),
+              ne(schema.chatExecutionLanes.state, "released"),
+            ),
+          ),
+        this.database
+          .select({ terminal: schema.terminals })
+          .from(schema.terminals)
+          .where(eq(schema.terminals.linkedChatId, chatId)),
+      ]);
+      if (lanes.length > 0) {
+        throw new Error(
+          "Release the active chat execution lane before switching.",
+        );
+      }
+      if (consoles.some(({ terminal }) => terminal.status === "running")) {
+        throw new Error(
+          "Stop the linked Codex console before switching worktrees.",
+        );
+      }
+    }
+
+    return this.database.transaction(async (transaction) => {
+      await transaction
+        .insert(schema.chatRuntimeSessions)
+        .values({
+          id: randomUUID(),
+          chatId,
+          workerId: target.workerId,
+          worktreeId: target.worktree.id,
+        })
+        .onConflictDoNothing({
+          target: [
+            schema.chatRuntimeSessions.chatId,
+            schema.chatRuntimeSessions.workerId,
+            schema.chatRuntimeSessions.worktreeId,
+          ],
+        });
+      if (changingWorktree) {
+        await transaction
+          .update(schema.terminals)
+          .set({
+            activeWorkerId: target.workerId,
+            worktreeId: target.worktree.id,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.terminals.linkedChatId, chatId));
+      }
+      const updated = await transaction
+        .update(schema.chats)
+        .set({
+          activeWorkerId: target.workerId,
+          activeWorktreeId: target.worktree.id,
+          worktreeMode: input.mode,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.chats.id, chatId))
+        .returning();
+      return updated[0] ? toChatSummary(updated[0]) : null;
+    });
+  }
+
   async deleteChat(
     ownerId: string,
     chatId: string,
@@ -2207,11 +2755,11 @@ export class ServerRepository {
   async forkChat(
     ownerId: string,
     chatId: string,
-    messageId?: string,
+    input: ChatFork,
   ): Promise<ChatSummary | null> {
     return this.database.transaction(async (transaction) => {
       const rows = await transaction
-        .select({ chat: schema.chats, source: schema.projectSources })
+        .select({ chat: schema.chats })
         .from(schema.chats)
         .innerJoin(
           schema.projects,
@@ -2220,23 +2768,42 @@ export class ServerRepository {
             eq(schema.projects.ownerId, ownerId),
           ),
         )
-        .innerJoin(
-          schema.projectSources,
-          eq(schema.projectSources.projectId, schema.projects.id),
-        )
         .where(eq(schema.chats.id, chatId))
         .limit(1);
       const row = rows[0];
       if (!row) return null;
 
+      const targetRows = await transaction
+        .select({ worktree: schema.projectWorktrees })
+        .from(schema.projectWorktrees)
+        .innerJoin(
+          schema.projectSources,
+          and(
+            eq(
+              schema.projectSources.id,
+              schema.projectWorktrees.projectSourceId,
+            ),
+            eq(schema.projectSources.projectId, row.chat.projectId),
+          ),
+        )
+        .where(
+          eq(
+            schema.projectWorktrees.id,
+            input.worktreeId ?? row.chat.activeWorktreeId,
+          ),
+        )
+        .limit(1);
+      const target = targetRows[0]?.worktree;
+      if (!target || target.lifecycleState !== "ready") return null;
+
       let throughSequence: number | null = null;
-      if (messageId) {
+      if (input.messageId) {
         const selected = await transaction
           .select({ sequence: schema.chatMessages.sequence })
           .from(schema.chatMessages)
           .where(
             and(
-              eq(schema.chatMessages.id, messageId),
+              eq(schema.chatMessages.id, input.messageId),
               eq(schema.chatMessages.chatId, chatId),
             ),
           )
@@ -2303,9 +2870,9 @@ export class ServerRepository {
               lastBrowsers[0]?.position ?? -1,
               lastViews[0]?.position ?? -1,
             ) + 1,
-          activeWorkerId: row.source.workerId,
-          activeWorktreeId: row.chat.activeWorktreeId,
-          worktreeMode: row.chat.worktreeMode,
+          activeWorkerId: target.workerId,
+          activeWorktreeId: target.id,
+          worktreeMode: input.worktreeMode ?? row.chat.worktreeMode,
           modelId: row.chat.modelId,
         })
         .returning();
@@ -2313,8 +2880,8 @@ export class ServerRepository {
       await transaction.insert(schema.chatRuntimeSessions).values({
         id: randomUUID(),
         chatId: fork.id,
-        workerId: row.source.workerId,
-        worktreeId: row.chat.activeWorktreeId,
+        workerId: target.workerId,
+        worktreeId: target.id,
       });
       if (sourceMessages.length > 0) {
         await transaction.insert(schema.chatMessages).values(

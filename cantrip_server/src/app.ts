@@ -25,6 +25,7 @@ import {
   chatSummarySchema,
   chatTurnCreateSchema,
   chatUpdateSchema,
+  chatWorktreeUpdateSchema,
   explorerCreateSchema,
   explorerDirectorySchema,
   explorerFileSchema,
@@ -56,6 +57,13 @@ import {
   projectListSchema,
   projectRemoveSchema,
   projectSummarySchema,
+  projectWorktreeCreateSchema,
+  projectWorktreeListSchema,
+  projectWorktreeLockSchema,
+  projectWorktreePolicyUpdateSchema,
+  projectWorktreePruneSchema,
+  projectWorktreeRemoveSchema,
+  projectWorktreeSummarySchema,
   projectViewCreateSchema,
   projectViewListSchema,
   projectViewSummarySchema,
@@ -86,6 +94,13 @@ import {
   userSettingsUpdateSchema,
   workerHeartbeatSchema,
   workerListSchema,
+  worktreeCreateResultSchema,
+  worktreeInventorySchema,
+  worktreeMutationResultSchema,
+  worktreePruneResultSchema,
+  worktreeRemoveResultSchema,
+  worktreeSelectionSchema,
+  worktreeStatusResultSchema,
 } from "@cantrip/protocol";
 import Fastify from "fastify";
 import type { ChatMessage, ChatTurnCreate } from "@cantrip/protocol";
@@ -182,6 +197,27 @@ export async function buildApp({
   const projectSetupTasks = new Set<Promise<void>>();
   const routeCooldowns = new Map<string, number>();
   const surfaceAttachmentCounts = new Map<string, number>();
+  const worktreeMutationQueues = new Map<string, Promise<void>>();
+
+  const serializeWorktreeMutation = async <T>(
+    projectId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> => {
+    const previous = worktreeMutationQueues.get(projectId) ?? Promise.resolve();
+    const current = previous.catch(() => undefined).then(operation);
+    const settled = current.then(
+      () => undefined,
+      () => undefined,
+    );
+    worktreeMutationQueues.set(projectId, settled);
+    try {
+      return await current;
+    } finally {
+      if (worktreeMutationQueues.get(projectId) === settled) {
+        worktreeMutationQueues.delete(projectId);
+      }
+    }
+  };
 
   const queueProjectSetup = (
     projectId: string,
@@ -934,6 +970,440 @@ export async function buildApp({
     return reply.send(projectListSchema.parse(projects));
   });
 
+  app.patch<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/worktree-policy",
+    async (request, reply) => {
+      const input = projectWorktreePolicyUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const project = await repository.updateProjectWorktreePolicy(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        input.data,
+      );
+      return project
+        ? reply.send(projectSummarySchema.parse(project))
+        : reply.code(404).send({ error: "Project not found." });
+    },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/worktrees",
+    async (request, reply) => {
+      const worktrees = await repository.listProjectWorktrees(
+        LOCAL_USER_ID,
+        request.params.projectId,
+      );
+      if (worktrees.length === 0) {
+        const source = await repository.getProjectSource(
+          LOCAL_USER_ID,
+          request.params.projectId,
+        );
+        if (!source) {
+          return reply.code(404).send({ error: "Project source not found." });
+        }
+      }
+      return reply.send(projectWorktreeListSchema.parse(worktrees));
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/worktrees/reconcile",
+    async (request, reply) => {
+      try {
+        const worktrees = await serializeWorktreeMutation(
+          request.params.projectId,
+          async () => {
+            const source = await repository.getProjectSource(
+              LOCAL_USER_ID,
+              request.params.projectId,
+            );
+            if (!source) return null;
+            const inventory = worktreeInventorySchema.parse(
+              await bridge.request(source.workerId, {
+                type: "worktree.reconcile",
+                sourcePath: source.cwd,
+              }),
+            );
+            return repository.reconcileProjectWorktrees(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              inventory,
+            );
+          },
+        );
+        return worktrees
+          ? reply.send(projectWorktreeListSchema.parse(worktrees))
+          : reply.code(404).send({ error: "Project source not found." });
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/worktrees",
+    async (request, reply) => {
+      const input = projectWorktreeCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const created = await serializeWorktreeMutation(
+          request.params.projectId,
+          async () => {
+            const source = await repository.getProjectSource(
+              LOCAL_USER_ID,
+              request.params.projectId,
+            );
+            if (!source) return null;
+            const worktreeId = randomUUID();
+            const result = worktreeCreateResultSchema.parse(
+              await bridge.request(source.workerId, {
+                type: "worktree.create",
+                sourcePath: source.cwd,
+                worktreeId,
+                name: input.data.name,
+                mode: input.data.mode,
+              }),
+            );
+            const reconciled = await repository.reconcileProjectWorktrees(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              result.inventory,
+              {
+                id: worktreeId,
+                name: input.data.name,
+                origin: "user",
+                path: result.worktree.path,
+              },
+            );
+            return reconciled?.find((item) => item.id === worktreeId) ?? null;
+          },
+        );
+        return created
+          ? reply.code(201).send(projectWorktreeSummarySchema.parse(created))
+          : reply.code(404).send({ error: "Project source not found." });
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/lock",
+    async (request, reply) => {
+      const input = projectWorktreeLockSchema.safeParse(request.body ?? {});
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const worktree = await serializeWorktreeMutation(
+          request.params.projectId,
+          async () => {
+            const context = await repository.getProjectWorktreeContext(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (!context) return null;
+            const result = worktreeMutationResultSchema.parse(
+              await bridge.request(context.workerId, {
+                type: "worktree.lock",
+                sourcePath: context.sourcePath,
+                worktreePath: context.worktree.path,
+                reason: input.data.reason,
+              }),
+            );
+            const reconciled = await repository.reconcileProjectWorktrees(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              result.inventory,
+            );
+            return (
+              reconciled?.find(
+                (item) => item.id === request.params.worktreeId,
+              ) ?? null
+            );
+          },
+        );
+        return worktree
+          ? reply.send(projectWorktreeSummarySchema.parse(worktree))
+          : reply.code(404).send({ error: "Worktree not found." });
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/unlock",
+    async (request, reply) => {
+      try {
+        const worktree = await serializeWorktreeMutation(
+          request.params.projectId,
+          async () => {
+            const context = await repository.getProjectWorktreeContext(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (!context) return null;
+            const result = worktreeMutationResultSchema.parse(
+              await bridge.request(context.workerId, {
+                type: "worktree.unlock",
+                sourcePath: context.sourcePath,
+                worktreePath: context.worktree.path,
+              }),
+            );
+            const reconciled = await repository.reconcileProjectWorktrees(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              result.inventory,
+            );
+            return (
+              reconciled?.find(
+                (item) => item.id === request.params.worktreeId,
+              ) ?? null
+            );
+          },
+        );
+        return worktree
+          ? reply.send(projectWorktreeSummarySchema.parse(worktree))
+          : reply.code(404).send({ error: "Worktree not found." });
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.delete<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId",
+    async (request, reply) => {
+      const input = projectWorktreeRemoveSchema.safeParse(request.body ?? {});
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const worktree = await serializeWorktreeMutation(
+          request.params.projectId,
+          async () => {
+            const context = await repository.getProjectWorktreeContext(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (!context) return null;
+            if (context.worktree.isPrimary) {
+              throw new Error("Primary cannot be removed as a worktree.");
+            }
+            if (
+              context.worktree.origin === "external" &&
+              !input.data.allowExternal
+            ) {
+              throw new Error(
+                "Removing an external worktree requires explicit authorization.",
+              );
+            }
+            const blockers = await repository.getWorktreeRemovalBlockers(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (
+              blockers &&
+              (blockers.activeChatIds.length > 0 ||
+                blockers.activeLeaseChatIds.length > 0 ||
+                blockers.runningTerminalIds.length > 0)
+            ) {
+              throw new Error(
+                "Stop active chats and terminals and release the worktree lease before removal.",
+              );
+            }
+            const previousState = context.worktree.lifecycleState;
+            await repository.setProjectWorktreeLifecycle(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+              "removing",
+            );
+            try {
+              const result = worktreeRemoveResultSchema.parse(
+                await bridge.request(context.workerId, {
+                  type: "worktree.remove",
+                  sourcePath: context.sourcePath,
+                  worktreePath: context.worktree.path,
+                  force: input.data.force,
+                  allowExternal: input.data.allowExternal,
+                }),
+              );
+              const reconciled = await repository.reconcileProjectWorktrees(
+                LOCAL_USER_ID,
+                request.params.projectId,
+                result.inventory,
+              );
+              return (
+                reconciled?.find(
+                  (item) => item.id === request.params.worktreeId,
+                ) ?? null
+              );
+            } catch (error) {
+              await repository.setProjectWorktreeLifecycle(
+                LOCAL_USER_ID,
+                request.params.projectId,
+                request.params.worktreeId,
+                previousState,
+              );
+              throw error;
+            }
+          },
+        );
+        return worktree
+          ? reply.send(projectWorktreeSummarySchema.parse(worktree))
+          : reply.code(404).send({ error: "Worktree not found." });
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/worktrees/prune",
+    async (request, reply) => {
+      const input = projectWorktreePruneSchema.safeParse(request.body ?? {});
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const worktrees = await serializeWorktreeMutation(
+          request.params.projectId,
+          async () => {
+            const source = await repository.getProjectSource(
+              LOCAL_USER_ID,
+              request.params.projectId,
+            );
+            if (!source) return null;
+            const result = worktreePruneResultSchema.parse(
+              await bridge.request(source.workerId, {
+                type: "worktree.prune",
+                sourcePath: source.cwd,
+                allowExternal: input.data.allowExternal,
+              }),
+            );
+            return repository.reconcileProjectWorktrees(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              result.inventory,
+            );
+          },
+        );
+        return worktrees
+          ? reply.send(projectWorktreeListSchema.parse(worktrees))
+          : reply.code(404).send({ error: "Project source not found." });
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/status",
+    async (request, reply) => {
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      try {
+        const result = await bridge.request(context.workerId, {
+          type: "worktree.status",
+          sourcePath: context.sourcePath,
+          worktreePath: context.worktree.path,
+        });
+        return reply.send(worktreeStatusResultSchema.parse(result));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string; worktreeId: string };
+    Querystring: { cursor?: string; limit?: string };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/history",
+    async (request, reply) => {
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      const parsedLimit = Number.parseInt(request.query.limit ?? "100", 10);
+      const limit = Number.isFinite(parsedLimit)
+        ? Math.min(100, Math.max(1, parsedLimit))
+        : 100;
+      const parsedCursor = Number.parseInt(request.query.cursor ?? "0", 10);
+      const cursor = Number.isFinite(parsedCursor)
+        ? Math.max(0, parsedCursor)
+        : 0;
+      try {
+        const history = await bridge.request(context.workerId, {
+          type: "git.history",
+          cwd: context.worktree.path,
+          cursor,
+          limit,
+        });
+        return reply.send(gitHistorySchema.parse(history));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/actions",
+    async (request, reply) => {
+      const input = gitActionSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      try {
+        const result = await bridge.request(context.workerId, {
+          type: "git.action",
+          cwd: context.worktree.path,
+          action: input.data,
+        });
+        return reply.send(gitActionResultSchema.parse(result));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
   app.get<{
     Params: { projectId: string };
     Querystring: { cursor?: string; limit?: string };
@@ -1334,6 +1804,28 @@ export async function buildApp({
       return terminal
         ? reply.send(terminalSummarySchema.parse(terminal))
         : reply.code(404).send({ error: "Terminal not found." });
+    },
+  );
+
+  app.patch<{ Params: { terminalId: string } }>(
+    "/api/terminals/:terminalId/worktree",
+    async (request, reply) => {
+      const input = worktreeSelectionSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const terminal = await repository.updateTerminalWorktree(
+          LOCAL_USER_ID,
+          request.params.terminalId,
+          input.data,
+        );
+        return terminal
+          ? reply.send(terminalSummarySchema.parse(terminal))
+          : reply.code(404).send({ error: "Terminal or worktree not found." });
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
     },
   );
 
@@ -1767,6 +2259,30 @@ export async function buildApp({
     },
   );
 
+  app.patch<{ Params: { viewId: string } }>(
+    "/api/project-views/:viewId/worktree",
+    async (request, reply) => {
+      const input = worktreeSelectionSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const view = await repository.updateProjectViewWorktree(
+          LOCAL_USER_ID,
+          request.params.viewId,
+          input.data,
+        );
+        return view
+          ? reply.send(projectViewSummarySchema.parse(view))
+          : reply
+              .code(404)
+              .send({ error: "History view or worktree not found." });
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
   app.delete<{ Params: { viewId: string } }>(
     "/api/project-views/:viewId",
     async (request, reply) =>
@@ -1808,6 +2324,24 @@ export async function buildApp({
       return explorer
         ? reply.send(explorerSummarySchema.parse(explorer))
         : reply.code(404).send({ error: "Explorer not found." });
+    },
+  );
+
+  app.patch<{ Params: { explorerId: string } }>(
+    "/api/explorers/:explorerId/worktree",
+    async (request, reply) => {
+      const input = worktreeSelectionSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const explorer = await repository.updateExplorerWorktree(
+        LOCAL_USER_ID,
+        request.params.explorerId,
+        input.data,
+      );
+      return explorer
+        ? reply.send(explorerSummarySchema.parse(explorer))
+        : reply.code(404).send({ error: "Explorer or worktree not found." });
     },
   );
 
@@ -2071,6 +2605,28 @@ export async function buildApp({
     },
   );
 
+  app.patch<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/worktree",
+    async (request, reply) => {
+      const input = chatWorktreeUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const chat = await repository.updateChatWorktree(
+          LOCAL_USER_ID,
+          request.params.chatId,
+          input.data,
+        );
+        return chat
+          ? reply.send(chatSummarySchema.parse(chat))
+          : reply.code(404).send({ error: "Chat or worktree not found." });
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
   app.delete<{ Params: { chatId: string } }>(
     "/api/chats/:chatId",
     async (request, reply) => {
@@ -2097,7 +2653,7 @@ export async function buildApp({
       const chat = await repository.forkChat(
         LOCAL_USER_ID,
         request.params.chatId,
-        input.data.messageId,
+        input.data,
       );
       return chat
         ? reply.code(201).send(chatSummarySchema.parse(chat))
