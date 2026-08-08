@@ -15,6 +15,8 @@ import {
   agentTurnResultSchema,
   normalizeResponsesBaseUrl,
   type AgentActivity,
+  type AgentWorktreeToolName,
+  type AgentWorktreeToolResult,
   type AgentThreadSync,
   type AgentThreadSyncItem,
   type AgentTurnResult,
@@ -35,11 +37,25 @@ interface RpcMessage {
   result?: unknown;
 }
 
+interface DynamicToolCallParams {
+  arguments: unknown;
+  callId: string;
+  threadId: string;
+  tool: string;
+  turnId: string;
+}
+
 interface PendingRpcRequest {
   reject(error: Error): void;
   resolve(result: unknown): void;
   timeout: ReturnType<typeof setTimeout>;
 }
+
+export type WorktreeToolHandler = (input: {
+  arguments: Record<string, unknown>;
+  callId: string;
+  tool: AgentWorktreeToolName;
+}) => Promise<AgentWorktreeToolResult>;
 
 interface ActiveTurn {
   baseline: WorkspaceSnapshot;
@@ -49,6 +65,7 @@ interface ActiveTurn {
   diffChanges: Array<{ kind: "add" | "delete" | "update"; path: string }>;
   finalText: string | null;
   onActivity?: (activity: AgentActivity) => void;
+  onWorktreeToolCall?: WorktreeToolHandler;
   reject(error: Error): void;
   resolve(result: AgentTurnResult): void;
   threadId: string;
@@ -177,6 +194,201 @@ export interface RunAgentTurnOptions {
   skillNames: string[];
   threadId: string | null;
   onActivity?: (activity: AgentActivity) => void;
+  onWorktreeToolCall?: ActiveTurn["onWorktreeToolCall"];
+}
+
+const WORKTREE_TOOL_NAMES = new Set<AgentWorktreeToolName>([
+  "cantrip_worktrees_list",
+  "cantrip_worktree_acquire",
+  "cantrip_worktree_create",
+  "cantrip_worktree_switch",
+  "cantrip_worktree_status",
+  "cantrip_worktree_release",
+  "cantrip_worktree_remove",
+]);
+
+const worktreeIdProperty = {
+  type: "string",
+  description: "The opaque Cantrip worktree id returned by a Cantrip tool.",
+};
+
+export const CANTRIP_WORKTREE_DYNAMIC_TOOLS = [
+  {
+    type: "function",
+    name: "cantrip_worktrees_list",
+    description:
+      "List every validated worktree for this Cantrip project, including Primary, lifecycle, branch, ownership, and lease metadata.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "cantrip_worktree_create",
+    description:
+      "Create a worker-managed worktree without changing this running turn. Paths are chosen and validated by Cantrip.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Short user-facing worktree name.",
+        },
+        intent: {
+          type: "string",
+          enum: ["newBranch", "existingBranch", "detached"],
+          description: "How the checkout should be created.",
+        },
+        branch: {
+          type: ["string", "null"],
+          description: "Branch for newBranch or existingBranch intent.",
+        },
+        baseRevision: {
+          type: ["string", "null"],
+          description:
+            "Optional base for a new branch; required revision for detached intent.",
+        },
+      },
+      required: ["name", "intent"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "cantrip_worktree_acquire",
+    description:
+      "Create and acquire a new branch worktree, then schedule controlled continuation there. After success, stop the current turn; Cantrip will resume it safely in the new runtime.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Short user-facing worktree name.",
+        },
+        intent: {
+          type: "string",
+          enum: ["newBranch", "existingBranch", "detached"],
+          description: "How the checkout should be created.",
+        },
+        branch: {
+          type: ["string", "null"],
+          description: "Branch for newBranch or existingBranch intent.",
+        },
+        baseRevision: {
+          type: ["string", "null"],
+          description:
+            "Optional base for a new branch; required revision for detached intent.",
+        },
+        purpose: { type: "string", description: "Why this lane is needed." },
+      },
+      required: ["name", "intent", "purpose"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "cantrip_worktree_switch",
+    description:
+      "Schedule controlled continuation in an existing worktree. After success, stop the current turn; Cantrip will resume it safely in the selected runtime.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        worktreeId: worktreeIdProperty,
+        purpose: { type: "string", description: "Why the chat is switching." },
+      },
+      required: ["worktreeId", "purpose"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "cantrip_worktree_status",
+    description:
+      "Read validated Git/worktree status for the current or specified worktree.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        worktreeId: { ...worktreeIdProperty, type: ["string", "null"] },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "cantrip_worktree_release",
+    description:
+      "Safely release the current secondary worktree and schedule continuation in Primary. Dirty worktrees are rejected. After success, stop this turn.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        purpose: { type: "string", description: "Why the lane is complete." },
+      },
+      required: ["purpose"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "cantrip_worktree_remove",
+    description:
+      "Remove a clean, non-current, agent-owned worktree after Cantrip verifies no active chat, terminal, or lease uses it. This never deletes its branch.",
+    inputSchema: {
+      type: "object",
+      properties: { worktreeId: worktreeIdProperty },
+      required: ["worktreeId"],
+      additionalProperties: false,
+    },
+  },
+] as const;
+
+const CANTRIP_WORKTREE_DEVELOPER_INSTRUCTIONS =
+  "Cantrip owns Git worktree paths and execution lanes. Use the cantrip_worktree_* tools instead of invoking git worktree directly. A successful acquire, switch, or release schedules a safe runtime transition; immediately finish the current turn after that tool returns so Cantrip can checkpoint and continue in the selected worktree. Never claim that CWD changed inside the current turn.";
+
+export async function executeDynamicWorktreeTool(
+  handler: WorktreeToolHandler | undefined,
+  params: DynamicToolCallParams,
+): Promise<{
+  contentItems: Array<{ type: "inputText"; text: string }>;
+  success: boolean;
+}> {
+  const tool = params.tool as AgentWorktreeToolName;
+  if (!handler || !WORKTREE_TOOL_NAMES.has(tool)) {
+    return {
+      success: false,
+      contentItems: [
+        {
+          type: "inputText",
+          text: `Cantrip cannot handle dynamic tool ${params.tool}.`,
+        },
+      ],
+    };
+  }
+  try {
+    const result = await handler({
+      arguments:
+        params.arguments && typeof params.arguments === "object"
+          ? (params.arguments as Record<string, unknown>)
+          : {},
+      callId: params.callId,
+      tool,
+    });
+    return {
+      success: true,
+      contentItems: [{ type: "inputText", text: JSON.stringify(result) }],
+    };
+  } catch (error) {
+    return {
+      success: false,
+      contentItems: [
+        {
+          type: "inputText",
+          text: error instanceof Error ? error.message : String(error),
+        },
+      ],
+    };
+  }
 }
 
 export interface CodexSkill {
@@ -462,6 +674,7 @@ export class CodexAppServer {
         diffChanges: [],
         finalText: null,
         onActivity: options.onActivity,
+        onWorktreeToolCall: options.onWorktreeToolCall,
         reject,
         resolve,
         threadId,
@@ -719,6 +932,8 @@ export class CodexAppServer {
         ...codexWorkspaceContext(options.cwd),
         approvalPolicy: "never",
         sandbox: "workspace-write",
+        developerInstructions: CANTRIP_WORKTREE_DEVELOPER_INSTRUCTIONS,
+        dynamicTools: CANTRIP_WORKTREE_DYNAMIC_TOOLS,
       })) as ThreadResponse;
       threadId = started.thread.id;
       this.#loadedThreads.add(threadId);
@@ -915,6 +1130,10 @@ export class CodexAppServer {
 
     await this.request("initialize", {
       clientInfo: { name: "cantrip", title: "Cantrip", version: "0.0.0" },
+      capabilities: {
+        experimentalApi: true,
+        requestAttestation: false,
+      },
     });
     this.send({ method: "initialized", params: {} });
   }
@@ -964,7 +1183,7 @@ export class CodexAppServer {
     }
 
     if (message.id !== undefined && message.method) {
-      this.handleServerRequest(message);
+      void this.handleServerRequest(message);
       return;
     }
 
@@ -1067,7 +1286,7 @@ export class CodexAppServer {
     }
   }
 
-  private handleServerRequest(message: RpcMessage): void {
+  private async handleServerRequest(message: RpcMessage): Promise<void> {
     if (message.id === undefined) {
       return;
     }
@@ -1077,6 +1296,18 @@ export class CodexAppServer {
     }
     if (message.method === "item/fileChange/requestApproval") {
       this.send({ id: message.id, result: { decision: "decline" } });
+      return;
+    }
+    if (message.method === "item/tool/call") {
+      const params = message.params as DynamicToolCallParams;
+      const active = this.#activeTurns.get(params.turnId);
+      this.send({
+        id: message.id,
+        result: await executeDynamicWorktreeTool(
+          active?.onWorktreeToolCall,
+          params,
+        ),
+      });
       return;
     }
     this.send({

@@ -444,6 +444,7 @@ export const chatExecutionLanes = pgTable(
       { onDelete: "set null" },
     ),
     codexThreadId: text("codex_thread_id"),
+    transitionKind: text("transition_kind"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -457,6 +458,9 @@ export const chatExecutionLanes = pgTable(
     uniqueIndex("chat_execution_lanes_chat_active_unique")
       .on(table.chatId)
       .where(sql`${table.state} = 'active'`),
+    uniqueIndex("chat_execution_lanes_chat_delivering_unique")
+      .on(table.chatId)
+      .where(sql`${table.state} = 'delivering'`),
     uniqueIndex("chat_execution_lanes_worktree_reserved_unique")
       .on(table.worktreeId)
       .where(sql`${table.exclusive} = true AND ${table.state} <> 'released'`),

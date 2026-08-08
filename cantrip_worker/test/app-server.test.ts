@@ -1,12 +1,69 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CANTRIP_WORKTREE_DYNAMIC_TOOLS,
   changedFiles,
   codexEndpointFromLine,
   codexModelProviderName,
   codexWorkspaceContext,
+  executeDynamicWorktreeTool,
   parseCodexSkills,
 } from "../src/codex/app-server.js";
+
+describe("Cantrip dynamic worktree tools", () => {
+  it("advertises all lifecycle operations with strict object schemas", () => {
+    expect(CANTRIP_WORKTREE_DYNAMIC_TOOLS.map(({ name }) => name)).toEqual([
+      "cantrip_worktrees_list",
+      "cantrip_worktree_create",
+      "cantrip_worktree_acquire",
+      "cantrip_worktree_switch",
+      "cantrip_worktree_status",
+      "cantrip_worktree_release",
+      "cantrip_worktree_remove",
+    ]);
+    expect(
+      CANTRIP_WORKTREE_DYNAMIC_TOOLS.every(
+        ({ inputSchema }) => inputSchema.additionalProperties === false,
+      ),
+    ).toBe(true);
+  });
+
+  it("returns structured dynamic-tool results and isolates handler errors", async () => {
+    const params = {
+      arguments: { worktreeId: "worktree-2" },
+      callId: "call-1",
+      threadId: "thread-1",
+      tool: "cantrip_worktree_switch",
+      turnId: "turn-1",
+    };
+    await expect(
+      executeDynamicWorktreeTool(
+        async (input) => ({
+          summary: `Scheduled ${String(input.arguments.worktreeId)}`,
+          worktreeId: "worktree-2",
+          continuationScheduled: true,
+        }),
+        params,
+      ),
+    ).resolves.toMatchObject({
+      success: true,
+      contentItems: [
+        {
+          type: "inputText",
+          text: expect.stringContaining("worktree-2"),
+        },
+      ],
+    });
+    await expect(
+      executeDynamicWorktreeTool(async () => {
+        throw new Error("unsafe transition");
+      }, params),
+    ).resolves.toEqual({
+      success: false,
+      contentItems: [{ type: "inputText", text: "unsafe transition" }],
+    });
+  });
+});
 
 describe("codexWorkspaceContext", () => {
   it("binds every app-server operation to one resolved worktree root", () => {

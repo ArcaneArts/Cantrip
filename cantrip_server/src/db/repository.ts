@@ -144,6 +144,14 @@ export interface ChatExecutionLaneReleaseResult {
   returnedToPrimary: boolean;
 }
 
+export interface ChatWorktreeTransitionResult {
+  chat: ChatSummary;
+  fromWorktreeId: string;
+  lane: ChatExecutionLaneSummary;
+  transitionKind: "switch" | "release";
+  worktree: ProjectWorktreeSummary;
+}
+
 export interface ExplorerExecutionContext {
   explorerId: string;
   root: string;
@@ -268,6 +276,8 @@ function toChatExecutionLaneSummary(
     startingHead: lane.startingHead,
     runtimeSessionId: lane.runtimeSessionId,
     codexThreadId: lane.codexThreadId,
+    transitionKind:
+      lane.transitionKind as ChatExecutionLaneSummary["transitionKind"],
     createdAt: toISOString(lane.createdAt),
     activatedAt: lane.activatedAt ? toISOString(lane.activatedAt) : null,
     releasedAt: lane.releasedAt ? toISOString(lane.releasedAt) : null,
@@ -1401,6 +1411,34 @@ export class ServerRepository {
     return rows.map(({ lane }) => toChatExecutionLaneSummary(lane));
   }
 
+  async listProjectExecutionLanes(
+    ownerId: string,
+    projectId: string,
+  ): Promise<ChatExecutionLaneSummary[]> {
+    const rows = await this.database
+      .select({ lane: schema.chatExecutionLanes })
+      .from(schema.chatExecutionLanes)
+      .innerJoin(
+        schema.chats,
+        eq(schema.chats.id, schema.chatExecutionLanes.chatId),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.chats.projectId, projectId),
+          ne(schema.chatExecutionLanes.state, "released"),
+        ),
+      )
+      .orderBy(desc(schema.chatExecutionLanes.updatedAt));
+    return rows.map(({ lane }) => toChatExecutionLaneSummary(lane));
+  }
+
   async resetInterruptedChatExecutions(): Promise<void> {
     const now = new Date();
     await this.database.transaction(async (transaction) => {
@@ -1813,6 +1851,322 @@ export class ServerRepository {
         chat: toChatSummary(firstOrThrow(chats, "selecting a released chat")),
         lane: toChatExecutionLaneSummary(released),
         returnedToPrimary,
+      };
+    });
+  }
+
+  async scheduleChatWorktreeTransition(
+    ownerId: string,
+    chatId: string,
+    expectedExecutionLaneId: string,
+    targetWorktreeId: string,
+    transitionKind: "switch" | "release",
+    purpose: string,
+  ): Promise<ChatExecutionLaneContext | null> {
+    const current = await this.getChatExecutionContext(ownerId, chatId);
+    if (!current) return null;
+    if (current.worktreeMode === "pinned") {
+      throw new ExecutionLaneConflictError(
+        "This chat is pinned. Return it to Agent managed before allowing autonomous worktree transitions.",
+      );
+    }
+    if (
+      current.status !== "running" ||
+      current.executionLaneId !== expectedExecutionLaneId
+    ) {
+      throw new ExecutionLaneConflictError(
+        "The originating execution lane is no longer active.",
+      );
+    }
+    if (current.worktreeId === targetWorktreeId) {
+      throw new ExecutionLaneConflictError(
+        transitionKind === "release"
+          ? "The chat is already running in Primary."
+          : "The chat is already running in that worktree.",
+      );
+    }
+    const target = await this.getProjectWorktreeContext(
+      ownerId,
+      current.projectId,
+      targetWorktreeId,
+    );
+    if (!target || target.worktree.lifecycleState !== "ready") return null;
+    if (transitionKind === "release" && !target.worktree.isPrimary) {
+      throw new ExecutionLaneConflictError(
+        "A release transition must return the chat to Primary.",
+      );
+    }
+    const linkedConsoles = await this.database
+      .select({ status: schema.terminals.status })
+      .from(schema.terminals)
+      .where(eq(schema.terminals.linkedChatId, chatId));
+    if (linkedConsoles.some(({ status }) => status === "running")) {
+      throw new ExecutionLaneConflictError(
+        "Stop the linked Codex console before changing worktrees.",
+      );
+    }
+
+    try {
+      const laneId = await this.database.transaction(async (transaction) => {
+        await transaction
+          .update(schema.chatExecutionLanes)
+          .set({
+            state: "suspended",
+            transitionKind: null,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.chatId, chatId),
+              eq(schema.chatExecutionLanes.state, "delivering"),
+            ),
+          );
+        await transaction
+          .insert(schema.chatRuntimeSessions)
+          .values({
+            id: randomUUID(),
+            chatId,
+            workerId: target.workerId,
+            worktreeId: target.worktree.id,
+          })
+          .onConflictDoNothing({
+            target: [
+              schema.chatRuntimeSessions.chatId,
+              schema.chatRuntimeSessions.workerId,
+              schema.chatRuntimeSessions.worktreeId,
+            ],
+          });
+        const runtimes = await transaction
+          .select()
+          .from(schema.chatRuntimeSessions)
+          .where(
+            and(
+              eq(schema.chatRuntimeSessions.chatId, chatId),
+              eq(schema.chatRuntimeSessions.workerId, target.workerId),
+              eq(schema.chatRuntimeSessions.worktreeId, target.worktree.id),
+            ),
+          )
+          .limit(1);
+        const runtime = firstOrThrow(
+          runtimes,
+          "selecting a transition runtime",
+        );
+        const existing = await transaction
+          .select()
+          .from(schema.chatExecutionLanes)
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.chatId, chatId),
+              eq(schema.chatExecutionLanes.worktreeId, target.worktree.id),
+              ne(schema.chatExecutionLanes.state, "released"),
+            ),
+          )
+          .orderBy(desc(schema.chatExecutionLanes.createdAt))
+          .limit(1);
+        if (existing[0]) {
+          await transaction
+            .update(schema.chatExecutionLanes)
+            .set({
+              acquiringActor: "agent",
+              exclusive: !target.worktree.isPrimary,
+              purpose,
+              state: "delivering",
+              transitionKind,
+              runtimeSessionId: runtime.id,
+              codexThreadId: runtime.codexThreadId,
+              updatedAt: new Date(),
+            })
+            .where(eq(schema.chatExecutionLanes.id, existing[0].id));
+          return existing[0].id;
+        }
+        const inserted = await transaction
+          .insert(schema.chatExecutionLanes)
+          .values({
+            id: randomUUID(),
+            chatId,
+            worktreeId: target.worktree.id,
+            workerId: target.workerId,
+            acquiringActor: "agent",
+            exclusive: !target.worktree.isPrimary,
+            purpose,
+            state: "delivering",
+            transitionKind,
+            startingHead: target.worktree.head,
+            runtimeSessionId: runtime.id,
+            codexThreadId: runtime.codexThreadId,
+          })
+          .returning({ id: schema.chatExecutionLanes.id });
+        return firstOrThrow(inserted, "scheduling a worktree transition").id;
+      });
+      return this.getChatExecutionLaneContext(ownerId, chatId, laneId);
+    } catch (error) {
+      if (error instanceof ExecutionLaneConflictError) throw error;
+      if (
+        /unique|duplicate/i.test(error instanceof Error ? error.message : "")
+      ) {
+        throw new ExecutionLaneConflictError(
+          "The target worktree is already leased by another chat.",
+        );
+      }
+      throw error;
+    }
+  }
+
+  async getPendingChatWorktreeTransition(
+    ownerId: string,
+    chatId: string,
+  ): Promise<ChatExecutionLaneContext | null> {
+    const rows = await this.database
+      .select({ id: schema.chatExecutionLanes.id })
+      .from(schema.chatExecutionLanes)
+      .innerJoin(
+        schema.chats,
+        eq(schema.chats.id, schema.chatExecutionLanes.chatId),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.chatExecutionLanes.chatId, chatId),
+          eq(schema.chatExecutionLanes.state, "delivering"),
+        ),
+      )
+      .limit(1);
+    return rows[0]
+      ? this.getChatExecutionLaneContext(ownerId, chatId, rows[0].id)
+      : null;
+  }
+
+  async listPendingWorktreeTransitionChatIds(
+    ownerId: string,
+    workerId: string,
+  ): Promise<string[]> {
+    const rows = await this.database
+      .select({ chatId: schema.chatExecutionLanes.chatId })
+      .from(schema.chatExecutionLanes)
+      .innerJoin(
+        schema.chats,
+        eq(schema.chats.id, schema.chatExecutionLanes.chatId),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.chatExecutionLanes.workerId, workerId),
+          eq(schema.chatExecutionLanes.state, "delivering"),
+        ),
+      );
+    return rows.map(({ chatId }) => chatId);
+  }
+
+  async cancelChatWorktreeTransition(
+    ownerId: string,
+    chatId: string,
+    laneId: string,
+  ): Promise<boolean> {
+    const context = await this.getChatExecutionLaneContext(
+      ownerId,
+      chatId,
+      laneId,
+    );
+    if (!context || context.lane.state !== "delivering") return false;
+    const rows = await this.database
+      .update(schema.chatExecutionLanes)
+      .set({ state: "suspended", transitionKind: null, updatedAt: new Date() })
+      .where(eq(schema.chatExecutionLanes.id, laneId))
+      .returning({ id: schema.chatExecutionLanes.id });
+    return rows.length === 1;
+  }
+
+  async applyChatWorktreeTransition(
+    ownerId: string,
+    chatId: string,
+    laneId: string,
+  ): Promise<ChatWorktreeTransitionResult | null> {
+    const pending = await this.getChatExecutionLaneContext(
+      ownerId,
+      chatId,
+      laneId,
+    );
+    if (!pending || pending.lane.state !== "delivering") return null;
+    const transitionKind = pending.lane.transitionKind;
+    if (!transitionKind) return null;
+    if (pending.worktree.lifecycleState !== "ready") {
+      throw new ExecutionLaneConflictError(
+        "The target worktree is no longer ready for execution.",
+      );
+    }
+    if (pending.chat.status === "running") {
+      throw new ExecutionLaneConflictError(
+        "Finish the active turn before applying its worktree transition.",
+      );
+    }
+    const fromWorktreeId = pending.chat.activeWorktreeId;
+    return this.database.transaction(async (transaction) => {
+      if (transitionKind === "release") {
+        await transaction
+          .update(schema.chatExecutionLanes)
+          .set({
+            state: "released",
+            releasedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.chatId, chatId),
+              eq(schema.chatExecutionLanes.worktreeId, fromWorktreeId),
+              ne(schema.chatExecutionLanes.state, "released"),
+            ),
+          );
+      }
+      const lanes = await transaction
+        .update(schema.chatExecutionLanes)
+        .set({
+          state: "suspended",
+          transitionKind: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.chatExecutionLanes.id, laneId),
+            eq(schema.chatExecutionLanes.state, "delivering"),
+          ),
+        )
+        .returning();
+      const lane = firstOrThrow(lanes, "applying a worktree transition");
+      await transaction
+        .update(schema.terminals)
+        .set({
+          activeWorkerId: pending.worktree.workerId,
+          worktreeId: pending.worktree.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.terminals.linkedChatId, chatId));
+      const chats = await transaction
+        .update(schema.chats)
+        .set({
+          activeWorkerId: pending.worktree.workerId,
+          activeWorktreeId: pending.worktree.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.chats.id, chatId))
+        .returning();
+      return {
+        chat: toChatSummary(firstOrThrow(chats, "switching chat worktrees")),
+        fromWorktreeId,
+        lane: toChatExecutionLaneSummary(lane),
+        transitionKind,
+        worktree: pending.worktree,
       };
     });
   }

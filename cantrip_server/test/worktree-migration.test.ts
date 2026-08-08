@@ -230,4 +230,101 @@ describe("worktree persistence migration", () => {
       await database.close();
     }
   });
+
+  it("detaches legacy Codex threads and permits one pending transition per chat", async () => {
+    const database = new PGlite();
+    try {
+      await applyMigrations(database, 0, 18);
+      await database.exec(`
+        INSERT INTO users (id, kind, display_name)
+        VALUES ('user-transition', 'anonymous', 'Transition User');
+
+        INSERT INTO workers (
+          id, owner_id, name, platform, architecture, started_at, last_seen_at
+        ) VALUES (
+          'worker-transition', 'user-transition', 'Transition Worker', 'darwin', 'arm64', now(), now()
+        );
+
+        INSERT INTO projects (id, owner_id, name)
+        VALUES ('project-transition', 'user-transition', 'Cantrip');
+
+        INSERT INTO project_sources (
+          id, project_id, worker_id, absolute_path, display_path
+        ) VALUES (
+          'source-transition', 'project-transition', 'worker-transition', '/repo', 'repo'
+        );
+
+        INSERT INTO project_worktrees (
+          id, project_source_id, worker_id, name, absolute_path, display_path,
+          is_primary, is_default, origin, lifecycle_state
+        ) VALUES
+          ('primary-transition', 'source-transition', 'worker-transition', 'Primary', '/repo', 'repo', true, true, 'cantrip', 'ready'),
+          ('secondary-transition', 'source-transition', 'worker-transition', 'Agent', '/worktrees/agent', 'agent', false, false, 'agent', 'ready');
+
+        INSERT INTO chats (
+          id, project_id, title, active_worker_id, active_worktree_id
+        ) VALUES (
+          'chat-transition', 'project-transition', 'Transition chat', 'worker-transition', 'primary-transition'
+        );
+
+        INSERT INTO chat_runtime_sessions (
+          id, chat_id, worker_id, worktree_id, codex_thread_id, status
+        ) VALUES (
+          'runtime-transition', 'chat-transition', 'worker-transition', 'primary-transition', 'legacy-thread', 'idle'
+        );
+
+        INSERT INTO chat_execution_lanes (
+          id, chat_id, worktree_id, worker_id, acquiring_actor, exclusive,
+          state, runtime_session_id, codex_thread_id
+        ) VALUES (
+          'lane-transition', 'chat-transition', 'primary-transition', 'worker-transition', 'agent', false,
+          'suspended', 'runtime-transition', 'legacy-thread'
+        );
+      `);
+
+      await applyMigrations(database, 19, 19);
+
+      const runtime = await database.query<{
+        codex_thread_id: string | null;
+        status: string;
+      }>(`
+        SELECT codex_thread_id, status
+        FROM chat_runtime_sessions
+        WHERE id = 'runtime-transition'
+      `);
+      expect(runtime.rows).toEqual([
+        { codex_thread_id: null, status: "detached" },
+      ]);
+      const lane = await database.query<{
+        codex_thread_id: string | null;
+        transition_kind: string | null;
+      }>(`
+        SELECT codex_thread_id, transition_kind
+        FROM chat_execution_lanes
+        WHERE id = 'lane-transition'
+      `);
+      expect(lane.rows).toEqual([
+        { codex_thread_id: null, transition_kind: null },
+      ]);
+
+      await database.exec(`
+        UPDATE chat_execution_lanes
+        SET state = 'delivering', transition_kind = 'switch'
+        WHERE id = 'lane-transition';
+      `);
+      await expect(
+        database.exec(`
+          INSERT INTO chat_execution_lanes (
+            id, chat_id, worktree_id, worker_id, acquiring_actor, exclusive,
+            state, transition_kind
+          ) VALUES (
+            'lane-transition-two', 'chat-transition', 'secondary-transition', 'worker-transition', 'agent', false,
+            'delivering', 'switch'
+          );
+        `),
+      ).rejects.toThrow();
+    } finally {
+      await database.close();
+    }
+  });
 });

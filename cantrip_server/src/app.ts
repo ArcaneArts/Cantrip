@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import {
+  agentWorktreeToolCallSchema,
+  agentWorktreeToolResultSchema,
   agentThreadSyncSchema,
   agentTurnResultSchema,
   browserCreateSchema,
@@ -106,6 +108,10 @@ import {
 } from "@cantrip/protocol";
 import Fastify from "fastify";
 import type { ChatMessage, ChatTurnCreate } from "@cantrip/protocol";
+import type {
+  AgentWorktreeToolCall,
+  AgentWorktreeToolResult,
+} from "@cantrip/protocol";
 
 import type { ServerConfig } from "./config.js";
 import type { DatabaseConnection } from "./db/index.js";
@@ -138,6 +144,27 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function requiredToolString(
+  input: Record<string, unknown>,
+  key: string,
+): string {
+  const value = input[key];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${key} is required.`);
+  }
+  return value.trim();
+}
+
+function optionalToolString(
+  input: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = input[key];
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") throw new Error(`${key} must be a string.`);
+  return value.trim() || null;
+}
+
 const ROUTE_FAILURE_COOLDOWN_MS = 60_000;
 
 function canFailOverRoute(error: unknown): boolean {
@@ -156,6 +183,9 @@ function continuationPrompt(messages: ChatMessage[], prompt: string): string {
           if (item.type === "text") return [item.text];
           if (item.activity.type === "command") {
             return [`[command: ${item.activity.command}]`];
+          }
+          if (item.activity.type === "worktree") {
+            return [`[worktree: ${item.activity.summary}]`];
           }
           return [
             `[files: ${item.activity.changes.map((change) => change.path).join(", ")}]`,
@@ -199,6 +229,7 @@ export async function buildApp({
 
   const dispatchingChats = new Set<string>();
   const pendingQueueDispatches = new Set<string>();
+  const progressingWorktreeTransitions = new Set<string>();
   const projectSetupTasks = new Set<Promise<void>>();
   const routeCooldowns = new Map<string, number>();
   const surfaceAttachmentCounts = new Map<string, number>();
@@ -220,6 +251,296 @@ export async function buildApp({
     } finally {
       if (worktreeMutationQueues.get(projectId) === settled) {
         worktreeMutationQueues.delete(projectId);
+      }
+    }
+  };
+
+  const createAgentWorktree = async (
+    projectId: string,
+    input: Record<string, unknown>,
+  ) => {
+    const name = requiredToolString(input, "name");
+    const intent = requiredToolString(input, "intent");
+    const branch = optionalToolString(input, "branch");
+    const baseRevision = optionalToolString(input, "baseRevision");
+    const mode =
+      intent === "newBranch"
+        ? {
+            type: "newBranch" as const,
+            branch: branch ?? requiredToolString(input, "branch"),
+            startPoint: baseRevision,
+          }
+        : intent === "existingBranch"
+          ? {
+              type: "existingBranch" as const,
+              branch: branch ?? requiredToolString(input, "branch"),
+            }
+          : intent === "detached"
+            ? {
+                type: "detached" as const,
+                revision:
+                  baseRevision ?? requiredToolString(input, "baseRevision"),
+              }
+            : (() => {
+                throw new Error(
+                  "intent must be newBranch, existingBranch, or detached.",
+                );
+              })();
+    return serializeWorktreeMutation(projectId, async () => {
+      const source = await repository.getProjectSource(
+        LOCAL_USER_ID,
+        projectId,
+      );
+      if (!source) throw new Error("Project source not found.");
+      const worktreeId = randomUUID();
+      const result = worktreeCreateResultSchema.parse(
+        await bridge.request(source.workerId, {
+          type: "worktree.create",
+          sourcePath: source.cwd,
+          worktreeId,
+          name,
+          mode,
+        }),
+      );
+      const reconciled = await repository.reconcileProjectWorktrees(
+        LOCAL_USER_ID,
+        projectId,
+        result.inventory,
+        { id: worktreeId, name, origin: "agent", path: result.worktree.path },
+      );
+      const created = reconciled?.find(({ id }) => id === worktreeId);
+      if (!created)
+        throw new Error("Created worktree could not be reconciled.");
+      return created;
+    });
+  };
+
+  const executeAgentWorktreeTool = async (
+    call: AgentWorktreeToolCall,
+  ): Promise<AgentWorktreeToolResult> => {
+    const context = await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      call.chatId,
+    );
+    if (!context) throw new Error("Chat execution context not found.");
+    if (
+      context.workerId !== call.workerId ||
+      context.executionLaneId !== call.executionLaneId ||
+      context.status !== "running"
+    ) {
+      throw new ExecutionLaneConflictError(
+        "The worktree tool call did not originate from the active chat lane.",
+      );
+    }
+    const worktrees = () =>
+      repository.listProjectWorktrees(LOCAL_USER_ID, context.projectId);
+    const worktreeContext = async (worktreeId: string) => {
+      const target = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        context.projectId,
+        worktreeId,
+      );
+      if (!target) throw new Error("Worktree not found.");
+      return target;
+    };
+    const schedule = async (
+      worktreeId: string,
+      transitionKind: "switch" | "release",
+      purpose: string,
+    ) => {
+      const pending = await repository.scheduleChatWorktreeTransition(
+        LOCAL_USER_ID,
+        context.chatId,
+        call.executionLaneId,
+        worktreeId,
+        transitionKind,
+        purpose,
+      );
+      if (!pending) throw new Error("Target worktree is not ready.");
+      return pending;
+    };
+
+    switch (call.tool) {
+      case "cantrip_worktrees_list": {
+        const [items, leases] = await Promise.all([
+          worktrees(),
+          repository.listProjectExecutionLanes(
+            LOCAL_USER_ID,
+            context.projectId,
+          ),
+        ]);
+        return agentWorktreeToolResultSchema.parse({
+          summary: `Found ${items.length} validated worktree${items.length === 1 ? "" : "s"}.`,
+          worktreeId: context.worktreeId,
+          data: {
+            currentWorktreeId: context.worktreeId,
+            worktrees: items,
+            leases,
+          },
+        });
+      }
+      case "cantrip_worktree_status": {
+        const worktreeId =
+          optionalToolString(call.arguments, "worktreeId") ??
+          context.worktreeId;
+        const target = await worktreeContext(worktreeId);
+        const status = worktreeStatusResultSchema.parse(
+          await bridge.request(target.workerId, {
+            type: "worktree.status",
+            sourcePath: target.sourcePath,
+            worktreePath: target.worktree.path,
+          }),
+        );
+        return agentWorktreeToolResultSchema.parse({
+          summary: `${target.worktree.name} is ${status.status.files.length ? "dirty" : "clean"} on ${status.status.branch || "detached HEAD"}.`,
+          worktreeId,
+          data: status,
+        });
+      }
+      case "cantrip_worktree_create": {
+        const created = await createAgentWorktree(
+          context.projectId,
+          call.arguments,
+        );
+        return agentWorktreeToolResultSchema.parse({
+          summary: `Created ${created.name} on ${created.branch ?? "detached HEAD"}.`,
+          worktreeId: created.id,
+          data: created,
+        });
+      }
+      case "cantrip_worktree_acquire": {
+        if (context.worktreeMode === "pinned") {
+          throw new Error(
+            "This chat is pinned. Return it to Agent managed before acquiring another worktree.",
+          );
+        }
+        const created = await createAgentWorktree(
+          context.projectId,
+          call.arguments,
+        );
+        const pending = await schedule(
+          created.id,
+          "switch",
+          requiredToolString(call.arguments, "purpose"),
+        );
+        return agentWorktreeToolResultSchema.parse({
+          summary: `Created ${created.name}; continuation is scheduled in that worktree. Finish this turn now.`,
+          worktreeId: created.id,
+          continuationScheduled: true,
+          data: { worktree: created, lane: pending.lane },
+        });
+      }
+      case "cantrip_worktree_switch": {
+        const worktreeId = requiredToolString(call.arguments, "worktreeId");
+        const pending = await schedule(
+          worktreeId,
+          "switch",
+          requiredToolString(call.arguments, "purpose"),
+        );
+        return agentWorktreeToolResultSchema.parse({
+          summary: `Continuation is scheduled in ${pending.worktree.name}. Finish this turn now.`,
+          worktreeId,
+          continuationScheduled: true,
+          data: { lane: pending.lane, worktree: pending.worktree },
+        });
+      }
+      case "cantrip_worktree_release": {
+        const currentTarget = await worktreeContext(context.worktreeId);
+        if (currentTarget.worktree.isPrimary) {
+          throw new Error(
+            "Primary does not have a releasable secondary lease.",
+          );
+        }
+        const currentStatus = worktreeStatusResultSchema.parse(
+          await bridge.request(currentTarget.workerId, {
+            type: "worktree.status",
+            sourcePath: currentTarget.sourcePath,
+            worktreePath: currentTarget.worktree.path,
+          }),
+        );
+        if (currentStatus.status.files.length > 0) {
+          throw new Error(
+            "The current worktree is dirty. Commit or restore its changes before releasing it.",
+          );
+        }
+        const primary = (await worktrees()).find(({ isPrimary }) => isPrimary);
+        if (!primary) throw new Error("Primary worktree not found.");
+        const pending = await schedule(
+          primary.id,
+          "release",
+          requiredToolString(call.arguments, "purpose"),
+        );
+        return agentWorktreeToolResultSchema.parse({
+          summary: `Release is scheduled; continuation will return to ${primary.name}. Finish this turn now.`,
+          worktreeId: primary.id,
+          continuationScheduled: true,
+          data: { lane: pending.lane, worktree: pending.worktree },
+        });
+      }
+      case "cantrip_worktree_remove": {
+        const worktreeId = requiredToolString(call.arguments, "worktreeId");
+        const target = await worktreeContext(worktreeId);
+        if (target.worktree.isPrimary) {
+          throw new Error("Primary cannot be removed as a worktree.");
+        }
+        if (target.worktree.origin !== "agent") {
+          throw new Error(
+            "Agents may remove only agent-created worktrees; user and external worktrees require explicit user authorization.",
+          );
+        }
+        if (context.worktreeId === worktreeId) {
+          throw new Error("Release or switch away from this worktree first.");
+        }
+        const blockers = await repository.getWorktreeRemovalBlockers(
+          LOCAL_USER_ID,
+          context.projectId,
+          worktreeId,
+        );
+        if (
+          blockers &&
+          (blockers.activeChatIds.length ||
+            blockers.activeLeaseChatIds.length ||
+            blockers.runningTerminalIds.length)
+        ) {
+          throw new Error(
+            "The worktree is still used by a chat, lease, or terminal.",
+          );
+        }
+        const status = worktreeStatusResultSchema.parse(
+          await bridge.request(target.workerId, {
+            type: "worktree.status",
+            sourcePath: target.sourcePath,
+            worktreePath: target.worktree.path,
+          }),
+        );
+        if (status.status.files.length > 0) {
+          throw new Error("Dirty worktrees cannot be removed by an agent.");
+        }
+        const removed = await serializeWorktreeMutation(
+          context.projectId,
+          async () => {
+            const result = worktreeRemoveResultSchema.parse(
+              await bridge.request(target.workerId, {
+                type: "worktree.remove",
+                sourcePath: target.sourcePath,
+                worktreePath: target.worktree.path,
+                force: false,
+                allowExternal: false,
+              }),
+            );
+            await repository.reconcileProjectWorktrees(
+              LOCAL_USER_ID,
+              context.projectId,
+              result.inventory,
+            );
+            return result;
+          },
+        );
+        return agentWorktreeToolResultSchema.parse({
+          summary: `Removed ${target.worktree.name}; its Git branch was retained.`,
+          worktreeId,
+          data: removed,
+        });
       }
     }
   };
@@ -354,6 +675,156 @@ export async function buildApp({
     return repository.getModelRuntime(LOCAL_USER_ID, modelId);
   };
 
+  const continuePendingWorktreeTransition = async (
+    chatId: string,
+  ): Promise<boolean> => {
+    if (progressingWorktreeTransitions.has(chatId)) return true;
+    progressingWorktreeTransitions.add(chatId);
+    try {
+      const pending = await repository.getPendingChatWorktreeTransition(
+        LOCAL_USER_ID,
+        chatId,
+      );
+      if (!pending) return false;
+      const current = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        chatId,
+      );
+      if (!current || current.status === "running") return true;
+      if (!bridge.isConnected(pending.worktree.workerId)) return true;
+
+      try {
+        const modelId = await resolveModelId(current);
+        await availableModelRuntimes(current, modelId);
+      } catch (error) {
+        app.log.error(
+          { chatId, err: error },
+          "Could not prepare a pending worktree continuation",
+        );
+        return true;
+      }
+
+      if (pending.lane.transitionKind === "release") {
+        const source = await repository.getProjectWorktreeContext(
+          LOCAL_USER_ID,
+          current.projectId,
+          current.worktreeId,
+        );
+        if (!source) return true;
+        try {
+          const status = worktreeStatusResultSchema.parse(
+            await bridge.request(source.workerId, {
+              type: "worktree.status",
+              sourcePath: source.sourcePath,
+              worktreePath: source.worktree.path,
+            }),
+          );
+          if (status.status.files.length > 0) {
+            await repository.cancelChatWorktreeTransition(
+              LOCAL_USER_ID,
+              chatId,
+              pending.lane.id,
+            );
+            await repository.appendMessage(LOCAL_USER_ID, chatId, {
+              role: "system",
+              content: [
+                {
+                  type: "text",
+                  text: "Worktree release was cancelled because new uncommitted changes appeared before the turn finished.",
+                },
+              ],
+              idempotencyKey: `transition-cancelled:${pending.lane.id}`,
+            });
+            return false;
+          }
+        } catch (error) {
+          app.log.error(
+            { chatId, err: error },
+            "Could not verify a pending worktree release",
+          );
+          return true;
+        }
+      }
+      const applied = await repository.applyChatWorktreeTransition(
+        LOCAL_USER_ID,
+        chatId,
+        pending.lane.id,
+      );
+      if (!applied) return true;
+      const next = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        chatId,
+      );
+      if (!next) return true;
+      const transitionText =
+        applied.transitionKind === "release"
+          ? `Returned to Primary after releasing the previous worktree. Continue the user's request from this checkout.`
+          : `Continued in ${applied.worktree.name}${applied.worktree.branch ? ` (${applied.worktree.branch})` : ""}. Continue the user's request from this checkout.`;
+      try {
+        await beginTurn(
+          next,
+          {
+            text: transitionText,
+            idempotencyKey: `worktree-continuation:${pending.lane.id}`,
+          },
+          {
+            acquiringActor: "agent",
+            messageRole: "system",
+            purpose: `Controlled ${applied.transitionKind} continuation`,
+          },
+        );
+      } catch (error) {
+        app.log.error(
+          { chatId, err: error },
+          "Could not start a worktree continuation",
+        );
+        await repository.appendMessage(
+          LOCAL_USER_ID,
+          chatId,
+          {
+            role: "system",
+            content: [
+              {
+                type: "text",
+                text: `The chat moved to ${applied.worktree.name}, but its automatic continuation could not start: ${errorMessage(error)}`,
+              },
+            ],
+            idempotencyKey: `worktree-continuation-error:${pending.lane.id}`,
+          },
+          {
+            executionLaneId: pending.lane.id,
+            worktreeId: applied.worktree.id,
+          },
+        );
+      }
+      return true;
+    } finally {
+      progressingWorktreeTransitions.delete(chatId);
+    }
+  };
+
+  const resumePendingWorktreeTransitionsForWorker = async (
+    workerId: string,
+  ): Promise<void> => {
+    if (!bridge.isConnected(workerId)) return;
+    const chatIds = await repository.listPendingWorktreeTransitionChatIds(
+      LOCAL_USER_ID,
+      workerId,
+    );
+    await Promise.allSettled(
+      chatIds.map(async (chatId) => {
+        try {
+          await continuePendingWorktreeTransition(chatId);
+        } catch (error) {
+          app.log.error(
+            { chatId, err: error, workerId },
+            "Could not recover a pending worktree transition",
+          );
+        }
+      }),
+    );
+  };
+
   const dispatchNextQueuedPrompt = async (chatId: string): Promise<void> => {
     if (dispatchingChats.has(chatId)) {
       pendingQueueDispatches.add(chatId);
@@ -400,6 +871,11 @@ export async function buildApp({
   async function beginTurn(
     context: ChatExecutionContext,
     input: ChatTurnCreate,
+    options: {
+      acquiringActor?: "agent" | "user";
+      messageRole?: "system" | "user";
+      purpose?: string;
+    } = {},
   ): Promise<ChatMessage> {
     if (!bridge.isConnected(context.workerId)) {
       throw new Error("Project worker is offline.");
@@ -409,8 +885,8 @@ export async function buildApp({
     const execution = await repository.startChatExecutionLane(
       LOCAL_USER_ID,
       context.chatId,
-      "user",
-      "Chat turn",
+      options.acquiringActor ?? "user",
+      options.purpose ?? "Chat turn",
     );
     if (!execution || !execution.executionLaneId) {
       throw new Error("Chat execution lane could not be acquired.");
@@ -431,7 +907,7 @@ export async function buildApp({
         LOCAL_USER_ID,
         execution.chatId,
         {
-          role: "user",
+          role: options.messageRole ?? "user",
           content: [{ type: "text", text: input.text }],
           idempotencyKey: input.idempotencyKey,
         },
@@ -507,7 +983,10 @@ export async function buildApp({
                     {
                       role: "assistant",
                       content: [{ type: "activity", activity: event.activity }],
-                      idempotencyKey: `activity:${userMessage.id}:${event.activity.id}`,
+                      idempotencyKey:
+                        event.activity.type === "worktree"
+                          ? event.activity.id
+                          : `activity:${userMessage.id}:${event.activity.id}`,
                     },
                     attribution,
                   );
@@ -544,7 +1023,9 @@ export async function buildApp({
               executionLaneId,
               "idle",
             );
-            void dispatchNextQueuedPrompt(execution.chatId);
+            if (!(await continuePendingWorktreeTransition(execution.chatId))) {
+              void dispatchNextQueuedPrompt(execution.chatId);
+            }
             return;
           } catch (error) {
             const canRetry =
@@ -604,7 +1085,9 @@ export async function buildApp({
           executionLaneId,
           interrupted ? "idle" : "failed",
         );
-        void dispatchNextQueuedPrompt(execution.chatId);
+        if (!(await continuePendingWorktreeTransition(execution.chatId))) {
+          void dispatchNextQueuedPrompt(execution.chatId);
+        }
       }
     })();
 
@@ -3052,8 +3535,11 @@ export async function buildApp({
         } else {
           await repository.setChatStatus(context.chatId, sync.status);
         }
-        if (sync.status === "idle")
-          void dispatchNextQueuedPrompt(context.chatId);
+        if (sync.status === "idle") {
+          if (!(await continuePendingWorktreeTransition(context.chatId))) {
+            void dispatchNextQueuedPrompt(context.chatId);
+          }
+        }
       }
       return reply.send(sync);
     },
@@ -3389,6 +3875,88 @@ export async function buildApp({
   );
 
   app.post(
+    "/api/internal/agent-tools/worktree",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      if (request.headers.authorization !== `Bearer ${config.workerToken}`) {
+        return reply.code(401).send({ error: "Unauthorized" });
+      }
+      const input = agentWorktreeToolCallSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const attribution = {
+        executionLaneId: input.data.executionLaneId,
+        worktreeId: "",
+      };
+      try {
+        const context = await repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          input.data.chatId,
+        );
+        if (!context) throw new Error("Chat execution context not found.");
+        attribution.worktreeId = context.worktreeId;
+        const result = await executeAgentWorktreeTool(input.data);
+        await repository.upsertMessage(
+          LOCAL_USER_ID,
+          input.data.chatId,
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "activity",
+                activity: {
+                  type: "worktree",
+                  id: `worktree-tool:${input.data.callId}`,
+                  operation: input.data.tool,
+                  status: "completed",
+                  summary: result.summary,
+                  worktreeId: result.worktreeId,
+                },
+              },
+            ],
+            idempotencyKey: `worktree-tool:${input.data.callId}`,
+          },
+          attribution,
+        );
+        return reply.send(agentWorktreeToolResultSchema.parse(result));
+      } catch (error) {
+        if (attribution.worktreeId) {
+          await repository.upsertMessage(
+            LOCAL_USER_ID,
+            input.data.chatId,
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "activity",
+                  activity: {
+                    type: "worktree",
+                    id: `worktree-tool:${input.data.callId}`,
+                    operation: input.data.tool,
+                    status: "failed",
+                    summary: errorMessage(error),
+                    worktreeId: null,
+                  },
+                },
+              ],
+              idempotencyKey: `worktree-tool:${input.data.callId}`,
+            },
+            attribution,
+          );
+        }
+        const status =
+          error instanceof WorkerUnavailableError
+            ? 503
+            : error instanceof ExecutionLaneConflictError
+              ? 409
+              : 400;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post(
     "/api/internal/workers/heartbeat",
     { logLevel: "warn" },
     async (request, reply) => {
@@ -3402,9 +3970,9 @@ export async function buildApp({
           issues: heartbeat.error.issues,
         });
       }
-      return reply
-        .code(202)
-        .send(await repository.recordWorker(heartbeat.data));
+      const worker = await repository.recordWorker(heartbeat.data);
+      void resumePendingWorktreeTransitionsForWorker(heartbeat.data.workerId);
+      return reply.code(202).send(worker);
     },
   );
 
@@ -3420,6 +3988,7 @@ export async function buildApp({
         return;
       }
       bridge.attach(request.query.workerId, socket);
+      void resumePendingWorktreeTransitionsForWorker(request.query.workerId);
     },
   );
 
