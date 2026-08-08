@@ -2065,6 +2065,24 @@ export class CodexAppServer implements CodexRuntime {
       throw new Error("Could not initialize the Codex workflow turn.");
     }
     this.#activeTurns.set(response.turn.id, activeTurn);
+    options.onActivity?.(
+      turnSummaryActivity(
+        {
+          id: response.turn.id,
+          status: "inProgress",
+          startedAt: activeTurn.startedAtMs,
+          completedAt: null,
+          durationMs: null,
+        },
+        eventCorrelation(
+          "turn/started",
+          null,
+          threadId,
+          response.turn.id,
+          null,
+        ),
+      ),
+    );
     activeTurn.timeout = setTimeout(() => {
       const current = this.#activeTurns.get(response.turn.id);
       if (current !== activeTurn) return;

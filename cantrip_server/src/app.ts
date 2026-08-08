@@ -202,6 +202,7 @@ import {
 } from "./workers/bridge.js";
 import { RemoteSurfaceRelay } from "./remote-surfaces/relay.js";
 import { createRemoteSurfaceWebRtcConfiguration } from "./remote-surfaces/webrtc.js";
+import { WorkflowExecutor } from "./workflows/executor.js";
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -346,6 +347,7 @@ export async function buildApp({
   const bridge = workerBridge ?? new WorkerBridge();
   const surfaceRelay = new RemoteSurfaceRelay(bridge);
   const repository = database.repository;
+  const workflowExecutor = new WorkflowExecutor(repository, bridge, app.log);
   const [serverId, currentUser] = await Promise.all([
     repository.getOrCreateServerId(),
     repository.ensureLocalIdentity(),
@@ -358,6 +360,10 @@ export async function buildApp({
   await repository.ensureBrowserRemoteSurfaces(LOCAL_USER_ID);
   await repository.resetTransientRemoteSurfaceStatuses();
   await repository.resetInterruptedChatExecutions();
+  await workflowExecutor.recoverAfterRestart();
+  void workflowExecutor.queueAvailableRuns().catch((error) => {
+    app.log.error({ err: error }, "Could not resume queued workflow runs");
+  });
 
   await app.register(cors, {
     credentials: true,
@@ -1731,9 +1737,35 @@ export async function buildApp({
           return reply.send(agentInteractionRequestSchema.parse(replay));
         }
         if (!existing.provenance.chatId) {
-          return reply.code(409).send({
-            error: "Workflow interaction delivery is not available yet.",
-          });
+          if (
+            !existing.provenance.workflowRunId ||
+            !existing.provenance.workflowNodeId
+          ) {
+            return reply.code(409).send({
+              error: "The interaction has no active execution provenance.",
+            });
+          }
+          try {
+            await workflowExecutor.respondToInteraction(
+              existing,
+              input.data.response,
+            );
+          } catch (error) {
+            const status = error instanceof WorkerUnavailableError ? 503 : 409;
+            return reply.code(status).send({
+              error: `The workflow runtime no longer accepts this interaction: ${errorMessage(error)}`,
+            });
+          }
+          try {
+            const interaction = await repository.resolveAgentInteractionRequest(
+              LOCAL_USER_ID,
+              request.params.requestId,
+              input.data,
+            );
+            return reply.send(agentInteractionRequestSchema.parse(interaction));
+          } finally {
+            workflowExecutor.finishInteractionResponse(existing.requestKey);
+          }
         }
         const context = await repository.getChatExecutionContext(
           LOCAL_USER_ID,
@@ -2276,6 +2308,7 @@ export async function buildApp({
         LOCAL_USER_ID,
         input.data,
       );
+      if (result) workflowExecutor.queueRun(result.run.run.id);
       return result
         ? reply
             .code(result.created ? 201 : 200)
@@ -6452,6 +6485,9 @@ export async function buildApp({
       }
       const worker = await repository.recordWorker(heartbeat.data);
       void resumePendingWorktreeTransitionsForWorker(heartbeat.data.workerId);
+      void workflowExecutor.queueAvailableRuns().catch((error) => {
+        app.log.error({ err: error }, "Could not dispatch queued workflows");
+      });
       return reply.code(202).send(worker);
     },
   );
@@ -6469,12 +6505,17 @@ export async function buildApp({
       }
       bridge.attach(request.query.workerId, socket);
       void resumePendingWorktreeTransitionsForWorker(request.query.workerId);
+      void workflowExecutor.queueAvailableRuns().catch((error) => {
+        app.log.error({ err: error }, "Could not dispatch queued workflows");
+      });
     },
   );
 
   app.addHook("onClose", async () => {
     clearInterval(agentInteractionExpiryTimer);
+    workflowExecutor.stop();
     bridge.close();
+    await workflowExecutor.drain();
     await Promise.allSettled(projectSetupTasks);
     await database.close();
   });

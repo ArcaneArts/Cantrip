@@ -295,6 +295,18 @@ export const workflowNodeTypeSchema = z.enum([
 ]);
 export const workflowMutationModeSchema = z.enum(["read-only", "write"]);
 
+export const workflowAgentNodeConfigurationSchema = z.object({
+  prompt: z.string().trim().min(1).max(100_000),
+  developerInstructions: z
+    .string()
+    .trim()
+    .min(1)
+    .max(100_000)
+    .nullable()
+    .default(null),
+  includeStructuredInput: z.boolean().default(true),
+});
+
 const workflowRevisionNodeInputObject = z.object({
   key: workflowKeySchema,
   type: workflowNodeTypeSchema,
@@ -930,6 +942,9 @@ export type WorkflowBudget = z.infer<typeof workflowBudgetSchema>;
 export type WorkflowMeasuredUsage = z.infer<typeof workflowMeasuredUsageSchema>;
 export type WorkflowNodeType = z.infer<typeof workflowNodeTypeSchema>;
 export type WorkflowMutationMode = z.infer<typeof workflowMutationModeSchema>;
+export type WorkflowAgentNodeConfiguration = z.infer<
+  typeof workflowAgentNodeConfigurationSchema
+>;
 export type WorkflowRevisionNodeInput = z.infer<
   typeof workflowRevisionNodeInputSchema
 >;

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   workflowApprovalGateSchema,
+  workflowAgentNodeConfigurationSchema,
   workflowDefinitionCreateSchema,
   workflowDefinitionQuerySchema,
   workflowGraphSchema,
@@ -84,6 +85,21 @@ function trigger() {
 }
 
 describe("workflow protocol", () => {
+  it("validates executable agent node configuration", () => {
+    expect(
+      workflowAgentNodeConfigurationSchema.parse({
+        prompt: "Inspect the requested target.",
+      }),
+    ).toEqual({
+      prompt: "Inspect the requested target.",
+      developerInstructions: null,
+      includeStructuredInput: true,
+    });
+    expect(
+      workflowAgentNodeConfigurationSchema.safeParse({ prompt: "" }).success,
+    ).toBe(false);
+  });
+
   it("accepts bounded JSON and rejects unsafe or oversized values", () => {
     expect(
       workflowJsonValueSchema.parse({ nested: [true, 42, "safe", null] }),
