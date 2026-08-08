@@ -9,6 +9,7 @@ import {
   decodeRemoteSurfaceFrame,
   encodeRemoteSurfaceFrame,
   chatListSchema,
+  chatGoalResponseSchema,
   chatMessageListSchema,
   chatMessageSchema,
   chatSummarySchema,
@@ -42,6 +43,7 @@ import {
   terminalSummarySchema,
   workerListSchema,
 } from "@cantrip/protocol";
+import type { ThreadGoal } from "@cantrip/protocol";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "../src/app.js";
@@ -80,6 +82,7 @@ const deletedProjectPaths: string[] = [];
 const authProviderIds: string[] = [];
 const exhaustedProviderIds = new Set<string>();
 const steeredPrompts: string[] = [];
+let codexGoal: ThreadGoal | null = null;
 const issueComments: string[] = [];
 const closedIssues: Array<{ comment: string | null; number: number }> = [];
 const relayedSurfaceFrames: Array<{
@@ -371,6 +374,13 @@ const workerBridge = {
         turnPrompts.push(command.prompt);
         turnSkillNames.push(command.skillNames);
         turnTimeouts.push(options?.timeoutMs);
+        if (command.prompt === "Finish the long-running goal") {
+          await options?.onEvent?.({
+            type: "agent.checkpoint",
+            turnId: "goal-turn-1",
+            text: "Finished the first goal milestone.",
+          });
+        }
         await options?.onEvent?.({
           type: "agent.activity",
           activity: {
@@ -419,6 +429,31 @@ const workerBridge = {
         return { accepted: true };
       case "chat.interrupt":
         return { interrupted: false };
+      case "chat.goal.get":
+        return { goal: codexGoal };
+      case "chat.goal.create":
+        codexGoal = {
+          threadId: command.threadId ?? "codex-goal-thread-1",
+          objective: command.objective,
+          status: "active",
+          tokenBudget: command.tokenBudget ?? null,
+          tokensUsed: 0,
+          timeUsedSeconds: 0,
+          createdAt: 1_786_665_600,
+          updatedAt: 1_786_665_600,
+        };
+        return { goal: codexGoal };
+      case "chat.goal.update":
+        if (!codexGoal) return { goal: null };
+        codexGoal = {
+          ...codexGoal,
+          status: command.status,
+          updatedAt: codexGoal.updatedAt + 1,
+        };
+        return { goal: codexGoal };
+      case "chat.goal.clear":
+        codexGoal = null;
+        return { cleared: true };
       case "chat.steer":
         steeredPrompts.push(command.prompt);
         return { steered: true, turnId: "turn-held" };
@@ -1717,6 +1752,127 @@ describe("local server foundation", () => {
     });
     await vi.waitFor(() => expect(turnProviderIds.at(-1)).toBe(provider.id));
     expect(turnRouteIds.at(-1)).toBe(routedModel.routes[1]?.id);
+
+    const goalChat = chatSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/chats`,
+          payload: { title: "Long-running goal" },
+        })
+      ).json(),
+    );
+    await firstApp.inject({
+      method: "PATCH",
+      url: `/api/chats/${goalChat.id}/model`,
+      payload: { modelId: selectedModel.id },
+    });
+    expect(
+      chatGoalResponseSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${goalChat.id}/goal`,
+          })
+        ).json(),
+      ).goal,
+    ).toBeNull();
+    const createdGoal = chatGoalResponseSchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/chats/${goalChat.id}/goal`,
+          payload: {
+            objective: "Finish the long-running goal",
+            tokenBudget: 50_000,
+          },
+        })
+      ).json(),
+    ).goal;
+    expect(createdGoal).toMatchObject({
+      objective: "Finish the long-running goal",
+      status: "active",
+      tokenBudget: 50_000,
+    });
+    await vi.waitFor(() =>
+      expect(turnPrompts).toContain("Finish the long-running goal"),
+    );
+    await vi.waitFor(async () => {
+      const goalMessages = chatMessageListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${goalChat.id}/messages`,
+          })
+        ).json(),
+      );
+      expect(goalMessages).toContainEqual(
+        expect.objectContaining({
+          role: "assistant",
+          content: [
+            { type: "text", text: "Finished the first goal milestone." },
+          ],
+        }),
+      );
+    });
+    await vi.waitFor(async () => {
+      const current = chatListSchema
+        .parse(
+          (
+            await firstApp.inject({
+              method: "GET",
+              url: `/api/projects/${project.id}/chats`,
+            })
+          ).json(),
+        )
+        .find(({ id }) => id === goalChat.id);
+      expect(current?.status).toBe("idle");
+    });
+    expect(
+      chatGoalResponseSchema.parse(
+        (
+          await firstApp.inject({
+            method: "PATCH",
+            url: `/api/chats/${goalChat.id}/goal`,
+            payload: { status: "paused" },
+          })
+        ).json(),
+      ).goal?.status,
+    ).toBe("paused");
+    const turnsBeforeGoalResume = turnRequests;
+    expect(
+      chatGoalResponseSchema.parse(
+        (
+          await firstApp.inject({
+            method: "PATCH",
+            url: `/api/chats/${goalChat.id}/goal`,
+            payload: { status: "active" },
+          })
+        ).json(),
+      ).goal?.status,
+    ).toBe("active");
+    await vi.waitFor(() =>
+      expect(turnRequests).toBe(turnsBeforeGoalResume + 1),
+    );
+    expect(turnPrompts.at(-1)).toContain("Continue working toward");
+    expect(
+      (
+        await firstApp.inject({
+          method: "DELETE",
+          url: `/api/chats/${goalChat.id}/goal`,
+        })
+      ).json(),
+    ).toEqual({ cleared: true });
+    expect(
+      chatGoalResponseSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${goalChat.id}/goal`,
+          })
+        ).json(),
+      ).goal,
+    ).toBeNull();
 
     await firstApp.close();
 

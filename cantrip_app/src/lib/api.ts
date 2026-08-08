@@ -3,6 +3,10 @@ import {
   browserSummarySchema,
   agentThreadSyncSchema,
   chatListSchema,
+  chatGoalClearSchema,
+  chatGoalCreateSchema,
+  chatGoalResponseSchema,
+  chatGoalUpdateSchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   chatMessageListSchema,
@@ -50,6 +54,8 @@ import {
 } from "@cantrip/protocol";
 import type {
   ChatWorktreeUpdate,
+  ChatGoalCreate,
+  ChatGoalUpdate,
   GitAction,
   GithubIssueState,
   ModelProfileCreate,
@@ -730,6 +736,38 @@ export async function forkChat(chatId: string, messageId?: string) {
 export async function compactChat(chatId: string) {
   return chatCompactAcceptedSchema.parse(
     await post(`/api/chats/${encodeURIComponent(chatId)}/compact`, {}),
+  );
+}
+
+export async function getChatGoal(chatId: string) {
+  return chatGoalResponseSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/goal`),
+  );
+}
+
+export async function createChatGoal(chatId: string, input: ChatGoalCreate) {
+  return chatGoalResponseSchema.parse(
+    await post(
+      `/api/chats/${encodeURIComponent(chatId)}/goal`,
+      chatGoalCreateSchema.parse(input),
+    ),
+  );
+}
+
+export async function updateChatGoal(chatId: string, input: ChatGoalUpdate) {
+  return chatGoalResponseSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/goal`, {
+      method: "PATCH",
+      body: JSON.stringify(chatGoalUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function clearChatGoal(chatId: string) {
+  return chatGoalClearSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/goal`, {
+      method: "DELETE",
+    }),
   );
 }
 

@@ -7,6 +7,8 @@ import {
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   chatExecutionLaneSummarySchema,
+  chatGoalCreateSchema,
+  chatGoalResponseSchema,
   decodeRemoteSurfaceFrame,
   encodeRemoteSurfaceFrame,
   remoteBrowserClipboardMessageSchema,
@@ -187,6 +189,63 @@ describe("Cantrip protocol", () => {
       },
     });
     expect(compact.type).toBe("chat.interrupt");
+  });
+
+  it("validates native Codex goal state and worker commands", () => {
+    const response = chatGoalResponseSchema.parse({
+      goal: {
+        threadId: "thread-1",
+        objective: "Finish the release checklist",
+        status: "active",
+        tokenBudget: 50_000,
+        tokensUsed: 1_200,
+        timeUsedSeconds: 90,
+        createdAt: 1_786_665_600,
+        updatedAt: 1_786_665_690,
+      },
+    });
+    expect(response.goal).toMatchObject({
+      status: "active",
+      tokenBudget: 50_000,
+    });
+    expect(
+      chatGoalCreateSchema.safeParse({ objective: "   ", tokenBudget: 0 })
+        .success,
+    ).toBe(false);
+    expect(
+      workerCommandSchema.parse({
+        type: "chat.goal.create",
+        chatId: "chat-1",
+        cwd: "/workspace",
+        threadId: null,
+        objective: "Finish the release checklist",
+        tokenBudget: null,
+        model: {
+          id: "model-1",
+          routeId: "route-1",
+          name: "gpt-test",
+          reasoningEffort: null,
+        },
+        provider: {
+          id: "provider-1",
+          name: "ChatGPT",
+          kind: "chatgpt",
+          baseUrl: "https://api.openai.com/v1",
+          apiKey: null,
+        },
+      }).type,
+    ).toBe("chat.goal.create");
+    expect(
+      workerEventEnvelopeSchema.parse({
+        kind: "event",
+        requestId: "request-1",
+        event: {
+          type: "agent.checkpoint",
+          turnId: "turn-1",
+          text: "Finished the first milestone.",
+        },
+      }).event.type,
+    ).toBe("agent.checkpoint");
   });
 
   it("extracts unique explicit skill mentions", () => {

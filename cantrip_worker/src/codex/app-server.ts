@@ -13,13 +13,18 @@ import {
   agentActivitySchema,
   agentThreadSyncSchema,
   agentTurnResultSchema,
+  chatGoalClearSchema,
+  chatGoalResponseSchema,
   normalizeResponsesBaseUrl,
+  threadGoalSchema,
   type AgentActivity,
   type AgentWorktreeToolName,
   type AgentWorktreeToolResult,
   type AgentThreadSync,
   type AgentThreadSyncItem,
   type AgentTurnResult,
+  type ChatGoalResponse,
+  type ThreadGoal,
   type WorkerCommand,
 } from "@cantrip/protocol";
 import WebSocket, { type RawData } from "ws";
@@ -64,7 +69,9 @@ interface ActiveTurn {
   delta: string;
   diffChanges: Array<{ kind: "add" | "delete" | "update"; path: string }>;
   finalText: string | null;
+  model: RunAgentTurnOptions["model"];
   onActivity?: (activity: AgentActivity) => void;
+  onCheckpoint?: (checkpoint: { text: string; turnId: string }) => void;
   onWorktreeToolCall?: WorktreeToolHandler;
   reject(error: Error): void;
   resolve(result: AgentTurnResult): void;
@@ -184,6 +191,16 @@ interface TurnDiffUpdatedParams {
   turnId: string;
 }
 
+interface ThreadGoalUpdatedParams {
+  goal: ThreadGoal;
+  threadId: string;
+  turnId: string | null;
+}
+
+interface ThreadGoalClearedParams {
+  threadId: string;
+}
+
 export interface RunAgentTurnOptions {
   chatId: string;
   clientMessageId: string;
@@ -194,7 +211,20 @@ export interface RunAgentTurnOptions {
   skillNames: string[];
   threadId: string | null;
   onActivity?: (activity: AgentActivity) => void;
+  onCheckpoint?: ActiveTurn["onCheckpoint"];
   onWorktreeToolCall?: ActiveTurn["onWorktreeToolCall"];
+}
+
+type GoalRuntimeOptions = Pick<
+  RunAgentTurnOptions,
+  "cwd" | "model" | "provider" | "threadId"
+>;
+
+export const GOAL_CONTINUATION_PROMPT =
+  "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
+
+export function goalShouldContinue(goal: ThreadGoal | null): boolean {
+  return goal?.status === "active";
 }
 
 const WORKTREE_TOOL_NAMES = new Set<AgentWorktreeToolName>([
@@ -637,6 +667,7 @@ function toActivity(
 export class CodexAppServer {
   readonly #activeTurns = new Map<string, ActiveTurn>();
   readonly #externalTurnBaselines = new Map<string, Set<string>>();
+  readonly #goals = new Map<string, ThreadGoal>();
   readonly #loadedThreads = new Set<string>();
   readonly #pending = new Map<number, PendingRpcRequest>();
   #child: ChildProcessWithoutNullStreams | null = null;
@@ -659,6 +690,7 @@ export class CodexAppServer {
     if (!threadId) {
       throw new Error("Could not start a Codex thread.");
     }
+    await this.refreshGoal(threadId);
 
     if (this.hasActiveThread(threadId)) {
       throw new Error(`Codex thread ${threadId} already has an active turn.`);
@@ -673,7 +705,9 @@ export class CodexAppServer {
         delta: "",
         diffChanges: [],
         finalText: null,
+        model: options.model,
         onActivity: options.onActivity,
+        onCheckpoint: options.onCheckpoint,
         onWorktreeToolCall: options.onWorktreeToolCall,
         reject,
         resolve,
@@ -811,6 +845,82 @@ export class CodexAppServer {
     return { accepted: true };
   }
 
+  async getGoal(
+    options: GoalRuntimeOptions & { threadId: string },
+  ): Promise<ChatGoalResponse> {
+    await this.ensureStarted(options.model, options.provider);
+    const threadId = await this.loadThread(options, false);
+    if (!threadId) {
+      throw new Error(
+        "The Codex thread is no longer available on this worker.",
+      );
+    }
+    return this.refreshGoal(threadId);
+  }
+
+  async createGoal(
+    options: GoalRuntimeOptions & {
+      objective: string;
+      tokenBudget?: number | null;
+    },
+  ): Promise<ChatGoalResponse> {
+    await this.ensureStarted(options.model, options.provider);
+    const threadId = await this.loadThread(options);
+    if (!threadId) {
+      throw new Error("Could not start a Codex thread for the goal.");
+    }
+    const response = chatGoalResponseSchema.parse(
+      await this.request("thread/goal/set", {
+        threadId,
+        objective: options.objective,
+        status: "active",
+        tokenBudget: options.tokenBudget ?? null,
+      }),
+    );
+    this.cacheGoal(response);
+    return response;
+  }
+
+  async updateGoal(
+    options: GoalRuntimeOptions & {
+      status: "active" | "paused";
+      threadId: string;
+    },
+  ): Promise<ChatGoalResponse> {
+    await this.ensureStarted(options.model, options.provider);
+    const threadId = await this.loadThread(options, false);
+    if (!threadId) {
+      throw new Error(
+        "The Codex thread is no longer available on this worker.",
+      );
+    }
+    const response = chatGoalResponseSchema.parse(
+      await this.request("thread/goal/set", {
+        threadId,
+        status: options.status,
+      }),
+    );
+    this.cacheGoal(response);
+    return response;
+  }
+
+  async clearGoal(
+    options: GoalRuntimeOptions & { threadId: string },
+  ): Promise<{ cleared: boolean }> {
+    await this.ensureStarted(options.model, options.provider);
+    const threadId = await this.loadThread(options, false);
+    if (!threadId) {
+      throw new Error(
+        "The Codex thread is no longer available on this worker.",
+      );
+    }
+    const response = chatGoalClearSchema.parse(
+      await this.request("thread/goal/clear", { threadId }),
+    );
+    if (response.cleared) this.#goals.delete(threadId);
+    return response;
+  }
+
   async interruptThread(threadId: string): Promise<{ interrupted: boolean }> {
     const active = [...this.#activeTurns.entries()].find(
       ([, turn]) => turn.threadId === threadId,
@@ -852,6 +962,7 @@ export class CodexAppServer {
     this.#starting = null;
     this.#loadedThreads.clear();
     this.#externalTurnBaselines.clear();
+    this.#goals.clear();
   }
 
   private async ensureStarted(
@@ -1011,6 +1122,8 @@ export class CodexAppServer {
         "app-server",
         "-c",
         'cli_auth_credentials_store="file"',
+        "-c",
+        "features.goals=true",
         ...providerArguments.flatMap((argument) => ["-c", argument]),
         "-c",
         `model=${JSON.stringify(model.name)}`,
@@ -1105,6 +1218,7 @@ export class CodexAppServer {
       this.#starting = null;
       this.#loadedThreads.clear();
       this.#externalTurnBaselines.clear();
+      this.#goals.clear();
       this.#child?.kill("SIGINT");
       this.#child = null;
     });
@@ -1196,6 +1310,18 @@ export class CodexAppServer {
       return;
     }
 
+    if (message.method === "thread/goal/updated") {
+      const params = message.params as ThreadGoalUpdatedParams;
+      this.#goals.set(params.threadId, threadGoalSchema.parse(params.goal));
+      return;
+    }
+
+    if (message.method === "thread/goal/cleared") {
+      const params = message.params as ThreadGoalClearedParams;
+      this.#goals.delete(params.threadId);
+      return;
+    }
+
     if (message.method === "item/started") {
       const params = message.params as ItemLifecycleParams;
       const active = this.#activeTurns.get(params.turnId);
@@ -1261,16 +1387,63 @@ export class CodexAppServer {
     try {
       active.diffChanges = await workspaceChanges(active);
       emitFileActivity(active, turnId, "completed");
+      const text = active.finalText ?? active.delta;
+      if (this.#goals.has(active.threadId)) {
+        const response = await this.refreshGoal(active.threadId);
+        if (
+          goalShouldContinue(response.goal) &&
+          goalShouldContinue(this.#goals.get(active.threadId) ?? null)
+        ) {
+          active.onCheckpoint?.({ text, turnId });
+          active.baseline = await workspaceSnapshot(active.cwd);
+          active.delta = "";
+          active.diffChanges = [];
+          active.finalText = null;
+          const continued = (await this.request("turn/start", {
+            threadId: active.threadId,
+            ...codexWorkspaceContext(active.cwd),
+            clientUserMessageId: `cantrip:goal:${turnId}`,
+            input: [
+              {
+                type: "text",
+                text: GOAL_CONTINUATION_PROMPT,
+                text_elements: [],
+              },
+            ],
+            model: active.model.name,
+          })) as TurnStartResponse;
+          this.#activeTurns.set(continued.turn.id, active);
+          return;
+        }
+      }
       active.resolve(
         agentTurnResultSchema.parse({
           threadId: active.threadId,
-          text: active.finalText ?? active.delta,
+          text,
           status: "completed",
         }),
       );
     } catch (error) {
       active.reject(error instanceof Error ? error : new Error(String(error)));
     }
+  }
+
+  private cacheGoal(response: ChatGoalResponse): void {
+    if (response.goal) {
+      this.#goals.set(response.goal.threadId, response.goal);
+    }
+  }
+
+  private async refreshGoal(threadId: string): Promise<ChatGoalResponse> {
+    const response = chatGoalResponseSchema.parse(
+      await this.request("thread/goal/get", { threadId }),
+    );
+    if (response.goal) {
+      this.#goals.set(threadId, response.goal);
+    } else {
+      this.#goals.delete(threadId);
+    }
+    return response;
   }
 
   private async failTurn(
