@@ -5,18 +5,22 @@ import {
   workflowApprovalGateSchema,
   workflowAgentNodeConfigurationSchema,
   workflowJsonObjectSchema,
+  workflowJsonValueSchema,
   workflowMeasuredUsageSchema,
   workflowNodeAttemptSchema,
   workflowPermissionRequirementsSchema,
+  workflowReduceNodeConfigurationSchema,
   workflowRunDetailSchema,
   workflowRunEventPageSchema,
   workflowRunEventSchema,
   workflowRunNodeDependencySchema,
   workflowRunNodeSchema,
   workflowRunSchema,
+  workflowVerifyNodeConfigurationSchema,
   type WorkflowPermissionRequirements,
   type WorkflowAgentNodeConfiguration,
   type WorkflowBudget,
+  type WorkflowJsonValue,
   type WorkflowJsonObject,
   type WorkflowMeasuredUsage,
   type WorkflowNodeRetry,
@@ -28,18 +32,21 @@ import {
   type WorkflowRunEventQuery,
   type WorkflowRunQuery,
   type WorkflowRunNode,
+  type WorkflowVerifyNodeConfiguration,
 } from "@cantrip/protocol/workflows";
 import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
 import * as schema from "./schema.js";
+import { workflowValueAtPointer } from "../workflows/values.js";
 
 type WorkflowRunDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type WorkflowRunRow = typeof schema.workflowRuns.$inferSelect;
 
 export class WorkflowRunConflictError extends Error {}
 export class WorkflowControlConflictError extends Error {}
+class WorkflowAttemptClaimConflictError extends Error {}
 
 function toISOString(value: Date): string {
   return value.toISOString();
@@ -148,13 +155,15 @@ export interface WorkflowRunCreateResult {
   run: WorkflowRunDetail;
 }
 
-export interface WorkflowSingleAgentCandidate {
+export interface WorkflowAgentCandidate {
   configuration: WorkflowAgentNodeConfiguration | null;
   node: WorkflowRunNode;
   outputSchema: WorkflowJsonObject;
   projectId: string | null;
   run: WorkflowRun;
+  structuredInput: WorkflowJsonValue;
   unsupportedReason: string | null;
+  verification: WorkflowVerifyNodeConfiguration | null;
 }
 
 export interface WorkflowAttemptAssignment {
@@ -170,7 +179,7 @@ export interface WorkflowAttemptLease {
   attempt: number;
   attemptId: string;
   budget: WorkflowBudget;
-  candidate: WorkflowSingleAgentCandidate;
+  candidate: WorkflowAgentCandidate;
   idempotencyKey: string;
 }
 
@@ -196,7 +205,7 @@ export interface WorkflowCancellationExecutionContext {
 }
 
 export interface WorkflowCancellationRequestResult {
-  execution: WorkflowCancellationExecutionContext | null;
+  executions: WorkflowCancellationExecutionContext[];
   replayed: boolean;
   run: WorkflowRunDetail;
 }
@@ -205,6 +214,48 @@ function jsonObject(value: unknown): Record<string, unknown> {
   return workflowJsonObjectSchema.parse(
     JSON.parse(JSON.stringify(value)) as unknown,
   );
+}
+
+function mappedWorkflowValue(
+  result: unknown,
+  selector: string | null,
+): WorkflowJsonValue {
+  const value = workflowJsonValueSchema.parse(result);
+  if (selector === null) return value;
+  const pointer = selector.startsWith("/")
+    ? selector
+    : `/${selector.replaceAll("~", "~0").replaceAll("/", "~1")}`;
+  const selected = workflowValueAtPointer(value, pointer);
+  if (!selected.found) {
+    throw new Error(`Workflow result selector ${selector} did not match.`);
+  }
+  return selected.value!;
+}
+
+function aggregateWorkflowUsage(values: unknown[]): WorkflowMeasuredUsage {
+  const usages = values.map((value) =>
+    workflowMeasuredUsageSchema.parse(value),
+  );
+  const costAvailable =
+    usages.length > 0 &&
+    usages.every(
+      ({ costAvailable: available, estimatedCostUsd }) =>
+        available && estimatedCostUsd !== null,
+    );
+  return workflowMeasuredUsageSchema.parse({
+    inputTokens: usages.reduce((sum, usage) => sum + usage.inputTokens, 0),
+    outputTokens: usages.reduce((sum, usage) => sum + usage.outputTokens, 0),
+    cachedInputTokens: usages.reduce(
+      (sum, usage) => sum + usage.cachedInputTokens,
+      0,
+    ),
+    totalTokens: usages.reduce((sum, usage) => sum + usage.totalTokens, 0),
+    durationMs: usages.reduce((sum, usage) => sum + usage.durationMs, 0),
+    estimatedCostUsd: costAvailable
+      ? usages.reduce((sum, usage) => sum + (usage.estimatedCostUsd ?? 0), 0)
+      : null,
+    costAvailable,
+  });
 }
 
 function workerEventIdentity(event: WorkerEvent): string {
@@ -636,62 +687,116 @@ export class WorkflowRunRepository {
     return rows.map(({ id }) => id);
   }
 
-  async getSingleAgentCandidate(
+  async getReadyAgentCandidates(
     ownerId: string,
     runId: string,
-  ): Promise<WorkflowSingleAgentCandidate | null> {
+  ): Promise<WorkflowAgentCandidate[] | null> {
     const detail = await this.getRun(ownerId, runId);
-    if (!detail || detail.run.status !== "queued") return null;
-    const node = detail.nodes[0];
-    if (!node) return null;
-    const revisionRows = await this.database
-      .select({ revisionNode: schema.workflowRevisionNodes })
-      .from(schema.workflowRevisionNodes)
-      .innerJoin(
-        schema.workflowRunNodes,
-        and(
-          eq(
-            schema.workflowRunNodes.revisionNodeId,
-            schema.workflowRevisionNodes.id,
-          ),
-          eq(schema.workflowRunNodes.id, node.id),
-        ),
-      )
-      .limit(1);
-    const revisionNode = revisionRows[0]?.revisionNode;
-    if (!revisionNode) return null;
-
-    const configuration = workflowAgentNodeConfigurationSchema.safeParse(
-      revisionNode.configuration,
-    );
-    let unsupportedReason: string | null = null;
-    if (detail.nodes.length !== 1 || detail.dependencies.length !== 0) {
-      unsupportedReason =
-        "The single-agent executor requires exactly one node and no dependency edges.";
-    } else if (node.nodeType !== "agent") {
-      unsupportedReason =
-        "The single-agent executor only supports agent workflow nodes.";
-    } else if (node.writeCapable) {
-      unsupportedReason =
-        "Write-capable workflow nodes require an isolated workflow worktree.";
-    } else if (!detail.run.projectId) {
-      unsupportedReason =
-        "Executable workflows must select a project working directory.";
-    } else if (!configuration.success) {
-      unsupportedReason =
-        "The agent node configuration requires a bounded non-empty prompt.";
-    } else if (node.status !== "ready") {
+    if (
+      !detail ||
+      !["queued", "running", "waiting"].includes(detail.run.status) ||
+      detail.run.recoveryState !== "stable"
+    ) {
       return null;
     }
-
-    return {
-      configuration: configuration.success ? configuration.data : null,
-      node,
-      outputSchema: workflowJsonObjectSchema.parse(revisionNode.outputSchema),
-      projectId: detail.run.projectId,
-      run: detail.run,
-      unsupportedReason,
-    };
+    const activeCount = detail.nodes.filter(({ status }) =>
+      ["running", "waiting-for-approval"].includes(status),
+    ).length;
+    const capacity = Math.max(
+      0,
+      detail.run.budget.maxParallelism - activeCount,
+    );
+    const readyNodes = detail.nodes
+      .filter(({ status }) => status === "ready")
+      .slice(0, capacity);
+    if (readyNodes.length === 0) return [];
+    const revisionRows = await this.database
+      .select()
+      .from(schema.workflowRevisionNodes)
+      .where(
+        inArray(
+          schema.workflowRevisionNodes.id,
+          readyNodes.map(({ revisionNodeId }) => revisionNodeId),
+        ),
+      )
+      .orderBy(asc(schema.workflowRevisionNodes.position));
+    const revisionById = new Map(revisionRows.map((row) => [row.id, row]));
+    return readyNodes.map((node) => {
+      const revisionNode = revisionById.get(node.revisionNodeId);
+      const nodeInput = workflowJsonValueSchema.parse(node.structuredInput);
+      let configuration: WorkflowAgentNodeConfiguration | null = null;
+      let structuredInput = nodeInput;
+      let verification: WorkflowVerifyNodeConfiguration | null = null;
+      let unsupportedReason: string | null = null;
+      if (!revisionNode) {
+        unsupportedReason = "The workflow revision node is unavailable.";
+      } else if (node.nodeType === "agent") {
+        const parsed = workflowAgentNodeConfigurationSchema.safeParse(
+          revisionNode.configuration,
+        );
+        configuration = parsed.success ? parsed.data : null;
+      } else if (node.nodeType === "reduce") {
+        const parsed = workflowReduceNodeConfigurationSchema.safeParse(
+          revisionNode.configuration,
+        );
+        configuration = parsed.success ? parsed.data : null;
+        if (parsed.success) {
+          const selected = workflowValueAtPointer(
+            nodeInput,
+            parsed.data.collectionPath,
+          );
+          if (!selected.found) {
+            unsupportedReason = `The reduce collection path ${parsed.data.collectionPath || "<root>"} did not match its structured input.`;
+          } else if (
+            selected.value === null ||
+            typeof selected.value !== "object"
+          ) {
+            unsupportedReason =
+              "A reduce collection must be a JSON array or object.";
+          } else {
+            structuredInput = selected.value;
+            const empty = Array.isArray(selected.value)
+              ? selected.value.length === 0
+              : Object.keys(selected.value).length === 0;
+            if (empty && parsed.data.emptyCollection === "fail") {
+              unsupportedReason =
+                "The reduce collection is empty and its empty-collection policy is fail.";
+            }
+          }
+        }
+      } else if (node.nodeType === "verify") {
+        const parsed = workflowVerifyNodeConfigurationSchema.safeParse(
+          revisionNode.configuration,
+        );
+        configuration = parsed.success ? parsed.data : null;
+        verification = parsed.success ? parsed.data : null;
+      } else {
+        unsupportedReason = `The ${node.nodeType} workflow primitive is not available in the static DAG runtime.`;
+      }
+      if (!configuration && !unsupportedReason) {
+        unsupportedReason = `The ${node.nodeType} node configuration is invalid.`;
+      }
+      if (!unsupportedReason && node.writeCapable) {
+        unsupportedReason =
+          "Write-capable workflow nodes require an isolated workflow worktree.";
+      }
+      if (!unsupportedReason && !detail.run.projectId) {
+        unsupportedReason =
+          "Executable workflows must select a project working directory.";
+      }
+      return {
+        configuration,
+        node,
+        outputSchema: workflowJsonObjectSchema.parse(
+          revisionNode?.outputSchema ?? {},
+        ),
+        projectId: detail.run.projectId,
+        run: detail.run,
+        structuredInput,
+        unsupportedReason,
+        verification,
+      };
+    });
   }
 
   async failUnsupportedRun(
@@ -714,7 +819,11 @@ export class WorkflowRunRepository {
           and(
             eq(schema.workflowRuns.id, runId),
             eq(schema.workflowRuns.ownerId, ownerId),
-            eq(schema.workflowRuns.status, "queued"),
+            inArray(schema.workflowRuns.status, [
+              "queued",
+              "running",
+              "waiting",
+            ]),
           ),
         )
         .returning({ id: schema.workflowRuns.id });
@@ -745,9 +854,9 @@ export class WorkflowRunRepository {
     return updated;
   }
 
-  async claimSingleAgentAttempt(
+  async claimAgentAttempt(
     ownerId: string,
-    candidate: WorkflowSingleAgentCandidate,
+    candidate: WorkflowAgentCandidate,
     assignment: WorkflowAttemptAssignment,
   ): Promise<WorkflowAttemptLease | null> {
     if (candidate.unsupportedReason || !candidate.configuration) return null;
@@ -760,86 +869,114 @@ export class WorkflowRunRepository {
       now.getTime() + candidate.node.budget.maxNodeDurationMs,
     );
 
-    const claimed = await this.database.transaction(async (transaction) => {
-      const runs = await transaction
-        .select({ id: schema.workflowRuns.id })
-        .from(schema.workflowRuns)
-        .where(
-          and(
-            eq(schema.workflowRuns.id, candidate.run.id),
-            eq(schema.workflowRuns.ownerId, ownerId),
-            eq(schema.workflowRuns.status, "queued"),
-          ),
-        )
-        .limit(1);
-      if (!runs[0]) return false;
-      const nodes = await transaction
-        .update(schema.workflowRunNodes)
-        .set({
+    let claimed: boolean;
+    try {
+      claimed = await this.database.transaction(async (transaction) => {
+        const runs = await transaction
+          .select({ id: schema.workflowRuns.id })
+          .from(schema.workflowRuns)
+          .where(
+            and(
+              eq(schema.workflowRuns.id, candidate.run.id),
+              eq(schema.workflowRuns.ownerId, ownerId),
+              inArray(schema.workflowRuns.status, [
+                "queued",
+                "running",
+                "waiting",
+              ]),
+              eq(schema.workflowRuns.recoveryState, "stable"),
+            ),
+          )
+          .limit(1);
+        if (!runs[0]) return false;
+        const nodes = await transaction
+          .update(schema.workflowRunNodes)
+          .set({
+            status: "running",
+            workerId: assignment.workerId,
+            worktreeId: assignment.worktreeId,
+            modelRouteId: assignment.modelRouteId,
+            permissionProfileId: assignment.permissionProfileId,
+            executionLeaseKey: idempotencyKey,
+            attemptCount: attemptNumber,
+            timeoutAt,
+            startedAt: candidate.node.startedAt
+              ? new Date(candidate.node.startedAt)
+              : now,
+            waitingAt: null,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.workflowRunNodes.id, candidate.node.id),
+              eq(schema.workflowRunNodes.runId, candidate.run.id),
+              eq(schema.workflowRunNodes.status, "ready"),
+              eq(
+                schema.workflowRunNodes.attemptCount,
+                candidate.node.attemptCount,
+              ),
+            ),
+          )
+          .returning({ id: schema.workflowRunNodes.id });
+        if (!nodes[0]) return false;
+        await transaction.insert(schema.workflowNodeAttempts).values({
+          id: attemptId,
+          runNodeId: candidate.node.id,
+          attempt: attemptNumber,
           status: "running",
+          idempotencyKey,
+          structuredInput: candidate.structuredInput,
+          measuredUsage: workflowMeasuredUsageSchema.parse({}),
           workerId: assignment.workerId,
           worktreeId: assignment.worktreeId,
           modelRouteId: assignment.modelRouteId,
           permissionProfileId: assignment.permissionProfileId,
-          executionLeaseKey: idempotencyKey,
-          attemptCount: attemptNumber,
-          timeoutAt,
-          startedAt: candidate.node.startedAt
-            ? new Date(candidate.node.startedAt)
-            : now,
-          waitingAt: null,
+          codexThreadId: candidate.node.codexThreadId,
+          startedAt: now,
+          heartbeatAt: now,
+          createdAt: now,
           updatedAt: now,
-        })
-        .where(
-          and(
-            eq(schema.workflowRunNodes.id, candidate.node.id),
-            eq(schema.workflowRunNodes.runId, candidate.run.id),
-            eq(schema.workflowRunNodes.status, "ready"),
-            eq(
-              schema.workflowRunNodes.attemptCount,
-              candidate.node.attemptCount,
+        });
+        const updatedRuns = await transaction
+          .update(schema.workflowRuns)
+          .set({
+            status: "running",
+            workerId: assignment.workerId,
+            worktreeId: assignment.worktreeId,
+            selectedModelRouteId: assignment.modelRouteId,
+            selectedPermissionProfileId: assignment.permissionProfileId,
+            startedAt: candidate.run.startedAt
+              ? new Date(candidate.run.startedAt)
+              : now,
+            errorCode: null,
+            errorMessage: null,
+            recoveryState: "stable",
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.workflowRuns.id, candidate.run.id),
+              eq(schema.workflowRuns.ownerId, ownerId),
+              inArray(schema.workflowRuns.status, [
+                "queued",
+                "running",
+                "waiting",
+              ]),
+              eq(schema.workflowRuns.recoveryState, "stable"),
             ),
-          ),
-        )
-        .returning({ id: schema.workflowRunNodes.id });
-      if (!nodes[0]) return false;
-      await transaction.insert(schema.workflowNodeAttempts).values({
-        id: attemptId,
-        runNodeId: candidate.node.id,
-        attempt: attemptNumber,
-        status: "running",
-        idempotencyKey,
-        structuredInput: candidate.node.structuredInput,
-        measuredUsage: workflowMeasuredUsageSchema.parse({}),
-        workerId: assignment.workerId,
-        worktreeId: assignment.worktreeId,
-        modelRouteId: assignment.modelRouteId,
-        permissionProfileId: assignment.permissionProfileId,
-        codexThreadId: candidate.node.codexThreadId,
-        startedAt: now,
-        heartbeatAt: now,
-        createdAt: now,
-        updatedAt: now,
+          )
+          .returning({ id: schema.workflowRuns.id });
+        if (!updatedRuns[0]) {
+          throw new WorkflowAttemptClaimConflictError(
+            "The workflow run changed state while claiming its node.",
+          );
+        }
+        return true;
       });
-      await transaction
-        .update(schema.workflowRuns)
-        .set({
-          status: "running",
-          workerId: assignment.workerId,
-          worktreeId: assignment.worktreeId,
-          selectedModelRouteId: assignment.modelRouteId,
-          selectedPermissionProfileId: assignment.permissionProfileId,
-          startedAt: candidate.run.startedAt
-            ? new Date(candidate.run.startedAt)
-            : now,
-          errorCode: null,
-          errorMessage: null,
-          recoveryState: "stable",
-          updatedAt: now,
-        })
-        .where(eq(schema.workflowRuns.id, candidate.run.id));
-      return true;
-    });
+    } catch (error) {
+      if (error instanceof WorkflowAttemptClaimConflictError) return null;
+      throw error;
+    }
     if (!claimed) return null;
     await this.appendEvent({
       runId: candidate.run.id,
@@ -946,6 +1083,20 @@ export class WorkflowRunRepository {
           updatedAt: now,
         })
         .where(eq(schema.workflowRunNodes.id, lease.candidate.node.id));
+      const runMeasuredUsage = measuredUsage
+        ? aggregateWorkflowUsage(
+            (
+              await transaction
+                .select({
+                  measuredUsage: schema.workflowRunNodes.measuredUsage,
+                })
+                .from(schema.workflowRunNodes)
+                .where(
+                  eq(schema.workflowRunNodes.runId, lease.candidate.run.id),
+                )
+            ).map(({ measuredUsage: usage }) => usage),
+          )
+        : null;
       await transaction
         .update(schema.workflowRuns)
         .set({
@@ -960,13 +1111,18 @@ export class WorkflowRunRepository {
           ...(attribution.threadId
             ? { codexThreadId: attribution.threadId }
             : {}),
-          ...(measuredUsage ? { measuredUsage } : {}),
+          ...(runMeasuredUsage ? { measuredUsage: runMeasuredUsage } : {}),
           updatedAt: now,
         })
         .where(
           and(
             eq(schema.workflowRuns.id, lease.candidate.run.id),
             eq(schema.workflowRuns.ownerId, ownerId),
+            inArray(schema.workflowRuns.status, [
+              "queued",
+              "running",
+              "waiting",
+            ]),
           ),
         );
     });
@@ -982,7 +1138,7 @@ export class WorkflowRunRepository {
     });
   }
 
-  async completeSingleAgentAttempt(
+  async completeAgentAttempt(
     ownerId: string,
     lease: WorkflowAttemptLease,
     result: {
@@ -997,7 +1153,7 @@ export class WorkflowRunRepository {
     const measuredUsage = workflowMeasuredUsageSchema.parse(
       result.measuredUsage,
     );
-    const completed = await this.database.transaction(async (transaction) => {
+    const outcome = await this.database.transaction(async (transaction) => {
       const attempts = await transaction
         .update(schema.workflowNodeAttempts)
         .set({
@@ -1022,7 +1178,14 @@ export class WorkflowRunRepository {
           ),
         )
         .returning({ id: schema.workflowNodeAttempts.id });
-      if (!attempts[0]) return false;
+      if (!attempts[0]) {
+        return {
+          completed: false,
+          readyNodeIds: [] as string[],
+          runStateUpdated: false,
+          runStatus: null,
+        };
+      }
       await transaction
         .update(schema.workflowRunNodes)
         .set({
@@ -1038,28 +1201,208 @@ export class WorkflowRunRepository {
           updatedAt: now,
         })
         .where(eq(schema.workflowRunNodes.id, lease.candidate.node.id));
+
       await transaction
+        .select({ id: schema.workflowRuns.id })
+        .from(schema.workflowRuns)
+        .where(
+          and(
+            eq(schema.workflowRuns.id, lease.candidate.run.id),
+            eq(schema.workflowRuns.ownerId, ownerId),
+          ),
+        )
+        .for("update");
+
+      const satisfied = await transaction
+        .update(schema.workflowRunNodeDependencies)
+        .set({ status: "satisfied", satisfiedAt: now })
+        .where(
+          and(
+            eq(
+              schema.workflowRunNodeDependencies.fromNodeId,
+              lease.candidate.node.id,
+            ),
+            eq(schema.workflowRunNodeDependencies.status, "blocked"),
+          ),
+        )
+        .returning({
+          targetNodeId: schema.workflowRunNodeDependencies.toNodeId,
+        });
+      const readyNodeIds: string[] = [];
+      const targetNodeIds = [
+        ...new Set(satisfied.map(({ targetNodeId }) => targetNodeId)),
+      ].sort();
+      for (const targetNodeId of targetNodeIds) {
+        const targetRows = await transaction
+          .select({ status: schema.workflowRunNodes.status })
+          .from(schema.workflowRunNodes)
+          .where(
+            and(
+              eq(schema.workflowRunNodes.id, targetNodeId),
+              eq(schema.workflowRunNodes.runId, lease.candidate.run.id),
+            ),
+          )
+          .for("update");
+        if (targetRows[0]?.status !== "blocked") continue;
+        const incoming = await transaction
+          .select({
+            dependency: schema.workflowRunNodeDependencies,
+            source: schema.workflowRunNodes,
+          })
+          .from(schema.workflowRunNodeDependencies)
+          .innerJoin(
+            schema.workflowRunNodes,
+            eq(
+              schema.workflowRunNodes.id,
+              schema.workflowRunNodeDependencies.fromNodeId,
+            ),
+          )
+          .where(eq(schema.workflowRunNodeDependencies.toNodeId, targetNodeId))
+          .orderBy(asc(schema.workflowRunNodeDependencies.createdAt));
+        if (
+          incoming.length === 0 ||
+          incoming.some(({ dependency }) => dependency.status !== "satisfied")
+        ) {
+          continue;
+        }
+        const mapped = incoming.map(({ dependency, source }) => {
+          const mapping = workflowJsonObjectSchema.parse(
+            dependency.resultMapping,
+          );
+          const sourceOutput =
+            typeof mapping.sourceOutput === "string"
+              ? mapping.sourceOutput
+              : null;
+          const targetInput =
+            typeof mapping.targetInput === "string"
+              ? mapping.targetInput
+              : null;
+          return {
+            sourceNodeKey: source.nodeKey,
+            targetInput,
+            value: mappedWorkflowValue(source.structuredResult, sourceOutput),
+          };
+        });
+        let structuredInput: WorkflowJsonValue;
+        if (mapped.length === 1 && mapped[0]!.targetInput === null) {
+          structuredInput = mapped[0]!.value;
+        } else {
+          const aggregate: Record<string, WorkflowJsonValue> = {};
+          for (const item of mapped) {
+            const key = item.targetInput ?? item.sourceNodeKey;
+            if (Object.hasOwn(aggregate, key)) {
+              throw new Error(
+                `Workflow dependency mappings collide at target input ${key}.`,
+              );
+            }
+            aggregate[key] = item.value;
+          }
+          structuredInput = aggregate;
+        }
+        const targets = await transaction
+          .update(schema.workflowRunNodes)
+          .set({
+            status: "ready",
+            dependencyState: {
+              remaining: 0,
+              satisfied: incoming.length,
+            },
+            structuredInput,
+            readyAt: now,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.workflowRunNodes.id, targetNodeId),
+              eq(schema.workflowRunNodes.status, "blocked"),
+            ),
+          )
+          .returning({ id: schema.workflowRunNodes.id });
+        if (targets[0]) readyNodeIds.push(targets[0].id);
+      }
+
+      const [nodes, dependencies] = await Promise.all([
+        transaction
+          .select()
+          .from(schema.workflowRunNodes)
+          .where(eq(schema.workflowRunNodes.runId, lease.candidate.run.id)),
+        transaction
+          .select()
+          .from(schema.workflowRunNodeDependencies)
+          .where(
+            eq(
+              schema.workflowRunNodeDependencies.runId,
+              lease.candidate.run.id,
+            ),
+          ),
+      ]);
+      const allCompleted = nodes.every(({ status }) =>
+        ["completed", "skipped"].includes(status),
+      );
+      const runStatus = allCompleted
+        ? "completed"
+        : nodes.some(({ status }) => status === "waiting-for-approval")
+          ? "waiting"
+          : nodes.some(({ status }) => status === "running")
+            ? "running"
+            : nodes.some(({ status }) => status === "ready")
+              ? "queued"
+              : "failed";
+      const usage = aggregateWorkflowUsage(
+        nodes.map(({ measuredUsage }) => measuredUsage),
+      );
+      const sourceNodeIds = new Set(
+        dependencies.map(({ fromNodeId }) => fromNodeId),
+      );
+      const sinkNodes = nodes.filter(({ id }) => !sourceNodeIds.has(id));
+      const structuredResult = allCompleted
+        ? sinkNodes.length === 1
+          ? workflowJsonValueSchema.parse(sinkNodes[0]!.structuredResult)
+          : workflowJsonObjectSchema.parse(
+              Object.fromEntries(
+                sinkNodes.map(({ nodeKey, structuredResult: value }) => [
+                  nodeKey,
+                  value,
+                ]),
+              ),
+            )
+        : null;
+      const runs = await transaction
         .update(schema.workflowRuns)
         .set({
-          status: "completed",
-          structuredResult: result.structuredResult,
-          measuredUsage,
-          codexThreadId: result.threadId,
-          errorCode: null,
-          errorMessage: null,
+          status: runStatus,
+          structuredResult,
+          measuredUsage: usage,
+          codexThreadId: nodes.length === 1 ? result.threadId : null,
+          errorCode: runStatus === "failed" ? "workflow-deadlock" : null,
+          errorMessage:
+            runStatus === "failed"
+              ? "No workflow node can make durable progress."
+              : null,
           recoveryState: "stable",
-          completedAt: now,
+          completedAt: allCompleted ? now : null,
           updatedAt: now,
         })
         .where(
           and(
             eq(schema.workflowRuns.id, lease.candidate.run.id),
             eq(schema.workflowRuns.ownerId, ownerId),
+            inArray(schema.workflowRuns.status, [
+              "queued",
+              "running",
+              "waiting",
+            ]),
           ),
-        );
-      return true;
+        )
+        .returning({ id: schema.workflowRuns.id });
+      return {
+        completed: true,
+        readyNodeIds,
+        runStateUpdated: Boolean(runs[0]),
+        runStatus,
+      };
     });
-    if (completed) {
+    if (outcome.completed) {
       await this.appendEvent({
         runId: lease.candidate.run.id,
         runNodeId: lease.candidate.node.id,
@@ -1073,15 +1416,17 @@ export class WorkflowRunRepository {
           measuredUsage,
           threadId: result.threadId,
           turnId: result.turnId,
+          readyNodeIds: outcome.readyNodeIds,
+          runStatus: outcome.runStateUpdated ? outcome.runStatus : null,
         },
         actorType: "server",
         actorId: null,
       });
     }
-    return completed;
+    return outcome.completed;
   }
 
-  async failSingleAgentAttempt(
+  async failAgentAttempt(
     ownerId: string,
     lease: WorkflowAttemptLease,
     input: {
@@ -1092,11 +1437,19 @@ export class WorkflowRunRepository {
   ): Promise<WorkflowAttemptFailureResult> {
     const now = new Date();
     const message = input.message.trim().slice(0, 5_000) || input.code;
-    const retryScheduled =
+    const automaticAttemptLimit =
+      lease.candidate.configuration?.automaticRetries === null ||
+      lease.candidate.configuration?.automaticRetries === undefined
+        ? lease.budget.maxAttemptsPerNode
+        : Math.min(
+            lease.budget.maxAttemptsPerNode,
+            lease.candidate.configuration.automaticRetries + 1,
+          );
+    const retryEligible =
       input.status !== "orphaned" &&
       input.status !== "interrupted" &&
-      lease.attempt < lease.budget.maxAttemptsPerNode;
-    const updated = await this.database.transaction(async (transaction) => {
+      lease.attempt < automaticAttemptLimit;
+    const outcome = await this.database.transaction(async (transaction) => {
       const attempts = await transaction
         .update(schema.workflowNodeAttempts)
         .set({
@@ -1118,7 +1471,22 @@ export class WorkflowRunRepository {
           ),
         )
         .returning({ id: schema.workflowNodeAttempts.id });
-      if (!attempts[0]) return false;
+      if (!attempts[0]) return { retryScheduled: false, updated: false };
+      const runs = await transaction
+        .select({ status: schema.workflowRuns.status })
+        .from(schema.workflowRuns)
+        .where(
+          and(
+            eq(schema.workflowRuns.id, lease.candidate.run.id),
+            eq(schema.workflowRuns.ownerId, ownerId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const runIsActive =
+        runs[0] !== undefined &&
+        ["queued", "running", "waiting"].includes(runs[0].status);
+      const retryScheduled = retryEligible && runIsActive;
       await transaction
         .update(schema.workflowRunNodes)
         .set({
@@ -1143,17 +1511,58 @@ export class WorkflowRunRepository {
           updatedAt: now,
         })
         .where(eq(schema.workflowRunNodes.id, lease.candidate.node.id));
+      if (runIsActive && !retryScheduled && input.status !== "orphaned") {
+        await transaction
+          .update(schema.workflowRunNodes)
+          .set({ status: "skipped", completedAt: now, updatedAt: now })
+          .where(
+            and(
+              eq(schema.workflowRunNodes.runId, lease.candidate.run.id),
+              inArray(schema.workflowRunNodes.status, ["blocked", "ready"]),
+            ),
+          );
+        await transaction
+          .update(schema.workflowRunNodeDependencies)
+          .set({ status: "failed" })
+          .where(
+            and(
+              eq(
+                schema.workflowRunNodeDependencies.runId,
+                lease.candidate.run.id,
+              ),
+              eq(schema.workflowRunNodeDependencies.status, "blocked"),
+            ),
+          );
+      }
+      const nodes = await transaction
+        .select({
+          measuredUsage: schema.workflowRunNodes.measuredUsage,
+          status: schema.workflowRunNodes.status,
+        })
+        .from(schema.workflowRunNodes)
+        .where(eq(schema.workflowRunNodes.runId, lease.candidate.run.id));
+      const retryRunStatus = nodes.some(
+        ({ status }) => status === "waiting-for-approval",
+      )
+        ? "waiting"
+        : nodes.some(({ status }) => status === "running")
+          ? "running"
+          : "queued";
+      const runStatus =
+        input.status === "orphaned"
+          ? "recovering"
+          : retryScheduled
+            ? retryRunStatus
+            : input.status === "interrupted"
+              ? "cancelled"
+              : "failed";
       await transaction
         .update(schema.workflowRuns)
         .set({
-          status:
-            input.status === "orphaned"
-              ? "recovering"
-              : retryScheduled
-                ? "queued"
-                : input.status === "interrupted"
-                  ? "cancelled"
-                  : "failed",
+          status: runStatus,
+          measuredUsage: aggregateWorkflowUsage(
+            nodes.map(({ measuredUsage }) => measuredUsage),
+          ),
           errorCode: input.code.slice(0, 200),
           errorMessage: message,
           recoveryState: input.status === "orphaned" ? "blocked" : "stable",
@@ -1165,11 +1574,16 @@ export class WorkflowRunRepository {
           and(
             eq(schema.workflowRuns.id, lease.candidate.run.id),
             eq(schema.workflowRuns.ownerId, ownerId),
+            inArray(schema.workflowRuns.status, [
+              "queued",
+              "running",
+              "waiting",
+            ]),
           ),
         );
-      return true;
+      return { retryScheduled, updated: true };
     });
-    if (updated) {
+    if (outcome.updated) {
       await this.terminalizeWorkflowInteractions(
         lease.candidate.run.id,
         lease.candidate.node.id,
@@ -1184,14 +1598,14 @@ export class WorkflowRunRepository {
         payload: {
           code: input.code,
           message,
-          retryScheduled,
-          nextAttempt: retryScheduled ? lease.attempt + 1 : null,
+          retryScheduled: outcome.retryScheduled,
+          nextAttempt: outcome.retryScheduled ? lease.attempt + 1 : null,
         },
         actorType: "server",
         actorId: null,
       });
     }
-    return { retryScheduled: updated && retryScheduled };
+    return { retryScheduled: outcome.updated && outcome.retryScheduled };
   }
 
   async recoverInterruptedAttempts(ownerId: string): Promise<number> {
@@ -1224,15 +1638,17 @@ export class WorkflowRunRepository {
       const detail = await this.getRun(ownerId, row.run.id);
       const node = detail?.nodes.find(({ id }) => id === row.node.id);
       if (!detail || !node) continue;
-      const candidate: WorkflowSingleAgentCandidate = {
+      const candidate: WorkflowAgentCandidate = {
         configuration: null,
         node,
         outputSchema: {},
         projectId: detail.run.projectId,
         run: detail.run,
+        structuredInput: node.structuredInput,
         unsupportedReason: null,
+        verification: null,
       };
-      await this.failSingleAgentAttempt(
+      await this.failAgentAttempt(
         ownerId,
         {
           assignment: {
@@ -1298,7 +1714,7 @@ export class WorkflowRunRepository {
       const run = await this.getRun(ownerId, runId);
       return run
         ? {
-            execution: await this.cancellationContext(run),
+            executions: this.cancellationContexts(run),
             replayed: true,
             run,
           }
@@ -1313,14 +1729,12 @@ export class WorkflowRunRepository {
       );
     }
     const now = new Date();
-    const activeAttempt = [...detail.attempts]
-      .reverse()
-      .find(({ status }) =>
-        ["queued", "running", "waiting-for-approval"].includes(status),
-      );
-    const execution = await this.cancellationContext(detail);
+    const activeAttempts = detail.attempts.filter(({ status }) =>
+      ["queued", "running", "waiting-for-approval"].includes(status),
+    );
+    const executions = this.cancellationContexts(detail);
     await this.database.transaction(async (transaction) => {
-      if (activeAttempt) {
+      if (activeAttempts.length > 0) {
         const attempts = await transaction
           .update(schema.workflowNodeAttempts)
           .set({
@@ -1334,7 +1748,10 @@ export class WorkflowRunRepository {
           })
           .where(
             and(
-              eq(schema.workflowNodeAttempts.id, activeAttempt.id),
+              inArray(
+                schema.workflowNodeAttempts.id,
+                activeAttempts.map(({ id }) => id),
+              ),
               inArray(schema.workflowNodeAttempts.status, [
                 "queued",
                 "running",
@@ -1343,7 +1760,7 @@ export class WorkflowRunRepository {
             ),
           )
           .returning({ id: schema.workflowNodeAttempts.id });
-        if (!attempts[0]) {
+        if (attempts.length !== activeAttempts.length) {
           throw new WorkflowControlConflictError(
             "The workflow attempt reached a terminal state before cancellation could be persisted.",
           );
@@ -1449,7 +1866,7 @@ export class WorkflowRunRepository {
       actorType: "user",
       actorId: ownerId,
     });
-    if (activeAttempt) {
+    for (const activeAttempt of activeAttempts) {
       await this.appendEvent({
         runId,
         runNodeId: activeAttempt.runNodeId,
@@ -1468,7 +1885,7 @@ export class WorkflowRunRepository {
     }
     const run = (await this.getRun(ownerId, runId))!;
     return {
-      execution,
+      executions,
       replayed: false,
       run,
     };
@@ -1559,6 +1976,61 @@ export class WorkflowRunRepository {
         throw new WorkflowControlConflictError(
           "The workflow node changed state before the retry could be persisted.",
         );
+      }
+      await transaction
+        .update(schema.workflowRunNodeDependencies)
+        .set({ status: "blocked", satisfiedAt: null })
+        .where(
+          and(
+            eq(schema.workflowRunNodeDependencies.runId, runId),
+            eq(schema.workflowRunNodeDependencies.status, "failed"),
+          ),
+        );
+      await transaction
+        .update(schema.workflowRunNodes)
+        .set({
+          status: "blocked",
+          completedAt: null,
+          readyAt: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.workflowRunNodes.runId, runId),
+            eq(schema.workflowRunNodes.status, "skipped"),
+          ),
+        );
+      const blockedNodes = await transaction
+        .select({ id: schema.workflowRunNodes.id })
+        .from(schema.workflowRunNodes)
+        .where(
+          and(
+            eq(schema.workflowRunNodes.runId, runId),
+            eq(schema.workflowRunNodes.status, "blocked"),
+          ),
+        );
+      for (const blockedNode of blockedNodes) {
+        const dependencies = await transaction
+          .select({ status: schema.workflowRunNodeDependencies.status })
+          .from(schema.workflowRunNodeDependencies)
+          .where(
+            eq(schema.workflowRunNodeDependencies.toNodeId, blockedNode.id),
+          );
+        const remaining = dependencies.filter(
+          ({ status }) => status !== "satisfied",
+        ).length;
+        await transaction
+          .update(schema.workflowRunNodes)
+          .set({
+            status: remaining === 0 ? "ready" : "blocked",
+            dependencyState: {
+              remaining,
+              satisfied: dependencies.length - remaining,
+            },
+            readyAt: remaining === 0 ? now : null,
+            updatedAt: now,
+          })
+          .where(eq(schema.workflowRunNodes.id, blockedNode.id));
       }
       const runs = await transaction
         .update(schema.workflowRuns)
@@ -1669,30 +2141,31 @@ export class WorkflowRunRepository {
     return rows.length;
   }
 
-  private async cancellationContext(
+  private cancellationContexts(
     detail: WorkflowRunDetail,
-  ): Promise<WorkflowCancellationExecutionContext | null> {
-    const attempt = [...detail.attempts]
-      .reverse()
-      .find(({ status }) =>
-        ["queued", "running", "waiting-for-approval"].includes(status),
-      );
-    const node = attempt
-      ? detail.nodes.find(({ id }) => id === attempt.runNodeId)
-      : null;
-    return attempt?.workerId &&
-      attempt.modelRouteId &&
-      attempt.codexThreadId &&
-      node
-      ? {
-          attemptId: attempt.id,
-          modelRouteId: attempt.modelRouteId,
-          runId: detail.run.id,
-          runNodeId: node.id,
-          threadId: attempt.codexThreadId,
-          workerId: attempt.workerId,
-        }
-      : null;
+  ): WorkflowCancellationExecutionContext[] {
+    const nodeById = new Map(detail.nodes.map((node) => [node.id, node]));
+    return detail.attempts.flatMap((attempt) => {
+      const node = nodeById.get(attempt.runNodeId);
+      return ["queued", "running", "waiting-for-approval"].includes(
+        attempt.status,
+      ) &&
+        attempt.workerId &&
+        attempt.modelRouteId &&
+        attempt.codexThreadId &&
+        node
+        ? [
+            {
+              attemptId: attempt.id,
+              modelRouteId: attempt.modelRouteId,
+              runId: detail.run.id,
+              runNodeId: node.id,
+              threadId: attempt.codexThreadId,
+              workerId: attempt.workerId,
+            },
+          ]
+        : [];
+    });
   }
 
   private workerEventAttribution(event: WorkerEvent): {
@@ -1733,34 +2206,42 @@ export class WorkflowRunRepository {
     runNodeId: string | null;
     type: string;
   }): Promise<void> {
-    const existing = await this.database
-      .select({ id: schema.workflowRunEvents.id })
-      .from(schema.workflowRunEvents)
-      .where(
-        and(
-          eq(schema.workflowRunEvents.runId, input.runId),
-          eq(schema.workflowRunEvents.eventKey, input.eventKey),
-        ),
-      )
-      .limit(1);
-    if (existing[0]) return;
-    const latest = await this.database
-      .select({ sequence: schema.workflowRunEvents.sequence })
-      .from(schema.workflowRunEvents)
-      .where(eq(schema.workflowRunEvents.runId, input.runId))
-      .orderBy(desc(schema.workflowRunEvents.sequence))
-      .limit(1);
-    await this.database.insert(schema.workflowRunEvents).values({
-      runId: input.runId,
-      runNodeId: input.runNodeId,
-      attemptId: input.attemptId,
-      sequence: (latest[0]?.sequence ?? -1) + 1,
-      eventKey: input.eventKey.slice(0, 500),
-      type: input.type.slice(0, 200),
-      payload: jsonObject(input.payload),
-      actorType: input.actorType.slice(0, 100),
-      actorId: input.actorId?.slice(0, 500) ?? null,
-    });
+    for (let retry = 0; retry < 20; retry += 1) {
+      const existing = await this.database
+        .select({ id: schema.workflowRunEvents.id })
+        .from(schema.workflowRunEvents)
+        .where(
+          and(
+            eq(schema.workflowRunEvents.runId, input.runId),
+            eq(schema.workflowRunEvents.eventKey, input.eventKey),
+          ),
+        )
+        .limit(1);
+      if (existing[0]) return;
+      const latest = await this.database
+        .select({ sequence: schema.workflowRunEvents.sequence })
+        .from(schema.workflowRunEvents)
+        .where(eq(schema.workflowRunEvents.runId, input.runId))
+        .orderBy(desc(schema.workflowRunEvents.sequence))
+        .limit(1);
+      try {
+        await this.database.insert(schema.workflowRunEvents).values({
+          runId: input.runId,
+          runNodeId: input.runNodeId,
+          attemptId: input.attemptId,
+          sequence: (latest[0]?.sequence ?? -1) + 1,
+          eventKey: input.eventKey.slice(0, 500),
+          type: input.type.slice(0, 200),
+          payload: jsonObject(input.payload),
+          actorType: input.actorType.slice(0, 100),
+          actorId: input.actorId?.slice(0, 500) ?? null,
+        });
+        return;
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+      }
+    }
+    throw new Error("Workflow event sequence contention exceeded its limit.");
   }
 
   private async effectiveProjectId(
