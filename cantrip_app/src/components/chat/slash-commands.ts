@@ -26,6 +26,10 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   { name: "fork", description: "Fork the current chat" },
   { name: "goal", description: "Start or inspect a long-running Codex goal" },
   { name: "plan", description: "Toggle Codex Plan Mode for this chat" },
+  {
+    name: "pause",
+    description: "Pause or resume queued and automatic chat work",
+  },
   { name: "new", description: "Start a new chat in this project" },
   { name: "review", description: "Ask Codex to review the working tree" },
   { name: "status", description: "Inspect the current Codex session" },

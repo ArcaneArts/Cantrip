@@ -27,6 +27,8 @@ import {
   chatPlanAnswerSchema,
   chatPlanStateSchema,
   chatPlanUpdateSchema,
+  chatPauseStateSchema,
+  chatPauseUpdateSchema,
   chatCreateSchema,
   chatExecutionLaneListSchema,
   chatExecutionLaneReleaseSchema,
@@ -728,6 +730,7 @@ export async function buildApp({
         chatId,
       );
       if (!current || chatIsExecuting(current.status)) return true;
+      if (current.automationPaused) return true;
       if (!bridge.isConnected(pending.worktree.workerId)) return true;
 
       try {
@@ -873,7 +876,12 @@ export async function buildApp({
         LOCAL_USER_ID,
         chatId,
       );
-      if (!context || chatIsExecuting(context.status)) return;
+      if (
+        !context ||
+        context.automationPaused ||
+        chatIsExecuting(context.status)
+      )
+        return;
       const prompt = (
         await repository.listQueuedPrompts(LOCAL_USER_ID, chatId)
       ).find((candidate) => !candidate.frozen);
@@ -1017,6 +1025,7 @@ export async function buildApp({
                 model: runtime.model,
                 provider: runtime.provider,
                 planMode: execution.planMode,
+                automationPaused: execution.automationPaused,
               },
               {
                 timeoutMs: null,
@@ -1190,6 +1199,63 @@ export async function buildApp({
       providerModelName: firstRuntime.model.name,
     };
   }
+
+  const resumeChatAutomation = async (chatId: string): Promise<void> => {
+    let context = await repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    );
+    if (
+      !context ||
+      context.automationPaused ||
+      chatIsExecuting(context.status) ||
+      !bridge.isConnected(context.workerId)
+    ) {
+      return;
+    }
+    if (await continuePendingWorktreeTransition(chatId)) return;
+    context = await repository.getChatExecutionContext(LOCAL_USER_ID, chatId);
+    if (
+      !context ||
+      context.automationPaused ||
+      chatIsExecuting(context.status)
+    ) {
+      return;
+    }
+    if (context.threadId) {
+      const runtime = await runtimeForContext(context);
+      if (!runtime) throw new Error("Selected model was not found.");
+      const result = chatGoalResponseSchema.parse(
+        await bridge.request(context.workerId, {
+          type: "chat.goal.get",
+          chatId: context.chatId,
+          cwd: context.cwd,
+          threadId: context.threadId,
+          model: runtime.model,
+          provider: runtime.provider,
+        }),
+      );
+      if (result.goal?.status === "active") {
+        const modelId = await resolveModelId(context);
+        await beginTurn(
+          context,
+          {
+            text: `Resume goal: ${result.goal.objective}`,
+            modelId,
+            idempotencyKey: `chat-resume:${result.goal.updatedAt}:${randomUUID()}`,
+          },
+          {
+            acquiringActor: "agent",
+            purpose: "Resume paused Codex goal",
+            runtimes: [runtime],
+            workerPrompt: GOAL_RESUME_PROMPT,
+          },
+        );
+        return;
+      }
+    }
+    await dispatchNextQueuedPrompt(chatId);
+  };
 
   app.get("/api", async () => ({
     name: "cantrip_server",
@@ -3719,6 +3785,101 @@ export async function buildApp({
     },
   );
 
+  app.patch<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/pause",
+    async (request, reply) => {
+      const input = chatPauseUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+
+      if (
+        !input.data.paused &&
+        !bridge.isConnected(context.workerId) &&
+        (context.threadId ||
+          (await repository.listQueuedPrompts(LOCAL_USER_ID, context.chatId))
+            .length > 0)
+      ) {
+        return reply.code(503).send({
+          error:
+            "The project worker is offline. This chat remains paused so its next action is not lost.",
+        });
+      }
+
+      if (!input.data.paused && bridge.isConnected(context.workerId)) {
+        try {
+          await bridge.request(context.workerId, {
+            type: "chat.pause.set",
+            chatId: context.chatId,
+            paused: false,
+          });
+        } catch (error) {
+          return reply.code(502).send({
+            error: `The worker could not resume this chat: ${errorMessage(error)}`,
+          });
+        }
+      }
+
+      const updated = await repository.setChatAutomationPaused(
+        LOCAL_USER_ID,
+        context.chatId,
+        input.data.paused,
+      );
+      if (!updated) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+
+      if (input.data.paused && bridge.isConnected(context.workerId)) {
+        try {
+          await bridge.request(context.workerId, {
+            type: "chat.pause.set",
+            chatId: context.chatId,
+            paused: true,
+          });
+        } catch (error) {
+          return reply.code(502).send({
+            error: `Automatic dispatch is paused, but the active worker could not be notified: ${errorMessage(error)}`,
+          });
+        }
+      }
+
+      if (!input.data.paused) {
+        try {
+          await resumeChatAutomation(context.chatId);
+        } catch (error) {
+          await repository.setChatAutomationPaused(
+            LOCAL_USER_ID,
+            context.chatId,
+            true,
+          );
+          if (bridge.isConnected(context.workerId)) {
+            await bridge
+              .request(context.workerId, {
+                type: "chat.pause.set",
+                chatId: context.chatId,
+                paused: true,
+              })
+              .catch(() => undefined);
+          }
+          return reply.code(409).send({
+            error: `This chat remains paused because its next action could not start: ${errorMessage(error)}`,
+          });
+        }
+      }
+
+      return reply.send(
+        chatPauseStateSchema.parse({ paused: input.data.paused }),
+      );
+    },
+  );
+
   app.get<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/plan",
     async (request, reply) => {
@@ -3943,6 +4104,11 @@ export async function buildApp({
           .code(409)
           .send({ error: "Wait for the active turn to finish." });
       }
+      if (context.automationPaused) {
+        return reply
+          .code(409)
+          .send({ error: "Resume this chat before starting a goal." });
+      }
       if (!bridge.isConnected(context.workerId)) {
         return reply.code(503).send({ error: "Project worker is offline." });
       }
@@ -4028,6 +4194,7 @@ export async function buildApp({
         );
         if (
           input.data.status === "active" &&
+          !context.automationPaused &&
           !chatIsExecuting(context.status) &&
           result.goal
         ) {
@@ -4506,7 +4673,7 @@ export async function buildApp({
           }),
         );
       }
-      if (chatIsExecuting(context.status)) {
+      if (context.automationPaused || chatIsExecuting(context.status)) {
         let modelId: string;
         try {
           modelId = await resolveModelId(context, input.data.modelId);

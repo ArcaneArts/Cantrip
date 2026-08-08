@@ -409,6 +409,10 @@ export interface RunAgentTurnOptions {
   cwd: string;
   isPrimary: Extract<WorkerCommand, { type: "chat.turn" }>["isPrimary"];
   model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
+  automationPaused: Extract<
+    WorkerCommand,
+    { type: "chat.turn" }
+  >["automationPaused"];
   planMode: Extract<WorkerCommand, { type: "chat.turn" }>["planMode"];
   provider: Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
   prompt: string;
@@ -435,8 +439,11 @@ export type GoalRuntimeOptions = Pick<
 export const GOAL_CONTINUATION_PROMPT =
   "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
 
-export function goalShouldContinue(goal: ThreadGoal | null): boolean {
-  return goal?.status === "active";
+export function goalShouldContinue(
+  goal: ThreadGoal | null,
+  automationPaused = false,
+): boolean {
+  return !automationPaused && goal?.status === "active";
 }
 
 const WORKTREE_TOOL_NAMES = new Set<AgentWorktreeToolName>([
@@ -923,6 +930,7 @@ export class CodexAppServer implements CodexRuntime {
   readonly #loadedThreads = new Set<string>();
   readonly #pending = new Map<number, PendingRpcRequest>();
   readonly #pendingPlanQuestions = new Map<string, NativePendingPlanQuestion>();
+  readonly #pausedChats = new Set<string>();
   readonly #runtimeDiagnostics: CodexRuntimeDiagnostic[] = [];
   #child: ChildProcessWithoutNullStreams | null = null;
   #remoteUrl: string | null = null;
@@ -945,7 +953,16 @@ export class CodexAppServer implements CodexRuntime {
     return [...this.#runtimeDiagnostics];
   }
 
+  setChatPaused(chatId: string, paused: boolean): void {
+    if (paused) {
+      this.#pausedChats.add(chatId);
+    } else {
+      this.#pausedChats.delete(chatId);
+    }
+  }
+
   async runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult> {
+    if (options.automationPaused) this.#pausedChats.add(options.chatId);
     await this.ensureStarted(options.model, options.provider);
     const baseline = await workspaceSnapshot(options.cwd);
     const threadId = await this.loadThread(options);
@@ -1131,6 +1148,9 @@ export class CodexAppServer implements CodexRuntime {
     options: GoalRuntimeOptions & { threadId: string },
   ): Promise<ChatGoalResponse> {
     await this.ensureStarted(options.model, options.provider);
+    if (!this.methodAvailable("thread/goal/get")) {
+      return chatGoalResponseSchema.parse({ goal: null });
+    }
     const threadId = await this.loadThread(options, false);
     if (!threadId) {
       throw new Error(
@@ -1897,8 +1917,14 @@ export class CodexAppServer implements CodexRuntime {
       if (this.#goals.has(active.threadId)) {
         const response = await this.refreshGoal(active.threadId);
         if (
-          goalShouldContinue(response.goal) &&
-          goalShouldContinue(this.#goals.get(active.threadId) ?? null)
+          goalShouldContinue(
+            response.goal,
+            this.#pausedChats.has(active.chatId),
+          ) &&
+          goalShouldContinue(
+            this.#goals.get(active.threadId) ?? null,
+            this.#pausedChats.has(active.chatId),
+          )
         ) {
           active.onCheckpoint?.({ text, turnId });
           active.baseline = await workspaceSnapshot(active.cwd);

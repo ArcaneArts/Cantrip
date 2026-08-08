@@ -32,6 +32,7 @@ import {
   CircleAlert,
   CircleDot,
   CircleHelp,
+  CirclePause,
   FolderGit2,
   FolderTree,
   GitCommitHorizontal,
@@ -187,6 +188,11 @@ function SortableChat({
               <CircleHelp
                 className="ml-auto size-3.5 text-amber-500"
                 aria-label="Codex is waiting for a Plan Mode answer"
+              />
+            ) : chat.automationPaused ? (
+              <CirclePause
+                className="ml-auto size-3.5 text-amber-500"
+                aria-label="Chat automation is paused"
               />
             ) : chat.status === "running" ? (
               <Loader2 className="ml-auto size-3 animate-spin" />

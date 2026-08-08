@@ -41,6 +41,8 @@ import {
   Lock,
   MessageSquare,
   PanelLeft,
+  Pause,
+  Play,
   Plus,
   RefreshCw,
   Send,
@@ -153,6 +155,7 @@ import {
   reorderProjectTabs,
   reorderProjects,
   reorderQueuedPrompts,
+  setChatPaused,
   startTurn,
   steerQueuedPrompt,
   syncChat,
@@ -806,6 +809,17 @@ function ChatTranscript({
       await queryClient.invalidateQueries({ queryKey: ["goal", chat.id] });
     },
   });
+  const setAutomationPaused = useMutation({
+    mutationFn: (paused: boolean) => setChatPaused(chat.id, paused),
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["goal", chat.id] }),
+        queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
+        queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
+      ]);
+    },
+  });
   const setPlanMode = useMutation({
     mutationFn: (mode: "default" | "plan") => updateChatPlan(chat.id, { mode }),
     onSuccess: async (state) => {
@@ -905,6 +919,8 @@ function ChatTranscript({
           planState.data?.mode === "plan" ? "default" : "plan",
         );
       }
+    } else if (name === "pause") {
+      setAutomationPaused.mutate(!chat.automationPaused);
     } else if (name === "copy") {
       if (!latestAssistantText) {
         setCommandNotice("There is no completed response to copy yet.");
@@ -1077,11 +1093,17 @@ function ChatTranscript({
           {chat.status === "running" ? (
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <div className="grid size-7 place-items-center rounded-lg border bg-card">
-                <Loader2 className="size-3.5 animate-spin" />
+                {chat.automationPaused ? (
+                  <Pause className="size-3.5 text-amber-500" />
+                ) : (
+                  <Loader2 className="size-3.5 animate-spin" />
+                )}
               </div>
-              {planState.data?.question
-                ? "Codex is waiting for your plan answer…"
-                : `${selectedModel?.name ?? "Agent"} is working through Codex…`}
+              {chat.automationPaused
+                ? "Pause requested — Codex will hold at its next safe boundary…"
+                : planState.data?.question
+                  ? "Codex is waiting for your plan answer…"
+                  : `${selectedModel?.name ?? "Agent"} is working through Codex…`}
             </div>
           ) : null}
         </div>
@@ -1186,6 +1208,19 @@ function ChatTranscript({
                   </span>
                 </button>
               ))}
+            </div>
+          ) : null}
+          {chat.automationPaused ? (
+            <div
+              role="status"
+              className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200"
+            >
+              <Pause className="size-3.5 shrink-0" />
+              <span>
+                {chat.status === "running"
+                  ? "Pausing when possible. The current turn may finish, but nothing automatic will advance."
+                  : "Paused. Queued prompts, goals, and automatic continuations will wait for Resume."}
+              </span>
             </div>
           ) : null}
           <GoalPanel
@@ -1386,9 +1421,11 @@ function ChatTranscript({
                   placeholder={
                     editingPrompt
                       ? "Edit queued prompt…"
-                      : chat.status === "running"
-                        ? "Queue a follow-up…"
-                        : "Ask Cantrip to work on this repository…"
+                      : chat.automationPaused
+                        ? "Queue a prompt while paused…"
+                        : chat.status === "running"
+                          ? "Queue a follow-up…"
+                          : "Ask Cantrip to work on this repository…"
                   }
                   className={cn(
                     "relative max-h-48 min-h-10 w-full resize-none bg-transparent px-2 py-2 text-sm leading-5 outline-none placeholder:text-muted-foreground",
@@ -1419,7 +1456,11 @@ function ChatTranscript({
                     size="sm"
                     variant="ghost"
                     className="h-7 px-2 text-xs text-muted-foreground"
-                    disabled={!selectedModelId || chat.status === "running"}
+                    disabled={
+                      !selectedModelId ||
+                      chat.status === "running" ||
+                      chat.automationPaused
+                    }
                     onClick={() => setGoalDialogOpen(true)}
                   >
                     <Target className="size-3.5" />
@@ -1456,6 +1497,35 @@ function ChatTranscript({
                   )}
                   Plan
                 </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={chat.automationPaused ? "outline" : "ghost"}
+                  className={cn(
+                    "h-7 px-2 text-xs",
+                    chat.automationPaused
+                      ? "border-amber-500/40 text-amber-700 dark:text-amber-300"
+                      : "text-muted-foreground",
+                  )}
+                  disabled={setAutomationPaused.isPending}
+                  onClick={() =>
+                    setAutomationPaused.mutate(!chat.automationPaused)
+                  }
+                  title={
+                    chat.automationPaused
+                      ? "Resume automatic chat work"
+                      : "Pause after the current safe boundary"
+                  }
+                >
+                  {setAutomationPaused.isPending ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : chat.automationPaused ? (
+                    <Play className="size-3.5" />
+                  ) : (
+                    <Pause className="size-3.5" />
+                  )}
+                  {chat.automationPaused ? "Resume" : "Pause"}
+                </Button>
               </div>
             </div>
             <Button
@@ -1484,7 +1554,8 @@ function ChatTranscript({
           removePrompt.isError ||
           steerPrompt.isError ||
           reorderPrompts.isError ||
-          setPlanMode.isError ? (
+          setPlanMode.isError ||
+          setAutomationPaused.isError ? (
             <p className="mt-2 text-xs text-destructive">
               {errorText(
                 send.error ??
@@ -1494,7 +1565,8 @@ function ChatTranscript({
                   removePrompt.error ??
                   steerPrompt.error ??
                   reorderPrompts.error ??
-                  setPlanMode.error,
+                  setPlanMode.error ??
+                  setAutomationPaused.error,
               )}
             </p>
           ) : editingPrompt ? (

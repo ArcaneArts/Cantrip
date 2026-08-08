@@ -20,6 +20,8 @@ import {
   chatPlanAnswerSchema,
   chatPlanStateSchema,
   chatPlanUpdateSchema,
+  chatPauseStateSchema,
+  chatPauseUpdateSchema,
   chatPromptSteerResultSchema,
   chatPromptSubmitResultSchema,
   explorerDirectorySchema,
@@ -833,6 +835,15 @@ export async function createChatConsole(chatId: string) {
 export async function interruptChat(chatId: string) {
   return chatInterruptAcceptedSchema.parse(
     await post(`/api/chats/${encodeURIComponent(chatId)}/interrupt`, {}),
+  );
+}
+
+export async function setChatPaused(chatId: string, paused: boolean) {
+  return chatPauseStateSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/pause`, {
+      method: "PATCH",
+      body: JSON.stringify(chatPauseUpdateSchema.parse({ paused })),
+    }),
   );
 }
 
