@@ -77,6 +77,7 @@ import {
   shouldAttachPastedText,
 } from "@/components/chat/attachment-utils";
 import { AgentInteractionPanel } from "@/components/chat/agent-interaction-panel";
+import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
 import { PlanPanel } from "@/components/chat/plan-panel";
 import { Markdown } from "@/components/chat/markdown";
@@ -2040,6 +2041,7 @@ export function App() {
   >(popoutTarget?.kind === "view" ? popoutTarget.tabId : null);
   const [showImporter, setShowImporter] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showCustomizations, setShowCustomizations] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [gitHistoryHeader, setGitHistoryHeader] =
     useState<GitHistoryHeaderState | null>(null);
@@ -3467,32 +3469,44 @@ export function App() {
                 </Button>
               ) : null}
               {activeChat && !showImporter && !showSettings ? (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  aria-pressed={Boolean(linkedConsoleChat)}
-                  disabled={!linkedConsoleChat && openChatConsole.isPending}
-                  onClick={() =>
-                    linkedConsoleChat
-                      ? openCreatedTab(
-                          linkedConsoleChat.projectId,
-                          "chat",
-                          linkedConsoleChat.id,
-                        )
-                      : showChatConsole(activeChat)
-                  }
-                >
-                  {linkedConsoleChat ? (
-                    <MessageSquare className="size-4" />
-                  ) : openChatConsole.isPending ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <SquareTerminal className="size-4" />
-                  )}
-                  <span className="sr-only">
-                    {linkedConsoleChat ? "Show chat" : "Show Codex console"}
-                  </span>
-                </Button>
+                <>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setShowCustomizations(true)}
+                  >
+                    <WandSparkles className="size-4" />
+                    <span className="sr-only">
+                      Inspect Codex customizations
+                    </span>
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-pressed={Boolean(linkedConsoleChat)}
+                    disabled={!linkedConsoleChat && openChatConsole.isPending}
+                    onClick={() =>
+                      linkedConsoleChat
+                        ? openCreatedTab(
+                            linkedConsoleChat.projectId,
+                            "chat",
+                            linkedConsoleChat.id,
+                          )
+                        : showChatConsole(activeChat)
+                    }
+                  >
+                    {linkedConsoleChat ? (
+                      <MessageSquare className="size-4" />
+                    ) : openChatConsole.isPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <SquareTerminal className="size-4" />
+                    )}
+                    <span className="sr-only">
+                      {linkedConsoleChat ? "Show chat" : "Show Codex console"}
+                    </span>
+                  </Button>
+                </>
               ) : null}
               {!isPopout ? (
                 <>
@@ -3581,33 +3595,48 @@ export function App() {
                 </Button>
               ) : null}
               {activeChat && !showImporter && !showSettings ? (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  aria-pressed={Boolean(linkedConsoleChat)}
-                  disabled={!linkedConsoleChat && openChatConsole.isPending}
-                  onClick={() =>
-                    linkedConsoleChat
-                      ? openCreatedTab(
-                          linkedConsoleChat.projectId,
-                          "chat",
-                          linkedConsoleChat.id,
-                        )
-                      : showChatConsole(activeChat)
-                  }
-                  title={linkedConsoleChat ? "Show chat" : "Show Codex console"}
-                >
-                  {linkedConsoleChat ? (
-                    <MessageSquare className="size-4" />
-                  ) : openChatConsole.isPending ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <SquareTerminal className="size-4" />
-                  )}
-                  <span className="sr-only">
-                    {linkedConsoleChat ? "Show chat" : "Show Codex console"}
-                  </span>
-                </Button>
+                <>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setShowCustomizations(true)}
+                    title="Inspect Codex customizations"
+                  >
+                    <WandSparkles className="size-4" />
+                    <span className="sr-only">
+                      Inspect Codex customizations
+                    </span>
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-pressed={Boolean(linkedConsoleChat)}
+                    disabled={!linkedConsoleChat && openChatConsole.isPending}
+                    onClick={() =>
+                      linkedConsoleChat
+                        ? openCreatedTab(
+                            linkedConsoleChat.projectId,
+                            "chat",
+                            linkedConsoleChat.id,
+                          )
+                        : showChatConsole(activeChat)
+                    }
+                    title={
+                      linkedConsoleChat ? "Show chat" : "Show Codex console"
+                    }
+                  >
+                    {linkedConsoleChat ? (
+                      <MessageSquare className="size-4" />
+                    ) : openChatConsole.isPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <SquareTerminal className="size-4" />
+                    )}
+                    <span className="sr-only">
+                      {linkedConsoleChat ? "Show chat" : "Show Codex console"}
+                    </span>
+                  </Button>
+                </>
               ) : null}
               {!showImporter && !showSettings && selectedProject ? (
                 <Badge variant="outline" className="gap-2">
@@ -3620,7 +3649,17 @@ export function App() {
         ) : null}
 
         {isPopout && activeChat && !showImporter && !showSettings ? (
-          <div className="absolute right-3 top-3 z-40">
+          <div className="absolute right-3 top-3 z-40 flex gap-2">
+            <Button
+              size="icon"
+              variant="outline"
+              className="size-9 bg-background/75 shadow-md backdrop-blur-xl"
+              onClick={() => setShowCustomizations(true)}
+              title="Inspect Codex customizations"
+            >
+              <WandSparkles className="size-4" />
+              <span className="sr-only">Inspect Codex customizations</span>
+            </Button>
             <Button
               size="icon"
               variant="outline"
@@ -3975,6 +4014,16 @@ export function App() {
           });
         }}
       />
+
+      {activeChat ? (
+        <CustomizationPanel
+          key={activeChat.id}
+          chatId={activeChat.id}
+          chatTitle={activeChat.title}
+          open={showCustomizations}
+          onOpenChange={setShowCustomizations}
+        />
+      ) : null}
 
       <Dialog
         open={mobileNavigationOpen}
