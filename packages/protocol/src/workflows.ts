@@ -295,17 +295,176 @@ export const workflowNodeTypeSchema = z.enum([
 ]);
 export const workflowMutationModeSchema = z.enum(["read-only", "write"]);
 
-export const workflowAgentNodeConfigurationSchema = z.object({
-  prompt: z.string().trim().min(1).max(100_000),
-  developerInstructions: z
-    .string()
-    .trim()
-    .min(1)
-    .max(100_000)
-    .nullable()
-    .default(null),
-  includeStructuredInput: z.boolean().default(true),
-});
+export const workflowAgentNodeConfigurationSchema = z
+  .object({
+    prompt: z.string().trim().min(1).max(100_000),
+    developerInstructions: z
+      .string()
+      .trim()
+      .min(1)
+      .max(100_000)
+      .nullable()
+      .default(null),
+    includeStructuredInput: z.boolean().default(true),
+  })
+  .strict();
+
+export const workflowJsonPointerSchema = z
+  .string()
+  .max(2_000)
+  .refine(
+    (value) =>
+      value === "" ||
+      (value.startsWith("/") &&
+        value
+          .slice(1)
+          .split("/")
+          .every((segment) => /^(?:[^~/]|~[01])*$/u.test(segment))),
+    "Expected an RFC 6901 JSON pointer.",
+  );
+
+export const workflowPredicateOperatorSchema = z.enum([
+  "exists",
+  "not-exists",
+  "equals",
+  "not-equals",
+  "greater-than",
+  "greater-than-or-equals",
+  "less-than",
+  "less-than-or-equals",
+  "contains",
+]);
+
+export const workflowPredicateSchema = z
+  .object({
+    path: workflowJsonPointerSchema,
+    operator: workflowPredicateOperatorSchema,
+    value: workflowJsonValueSchema.optional(),
+  })
+  .strict()
+  .superRefine((predicate, context) => {
+    const unary =
+      predicate.operator === "exists" || predicate.operator === "not-exists";
+    const hasValue = Object.hasOwn(predicate, "value");
+    if (unary && hasValue) {
+      context.addIssue({
+        code: "custom",
+        message: `${predicate.operator} predicates cannot declare a comparison value.`,
+        path: ["value"],
+      });
+    }
+    if (!unary && !hasValue) {
+      context.addIssue({
+        code: "custom",
+        message: `${predicate.operator} predicates require a comparison value.`,
+        path: ["value"],
+      });
+    }
+  });
+
+export const workflowCollectionFailurePolicySchema = z.enum([
+  "fail-fast",
+  "continue",
+]);
+
+export const workflowMapNodeConfigurationSchema =
+  workflowAgentNodeConfigurationSchema
+    .extend({
+      collectionPath: workflowJsonPointerSchema.default(""),
+      itemInputKey: workflowKeySchema.default("item"),
+      maxConcurrency: z.number().int().min(1).max(100),
+      failurePolicy: workflowCollectionFailurePolicySchema.default("fail-fast"),
+    })
+    .strict();
+
+export const workflowPipelineStepSchema = workflowAgentNodeConfigurationSchema
+  .extend({
+    key: workflowKeySchema,
+    name: z.string().trim().min(1).max(200),
+    outputSchema: workflowJsonObjectSchema.default({}),
+  })
+  .strict();
+
+export const workflowPipelineNodeConfigurationSchema = z
+  .object({
+    collectionPath: workflowJsonPointerSchema.default(""),
+    itemInputKey: workflowKeySchema.default("item"),
+    maxConcurrency: z.number().int().min(1).max(100),
+    failurePolicy: workflowCollectionFailurePolicySchema.default("fail-fast"),
+    steps: z.array(workflowPipelineStepSchema).min(1).max(32),
+  })
+  .strict()
+  .superRefine((configuration, context) => {
+    if (!uniqueStrings(configuration.steps.map(({ key }) => key))) {
+      context.addIssue({
+        code: "custom",
+        message: "Pipeline step keys must be unique.",
+        path: ["steps"],
+      });
+    }
+  });
+
+export const workflowReduceNodeConfigurationSchema =
+  workflowAgentNodeConfigurationSchema
+    .extend({
+      collectionPath: workflowJsonPointerSchema.default(""),
+      emptyCollection: z.enum(["fail", "complete"]).default("fail"),
+    })
+    .strict();
+
+export const workflowVerifyNodeConfigurationSchema =
+  workflowAgentNodeConfigurationSchema
+    .extend({
+      passCondition: workflowPredicateSchema,
+      failurePolicy: z.enum(["fail-run", "continue"]).default("fail-run"),
+    })
+    .strict();
+
+export const workflowConditionNodeConfigurationSchema = z
+  .object({
+    requireMatch: z.boolean().default(true),
+  })
+  .strict();
+
+export const workflowRepeatUntilNodeConfigurationSchema =
+  workflowAgentNodeConfigurationSchema
+    .extend({
+      successCondition: workflowPredicateSchema,
+      progressPath: workflowJsonPointerSchema,
+      maxUnchangedIterations: z.number().int().min(1).max(100),
+      maxIterations: z.number().int().min(1).max(100),
+      maxDurationMs: z
+        .number()
+        .int()
+        .min(1_000)
+        .max(24 * 60 * 60 * 1_000),
+    })
+    .strict();
+
+export const workflowGateNodeConfigurationSchema = z
+  .object({
+    prompt: z.string().trim().min(1).max(5_000),
+    expiresAfterMs: z
+      .number()
+      .int()
+      .min(1_000)
+      .max(30 * 24 * 60 * 60 * 1_000)
+      .nullable()
+      .default(null),
+    denialPolicy: z.enum(["fail-run", "skip-downstream"]).default("fail-run"),
+  })
+  .strict();
+
+export const workflowNodeConfigurationSchemas = {
+  agent: workflowAgentNodeConfigurationSchema,
+  map: workflowMapNodeConfigurationSchema,
+  pipeline: workflowPipelineNodeConfigurationSchema,
+  reduce: workflowReduceNodeConfigurationSchema,
+  verify: workflowVerifyNodeConfigurationSchema,
+  condition: workflowConditionNodeConfigurationSchema,
+  repeatUntil: workflowRepeatUntilNodeConfigurationSchema,
+  gate: workflowGateNodeConfigurationSchema,
+} as const;
 
 const workflowRevisionNodeInputObject = z.object({
   key: workflowKeySchema,
@@ -333,24 +492,62 @@ function validateNodeFilesystemAccess(node: {
     : `${node.mutationMode} nodes must request ${expectedFilesystem} filesystem access.`;
 }
 
-export const workflowRevisionNodeInputSchema =
-  workflowRevisionNodeInputObject.superRefine((node, context) => {
-    const error = validateNodeFilesystemAccess(node);
-    if (error) {
+function refineWorkflowNode(
+  node: z.infer<typeof workflowRevisionNodeInputObject>,
+  context: z.RefinementCtx,
+): void {
+  const filesystemError = validateNodeFilesystemAccess(node);
+  if (filesystemError) {
+    context.addIssue({
+      code: "custom",
+      message: filesystemError,
+      path: ["permissionRequirements", "filesystem"],
+    });
+  }
+  if (
+    (node.type === "condition" || node.type === "gate") &&
+    node.mutationMode !== "read-only"
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: `${node.type} nodes must be read-only.`,
+      path: ["mutationMode"],
+    });
+  }
+  const result = workflowNodeConfigurationSchemas[node.type].safeParse(
+    node.configuration,
+  );
+  if (!result.success) {
+    for (const issue of result.error.issues) {
       context.addIssue({
-        code: "custom",
-        message: error,
-        path: ["permissionRequirements", "filesystem"],
+        ...issue,
+        path: ["configuration", ...issue.path],
       });
     }
-  });
+  }
+}
+
+function normalizeWorkflowNodeConfiguration(
+  node: z.infer<typeof workflowRevisionNodeInputObject>,
+) {
+  return {
+    ...node,
+    configuration: workflowNodeConfigurationSchemas[node.type].parse(
+      node.configuration,
+    ),
+  };
+}
+
+export const workflowRevisionNodeInputSchema = workflowRevisionNodeInputObject
+  .superRefine(refineWorkflowNode)
+  .transform(normalizeWorkflowNodeConfiguration);
 
 export const workflowRevisionEdgeInputSchema = z.object({
   from: workflowKeySchema,
   to: workflowKeySchema,
   sourceOutput: z.string().trim().min(1).max(200).nullable().default(null),
   targetInput: z.string().trim().min(1).max(200).nullable().default(null),
-  condition: workflowJsonObjectSchema.nullable().default(null),
+  condition: workflowPredicateSchema.nullable().default(null),
 });
 
 export const workflowGraphSchema = z
@@ -376,6 +573,12 @@ export const workflowGraphSchema = z
     const indegree = new Map(graph.nodes.map(({ key }) => [key, 0]));
     const outgoing = new Map(
       graph.nodes.map(({ key }) => [key, [] as string[]]),
+    );
+    const outgoingEdges = new Map(
+      graph.nodes.map(({ key }) => [
+        key,
+        [] as Array<(typeof graph.edges)[number]>,
+      ]),
     );
     for (const [index, edge] of graph.edges.entries()) {
       if (!keys.has(edge.from)) {
@@ -415,7 +618,59 @@ export const workflowGraphSchema = z
       edgeKeys.add(signature);
       if (keys.has(edge.from) && keys.has(edge.to) && edge.from !== edge.to) {
         outgoing.get(edge.from)!.push(edge.to);
+        outgoingEdges.get(edge.from)!.push(edge);
         indegree.set(edge.to, indegree.get(edge.to)! + 1);
+      }
+    }
+
+    for (const node of graph.nodes) {
+      const edges = outgoingEdges.get(node.key) ?? [];
+      if (node.type !== "condition") {
+        for (const edge of edges) {
+          if (edge.condition) {
+            context.addIssue({
+              code: "custom",
+              message:
+                "Conditional edges must originate from a condition node.",
+              path: ["edges", graph.edges.indexOf(edge), "condition"],
+            });
+          }
+        }
+        continue;
+      }
+      if (edges.length < 2) {
+        context.addIssue({
+          code: "custom",
+          message: "Condition nodes require at least two outgoing branches.",
+          path: ["nodes", graph.nodes.findIndex(({ key }) => key === node.key)],
+        });
+      }
+      const fallbackIndexes = edges
+        .map((edge, index) => (edge.condition === null ? index : -1))
+        .filter((index) => index >= 0);
+      if (fallbackIndexes.length > 1) {
+        context.addIssue({
+          code: "custom",
+          message: "Condition nodes may declare at most one fallback branch.",
+          path: ["edges"],
+        });
+      }
+      if (
+        fallbackIndexes.length === 1 &&
+        fallbackIndexes[0] !== edges.length - 1
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "A condition fallback branch must be ordered last.",
+          path: ["edges", graph.edges.indexOf(edges[fallbackIndexes[0]!]!)],
+        });
+      }
+      if (edges.every(({ condition }) => condition === null)) {
+        context.addIssue({
+          code: "custom",
+          message: "Condition nodes require at least one predicate branch.",
+          path: ["edges"],
+        });
       }
     }
 
@@ -549,16 +804,8 @@ export const workflowRevisionNodeSchema = workflowRevisionNodeInputObject
     position: z.number().int().nonnegative(),
     createdAt: z.string().datetime(),
   })
-  .superRefine((node, context) => {
-    const error = validateNodeFilesystemAccess(node);
-    if (error) {
-      context.addIssue({
-        code: "custom",
-        message: error,
-        path: ["permissionRequirements", "filesystem"],
-      });
-    }
-  });
+  .superRefine(refineWorkflowNode)
+  .transform(normalizeWorkflowNodeConfiguration);
 
 export const workflowRevisionEdgeSchema = z.object({
   id: idSchema,
@@ -569,7 +816,7 @@ export const workflowRevisionEdgeSchema = z.object({
   to: workflowKeySchema,
   sourceOutput: z.string().min(1).max(200).nullable(),
   targetInput: z.string().min(1).max(200).nullable(),
-  condition: workflowJsonObjectSchema.nullable(),
+  condition: workflowPredicateSchema.nullable(),
   position: z.number().int().nonnegative(),
   createdAt: z.string().datetime(),
 });
@@ -955,6 +1202,40 @@ export type WorkflowMutationMode = z.infer<typeof workflowMutationModeSchema>;
 export type WorkflowAgentNodeConfiguration = z.infer<
   typeof workflowAgentNodeConfigurationSchema
 >;
+export type WorkflowJsonPointer = z.infer<typeof workflowJsonPointerSchema>;
+export type WorkflowPredicateOperator = z.infer<
+  typeof workflowPredicateOperatorSchema
+>;
+export type WorkflowPredicate = z.infer<typeof workflowPredicateSchema>;
+export type WorkflowCollectionFailurePolicy = z.infer<
+  typeof workflowCollectionFailurePolicySchema
+>;
+export type WorkflowMapNodeConfiguration = z.infer<
+  typeof workflowMapNodeConfigurationSchema
+>;
+export type WorkflowPipelineStep = z.infer<typeof workflowPipelineStepSchema>;
+export type WorkflowPipelineNodeConfiguration = z.infer<
+  typeof workflowPipelineNodeConfigurationSchema
+>;
+export type WorkflowReduceNodeConfiguration = z.infer<
+  typeof workflowReduceNodeConfigurationSchema
+>;
+export type WorkflowVerifyNodeConfiguration = z.infer<
+  typeof workflowVerifyNodeConfigurationSchema
+>;
+export type WorkflowConditionNodeConfiguration = z.infer<
+  typeof workflowConditionNodeConfigurationSchema
+>;
+export type WorkflowRepeatUntilNodeConfiguration = z.infer<
+  typeof workflowRepeatUntilNodeConfigurationSchema
+>;
+export type WorkflowGateNodeConfiguration = z.infer<
+  typeof workflowGateNodeConfigurationSchema
+>;
+type WorkflowNodeConfigurationSchema =
+  (typeof workflowNodeConfigurationSchemas)[keyof typeof workflowNodeConfigurationSchemas];
+export type WorkflowNodeConfiguration =
+  z.infer<WorkflowNodeConfigurationSchema>;
 export type WorkflowRevisionNodeInput = z.infer<
   typeof workflowRevisionNodeInputSchema
 >;

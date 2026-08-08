@@ -65,6 +65,10 @@ The server-owned persistence and API state machine for approvals and structured
 user interaction is documented in
 [`AGENT_INTERACTIONS.md`](AGENT_INTERACTIONS.md).
 
+The constrained, non-executable workflow graph and orchestration primitive
+contract is documented in
+[`WORKFLOW_ORCHESTRATION.md`](WORKFLOW_ORCHESTRATION.md).
+
 The worker will:
 
 - detect the installed Codex binary and version;

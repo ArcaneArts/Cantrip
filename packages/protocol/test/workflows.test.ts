@@ -5,18 +5,27 @@ import {
   workflowAgentNodeConfigurationSchema,
   workflowDefinitionCreateSchema,
   workflowDefinitionQuerySchema,
+  workflowConditionNodeConfigurationSchema,
+  workflowGateNodeConfigurationSchema,
   workflowGraphSchema,
+  workflowJsonPointerSchema,
   workflowJsonValueSchema,
+  workflowMapNodeConfigurationSchema,
   workflowNodeExecutionRequestSchema,
   workflowNodeExecutionResultSchema,
   workflowNodeInterruptResultSchema,
   workflowNodeRetrySchema,
   workflowPermissionRequirementsSchema,
+  workflowPipelineNodeConfigurationSchema,
+  workflowPredicateSchema,
+  workflowReduceNodeConfigurationSchema,
+  workflowRepeatUntilNodeConfigurationSchema,
   workflowRevisionNodeSchema,
   workflowRunCreateSchema,
   workflowRunCancelSchema,
   workflowRunDetailSchema,
   workflowRunStatusUpdateSchema,
+  workflowVerifyNodeConfigurationSchema,
 } from "../src/workflows.js";
 
 const timestamp = "2026-08-08T17:00:00.000Z";
@@ -26,6 +35,7 @@ function readNode(key: string) {
     key,
     type: "agent" as const,
     name: `Read ${key}`,
+    configuration: { prompt: `Read ${key}.` },
   };
 }
 
@@ -34,6 +44,7 @@ function writeNode(key: string) {
     key,
     type: "agent" as const,
     name: `Write ${key}`,
+    configuration: { prompt: `Write ${key}.` },
     mutationMode: "write" as const,
     permissionRequirements: { filesystem: "workspace-write" as const },
   };
@@ -99,6 +110,185 @@ describe("workflow protocol", () => {
     });
     expect(
       workflowAgentNodeConfigurationSchema.safeParse({ prompt: "" }).success,
+    ).toBe(false);
+  });
+
+  it("normalizes constrained orchestration primitive configurations", () => {
+    expect(
+      workflowMapNodeConfigurationSchema.parse({
+        prompt: "Inspect one item.",
+        maxConcurrency: 4,
+      }),
+    ).toMatchObject({
+      collectionPath: "",
+      itemInputKey: "item",
+      maxConcurrency: 4,
+      failurePolicy: "fail-fast",
+    });
+    expect(
+      workflowPipelineNodeConfigurationSchema
+        .parse({
+          maxConcurrency: 2,
+          steps: [
+            { key: "inspect", name: "Inspect", prompt: "Inspect the item." },
+            { key: "verify", name: "Verify", prompt: "Verify the item." },
+          ],
+        })
+        .steps.map(({ key }) => key),
+    ).toEqual(["inspect", "verify"]);
+    expect(
+      workflowReduceNodeConfigurationSchema.parse({
+        prompt: "Synthesize the findings.",
+      }),
+    ).toMatchObject({ collectionPath: "", emptyCollection: "fail" });
+    expect(
+      workflowVerifyNodeConfigurationSchema.parse({
+        prompt: "Verify the finding.",
+        passCondition: {
+          path: "/passed",
+          operator: "equals",
+          value: true,
+        },
+      }),
+    ).toMatchObject({ failurePolicy: "fail-run" });
+    expect(workflowConditionNodeConfigurationSchema.parse({})).toEqual({
+      requireMatch: true,
+    });
+    expect(
+      workflowRepeatUntilNodeConfigurationSchema.parse({
+        prompt: "Improve the candidate.",
+        successCondition: {
+          path: "/score",
+          operator: "greater-than-or-equals",
+          value: 0.9,
+        },
+        progressPath: "/score",
+        maxUnchangedIterations: 2,
+        maxIterations: 5,
+        maxDurationMs: 60_000,
+      }),
+    ).toMatchObject({ maxIterations: 5, maxUnchangedIterations: 2 });
+    expect(
+      workflowGateNodeConfigurationSchema.parse({
+        prompt: "Approve the next stage?",
+      }),
+    ).toEqual({
+      prompt: "Approve the next stage?",
+      expiresAfterMs: null,
+      denialPolicy: "fail-run",
+    });
+  });
+
+  it("rejects ambiguous predicates and unbounded collection or loop primitives", () => {
+    expect(workflowJsonPointerSchema.parse("/results/0/score")).toBe(
+      "/results/0/score",
+    );
+    expect(workflowJsonPointerSchema.safeParse("/bad~2escape").success).toBe(
+      false,
+    );
+    expect(
+      workflowPredicateSchema.safeParse({
+        path: "/approved",
+        operator: "equals",
+      }).success,
+    ).toBe(false);
+    expect(
+      workflowPredicateSchema.safeParse({
+        path: "/approved",
+        operator: "exists",
+        value: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      workflowMapNodeConfigurationSchema.safeParse({
+        prompt: "Inspect one item.",
+      }).success,
+    ).toBe(false);
+    expect(
+      workflowPipelineNodeConfigurationSchema.safeParse({
+        maxConcurrency: 2,
+        steps: [
+          { key: "same", name: "First", prompt: "First." },
+          { key: "same", name: "Second", prompt: "Second." },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      workflowRepeatUntilNodeConfigurationSchema.safeParse({
+        prompt: "Improve the candidate.",
+        successCondition: {
+          path: "/done",
+          operator: "equals",
+          value: true,
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("validates deterministic condition branches", () => {
+    const conditional = workflowGraphSchema.parse({
+      version: 1,
+      nodes: [
+        {
+          key: "branch",
+          type: "condition",
+          name: "Branch",
+          configuration: {},
+        },
+        readNode("approved"),
+        readNode("fallback"),
+      ],
+      edges: [
+        {
+          from: "branch",
+          to: "approved",
+          condition: {
+            path: "/approved",
+            operator: "equals",
+            value: true,
+          },
+        },
+        { from: "branch", to: "fallback" },
+      ],
+    });
+    expect(conditional.nodes[0]?.configuration).toEqual({
+      requireMatch: true,
+    });
+    expect(
+      workflowGraphSchema.safeParse({
+        version: 1,
+        nodes: [readNode("source"), readNode("target")],
+        edges: [
+          {
+            from: "source",
+            to: "target",
+            condition: { path: "/ok", operator: "equals", value: true },
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      workflowGraphSchema.safeParse({
+        version: 1,
+        nodes: [
+          {
+            key: "branch",
+            type: "condition",
+            name: "Branch",
+            configuration: {},
+          },
+          readNode("fallback"),
+          readNode("matched"),
+        ],
+        edges: [
+          { from: "branch", to: "fallback" },
+          {
+            from: "branch",
+            to: "matched",
+            condition: { path: "/ok", operator: "equals", value: true },
+          },
+        ],
+      }).success,
     ).toBe(false);
   });
 
