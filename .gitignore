@@ -4,8 +4,8 @@ node_modules/
 
 # Build output and tool caches.
 dist/
-build/
-out/
+/build/
+/out/
 .cache/
 .vite/
 .turbo/
@@ -55,3 +55,22 @@ cantrip_app/src-tauri/resources/runtime/*
 
 # Locally assembled release artifacts.
 artifacts/
+
+# Cantrip Code source is tracked, but its prepared source, dependency tree,
+# caches, compiled workbench, and packaged server are always generated.
+.cantrip-code/
+cantrip_code/.build/
+cantrip_code/.cache/
+cantrip_code/.prepared/
+cantrip_code/artifacts/
+cantrip_code/node_modules/
+cantrip_code/upstream/node_modules/
+cantrip_code/upstream/.build/
+cantrip_code/upstream/.cache/
+cantrip_code/upstream/out*/
+cantrip_code/upstream/extensions/**/out/
+cantrip_code/upstream/extensions/**/dist/
+cantrip_code/upstream/build/node_modules/
+cantrip_code/upstream/coverage/
+cantrip_code/upstream/test-results/
+cantrip_code/upstream/test-output.json

@@ -1,0 +1,12 @@
+{
+  "nameShort": "Cantrip Code",
+  "nameLong": "Cantrip Code",
+  "applicationName": "cantrip-code",
+  "dataFolderName": ".cantrip-code",
+  "serverApplicationName": "cantrip-code",
+  "serverDataFolderName": ".cantrip-code",
+  "embedderIdentifier": "cantrip-code",
+  "reportIssueUrl": "https://github.com/ArcaneArts/Cantrip/issues/new",
+  "requestFeatureUrl": "https://github.com/ArcaneArts/Cantrip/issues/new",
+  "reportMarketplaceIssueUrl": "https://github.com/eclipse/openvsx/issues"
+}
