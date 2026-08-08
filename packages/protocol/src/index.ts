@@ -422,6 +422,8 @@ export const projectListSchema = z.array(projectSummarySchema);
 
 export const chatCreateSchema = z.object({
   title: z.string().trim().min(1).max(200).default("New chat"),
+  worktreeId: z.string().min(1).optional(),
+  worktreeMode: z.enum(["agent-managed", "pinned"]).default("agent-managed"),
 });
 
 export const chatUpdateSchema = z.object({
@@ -430,6 +432,8 @@ export const chatUpdateSchema = z.object({
 
 export const chatForkSchema = z.object({
   messageId: z.string().min(1).optional(),
+  worktreeId: z.string().min(1).optional(),
+  worktreeMode: z.enum(["agent-managed", "pinned"]).optional(),
 });
 
 export const orderedIdsSchema = z.object({
@@ -454,6 +458,7 @@ export const chatListSchema = z.array(chatSummarySchema);
 
 export const terminalCreateSchema = z.object({
   title: z.string().trim().min(1).max(200).default("Terminal"),
+  worktreeId: z.string().min(1).optional(),
 });
 
 export const terminalUpdateSchema = z.object({
@@ -477,6 +482,7 @@ export const terminalListSchema = z.array(terminalSummarySchema);
 
 export const explorerCreateSchema = z.object({
   title: z.string().trim().min(1).max(200).default("Explorer"),
+  worktreeId: z.string().min(1).optional(),
 });
 
 export const explorerUpdateSchema = z.object({
@@ -690,6 +696,7 @@ export const projectViewKindSchema = z.enum(["history", "issues"]);
 export const projectViewCreateSchema = z.object({
   title: z.string().trim().min(1).max(200),
   kind: projectViewKindSchema,
+  worktreeId: z.string().min(1).optional(),
 });
 
 export const projectViewUpdateSchema = z.object({
@@ -1086,6 +1093,37 @@ export const worktreePruneResultSchema = z.object({
 export const worktreeStatusResultSchema = z.object({
   worktree: workerWorktreeSummarySchema,
   status: gitStatusSchema,
+});
+
+export const projectWorktreeCreateSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  mode: worktreeCreateModeSchema,
+});
+
+export const projectWorktreeLockSchema = z.object({
+  reason: z.string().trim().min(1).max(1_000).nullable().default(null),
+});
+
+export const projectWorktreeRemoveSchema = z.object({
+  force: z.boolean().default(false),
+  allowExternal: z.boolean().default(false),
+});
+
+export const projectWorktreePruneSchema = z.object({
+  allowExternal: z.boolean().default(false),
+});
+
+export const projectWorktreePolicyUpdateSchema = z.object({
+  policy: worktreePolicySchema,
+});
+
+export const chatWorktreeUpdateSchema = z.object({
+  worktreeId: z.string().min(1),
+  mode: z.enum(["agent-managed", "pinned"]),
+});
+
+export const worktreeSelectionSchema = z.object({
+  worktreeId: z.string().min(1),
 });
 
 export const agentTurnResultSchema = z.object({
@@ -1488,6 +1526,15 @@ export type WorktreeMutationResult = z.infer<
 export type WorktreeRemoveResult = z.infer<typeof worktreeRemoveResultSchema>;
 export type WorktreePruneResult = z.infer<typeof worktreePruneResultSchema>;
 export type WorktreeStatusResult = z.infer<typeof worktreeStatusResultSchema>;
+export type ProjectWorktreeCreate = z.infer<typeof projectWorktreeCreateSchema>;
+export type ProjectWorktreeLock = z.infer<typeof projectWorktreeLockSchema>;
+export type ProjectWorktreeRemove = z.infer<typeof projectWorktreeRemoveSchema>;
+export type ProjectWorktreePrune = z.infer<typeof projectWorktreePruneSchema>;
+export type ProjectWorktreePolicyUpdate = z.infer<
+  typeof projectWorktreePolicyUpdateSchema
+>;
+export type ChatWorktreeUpdate = z.infer<typeof chatWorktreeUpdateSchema>;
+export type WorktreeSelection = z.infer<typeof worktreeSelectionSchema>;
 export type ChatCreate = z.infer<typeof chatCreateSchema>;
 export type ChatUpdate = z.infer<typeof chatUpdateSchema>;
 export type ChatFork = z.infer<typeof chatForkSchema>;
