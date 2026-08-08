@@ -1,4 +1,6 @@
 import type {
+  AgentInteractionRequestPayload,
+  AgentInteractionResponse,
   ChatMessageContent,
   CodexRuntimeReport,
   PendingPlanQuestion,
@@ -10,6 +12,7 @@ import { sql } from "drizzle-orm";
 import {
   bigserial,
   boolean,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -488,6 +491,61 @@ export const chatExecutionLanes = pgTable(
     uniqueIndex("chat_execution_lanes_worktree_reserved_unique")
       .on(table.worktreeId)
       .where(sql`${table.exclusive} = true AND ${table.state} <> 'released'`),
+  ],
+);
+
+export const agentInteractionRequests = pgTable(
+  "agent_interaction_requests",
+  {
+    id: text("id").primaryKey(),
+    requestKey: text("request_key").notNull(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    chatId: text("chat_id").references(() => chats.id, {
+      onDelete: "cascade",
+    }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    executionLaneId: text("execution_lane_id").references(
+      () => chatExecutionLanes.id,
+      { onDelete: "set null" },
+    ),
+    threadId: text("thread_id").notNull(),
+    turnId: text("turn_id"),
+    itemId: text("item_id"),
+    workflowRunId: text("workflow_run_id"),
+    workflowNodeId: text("workflow_node_id"),
+    kind: text("kind").notNull(),
+    status: text("status").notNull().default("pending"),
+    payload: jsonb("payload").$type<AgentInteractionRequestPayload>().notNull(),
+    response: jsonb("response").$type<AgentInteractionResponse>(),
+    resolutionIdempotencyKey: text("resolution_idempotency_key"),
+    resolvedByUserId: text("resolved_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("agent_interaction_requests_request_key_unique").on(
+      table.requestKey,
+    ),
+    index("agent_interaction_requests_chat_status_index").on(
+      table.chatId,
+      table.status,
+    ),
+    index("agent_interaction_requests_expiry_index").on(
+      table.status,
+      table.expiresAt,
+    ),
   ],
 );
 

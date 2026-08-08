@@ -1,7 +1,16 @@
 import { randomUUID } from "node:crypto";
 
-import { normalizeResponsesBaseUrl } from "@cantrip/protocol";
+import {
+  agentInteractionRequestSchema,
+  normalizeResponsesBaseUrl,
+} from "@cantrip/protocol";
 import type {
+  AgentInteractionRequest,
+  AgentInteractionRequestCreate,
+  AgentInteractionRequestPayload,
+  AgentInteractionRequestQuery,
+  AgentInteractionResolutionCreate,
+  AgentInteractionResponse,
   BrowserCreate,
   BrowserSummary,
   BrowserUpdate,
@@ -61,7 +70,18 @@ import type {
   WorktreePolicy,
   WorktreeSelection,
 } from "@cantrip/protocol";
-import { and, asc, desc, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  lte,
+  ne,
+  notInArray,
+  sql,
+} from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -99,6 +119,7 @@ export interface ChatExecutionContext {
 }
 
 export class ExecutionLaneConflictError extends Error {}
+export class AgentInteractionConflictError extends Error {}
 
 export interface TerminalExecutionContext {
   cwd: string;
@@ -194,6 +215,10 @@ export interface ModelRuntime {
 
 function toISOString(value: Date): string {
   return value.toISOString();
+}
+
+function chatIsExecuting(status: ChatSummary["status"]): boolean {
+  return status === "running" || status === "waiting-for-approval";
 }
 
 function firstOrThrow<T>(rows: T[], operation: string): T {
@@ -390,6 +415,112 @@ function toWorkerSummary(
     lastSeenAt: toISOString(worker.lastSeenAt),
     online: Date.now() - worker.lastSeenAt.getTime() <= ONLINE_WINDOW_MS,
   };
+}
+
+function toAgentInteractionRequest(
+  request: typeof schema.agentInteractionRequests.$inferSelect,
+): AgentInteractionRequest {
+  return agentInteractionRequestSchema.parse({
+    id: request.id,
+    requestKey: request.requestKey,
+    projectId: request.projectId,
+    provenance: {
+      chatId: request.chatId,
+      threadId: request.threadId,
+      turnId: request.turnId,
+      itemId: request.itemId,
+      executionLaneId: request.executionLaneId,
+      workflowRunId: request.workflowRunId,
+      workflowNodeId: request.workflowNodeId,
+      workerId: request.workerId,
+    },
+    payload: request.payload,
+    status: request.status,
+    response: request.response,
+    resolvedByUserId: request.resolvedByUserId,
+    expiresAt: request.expiresAt ? toISOString(request.expiresAt) : null,
+    resolvedAt: request.resolvedAt ? toISOString(request.resolvedAt) : null,
+    createdAt: toISOString(request.createdAt),
+    updatedAt: toISOString(request.updatedAt),
+  });
+}
+
+function agentInteractionResponseForStorage(
+  payload: AgentInteractionRequestPayload,
+  response: AgentInteractionResponse,
+): AgentInteractionResponse {
+  if (payload.kind !== "userInput" || response.kind !== "userInput") {
+    return response;
+  }
+  const secretQuestionIds = new Set(
+    payload.questions
+      .filter((question) => question.isSecret)
+      .map((question) => question.id),
+  );
+  return {
+    ...response,
+    answers: Object.fromEntries(
+      Object.entries(response.answers).map(([questionId, answer]) => [
+        questionId,
+        secretQuestionIds.has(questionId)
+          ? { answers: ["[redacted]"] }
+          : answer,
+      ]),
+    ),
+  };
+}
+
+function validateAgentInteractionResponse(
+  payload: AgentInteractionRequestPayload,
+  response: AgentInteractionResponse,
+): void {
+  if (payload.kind !== response.kind) {
+    throw new AgentInteractionConflictError(
+      "Response kind does not match the pending request.",
+    );
+  }
+  if (payload.kind === "commandExecution") {
+    if (response.kind !== "commandExecution") return;
+    if (
+      payload.availableDecisions &&
+      !payload.availableDecisions.includes(response.decision)
+    ) {
+      throw new AgentInteractionConflictError(
+        "Command response is not one of the available decisions.",
+      );
+    }
+    if (
+      response.decision === "acceptWithExecpolicyAmendment" &&
+      !response.execpolicyAmendment
+    ) {
+      throw new AgentInteractionConflictError(
+        "An execpolicy amendment is required for this decision.",
+      );
+    }
+    if (
+      response.decision === "applyNetworkPolicyAmendment" &&
+      !response.networkPolicyAmendment
+    ) {
+      throw new AgentInteractionConflictError(
+        "A network policy amendment is required for this decision.",
+      );
+    }
+  }
+  if (payload.kind === "userInput") {
+    if (response.kind !== "userInput") return;
+    const questionIds = new Set(
+      payload.questions.map((question) => question.id),
+    );
+    const answerIds = Object.keys(response.answers);
+    if (
+      answerIds.length !== questionIds.size ||
+      answerIds.some((questionId) => !questionIds.has(questionId))
+    ) {
+      throw new AgentInteractionConflictError(
+        "User input responses must answer each requested question exactly once.",
+      );
+    }
+  }
 }
 
 function toRemoteSurfaceSummary(
@@ -1435,7 +1566,7 @@ export class ServerRepository {
         .where(
           and(
             eq(schema.chats.activeWorktreeId, worktreeId),
-            eq(schema.chats.status, "running"),
+            inArray(schema.chats.status, ["running", "waiting-for-approval"]),
           ),
         ),
       this.database
@@ -1519,13 +1650,19 @@ export class ServerRepository {
     const now = new Date();
     await this.database.transaction(async (transaction) => {
       await transaction
+        .update(schema.agentInteractionRequests)
+        .set({ status: "interrupted", resolvedAt: now, updatedAt: now })
+        .where(eq(schema.agentInteractionRequests.status, "pending"));
+      await transaction
         .update(schema.chatExecutionLanes)
         .set({ state: "suspended", updatedAt: now })
         .where(eq(schema.chatExecutionLanes.state, "active"));
       await transaction
         .update(schema.chats)
         .set({ status: "failed", updatedAt: now })
-        .where(eq(schema.chats.status, "running"));
+        .where(
+          inArray(schema.chats.status, ["running", "waiting-for-approval"]),
+        );
       await transaction
         .update(schema.chatRuntimeSessions)
         .set({ status: "detached", updatedAt: now })
@@ -1592,7 +1729,10 @@ export class ServerRepository {
           .where(
             and(
               eq(schema.chats.id, chatId),
-              ne(schema.chats.status, "running"),
+              notInArray(schema.chats.status, [
+                "running",
+                "waiting-for-approval",
+              ]),
             ),
           )
           .returning({ id: schema.chats.id });
@@ -1784,7 +1924,10 @@ export class ServerRepository {
       laneId,
     );
     if (!context) return null;
-    if (context.chat.status === "running" || context.lane.state === "active") {
+    if (
+      chatIsExecuting(context.chat.status) ||
+      context.lane.state === "active"
+    ) {
       throw new ExecutionLaneConflictError(
         "Finish the active chat execution before releasing its lane.",
       );
@@ -1951,7 +2094,7 @@ export class ServerRepository {
       );
     }
     if (
-      current.status !== "running" ||
+      !chatIsExecuting(current.status) ||
       current.executionLaneId !== expectedExecutionLaneId
     ) {
       throw new ExecutionLaneConflictError(
@@ -2186,7 +2329,7 @@ export class ServerRepository {
         "The target worktree is no longer ready for execution.",
       );
     }
-    if (pending.chat.status === "running") {
+    if (chatIsExecuting(pending.chat.status)) {
       throw new ExecutionLaneConflictError(
         "Finish the active turn before applying its worktree transition.",
       );
@@ -3836,7 +3979,10 @@ export class ServerRepository {
     if (!target || target.worktree.lifecycleState !== "ready") return null;
 
     const changingWorktree = chat.activeWorktreeId !== target.worktree.id;
-    if (changingWorktree && chat.status === "running") {
+    if (
+      changingWorktree &&
+      chatIsExecuting(chat.status as ChatSummary["status"])
+    ) {
       throw new ExecutionLaneConflictError(
         "Wait for the active chat turn before switching worktrees.",
       );
@@ -3993,7 +4139,7 @@ export class ServerRepository {
       .limit(1);
     const chat = rows[0]?.chat;
     if (!chat) return false;
-    if (chat.status === "running") return "running";
+    if (chatIsExecuting(chat.status as ChatSummary["status"])) return "running";
     await this.database.delete(schema.chats).where(eq(schema.chats.id, chatId));
     return true;
   }
@@ -4530,6 +4676,247 @@ export class ServerRepository {
       .where(eq(schema.chats.id, chatId));
   }
 
+  async recordAgentInteractionRequest(
+    input: AgentInteractionRequestCreate,
+  ): Promise<AgentInteractionRequest> {
+    const scopes = await this.database
+      .select({ projectId: schema.projects.id })
+      .from(schema.projects)
+      .innerJoin(
+        schema.workers,
+        and(
+          eq(schema.workers.id, input.provenance.workerId),
+          eq(schema.workers.ownerId, schema.projects.ownerId),
+        ),
+      )
+      .where(eq(schema.projects.id, input.projectId))
+      .limit(1);
+    if (!scopes[0]) {
+      throw new AgentInteractionConflictError(
+        "Interaction worker does not belong to the project owner.",
+      );
+    }
+    if (input.provenance.chatId) {
+      const chats = await this.database
+        .select({ id: schema.chats.id })
+        .from(schema.chats)
+        .where(
+          and(
+            eq(schema.chats.id, input.provenance.chatId),
+            eq(schema.chats.projectId, input.projectId),
+          ),
+        )
+        .limit(1);
+      if (!chats[0]) {
+        throw new AgentInteractionConflictError(
+          "Interaction provenance does not match the project chat.",
+        );
+      }
+    }
+
+    const now = new Date();
+    const expiresAt = input.expiresAt ? new Date(input.expiresAt) : null;
+    const expiredAtCreation = expiresAt !== null && expiresAt <= now;
+    const rows = await this.database
+      .insert(schema.agentInteractionRequests)
+      .values({
+        id: randomUUID(),
+        requestKey: input.requestKey,
+        projectId: input.projectId,
+        chatId: input.provenance.chatId,
+        workerId: input.provenance.workerId,
+        executionLaneId: input.provenance.executionLaneId,
+        threadId: input.provenance.threadId,
+        turnId: input.provenance.turnId,
+        itemId: input.provenance.itemId,
+        workflowRunId: input.provenance.workflowRunId,
+        workflowNodeId: input.provenance.workflowNodeId,
+        kind: input.payload.kind,
+        status: expiredAtCreation ? "expired" : "pending",
+        payload: input.payload,
+        expiresAt,
+        resolvedAt: expiredAtCreation ? now : null,
+      })
+      .onConflictDoNothing({
+        target: schema.agentInteractionRequests.requestKey,
+      })
+      .returning();
+    const inserted = Boolean(rows[0]);
+    let request = rows[0];
+    if (!request) {
+      const existing = await this.database
+        .select()
+        .from(schema.agentInteractionRequests)
+        .where(eq(schema.agentInteractionRequests.requestKey, input.requestKey))
+        .limit(1);
+      request = firstOrThrow(existing, "reading an interaction request");
+    }
+    const normalized = toAgentInteractionRequest(request);
+    if (
+      !inserted &&
+      (normalized.projectId !== input.projectId ||
+        JSON.stringify(normalized.provenance) !==
+          JSON.stringify(input.provenance) ||
+        JSON.stringify(normalized.payload) !== JSON.stringify(input.payload) ||
+        normalized.expiresAt !== (expiresAt?.toISOString() ?? null))
+    ) {
+      throw new AgentInteractionConflictError(
+        "Interaction request key was reused with different request data.",
+      );
+    }
+    if (input.provenance.chatId && request.status === "pending") {
+      await this.database
+        .update(schema.chats)
+        .set({ status: "waiting-for-approval", updatedAt: new Date() })
+        .where(eq(schema.chats.id, input.provenance.chatId));
+    }
+    return normalized;
+  }
+
+  async listAgentInteractionRequests(
+    ownerId: string,
+    query: AgentInteractionRequestQuery,
+  ): Promise<AgentInteractionRequest[]> {
+    await this.expireAgentInteractionRequests();
+    const conditions = [eq(schema.projects.ownerId, ownerId)];
+    if (query.chatId) {
+      conditions.push(eq(schema.agentInteractionRequests.chatId, query.chatId));
+    }
+    if (query.status) {
+      conditions.push(eq(schema.agentInteractionRequests.status, query.status));
+    }
+    const rows = await this.database
+      .select({ request: schema.agentInteractionRequests })
+      .from(schema.agentInteractionRequests)
+      .innerJoin(
+        schema.projects,
+        eq(schema.projects.id, schema.agentInteractionRequests.projectId),
+      )
+      .where(and(...conditions))
+      .orderBy(desc(schema.agentInteractionRequests.createdAt))
+      .limit(query.limit);
+    return rows.map(({ request }) => toAgentInteractionRequest(request));
+  }
+
+  async getAgentInteractionRequest(
+    ownerId: string,
+    requestId: string,
+  ): Promise<AgentInteractionRequest | null> {
+    await this.expireAgentInteractionRequests();
+    const rows = await this.database
+      .select({ request: schema.agentInteractionRequests })
+      .from(schema.agentInteractionRequests)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.agentInteractionRequests.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.agentInteractionRequests.id, requestId))
+      .limit(1);
+    return rows[0] ? toAgentInteractionRequest(rows[0].request) : null;
+  }
+
+  async resolveAgentInteractionRequest(
+    ownerId: string,
+    requestId: string,
+    input: AgentInteractionResolutionCreate,
+  ): Promise<AgentInteractionRequest | null> {
+    await this.expireAgentInteractionRequests();
+    const existing = await this.getAgentInteractionRequest(ownerId, requestId);
+    if (!existing) return null;
+    validateAgentInteractionResponse(existing.payload, input.response);
+    const storedResponse = agentInteractionResponseForStorage(
+      existing.payload,
+      input.response,
+    );
+    if (existing.status !== "pending") {
+      const rows = await this.database
+        .select()
+        .from(schema.agentInteractionRequests)
+        .where(eq(schema.agentInteractionRequests.id, requestId))
+        .limit(1);
+      const row = firstOrThrow(rows, "reading a resolved interaction request");
+      if (
+        row.resolutionIdempotencyKey === input.idempotencyKey &&
+        JSON.stringify(row.response) === JSON.stringify(storedResponse)
+      ) {
+        return toAgentInteractionRequest(row);
+      }
+      throw new AgentInteractionConflictError(
+        `Interaction request is already ${existing.status}.`,
+      );
+    }
+
+    const now = new Date();
+    const rows = await this.database
+      .update(schema.agentInteractionRequests)
+      .set({
+        status: "resolved",
+        response: storedResponse,
+        resolutionIdempotencyKey: input.idempotencyKey,
+        resolvedByUserId: ownerId,
+        resolvedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.agentInteractionRequests.id, requestId),
+          eq(schema.agentInteractionRequests.status, "pending"),
+        ),
+      )
+      .returning();
+    if (!rows[0]) {
+      throw new AgentInteractionConflictError(
+        "Interaction request was resolved concurrently.",
+      );
+    }
+    if (rows[0].chatId) {
+      await this.restoreChatAfterInteractions(rows[0].chatId);
+    }
+    return toAgentInteractionRequest(rows[0]);
+  }
+
+  async expireAgentInteractionRequests(
+    now = new Date(),
+  ): Promise<AgentInteractionRequest[]> {
+    const rows = await this.database
+      .update(schema.agentInteractionRequests)
+      .set({ status: "expired", resolvedAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(schema.agentInteractionRequests.status, "pending"),
+          lte(schema.agentInteractionRequests.expiresAt, now),
+        ),
+      )
+      .returning();
+    const chatIds = new Set(
+      rows.flatMap((request) => (request.chatId ? [request.chatId] : [])),
+    );
+    for (const chatId of chatIds) {
+      await this.restoreChatAfterInteractions(chatId);
+    }
+    return rows.map(toAgentInteractionRequest);
+  }
+
+  async interruptAgentInteractionRequests(
+    chatId: string,
+  ): Promise<AgentInteractionRequest[]> {
+    const now = new Date();
+    const rows = await this.database
+      .update(schema.agentInteractionRequests)
+      .set({ status: "interrupted", resolvedAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(schema.agentInteractionRequests.chatId, chatId),
+          eq(schema.agentInteractionRequests.status, "pending"),
+        ),
+      )
+      .returning();
+    return rows.map(toAgentInteractionRequest);
+  }
+
   async listMessages(ownerId: string, chatId: string): Promise<ChatMessage[]> {
     const rows = await this.database
       .select({ message: schema.chatMessages })
@@ -4901,5 +5288,28 @@ export class ServerRepository {
       )
       .limit(1);
     return rows[0] ? toChatMessage(rows[0].message) : null;
+  }
+
+  private async restoreChatAfterInteractions(chatId: string): Promise<void> {
+    const pending = await this.database
+      .select({ id: schema.agentInteractionRequests.id })
+      .from(schema.agentInteractionRequests)
+      .where(
+        and(
+          eq(schema.agentInteractionRequests.chatId, chatId),
+          eq(schema.agentInteractionRequests.status, "pending"),
+        ),
+      )
+      .limit(1);
+    if (pending[0]) return;
+    await this.database
+      .update(schema.chats)
+      .set({ status: "running", updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          eq(schema.chats.status, "waiting-for-approval"),
+        ),
+      );
   }
 }

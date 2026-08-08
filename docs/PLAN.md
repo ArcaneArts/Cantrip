@@ -61,6 +61,10 @@ The tested Codex range, live method/feature negotiation, degradation states, and
 schema-update procedure are documented in
 [`CODEX_RUNTIME_COMPATIBILITY.md`](CODEX_RUNTIME_COMPATIBILITY.md).
 
+The server-owned persistence and API state machine for approvals and structured
+user interaction is documented in
+[`AGENT_INTERACTIONS.md`](AGENT_INTERACTIONS.md).
+
 The worker will:
 
 - detect the installed Codex binary and version;

@@ -7,6 +7,10 @@ import {
   agentWorktreeToolResultSchema,
   agentThreadSyncSchema,
   agentTurnResultSchema,
+  agentInteractionRequestListSchema,
+  agentInteractionRequestQuerySchema,
+  agentInteractionRequestSchema,
+  agentInteractionResolutionCreateSchema,
   browserCreateSchema,
   browserListSchema,
   browserSummarySchema,
@@ -119,7 +123,11 @@ import {
   worktreeStatusResultSchema,
 } from "@cantrip/protocol";
 import Fastify from "fastify";
-import type { ChatMessage, ChatTurnCreate } from "@cantrip/protocol";
+import type {
+  ChatMessage,
+  ChatSummary,
+  ChatTurnCreate,
+} from "@cantrip/protocol";
 import type {
   AgentWorktreeToolCall,
   AgentWorktreeToolResult,
@@ -128,6 +136,7 @@ import type {
 import type { ServerConfig } from "./config.js";
 import type { DatabaseConnection } from "./db/index.js";
 import {
+  AgentInteractionConflictError,
   ExecutionLaneConflictError,
   LOCAL_USER_ID,
   type ChatExecutionContext,
@@ -156,6 +165,10 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function chatIsExecuting(status: ChatSummary["status"]): boolean {
+  return status === "running" || status === "waiting-for-approval";
+}
+
 function requiredToolString(
   input: Record<string, unknown>,
   key: string,
@@ -178,6 +191,7 @@ function optionalToolString(
 }
 
 const ROUTE_FAILURE_COOLDOWN_MS = 60_000;
+const AGENT_INTERACTION_EXPIRY_SWEEP_MS = 1_000;
 const GOAL_RESUME_PROMPT =
   "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
 
@@ -248,6 +262,15 @@ export async function buildApp({
   const routeCooldowns = new Map<string, number>();
   const surfaceAttachmentCounts = new Map<string, number>();
   const worktreeMutationQueues = new Map<string, Promise<void>>();
+  const agentInteractionExpiryTimer = setInterval(() => {
+    void repository.expireAgentInteractionRequests().catch((error) => {
+      app.log.error(
+        { err: error },
+        "Failed to expire pending agent interaction requests",
+      );
+    });
+  }, AGENT_INTERACTION_EXPIRY_SWEEP_MS);
+  agentInteractionExpiryTimer.unref();
 
   const serializeWorktreeMutation = async <T>(
     projectId: string,
@@ -340,7 +363,7 @@ export async function buildApp({
     if (
       context.workerId !== call.workerId ||
       context.executionLaneId !== call.executionLaneId ||
-      context.status !== "running"
+      !chatIsExecuting(context.status)
     ) {
       throw new ExecutionLaneConflictError(
         "The worktree tool call did not originate from the active chat lane.",
@@ -704,7 +727,7 @@ export async function buildApp({
         LOCAL_USER_ID,
         chatId,
       );
-      if (!current || current.status === "running") return true;
+      if (!current || chatIsExecuting(current.status)) return true;
       if (!bridge.isConnected(pending.worktree.workerId)) return true;
 
       try {
@@ -850,7 +873,7 @@ export async function buildApp({
         LOCAL_USER_ID,
         chatId,
       );
-      if (!context || context.status === "running") return;
+      if (!context || chatIsExecuting(context.status)) return;
       const prompt = (
         await repository.listQueuedPrompts(LOCAL_USER_ID, chatId)
       ).find((candidate) => !candidate.frozen);
@@ -1237,6 +1260,62 @@ export async function buildApp({
     const workers = await repository.listWorkers(LOCAL_USER_ID);
     return reply.send(workerListSchema.parse(workers));
   });
+
+  app.get<{
+    Querystring: { chatId?: string; limit?: string; status?: string };
+  }>("/api/agent-requests", async (request, reply) => {
+    const query = agentInteractionRequestQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.code(400).send(invalidBody(query.error.issues));
+    }
+    const requests = await repository.listAgentInteractionRequests(
+      LOCAL_USER_ID,
+      query.data,
+    );
+    return reply.send(agentInteractionRequestListSchema.parse(requests));
+  });
+
+  app.get<{ Params: { requestId: string } }>(
+    "/api/agent-requests/:requestId",
+    async (request, reply) => {
+      const interaction = await repository.getAgentInteractionRequest(
+        LOCAL_USER_ID,
+        request.params.requestId,
+      );
+      if (!interaction) {
+        return reply.code(404).send({ error: "Agent request not found." });
+      }
+      return reply.send(agentInteractionRequestSchema.parse(interaction));
+    },
+  );
+
+  app.post<{ Params: { requestId: string } }>(
+    "/api/agent-requests/:requestId/respond",
+    async (request, reply) => {
+      const input = agentInteractionResolutionCreateSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const interaction = await repository.resolveAgentInteractionRequest(
+          LOCAL_USER_ID,
+          request.params.requestId,
+          input.data,
+        );
+        if (!interaction) {
+          return reply.code(404).send({ error: "Agent request not found." });
+        }
+        return reply.send(agentInteractionRequestSchema.parse(interaction));
+      } catch (error) {
+        if (error instanceof AgentInteractionConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
 
   app.get<{ Querystring: { providerId?: string; workerId?: string } }>(
     "/api/codex/auth/status",
@@ -3571,7 +3650,7 @@ export async function buildApp({
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
       }
-      if (context.status === "running") {
+      if (chatIsExecuting(context.status)) {
         return reply
           .code(409)
           .send({ error: "Wait for the active turn to finish." });
@@ -3610,7 +3689,10 @@ export async function buildApp({
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
       }
-      if (!context.threadId || context.status !== "running") {
+      if (
+        !context.threadId ||
+        !["running", "waiting-for-approval"].includes(context.status)
+      ) {
         return reply.send(
           chatInterruptAcceptedSchema.parse({ interrupted: false }),
         );
@@ -3626,7 +3708,14 @@ export async function buildApp({
         model: runtime.model,
         provider: runtime.provider,
       });
-      return reply.send(chatInterruptAcceptedSchema.parse(result));
+      const parsedResult = chatInterruptAcceptedSchema.parse(result);
+      if (
+        parsedResult.interrupted &&
+        context.status === "waiting-for-approval"
+      ) {
+        await repository.interruptAgentInteractionRequests(context.chatId);
+      }
+      return reply.send(parsedResult);
     },
   );
 
@@ -3849,7 +3938,7 @@ export async function buildApp({
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
       }
-      if (context.status === "running") {
+      if (chatIsExecuting(context.status)) {
         return reply
           .code(409)
           .send({ error: "Wait for the active turn to finish." });
@@ -3939,7 +4028,7 @@ export async function buildApp({
         );
         if (
           input.data.status === "active" &&
-          context.status !== "running" &&
+          !chatIsExecuting(context.status) &&
           result.goal
         ) {
           const modelId = await resolveModelId(context);
@@ -4325,7 +4414,7 @@ export async function buildApp({
 
       try {
         let message: ChatMessage;
-        if (context.status === "running") {
+        if (chatIsExecuting(context.status)) {
           if (queued.worktreeId && queued.worktreeId !== context.worktreeId) {
             throw new Error(
               "This prompt is pinned to another worktree and cannot steer the active turn.",
@@ -4417,7 +4506,7 @@ export async function buildApp({
           }),
         );
       }
-      if (context.status === "running") {
+      if (chatIsExecuting(context.status)) {
         let modelId: string;
         try {
           modelId = await resolveModelId(context, input.data.modelId);
@@ -4579,6 +4668,7 @@ export async function buildApp({
   );
 
   app.addHook("onClose", async () => {
+    clearInterval(agentInteractionExpiryTimer);
     bridge.close();
     await Promise.allSettled(projectSetupTasks);
     await database.close();
