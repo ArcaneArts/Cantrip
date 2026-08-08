@@ -12,6 +12,8 @@ import { discoverCodexRuntime } from "./codex/discovery.js";
 import type { CodexRuntime } from "./codex/runtime.js";
 import { invokeCantripWorktreeTool } from "./codex/worktree-tool-client.js";
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
+import { discoverCantripCode } from "./code/installation.js";
+import { CodeSupervisor } from "./code/supervisor.js";
 import { readWorkerConfig } from "./config.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
 import { listExplorerDirectory, readExplorerFile } from "./explorer.js";
@@ -43,6 +45,13 @@ async function start(): Promise<void> {
   });
   const desktopAdapter = new ManagedDesktopRemoteSurfaceAdapter();
   await desktopAdapter.initialize();
+  const codeDiscovery = await discoverCantripCode();
+  const code = new CodeSupervisor({
+    capabilities: codeDiscovery.capabilities,
+    dataDirectory: config.dataDirectory,
+    installation: codeDiscovery.installation,
+  });
+  await code.start();
   const heartbeat = createHeartbeat(
     config,
     codexRuntime,
@@ -53,6 +62,7 @@ async function start(): Promise<void> {
       transports: ["websocket", "webrtc"],
       maxSessions: 4,
     },
+    codeDiscovery.capabilities,
   );
   let connected = false;
   let commandChannelStarted = false;
@@ -200,6 +210,24 @@ async function start(): Promise<void> {
         return listExplorerDirectory(command.root, command.path);
       case "explorer.file.read":
         return readExplorerFile(command.root, command.path);
+      case "code.probe":
+        return code.probe();
+      case "code.open":
+        return code.open(command);
+      case "code.status":
+        return code.status(command.sessionId);
+      case "code.stop":
+        return code.stop(command.sessionId);
+      case "code.saveAll":
+        return code.saveAll(command.sessionId);
+      case "code.getDirtyEditors":
+        return code.dirtyEditors(command.sessionId);
+      case "code.setTheme":
+        return code.setTheme(
+          command.sessionId,
+          command.themeMode,
+          command.appearance,
+        );
       case "skills.list":
         return runtimeFor(command).listSkills({
           cwd: command.cwd,
@@ -668,7 +696,7 @@ async function start(): Promise<void> {
   );
 
   console.log(
-    `[cantrip_worker] Starting ${heartbeat.name} (${heartbeat.workerId}); Codex: ${codexRuntime.version?.raw ?? "not found"} (${codexRuntime.compatibility}, ${config.codexInstallation.source}); Browser: ${browserAdapter.executable ?? "Chromium not found"}; Desktop: ${desktopAdapter.available ? `${desktopAdapter.frameBackend} capture ready` : `unavailable (${desktopAdapter.initializationError ?? "unknown error"})`}`,
+    `[cantrip_worker] Starting ${heartbeat.name} (${heartbeat.workerId}); Codex: ${codexRuntime.version?.raw ?? "not found"} (${codexRuntime.compatibility}, ${config.codexInstallation.source}); Code: ${codeDiscovery.capabilities.available ? `${codeDiscovery.capabilities.version} (${codeDiscovery.installation?.source ?? "unknown"})` : `unavailable (${codeDiscovery.capabilities.reason ?? "unknown error"})`}; Browser: ${browserAdapter.executable ?? "Chromium not found"}; Desktop: ${desktopAdapter.available ? `${desktopAdapter.frameBackend} capture ready` : `unavailable (${desktopAdapter.initializationError ?? "unknown error"})`}`,
   );
 
   const publish = async () => {
@@ -710,6 +738,7 @@ async function start(): Promise<void> {
       commandConnection.close();
       for (const client of codexAuthClients.values()) client.close();
       terminals.closeAll();
+      await code.close();
       await remoteSurfaces.closeAll();
       await desktopAdapter.shutdown();
       for (const runtime of codexRuntimes.values()) {

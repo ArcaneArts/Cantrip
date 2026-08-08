@@ -1,9 +1,11 @@
 import os from "node:os";
 
 import {
+  type CodeCapabilities,
   type CodexRuntimeReport,
   type RemoteSurfaceCapabilities,
   type WorkerHeartbeat,
+  unavailableCodeCapabilities,
   workerHeartbeatSchema,
 } from "@cantrip/protocol";
 
@@ -19,6 +21,7 @@ export function createHeartbeat(
     transports: ["websocket"],
     maxSessions: 4,
   },
+  code: CodeCapabilities = unavailableCodeCapabilities,
 ): WorkerHeartbeat {
   return workerHeartbeatSchema.parse({
     workerId: config.workerId,
@@ -28,6 +31,7 @@ export function createHeartbeat(
     codexVersion: codexRuntime.version?.raw ?? null,
     codexRuntime,
     remoteSurfaces,
+    code,
     startedAt,
   });
 }
