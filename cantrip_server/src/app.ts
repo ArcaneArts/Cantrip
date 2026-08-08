@@ -1856,12 +1856,20 @@ export async function buildApp({
         return reply.code(404).send({ error: "Worktree not found." });
       }
       try {
-        const result = await bridge.request(context.workerId, {
-          type: "worktree.status",
-          sourcePath: context.sourcePath,
-          worktreePath: context.worktree.path,
-        });
-        return reply.send(worktreeStatusResultSchema.parse(result));
+        const result = worktreeStatusResultSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "worktree.status",
+            sourcePath: context.sourcePath,
+            worktreePath: context.worktree.path,
+          }),
+        );
+        await repository.observeProjectWorktree(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          request.params.worktreeId,
+          result.worktree,
+        );
+        return reply.send(result);
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
         return reply.code(status).send({ error: errorMessage(error) });
@@ -1892,11 +1900,23 @@ export async function buildApp({
         ? Math.max(0, parsedCursor)
         : 0;
       try {
+        const revisions = (
+          await repository.listProjectWorktrees(
+            LOCAL_USER_ID,
+            request.params.projectId,
+          )
+        )
+          .map(({ head }) => head)
+          .filter(
+            (head): head is string =>
+              typeof head === "string" && /^[0-9a-f]{40,64}$/u.test(head),
+          );
         const history = await bridge.request(context.workerId, {
           type: "git.history",
           cwd: context.worktree.path,
           cursor,
           limit,
+          revisions,
         });
         return reply.send(gitHistorySchema.parse(history));
       } catch (error) {
@@ -1960,6 +1980,7 @@ export async function buildApp({
         cwd: source.cwd,
         cursor,
         limit,
+        revisions: [],
       });
       return reply.send(gitHistorySchema.parse(history));
     } catch (error) {

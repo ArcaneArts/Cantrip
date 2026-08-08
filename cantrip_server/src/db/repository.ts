@@ -53,6 +53,7 @@ import type {
   UserSummary,
   WorkerHeartbeat,
   WorkerSummary,
+  WorkerWorktreeSummary,
   WorktreeInventory,
   WorktreeSelection,
 } from "@cantrip/protocol";
@@ -1364,6 +1365,44 @@ export class ServerRepository {
     const rows = await this.database
       .update(schema.projectWorktrees)
       .set({ lifecycleState, updatedAt: new Date() })
+      .where(eq(schema.projectWorktrees.id, worktreeId))
+      .returning();
+    return rows[0] ? toProjectWorktreeSummary(rows[0], projectId) : null;
+  }
+
+  async observeProjectWorktree(
+    ownerId: string,
+    projectId: string,
+    worktreeId: string,
+    observed: WorkerWorktreeSummary,
+  ): Promise<ProjectWorktreeSummary | null> {
+    const context = await this.getProjectWorktreeContext(
+      ownerId,
+      projectId,
+      worktreeId,
+    );
+    if (!context) return null;
+    if (context.worktree.path !== observed.path) {
+      throw new Error("Worker status referred to a different worktree path.");
+    }
+    const now = new Date();
+    const lifecycleState = observed.missing
+      ? "missing"
+      : observed.prunable
+        ? "prunable"
+        : "ready";
+    const rows = await this.database
+      .update(schema.projectWorktrees)
+      .set({
+        branch: observed.branch,
+        detached: observed.detached,
+        head: observed.head,
+        lifecycleState,
+        locked: observed.locked,
+        lockReason: observed.lockReason,
+        lastScannedAt: now,
+        updatedAt: now,
+      })
       .where(eq(schema.projectWorktrees.id, worktreeId))
       .returning();
     return rows[0] ? toProjectWorktreeSummary(rows[0], projectId) : null;

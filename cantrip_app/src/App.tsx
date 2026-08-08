@@ -1493,7 +1493,15 @@ export function App() {
     refetchInterval: 2_000,
   });
   const newChat = useMutation({
-    mutationFn: (projectId: string) => createChat(projectId, "New chat"),
+    mutationFn: ({
+      projectId,
+      worktreeId,
+      worktreeMode,
+    }: {
+      projectId: string;
+      worktreeId?: string;
+      worktreeMode?: "agent-managed" | "pinned";
+    }) => createChat(projectId, "New chat", worktreeId, worktreeMode),
     onSuccess: (chat) => {
       queryClient.setQueryData<ChatSummary[]>(
         ["chats", chat.projectId],
@@ -1708,9 +1716,14 @@ export function App() {
         );
       }
     },
-    onError: (error, _input, context) => {
+    onError: (error, input, context) => {
       if (context?.queryKey) {
         queryClient.setQueryData(context.queryKey, context.previous);
+      }
+      if (input.target.kind === "history") {
+        void queryClient.invalidateQueries({
+          queryKey: ["project-views", input.target.projectId],
+        });
       }
       setWorktreeActionError(errorText(error));
     },
@@ -2418,7 +2431,7 @@ export function App() {
               creatingRemoteDesktop={newRemoteDesktop.isPending}
               creatingTerminal={newTerminal.isPending}
               creatingView={newProjectView.isPending}
-              onCreateChat={(projectId) => newChat.mutate(projectId)}
+              onCreateChat={(projectId) => newChat.mutate({ projectId })}
               onCreateBrowser={(projectId) => newBrowser.mutate(projectId)}
               onCreateExplorer={(projectId) =>
                 newExplorer.mutate({ projectId })
@@ -2999,9 +3012,71 @@ export function App() {
           )
         ) : gitHistoryProject ? (
           <GitHistoryView
+            chats={chats.data ?? []}
             view={selectedProjectView?.kind ?? "history"}
             standalone={isPopout}
             project={gitHistoryProject}
+            worktreeId={
+              selectedProjectView?.worktreeId ??
+              worktrees.data?.find(({ isPrimary }) => isPrimary)?.id ??
+              ""
+            }
+            worktrees={worktrees.data ?? []}
+            statuses={worktreeStatuses}
+            workers={workers.data ?? []}
+            onSelectWorktree={(worktreeId) => {
+              if (
+                !selectedProjectView ||
+                selectedProjectView.kind !== "history"
+              )
+                return;
+              queryClient.setQueryData<ProjectViewSummary[]>(
+                ["project-views", selectedProjectView.projectId],
+                (current = []) =>
+                  current.map((view) =>
+                    view.id === selectedProjectView.id
+                      ? { ...view, worktreeId }
+                      : view,
+                  ),
+              );
+              bindWorktreeMutation.mutate({
+                target: {
+                  kind: "history",
+                  projectId: selectedProjectView.projectId,
+                  tabId: selectedProjectView.id,
+                },
+                worktreeId,
+              });
+            }}
+            onCreateChat={(worktreeId) =>
+              newChat.mutate({
+                projectId: gitHistoryProject.id,
+                worktreeId,
+                worktreeMode: "pinned",
+              })
+            }
+            onCreateTerminal={(worktreeId) =>
+              newTerminal.mutate({
+                projectId: gitHistoryProject.id,
+                worktreeId,
+              })
+            }
+            onCreateExplorer={(worktreeId) =>
+              newExplorer.mutate({
+                projectId: gitHistoryProject.id,
+                worktreeId,
+              })
+            }
+            onCreateHistory={(worktreeId) =>
+              newProjectView.mutate({
+                projectId: gitHistoryProject.id,
+                kind: "history",
+                worktreeId,
+              })
+            }
+            onOpenChat={(chatId) =>
+              openCreatedTab(gitHistoryProject.id, "chat", chatId)
+            }
             onHeaderChange={setGitHistoryHeader}
           />
         ) : selectedBrowser ? (
@@ -3067,7 +3142,9 @@ export function App() {
                 (terminal) => terminal.linkedChatId === selectedChat.id,
               ) ?? false
             }
-            onCreateChat={() => newChat.mutate(selectedChat.projectId)}
+            onCreateChat={() =>
+              newChat.mutate({ projectId: selectedChat.projectId })
+            }
             onDelete={() => deleteChatMutation.mutate(selectedChat.id)}
             onForked={(forked) => {
               setSelectedProjectId(forked.projectId);
@@ -3118,7 +3195,9 @@ export function App() {
                 <div className="mt-5 flex justify-center gap-2">
                   <Button
                     disabled={newChat.isPending || !selectedProject.source}
-                    onClick={() => newChat.mutate(selectedProject.id)}
+                    onClick={() =>
+                      newChat.mutate({ projectId: selectedProject.id })
+                    }
                   >
                     {newChat.isPending ? (
                       <Loader2 className="size-4 animate-spin" />
@@ -3261,7 +3340,7 @@ export function App() {
               creatingRemoteDesktop={newRemoteDesktop.isPending}
               creatingTerminal={newTerminal.isPending}
               creatingView={newProjectView.isPending}
-              onCreateChat={(projectId) => newChat.mutate(projectId)}
+              onCreateChat={(projectId) => newChat.mutate({ projectId })}
               onCreateBrowser={(projectId) => newBrowser.mutate(projectId)}
               onCreateExplorer={(projectId) =>
                 newExplorer.mutate({ projectId })

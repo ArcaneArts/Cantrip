@@ -50,6 +50,9 @@ let connected = true;
 let activeCreates = 0;
 let maximumConcurrentCreates = 0;
 const gitActionPaths: string[] = [];
+const gitHistoryCommands: Array<
+  Extract<WorkerCommand, { type: "git.history" }>
+> = [];
 const chatTurnCommands: Array<Extract<WorkerCommand, { type: "chat.turn" }>> =
   [];
 let agentToolInvocation: {
@@ -183,6 +186,7 @@ const workerBridge = {
         return { worktree, status: status(worktree.branch ?? "HEAD") };
       }
       case "git.history":
+        gitHistoryCommands.push(command);
         return {
           branch: "main",
           head: "1111111111111111111111111111111111111111",
@@ -999,6 +1003,9 @@ describe.sequential("server worktree control plane", () => {
     const target = (
       await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId)
     ).find(({ id }) => id === managedIds[0])!;
+    const observedHead = "4".repeat(40);
+    workerWorktrees.find(({ path }) => path === target.path)!.head =
+      observedHead;
     const statusResponse = await app.inject({
       method: "GET",
       url: `/api/projects/${projectId}/worktrees/${target.id}/status`,
@@ -1006,6 +1013,11 @@ describe.sequential("server worktree control plane", () => {
     expect(
       worktreeStatusResultSchema.parse(statusResponse.json()).worktree.path,
     ).toBe(target.path);
+    expect(
+      (
+        await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId)
+      ).find(({ id }) => id === target.id)?.head,
+    ).toBe(observedHead);
     const historyResponse = await app.inject({
       method: "GET",
       url: `/api/projects/${projectId}/worktrees/${target.id}/history`,
@@ -1013,6 +1025,14 @@ describe.sequential("server worktree control plane", () => {
     expect(gitHistorySchema.parse(historyResponse.json()).commits).toHaveLength(
       1,
     );
+    expect(gitHistoryCommands.at(-1)).toMatchObject({
+      cwd: target.path,
+      revisions: expect.arrayContaining(
+        workerWorktrees
+          .map(({ head }) => head)
+          .filter((head): head is string => typeof head === "string"),
+      ),
+    });
     const actionResponse = await app.inject({
       method: "POST",
       url: `/api/projects/${projectId}/worktrees/${target.id}/git/actions`,

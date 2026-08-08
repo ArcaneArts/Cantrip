@@ -1495,6 +1495,10 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     cwd: z.string().min(1),
     cursor: z.number().int().nonnegative().default(0),
     limit: z.number().int().min(1).max(100).default(100),
+    revisions: z
+      .array(z.string().regex(/^[0-9a-f]{40,64}$/u))
+      .max(500)
+      .default([]),
   }),
   z.object({
     type: z.literal("git.status"),
