@@ -18,7 +18,6 @@ import type {
   SettingsBundle,
   SkillSummary,
   TerminalSummary,
-  WorktreePolicy,
 } from "@cantrip/protocol";
 import {
   useMutation,
@@ -101,6 +100,7 @@ import {
 } from "@/components/git/git-history";
 import type { ExplorerHeaderState } from "@/components/explorer/explorer-view";
 import { ProjectChatList } from "@/components/sidebar/project-chat-list";
+import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { ServerSwitcher } from "@/components/servers/server-switcher";
 import {
@@ -188,7 +188,6 @@ import {
   updateBrowser,
   updateExplorerWorktree,
   updateProjectViewWorktree,
-  updateProjectWorktreePolicy,
   updateQueuedPrompt,
   updateTerminalWorktree,
   uploadChatAttachment,
@@ -2042,6 +2041,7 @@ export function App() {
   >(popoutTarget?.kind === "view" ? popoutTarget.tabId : null);
   const [showImporter, setShowImporter] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showProjectSettings, setShowProjectSettings] = useState(false);
   const [showCustomizations, setShowCustomizations] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [gitHistoryHeader, setGitHistoryHeader] =
@@ -2069,6 +2069,20 @@ export function App() {
     setSelectedProjectViewId(kind === "view" ? tabId : null);
     setShowImporter(false);
     setShowSettings(false);
+    setShowProjectSettings(false);
+    setMobileNavigationOpen(false);
+  };
+
+  const openProjectSettings = (projectId: string) => {
+    setSelectedProjectId(projectId);
+    setSelectedChatId(null);
+    setSelectedTerminalId(null);
+    setSelectedExplorerId(null);
+    setSelectedBrowserId(null);
+    setSelectedProjectViewId(null);
+    setShowImporter(false);
+    setShowSettings(false);
+    setShowProjectSettings(true);
     setMobileNavigationOpen(false);
   };
 
@@ -2586,27 +2600,13 @@ export function App() {
         setSelectedExplorerId(null);
         setSelectedBrowserId(null);
         setSelectedProjectViewId(null);
+        setShowProjectSettings(false);
       }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["projects"] }),
         queryClient.invalidateQueries({ queryKey: ["github-repositories"] }),
       ]);
     },
-  });
-  const updateProjectWorktreePolicyMutation = useMutation({
-    mutationFn: ({
-      projectId,
-      policy,
-    }: {
-      projectId: string;
-      policy: WorktreePolicy;
-    }) => updateProjectWorktreePolicy(projectId, policy),
-    onSuccess: (updated) =>
-      queryClient.setQueryData<ProjectSummary[]>(["projects"], (current = []) =>
-        current.map((project) =>
-          project.id === updated.id ? updated : project,
-        ),
-      ),
   });
   const reorderProjectsMutation = useMutation({
     mutationFn: (ids: string[]) => reorderProjects(ids),
@@ -2843,7 +2843,7 @@ export function App() {
     target: DesktopPopoutTarget;
     title: string;
   } | null>(() => {
-    if (showImporter || showSettings) return null;
+    if (showImporter || showSettings || showProjectSettings) return null;
     if (selectedProjectView && selectedProject) {
       return {
         target: {
@@ -2905,6 +2905,7 @@ export function App() {
     selectedProjectView,
     selectedTerminal,
     showImporter,
+    showProjectSettings,
     showSettings,
   ]);
   const activePopout = desktopRuntime && !isPopout ? currentSurface : null;
@@ -2967,14 +2968,17 @@ export function App() {
   ]);
 
   useEffect(() => {
-    if (showImporter || showSettings) setSelectedProjectViewId(null);
-  }, [showImporter, showSettings]);
+    if (showImporter || showSettings || showProjectSettings) {
+      setSelectedProjectViewId(null);
+    }
+  }, [showImporter, showProjectSettings, showSettings]);
 
   useEffect(() => {
     if (!projects.data) return;
     if (projects.data.length === 0) {
       setShowImporter(true);
       setShowSettings(false);
+      setShowProjectSettings(false);
       setSelectedProjectId(null);
       return;
     }
@@ -2984,6 +2988,7 @@ export function App() {
   }, [projects.data, selectedProjectId]);
 
   useEffect(() => {
+    if (showImporter || showSettings || showProjectSettings) return;
     if (
       !chats.data ||
       !terminals.data ||
@@ -3044,6 +3049,9 @@ export function App() {
     chats.data,
     explorers.data,
     projectViews.data,
+    showImporter,
+    showProjectSettings,
+    showSettings,
     selectedChatId,
     selectedBrowserId,
     selectedExplorerId,
@@ -3080,6 +3088,7 @@ export function App() {
               onClick={() => {
                 setShowImporter(true);
                 setShowSettings(false);
+                setShowProjectSettings(false);
               }}
             >
               <Plus className="size-4" />
@@ -3175,12 +3184,7 @@ export function App() {
               onRemoveProject={(projectId, deleteLocalFiles) =>
                 removeProjectMutation.mutate({ projectId, deleteLocalFiles })
               }
-              onSetProjectWorktreePolicy={(projectId, policy) =>
-                updateProjectWorktreePolicyMutation.mutate({
-                  projectId,
-                  policy,
-                })
-              }
+              onOpenProjectSettings={openProjectSettings}
               onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
               onReorderTabs={(projectId, ids) =>
                 reorderTabsMutation.mutate({ projectId, ids })
@@ -3194,6 +3198,7 @@ export function App() {
                 setSelectedBrowserId(null);
                 setShowImporter(false);
                 setShowSettings(false);
+                setShowProjectSettings(false);
               }}
               onSelectChat={(chatId) => {
                 setSelectedProjectViewId(null);
@@ -3203,6 +3208,7 @@ export function App() {
                 setSelectedChatId(chatId);
                 setShowImporter(false);
                 setShowSettings(false);
+                setShowProjectSettings(false);
               }}
               onSelectTerminal={(terminalId) => {
                 setSelectedProjectViewId(null);
@@ -3212,6 +3218,7 @@ export function App() {
                 setSelectedTerminalId(terminalId);
                 setShowImporter(false);
                 setShowSettings(false);
+                setShowProjectSettings(false);
               }}
               onSelectExplorer={(explorerId) => {
                 setSelectedProjectViewId(null);
@@ -3221,6 +3228,7 @@ export function App() {
                 setSelectedExplorerId(explorerId);
                 setShowImporter(false);
                 setShowSettings(false);
+                setShowProjectSettings(false);
               }}
               onSelectBrowser={(browserId) => {
                 setSelectedProjectViewId(null);
@@ -3230,6 +3238,7 @@ export function App() {
                 setSelectedBrowserId(browserId);
                 setShowImporter(false);
                 setShowSettings(false);
+                setShowProjectSettings(false);
               }}
               onSelectProjectView={(viewId) => {
                 setSelectedChatId(null);
@@ -3239,6 +3248,7 @@ export function App() {
                 setSelectedProjectViewId(viewId);
                 setShowImporter(false);
                 setShowSettings(false);
+                setShowProjectSettings(false);
               }}
             />
           </nav>
@@ -3258,6 +3268,7 @@ export function App() {
                 onClick={() => {
                   setShowSettings(true);
                   setShowImporter(false);
+                  setShowProjectSettings(false);
                 }}
               >
                 <Settings className="size-4" />
@@ -3278,22 +3289,24 @@ export function App() {
                     ? "GitHub repositories"
                     : showSettings
                       ? "Settings"
-                      : gitHistoryProject
-                        ? (selectedProjectView?.title ?? "Git")
-                        : selectedProjectView?.kind === "remote-desktop"
-                          ? selectedProjectView.title
-                          : selectedBrowser
-                            ? selectedBrowser.title
-                            : selectedExplorer
-                              ? selectedExplorer.title
-                              : selectedTerminal
-                                ? selectedTerminal.linkedChatId
-                                  ? (linkedConsoleChat?.title ?? "Chat")
-                                  : selectedTerminal.title
-                                : selectedChat
-                                  ? selectedChat.title
-                                  : (selectedProject?.github?.nameWithOwner ??
-                                    "Cantrip")}
+                      : showProjectSettings
+                        ? "Project settings"
+                        : gitHistoryProject
+                          ? (selectedProjectView?.title ?? "Git")
+                          : selectedProjectView?.kind === "remote-desktop"
+                            ? selectedProjectView.title
+                            : selectedBrowser
+                              ? selectedBrowser.title
+                              : selectedExplorer
+                                ? selectedExplorer.title
+                                : selectedTerminal
+                                  ? selectedTerminal.linkedChatId
+                                    ? (linkedConsoleChat?.title ?? "Chat")
+                                    : selectedTerminal.title
+                                  : selectedChat
+                                    ? selectedChat.title
+                                    : (selectedProject?.github?.nameWithOwner ??
+                                      "Cantrip")}
                 </span>
                 {!showImporter &&
                 !showSettings &&
@@ -3361,6 +3374,10 @@ export function App() {
                   "Add a worker-owned source"
                 ) : showSettings ? (
                   "Account preferences"
+                ) : showProjectSettings ? (
+                  (selectedProject?.github?.nameWithOwner ??
+                  selectedProject?.name ??
+                  "Project preferences")
                 ) : gitHistoryProject ? (
                   <>
                     {gitHistoryProject.github?.nameWithOwner ??
@@ -3536,6 +3553,7 @@ export function App() {
                     onClick={() => {
                       setShowSettings(true);
                       setShowImporter(false);
+                      setShowProjectSettings(false);
                     }}
                   >
                     <Settings className="size-4" />
@@ -3547,6 +3565,7 @@ export function App() {
                     onClick={() => {
                       setShowImporter(true);
                       setShowSettings(false);
+                      setShowProjectSettings(false);
                     }}
                   >
                     <Plus className="size-4" />
@@ -3751,6 +3770,37 @@ export function App() {
 
         {showSettings ? (
           <SettingsPage />
+        ) : showProjectSettings && selectedProject ? (
+          <ProjectSettingsPage
+            project={selectedProject}
+            chats={chats.data ?? []}
+            terminals={terminals.data ?? []}
+            explorers={explorers.data ?? []}
+            projectViews={projectViews.data ?? []}
+            workers={workers.data ?? []}
+            worktrees={worktrees.data ?? []}
+            statuses={worktreeStatuses}
+            onCreateChat={(worktreeId) =>
+              newChat.mutate({
+                projectId: selectedProject.id,
+                worktreeId,
+                worktreeMode: "pinned",
+              })
+            }
+            onCreateTerminal={(worktreeId) =>
+              newTerminal.mutate({ projectId: selectedProject.id, worktreeId })
+            }
+            onCreateExplorer={(worktreeId) =>
+              newExplorer.mutate({ projectId: selectedProject.id, worktreeId })
+            }
+            onCreateHistory={(worktreeId) =>
+              newProjectView.mutate({
+                projectId: selectedProject.id,
+                kind: "history",
+                worktreeId,
+              })
+            }
+          />
         ) : showImporter ? (
           <RepositoryImporter
             projects={projects.data ?? []}
@@ -4041,6 +4091,7 @@ export function App() {
                 onClick={() => {
                   setShowImporter(true);
                   setShowSettings(false);
+                  setShowProjectSettings(false);
                 }}
               >
                 <Plus className="size-4" />
@@ -4187,13 +4238,7 @@ export function App() {
                 removeProjectMutation.mutate({ projectId, deleteLocalFiles });
                 setMobileNavigationOpen(false);
               }}
-              onSetProjectWorktreePolicy={(projectId, policy) => {
-                updateProjectWorktreePolicyMutation.mutate({
-                  projectId,
-                  policy,
-                });
-                setMobileNavigationOpen(false);
-              }}
+              onOpenProjectSettings={openProjectSettings}
               onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
               onReorderTabs={(projectId, ids) =>
                 reorderTabsMutation.mutate({ projectId, ids })
@@ -4205,6 +4250,10 @@ export function App() {
                 setSelectedTerminalId(null);
                 setSelectedExplorerId(null);
                 setSelectedBrowserId(null);
+                setMobileNavigationOpen(false);
+                setShowImporter(false);
+                setShowSettings(false);
+                setShowProjectSettings(false);
               }}
               onSelectChat={(chatId) => {
                 setSelectedProjectViewId(null);
@@ -4215,6 +4264,7 @@ export function App() {
                 setMobileNavigationOpen(false);
                 setShowImporter(false);
                 setShowSettings(false);
+                setShowProjectSettings(false);
               }}
               onSelectTerminal={(terminalId) => {
                 setSelectedProjectViewId(null);
@@ -4225,6 +4275,7 @@ export function App() {
                 setMobileNavigationOpen(false);
                 setShowImporter(false);
                 setShowSettings(false);
+                setShowProjectSettings(false);
               }}
               onSelectExplorer={(explorerId) => {
                 setSelectedProjectViewId(null);
@@ -4235,6 +4286,7 @@ export function App() {
                 setMobileNavigationOpen(false);
                 setShowImporter(false);
                 setShowSettings(false);
+                setShowProjectSettings(false);
               }}
               onSelectBrowser={(browserId) => {
                 setSelectedProjectViewId(null);
@@ -4245,6 +4297,7 @@ export function App() {
                 setMobileNavigationOpen(false);
                 setShowImporter(false);
                 setShowSettings(false);
+                setShowProjectSettings(false);
               }}
               onSelectProjectView={(viewId) => {
                 setSelectedChatId(null);
@@ -4255,6 +4308,7 @@ export function App() {
                 setMobileNavigationOpen(false);
                 setShowImporter(false);
                 setShowSettings(false);
+                setShowProjectSettings(false);
               }}
             />
           </div>

@@ -1,0 +1,751 @@
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import type {
+  ChatSummary,
+  ExplorerSummary,
+  GitStatus,
+  ProjectSummary,
+  ProjectViewSummary,
+  ProjectWorktreeCreate,
+  ProjectWorktreeSummary,
+  TerminalSummary,
+  WorkerSummary,
+  WorktreePolicy,
+} from "@cantrip/protocol";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  CircleAlert,
+  ExternalLink,
+  FolderTree,
+  GitBranch,
+  GitFork,
+  History,
+  Loader2,
+  Lock,
+  MessageSquare,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  ScanLine,
+  SquareTerminal,
+  Trash2,
+  Unlock,
+} from "lucide-react";
+import { useMemo, useState } from "react";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  WorktreeCreateDialog,
+  worktreeHasConflicts,
+  type WorktreeStatusMap,
+} from "@/components/worktrees/worktree-control";
+import {
+  createProjectWorktree,
+  lockProjectWorktree,
+  pruneProjectWorktrees,
+  reconcileProjectWorktrees,
+  removeProjectWorktree,
+  unlockProjectWorktree,
+  updateProjectWorktreePolicy,
+} from "@/lib/api";
+import { cn } from "@/lib/utils";
+
+const menuContentClass =
+  "z-50 min-w-52 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
+const menuItemClass =
+  "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
+const createdDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
+
+const policies: Array<{
+  description: string;
+  label: string;
+  value: WorktreePolicy;
+}> = [
+  {
+    value: "agent-managed",
+    label: "Agent managed",
+    description: "Let agents create and select isolated worktrees when useful.",
+  },
+  {
+    value: "required-for-writes",
+    label: "Required for writes",
+    description:
+      "Keep Primary read-only for agents and require isolated writes.",
+  },
+  {
+    value: "direct",
+    label: "Direct",
+    description: "Allow agents to make changes directly in Primary.",
+  },
+];
+
+export function projectWorktreeState(
+  worktree: ProjectWorktreeSummary,
+  status: GitStatus | undefined,
+  online: boolean,
+): { label: string; tone: "default" | "danger" | "muted" | "warning" } {
+  if (!online) return { label: "Worker offline", tone: "muted" };
+  if (worktree.lifecycleState !== "ready") {
+    return { label: worktree.lifecycleState, tone: "warning" };
+  }
+  if (!status) return { label: "Status unavailable", tone: "muted" };
+  if (worktreeHasConflicts(status)) {
+    return { label: "Conflicts", tone: "danger" };
+  }
+  if (status.files.length) {
+    return {
+      label: `${status.files.length} changed ${status.files.length === 1 ? "file" : "files"}`,
+      tone: "warning",
+    };
+  }
+  return { label: "Clean", tone: "default" };
+}
+
+export function projectWorktreeBindings(
+  worktreeId: string,
+  chats: ChatSummary[],
+  terminals: TerminalSummary[],
+  explorers: ExplorerSummary[],
+  views: ProjectViewSummary[],
+): string[] {
+  return [
+    ...chats
+      .filter(({ activeWorktreeId }) => activeWorktreeId === worktreeId)
+      .map(({ title }) => title),
+    ...terminals
+      .filter(({ worktreeId: id }) => id === worktreeId)
+      .map(({ title }) => title),
+    ...explorers
+      .filter(({ worktreeId: id }) => id === worktreeId)
+      .map(({ title }) => title),
+    ...views
+      .filter(({ worktreeId: id }) => id === worktreeId)
+      .map(({ title }) => title),
+  ];
+}
+
+function DetailRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid gap-1 px-4 py-3 text-sm sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-foreground">{children}</dd>
+    </div>
+  );
+}
+
+export function ProjectSettingsPage({
+  chats,
+  explorers,
+  onCreateChat,
+  onCreateExplorer,
+  onCreateHistory,
+  onCreateTerminal,
+  project,
+  projectViews,
+  statuses,
+  terminals,
+  workers,
+  worktrees,
+}: {
+  chats: ChatSummary[];
+  explorers: ExplorerSummary[];
+  onCreateChat(worktreeId: string): void;
+  onCreateExplorer(worktreeId: string): void;
+  onCreateHistory(worktreeId: string): void;
+  onCreateTerminal(worktreeId: string): void;
+  project: ProjectSummary;
+  projectViews: ProjectViewSummary[];
+  statuses: WorktreeStatusMap;
+  terminals: TerminalSummary[];
+  workers: WorkerSummary[];
+  worktrees: ProjectWorktreeSummary[];
+}) {
+  const queryClient = useQueryClient();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [pruneOpen, setPruneOpen] = useState(false);
+  const [allowExternalPrune, setAllowExternalPrune] = useState(false);
+  const [removeTarget, setRemoveTarget] =
+    useState<ProjectWorktreeSummary | null>(null);
+  const [forceRemove, setForceRemove] = useState(false);
+  const projectWorker = workers.find(
+    ({ workerId }) => workerId === project.source?.workerId,
+  );
+
+  const updatePolicy = useMutation({
+    mutationFn: (policy: WorktreePolicy) =>
+      updateProjectWorktreePolicy(project.id, policy),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<ProjectSummary[]>(["projects"], (current = []) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+    },
+  });
+  const reconcile = useMutation({
+    mutationFn: () => reconcileProjectWorktrees(project.id),
+    onSuccess: (next) => {
+      queryClient.setQueryData(["worktrees", project.id], next);
+      void queryClient.invalidateQueries({
+        queryKey: ["worktree-status", project.id],
+      });
+    },
+  });
+  const createWorktree = useMutation({
+    mutationFn: (input: ProjectWorktreeCreate) =>
+      createProjectWorktree(project.id, input),
+    onSuccess: (created) => {
+      queryClient.setQueryData<ProjectWorktreeSummary[]>(
+        ["worktrees", project.id],
+        (current = []) => [
+          ...current.filter(({ id }) => id !== created.id),
+          created,
+        ],
+      );
+    },
+  });
+  const lockWorktree = useMutation({
+    mutationFn: (worktree: ProjectWorktreeSummary) =>
+      worktree.locked
+        ? unlockProjectWorktree(project.id, worktree.id)
+        : lockProjectWorktree(
+            project.id,
+            worktree.id,
+            "Locked from Project Settings",
+          ),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<ProjectWorktreeSummary[]>(
+        ["worktrees", project.id],
+        (current = []) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+    },
+  });
+  const prune = useMutation({
+    mutationFn: () => pruneProjectWorktrees(project.id, allowExternalPrune),
+    onSuccess: (next) => {
+      queryClient.setQueryData(["worktrees", project.id], next);
+      setPruneOpen(false);
+      setAllowExternalPrune(false);
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (target: ProjectWorktreeSummary) =>
+      removeProjectWorktree(project.id, target.id, {
+        allowExternal: target.origin === "external",
+        force: forceRemove,
+      }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<ProjectWorktreeSummary[]>(
+        ["worktrees", project.id],
+        (current = []) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setRemoveTarget(null);
+      setForceRemove(false);
+    },
+  });
+  const operationError = useMemo(
+    () =>
+      updatePolicy.error ??
+      reconcile.error ??
+      createWorktree.error ??
+      lockWorktree.error ??
+      prune.error ??
+      remove.error,
+    [
+      createWorktree.error,
+      lockWorktree.error,
+      prune.error,
+      reconcile.error,
+      remove.error,
+      updatePolicy.error,
+    ],
+  );
+  const pendingInventory =
+    reconcile.isPending ||
+    createWorktree.isPending ||
+    lockWorktree.isPending ||
+    prune.isPending ||
+    remove.isPending;
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto w-full max-w-6xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
+        {operationError ? (
+          <div className="flex gap-2 rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <CircleAlert className="mt-0.5 size-4 shrink-0" />
+            <span>
+              {operationError instanceof Error
+                ? operationError.message
+                : "The project setting could not be updated."}
+            </span>
+          </div>
+        ) : null}
+
+        <section aria-labelledby="project-details-title">
+          <div className="mb-3">
+            <h2 id="project-details-title" className="font-semibold">
+              Project details
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Server-owned metadata for this worker-backed source.
+            </p>
+          </div>
+          <dl className="overflow-hidden rounded-xl border divide-y">
+            <DetailRow label="Repository">
+              {project.github ? (
+                <a
+                  className="inline-flex items-center gap-1.5 hover:underline"
+                  href={project.github.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {project.github.nameWithOwner}
+                  <ExternalLink className="size-3.5" />
+                </a>
+              ) : (
+                project.name
+              )}
+            </DetailRow>
+            <DetailRow label="Source location">
+              <code className="break-all text-xs">
+                {project.source?.displayPath ?? "Source unavailable"}
+              </code>
+            </DetailRow>
+            <DetailRow label="Worker">
+              <span className="inline-flex items-center gap-2">
+                <span
+                  className={cn(
+                    "size-2 rounded-full bg-muted-foreground",
+                    projectWorker?.online && "bg-emerald-500",
+                  )}
+                />
+                {projectWorker?.name ?? project.source?.workerId ?? "Unknown"}
+                <span className="text-xs text-muted-foreground">
+                  {projectWorker?.online ? "Online" : "Offline"}
+                </span>
+              </span>
+            </DetailRow>
+            <DetailRow label="Added">
+              {createdDate.format(new Date(project.createdAt))}
+            </DetailRow>
+          </dl>
+        </section>
+
+        <section aria-labelledby="worktree-policy-title">
+          <div className="mb-3">
+            <h2 id="worktree-policy-title" className="font-semibold">
+              Worktree policy
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Controls whether agents may write to Primary or should isolate
+              their changes.
+            </p>
+          </div>
+          <div className="grid overflow-hidden rounded-xl border sm:grid-cols-3 sm:divide-x">
+            {policies.map((policy) => {
+              const selected = project.worktreePolicy === policy.value;
+              return (
+                <button
+                  key={policy.value}
+                  type="button"
+                  aria-pressed={selected}
+                  disabled={updatePolicy.isPending}
+                  className={cn(
+                    "min-h-24 border-b px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-muted/60 disabled:opacity-60 sm:border-b-0",
+                    selected &&
+                      "bg-muted shadow-[inset_0_2px_0_0_currentColor]",
+                  )}
+                  onClick={() => updatePolicy.mutate(policy.value)}
+                >
+                  <span className="flex items-center gap-2 text-sm font-medium">
+                    {selected ? (
+                      <span className="size-2 rounded-full bg-foreground" />
+                    ) : (
+                      <span className="size-2 rounded-full border" />
+                    )}
+                    {policy.label}
+                  </span>
+                  <span className="mt-1.5 block text-xs leading-5 text-muted-foreground">
+                    {policy.description}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section aria-labelledby="worktrees-title">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 id="worktrees-title" className="font-semibold">
+                Worktrees{" "}
+                <span className="text-muted-foreground">
+                  ({worktrees.length})
+                </span>
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Physical checkouts on the project worker and the tabs currently
+                bound to them.
+              </p>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={pendingInventory || !projectWorker?.online}
+                onClick={() => reconcile.mutate()}
+              >
+                <RefreshCw
+                  className={cn(
+                    "size-4",
+                    reconcile.isPending && "animate-spin",
+                  )}
+                />
+                Refresh
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={pendingInventory || !projectWorker?.online}
+                onClick={() => setPruneOpen(true)}
+              >
+                <ScanLine className="size-4" /> Prune
+              </Button>
+              <Button
+                size="sm"
+                disabled={pendingInventory || !projectWorker?.online}
+                onClick={() => setCreateOpen(true)}
+              >
+                <Plus className="size-4" /> New worktree
+              </Button>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border">
+            <div className="hidden grid-cols-[minmax(13rem,1fr)_minmax(9rem,0.7fr)_minmax(10rem,0.8fr)_2.5rem] gap-4 bg-muted/50 px-4 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground md:grid">
+              <span>Worktree</span>
+              <span>Git state</span>
+              <span>Worker / bindings</span>
+              <span className="sr-only">Actions</span>
+            </div>
+            <div className="divide-y">
+              {worktrees.map((worktree) => {
+                const worker = workers.find(
+                  ({ workerId }) => workerId === worktree.workerId,
+                );
+                const status = statuses[worktree.id];
+                const state = projectWorktreeState(
+                  worktree,
+                  status,
+                  worker?.online ?? false,
+                );
+                const bindings = projectWorktreeBindings(
+                  worktree.id,
+                  chats,
+                  terminals,
+                  explorers,
+                  projectViews,
+                );
+                return (
+                  <div
+                    key={worktree.id}
+                    data-high-contrast-row
+                    className="grid gap-3 px-4 py-3 odd:bg-muted/[0.18] md:grid-cols-[minmax(13rem,1fr)_minmax(9rem,0.7fr)_minmax(10rem,0.8fr)_2.5rem] md:items-center md:gap-4"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-2">
+                        {worktree.isPrimary ? (
+                          <GitBranch className="size-4 shrink-0" />
+                        ) : (
+                          <GitFork className="size-4 shrink-0 text-violet-500" />
+                        )}
+                        <span className="truncate text-sm font-medium">
+                          {worktree.name}
+                        </span>
+                        {worktree.isPrimary ? (
+                          <Badge variant="secondary" className="text-[9px]">
+                            Primary
+                          </Badge>
+                        ) : null}
+                        {worktree.origin === "external" ? (
+                          <Badge variant="outline" className="text-[9px]">
+                            External
+                          </Badge>
+                        ) : null}
+                        {worktree.locked ? (
+                          <Lock className="size-3.5 shrink-0 text-muted-foreground" />
+                        ) : null}
+                      </div>
+                      <p
+                        className="mt-1 truncate font-mono text-[10px] text-muted-foreground"
+                        title={worktree.displayPath}
+                      >
+                        {worktree.displayPath}
+                      </p>
+                    </div>
+                    <div className="min-w-0 text-xs">
+                      <p className="truncate text-foreground">
+                        {worktree.branch ??
+                          `Detached ${worktree.head?.slice(0, 8) ?? "HEAD"}`}
+                      </p>
+                      <p
+                        className={cn(
+                          "mt-1 truncate text-muted-foreground capitalize",
+                          state.tone === "warning" &&
+                            "text-amber-600 dark:text-amber-400",
+                          state.tone === "danger" && "text-destructive",
+                        )}
+                      >
+                        {state.label}
+                        {status?.ahead ? ` · ${status.ahead} ahead` : ""}
+                        {status?.behind ? ` · ${status.behind} behind` : ""}
+                      </p>
+                    </div>
+                    <div className="min-w-0 text-xs">
+                      <p className="truncate">
+                        {worker?.name ?? worktree.workerId}
+                        {!worker?.online ? " · offline" : ""}
+                      </p>
+                      <p
+                        className="mt-1 truncate text-muted-foreground"
+                        title={bindings.join("\n")}
+                      >
+                        {bindings.length
+                          ? `${bindings.length} bound: ${bindings.join(", ")}`
+                          : "No bound tabs"}
+                      </p>
+                    </div>
+                    <DropdownMenuPrimitive.Root>
+                      <DropdownMenuPrimitive.Trigger asChild>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-8 justify-self-end"
+                        >
+                          {lockWorktree.isPending || remove.isPending ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <MoreHorizontal className="size-4" />
+                          )}
+                          <span className="sr-only">
+                            Actions for {worktree.name}
+                          </span>
+                        </Button>
+                      </DropdownMenuPrimitive.Trigger>
+                      <DropdownMenuPrimitive.Portal>
+                        <DropdownMenuPrimitive.Content
+                          align="end"
+                          sideOffset={4}
+                          className={menuContentClass}
+                        >
+                          <DropdownMenuPrimitive.Label className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                            Open on this worktree
+                          </DropdownMenuPrimitive.Label>
+                          <DropdownMenuPrimitive.Item
+                            className={menuItemClass}
+                            disabled={
+                              worktree.lifecycleState !== "ready" ||
+                              !worker?.online
+                            }
+                            onSelect={() => onCreateChat(worktree.id)}
+                          >
+                            <MessageSquare className="size-4" /> New chat
+                          </DropdownMenuPrimitive.Item>
+                          <DropdownMenuPrimitive.Item
+                            className={menuItemClass}
+                            disabled={
+                              worktree.lifecycleState !== "ready" ||
+                              !worker?.online
+                            }
+                            onSelect={() => onCreateTerminal(worktree.id)}
+                          >
+                            <SquareTerminal className="size-4" /> Terminal
+                          </DropdownMenuPrimitive.Item>
+                          <DropdownMenuPrimitive.Item
+                            className={menuItemClass}
+                            disabled={
+                              worktree.lifecycleState !== "ready" ||
+                              !worker?.online
+                            }
+                            onSelect={() => onCreateExplorer(worktree.id)}
+                          >
+                            <FolderTree className="size-4" /> Explorer
+                          </DropdownMenuPrimitive.Item>
+                          <DropdownMenuPrimitive.Item
+                            className={menuItemClass}
+                            disabled={
+                              worktree.lifecycleState !== "ready" ||
+                              !worker?.online
+                            }
+                            onSelect={() => onCreateHistory(worktree.id)}
+                          >
+                            <History className="size-4" /> History
+                          </DropdownMenuPrimitive.Item>
+                          {!worktree.isPrimary ? (
+                            <>
+                              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+                              <DropdownMenuPrimitive.Item
+                                className={menuItemClass}
+                                disabled={pendingInventory || !worker?.online}
+                                onSelect={() => lockWorktree.mutate(worktree)}
+                              >
+                                {worktree.locked ? (
+                                  <Unlock className="size-4" />
+                                ) : (
+                                  <Lock className="size-4" />
+                                )}
+                                {worktree.locked ? "Unlock" : "Lock"}
+                              </DropdownMenuPrimitive.Item>
+                              <DropdownMenuPrimitive.Item
+                                className={cn(
+                                  menuItemClass,
+                                  "text-destructive focus:bg-destructive/10",
+                                )}
+                                disabled={pendingInventory || !worker?.online}
+                                onSelect={() => {
+                                  setForceRemove(false);
+                                  setRemoveTarget(worktree);
+                                }}
+                              >
+                                <Trash2 className="size-4" /> Remove worktree
+                              </DropdownMenuPrimitive.Item>
+                            </>
+                          ) : null}
+                        </DropdownMenuPrimitive.Content>
+                      </DropdownMenuPrimitive.Portal>
+                    </DropdownMenuPrimitive.Root>
+                  </div>
+                );
+              })}
+              {!worktrees.length ? (
+                <div className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  No worktree inventory is available. Refresh after the worker
+                  reconnects.
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <WorktreeCreateDialog
+        open={createOpen}
+        pending={createWorktree.isPending}
+        onOpenChange={setCreateOpen}
+        onSubmit={(input) =>
+          createWorktree.mutateAsync(input).then(() => undefined)
+        }
+      />
+
+      <Dialog open={pruneOpen} onOpenChange={setPruneOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Prune stale worktree metadata?</DialogTitle>
+            <DialogDescription>
+              Git will remove stale administrative records. Healthy checkouts
+              and branches are not deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4"
+              checked={allowExternalPrune}
+              onChange={(event) => setAllowExternalPrune(event.target.checked)}
+            />
+            <span>Also prune stale metadata for external worktrees.</span>
+          </label>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPruneOpen(false)}>
+              Cancel
+            </Button>
+            <Button disabled={prune.isPending} onClick={() => prune.mutate()}>
+              {prune.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : null}
+              Prune
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(removeTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRemoveTarget(null);
+            setForceRemove(false);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove {removeTarget?.name}?</DialogTitle>
+            <DialogDescription>
+              The physical checkout will be removed after safety checks. Its Git
+              branch is retained.
+            </DialogDescription>
+          </DialogHeader>
+          {removeTarget?.origin === "external" ? (
+            <p className="rounded-md bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
+              This checkout was discovered outside Cantrip. Continuing
+              explicitly authorizes removal of that external worktree.
+            </p>
+          ) : null}
+          {removeTarget && statuses[removeTarget.id]?.files.length ? (
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4"
+                checked={forceRemove}
+                onChange={(event) => setForceRemove(event.target.checked)}
+              />
+              <span>
+                I understand this worktree has uncommitted changes and want to
+                force its removal.
+              </span>
+            </label>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemoveTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={
+                remove.isPending ||
+                Boolean(
+                  removeTarget &&
+                  statuses[removeTarget.id]?.files.length &&
+                  !forceRemove,
+                )
+              }
+              onClick={() => {
+                if (removeTarget) remove.mutate(removeTarget);
+              }}
+            >
+              {remove.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : null}
+              Remove worktree
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
