@@ -30,7 +30,6 @@ import type {
   QueuedPromptCreate,
   QueuedPromptOrder,
   QueuedPromptUpdate,
-  RemoteDesktopCreate,
   RemoteDesktopSummary,
   RemoteSurfaceCapabilities,
   RemoteSurfaceCreate,
@@ -411,8 +410,8 @@ function toRemoteDesktopSummary(
   view: typeof schema.projectViews.$inferSelect,
   surface: typeof schema.remoteSurfaces.$inferSelect,
 ): RemoteDesktopSummary {
-  if (surface.configuration.kind !== "vnc") {
-    throw new Error("Remote Desktop is not backed by a VNC surface.");
+  if (surface.configuration.kind !== "desktop") {
+    throw new Error("Remote Desktop is not backed by a desktop surface.");
   }
   return {
     id: view.id,
@@ -420,9 +419,6 @@ function toRemoteDesktopSummary(
     title: view.title,
     position: view.position,
     workerId: surface.workerId,
-    host: surface.configuration.host,
-    port: surface.configuration.port,
-    displayName: surface.configuration.displayName,
     status: surface.status as RemoteDesktopSummary["status"],
     lastError: surface.lastError,
     createdAt: toISOString(view.createdAt),
@@ -3366,7 +3362,7 @@ export class ServerRepository {
         and(
           eq(schema.projectViews.projectId, projectId),
           eq(schema.projectViews.kind, "remote-desktop"),
-          eq(schema.remoteSurfaces.kind, "vnc"),
+          eq(schema.remoteSurfaces.kind, "desktop"),
         ),
       )
       .orderBy(
@@ -3400,7 +3396,7 @@ export class ServerRepository {
         and(
           eq(schema.projectViews.id, desktopId),
           eq(schema.projectViews.kind, "remote-desktop"),
-          eq(schema.remoteSurfaces.kind, "vnc"),
+          eq(schema.remoteSurfaces.kind, "desktop"),
         ),
       )
       .limit(1);
@@ -3413,8 +3409,7 @@ export class ServerRepository {
     ownerId: string,
     projectId: string,
     desktopId: string,
-    input: Omit<RemoteDesktopCreate, "password">,
-    secretRef: string | null,
+    workerId: string,
   ): Promise<RemoteDesktopSummary | null> {
     const [
       projectRows,
@@ -3440,7 +3435,7 @@ export class ServerRepository {
         .from(schema.workers)
         .where(
           and(
-            eq(schema.workers.id, input.workerId),
+            eq(schema.workers.id, workerId),
             eq(schema.workers.ownerId, ownerId),
           ),
         )
@@ -3489,7 +3484,7 @@ export class ServerRepository {
       await transaction.insert(schema.projectViews).values({
         id: desktopId,
         projectId,
-        title: input.title,
+        title: "Remote Desktop",
         kind: "remote-desktop",
         worktreeId: null,
         position,
@@ -3497,16 +3492,12 @@ export class ServerRepository {
       await transaction.insert(schema.remoteSurfaces).values({
         id: desktopId,
         projectId,
-        workerId: input.workerId,
-        kind: "vnc",
-        title: input.title,
+        workerId,
+        kind: "desktop",
+        title: "Remote Desktop",
         preferredTransport: "webrtc",
         configuration: {
-          kind: "vnc",
-          host: input.host,
-          port: input.port,
-          displayName: input.displayName,
-          secretRef,
+          kind: "desktop",
         },
       });
     });

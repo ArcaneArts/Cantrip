@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@cantrip/protocol": "workspace:*",
+    "@zavora-ai/computer-use-mcp": "7.0.0",
     "node-pty": "^1.1.0",
     "werift": "^0.24.3",
     "ws": "^8.21.2"

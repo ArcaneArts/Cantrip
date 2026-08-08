@@ -99,7 +99,7 @@ describe("WorkerBridge Remote Surface transport", () => {
     expect(
       bridge.sendSurfaceFrame(
         "worker-1",
-        { ...header, channel: "rfb" },
+        { ...header, channel: "control" },
         new Uint8Array([2]),
       ),
     ).toBe(false);

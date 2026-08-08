@@ -14,7 +14,7 @@ Cantrip organizes work into GitHub-backed projects. Each project has one source 
 - Real PTY terminal tabs that run in the project folder on the worker.
 - Read-only Explorer tabs with a source or Markdown preview for supported text files.
 - Worker-streamed Browser tabs for project-related web pages.
-- Remote Desktop tabs for worker-reachable VNC/RFB endpoints.
+- One-click Remote Desktop tabs for the project worker's screen.
 - Git history with a branch graph, refs and tags, every known worktree HEAD, per-worktree WIP state, staged and unstaged changes, commits, branches, pull/push operations, and GitHub issue browsing and management.
 
 Settings are stored by the server for the current Cantrip identity rather than in browser cookies. They include System/Light/Dark appearance, optional high contrast, model providers, models, and the default model. Provider support currently includes:
@@ -41,7 +41,7 @@ Cantrip is split into three deployable applications plus one shared protocol pac
 flowchart LR
     APP["cantrip_app<br/>React + Vite<br/>Browser / Tauri / Capacitor"]
     SERVER["cantrip_server<br/>Fastify + PGlite/PostgreSQL<br/>Identity, configuration, history, routing"]
-    WORKER["cantrip_worker<br/>Node.js<br/>Codex, files, Git, PTYs, Chromium"]
+    WORKER["cantrip_worker<br/>Node.js<br/>Codex, files, Git, PTYs, Chromium, desktop capture"]
     CODEX["Codex CLI / app-server"]
     FILES["Project source folders"]
 
@@ -63,7 +63,7 @@ Local development uses embedded PGlite under `.cantrip/dev/`. A PostgreSQL `DATA
 
 ### `cantrip_worker`
 
-The worker is the machine that actually performs work. It owns project source folders and their physical Git worktrees, clones repositories, runs Git and GitHub CLI operations, provides filesystem access, hosts PTY processes, supervises worktree-specific Codex runtimes, runs Browser-tab Chromium sessions, and connects to configured VNC/RFB endpoints. Provider URLs, Browser-tab addresses, and Remote Desktop hosts such as `localhost` are resolved from the worker machine, which is important once the server and worker live on different hosts.
+The worker is the machine that actually performs work. It owns project source folders and their physical Git worktrees, clones repositories, runs Git and GitHub CLI operations, provides filesystem access, hosts PTY processes, supervises worktree-specific Codex runtimes, runs Browser-tab Chromium sessions, and captures and controls its own desktop for Remote Desktop tabs. Provider URLs and Browser-tab addresses are resolved from the worker machine, which is important once the server and worker live on different hosts.
 
 Workers communicate through the server. There is intentionally no app-to-worker connection mode.
 
@@ -191,26 +191,25 @@ do not connect to workers. See `.env.example` for TTL and timeout overrides.
 
 ### Remote Desktop tabs
 
-Choose **Remote Desktop** from a project's add-tab menu, select the worker,
-and enter a VNC/RFB host and port reachable from that worker. Cantrip probes the
-endpoint but does not enable screen sharing or install a VNC server on the
-target operating system. For a local worker and a local VNC server, the host is
-typically `127.0.0.1` and the conventional port is `5900`.
+Choose **Remote Desktop** from a project's add-tab menu. There is no setup
+dialog: the server resolves the project's source worker, asks that worker to
+verify screen capture, persists a tab named `Remote Desktop`, and opens it.
+Hostnames, ports, display names, and passwords are not part of the managed
+desktop API.
 
-The first adapter supports RFB 3.8 endpoints using either no authentication or
-classic VNC password authentication. The password is written to a private
-worker-owned secret file, is represented in server state only by an opaque
-reference, and is never returned to an app. Removing the Remote Desktop tab or
-project removes that worker secret when the worker is reachable. noVNC renders
-the session inside the normal React tree and sends keyboard, pointer, resize,
-and explicit clipboard operations over the same WebSocket/WebRTC Remote
-Surface transport as Browser tabs.
+The worker captures its current display and injects explicit pointer,
+keyboard, and clipboard actions. Encoded frames and input travel app ↔ server
+↔ worker over the same authenticated WebSocket or relay-only WebRTC Remote
+Surface transport as Browser tabs. No listener is exposed on the worker and an
+app never receives a worker address or native desktop-control credential.
 
-Classic RFB/VNC does not encrypt the worker-to-VNC-server leg. Keep that
-endpoint on loopback, a trusted private network, VPN, or SSH tunnel. Cantrip's
-app-to-server and server-to-worker transport does not make an independently
-exposed VNC server safe. TLS/VenCrypt endpoints and automatic operating-system
-screen-sharing provisioning are not implemented yet.
+The worker operating system still enforces local permissions. macOS workers
+need Screen Recording and Accessibility permission for the Node process that
+runs Cantrip. Windows uses its native desktop APIs. Linux workers require a
+supported graphical session; headless or restricted Wayland sessions may not
+offer a capturable desktop. If the worker cannot capture its display, the
+one-click request fails without creating a broken tab and reports the worker's
+diagnostic.
 
 ### Remote Surface limits and troubleshooting
 
@@ -218,7 +217,7 @@ The current local worker admits at most four live Remote Surface sessions and
 four simultaneous client attachments per surface. Main and popout windows each
 count as an attachment. WebSocket queues are bounded at 8 MiB: disposable
 Browser visual frames may be dropped under pressure, while congestion on a
-reliable input/RFB channel deliberately resets the connection so the client can
+reliable input channel deliberately resets the connection so the client can
 reconnect instead of continuing with a corrupted byte stream. Frame payloads
 are capped at 4 MiB by the shared protocol.
 
@@ -232,24 +231,13 @@ are capped at 4 MiB by the shared protocol.
   session continues over WebSocket. Check the TURN URLs, REST shared secret,
   firewall, and TLS certificate if WebRTC is expected; do not add host/direct
   ICE candidates as a workaround.
-- **VNC unreachable:** verify the host and port from the worker machine rather
-  than the app device. Confirm the endpoint speaks RFB 3.8 and uses either None
-  or classic VNC Password security. TLS/VenCrypt-only servers are not yet
-  supported.
-- **VNC authentication failed:** delete and recreate the Remote Desktop tab to
-  submit a corrected password. Passwords are intentionally not readable or
-  editable through ordinary APIs after creation.
+- **Remote Desktop unavailable:** grant the worker process screen-capture and
+  input-control permissions, then restart the worker. The creation request
+  probes capture before persisting a tab.
 
 Remote Surface logs contain lifecycle and validation errors only. Frame bytes,
-screenshots, keystrokes, clipboard contents, browser cookies, and VNC passwords
+screenshots, keystrokes, clipboard contents, and browser cookies
 must never be logged.
-
-For deterministic manual QA, run `pnpm qa:remote-surfaces`. It starts a local
-interactive website on `127.0.0.1:4391` and a no-password RFB 3.8 fixture on
-`127.0.0.1:5909`. Add those endpoints as Browser and Remote Desktop tabs on a
-local worker. Visiting `http://127.0.0.1:4391/vnc/drop` drops active fixture RFB
-connections without stopping the listener, which verifies automatic reconnect.
-The fixture is for local development only and binds exclusively to loopback.
 
 ## Desktop development with `pnpm devtop`
 

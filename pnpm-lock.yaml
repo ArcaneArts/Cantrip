@@ -52,9 +52,6 @@ importers:
       "@dnd-kit/utilities":
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.8)
-      "@novnc/novnc":
-        specifier: ^1.7.0
-        version: 1.7.0
       "@radix-ui/react-context-menu":
         specifier: ^2.3.7
         version: 2.3.7(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -180,6 +177,9 @@ importers:
       "@cantrip/protocol":
         specifier: workspace:*
         version: link:../packages/protocol
+      "@zavora-ai/computer-use-mcp":
+        specifier: 7.0.0
+        version: 7.0.0(supports-color@10.2.2)
       node-pty:
         specifier: ^1.1.0
         version: 1.1.0
@@ -1278,6 +1278,15 @@ packages:
         integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==,
       }
 
+  "@hono/node-server@1.19.17":
+    resolution:
+      {
+        integrity: sha512-dSneS5qhiauZWGDCeK4o695Xd9nUNjviSZCMQrj10eetr8Uln1ucn6bbphOM6UynAMMtNIzZNSpL9vnASJwrPQ==,
+      }
+    engines: { node: ">=18.14.1" }
+    peerDependencies:
+      hono: ^4
+
   "@hono/node-server@2.1.0":
     resolution:
       {
@@ -1387,6 +1396,19 @@ packages:
         integrity: sha512-Vo+PSpZG2/fmgmiNzYK9qWRh8h/CHrwD0mo1h1DzL4yzHNSfWYujGTYsWGreD000gcgmZ7K4Ys6Tx9TxtsKdDw==,
       }
 
+  "@modelcontextprotocol/sdk@1.29.0":
+    resolution:
+      {
+        integrity: sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ==,
+      }
+    engines: { node: ">=18" }
+    peerDependencies:
+      "@cfworker/json-schema": ^4.1.1
+      zod: ^3.25 || ^4.0
+    peerDependenciesMeta:
+      "@cfworker/json-schema":
+        optional: true
+
   "@modelcontextprotocol/sdk@1.30.0":
     resolution:
       {
@@ -1434,12 +1456,6 @@ packages:
         integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==,
       }
     engines: { node: ">= 8" }
-
-  "@novnc/novnc@1.7.0":
-    resolution:
-      {
-        integrity: sha512-ucEJOx4T2avIRCleodk7YobZj5O2Ga2AeLfQ69A/yjG9HHba2+PDgwSkN3FttrmG+70ZGx21sElNFouK13RzyA==,
-      }
 
   "@oxc-project/types@0.143.0":
     resolution:
@@ -2780,6 +2796,15 @@ packages:
       {
         integrity: sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==,
       }
+
+  "@zavora-ai/computer-use-mcp@7.0.0":
+    resolution:
+      {
+        integrity: sha512-4VtqeSrdohsGmxCc9XMQ7SlOsnjdG/ZrjtSAQcRd3k5KXDUbsOmPSEEzplRIQhfqG2/OzSkEze3iIZCFcStTmQ==,
+      }
+    engines: { node: ">=18" }
+    os: [darwin, win32, linux]
+    hasBin: true
 
   abstract-logging@2.0.1:
     resolution:
@@ -7370,6 +7395,10 @@ snapshots:
 
   "@floating-ui/utils@0.2.12": {}
 
+  "@hono/node-server@1.19.17(hono@4.13.0)":
+    dependencies:
+      hono: 4.13.0
+
   "@hono/node-server@2.1.0(hono@4.13.0)":
     dependencies:
       hono: 4.13.0
@@ -7475,6 +7504,28 @@ snapshots:
 
   "@leichtgewicht/ip-codec@2.0.5": {}
 
+  "@modelcontextprotocol/sdk@1.29.0(supports-color@10.2.2)(zod@4.4.3)":
+    dependencies:
+      "@hono/node-server": 1.19.17(hono@4.13.0)
+      ajv: 8.20.0
+      ajv-formats: 3.0.1(ajv@8.20.0)
+      content-type: 1.0.5
+      cors: 2.8.6
+      cross-spawn: 7.0.6
+      eventsource: 3.0.7
+      eventsource-parser: 3.1.0
+      express: 5.2.1(supports-color@10.2.2)
+      express-rate-limit: 8.6.2(express@5.2.1(supports-color@10.2.2))(supports-color@10.2.2)
+      hono: 4.13.0
+      jose: 6.2.8
+      json-schema-typed: 8.0.2
+      pkce-challenge: 5.0.1
+      raw-body: 3.0.2
+      zod: 4.4.3
+      zod-to-json-schema: 3.25.2(zod@4.4.3)
+    transitivePeerDependencies:
+      - supports-color
+
   "@modelcontextprotocol/sdk@1.30.0(supports-color@10.2.2)(zod@3.25.76)":
     dependencies:
       "@hono/node-server": 2.1.0(hono@4.13.0)
@@ -7514,8 +7565,6 @@ snapshots:
     dependencies:
       "@nodelib/fs.scandir": 2.1.5
       fastq: 1.20.1
-
-  "@novnc/novnc@1.7.0": {}
 
   "@oxc-project/types@0.143.0": {}
 
@@ -8284,6 +8333,14 @@ snapshots:
   "@xterm/addon-fit@0.11.0": {}
 
   "@xterm/xterm@6.0.0": {}
+
+  "@zavora-ai/computer-use-mcp@7.0.0(supports-color@10.2.2)":
+    dependencies:
+      "@modelcontextprotocol/sdk": 1.29.0(supports-color@10.2.2)(zod@4.4.3)
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - "@cfworker/json-schema"
+      - supports-color
 
   abstract-logging@2.0.1: {}
 
@@ -10720,6 +10777,10 @@ snapshots:
   zod-to-json-schema@3.25.2(zod@3.25.76):
     dependencies:
       zod: 3.25.76
+
+  zod-to-json-schema@3.25.2(zod@4.4.3):
+    dependencies:
+      zod: 4.4.3
 
   zod@3.25.76: {}
 

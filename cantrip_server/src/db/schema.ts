@@ -155,7 +155,7 @@ export const workers = pgTable("workers", {
     .notNull()
     .default({
       browser: false,
-      vnc: false,
+      desktop: false,
       transports: ["websocket"],
       maxSessions: 4,
     }),

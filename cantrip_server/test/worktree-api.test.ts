@@ -291,7 +291,6 @@ beforeAll(async () => {
     codexRuntime: unprobedCodexRuntimeReport,
     remoteSurfaces: {
       browser: false,
-      vnc: false,
       transports: ["websocket"],
       maxSessions: 1,
     },
@@ -825,7 +824,6 @@ describe.sequential("server worktree control plane", () => {
         codexRuntime: unprobedCodexRuntimeReport,
         remoteSurfaces: {
           browser: false,
-          vnc: false,
           transports: ["websocket"],
           maxSessions: 1,
         },

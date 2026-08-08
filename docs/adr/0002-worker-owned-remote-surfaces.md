@@ -22,7 +22,7 @@ input, lifecycle, and reconnect requirements as a remote browser.
 
 ## Decision
 
-Cantrip models Browser and VNC as versioned **Remote Surfaces** owned by a
+Cantrip models Browser and managed desktop sessions as versioned **Remote Surfaces** owned by a
 worker. The app remains a presentation and input surface and connects only to
 the Cantrip server.
 
@@ -77,27 +77,25 @@ The original server-side iframe rewriting proxy and Tauri child-webview
 commands are removed once this adapter is active, so there is only one Browser
 renderer and no hidden platform-specific fallback.
 
-### VNC adapter
+### Managed desktop adapter
 
-The worker connects to a configured RFB/VNC endpoint reachable from that
-worker and relays the session through the same attachment and transport
-infrastructure. Cantrip does not silently enable an operating system's remote
-desktop service. VNC credentials are worker secrets and ordinary APIs return
-only safe connection metadata; the durable surface configuration contains only
-an opaque secret reference.
+Creating a Remote Desktop supplies no host, port, password, display name, or
+worker selection. The server resolves the project's primary source worker and
+asks that worker to probe native display capture before it persists the tab.
+The durable configuration is only `{ kind: "desktop" }`; the worker is the
+authority for the display and input backend.
 
-The app uses noVNC as a regular React renderer. A channel adapter carries raw
-RFB bytes inside the same versioned Remote Surface envelopes used by the other
-data channels, over relay-only WebRTC when available and authenticated
-WebSocket otherwise. Each app attachment receives a separate worker-to-VNC
-connection, so independent main and popout renderers do not compete for one RFB
-client state machine.
+The worker uses a cross-platform native desktop-control library to capture
+compressed frames and perform pointer, keyboard, and explicit clipboard
+actions. These messages use the same versioned Remote Surface envelopes as the
+Browser adapter. There is no desktop listener and no directly reachable worker
+port. Main, popout, browser, Tauri, and future Capacitor clients therefore use
+one canvas renderer and the same app-to-server-to-worker path.
 
-The initial worker gateway speaks RFB 3.8 and terminates either the None or
-classic VNC Password security type before presenting a credential-free RFB
-session to noVNC. It does not support TLS/VenCrypt yet. Classic RFB is not an
-encrypted worker-to-endpoint transport, so configured endpoints must be
-reachable over loopback, a trusted private network, VPN, or tunnel.
+The operating system remains the final authority. macOS requires Screen
+Recording and Accessibility grants for the worker process; Windows uses native
+desktop APIs; Linux requires a supported graphical session. A failed capture
+probe rejects creation rather than persisting a known-broken tab.
 
 ## Trust boundaries
 
@@ -105,13 +103,11 @@ reachable over loopback, a trusted private network, VPN, or tunnel.
   enrollment credential.
 - Workers initiate their authenticated server connection.
 - The server authorizes every attachment and routes frames but never persists
-  browser profile files, cookies, or plaintext VNC credentials. A newly entered
-  VNC password transits server memory once on its way to the selected worker
-  and must not be logged.
+  browser profile files, cookies, desktop frames, or clipboard bodies.
 - A raw CDP endpoint is equivalent to control of the browser profile and must
   remain worker-local.
 - Frame, clipboard, and input channels have explicit size, rate, and logging
-  policies. Keystrokes, clipboard bodies, images, and RFB bytes are not logged.
+  policies. Keystrokes, clipboard bodies, and images are not logged.
 - Disconnecting a client detaches its attachment. Closing a surface explicitly
   terminates the worker session. A worker disconnect leaves the durable record
   recoverable and visibly offline.
@@ -120,15 +116,14 @@ reachable over loopback, a trusted private network, VPN, or tunnel.
 
 - Tauri remains a thin portable shell; browser rendering does not require a
   private macOS API or transparent native-view layering.
-- The same Browser and VNC components can run in Vite, Tauri, Capacitor, and
+- The same Browser and managed desktop components can run in Vite, Tauri, Capacitor, and
   popout windows.
 - Local browser streaming still traverses the loopback server. Backpressure
   and efficient encoding therefore matter even in local mode.
-- Browser and VNC share transport and lifecycle code but retain distinct
+- Browser and managed desktop share transport and lifecycle code but retain distinct
   worker adapters and channel semantics.
 - WebRTC requires operational STUN/TURN configuration. WebSocket remains a
   tested compatibility and recovery path rather than a development-only stub.
-- Automatic cross-platform desktop capture/provisioning is a separate adapter;
-  the first VNC implementation connects to an explicitly configured RFB
-  endpoint and does not claim to secure an otherwise exposed classic VNC
-  service.
+- Remote Desktop capture is tied to the worker's active graphical session;
+  separate multi-seat displays and operating-system login screens require
+  future platform-specific work.

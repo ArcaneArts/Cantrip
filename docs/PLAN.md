@@ -142,13 +142,13 @@ Browser and remote-desktop tabs use the worker-owned Remote Surface
 architecture recorded in
 [ADR 0002](adr/0002-worker-owned-remote-surfaces.md). The server stores the
 durable session and authorizes attachments, while the selected worker owns
-Chromium/CDP or the configured VNC/RFB connection. Apps never receive a worker
+Chromium/CDP or its managed desktop capture/input backend. Apps never receive a worker
 origin or raw CDP endpoint.
 
 Every surface has a versioned control plane and binary data plane. Authenticated
 WebSocket relay is the mandatory fallback. WebRTC is preferred when negotiation
 succeeds, with signaling through the server and relay-only TURN support for
-deployments that prohibit direct app-to-worker traffic. Browser frames and VNC
+deployments that prohibit direct app-to-worker traffic. Browser and desktop
 content render inside the ordinary React tree so the same UI works in Vite,
 Tauri, Capacitor, and popout windows without iframe rewriting or native-webview
 layering.
@@ -162,20 +162,17 @@ paths have been removed. WebRTC uses server-minted short-lived TURN REST
 credentials, relay-only ICE, separate visual and reliable control data
 channels, and automatic WebSocket fallback.
 
-The configured VNC/RFB slice is implemented as the `remote-desktop` project
-tab type. The app uses noVNC as a normal React renderer while a worker-side RFB
-3.8 authentication gateway connects to the configured endpoint. Each client
-attachment has an independent RFB connection, allowing main and popout windows
-to reconnect safely. The gateway currently supports unauthenticated and
-classic VNC-password endpoints; passwords are private worker secrets and the
-server persists only opaque references. Cantrip intentionally does not enable
-or configure an operating system's screen-sharing service. TLS/VenCrypt and
-automatic desktop provisioning remain future adapter work.
+The managed desktop slice is implemented as the `remote-desktop` project tab
+type. Creation has no client-supplied configuration: the server resolves the
+project source worker, probes its native capture backend, and persists a
+worker-owned desktop surface. The worker sends compressed display frames and
+accepts pointer, keyboard, and explicit clipboard messages. No desktop port,
+password, or worker address exists in the app contract.
 
 Operational limits currently bound a worker to four live Remote Surface
 sessions and each surface to four attachments. Binary payloads are capped at 4
 MiB and WebSocket queues at 8 MiB. Browser visual frames may be discarded under
-pressure; reliable control and RFB congestion resets the connection instead of
+pressure; reliable control congestion resets the connection instead of
 silently corrupting the stream. Clients use bounded exponential reconnects.
 
 ### 4.6 Agent-managed Git worktrees

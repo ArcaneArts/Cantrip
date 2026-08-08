@@ -11,6 +11,7 @@ import type { CodexRuntime } from "./codex/runtime.js";
 import { invokeCantripWorktreeTool } from "./codex/worktree-tool-client.js";
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
 import { readWorkerConfig } from "./config.js";
+import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
 import { listExplorerDirectory, readExplorerFile } from "./explorer.js";
 import { GithubClient } from "./github.js";
 import { readGitHistory, readGitStatus, runGitAction } from "./git.js";
@@ -18,11 +19,6 @@ import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
 import { TerminalManager } from "./terminal-manager.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
 import { WorkerConnection } from "./transport.js";
-import {
-  VncRemoteSurfaceAdapter,
-  probeVncEndpoint,
-} from "./vnc/vnc-adapter.js";
-import { VncSecretStore } from "./vnc/secret-store.js";
 import { WorktreeManager } from "./worktrees.js";
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
@@ -37,15 +33,15 @@ async function start(): Promise<void> {
   const browserAdapter = new BrowserRemoteSurfaceAdapter({
     dataDirectory: config.dataDirectory,
   });
-  const vncSecrets = new VncSecretStore(config.dataDirectory);
-  const vncAdapter = new VncRemoteSurfaceAdapter(vncSecrets);
+  const desktopAdapter = new ManagedDesktopRemoteSurfaceAdapter();
+  await desktopAdapter.initialize();
   const heartbeat = createHeartbeat(
     config,
     codexRuntime,
     new Date().toISOString(),
     {
       browser: browserAdapter.available,
-      vnc: vncAdapter.available,
+      desktop: desktopAdapter.available,
       transports: ["websocket", "webrtc"],
       maxSessions: 4,
     },
@@ -60,7 +56,7 @@ async function start(): Promise<void> {
   const terminals = new TerminalManager();
   const remoteSurfaces = new RemoteSurfaceManager({
     browser: browserAdapter,
-    vnc: vncAdapter,
+    desktop: desktopAdapter,
   });
   const worktrees = new WorktreeManager(config.dataDirectory);
 
@@ -263,15 +259,8 @@ async function start(): Promise<void> {
       case "surface.close":
         await remoteSurfaces.close(command.surfaceId);
         return { accepted: true };
-      case "surface.vnc.secret.set":
-        return {
-          secretRef: await vncSecrets.set(command.surfaceId, command.password),
-        };
-      case "surface.vnc.secret.delete":
-        await vncSecrets.delete(command.secretRef);
-        return { accepted: true };
-      case "surface.vnc.probe":
-        return probeVncEndpoint(command.host, command.port);
+      case "surface.desktop.probe":
+        return desktopAdapter.probe();
       case "chat.turn":
         return runtimeFor(command).runTurn({
           chatId: command.chatId,
@@ -398,7 +387,7 @@ async function start(): Promise<void> {
   );
 
   console.log(
-    `[cantrip_worker] Starting ${heartbeat.name} (${heartbeat.workerId}); Codex: ${codexRuntime.version?.raw ?? "not found"} (${codexRuntime.compatibility}); Browser: ${browserAdapter.executable ?? "Chromium not found"}`,
+    `[cantrip_worker] Starting ${heartbeat.name} (${heartbeat.workerId}); Codex: ${codexRuntime.version?.raw ?? "not found"} (${codexRuntime.compatibility}); Browser: ${browserAdapter.executable ?? "Chromium not found"}; Desktop: ${desktopAdapter.available ? "ready" : `unavailable (${desktopAdapter.initializationError ?? "unknown error"})`}`,
   );
 
   const publish = async () => {
@@ -441,6 +430,7 @@ async function start(): Promise<void> {
       for (const client of codexAuthClients.values()) client.close();
       terminals.closeAll();
       await remoteSurfaces.closeAll();
+      await desktopAdapter.shutdown();
       for (const runtime of codexRuntimes.values()) {
         runtime.close();
       }
