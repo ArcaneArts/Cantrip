@@ -48,6 +48,9 @@ type ExecutionMode =
   | "failure"
   | "hold-success"
   | "interaction"
+  | "parallel"
+  | "parallel-hold"
+  | "sibling-failure"
   | "success"
   | "terminal-failure";
 
@@ -56,6 +59,14 @@ let mode: ExecutionMode = "success";
 let heldInteraction: (() => void) | null = null;
 let heldExecution: (() => void) | null = null;
 let heldEvent: WorkerRequestOptions["onEvent"] | undefined;
+let parallelInFlight = 0;
+let parallelPeak = 0;
+let parallelWaiters: Array<() => void> = [];
+let parallelBarrierReleased = false;
+const heldParallelExecutions = new Map<string, () => void>();
+let awaitAlphaFailure: Promise<void> | null = null;
+let triggerAlphaFailure: (() => void) | null = null;
+let releaseLateSibling: (() => void) | null = null;
 const executionCommands: Array<
   Extract<WorkerCommand, { type: "workflow.node.execute" }>
 > = [];
@@ -66,11 +77,28 @@ const interruptCommands: Array<
 function resultFor(
   command: Extract<WorkerCommand, { type: "workflow.node.execute" }>,
 ) {
+  const structuredResult = command.prompt.includes("Alpha branch")
+    ? { finding: "alpha" }
+    : command.prompt.includes("Beta branch")
+      ? { finding: "beta" }
+      : command.prompt.includes("Gamma branch")
+        ? { finding: "gamma" }
+        : command.prompt.includes("Synthesize branches")
+          ? { summary: "combined" }
+          : command.prompt.includes("Collect nested findings")
+            ? { payload: { findings: [{ finding: "nested" }] } }
+            : command.prompt.includes("Synthesize selected findings")
+              ? { summary: "selected" }
+              : command.prompt.includes("Verify failing")
+                ? { passed: false }
+                : command.prompt.includes("Verify passing")
+                  ? { passed: true }
+                  : { approved: true };
   return {
     threadId: `thread-${command.attemptId}`,
     turnId: `turn-${command.attemptId}`,
-    text: '{"approved":true}',
-    structuredResult: { approved: true },
+    text: JSON.stringify(structuredResult),
+    structuredResult,
     measuredUsage: {
       inputTokens: 10,
       outputTokens: 4,
@@ -92,6 +120,8 @@ const workerBridge: WorkerCommandBus = {
     heldInteraction = null;
     heldExecution?.();
     heldExecution = null;
+    for (const release of heldParallelExecutions.values()) release();
+    heldParallelExecutions.clear();
   },
   isConnected(workerId) {
     return connected && workerId === "test-worker";
@@ -154,6 +184,57 @@ const workerBridge: WorkerCommandBus = {
       if (mode === "terminal-failure") {
         throw new Error("Codex turn failed at a durable boundary.");
       }
+      if (
+        mode === "sibling-failure" &&
+        command.prompt.includes("Alpha branch")
+      ) {
+        await awaitAlphaFailure;
+        throw new Error("Alpha failed while its sibling was active.");
+      }
+      if (
+        mode === "sibling-failure" &&
+        command.prompt.includes("Beta branch")
+      ) {
+        triggerAlphaFailure?.();
+        triggerAlphaFailure = null;
+        await new Promise<void>((resolve) => {
+          releaseLateSibling = resolve;
+        });
+        await options?.onEvent?.({
+          type: "workflow.node.activity",
+          attemptId: command.attemptId,
+          activity: {
+            type: "usage",
+            id: `late-usage-${command.attemptId}`,
+            status: "completed",
+            total: {
+              totalTokens: 8,
+              inputTokens: 6,
+              cachedInputTokens: 1,
+              cacheWriteInputTokens: 0,
+              outputTokens: 2,
+              reasoningOutputTokens: 0,
+            },
+            last: {
+              totalTokens: 8,
+              inputTokens: 6,
+              cachedInputTokens: 1,
+              cacheWriteInputTokens: 0,
+              outputTokens: 2,
+              reasoningOutputTokens: 0,
+            },
+            modelContextWindow: 10_000,
+            contextUsedPercent: 0.1,
+            correlation: {
+              sourceMethod: "thread/tokenUsage/updated",
+              diagnosticId: null,
+              threadId: `thread-${command.attemptId}`,
+              turnId: `turn-${command.attemptId}`,
+              itemId: null,
+            },
+          },
+        });
+      }
       await options?.onEvent?.({
         type: "workflow.node.activity",
         attemptId: command.attemptId,
@@ -171,6 +252,37 @@ const workerBridge: WorkerCommandBus = {
           },
         },
       });
+      if (
+        mode === "parallel" &&
+        (command.prompt.includes("Alpha branch") ||
+          command.prompt.includes("Beta branch") ||
+          command.prompt.includes("Gamma branch"))
+      ) {
+        parallelInFlight += 1;
+        parallelPeak = Math.max(parallelPeak, parallelInFlight);
+        if (!parallelBarrierReleased) {
+          await new Promise<void>((resolve) => {
+            parallelWaiters.push(resolve);
+            if (parallelWaiters.length === 2) {
+              parallelBarrierReleased = true;
+              const waiters = parallelWaiters;
+              parallelWaiters = [];
+              for (const release of waiters) release();
+            }
+          });
+        }
+        parallelInFlight -= 1;
+      }
+      if (
+        mode === "parallel-hold" &&
+        (command.prompt.includes("Alpha branch") ||
+          command.prompt.includes("Beta branch"))
+      ) {
+        await new Promise<void>((resolve) => {
+          heldParallelExecutions.set(command.attemptId, resolve);
+        });
+        heldParallelExecutions.delete(command.attemptId);
+      }
       if (mode === "interaction") {
         heldEvent = options?.onEvent;
         await options?.onEvent?.({
@@ -207,6 +319,7 @@ const workerBridge: WorkerCommandBus = {
     if (command.type === "workflow.node.interrupt") {
       interruptCommands.push(command);
       heldExecution?.();
+      heldParallelExecutions.get(command.attemptId)?.();
       return { interrupted: true };
     }
     if (command.type === "agent.interaction.respond") {
@@ -235,14 +348,26 @@ let projectId: string;
 let revisionId: string;
 
 async function createRun(idempotencyKey: string) {
+  return createRunForRevision(revisionId, idempotencyKey);
+}
+
+async function createRunForRevision(
+  workflowRevisionId: string,
+  idempotencyKey: string,
+  budget: Record<string, unknown> = {},
+) {
   return app.inject({
     method: "POST",
     url: "/api/workflow-runs",
     payload: {
-      workflowRevisionId: revisionId,
+      workflowRevisionId,
       projectId,
       structuredInput: { target: "src" },
-      budget: { maxAttemptsPerNode: 2, maxNodeDurationMs: 60_000 },
+      budget: {
+        maxAttemptsPerNode: 2,
+        maxNodeDurationMs: 60_000,
+        ...budget,
+      },
       permissionManifest: { filesystem: "read-only" },
       selectedModelRouteId: DEFAULT_MODEL_ROUTE_ID,
       selectedPermissionProfileId: null,
@@ -256,6 +381,30 @@ async function createRun(idempotencyKey: string) {
       idempotencyKey,
     },
   });
+}
+
+async function createWorkflowRevision(
+  slug: string,
+  nodes: unknown[],
+  edges: unknown[] = [],
+) {
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/workflows",
+    payload: {
+      scope: "project",
+      projectId,
+      slug,
+      name: slug,
+      trustState: "trusted",
+      revision: {
+        graph: { version: 1, nodes, edges },
+        trustState: "trusted",
+      },
+    },
+  });
+  expect(response.statusCode).toBe(201);
+  return workflowDefinitionDetailSchema.parse(response.json()).revision!.id;
 }
 
 async function runDetail(runId: string) {
@@ -410,6 +559,364 @@ describe.sequential("single-agent workflow execution", () => {
     expect(replay.statusCode).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(executionCommands).toHaveLength(before + 1);
+  });
+
+  it("runs independent roots in parallel and durably reduces their mapped results", async () => {
+    const staticRevision = await createWorkflowRevision(
+      "parallel-static-dag",
+      [
+        {
+          key: "alpha",
+          type: "agent",
+          name: "Alpha",
+          configuration: { prompt: "Alpha branch." },
+          outputSchema: { type: "object" },
+        },
+        {
+          key: "beta",
+          type: "agent",
+          name: "Beta",
+          configuration: { prompt: "Beta branch." },
+          outputSchema: { type: "object" },
+        },
+        {
+          key: "gamma",
+          type: "agent",
+          name: "Gamma",
+          configuration: { prompt: "Gamma branch." },
+          outputSchema: { type: "object" },
+        },
+        {
+          key: "synthesize",
+          type: "reduce",
+          name: "Synthesize",
+          configuration: { prompt: "Synthesize branches." },
+          outputSchema: { type: "object" },
+        },
+      ],
+      [
+        { from: "alpha", to: "synthesize" },
+        { from: "beta", to: "synthesize" },
+        { from: "gamma", to: "synthesize" },
+      ],
+    );
+    connected = true;
+    mode = "parallel";
+    parallelInFlight = 0;
+    parallelPeak = 0;
+    parallelWaiters = [];
+    parallelBarrierReleased = false;
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      staticRevision,
+      "execute-parallel-static-dag",
+      { maxParallelism: 2 },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    mode = "success";
+    const commands = executionCommands.slice(before);
+    expect(commands).toHaveLength(4);
+    expect(
+      commands
+        .slice(0, 3)
+        .map(({ prompt }) => prompt.split("\n", 1)[0])
+        .sort(),
+    ).toEqual(["Alpha branch.", "Beta branch.", "Gamma branch."]);
+    expect(commands[3]?.prompt).toContain("Synthesize branches.");
+    expect(commands[3]?.prompt).toContain('"alpha":{"finding":"alpha"}');
+    expect(commands[3]?.prompt).toContain('"beta":{"finding":"beta"}');
+    expect(commands[3]?.prompt).toContain('"gamma":{"finding":"gamma"}');
+    expect(parallelPeak).toBe(2);
+    expect(await runDetail(runId)).toMatchObject({
+      run: {
+        status: "completed",
+        structuredResult: { summary: "combined" },
+        measuredUsage: { totalTokens: 56, durationMs: 1_000 },
+      },
+      nodes: [
+        { nodeKey: "alpha", status: "completed" },
+        { nodeKey: "beta", status: "completed" },
+        { nodeKey: "gamma", status: "completed" },
+        {
+          nodeKey: "synthesize",
+          status: "completed",
+          structuredInput: {
+            alpha: { finding: "alpha" },
+            beta: { finding: "beta" },
+            gamma: { finding: "gamma" },
+          },
+        },
+      ],
+    });
+    const events = workflowRunEventPageSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/workflow-runs/${runId}/events`,
+        })
+      ).json(),
+    );
+    expect(events.events.map(({ sequence }) => sequence)).toEqual(
+      events.events.map((_, index) => index),
+    );
+    expect(
+      events.events.filter(({ type }) => type === "node.attempt.completed"),
+    ).toHaveLength(4);
+  });
+
+  it("serializes terminal state aggregation for parallel sink nodes", async () => {
+    const revision = await createWorkflowRevision("parallel-sinks", [
+      {
+        key: "alpha",
+        type: "agent",
+        name: "Alpha",
+        configuration: { prompt: "Alpha branch." },
+      },
+      {
+        key: "beta",
+        type: "agent",
+        name: "Beta",
+        configuration: { prompt: "Beta branch." },
+      },
+    ]);
+    mode = "parallel";
+    parallelInFlight = 0;
+    parallelPeak = 0;
+    parallelWaiters = [];
+    parallelBarrierReleased = false;
+    const response = await createRunForRevision(
+      revision,
+      "execute-parallel-sinks",
+      { maxParallelism: 2 },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    mode = "success";
+    expect((await runDetail(runId)).run.structuredResult).toEqual({
+      alpha: { finding: "alpha" },
+      beta: { finding: "beta" },
+    });
+    expect(parallelPeak).toBe(2);
+  });
+
+  it("cancels and interrupts every active parallel node", async () => {
+    const parallelRevision = await createWorkflowRevision(
+      "cancel-parallel-dag",
+      [
+        {
+          key: "alpha",
+          type: "agent",
+          name: "Alpha",
+          configuration: { prompt: "Alpha branch." },
+        },
+        {
+          key: "beta",
+          type: "agent",
+          name: "Beta",
+          configuration: { prompt: "Beta branch." },
+        },
+      ],
+    );
+    connected = true;
+    mode = "parallel-hold";
+    heldParallelExecutions.clear();
+    const interruptsBefore = interruptCommands.length;
+    const response = await createRunForRevision(
+      parallelRevision,
+      "execute-cancel-parallel",
+      { maxParallelism: 2 },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      const detail = await runDetail(runId);
+      expect(detail.attempts).toHaveLength(2);
+      expect(
+        detail.attempts.every(({ codexThreadId }) => codexThreadId !== null),
+      ).toBe(true);
+    });
+    const active = await runDetail(runId);
+    const cancellation = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/cancel`,
+      payload: {
+        reason: "Cancel every branch.",
+        idempotencyKey: "cancel-parallel-once",
+      },
+    });
+    expect(cancellation.statusCode).toBe(200);
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("cancelled");
+    });
+    mode = "success";
+    expect(await runDetail(runId)).toMatchObject({
+      run: { status: "cancelled" },
+      nodes: [{ status: "cancelled" }, { status: "cancelled" }],
+      attempts: [{ status: "interrupted" }, { status: "interrupted" }],
+    });
+    const interrupts = interruptCommands.slice(interruptsBefore);
+    expect(interrupts).toHaveLength(2);
+    expect(new Set(interrupts.map(({ attemptId }) => attemptId))).toEqual(
+      new Set(active.attempts.map(({ id }) => id)),
+    );
+  });
+
+  it("selects a reduce collection before rendering and persisting its attempt input", async () => {
+    const reduceRevision = await createWorkflowRevision(
+      "reduce-selected-collection",
+      [
+        {
+          key: "collect",
+          type: "agent",
+          name: "Collect",
+          configuration: { prompt: "Collect nested findings." },
+        },
+        {
+          key: "synthesize",
+          type: "reduce",
+          name: "Synthesize",
+          configuration: {
+            prompt: "Synthesize selected findings.",
+            collectionPath: "/payload/findings",
+          },
+        },
+      ],
+      [{ from: "collect", to: "synthesize" }],
+    );
+    mode = "success";
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      reduceRevision,
+      "execute-reduce-selection",
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    const reducer = executionCommands.slice(before)[1]!;
+    expect(reducer.prompt).toContain('[{"finding":"nested"}]');
+    expect(reducer.prompt).not.toContain('"payload"');
+    expect(await runDetail(runId)).toMatchObject({
+      run: { structuredResult: { summary: "selected" } },
+      attempts: [{}, { structuredInput: [{ finding: "nested" }] }],
+    });
+  });
+
+  it("does not let a late parallel worker event revive a failed run", async () => {
+    const revision = await createWorkflowRevision("parallel-terminal-race", [
+      {
+        key: "alpha",
+        type: "agent",
+        name: "Alpha",
+        configuration: { prompt: "Alpha branch.", automaticRetries: 0 },
+      },
+      {
+        key: "beta",
+        type: "agent",
+        name: "Beta",
+        configuration: { prompt: "Beta branch." },
+      },
+    ]);
+    mode = "sibling-failure";
+    awaitAlphaFailure = new Promise<void>((resolve) => {
+      triggerAlphaFailure = resolve;
+    });
+    releaseLateSibling = null;
+    const response = await createRunForRevision(
+      revision,
+      "execute-parallel-terminal-race",
+      { maxParallelism: 2 },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("failed");
+      expect(releaseLateSibling).not.toBeNull();
+    });
+    releaseLateSibling!();
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).nodes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ nodeKey: "beta", status: "completed" }),
+        ]),
+      );
+    });
+    mode = "success";
+    awaitAlphaFailure = null;
+    expect((await runDetail(runId)).run.status).toBe("failed");
+  });
+
+  it("applies verification pass and fail policies to structured results", async () => {
+    const failingRevision = await createWorkflowRevision(
+      "verification-fails-run",
+      [
+        {
+          key: "verify",
+          type: "verify",
+          name: "Verify",
+          configuration: {
+            prompt: "Verify failing.",
+            passCondition: {
+              path: "/passed",
+              operator: "equals",
+              value: true,
+            },
+          },
+        },
+      ],
+    );
+    mode = "success";
+    const failing = await createRunForRevision(
+      failingRevision,
+      "execute-verification-failure",
+    );
+    const failingRunId = workflowRunDetailSchema.parse(failing.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(failingRunId)).run.status).toBe("failed");
+    });
+    expect(await runDetail(failingRunId)).toMatchObject({
+      run: { errorCode: "verification-failed" },
+      nodes: [{ status: "failed", attemptCount: 2 }],
+      attempts: [
+        { status: "failed", errorCode: "verification-failed" },
+        { status: "failed", errorCode: "verification-failed" },
+      ],
+    });
+
+    const continuingRevision = await createWorkflowRevision(
+      "verification-continues",
+      [
+        {
+          key: "verify",
+          type: "verify",
+          name: "Verify",
+          configuration: {
+            prompt: "Verify failing.",
+            passCondition: {
+              path: "/passed",
+              operator: "equals",
+              value: true,
+            },
+            failurePolicy: "continue",
+          },
+        },
+      ],
+    );
+    const continuing = await createRunForRevision(
+      continuingRevision,
+      "execute-verification-continue",
+    );
+    const continuingRunId = workflowRunDetailSchema.parse(continuing.json()).run
+      .id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(continuingRunId)).run.status).toBe("completed");
+    });
+    expect((await runDetail(continuingRunId)).run.structuredResult).toEqual({
+      passed: false,
+    });
   });
 
   it("retries terminal failures within the persisted attempt budget", async () => {
@@ -666,6 +1173,65 @@ describe.sequential("single-agent workflow execution", () => {
     mode = "success";
   });
 
+  it("reopens skipped downstream nodes after an explicit failed-node retry", async () => {
+    const retryRevision = await createWorkflowRevision(
+      "retry-static-chain",
+      [
+        {
+          key: "first",
+          type: "agent",
+          name: "First",
+          configuration: {
+            prompt: "Recoverable root.",
+            automaticRetries: 0,
+          },
+        },
+        {
+          key: "second",
+          type: "agent",
+          name: "Second",
+          configuration: { prompt: "Continue recovered chain." },
+        },
+      ],
+      [{ from: "first", to: "second" }],
+    );
+    mode = "terminal-failure";
+    const response = await createRunForRevision(
+      retryRevision,
+      "execute-retry-static-chain",
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("failed");
+    });
+    const failed = await runDetail(runId);
+    expect(failed.nodes).toMatchObject([
+      { nodeKey: "first", status: "failed" },
+      { nodeKey: "second", status: "skipped" },
+    ]);
+
+    mode = "success";
+    const retry = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/nodes/${failed.nodes[0]!.id}/retry`,
+      payload: {
+        reason: "Retry the recovered worker.",
+        idempotencyKey: "retry-static-chain-once",
+      },
+    });
+    expect(retry.statusCode).toBe(200);
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    expect(await runDetail(runId)).toMatchObject({
+      run: { status: "completed", structuredResult: { approved: true } },
+      nodes: [
+        { nodeKey: "first", status: "completed", attemptCount: 2 },
+        { nodeKey: "second", status: "completed", attemptCount: 1 },
+      ],
+    });
+  });
+
   it("orphans in-flight attempts during restart recovery", async () => {
     connected = false;
     mode = "success";
@@ -674,29 +1240,29 @@ describe.sequential("single-agent workflow execution", () => {
     await vi.waitFor(async () => {
       expect((await runDetail(runId)).run.status).toBe("queued");
     });
-    const candidate =
-      await database.repository.workflowRuns.getSingleAgentCandidate(
+    const candidates =
+      await database.repository.workflowRuns.getReadyAgentCandidates(
         LOCAL_USER_ID,
         runId,
       );
+    const candidate = candidates?.[0];
     const source = await database.repository.getProjectSource(
       LOCAL_USER_ID,
       projectId,
     );
     expect(candidate).not.toBeNull();
     expect(source).not.toBeNull();
-    const lease =
-      await database.repository.workflowRuns.claimSingleAgentAttempt(
-        LOCAL_USER_ID,
-        candidate!,
-        {
-          cwd: source!.cwd,
-          modelRouteId: DEFAULT_MODEL_ROUTE_ID,
-          permissionProfileId: null,
-          workerId: source!.workerId,
-          worktreeId: source!.worktreeId,
-        },
-      );
+    const lease = await database.repository.workflowRuns.claimAgentAttempt(
+      LOCAL_USER_ID,
+      candidate!,
+      {
+        cwd: source!.cwd,
+        modelRouteId: DEFAULT_MODEL_ROUTE_ID,
+        permissionProfileId: null,
+        workerId: source!.workerId,
+        worktreeId: source!.worktreeId,
+      },
+    );
     expect(lease).not.toBeNull();
     expect((await runDetail(runId)).run.status).toBe("running");
 

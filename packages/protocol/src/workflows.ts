@@ -306,6 +306,7 @@ export const workflowAgentNodeConfigurationSchema = z
       .nullable()
       .default(null),
     includeStructuredInput: z.boolean().default(true),
+    automaticRetries: z.number().int().min(0).max(99).nullable().default(null),
   })
   .strict();
 
@@ -580,6 +581,12 @@ export const workflowGraphSchema = z
         [] as Array<(typeof graph.edges)[number]>,
       ]),
     );
+    const incomingEdges = new Map(
+      graph.nodes.map(({ key }) => [
+        key,
+        [] as Array<(typeof graph.edges)[number]>,
+      ]),
+    );
     for (const [index, edge] of graph.edges.entries()) {
       if (!keys.has(edge.from)) {
         context.addIssue({
@@ -619,7 +626,24 @@ export const workflowGraphSchema = z
       if (keys.has(edge.from) && keys.has(edge.to) && edge.from !== edge.to) {
         outgoing.get(edge.from)!.push(edge.to);
         outgoingEdges.get(edge.from)!.push(edge);
+        incomingEdges.get(edge.to)!.push(edge);
         indegree.set(edge.to, indegree.get(edge.to)! + 1);
+      }
+    }
+
+    for (const edges of incomingEdges.values()) {
+      if (edges.length < 2) continue;
+      const destinations = new Set<string>();
+      for (const edge of edges) {
+        const destination = edge.targetInput ?? edge.from;
+        if (destinations.has(destination)) {
+          context.addIssue({
+            code: "custom",
+            message: `Dependency mappings collide at target input ${destination}.`,
+            path: ["edges", graph.edges.indexOf(edge), "targetInput"],
+          });
+        }
+        destinations.add(destination);
       }
     }
 

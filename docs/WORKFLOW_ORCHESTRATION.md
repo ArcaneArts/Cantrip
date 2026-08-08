@@ -15,7 +15,7 @@ configuration:
 
 | Node          | Configuration contract                                                                                                               |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `agent`       | One Codex prompt with optional developer instructions and structured-input inclusion.                                                |
+| `agent`       | One Codex prompt with optional developer instructions, structured-input inclusion, and an automatic-retry ceiling.                   |
 | `map`         | One Codex prompt applied to a collection selected by JSON pointer, with an explicit concurrency limit and collection failure policy. |
 | `pipeline`    | A bounded ordered list of uniquely keyed Codex steps applied to a collection with explicit concurrency and failure policy.           |
 | `reduce`      | One Codex synthesis prompt over a selected collection, with explicit empty-collection behavior.                                      |
@@ -52,12 +52,33 @@ selection remains deterministic across restarts.
 
 ## Runtime rollout
 
-The type-specific contract is intentionally landed before the multi-node
-scheduler. Until the corresponding orchestration slice is present, unsupported
-node types fail explicitly rather than falling back to an agent chat or an
-unvalidated interpretation. Subsequent scheduler changes must preserve this
-contract, persist every intermediate boundary, and apply the run budget as an
-additional ceiling over node-local concurrency and loop limits.
+The static DAG runtime executes read-only `agent`, `reduce`, and `verify` nodes.
+It claims independent roots up to the run's maximum parallelism, persists each
+attempt independently, aggregates usage, and only releases a downstream node
+after every incoming dependency is durably satisfied. A single dependency
+passes its selected result directly. Fan-in without explicit target names
+builds an object keyed by source node; explicit target names build the same
+object under those names. Duplicate target names are rejected when the
+revision is saved.
+
+A reduce node applies `collectionPath` to its durable node input before the
+selected array or object is rendered into the Codex prompt. A missing path or
+non-collection value fails explicitly. An empty collection is rejected when
+`emptyCollection` is `fail`; `complete` permits the reducer to execute with the
+empty collection as its structured input.
+
+Verification nodes evaluate their pass predicate after Codex returns a
+structured result. `fail-run` participates in the ordinary bounded retry
+policy; `continue` preserves the result and releases downstream dependencies.
+The optional `automaticRetries` setting narrows automatic attempts without
+increasing the immutable run budget, leaving remaining attempts available for
+an explicit operator retry.
+
+Unsupported dynamic or control nodes still fail explicitly rather than
+falling back to an agent chat or an unvalidated interpretation. Subsequent
+scheduler changes must preserve this contract, persist every intermediate
+boundary, and apply the run budget as an additional ceiling over node-local
+concurrency and loop limits.
 
 Write-capable `agent`, `map`, `pipeline`, `reduce`, `verify`, and `repeatUntil`
 nodes use the same declared filesystem permission invariant as other workflow

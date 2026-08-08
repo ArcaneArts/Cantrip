@@ -19,12 +19,13 @@ import {
 } from "../db/repository.js";
 import type {
   WorkflowAttemptLease,
-  WorkflowSingleAgentCandidate,
+  WorkflowAgentCandidate,
 } from "../db/workflow-runs.js";
 import {
   type WorkerCommandBus,
   WorkerUnavailableError,
 } from "../workers/bridge.js";
+import { evaluateWorkflowPredicate } from "./values.js";
 
 interface WorkflowExecutorLogger {
   error(context: Record<string, unknown>, message: string): void;
@@ -34,6 +35,7 @@ interface WorkflowExecutorLogger {
 const MAX_WORKFLOW_PROMPT_LENGTH = 100_000;
 
 class WorkflowProgressPersistenceError extends Error {}
+class WorkflowVerificationError extends Error {}
 
 export function workflowAgentPrompt(
   configuration: WorkflowAgentNodeConfiguration,
@@ -96,37 +98,42 @@ export class WorkflowExecutor {
       runId,
       input,
     );
-    if (!requested?.execution || requested.replayed) {
+    if (!requested?.executions.length || requested.replayed) {
       return requested?.run ?? null;
     }
-    const { execution } = requested;
-    const runtime = await this.repository.getModelRuntimeByRoute(
-      LOCAL_USER_ID,
-      execution.modelRouteId,
+    await Promise.all(
+      requested.executions.map(async (execution) => {
+        const runtime = await this.repository.getModelRuntimeByRoute(
+          LOCAL_USER_ID,
+          execution.modelRouteId,
+        );
+        if (!runtime || !this.bridge.isConnected(execution.workerId)) return;
+        try {
+          await this.bridge.request(
+            execution.workerId,
+            {
+              type: "workflow.node.interrupt",
+              workflowRunId: execution.runId,
+              runNodeId: execution.runNodeId,
+              attemptId: execution.attemptId,
+              threadId: execution.threadId,
+              model: runtime.model,
+              provider: runtime.provider,
+            },
+            { timeoutMs: 30_000 },
+          );
+        } catch (error) {
+          this.logger.warn(
+            {
+              err: error,
+              workflowRunId: runId,
+              workflowRunNodeId: execution.runNodeId,
+            },
+            "Workflow cancellation was persisted but runtime interruption failed",
+          );
+        }
+      }),
     );
-    if (!runtime || !this.bridge.isConnected(execution.workerId)) {
-      return requested.run;
-    }
-    try {
-      await this.bridge.request(
-        execution.workerId,
-        {
-          type: "workflow.node.interrupt",
-          workflowRunId: execution.runId,
-          runNodeId: execution.runNodeId,
-          attemptId: execution.attemptId,
-          threadId: execution.threadId,
-          model: runtime.model,
-          provider: runtime.provider,
-        },
-        { timeoutMs: 30_000 },
-      );
-    } catch (error) {
-      this.logger.warn(
-        { err: error, workflowRunId: runId },
-        "Workflow cancellation was persisted but runtime interruption failed",
-      );
-    }
     return (
       (await this.repository.workflowRuns.getRun(LOCAL_USER_ID, runId)) ??
       requested.run
@@ -210,60 +217,80 @@ export class WorkflowExecutor {
   }
 
   private async executeRun(runId: string): Promise<void> {
+    const active = new Set<Promise<void>>();
     while (!this.#stopping) {
-      const candidate =
-        await this.repository.workflowRuns.getSingleAgentCandidate(
+      const candidates =
+        await this.repository.workflowRuns.getReadyAgentCandidates(
           LOCAL_USER_ID,
           runId,
         );
-      if (!candidate) return;
-      const source = candidate.projectId
+      if (candidates === null) break;
+      const unsupported = candidates.find(
+        ({ configuration, unsupportedReason }) =>
+          unsupportedReason || !configuration,
+      );
+      if (unsupported) {
+        await this.repository.workflowRuns.failUnsupportedRun(
+          LOCAL_USER_ID,
+          runId,
+          unsupported.unsupportedReason ??
+            "The workflow node configuration is unavailable.",
+        );
+        break;
+      }
+      const candidate = candidates[0];
+      const source = candidate?.projectId
         ? await this.repository.getProjectSource(
             LOCAL_USER_ID,
             candidate.projectId,
           )
         : null;
-      if (candidate.projectId && !source) return;
-      if (source && !this.bridge.isConnected(source.workerId)) return;
-      if (candidate.unsupportedReason || !candidate.configuration || !source) {
+      if (candidate?.projectId && !source) break;
+      if (source && !this.bridge.isConnected(source.workerId)) break;
+      if (candidates.length > 0 && !source) {
         await this.repository.workflowRuns.failUnsupportedRun(
           LOCAL_USER_ID,
           runId,
-          candidate.unsupportedReason ??
-            "The workflow project source is unavailable.",
+          "The workflow project source is unavailable.",
         );
-        return;
+        break;
       }
-      const runtime = await this.runtimeFor(candidate);
-      if (!runtime) {
-        await this.repository.workflowRuns.failUnsupportedRun(
+      for (const ready of candidates) {
+        const runtime = await this.runtimeFor(ready);
+        if (!runtime) {
+          await this.repository.workflowRuns.failUnsupportedRun(
+            LOCAL_USER_ID,
+            runId,
+            "The workflow has no available model route.",
+          );
+          break;
+        }
+        const lease = await this.repository.workflowRuns.claimAgentAttempt(
           LOCAL_USER_ID,
-          runId,
-          "The workflow has no available model route.",
+          ready,
+          {
+            cwd: source!.cwd,
+            modelRouteId: runtime.routeId,
+            permissionProfileId: ready.node.permissionProfileId,
+            workerId: source!.workerId,
+            worktreeId: source!.worktreeId,
+          },
         );
-        return;
+        if (!lease) continue;
+        let task!: Promise<void>;
+        task = this.executeAttempt(
+          lease,
+          source!.cwd,
+          source!.workerId,
+          source!.worktreeId,
+          runtime,
+        ).finally(() => active.delete(task));
+        active.add(task);
       }
-      const lease = await this.repository.workflowRuns.claimSingleAgentAttempt(
-        LOCAL_USER_ID,
-        candidate,
-        {
-          cwd: source.cwd,
-          modelRouteId: runtime.routeId,
-          permissionProfileId: candidate.node.permissionProfileId,
-          workerId: source.workerId,
-          worktreeId: source.worktreeId,
-        },
-      );
-      if (!lease) return;
-      const retry = await this.executeAttempt(
-        lease,
-        source.cwd,
-        source.workerId,
-        source.worktreeId,
-        runtime,
-      );
-      if (!retry) return;
+      if (active.size === 0) break;
+      await Promise.race(active);
     }
+    await Promise.allSettled(active);
   }
 
   private async executeAttempt(
@@ -272,7 +299,7 @@ export class WorkflowExecutor {
     workerId: string,
     worktreeId: string,
     runtime: ModelRuntime,
-  ): Promise<boolean> {
+  ): Promise<void> {
     try {
       const rawResult = await this.bridge.request(
         workerId,
@@ -287,7 +314,7 @@ export class WorkflowExecutor {
           threadId: lease.candidate.node.codexThreadId,
           prompt: workflowAgentPrompt(
             lease.candidate.configuration!,
-            lease.candidate.node.structuredInput,
+            lease.candidate.structuredInput,
           ),
           developerInstructions:
             lease.candidate.configuration!.developerInstructions,
@@ -315,19 +342,29 @@ export class WorkflowExecutor {
         },
       );
       const result = workflowNodeExecutionResultSchema.parse(rawResult);
-      await this.repository.workflowRuns.completeSingleAgentAttempt(
+      if (
+        lease.candidate.verification &&
+        lease.candidate.verification.failurePolicy === "fail-run" &&
+        !evaluateWorkflowPredicate(
+          result.structuredResult,
+          lease.candidate.verification.passCondition,
+        )
+      ) {
+        throw new WorkflowVerificationError(
+          "The verification result did not satisfy its pass condition.",
+        );
+      }
+      await this.repository.workflowRuns.completeAgentAttempt(
         LOCAL_USER_ID,
         lease,
         result,
       );
-      return false;
     } catch (error) {
-      const failure = await this.repository.workflowRuns.failSingleAgentAttempt(
+      await this.repository.workflowRuns.failAgentAttempt(
         LOCAL_USER_ID,
         lease,
         this.failureFrom(error),
       );
-      return failure.retryScheduled;
     }
   }
 
@@ -422,7 +459,7 @@ export class WorkflowExecutor {
   }
 
   private async runtimeFor(
-    candidate: WorkflowSingleAgentCandidate,
+    candidate: WorkflowAgentCandidate,
   ): Promise<ModelRuntime | null> {
     if (candidate.node.modelRouteId) {
       return this.repository.getModelRuntimeByRoute(
@@ -452,6 +489,9 @@ export class WorkflowExecutor {
         message,
         status: "orphaned",
       };
+    }
+    if (error instanceof WorkflowVerificationError) {
+      return { code: "verification-failed", message, status: "failed" };
     }
     if (/timed out/iu.test(message)) {
       return { code: "node-timeout", message, status: "timed-out" };

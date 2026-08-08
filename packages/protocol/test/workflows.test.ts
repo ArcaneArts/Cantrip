@@ -107,6 +107,7 @@ describe("workflow protocol", () => {
       prompt: "Inspect the requested target.",
       developerInstructions: null,
       includeStructuredInput: true,
+      automaticRetries: null,
     });
     expect(
       workflowAgentNodeConfigurationSchema.safeParse({ prompt: "" }).success,
@@ -287,6 +288,16 @@ describe("workflow protocol", () => {
             to: "matched",
             condition: { path: "/ok", operator: "equals", value: true },
           },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      workflowGraphSchema.safeParse({
+        version: 1,
+        nodes: [readNode("first"), readNode("second"), readNode("target")],
+        edges: [
+          { from: "first", to: "target", targetInput: "result" },
+          { from: "second", to: "target", targetInput: "result" },
         ],
       }).success,
     ).toBe(false);
