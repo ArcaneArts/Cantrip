@@ -3,5 +3,9 @@
   "identifier": "popouts",
   "description": "Capabilities for project tabs opened in their own desktop window",
   "windows": ["popout-*"],
-  "permissions": ["core:default", "opener:default"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-title",
+    "opener:default"
+  ]
 }

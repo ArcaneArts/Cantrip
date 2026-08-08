@@ -55,6 +55,14 @@ export function isDesktopRuntime(): boolean {
   return isTauri();
 }
 
+export async function updateDesktopWindowTitle(title: string): Promise<void> {
+  if (!isDesktopRuntime()) return;
+  document.title = title;
+  const { getCurrentWebviewWindow } =
+    await import("@tauri-apps/api/webviewWindow");
+  await getCurrentWebviewWindow().setTitle(title);
+}
+
 export async function openDesktopPopout(
   target: DesktopPopoutTarget,
   title: string,

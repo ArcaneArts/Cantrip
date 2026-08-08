@@ -121,6 +121,7 @@ import {
   isDesktopRuntime,
   openDesktopPopout,
   parseDesktopPopoutTarget,
+  updateDesktopWindowTitle,
   type DesktopPopoutTarget,
 } from "@/lib/desktop-popout";
 import { cn } from "@/lib/utils";
@@ -1542,17 +1543,16 @@ export function App() {
   const selectedBrowser = browsers.data?.find(
     (browser) => browser.id === selectedBrowserId,
   );
-  const activePopout = useMemo<{
+  const currentSurface = useMemo<{
     target: DesktopPopoutTarget;
     title: string;
   } | null>(() => {
-    if (!desktopRuntime || isPopout || showImporter || showSettings)
-      return null;
+    if (showImporter || showSettings) return null;
     if (gitHistoryProject) {
       const view = gitHistoryHeader?.activeView ?? "commits";
       return {
         target: { kind: "git", projectId: gitHistoryProject.id, view },
-        title: `${gitHistoryProject.name} ${view === "issues" ? "Issues" : "Commits"}`,
+        title: view === "issues" ? "Issues" : "Commits",
       };
     }
     if (selectedBrowser) {
@@ -1583,7 +1583,7 @@ export function App() {
           tabId: selectedTerminal.id,
         },
         title: selectedTerminal.linkedChatId
-          ? (linkedConsoleChat?.title ?? "Codex console")
+          ? `${linkedConsoleChat?.title ?? "Chat"} · Codex console`
           : selectedTerminal.title,
       };
     }
@@ -1599,10 +1599,8 @@ export function App() {
     }
     return null;
   }, [
-    desktopRuntime,
     gitHistoryHeader?.activeView,
     gitHistoryProject,
-    isPopout,
     linkedConsoleChat?.title,
     selectedBrowser,
     selectedChat,
@@ -1611,6 +1609,7 @@ export function App() {
     showImporter,
     showSettings,
   ]);
+  const activePopout = desktopRuntime && !isPopout ? currentSurface : null;
   const popOutActiveView = () => {
     if (!activePopout || popoutPending) return;
     setPopoutPending(true);
@@ -1619,6 +1618,18 @@ export function App() {
       .catch((error: unknown) => setPopoutError(errorText(error)))
       .finally(() => setPopoutPending(false));
   };
+
+  useEffect(() => {
+    if (!isPopout || !currentSurface) return;
+    const projectTitle =
+      selectedProject?.github?.nameWithOwner ?? selectedProject?.name;
+    const title = [currentSurface.title, projectTitle, "Cantrip"]
+      .filter(Boolean)
+      .join(" — ");
+    void updateDesktopWindowTitle(title).catch((error: unknown) => {
+      console.error("Could not update the pop-out window title", error);
+    });
+  }, [currentSurface, isPopout, selectedProject]);
   const showChatConsole = (chat: ChatSummary) => {
     const existing = terminals.data?.find(
       (terminal) => terminal.linkedChatId === chat.id,
@@ -1891,283 +1902,320 @@ export function App() {
         </aside>
       ) : null}
 
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b px-4 sm:px-6">
-          <div className="min-w-0">
-            <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
-              <span className="truncate">
-                {showImporter
-                  ? "GitHub repositories"
-                  : showSettings
-                    ? "Settings"
-                    : gitHistoryProject
-                      ? gitHistoryHeader?.activeView === "issues"
-                        ? "Git issues"
-                        : "Git history"
-                      : selectedBrowser
-                        ? selectedBrowser.title
-                        : selectedExplorer
-                          ? selectedExplorer.title
-                          : selectedTerminal
-                            ? selectedTerminal.linkedChatId
-                              ? (linkedConsoleChat?.title ?? "Chat")
-                              : selectedTerminal.title
-                            : selectedChat
-                              ? selectedChat.title
-                              : (selectedProject?.github?.nameWithOwner ??
-                                "Cantrip")}
-              </span>
-              {gitHistoryProject && gitHistoryHeader ? (
+      <section className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        {!isPopout ? (
+          <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b px-4 sm:px-6">
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
+                <span className="truncate">
+                  {showImporter
+                    ? "GitHub repositories"
+                    : showSettings
+                      ? "Settings"
+                      : gitHistoryProject
+                        ? gitHistoryHeader?.activeView === "issues"
+                          ? "Git issues"
+                          : "Git history"
+                        : selectedBrowser
+                          ? selectedBrowser.title
+                          : selectedExplorer
+                            ? selectedExplorer.title
+                            : selectedTerminal
+                              ? selectedTerminal.linkedChatId
+                                ? (linkedConsoleChat?.title ?? "Chat")
+                                : selectedTerminal.title
+                              : selectedChat
+                                ? selectedChat.title
+                                : (selectedProject?.github?.nameWithOwner ??
+                                  "Cantrip")}
+                </span>
+                {gitHistoryProject && gitHistoryHeader ? (
+                  <>
+                    <Badge
+                      variant="secondary"
+                      className="hidden shrink-0 gap-1 font-mono font-normal sm:flex"
+                    >
+                      <GitBranch className="size-3" />
+                      {gitHistoryHeader.branch || "detached HEAD"}
+                    </Badge>
+                    {gitHistoryHeader.head ? (
+                      <code className="hidden shrink-0 text-[11px] font-normal text-muted-foreground sm:block">
+                        @ {gitHistoryHeader.head.slice(0, 8)}
+                      </code>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+              <p className="truncate text-xs text-muted-foreground">
+                {showImporter ? (
+                  "Add a worker-owned source"
+                ) : showSettings ? (
+                  "Account preferences"
+                ) : gitHistoryProject ? (
+                  <>
+                    {gitHistoryProject.github?.nameWithOwner ??
+                      gitHistoryProject.name}
+                    {gitHistoryHeader ? (
+                      gitHistoryHeader.activeView === "issues" ? (
+                        ` · ${gitHistoryHeader.issueCount ?? "…"} ${gitHistoryHeader.issueState} issues`
+                      ) : (
+                        <>
+                          <span className="sm:hidden">
+                            {` · ${gitHistoryHeader.branch || "detached HEAD"}${gitHistoryHeader.head ? ` @ ${gitHistoryHeader.head.slice(0, 8)}` : ""}`}
+                          </span>
+                          {` · ${gitHistoryHeader.commitsLoaded} commits loaded`}
+                        </>
+                      )
+                    ) : null}
+                  </>
+                ) : selectedBrowser ? (
+                  selectedBrowser.url
+                ) : selectedExplorer ? (
+                  (selectedProject?.source?.displayPath ?? "Explorer")
+                ) : selectedTerminal ? (
+                  selectedTerminal.linkedChatId ? (
+                    (selectedProject?.source?.displayPath ?? "Chat")
+                  ) : (
+                    (selectedProject?.source?.displayPath ?? "Terminal")
+                  )
+                ) : selectedChat ? (
+                  (selectedProject?.source?.displayPath ?? "Chat")
+                ) : (
+                  (selectedProject?.source?.displayPath ??
+                  "Choose a project to begin")
+                )}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 md:hidden">
+              {!isPopout ? (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setMobileNavigationOpen(true)}
+                >
+                  <PanelLeft className="size-4" />
+                  <span className="sr-only">Open projects and chats</span>
+                </Button>
+              ) : null}
+              {gitHistoryProject &&
+              gitHistoryHeader?.activeView === "commits" ? (
                 <>
-                  <Badge
-                    variant="secondary"
-                    className="hidden shrink-0 gap-1 font-mono font-normal sm:flex"
+                  <Button
+                    size="icon"
+                    variant={gitHistoryHeader.changesOpen ? "outline" : "ghost"}
+                    onClick={gitHistoryHeader.toggleChanges}
                   >
-                    <GitBranch className="size-3" />
-                    {gitHistoryHeader.branch || "detached HEAD"}
-                  </Badge>
-                  {gitHistoryHeader.head ? (
-                    <code className="hidden shrink-0 text-[11px] font-normal text-muted-foreground sm:block">
-                      @ {gitHistoryHeader.head.slice(0, 8)}
-                    </code>
-                  ) : null}
+                    <FileDiff className="size-4" />
+                    <span className="sr-only">
+                      Show {gitHistoryHeader.changesCount} working changes
+                    </span>
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    disabled={gitHistoryHeader.isFetching}
+                    onClick={gitHistoryHeader.refresh}
+                  >
+                    <RefreshCw
+                      className={cn(
+                        "size-4",
+                        gitHistoryHeader.isFetching && "animate-spin",
+                      )}
+                    />
+                    <span className="sr-only">Refresh Git history</span>
+                  </Button>
+                </>
+              ) : null}
+              {activePopout ? (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  disabled={popoutPending}
+                  className={cn(popoutError && "text-destructive")}
+                  onClick={popOutActiveView}
+                  title={popoutError ?? "Open this tab in a new window"}
+                >
+                  {popoutPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <ExternalLink className="size-4" />
+                  )}
+                  <span className="sr-only">Open this tab in a new window</span>
+                </Button>
+              ) : null}
+              {activeChat && !showImporter && !showSettings ? (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-pressed={Boolean(linkedConsoleChat)}
+                  disabled={!linkedConsoleChat && openChatConsole.isPending}
+                  onClick={() =>
+                    linkedConsoleChat
+                      ? openCreatedTab(
+                          linkedConsoleChat.projectId,
+                          "chat",
+                          linkedConsoleChat.id,
+                        )
+                      : showChatConsole(activeChat)
+                  }
+                >
+                  {linkedConsoleChat ? (
+                    <MessageSquare className="size-4" />
+                  ) : openChatConsole.isPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <SquareTerminal className="size-4" />
+                  )}
+                  <span className="sr-only">
+                    {linkedConsoleChat ? "Show chat" : "Show Codex console"}
+                  </span>
+                </Button>
+              ) : null}
+              {!isPopout ? (
+                <>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => {
+                      setShowSettings(true);
+                      setShowImporter(false);
+                    }}
+                  >
+                    <Settings className="size-4" />
+                    <span className="sr-only">Open settings</span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setShowImporter(true);
+                      setShowSettings(false);
+                    }}
+                  >
+                    <Plus className="size-4" />
+                    Project
+                  </Button>
                 </>
               ) : null}
             </div>
-            <p className="truncate text-xs text-muted-foreground">
-              {showImporter ? (
-                "Add a worker-owned source"
-              ) : showSettings ? (
-                "Account preferences"
-              ) : gitHistoryProject ? (
+            <div className="ml-auto hidden items-center gap-2 md:flex">
+              {gitHistoryProject &&
+              gitHistoryHeader?.activeView === "commits" ? (
                 <>
-                  {gitHistoryProject.github?.nameWithOwner ??
-                    gitHistoryProject.name}
-                  {gitHistoryHeader ? (
-                    gitHistoryHeader.activeView === "issues" ? (
-                      ` · ${gitHistoryHeader.issueCount ?? "…"} ${gitHistoryHeader.issueState} issues`
-                    ) : (
-                      <>
-                        <span className="sm:hidden">
-                          {` · ${gitHistoryHeader.branch || "detached HEAD"}${gitHistoryHeader.head ? ` @ ${gitHistoryHeader.head.slice(0, 8)}` : ""}`}
-                        </span>
-                        {` · ${gitHistoryHeader.commitsLoaded} commits loaded`}
-                      </>
-                    )
-                  ) : null}
+                  <Button
+                    size="sm"
+                    variant={gitHistoryHeader.changesOpen ? "outline" : "ghost"}
+                    onClick={gitHistoryHeader.toggleChanges}
+                    title="Show working changes"
+                  >
+                    <FileDiff className="size-4" />
+                    {gitHistoryHeader.changesCount} changes
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    disabled={gitHistoryHeader.isFetching}
+                    onClick={gitHistoryHeader.refresh}
+                    title="Refresh Git history"
+                  >
+                    <RefreshCw
+                      className={cn(
+                        "size-4",
+                        gitHistoryHeader.isFetching && "animate-spin",
+                      )}
+                    />
+                    <span className="sr-only">Refresh Git history</span>
+                  </Button>
                 </>
-              ) : selectedBrowser ? (
-                selectedBrowser.url
-              ) : selectedExplorer ? (
-                (selectedProject?.source?.displayPath ?? "Explorer")
-              ) : selectedTerminal ? (
-                selectedTerminal.linkedChatId ? (
-                  (selectedProject?.source?.displayPath ?? "Chat")
-                ) : (
-                  (selectedProject?.source?.displayPath ?? "Terminal")
-                )
-              ) : selectedChat ? (
-                (selectedProject?.source?.displayPath ?? "Chat")
-              ) : (
-                (selectedProject?.source?.displayPath ??
-                "Choose a project to begin")
-              )}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 md:hidden">
-            {!isPopout ? (
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => setMobileNavigationOpen(true)}
-              >
-                <PanelLeft className="size-4" />
-                <span className="sr-only">Open projects and chats</span>
-              </Button>
-            ) : null}
-            {gitHistoryProject && gitHistoryHeader?.activeView === "commits" ? (
-              <>
+              ) : null}
+              {activePopout ? (
                 <Button
                   size="icon"
-                  variant={gitHistoryHeader.changesOpen ? "outline" : "ghost"}
-                  onClick={gitHistoryHeader.toggleChanges}
+                  variant="ghost"
+                  disabled={popoutPending}
+                  className={cn(popoutError && "text-destructive")}
+                  onClick={popOutActiveView}
+                  title={popoutError ?? "Open this tab in a new window"}
                 >
-                  <FileDiff className="size-4" />
+                  {popoutPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <ExternalLink className="size-4" />
+                  )}
+                  <span className="sr-only">Open this tab in a new window</span>
+                </Button>
+              ) : null}
+              {activeChat && !showImporter && !showSettings ? (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-pressed={Boolean(linkedConsoleChat)}
+                  disabled={!linkedConsoleChat && openChatConsole.isPending}
+                  onClick={() =>
+                    linkedConsoleChat
+                      ? openCreatedTab(
+                          linkedConsoleChat.projectId,
+                          "chat",
+                          linkedConsoleChat.id,
+                        )
+                      : showChatConsole(activeChat)
+                  }
+                  title={linkedConsoleChat ? "Show chat" : "Show Codex console"}
+                >
+                  {linkedConsoleChat ? (
+                    <MessageSquare className="size-4" />
+                  ) : openChatConsole.isPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <SquareTerminal className="size-4" />
+                  )}
                   <span className="sr-only">
-                    Show {gitHistoryHeader.changesCount} working changes
+                    {linkedConsoleChat ? "Show chat" : "Show Codex console"}
                   </span>
                 </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  disabled={gitHistoryHeader.isFetching}
-                  onClick={gitHistoryHeader.refresh}
-                >
-                  <RefreshCw
-                    className={cn(
-                      "size-4",
-                      gitHistoryHeader.isFetching && "animate-spin",
-                    )}
-                  />
-                  <span className="sr-only">Refresh Git history</span>
-                </Button>
-              </>
-            ) : null}
-            {activePopout ? (
-              <Button
-                size="icon"
-                variant="ghost"
-                disabled={popoutPending}
-                className={cn(popoutError && "text-destructive")}
-                onClick={popOutActiveView}
-                title={popoutError ?? "Open this tab in a new window"}
-              >
-                {popoutPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <ExternalLink className="size-4" />
-                )}
-                <span className="sr-only">Open this tab in a new window</span>
-              </Button>
-            ) : null}
-            {activeChat && !showImporter && !showSettings ? (
-              <Button
-                size="icon"
-                variant="ghost"
-                aria-pressed={Boolean(linkedConsoleChat)}
-                disabled={!linkedConsoleChat && openChatConsole.isPending}
-                onClick={() =>
-                  linkedConsoleChat
-                    ? openCreatedTab(
-                        linkedConsoleChat.projectId,
-                        "chat",
-                        linkedConsoleChat.id,
-                      )
-                    : showChatConsole(activeChat)
-                }
-              >
-                {linkedConsoleChat ? (
-                  <MessageSquare className="size-4" />
-                ) : openChatConsole.isPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <SquareTerminal className="size-4" />
-                )}
-                <span className="sr-only">
-                  {linkedConsoleChat ? "Show chat" : "Show Codex console"}
-                </span>
-              </Button>
-            ) : null}
-            {!isPopout ? (
-              <>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => {
-                    setShowSettings(true);
-                    setShowImporter(false);
-                  }}
-                >
-                  <Settings className="size-4" />
-                  <span className="sr-only">Open settings</span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setShowImporter(true);
-                    setShowSettings(false);
-                  }}
-                >
-                  <Plus className="size-4" />
-                  Project
-                </Button>
-              </>
-            ) : null}
+              ) : null}
+              {!showImporter && !showSettings && selectedProject ? (
+                <Badge variant="outline" className="gap-2">
+                  <StatusDot online={Boolean(onlineWorker)} />
+                  {onlineWorker?.name ?? "Worker offline"}
+                </Badge>
+              ) : null}
+            </div>
+          </header>
+        ) : null}
+
+        {isPopout && activeChat && !showImporter && !showSettings ? (
+          <div className="absolute right-3 top-3 z-40">
+            <Button
+              size="icon"
+              variant="outline"
+              className="size-9 bg-background/75 shadow-md backdrop-blur-xl"
+              aria-pressed={Boolean(linkedConsoleChat)}
+              disabled={!linkedConsoleChat && openChatConsole.isPending}
+              onClick={() =>
+                linkedConsoleChat
+                  ? openCreatedTab(
+                      linkedConsoleChat.projectId,
+                      "chat",
+                      linkedConsoleChat.id,
+                    )
+                  : showChatConsole(activeChat)
+              }
+              title={linkedConsoleChat ? "Show chat" : "Show Codex console"}
+            >
+              {linkedConsoleChat ? (
+                <MessageSquare className="size-4" />
+              ) : openChatConsole.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <SquareTerminal className="size-4" />
+              )}
+              <span className="sr-only">
+                {linkedConsoleChat ? "Show chat" : "Show Codex console"}
+              </span>
+            </Button>
           </div>
-          <div className="ml-auto hidden items-center gap-2 md:flex">
-            {gitHistoryProject && gitHistoryHeader?.activeView === "commits" ? (
-              <>
-                <Button
-                  size="sm"
-                  variant={gitHistoryHeader.changesOpen ? "outline" : "ghost"}
-                  onClick={gitHistoryHeader.toggleChanges}
-                  title="Show working changes"
-                >
-                  <FileDiff className="size-4" />
-                  {gitHistoryHeader.changesCount} changes
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  disabled={gitHistoryHeader.isFetching}
-                  onClick={gitHistoryHeader.refresh}
-                  title="Refresh Git history"
-                >
-                  <RefreshCw
-                    className={cn(
-                      "size-4",
-                      gitHistoryHeader.isFetching && "animate-spin",
-                    )}
-                  />
-                  <span className="sr-only">Refresh Git history</span>
-                </Button>
-              </>
-            ) : null}
-            {activePopout ? (
-              <Button
-                size="icon"
-                variant="ghost"
-                disabled={popoutPending}
-                className={cn(popoutError && "text-destructive")}
-                onClick={popOutActiveView}
-                title={popoutError ?? "Open this tab in a new window"}
-              >
-                {popoutPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <ExternalLink className="size-4" />
-                )}
-                <span className="sr-only">Open this tab in a new window</span>
-              </Button>
-            ) : null}
-            {activeChat && !showImporter && !showSettings ? (
-              <Button
-                size="icon"
-                variant="ghost"
-                aria-pressed={Boolean(linkedConsoleChat)}
-                disabled={!linkedConsoleChat && openChatConsole.isPending}
-                onClick={() =>
-                  linkedConsoleChat
-                    ? openCreatedTab(
-                        linkedConsoleChat.projectId,
-                        "chat",
-                        linkedConsoleChat.id,
-                      )
-                    : showChatConsole(activeChat)
-                }
-                title={linkedConsoleChat ? "Show chat" : "Show Codex console"}
-              >
-                {linkedConsoleChat ? (
-                  <MessageSquare className="size-4" />
-                ) : openChatConsole.isPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <SquareTerminal className="size-4" />
-                )}
-                <span className="sr-only">
-                  {linkedConsoleChat ? "Show chat" : "Show Codex console"}
-                </span>
-              </Button>
-            ) : null}
-            {!showImporter && !showSettings && selectedProject ? (
-              <Badge variant="outline" className="gap-2">
-                <StatusDot online={Boolean(onlineWorker)} />
-                {onlineWorker?.name ?? "Worker offline"}
-              </Badge>
-            ) : null}
-          </div>
-        </header>
+        ) : null}
 
         {showSettings ? (
           <SettingsPage />
@@ -2181,6 +2229,7 @@ export function App() {
             initialView={
               popoutTarget?.kind === "git" ? popoutTarget.view : undefined
             }
+            standalone={isPopout}
             project={gitHistoryProject}
             onHeaderChange={setGitHistoryHeader}
           />

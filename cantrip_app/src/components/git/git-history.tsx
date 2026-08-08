@@ -7,14 +7,17 @@ import type {
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
   CircleDot,
+  FileDiff,
   GitBranch,
   GitCommitHorizontal,
   Loader2,
+  RefreshCw,
   Tag,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getGitHistory, getGithubIssues, getGitStatus } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import { GitChangesPanel } from "./git-changes-panel";
@@ -202,10 +205,12 @@ export function GitHistoryView({
   initialView = "commits",
   onHeaderChange,
   project,
+  standalone = false,
 }: {
   initialView?: "commits" | "issues";
   onHeaderChange(state: GitHistoryHeaderState | null): void;
   project: ProjectSummary;
+  standalone?: boolean;
 }) {
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const [changesOpen, setChangesOpen] = useState(false);
@@ -333,6 +338,38 @@ export function GitHistoryView({
             {issues.data?.total ?? (issues.isLoading ? "…" : 0)}
           </span>
         </button>
+        {standalone && activeView === "commits" ? (
+          <div className="ml-auto flex h-10 items-center gap-1">
+            <Button
+              size="sm"
+              variant={changesOpen ? "outline" : "ghost"}
+              onClick={() => setChangesOpen((open) => !open)}
+              title="Show working changes"
+            >
+              <FileDiff className="size-4" />
+              {status.data?.files.length ?? 0} changes
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-8"
+              disabled={history.isFetching || status.isFetching}
+              onClick={() => {
+                void history.refetch();
+                void status.refetch();
+              }}
+              title="Refresh Git history"
+            >
+              <RefreshCw
+                className={cn(
+                  "size-4",
+                  (history.isFetching || status.isFetching) && "animate-spin",
+                )}
+              />
+              <span className="sr-only">Refresh Git history</span>
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       {activeView === "issues" ? (
