@@ -173,6 +173,31 @@ importers:
         specifier: ^0.31.10
         version: 0.31.10
 
+  cantrip_site:
+    dependencies:
+      lucide-react:
+        specifier: ^1.29.0
+        version: 1.29.0(react@19.2.8)
+      react:
+        specifier: ^19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.2.8
+        version: 19.2.8(react@19.2.8)
+    devDependencies:
+      "@types/react":
+        specifier: ^19.2.18
+        version: 19.2.18
+      "@types/react-dom":
+        specifier: ^19.2.4
+        version: 19.2.4(@types/react@19.2.18)
+      "@vitejs/plugin-react":
+        specifier: ^6.0.5
+        version: 6.0.5(vite@8.2.0(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.9))
+      vite:
+        specifier: ^8.2.0
+        version: 8.2.0(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.9)
+
   cantrip_worker:
     dependencies:
       "@cantrip/protocol":

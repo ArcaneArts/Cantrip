@@ -121,6 +121,7 @@ boundaries, and the development test matrix.
 ```text
 Cantrip/
 ├── cantrip_app/       # React/Vite UI, Tauri shell, Capacitor configuration
+├── cantrip_site/      # Public React/Vite marketing site
 ├── cantrip_server/    # API, persistence, identity, and worker routing
 ├── cantrip_worker/    # Codex runtime, terminals, files, Git, and GitHub access
 ├── cantrip_codex/     # Pinned upstream Codex source and source manifest

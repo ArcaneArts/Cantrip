@@ -1,5 +1,6 @@
 packages:
   - cantrip_app
+  - cantrip_site
   - cantrip_server
   - cantrip_worker
   - packages/*
