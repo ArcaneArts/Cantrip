@@ -1,5 +1,6 @@
 import type {
   ChatSummary,
+  CodeTabSummary,
   ExplorerSummary,
   GitStatus,
   ProjectSummary,
@@ -147,6 +148,20 @@ describe("project settings", () => {
       createdAt: now,
       updatedAt: now,
     } satisfies ProjectViewSummary;
+    const code = {
+      id: "code-1",
+      projectId: "project-1",
+      title: "Workbench",
+      position: 4,
+      activeWorkerId: "worker-1",
+      worktreeId: worktree.id,
+      profileId: "default",
+      themeMode: "follow-cantrip",
+      status: "idle",
+      lastError: null,
+      createdAt: now,
+      updatedAt: now,
+    } satisfies CodeTabSummary;
 
     expect(
       projectWorktreeBindings(
@@ -155,8 +170,9 @@ describe("project settings", () => {
         [terminal],
         [explorer],
         [history],
+        [code],
       ),
-    ).toEqual(["Implementation", "Shell", "Files", "History"]);
+    ).toEqual(["Implementation", "Shell", "Files", "Workbench", "History"]);
   });
 
   it("renders project metadata, policies, and inventory in one surface", () => {
@@ -189,6 +205,7 @@ describe("project settings", () => {
         <ProjectSettingsPage
           project={project}
           chats={[]}
+          codeTabs={[]}
           terminals={[]}
           explorers={[]}
           projectViews={[]}
@@ -196,6 +213,7 @@ describe("project settings", () => {
           worktrees={[worktree]}
           statuses={{ [worktree.id]: cleanStatus }}
           onCreateChat={() => undefined}
+          onCreateCode={() => undefined}
           onCreateTerminal={() => undefined}
           onCreateExplorer={() => undefined}
           onCreateHistory={() => undefined}

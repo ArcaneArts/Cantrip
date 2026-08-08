@@ -6,6 +6,8 @@ import type {
   ChatPlanAnswer,
   ChatSummary,
   ChatTurnMode,
+  CodeAppearance,
+  CodeTabSummary,
   ExplorerSummary,
   GithubRepository,
   ModelProfileSummary,
@@ -31,6 +33,7 @@ import {
   Bot,
   Check,
   CircleAlert,
+  Code2,
   Copy,
   ExternalLink,
   FolderGit2,
@@ -46,8 +49,11 @@ import {
   PanelLeftOpen,
   Pause,
   Play,
+  Power,
   Plus,
   RefreshCw,
+  RotateCcw,
+  Save,
   Send,
   Settings,
   SquareTerminal,
@@ -83,6 +89,7 @@ import { GoalPanel } from "@/components/chat/goal-panel";
 import { PlanPanel } from "@/components/chat/plan-panel";
 import { Markdown } from "@/components/chat/markdown";
 import { PromptQueue } from "@/components/chat/prompt-queue";
+import type { CodeHeaderState } from "@/components/code/code-view";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import {
   activeSkillMention,
@@ -128,6 +135,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   createBrowser,
+  createCodeTab,
   chatAttachmentContentUrl,
   answerChatPlan,
   createChat,
@@ -143,6 +151,7 @@ import {
   deleteChat,
   deleteChatAttachment,
   deleteBrowser,
+  deleteCodeTab,
   deleteExplorer,
   deleteProjectView,
   deleteTerminal,
@@ -153,6 +162,7 @@ import {
   getChatPlan,
   getChatPermissionProfiles,
   getBrowsers,
+  getCodeTabs,
   getCachedGithubRepositories,
   getExplorers,
   getGithubRepositories,
@@ -188,6 +198,8 @@ import {
   updateChatPermissionProfile,
   updateChatWorktree,
   updateBrowser,
+  updateCodeTab,
+  updateCodeTabWorktree,
   updateExplorerWorktree,
   updateProjectViewWorktree,
   updateQueuedPrompt,
@@ -225,6 +237,11 @@ const BrowserView = lazy(() =>
     default: module.BrowserView,
   })),
 );
+const CodeView = lazy(() =>
+  import("@/components/code/code-view").then((module) => ({
+    default: module.CodeView,
+  })),
+);
 const RemoteDesktopView = lazy(() =>
   import("@/components/remote-desktop/remote-desktop-view").then((module) => ({
     default: module.RemoteDesktopView,
@@ -243,7 +260,7 @@ type WorktreeBindingTarget =
       mode: "agent-managed" | "pinned";
     }
   | {
-      kind: "explorer" | "history" | "terminal";
+      kind: "code" | "explorer" | "history" | "terminal";
       projectId: string;
       tabId: string;
     };
@@ -316,6 +333,105 @@ function StatusDot({ online }: { online: boolean }) {
         online ? "bg-emerald-500" : "bg-muted-foreground/40",
       )}
     />
+  );
+}
+
+function CodeHeaderActions({
+  floating = false,
+  header,
+}: {
+  floating?: boolean;
+  header: CodeHeaderState | null;
+}) {
+  const controlClass = floating
+    ? "bg-background/75 shadow-md backdrop-blur-xl"
+    : undefined;
+  return (
+    <div className="flex items-center gap-1.5">
+      <Badge
+        variant="outline"
+        className={cn(
+          "hidden gap-1.5 font-normal capitalize sm:flex",
+          floating && "bg-background/75 shadow-md backdrop-blur-xl",
+          header?.error && "border-destructive/50 text-destructive",
+        )}
+        title={header?.error ?? undefined}
+      >
+        {header?.isBusy ? (
+          <Loader2 className="size-3 animate-spin" />
+        ) : (
+          <span
+            className={cn(
+              "size-1.5 rounded-full bg-muted-foreground",
+              header?.status === "running" && "bg-emerald-500",
+              header?.status === "failed" && "bg-destructive",
+            )}
+          />
+        )}
+        {header?.status ?? "connecting"}
+      </Badge>
+      <select
+        aria-label="Editor theme"
+        className={cn(
+          "hidden h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring sm:block",
+          floating && "bg-background/75 shadow-md backdrop-blur-xl",
+        )}
+        disabled={!header || header.isBusy}
+        value={header?.themeMode ?? "follow-cantrip"}
+        onChange={(event) =>
+          void header?.setThemeMode(
+            event.target.value as "follow-cantrip" | "independent",
+          )
+        }
+      >
+        <option value="follow-cantrip">Follow Cantrip theme</option>
+        <option value="independent">Independent theme</option>
+      </select>
+      <Button
+        size="icon"
+        variant={floating ? "outline" : "ghost"}
+        className={cn("size-8", controlClass)}
+        disabled={!header || header.isBusy || !header.runtime}
+        onClick={() => void header?.saveAll()}
+        title="Save all editors"
+      >
+        <Save className="size-4" />
+        <span className="sr-only">Save all editors</span>
+      </Button>
+      <Button
+        size="icon"
+        variant={floating ? "outline" : "ghost"}
+        className={cn("size-8", controlClass)}
+        disabled={!header || header.isBusy}
+        onClick={header?.reload}
+        title="Reload editor surface"
+      >
+        <RefreshCw className="size-4" />
+        <span className="sr-only">Reload editor surface</span>
+      </Button>
+      <Button
+        size="icon"
+        variant={floating ? "outline" : "ghost"}
+        className={cn("size-8", controlClass)}
+        disabled={!header || header.isBusy}
+        onClick={() => void header?.restart()}
+        title="Restart editor"
+      >
+        <RotateCcw className="size-4" />
+        <span className="sr-only">Restart editor</span>
+      </Button>
+      <Button
+        size="icon"
+        variant={floating ? "outline" : "ghost"}
+        className={cn("size-8", controlClass)}
+        disabled={!header || header.isBusy || !header.runtime}
+        onClick={() => void header?.stop()}
+        title="Stop editor"
+      >
+        <Power className="size-4" />
+        <span className="sr-only">Stop editor</span>
+      </Button>
+    </div>
   );
 }
 
@@ -2032,6 +2148,9 @@ export function App() {
   const [selectedBrowserId, setSelectedBrowserId] = useState<string | null>(
     popoutTarget?.kind === "browser" ? popoutTarget.tabId : null,
   );
+  const [selectedCodeTabId, setSelectedCodeTabId] = useState<string | null>(
+    popoutTarget?.kind === "code" ? popoutTarget.tabId : null,
+  );
   const [selectedExplorerId, setSelectedExplorerId] = useState<string | null>(
     popoutTarget?.kind === "explorer" ? popoutTarget.tabId : null,
   );
@@ -2051,6 +2170,7 @@ export function App() {
     useState<GitHistoryHeaderState | null>(null);
   const [explorerHeader, setExplorerHeader] =
     useState<ExplorerHeaderState | null>(null);
+  const [codeHeader, setCodeHeader] = useState<CodeHeaderState | null>(null);
   const [popoutPending, setPopoutPending] = useState(false);
   const [popoutError, setPopoutError] = useState<string | null>(null);
   const [worktreeCreateTarget, setWorktreeCreateTarget] =
@@ -2058,10 +2178,15 @@ export function App() {
   const [worktreeActionError, setWorktreeActionError] = useState<string | null>(
     null,
   );
+  const [codeAppearance, setCodeAppearance] = useState<CodeAppearance>(() =>
+    window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light",
+  );
 
   const openCreatedTab = (
     projectId: string,
-    kind: "browser" | "chat" | "explorer" | "terminal" | "view",
+    kind: "browser" | "chat" | "code" | "explorer" | "terminal" | "view",
     tabId: string,
   ) => {
     setSelectedProjectId(projectId);
@@ -2069,6 +2194,7 @@ export function App() {
     setSelectedTerminalId(kind === "terminal" ? tabId : null);
     setSelectedExplorerId(kind === "explorer" ? tabId : null);
     setSelectedBrowserId(kind === "browser" ? tabId : null);
+    setSelectedCodeTabId(kind === "code" ? tabId : null);
     setSelectedProjectViewId(kind === "view" ? tabId : null);
     setShowImporter(false);
     setShowSettings(false);
@@ -2082,6 +2208,7 @@ export function App() {
     setSelectedTerminalId(null);
     setSelectedExplorerId(null);
     setSelectedBrowserId(null);
+    setSelectedCodeTabId(null);
     setSelectedProjectViewId(null);
     setShowImporter(false);
     setShowSettings(false);
@@ -2161,6 +2288,12 @@ export function App() {
     queryFn: () => getBrowsers(selectedProjectId!),
     queryKey: ["browsers", selectedProjectId],
     refetchInterval: 1_000,
+  });
+  const codeTabs = useQuery({
+    enabled: Boolean(selectedProjectId),
+    queryFn: () => getCodeTabs(selectedProjectId!),
+    queryKey: ["code-tabs", selectedProjectId],
+    refetchInterval: 2_000,
   });
   const projectViews = useQuery({
     enabled: Boolean(selectedProjectId),
@@ -2274,6 +2407,28 @@ export function App() {
       });
     },
   });
+  const newCodeTab = useMutation({
+    mutationFn: ({
+      projectId,
+      worktreeId,
+    }: {
+      projectId: string;
+      worktreeId?: string;
+    }) => createCodeTab(projectId, "Code", worktreeId),
+    onSuccess: (codeTab) => {
+      queryClient.setQueryData<CodeTabSummary[]>(
+        ["code-tabs", codeTab.projectId],
+        (current = []) =>
+          [...current.filter((item) => item.id !== codeTab.id), codeTab].sort(
+            (left, right) => left.position - right.position,
+          ),
+      );
+      openCreatedTab(codeTab.projectId, "code", codeTab.id);
+      void queryClient.invalidateQueries({
+        queryKey: ["code-tabs", codeTab.projectId],
+      });
+    },
+  });
   const newProjectView = useMutation({
     mutationFn: ({
       projectId,
@@ -2335,6 +2490,12 @@ export function App() {
           value: await updateExplorerWorktree(target.tabId, worktreeId),
         };
       }
+      if (target.kind === "code") {
+        return {
+          kind: "code" as const,
+          value: await updateCodeTabWorktree(target.tabId, worktreeId),
+        };
+      }
       return {
         kind: "history" as const,
         value: await updateProjectViewWorktree(target.tabId, worktreeId),
@@ -2393,6 +2554,14 @@ export function App() {
             queryKey: ["explorer-file", value.id],
           }),
         ]);
+      } else if (kind === "code") {
+        queryClient.setQueryData<CodeTabSummary[]>(
+          ["code-tabs", value.projectId],
+          (current = []) =>
+            current.map((codeTab) =>
+              codeTab.id === value.id ? value : codeTab,
+            ),
+        );
       } else {
         queryClient.setQueryData<ProjectViewSummary[]>(
           ["project-views", value.projectId],
@@ -2408,6 +2577,11 @@ export function App() {
       if (input.target.kind === "history") {
         void queryClient.invalidateQueries({
           queryKey: ["project-views", input.target.projectId],
+        });
+      }
+      if (input.target.kind === "code") {
+        void queryClient.invalidateQueries({
+          queryKey: ["code-tabs", input.target.projectId],
         });
       }
       setWorktreeActionError(errorText(error));
@@ -2478,6 +2652,7 @@ export function App() {
       setSelectedTerminalId(null);
       setSelectedExplorerId(null);
       setSelectedBrowserId(null);
+      setSelectedCodeTabId(null);
       setSelectedChatId(forked.id);
     },
   });
@@ -2568,6 +2743,27 @@ export function App() {
       });
     },
   });
+  const updateCodeTabMutation = useMutation({
+    mutationFn: ({ codeTabId, title }: { codeTabId: string; title: string }) =>
+      updateCodeTab(codeTabId, { title }),
+    onSuccess: (updated) =>
+      queryClient.setQueryData<CodeTabSummary[]>(
+        ["code-tabs", updated.projectId],
+        (current = []) =>
+          current.map((codeTab) =>
+            codeTab.id === updated.id ? updated : codeTab,
+          ),
+      ),
+  });
+  const deleteCodeTabMutation = useMutation({
+    mutationFn: deleteCodeTab,
+    onSuccess: async (_value, deletedId) => {
+      if (selectedCodeTabId === deletedId) setSelectedCodeTabId(null);
+      await queryClient.invalidateQueries({
+        queryKey: ["code-tabs", selectedProjectId],
+      });
+    },
+  });
   const renameProjectViewMutation = useMutation({
     mutationFn: ({ viewId, title }: { viewId: string; title: string }) =>
       renameProjectView(viewId, title),
@@ -2602,6 +2798,7 @@ export function App() {
         setSelectedTerminalId(null);
         setSelectedExplorerId(null);
         setSelectedBrowserId(null);
+        setSelectedCodeTabId(null);
         setSelectedProjectViewId(null);
         setShowProjectSettings(false);
       }
@@ -2636,12 +2833,14 @@ export function App() {
       const terminalKey = ["terminals", projectId] as const;
       const explorerKey = ["explorers", projectId] as const;
       const browserKey = ["browsers", projectId] as const;
+      const codeKey = ["code-tabs", projectId] as const;
       const viewKey = ["project-views", projectId] as const;
       await Promise.all([
         queryClient.cancelQueries({ queryKey: chatKey }),
         queryClient.cancelQueries({ queryKey: terminalKey }),
         queryClient.cancelQueries({ queryKey: explorerKey }),
         queryClient.cancelQueries({ queryKey: browserKey }),
+        queryClient.cancelQueries({ queryKey: codeKey }),
         queryClient.cancelQueries({ queryKey: viewKey }),
       ]);
       const previousChats = queryClient.getQueryData<ChatSummary[]>(chatKey);
@@ -2651,6 +2850,8 @@ export function App() {
         queryClient.getQueryData<ExplorerSummary[]>(explorerKey);
       const previousBrowsers =
         queryClient.getQueryData<BrowserSummary[]>(browserKey);
+      const previousCodeTabs =
+        queryClient.getQueryData<CodeTabSummary[]>(codeKey);
       const previousViews =
         queryClient.getQueryData<ProjectViewSummary[]>(viewKey);
       const positions = new Map(ids.map((id, position) => [id, position]));
@@ -2689,6 +2890,14 @@ export function App() {
           }))
           .sort((a, b) => a.position - b.position),
       );
+      queryClient.setQueryData<CodeTabSummary[]>(codeKey, (current = []) =>
+        current
+          .map((codeTab) => ({
+            ...codeTab,
+            position: positions.get(`code:${codeTab.id}`) ?? codeTab.position,
+          }))
+          .sort((a, b) => a.position - b.position),
+      );
       queryClient.setQueryData<ProjectViewSummary[]>(viewKey, (current = []) =>
         current
           .map((view) => ({
@@ -2700,11 +2909,13 @@ export function App() {
       return {
         browserKey,
         chatKey,
+        codeKey,
         explorerKey,
         terminalKey,
         viewKey,
         previousChats,
         previousBrowsers,
+        previousCodeTabs,
         previousExplorers,
         previousTerminals,
         previousViews,
@@ -2724,6 +2935,10 @@ export function App() {
         context?.browserKey ?? [],
         context?.previousBrowsers,
       );
+      queryClient.setQueryData(
+        context?.codeKey ?? [],
+        context?.previousCodeTabs,
+      );
       queryClient.setQueryData(context?.viewKey ?? [], context?.previousViews);
     },
     onSettled: (_data, _error, input) =>
@@ -2740,6 +2955,9 @@ export function App() {
         }),
         queryClient.invalidateQueries({
           queryKey: ["project-views", input.projectId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["code-tabs", input.projectId],
         }),
       ]),
   });
@@ -2770,6 +2988,9 @@ export function App() {
   const selectedBrowser = browsers.data?.find(
     (browser) => browser.id === selectedBrowserId,
   );
+  const selectedCodeTab = codeTabs.data?.find(
+    (codeTab) => codeTab.id === selectedCodeTabId,
+  );
   const activeWorktreeTarget: WorktreeBindingTarget | null = activeChat
     ? {
         kind: "chat",
@@ -2789,24 +3010,39 @@ export function App() {
             projectId: selectedExplorer.projectId,
             tabId: selectedExplorer.id,
           }
-        : selectedProjectView?.kind === "history"
+        : selectedCodeTab
           ? {
-              kind: "history",
-              projectId: selectedProjectView.projectId,
-              tabId: selectedProjectView.id,
+              kind: "code",
+              projectId: selectedCodeTab.projectId,
+              tabId: selectedCodeTab.id,
             }
-          : null;
+          : selectedProjectView?.kind === "history"
+            ? {
+                kind: "history",
+                projectId: selectedProjectView.projectId,
+                tabId: selectedProjectView.id,
+              }
+            : null;
   const activeWorktreeId = activeChat
     ? activeChat.activeWorktreeId
     : selectedTerminal
       ? selectedTerminal.worktreeId
       : selectedExplorer
         ? selectedExplorer.worktreeId
-        : selectedProjectView?.kind === "history"
-          ? selectedProjectView.worktreeId
-          : null;
+        : selectedCodeTab
+          ? selectedCodeTab.worktreeId
+          : selectedProjectView?.kind === "history"
+            ? selectedProjectView.worktreeId
+            : null;
   const activeWorktree = worktrees.data?.find(
     (worktree) => worktree.id === activeWorktreeId,
+  );
+  const selectedWorker = workers.data?.find(
+    (worker) =>
+      worker.workerId ===
+      (selectedCodeTab?.activeWorkerId ??
+        activeWorktree?.workerId ??
+        selectedProject?.source?.workerId),
   );
   const explorerDisplayPath = selectedExplorer
     ? `${activeWorktree?.displayPath ?? selectedProject?.source?.displayPath ?? "Explorer"}${explorerHeader?.directoryPath ? `/${explorerHeader.directoryPath}` : ""}`
@@ -2857,6 +3093,16 @@ export function App() {
         title: selectedProjectView.title,
       };
     }
+    if (selectedCodeTab) {
+      return {
+        target: {
+          kind: "code",
+          projectId: selectedCodeTab.projectId,
+          tabId: selectedCodeTab.id,
+        },
+        title: selectedCodeTab.title,
+      };
+    }
     if (selectedBrowser) {
       return {
         target: {
@@ -2904,6 +3150,7 @@ export function App() {
     linkedConsoleChat?.title,
     selectedBrowser,
     selectedChat,
+    selectedCodeTab,
     selectedExplorer,
     selectedProjectView,
     selectedTerminal,
@@ -2953,6 +3200,15 @@ export function App() {
         "high-contrast",
         settings.data?.preferences.highContrast ?? false,
       );
+      setCodeAppearance(
+        settings.data?.preferences.highContrast
+          ? dark
+            ? "high-contrast-dark"
+            : "high-contrast-light"
+          : dark
+            ? "dark"
+            : "light",
+      );
       document.documentElement.style.colorScheme = dark ? "dark" : "light";
       void updateDesktopWindowTheme(dark ? "dark" : "light").catch(
         (error: unknown) => {
@@ -2973,6 +3229,7 @@ export function App() {
   useEffect(() => {
     if (showImporter || showSettings || showProjectSettings) {
       setSelectedProjectViewId(null);
+      setSelectedCodeTabId(null);
     }
   }, [showImporter, showProjectSettings, showSettings]);
 
@@ -2997,6 +3254,7 @@ export function App() {
       !terminals.data ||
       !explorers.data ||
       !browsers.data ||
+      !codeTabs.data ||
       !projectViews.data
     )
       return;
@@ -3006,6 +3264,8 @@ export function App() {
     if (explorers.data.some((explorer) => explorer.id === selectedExplorerId))
       return;
     if (browsers.data.some((browser) => browser.id === selectedBrowserId))
+      return;
+    if (codeTabs.data.some((codeTab) => codeTab.id === selectedCodeTabId))
       return;
     if (projectViews.data.some((view) => view.id === selectedProjectViewId))
       return;
@@ -3036,6 +3296,11 @@ export function App() {
         kind: "browser",
         position: browser.position,
       })),
+      ...codeTabs.data.map((codeTab) => ({
+        id: codeTab.id,
+        kind: "code",
+        position: codeTab.position,
+      })),
       ...projectViews.data.map((view) => ({
         id: view.id,
         kind: "view",
@@ -3046,16 +3311,19 @@ export function App() {
     setSelectedTerminalId(first?.kind === "terminal" ? first.id : null);
     setSelectedExplorerId(first?.kind === "explorer" ? first.id : null);
     setSelectedBrowserId(first?.kind === "browser" ? first.id : null);
+    setSelectedCodeTabId(first?.kind === "code" ? first.id : null);
     setSelectedProjectViewId(first?.kind === "view" ? first.id : null);
   }, [
     browsers.data,
     chats.data,
+    codeTabs.data,
     explorers.data,
     projectViews.data,
     showImporter,
     showProjectSettings,
     showSettings,
     selectedChatId,
+    selectedCodeTabId,
     selectedBrowserId,
     selectedExplorerId,
     selectedProjectViewId,
@@ -3114,6 +3382,7 @@ export function App() {
               browsers={browsers.data ?? []}
               projects={projects.data ?? []}
               chats={chats.data ?? []}
+              codeTabs={codeTabs.data ?? []}
               explorers={explorers.data ?? []}
               projectViews={projectViews.data ?? []}
               terminals={terminals.data ?? []}
@@ -3123,16 +3392,19 @@ export function App() {
               selectedProjectId={selectedProjectId}
               selectedBrowserId={selectedBrowserId}
               selectedChatId={selectedChatId}
+              selectedCodeTabId={selectedCodeTabId}
               selectedExplorerId={selectedExplorerId}
               selectedProjectViewId={selectedProjectViewId}
               selectedTerminalId={selectedTerminalId}
               creatingChat={newChat.isPending}
+              creatingCode={newCodeTab.isPending}
               creatingBrowser={newBrowser.isPending}
               creatingExplorer={newExplorer.isPending}
               creatingRemoteDesktop={newRemoteDesktop.isPending}
               creatingTerminal={newTerminal.isPending}
               creatingView={newProjectView.isPending}
               onCreateChat={(projectId) => newChat.mutate({ projectId })}
+              onCreateCode={(projectId) => newCodeTab.mutate({ projectId })}
               onCreateBrowser={(projectId) => newBrowser.mutate(projectId)}
               onCreateExplorer={(projectId) =>
                 newExplorer.mutate({ projectId })
@@ -3167,6 +3439,12 @@ export function App() {
               }
               onDuplicateChat={(chatId) => forkChatMutation.mutate(chatId)}
               onDeleteChat={(chatId) => deleteChatMutation.mutate(chatId)}
+              onRenameCode={(codeTabId, title) =>
+                updateCodeTabMutation.mutate({ codeTabId, title })
+              }
+              onDeleteCode={(codeTabId) =>
+                deleteCodeTabMutation.mutate(codeTabId)
+              }
               onRenameBrowser={(browserId, title) =>
                 updateBrowserMutation.mutate({ browserId, input: { title } })
               }
@@ -3206,6 +3484,7 @@ export function App() {
                 setSelectedTerminalId(null);
                 setSelectedExplorerId(null);
                 setSelectedBrowserId(null);
+                setSelectedCodeTabId(null);
                 setShowImporter(false);
                 setShowSettings(false);
                 setShowProjectSettings(false);
@@ -3215,6 +3494,7 @@ export function App() {
                 setSelectedTerminalId(null);
                 setSelectedExplorerId(null);
                 setSelectedBrowserId(null);
+                setSelectedCodeTabId(null);
                 setSelectedChatId(chatId);
                 setShowImporter(false);
                 setShowSettings(false);
@@ -3225,6 +3505,7 @@ export function App() {
                 setSelectedChatId(null);
                 setSelectedExplorerId(null);
                 setSelectedBrowserId(null);
+                setSelectedCodeTabId(null);
                 setSelectedTerminalId(terminalId);
                 setShowImporter(false);
                 setShowSettings(false);
@@ -3235,6 +3516,7 @@ export function App() {
                 setSelectedChatId(null);
                 setSelectedTerminalId(null);
                 setSelectedBrowserId(null);
+                setSelectedCodeTabId(null);
                 setSelectedExplorerId(explorerId);
                 setShowImporter(false);
                 setShowSettings(false);
@@ -3245,6 +3527,7 @@ export function App() {
                 setSelectedChatId(null);
                 setSelectedTerminalId(null);
                 setSelectedExplorerId(null);
+                setSelectedCodeTabId(null);
                 setSelectedBrowserId(browserId);
                 setShowImporter(false);
                 setShowSettings(false);
@@ -3255,7 +3538,19 @@ export function App() {
                 setSelectedTerminalId(null);
                 setSelectedExplorerId(null);
                 setSelectedBrowserId(null);
+                setSelectedCodeTabId(null);
                 setSelectedProjectViewId(viewId);
+                setShowImporter(false);
+                setShowSettings(false);
+                setShowProjectSettings(false);
+              }}
+              onSelectCode={(codeTabId) => {
+                setSelectedProjectViewId(null);
+                setSelectedChatId(null);
+                setSelectedTerminalId(null);
+                setSelectedExplorerId(null);
+                setSelectedBrowserId(null);
+                setSelectedCodeTabId(codeTabId);
                 setShowImporter(false);
                 setShowSettings(false);
                 setShowProjectSettings(false);
@@ -3317,18 +3612,20 @@ export function App() {
                           ? (selectedProjectView?.title ?? "Git")
                           : selectedProjectView?.kind === "remote-desktop"
                             ? selectedProjectView.title
-                            : selectedBrowser
-                              ? selectedBrowser.title
-                              : selectedExplorer
-                                ? selectedExplorer.title
-                                : selectedTerminal
-                                  ? selectedTerminal.linkedChatId
-                                    ? (linkedConsoleChat?.title ?? "Chat")
-                                    : selectedTerminal.title
-                                  : selectedChat
-                                    ? selectedChat.title
-                                    : (selectedProject?.github?.nameWithOwner ??
-                                      "Cantrip")}
+                            : selectedCodeTab
+                              ? selectedCodeTab.title
+                              : selectedBrowser
+                                ? selectedBrowser.title
+                                : selectedExplorer
+                                  ? selectedExplorer.title
+                                  : selectedTerminal
+                                    ? selectedTerminal.linkedChatId
+                                      ? (linkedConsoleChat?.title ?? "Chat")
+                                      : selectedTerminal.title
+                                    : selectedChat
+                                      ? selectedChat.title
+                                      : (selectedProject?.github
+                                          ?.nameWithOwner ?? "Cantrip")}
                 </span>
                 {!showImporter &&
                 !showSettings &&
@@ -3348,7 +3645,9 @@ export function App() {
                       disabled:
                         bindWorktreeMutation.isPending ||
                         activeChat?.status === "running" ||
-                        selectedTerminal?.status === "running",
+                        selectedTerminal?.status === "running" ||
+                        selectedCodeTab?.status === "running" ||
+                        selectedCodeTab?.status === "starting",
                       error: worktreeActionError,
                       onCreate: () =>
                         setWorktreeCreateTarget(activeWorktreeTarget),
@@ -3423,6 +3722,8 @@ export function App() {
                   </>
                 ) : selectedProjectView?.kind === "remote-desktop" ? (
                   "Managed project-worker desktop"
+                ) : selectedCodeTab ? (
+                  `${activeWorktree?.displayPath ?? selectedProject?.source?.displayPath ?? "Code"} · ${selectedCodeTab.profileId}`
                 ) : selectedBrowser ? (
                   selectedBrowser.url
                 ) : selectedExplorer ? (
@@ -3513,6 +3814,9 @@ export function App() {
                   />
                   <span className="sr-only">Refresh folder</span>
                 </Button>
+              ) : null}
+              {selectedCodeTab ? (
+                <CodeHeaderActions header={codeHeader} />
               ) : null}
               {activePopout ? (
                 <Button
@@ -3659,6 +3963,9 @@ export function App() {
                   <span className="sr-only">Refresh folder</span>
                 </Button>
               ) : null}
+              {selectedCodeTab ? (
+                <CodeHeaderActions header={codeHeader} />
+              ) : null}
               {activePopout ? (
                 <Button
                   size="icon"
@@ -3722,8 +4029,8 @@ export function App() {
               ) : null}
               {!showImporter && !showSettings && selectedProject ? (
                 <Badge variant="outline" className="gap-2">
-                  <StatusDot online={Boolean(onlineWorker)} />
-                  {onlineWorker?.name ?? "Worker offline"}
+                  <StatusDot online={Boolean(selectedWorker?.online)} />
+                  {selectedWorker?.name ?? "Worker offline"}
                 </Badge>
               ) : null}
             </div>
@@ -3794,12 +4101,19 @@ export function App() {
           </div>
         ) : null}
 
+        {isPopout && selectedCodeTab ? (
+          <div className="absolute right-3 top-3 z-40">
+            <CodeHeaderActions floating header={codeHeader} />
+          </div>
+        ) : null}
+
         {showSettings ? (
           <SettingsPage />
         ) : showProjectSettings && selectedProject ? (
           <ProjectSettingsPage
             project={selectedProject}
             chats={chats.data ?? []}
+            codeTabs={codeTabs.data ?? []}
             terminals={terminals.data ?? []}
             explorers={explorers.data ?? []}
             projectViews={projectViews.data ?? []}
@@ -3811,6 +4125,12 @@ export function App() {
                 projectId: selectedProject.id,
                 worktreeId,
                 worktreeMode: "pinned",
+              })
+            }
+            onCreateCode={(worktreeId) =>
+              newCodeTab.mutate({
+                projectId: selectedProject.id,
+                worktreeId,
               })
             }
             onCreateTerminal={(worktreeId) =>
@@ -3922,6 +4242,25 @@ export function App() {
             }
             onHeaderChange={setGitHistoryHeader}
           />
+        ) : selectedCodeTab ? (
+          <Suspense
+            fallback={
+              <div className="grid flex-1 place-items-center text-muted-foreground">
+                <Loader2 className="size-5 animate-spin" />
+              </div>
+            }
+          >
+            <CodeView
+              appearance={codeAppearance}
+              codeTab={selectedCodeTab}
+              onChanged={() =>
+                void queryClient.invalidateQueries({
+                  queryKey: ["code-tabs", selectedCodeTab.projectId],
+                })
+              }
+              onHeaderChange={setCodeHeader}
+            />
+          </Suspense>
         ) : selectedBrowser ? (
           <Suspense
             fallback={
@@ -3998,6 +4337,8 @@ export function App() {
               setSelectedTerminalId(null);
               setSelectedExplorerId(null);
               setSelectedBrowserId(null);
+              setSelectedCodeTabId(null);
+              setSelectedProjectViewId(null);
               setSelectedChatId(forked.id);
             }}
             onRename={(title) =>
@@ -4036,8 +4377,8 @@ export function App() {
                 </div>
                 <h1 className="mt-4 font-semibold">No tabs yet</h1>
                 <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
-                  Start a Codex chat, shell, file explorer, or browser in{" "}
-                  {selectedProject.name}.
+                  Start a Codex chat, shell, file explorer, Code workspace, or
+                  browser in {selectedProject.name}.
                 </p>
                 <div className="mt-5 flex justify-center gap-2">
                   <Button
@@ -4092,6 +4433,20 @@ export function App() {
                       <Globe2 className="size-4" />
                     )}
                     Browser
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={newCodeTab.isPending || !selectedProject.source}
+                    onClick={() =>
+                      newCodeTab.mutate({ projectId: selectedProject.id })
+                    }
+                  >
+                    {newCodeTab.isPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Code2 className="size-4" />
+                    )}
+                    Code
                   </Button>
                 </div>
                 {newChat.isError ? (
@@ -4180,6 +4535,7 @@ export function App() {
               browsers={browsers.data ?? []}
               projects={projects.data ?? []}
               chats={chats.data ?? []}
+              codeTabs={codeTabs.data ?? []}
               explorers={explorers.data ?? []}
               projectViews={projectViews.data ?? []}
               terminals={terminals.data ?? []}
@@ -4189,16 +4545,19 @@ export function App() {
               selectedProjectId={selectedProjectId}
               selectedBrowserId={selectedBrowserId}
               selectedChatId={selectedChatId}
+              selectedCodeTabId={selectedCodeTabId}
               selectedExplorerId={selectedExplorerId}
               selectedProjectViewId={selectedProjectViewId}
               selectedTerminalId={selectedTerminalId}
               creatingChat={newChat.isPending}
+              creatingCode={newCodeTab.isPending}
               creatingBrowser={newBrowser.isPending}
               creatingExplorer={newExplorer.isPending}
               creatingRemoteDesktop={newRemoteDesktop.isPending}
               creatingTerminal={newTerminal.isPending}
               creatingView={newProjectView.isPending}
               onCreateChat={(projectId) => newChat.mutate({ projectId })}
+              onCreateCode={(projectId) => newCodeTab.mutate({ projectId })}
               onCreateBrowser={(projectId) => newBrowser.mutate(projectId)}
               onCreateExplorer={(projectId) =>
                 newExplorer.mutate({ projectId })
@@ -4234,6 +4593,12 @@ export function App() {
               }
               onDuplicateChat={(chatId) => forkChatMutation.mutate(chatId)}
               onDeleteChat={(chatId) => deleteChatMutation.mutate(chatId)}
+              onRenameCode={(codeTabId, title) =>
+                updateCodeTabMutation.mutate({ codeTabId, title })
+              }
+              onDeleteCode={(codeTabId) =>
+                deleteCodeTabMutation.mutate(codeTabId)
+              }
               onRenameBrowser={(browserId, title) =>
                 updateBrowserMutation.mutate({ browserId, input: { title } })
               }
@@ -4274,6 +4639,7 @@ export function App() {
                 setSelectedTerminalId(null);
                 setSelectedExplorerId(null);
                 setSelectedBrowserId(null);
+                setSelectedCodeTabId(null);
                 setMobileNavigationOpen(false);
                 setShowImporter(false);
                 setShowSettings(false);
@@ -4284,6 +4650,7 @@ export function App() {
                 setSelectedTerminalId(null);
                 setSelectedExplorerId(null);
                 setSelectedBrowserId(null);
+                setSelectedCodeTabId(null);
                 setSelectedChatId(chatId);
                 setMobileNavigationOpen(false);
                 setShowImporter(false);
@@ -4295,6 +4662,7 @@ export function App() {
                 setSelectedChatId(null);
                 setSelectedExplorerId(null);
                 setSelectedBrowserId(null);
+                setSelectedCodeTabId(null);
                 setSelectedTerminalId(terminalId);
                 setMobileNavigationOpen(false);
                 setShowImporter(false);
@@ -4306,6 +4674,7 @@ export function App() {
                 setSelectedChatId(null);
                 setSelectedTerminalId(null);
                 setSelectedBrowserId(null);
+                setSelectedCodeTabId(null);
                 setSelectedExplorerId(explorerId);
                 setMobileNavigationOpen(false);
                 setShowImporter(false);
@@ -4317,6 +4686,7 @@ export function App() {
                 setSelectedChatId(null);
                 setSelectedTerminalId(null);
                 setSelectedExplorerId(null);
+                setSelectedCodeTabId(null);
                 setSelectedBrowserId(browserId);
                 setMobileNavigationOpen(false);
                 setShowImporter(false);
@@ -4328,7 +4698,20 @@ export function App() {
                 setSelectedTerminalId(null);
                 setSelectedExplorerId(null);
                 setSelectedBrowserId(null);
+                setSelectedCodeTabId(null);
                 setSelectedProjectViewId(viewId);
+                setMobileNavigationOpen(false);
+                setShowImporter(false);
+                setShowSettings(false);
+                setShowProjectSettings(false);
+              }}
+              onSelectCode={(codeTabId) => {
+                setSelectedProjectViewId(null);
+                setSelectedChatId(null);
+                setSelectedTerminalId(null);
+                setSelectedExplorerId(null);
+                setSelectedBrowserId(null);
+                setSelectedCodeTabId(codeTabId);
                 setMobileNavigationOpen(false);
                 setShowImporter(false);
                 setShowSettings(false);
@@ -4342,6 +4725,11 @@ export function App() {
       {newRemoteDesktop.isError ? (
         <div className="fixed bottom-5 right-5 z-50 max-w-md rounded-lg bg-destructive px-4 py-3 text-sm text-destructive-foreground shadow-xl">
           Could not start Remote Desktop: {errorText(newRemoteDesktop.error)}
+        </div>
+      ) : null}
+      {newCodeTab.isError ? (
+        <div className="fixed bottom-5 right-5 z-50 max-w-md rounded-lg bg-destructive px-4 py-3 text-sm text-destructive-foreground shadow-xl">
+          Could not create Code tab: {errorText(newCodeTab.error)}
         </div>
       ) : null}
     </main>

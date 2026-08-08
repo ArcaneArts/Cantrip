@@ -1,7 +1,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 
 export type DesktopPopoutTarget = {
-  kind: "browser" | "chat" | "explorer" | "terminal" | "view";
+  kind: "browser" | "chat" | "code" | "explorer" | "terminal" | "view";
   projectId: string;
   tabId: string;
 };
@@ -19,6 +19,7 @@ export function parseDesktopPopoutTarget(
   if (
     kind !== "browser" &&
     kind !== "chat" &&
+    kind !== "code" &&
     kind !== "explorer" &&
     kind !== "terminal" &&
     kind !== "view"
