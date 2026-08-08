@@ -1006,6 +1006,11 @@ export const codeEditorBuildSchema = z.object({
   fingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
 });
 
+export const codeProbeResultSchema = z.object({
+  capabilities: codeCapabilitiesSchema,
+  editorBuild: codeEditorBuildSchema.nullable(),
+});
+
 export const codeSessionSummarySchema = z.object({
   id: z.string().min(1),
   codeTabId: z.string().min(1),
@@ -1056,6 +1061,168 @@ export const codeSaveAllResultSchema = z.object({
     )
     .max(1_000),
 });
+
+export const codeAttachmentSchema = z.object({
+  attachmentId: z.string().min(1),
+  sessionId: z.string().min(1),
+  url: z.url(),
+  expiresAt: z.string().datetime(),
+  runtime: codeRuntimeStatusSchema,
+});
+
+export const codeAttachmentCreateSchema = z.object({
+  appearance: codeAppearanceSchema.default("dark"),
+});
+
+export const codeThemeUpdateSchema = z.object({
+  themeMode: codeThemeModeSchema,
+  appearance: codeAppearanceSchema,
+});
+
+const codeTunnelHeaderListSchema = z
+  .array(z.tuple([z.string().min(1).max(256), z.string().max(16 * 1_024)]))
+  .max(256);
+
+const codeTunnelFrameBaseSchema = z.object({
+  protocolVersion: z.literal(1),
+  attachmentId: z.string().min(1).max(200),
+  sessionId: z.string().min(1).max(200),
+  streamId: z.string().min(1).max(200),
+});
+
+export const codeTunnelFrameHeaderSchema = z.discriminatedUnion("kind", [
+  codeTunnelFrameBaseSchema.extend({
+    kind: z.literal("http-request-start"),
+    method: z
+      .string()
+      .regex(/^[A-Z]+$/u)
+      .max(32),
+    path: z
+      .string()
+      .min(1)
+      .max(32 * 1_024)
+      .refine((value) => value.startsWith("/") && !value.startsWith("//")),
+    basePath: z
+      .string()
+      .min(1)
+      .max(4_096)
+      .refine((value) => value.startsWith("/") && !value.startsWith("//")),
+    headers: codeTunnelHeaderListSchema,
+  }),
+  codeTunnelFrameBaseSchema.extend({ kind: z.literal("http-request-data") }),
+  codeTunnelFrameBaseSchema.extend({ kind: z.literal("http-request-end") }),
+  codeTunnelFrameBaseSchema.extend({
+    kind: z.literal("http-response-start"),
+    statusCode: z.number().int().min(100).max(599),
+    headers: codeTunnelHeaderListSchema,
+  }),
+  codeTunnelFrameBaseSchema.extend({ kind: z.literal("http-response-data") }),
+  codeTunnelFrameBaseSchema.extend({ kind: z.literal("http-response-end") }),
+  codeTunnelFrameBaseSchema.extend({
+    kind: z.literal("websocket-open"),
+    path: z
+      .string()
+      .min(1)
+      .max(32 * 1_024)
+      .refine((value) => value.startsWith("/") && !value.startsWith("//")),
+    basePath: z
+      .string()
+      .min(1)
+      .max(4_096)
+      .refine((value) => value.startsWith("/") && !value.startsWith("//")),
+    headers: codeTunnelHeaderListSchema,
+  }),
+  codeTunnelFrameBaseSchema.extend({
+    kind: z.literal("websocket-opened"),
+    headers: codeTunnelHeaderListSchema,
+  }),
+  codeTunnelFrameBaseSchema.extend({
+    kind: z.literal("websocket-data"),
+    binary: z.boolean(),
+  }),
+  codeTunnelFrameBaseSchema.extend({
+    kind: z.literal("websocket-close"),
+    code: z.number().int().min(1_000).max(4_999),
+    reason: z.string().max(1_024),
+  }),
+  codeTunnelFrameBaseSchema.extend({
+    kind: z.literal("cancel"),
+    reason: z.string().max(1_024),
+  }),
+  codeTunnelFrameBaseSchema.extend({
+    kind: z.literal("error"),
+    message: z.string().min(1).max(4_000),
+  }),
+]);
+
+export const CODE_TUNNEL_MAX_HEADER_BYTES = 64 * 1_024;
+export const CODE_TUNNEL_MAX_PAYLOAD_BYTES = 4 * 1_024 * 1_024;
+const CODE_TUNNEL_FRAME_MAGIC = new Uint8Array([0x43, 0x54, 0x43, 0x44]);
+
+export function isCodeTunnelFrame(frame: Uint8Array): boolean {
+  return (
+    frame.byteLength >= CODE_TUNNEL_FRAME_MAGIC.byteLength &&
+    CODE_TUNNEL_FRAME_MAGIC.every((value, index) => frame[index] === value)
+  );
+}
+
+export function encodeCodeTunnelFrame(
+  header: CodeTunnelFrameHeader,
+  payload: Uint8Array,
+): Uint8Array {
+  const parsedHeader = codeTunnelFrameHeaderSchema.parse(header);
+  if (payload.byteLength > CODE_TUNNEL_MAX_PAYLOAD_BYTES) {
+    throw new Error("Cantrip Code tunnel payload exceeds the protocol limit.");
+  }
+  const encodedHeader = new TextEncoder().encode(JSON.stringify(parsedHeader));
+  if (encodedHeader.byteLength > CODE_TUNNEL_MAX_HEADER_BYTES) {
+    throw new Error("Cantrip Code tunnel header exceeds the protocol limit.");
+  }
+  const frame = new Uint8Array(
+    8 + encodedHeader.byteLength + payload.byteLength,
+  );
+  frame.set(CODE_TUNNEL_FRAME_MAGIC, 0);
+  new DataView(frame.buffer).setUint32(4, encodedHeader.byteLength, false);
+  frame.set(encodedHeader, 8);
+  frame.set(payload, 8 + encodedHeader.byteLength);
+  return frame;
+}
+
+export function decodeCodeTunnelFrame(frame: Uint8Array): {
+  header: CodeTunnelFrameHeader;
+  payload: Uint8Array;
+} {
+  if (frame.byteLength < 8 || !isCodeTunnelFrame(frame)) {
+    throw new Error("Cantrip Code tunnel frame has an invalid magic value.");
+  }
+  const headerLength = new DataView(
+    frame.buffer,
+    frame.byteOffset,
+    frame.byteLength,
+  ).getUint32(4, false);
+  if (headerLength < 1 || headerLength > CODE_TUNNEL_MAX_HEADER_BYTES) {
+    throw new Error("Cantrip Code tunnel frame header length is invalid.");
+  }
+  const payloadOffset = 8 + headerLength;
+  if (payloadOffset > frame.byteLength) {
+    throw new Error("Cantrip Code tunnel frame header is truncated.");
+  }
+  if (frame.byteLength - payloadOffset > CODE_TUNNEL_MAX_PAYLOAD_BYTES) {
+    throw new Error("Cantrip Code tunnel payload exceeds the protocol limit.");
+  }
+  let rawHeader: unknown;
+  try {
+    rawHeader = JSON.parse(
+      new TextDecoder().decode(frame.subarray(8, payloadOffset)),
+    );
+  } catch {
+    throw new Error("Cantrip Code tunnel frame header is not valid JSON.");
+  }
+  return {
+    header: codeTunnelFrameHeaderSchema.parse(rawHeader),
+    payload: frame.subarray(payloadOffset),
+  };
+}
 
 export const browserCreateSchema = z.object({
   title: z.string().trim().min(1).max(200).default("Browser"),
@@ -3396,10 +3563,15 @@ export type CodeTabCreate = z.infer<typeof codeTabCreateSchema>;
 export type CodeTabUpdate = z.infer<typeof codeTabUpdateSchema>;
 export type CodeTabSummary = z.infer<typeof codeTabSummarySchema>;
 export type CodeEditorBuild = z.infer<typeof codeEditorBuildSchema>;
+export type CodeProbeResult = z.infer<typeof codeProbeResultSchema>;
 export type CodeSessionSummary = z.infer<typeof codeSessionSummarySchema>;
 export type CodeDirtyEditor = z.infer<typeof codeDirtyEditorSchema>;
 export type CodeRuntimeStatus = z.infer<typeof codeRuntimeStatusSchema>;
 export type CodeSaveAllResult = z.infer<typeof codeSaveAllResultSchema>;
+export type CodeAttachment = z.infer<typeof codeAttachmentSchema>;
+export type CodeAttachmentCreate = z.infer<typeof codeAttachmentCreateSchema>;
+export type CodeThemeUpdate = z.infer<typeof codeThemeUpdateSchema>;
+export type CodeTunnelFrameHeader = z.infer<typeof codeTunnelFrameHeaderSchema>;
 export type BrowserCreate = z.infer<typeof browserCreateSchema>;
 export type BrowserUpdate = z.infer<typeof browserUpdateSchema>;
 export type BrowserSummary = z.infer<typeof browserSummarySchema>;

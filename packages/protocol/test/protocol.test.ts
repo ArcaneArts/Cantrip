@@ -23,8 +23,10 @@ import {
   chatTurnCreateSchema,
   codeRuntimeStatusSchema,
   codeTabSummarySchema,
+  decodeCodeTunnelFrame,
   decodeRemoteSurfaceFrame,
   desktopStreamSettingsSchema,
+  encodeCodeTunnelFrame,
   encodeRemoteSurfaceFrame,
   remoteBrowserClipboardMessageSchema,
   remoteBrowserClientMessageSchema,
@@ -830,6 +832,39 @@ describe("Cantrip protocol", () => {
         lastError: null,
       }).success,
     ).toBe(false);
+  });
+
+  it("encodes bounded, independently identifiable Code tunnel frames", () => {
+    const header = {
+      protocolVersion: 1 as const,
+      attachmentId: "attachment-1",
+      sessionId: "session-1",
+      streamId: "stream-1",
+      kind: "websocket-data" as const,
+      binary: false,
+    };
+    const encoded = encodeCodeTunnelFrame(
+      header,
+      new TextEncoder().encode("hello"),
+    );
+    expect(new TextDecoder().decode(encoded.subarray(0, 4))).toBe("CTCD");
+    expect(decodeCodeTunnelFrame(encoded)).toMatchObject({
+      header,
+      payload: new TextEncoder().encode("hello"),
+    });
+    expect(() =>
+      encodeCodeTunnelFrame(
+        {
+          ...header,
+          kind: "http-request-start",
+          method: "GET",
+          path: "//not-a-path",
+          basePath: "/code/token",
+          headers: [],
+        },
+        new Uint8Array(),
+      ),
+    ).toThrow();
   });
 
   it("validates one-click managed desktops without client configuration", () => {

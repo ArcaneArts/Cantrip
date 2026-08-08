@@ -30,6 +30,7 @@ import type {
   ChatWorktreeUpdate,
   CodeCapabilities,
   CodeEditorBuild,
+  CodeRuntimeStatus,
   CodeSessionSummary,
   CodeTabCreate,
   CodeTabSummary,
@@ -3447,6 +3448,7 @@ export class ServerRepository {
     ownerId: string,
     codeTabId: string,
     editorBuild: CodeEditorBuild,
+    preferredSessionId = randomUUID(),
   ): Promise<CodeSessionSummary | null> {
     const context = await this.getCodeTabExecutionContext(ownerId, codeTabId);
     if (!context) return null;
@@ -3467,7 +3469,7 @@ export class ServerRepository {
     const inserted = await this.database
       .insert(schema.codeSessions)
       .values({
-        id: randomUUID(),
+        id: preferredSessionId,
         codeTabId,
         projectId: context.codeTab.projectId,
         workerId: context.workerId,
@@ -3478,10 +3480,82 @@ export class ServerRepository {
         editorPatchset: editorBuild.patchset,
         editorFingerprint: editorBuild.fingerprint,
       })
+      .onConflictDoNothing()
       .returning();
-    return toCodeSessionSummary(
-      firstOrThrow(inserted, "creating a Code session"),
-    );
+    if (inserted[0]) return toCodeSessionSummary(inserted[0]);
+    const raced = await this.database
+      .select()
+      .from(schema.codeSessions)
+      .where(
+        and(
+          eq(schema.codeSessions.codeTabId, codeTabId),
+          eq(schema.codeSessions.workerId, context.workerId),
+          eq(schema.codeSessions.worktreeId, context.worktreeId),
+          eq(schema.codeSessions.profileId, context.codeTab.profileId),
+          eq(schema.codeSessions.editorFingerprint, editorBuild.fingerprint),
+        ),
+      )
+      .limit(1);
+    return raced[0] ? toCodeSessionSummary(raced[0]) : null;
+  }
+
+  async updateCodeSessionRuntime(
+    ownerId: string,
+    codeTabId: string,
+    sessionId: string,
+    runtime: CodeRuntimeStatus,
+    attached = false,
+  ): Promise<CodeSessionSummary | null> {
+    const context = await this.getCodeTabExecutionContext(ownerId, codeTabId);
+    if (!context || runtime.sessionId !== sessionId) return null;
+    const tabStatus: CodeTabSummary["status"] =
+      runtime.status === "starting"
+        ? "starting"
+        : runtime.status === "running" || runtime.status === "idle"
+          ? "running"
+          : runtime.status === "offline"
+            ? "offline"
+            : runtime.status === "failed"
+              ? "failed"
+              : "stopped";
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .update(schema.codeSessions)
+        .set({
+          status: runtime.status,
+          processInstanceId: runtime.processInstanceId,
+          ...(attached ? { lastAttachmentAt: new Date() } : {}),
+          ...(runtime.startedAt
+            ? { lastStartedAt: new Date(runtime.startedAt) }
+            : {}),
+          stoppedAt: runtime.status === "stopped" ? new Date() : null,
+          lastError: runtime.lastError,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.codeSessions.id, sessionId),
+            eq(schema.codeSessions.codeTabId, codeTabId),
+            eq(schema.codeSessions.workerId, context.workerId),
+            eq(
+              schema.codeSessions.editorFingerprint,
+              runtime.editorBuild.fingerprint,
+            ),
+          ),
+        )
+        .returning();
+      const session = rows[0];
+      if (!session) return null;
+      await transaction
+        .update(schema.codeTabs)
+        .set({
+          status: tabStatus,
+          lastError: runtime.lastError,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.codeTabs.id, codeTabId));
+      return toCodeSessionSummary(session);
+    });
   }
 
   async listBrowsers(

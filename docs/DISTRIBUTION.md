@@ -52,6 +52,11 @@ Copy the packaged `.env.example` to `.env`. The startup scripts use Node's
 `--env-file-if-exists` support. Important variables are:
 
 - `CANTRIP_SERVER_HOST` and `CANTRIP_SERVER_PORT`: listening address.
+- `CANTRIP_CODE_SURFACE_HOST` and `CANTRIP_CODE_SURFACE_PORT`: the isolated
+  editor-surface listener. It must not share the application API origin.
+- `CANTRIP_CODE_SURFACE_ORIGIN`: the public HTTP(S) origin browsers use for
+  short-lived Code attachments. Hosted reverse proxies should route this
+  separate origin to the Code surface listener without exposing worker ports.
 - `CANTRIP_DATA_DIR`: PGlite data and durable server state.
 - `DATABASE_URL`: optional PostgreSQL connection replacing PGlite.
 - `CANTRIP_WORKER_TOKEN`: shared secret for worker connections.
@@ -63,6 +68,8 @@ Account authentication is not implemented. A hosted mode or non-loopback bind
 therefore requires `CANTRIP_ALLOW_INSECURE_REMOTE=true`, which only disables a
 safety check. It does not authenticate requests. Keep the server on a trusted
 network or put an authenticating TLS reverse proxy in front of it.
+The Code surface exposes only a health endpoint and capability-scoped bearer
+attachments; it does not expose application APIs or accept Cantrip cookies.
 
 ## Standalone worker
 

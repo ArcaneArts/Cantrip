@@ -22,9 +22,11 @@
     "@fastify/websocket": "^11.3.0",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.11.2",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "ws": "^8.21.2"
   },
   "devDependencies": {
+    "@types/ws": "^8.18.1",
     "drizzle-kit": "^0.31.10"
   }
 }

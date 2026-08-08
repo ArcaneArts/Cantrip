@@ -1,6 +1,10 @@
 import {
+  decodeCodeTunnelFrame,
   decodeRemoteSurfaceFrame,
+  encodeCodeTunnelFrame,
   encodeRemoteSurfaceFrame,
+  isCodeTunnelFrame,
+  type CodeTunnelFrameHeader,
   type RemoteSurfaceFrameHeader,
   type WorkerCommand,
   workerEventEnvelopeSchema,
@@ -22,6 +26,11 @@ type SurfaceFrameHandler = (
   payload: Uint8Array,
 ) => Promise<void> | void;
 
+type CodeTunnelFrameHandler = (
+  header: CodeTunnelFrameHeader,
+  payload: Uint8Array,
+) => Promise<void> | void;
+
 const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
 
 function rawDataBytes(data: RawData): Uint8Array {
@@ -40,6 +49,8 @@ export class WorkerConnection {
     private readonly config: WorkerConfig,
     private readonly handleCommand: CommandHandler,
     private readonly handleSurfaceFrame: SurfaceFrameHandler = () => undefined,
+    private readonly handleCodeTunnelFrame: CodeTunnelFrameHandler = () =>
+      undefined,
   ) {}
 
   start(): void {
@@ -116,6 +127,21 @@ export class WorkerConnection {
     }
   }
 
+  sendCodeTunnelFrame(
+    header: CodeTunnelFrameHeader,
+    payload: Uint8Array,
+  ): boolean {
+    const socket = this.#socket;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+    if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) return false;
+    try {
+      socket.send(encodeCodeTunnelFrame(header, payload), { binary: true });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private async onMessage(
     socket: WebSocket,
     data: RawData,
@@ -123,11 +149,17 @@ export class WorkerConnection {
   ): Promise<void> {
     if (isBinary) {
       try {
-        const frame = decodeRemoteSurfaceFrame(rawDataBytes(data));
-        await this.handleSurfaceFrame(frame.header, frame.payload);
+        const bytes = rawDataBytes(data);
+        if (isCodeTunnelFrame(bytes)) {
+          const frame = decodeCodeTunnelFrame(bytes);
+          await this.handleCodeTunnelFrame(frame.header, frame.payload);
+        } else {
+          const frame = decodeRemoteSurfaceFrame(bytes);
+          await this.handleSurfaceFrame(frame.header, frame.payload);
+        }
       } catch (error) {
         console.warn(
-          `[cantrip_worker] Rejected Remote Surface frame: ${error instanceof Error ? error.message : String(error)}`,
+          `[cantrip_worker] Rejected worker data frame: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
       return;

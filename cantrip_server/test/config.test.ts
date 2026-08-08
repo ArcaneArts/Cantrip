@@ -21,7 +21,25 @@ describe("server configuration safety", () => {
       deploymentMode: "local",
       host: "127.0.0.1",
       ollamaBaseUrl: "http://127.0.0.1:11434/v1",
+      codeSurfaceHost: "127.0.0.1",
+      codeSurfaceOrigin: "http://127.0.0.1:4311",
+      codeSurfacePort: 4311,
     });
+  });
+
+  it("validates an independently addressable Code surface origin", () => {
+    vi.stubEnv("CANTRIP_CODE_SURFACE_PORT", "5311");
+    vi.stubEnv("CANTRIP_CODE_SURFACE_ORIGIN", "https://code.cantrip.example");
+    expect(readServerConfig()).toMatchObject({
+      codeSurfacePort: 5311,
+      codeSurfaceOrigin: "https://code.cantrip.example",
+    });
+
+    vi.stubEnv(
+      "CANTRIP_CODE_SURFACE_ORIGIN",
+      "https://code.cantrip.example/not-an-origin",
+    );
+    expect(() => readServerConfig()).toThrow(/without a path/i);
   });
 
   it("refuses to expose the no-auth foundation beyond loopback", () => {
