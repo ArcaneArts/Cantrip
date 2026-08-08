@@ -37,6 +37,8 @@ import {
   projectViewSummarySchema,
   queuedPromptListSchema,
   queuedPromptSchema,
+  remoteDesktopListSchema,
+  remoteDesktopSummarySchema,
   serverBootstrapSchema,
   settingsBundleSchema,
   skillListSchema,
@@ -56,6 +58,7 @@ import type {
   ModelProviderUpdate,
   ProjectViewKind,
   ProjectWorktreeCreate,
+  RemoteDesktopCreate,
   UserSettingsUpdate,
 } from "@cantrip/protocol";
 
@@ -487,6 +490,32 @@ export async function deleteBrowser(browserId: string) {
   await request(`/api/browsers/${encodeURIComponent(browserId)}`, {
     method: "DELETE",
   });
+}
+
+export async function getRemoteDesktops(projectId: string) {
+  return remoteDesktopListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/remote-desktops`,
+    ),
+  );
+}
+
+export async function getRemoteDesktop(desktopId: string) {
+  return remoteDesktopSummarySchema.parse(
+    await request(`/api/remote-desktops/${encodeURIComponent(desktopId)}`),
+  );
+}
+
+export async function createRemoteDesktop(
+  projectId: string,
+  input: RemoteDesktopCreate,
+) {
+  return remoteDesktopSummarySchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/remote-desktops`,
+      input,
+    ),
+  );
 }
 
 export async function getProjectViews(projectId: string) {

@@ -77,6 +77,9 @@ import {
   queuedPromptOrderSchema,
   queuedPromptSchema,
   queuedPromptUpdateSchema,
+  remoteDesktopCreateSchema,
+  remoteDesktopListSchema,
+  remoteDesktopSummarySchema,
   remoteSurfaceAttachResultSchema,
   remoteSurfaceConnectionMessageSchema,
   remoteSurfaceCreateSchema,
@@ -84,6 +87,8 @@ import {
   remoteSurfaceSummarySchema,
   remoteSurfaceUpdateSchema,
   remoteSurfaceViewportSchema,
+  remoteVncProbeResultSchema,
+  remoteVncSecretResultSchema,
   serverBootstrapSchema,
   settingsBundleSchema,
   skillListSchema,
@@ -2193,6 +2198,27 @@ export async function buildApp({
               .catch(() => undefined);
           }
         }
+        for (const surface of context.remoteSurfaces) {
+          if (!bridge.isConnected(surface.workerId)) continue;
+          const commands: Promise<unknown>[] = [
+            bridge.request(surface.workerId, {
+              type: "surface.close",
+              surfaceId: surface.id,
+            }),
+          ];
+          if (
+            surface.configuration.kind === "vnc" &&
+            surface.configuration.secretRef
+          ) {
+            commands.push(
+              bridge.request(surface.workerId, {
+                type: "surface.vnc.secret.delete",
+                secretRef: surface.configuration.secretRef,
+              }),
+            );
+          }
+          await Promise.allSettled(commands);
+        }
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
         return reply.code(status).send({ error: errorMessage(error) });
@@ -2498,6 +2524,125 @@ export async function buildApp({
   );
 
   app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/remote-desktops",
+    async (request, reply) =>
+      reply.send(
+        remoteDesktopListSchema.parse(
+          await repository.listRemoteDesktops(
+            LOCAL_USER_ID,
+            request.params.projectId,
+          ),
+        ),
+      ),
+  );
+
+  app.get<{ Params: { desktopId: string } }>(
+    "/api/remote-desktops/:desktopId",
+    async (request, reply) => {
+      const desktop = await repository.getRemoteDesktop(
+        LOCAL_USER_ID,
+        request.params.desktopId,
+      );
+      return desktop
+        ? reply.send(remoteDesktopSummarySchema.parse(desktop))
+        : reply.code(404).send({ error: "Remote Desktop not found." });
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/remote-desktops",
+    async (request, reply) => {
+      const input = remoteDesktopCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const worker = (await repository.listWorkers(LOCAL_USER_ID)).find(
+        ({ workerId }) => workerId === input.data.workerId,
+      );
+      if (!worker) return reply.code(404).send({ error: "Worker not found." });
+      if (!worker.remoteSurfaces.vnc) {
+        return reply.code(409).send({
+          error:
+            "The selected worker does not support configured VNC endpoints.",
+        });
+      }
+      if (!bridge.isConnected(worker.workerId)) {
+        return reply.code(409).send({ error: "Worker is offline." });
+      }
+
+      const desktopId = randomUUID();
+      let secretRef: string | null = null;
+      try {
+        if (input.data.password !== null) {
+          secretRef = remoteVncSecretResultSchema.parse(
+            await bridge.request(worker.workerId, {
+              type: "surface.vnc.secret.set",
+              surfaceId: desktopId,
+              password: input.data.password,
+            }),
+          ).secretRef;
+        }
+        const { password: _password, ...configuration } = input.data;
+        const desktop = await repository.createRemoteDesktop(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          desktopId,
+          configuration,
+          secretRef,
+        );
+        if (!desktop) {
+          if (secretRef) {
+            void bridge
+              .request(worker.workerId, {
+                type: "surface.vnc.secret.delete",
+                secretRef,
+              })
+              .catch(() => undefined);
+          }
+          return reply
+            .code(404)
+            .send({ error: "Project or worker not found." });
+        }
+        const probe = remoteVncProbeResultSchema.parse(
+          await bridge.request(
+            worker.workerId,
+            {
+              type: "surface.vnc.probe",
+              host: input.data.host,
+              port: input.data.port,
+            },
+            { timeoutMs: 10_000 },
+          ),
+        );
+        if (!probe.reachable) {
+          await repository.setRemoteSurfaceStatus(
+            desktopId,
+            "offline",
+            probe.message ?? "VNC endpoint is not reachable from the worker.",
+          );
+        }
+        const refreshed = await repository.getRemoteDesktop(
+          LOCAL_USER_ID,
+          desktopId,
+        );
+        return reply
+          .code(201)
+          .send(remoteDesktopSummarySchema.parse(refreshed ?? desktop));
+      } catch (error) {
+        if (secretRef) {
+          void bridge
+            .request(worker.workerId, {
+              type: "surface.vnc.secret.delete",
+              secretRef,
+            })
+            .catch(() => undefined);
+        }
+        return reply.code(502).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/remote-surfaces",
     async (request, reply) =>
       reply.send(
@@ -2516,6 +2661,12 @@ export async function buildApp({
       const input = remoteSurfaceCreateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      if (input.data.configuration.kind === "vnc") {
+        return reply.code(400).send({
+          error:
+            "Create VNC surfaces through the Remote Desktop endpoint so credentials remain worker-owned.",
+        });
       }
       const worker = (await repository.listWorkers(LOCAL_USER_ID)).find(
         ({ workerId }) => workerId === input.data.workerId,
@@ -2543,6 +2694,12 @@ export async function buildApp({
       const input = remoteSurfaceUpdateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      if (input.data.configuration?.kind === "vnc") {
+        return reply.code(400).send({
+          error:
+            "VNC configuration changes must use the Remote Desktop settings flow.",
+        });
       }
       const surface = await repository.updateRemoteSurface(
         LOCAL_USER_ID,
@@ -2610,17 +2767,32 @@ export async function buildApp({
         return reply.code(404).send({ error: "Remote Surface not found." });
       }
       if (bridge.isConnected(context.workerId)) {
-        void bridge
-          .request(context.workerId, {
+        const commands: Promise<unknown>[] = [
+          bridge.request(context.workerId, {
             type: "surface.close",
             surfaceId: context.surface.id,
-          })
-          .catch((error: unknown) =>
-            app.log.warn(
-              { err: error, surfaceId: context.surface.id },
-              "Could not close deleted Remote Surface",
-            ),
+          }),
+        ];
+        if (
+          context.surface.configuration.kind === "vnc" &&
+          context.surface.configuration.secretRef
+        ) {
+          commands.push(
+            bridge.request(context.workerId, {
+              type: "surface.vnc.secret.delete",
+              secretRef: context.surface.configuration.secretRef,
+            }),
           );
+        }
+        void Promise.allSettled(commands).then((results) => {
+          for (const result of results) {
+            if (result.status !== "rejected") continue;
+            app.log.warn(
+              { err: result.reason, surfaceId: context.surface.id },
+              "Could not close deleted Remote Surface",
+            );
+          }
+        });
       }
       return reply.code(204).send();
     },
@@ -2814,6 +2986,12 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
+      if (input.data.kind === "remote-desktop") {
+        return reply.code(400).send({
+          error:
+            "Remote Desktop views must be created with endpoint configuration.",
+        });
+      }
       const view = await repository.createProjectView(
         LOCAL_USER_ID,
         request.params.projectId,
@@ -2869,10 +3047,41 @@ export async function buildApp({
 
   app.delete<{ Params: { viewId: string } }>(
     "/api/project-views/:viewId",
-    async (request, reply) =>
-      (await repository.deleteProjectView(LOCAL_USER_ID, request.params.viewId))
-        ? reply.code(204).send()
-        : reply.code(404).send({ error: "Project view not found." }),
+    async (request, reply) => {
+      const context = await repository.getRemoteSurfaceExecutionContext(
+        LOCAL_USER_ID,
+        request.params.viewId,
+      );
+      if (
+        !(await repository.deleteProjectView(
+          LOCAL_USER_ID,
+          request.params.viewId,
+        ))
+      ) {
+        return reply.code(404).send({ error: "Project view not found." });
+      }
+      if (context && bridge.isConnected(context.workerId)) {
+        const commands: Promise<unknown>[] = [
+          bridge.request(context.workerId, {
+            type: "surface.close",
+            surfaceId: context.surface.id,
+          }),
+        ];
+        if (
+          context.surface.configuration.kind === "vnc" &&
+          context.surface.configuration.secretRef
+        ) {
+          commands.push(
+            bridge.request(context.workerId, {
+              type: "surface.vnc.secret.delete",
+              secretRef: context.surface.configuration.secretRef,
+            }),
+          );
+        }
+        void Promise.allSettled(commands);
+      }
+      return reply.code(204).send();
+    },
   );
 
   app.post<{ Params: { projectId: string } }>(

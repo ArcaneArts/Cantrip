@@ -21,6 +21,8 @@ import {
   normalizeResponsesBaseUrl,
   queuedPromptSchema,
   projectWorktreeSummarySchema,
+  remoteDesktopCreateSchema,
+  remoteDesktopSummarySchema,
   serverBootstrapSchema,
   systemHealthSchema,
   terminalClientMessageSchema,
@@ -291,6 +293,46 @@ describe("Cantrip protocol", () => {
       vnc: false,
       transports: ["websocket"],
     });
+  });
+
+  it("validates configured VNC desktops without exposing credentials", () => {
+    expect(
+      remoteDesktopCreateSchema.parse({
+        workerId: "worker-1",
+        host: "127.0.0.1",
+        password: "worker-only",
+      }),
+    ).toMatchObject({ title: "Remote Desktop", port: 5900 });
+    const summary = remoteDesktopSummarySchema.parse({
+      id: "desktop-1",
+      projectId: "project-1",
+      title: "Desk",
+      position: 2,
+      workerId: "worker-1",
+      host: "127.0.0.1",
+      port: 5900,
+      displayName: null,
+      status: "offline",
+      lastError: null,
+      createdAt: "2026-08-08T12:00:00.000Z",
+      updatedAt: "2026-08-08T12:00:00.000Z",
+    });
+    expect(summary).not.toHaveProperty("password");
+    expect(summary).not.toHaveProperty("secretRef");
+    expect(
+      workerCommandSchema.parse({
+        type: "surface.vnc.secret.set",
+        surfaceId: "desktop-1",
+        password: "worker-only",
+      }).type,
+    ).toBe("surface.vnc.secret.set");
+    expect(
+      workerCommandSchema.parse({
+        type: "surface.vnc.probe",
+        host: "127.0.0.1",
+        port: 5900,
+      }).type,
+    ).toBe("surface.vnc.probe");
   });
 
   it("rejects an unhealthy server payload", () => {

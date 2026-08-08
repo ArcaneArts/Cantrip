@@ -30,6 +30,8 @@ import type {
   QueuedPromptCreate,
   QueuedPromptOrder,
   QueuedPromptUpdate,
+  RemoteDesktopCreate,
+  RemoteDesktopSummary,
   RemoteSurfaceCapabilities,
   RemoteSurfaceCreate,
   RemoteSurfaceStatus,
@@ -101,6 +103,7 @@ export interface TerminalExecutionContext {
 
 export interface ProjectRemovalContext {
   cwd: string | null;
+  remoteSurfaces: RemoteSurfaceSummary[];
   setupStatus: ProjectSummary["setupStatus"];
   terminalIds: string[];
   workerId: string | null;
@@ -397,6 +400,31 @@ function toRemoteSurfaceSummary(
       : null,
     createdAt: toISOString(surface.createdAt),
     updatedAt: toISOString(surface.updatedAt),
+  };
+}
+
+function toRemoteDesktopSummary(
+  view: typeof schema.projectViews.$inferSelect,
+  surface: typeof schema.remoteSurfaces.$inferSelect,
+): RemoteDesktopSummary {
+  if (surface.configuration.kind !== "vnc") {
+    throw new Error("Remote Desktop is not backed by a VNC surface.");
+  }
+  return {
+    id: view.id,
+    projectId: view.projectId,
+    title: view.title,
+    position: view.position,
+    workerId: surface.workerId,
+    host: surface.configuration.host,
+    port: surface.configuration.port,
+    displayName: surface.configuration.displayName,
+    status: surface.status as RemoteDesktopSummary["status"],
+    lastError: surface.lastError,
+    createdAt: toISOString(view.createdAt),
+    updatedAt: toISOString(
+      view.updatedAt > surface.updatedAt ? view.updatedAt : surface.updatedAt,
+    ),
   };
 }
 
@@ -2367,8 +2395,15 @@ export class ServerRepository {
       .select({ id: schema.terminals.id })
       .from(schema.terminals)
       .where(eq(schema.terminals.projectId, projectId));
+    const remoteSurfaces = await this.database
+      .select({ surface: schema.remoteSurfaces })
+      .from(schema.remoteSurfaces)
+      .where(eq(schema.remoteSurfaces.projectId, projectId));
     return {
       cwd: project.cwd,
+      remoteSurfaces: remoteSurfaces.map(({ surface }) =>
+        toRemoteSurfaceSummary(surface),
+      ),
       setupStatus: project.setupStatus as ProjectSummary["setupStatus"],
       terminalIds: terminals.map(({ id }) => id),
       workerId: project.workerId,
@@ -3262,6 +3297,175 @@ export class ServerRepository {
     return context;
   }
 
+  async listRemoteDesktops(
+    ownerId: string,
+    projectId: string,
+  ): Promise<RemoteDesktopSummary[]> {
+    const rows = await this.database
+      .select({ view: schema.projectViews, surface: schema.remoteSurfaces })
+      .from(schema.projectViews)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.projectViews.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .innerJoin(
+        schema.remoteSurfaces,
+        eq(schema.remoteSurfaces.id, schema.projectViews.id),
+      )
+      .where(
+        and(
+          eq(schema.projectViews.projectId, projectId),
+          eq(schema.projectViews.kind, "remote-desktop"),
+          eq(schema.remoteSurfaces.kind, "vnc"),
+        ),
+      )
+      .orderBy(
+        asc(schema.projectViews.position),
+        asc(schema.projectViews.createdAt),
+      );
+    return rows.map(({ view, surface }) =>
+      toRemoteDesktopSummary(view, surface),
+    );
+  }
+
+  async getRemoteDesktop(
+    ownerId: string,
+    desktopId: string,
+  ): Promise<RemoteDesktopSummary | null> {
+    const rows = await this.database
+      .select({ view: schema.projectViews, surface: schema.remoteSurfaces })
+      .from(schema.projectViews)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.projectViews.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .innerJoin(
+        schema.remoteSurfaces,
+        eq(schema.remoteSurfaces.id, schema.projectViews.id),
+      )
+      .where(
+        and(
+          eq(schema.projectViews.id, desktopId),
+          eq(schema.projectViews.kind, "remote-desktop"),
+          eq(schema.remoteSurfaces.kind, "vnc"),
+        ),
+      )
+      .limit(1);
+    return rows[0]
+      ? toRemoteDesktopSummary(rows[0].view, rows[0].surface)
+      : null;
+  }
+
+  async createRemoteDesktop(
+    ownerId: string,
+    projectId: string,
+    desktopId: string,
+    input: Omit<RemoteDesktopCreate, "password">,
+    secretRef: string | null,
+  ): Promise<RemoteDesktopSummary | null> {
+    const [
+      projectRows,
+      workerRows,
+      lastChats,
+      lastTerminals,
+      lastExplorers,
+      lastBrowsers,
+      lastViews,
+    ] = await Promise.all([
+      this.database
+        .select({ id: schema.projects.id })
+        .from(schema.projects)
+        .where(
+          and(
+            eq(schema.projects.id, projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .limit(1),
+      this.database
+        .select({ id: schema.workers.id })
+        .from(schema.workers)
+        .where(
+          and(
+            eq(schema.workers.id, input.workerId),
+            eq(schema.workers.ownerId, ownerId),
+          ),
+        )
+        .limit(1),
+      this.database
+        .select({ position: schema.chats.position })
+        .from(schema.chats)
+        .where(eq(schema.chats.projectId, projectId))
+        .orderBy(desc(schema.chats.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.terminals.position })
+        .from(schema.terminals)
+        .where(eq(schema.terminals.projectId, projectId))
+        .orderBy(desc(schema.terminals.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.explorers.position })
+        .from(schema.explorers)
+        .where(eq(schema.explorers.projectId, projectId))
+        .orderBy(desc(schema.explorers.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.browsers.position })
+        .from(schema.browsers)
+        .where(eq(schema.browsers.projectId, projectId))
+        .orderBy(desc(schema.browsers.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.projectViews.position })
+        .from(schema.projectViews)
+        .where(eq(schema.projectViews.projectId, projectId))
+        .orderBy(desc(schema.projectViews.position))
+        .limit(1),
+    ]);
+    if (!projectRows[0] || !workerRows[0]) return null;
+    const position =
+      Math.max(
+        lastChats[0]?.position ?? -1,
+        lastTerminals[0]?.position ?? -1,
+        lastExplorers[0]?.position ?? -1,
+        lastBrowsers[0]?.position ?? -1,
+        lastViews[0]?.position ?? -1,
+      ) + 1;
+    await this.database.transaction(async (transaction) => {
+      await transaction.insert(schema.projectViews).values({
+        id: desktopId,
+        projectId,
+        title: input.title,
+        kind: "remote-desktop",
+        worktreeId: null,
+        position,
+      });
+      await transaction.insert(schema.remoteSurfaces).values({
+        id: desktopId,
+        projectId,
+        workerId: input.workerId,
+        kind: "vnc",
+        title: input.title,
+        preferredTransport: "webrtc",
+        configuration: {
+          kind: "vnc",
+          host: input.host,
+          port: input.port,
+          displayName: input.displayName,
+          secretRef,
+        },
+      });
+    });
+    return this.getRemoteDesktop(ownerId, desktopId);
+  }
+
   async listProjectViews(
     ownerId: string,
     projectId: string,
@@ -3370,11 +3574,18 @@ export class ServerRepository {
     input: ProjectViewUpdate,
   ): Promise<ProjectViewSummary | null> {
     if (!(await this.projectViewIsOwnedBy(ownerId, viewId))) return null;
-    const result = await this.database
-      .update(schema.projectViews)
-      .set({ title: input.title, updatedAt: new Date() })
-      .where(eq(schema.projectViews.id, viewId))
-      .returning();
+    const result = await this.database.transaction(async (transaction) => {
+      const updated = await transaction
+        .update(schema.projectViews)
+        .set({ title: input.title, updatedAt: new Date() })
+        .where(eq(schema.projectViews.id, viewId))
+        .returning();
+      await transaction
+        .update(schema.remoteSurfaces)
+        .set({ title: input.title, updatedAt: new Date() })
+        .where(eq(schema.remoteSurfaces.id, viewId));
+      return updated;
+    });
     return result[0] ? toProjectViewSummary(result[0]) : null;
   }
 
@@ -3398,9 +3609,7 @@ export class ServerRepository {
     const view = rows[0]?.view;
     if (!view) return null;
     if (view.kind !== "history") {
-      throw new Error(
-        "Issues views are project-level and do not use worktrees.",
-      );
+      throw new Error("This project view does not use worktrees.");
     }
     const target = await this.getProjectWorktreeContext(
       ownerId,
@@ -3418,10 +3627,15 @@ export class ServerRepository {
 
   async deleteProjectView(ownerId: string, viewId: string): Promise<boolean> {
     if (!(await this.projectViewIsOwnedBy(ownerId, viewId))) return false;
-    const result = await this.database
-      .delete(schema.projectViews)
-      .where(eq(schema.projectViews.id, viewId))
-      .returning({ id: schema.projectViews.id });
+    const result = await this.database.transaction(async (transaction) => {
+      await transaction
+        .delete(schema.remoteSurfaces)
+        .where(eq(schema.remoteSurfaces.id, viewId));
+      return transaction
+        .delete(schema.projectViews)
+        .where(eq(schema.projectViews.id, viewId))
+        .returning({ id: schema.projectViews.id });
+    });
     return result.length === 1;
   }
 

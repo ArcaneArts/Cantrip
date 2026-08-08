@@ -13,7 +13,8 @@ Cantrip organizes work into GitHub-backed projects. Each project has one source 
 - Codex chats with Markdown responses, command/file activity, per-message model selection, steering, prompt queues, compaction commands, forking, renaming, and duplication.
 - Real PTY terminal tabs that run in the project folder on the worker.
 - Read-only Explorer tabs with a source or Markdown preview for supported text files.
-- Browser tabs for project-related web pages.
+- Worker-streamed Browser tabs for project-related web pages.
+- Remote Desktop tabs for worker-reachable VNC/RFB endpoints.
 - Git history with a branch graph, refs and tags, current checkout state, staged and unstaged changes, commits, branches, pull/push operations, and GitHub issue browsing and management.
 
 Settings are stored by the server for the current Cantrip identity rather than in browser cookies. They include System/Light/Dark appearance, optional high contrast, model providers, models, and the default model. Provider support currently includes:
@@ -62,7 +63,7 @@ Local development uses embedded PGlite under `.cantrip/dev/`. A PostgreSQL `DATA
 
 ### `cantrip_worker`
 
-The worker is the machine that actually performs work. It owns project source folders, clones repositories, runs Git and GitHub CLI operations, provides filesystem access, hosts PTY processes, supervises Codex runtimes, and runs Browser-tab Chromium sessions. Provider URLs and Browser-tab addresses such as `localhost` are resolved from the worker machine, which is important once the server and worker live on different hosts.
+The worker is the machine that actually performs work. It owns project source folders, clones repositories, runs Git and GitHub CLI operations, provides filesystem access, hosts PTY processes, supervises Codex runtimes, runs Browser-tab Chromium sessions, and connects to configured VNC/RFB endpoints. Provider URLs, Browser-tab addresses, and Remote Desktop hosts such as `localhost` are resolved from the worker machine, which is important once the server and worker live on different hosts.
 
 Workers communicate through the server. There is intentionally no app-to-worker connection mode.
 
@@ -155,6 +156,29 @@ loss-tolerant data channel while input and control messages use an ordered data
 channel. Negotiation failure automatically keeps the live WebSocket stream.
 Direct ICE candidates are deliberately disabled, preserving the rule that apps
 do not connect to workers. See `.env.example` for TTL and timeout overrides.
+
+### Remote Desktop tabs
+
+Choose **Remote Desktop** from a project's add-tab menu, select the worker,
+and enter a VNC/RFB host and port reachable from that worker. Cantrip probes the
+endpoint but does not enable screen sharing or install a VNC server on the
+target operating system. For a local worker and a local VNC server, the host is
+typically `127.0.0.1` and the conventional port is `5900`.
+
+The first adapter supports RFB 3.8 endpoints using either no authentication or
+classic VNC password authentication. The password is written to a private
+worker-owned secret file, is represented in server state only by an opaque
+reference, and is never returned to an app. Removing the Remote Desktop tab or
+project removes that worker secret when the worker is reachable. noVNC renders
+the session inside the normal React tree and sends keyboard, pointer, resize,
+and explicit clipboard operations over the same WebSocket/WebRTC Remote
+Surface transport as Browser tabs.
+
+Classic RFB/VNC does not encrypt the worker-to-VNC-server leg. Keep that
+endpoint on loopback, a trusted private network, VPN, or SSH tunnel. Cantrip's
+app-to-server and server-to-worker transport does not make an independently
+exposed VNC server safe. TLS/VenCrypt endpoints and automatic operating-system
+screen-sharing provisioning are not implemented yet.
 
 ## Desktop development with `pnpm devtop`
 
