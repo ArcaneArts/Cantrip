@@ -98,6 +98,7 @@ beforeAll(async () => {
                   key: "inspect",
                   type: "agent",
                   name: "Inspect",
+                  configuration: { prompt: "Inspect the project." },
                   permissionRequirements: {
                     network: "restricted",
                     skills: ["review"],
@@ -107,13 +108,26 @@ beforeAll(async () => {
                   key: "apply",
                   type: "agent",
                   name: "Apply",
+                  configuration: { prompt: "Apply the change." },
                   mutationMode: "write",
                   permissionRequirements: {
                     filesystem: "workspace-write",
                     mcpServers: ["github"],
                   },
                 },
-                { key: "verify", type: "verify", name: "Verify" },
+                {
+                  key: "verify",
+                  type: "verify",
+                  name: "Verify",
+                  configuration: {
+                    prompt: "Verify the applied change.",
+                    passCondition: {
+                      path: "/passed",
+                      operator: "equals",
+                      value: true,
+                    },
+                  },
+                },
               ],
               edges: [
                 { from: "inspect", to: "apply" },

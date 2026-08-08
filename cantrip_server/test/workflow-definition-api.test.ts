@@ -38,11 +38,17 @@ function graph(reviewName = "Apply review") {
   return {
     version: 1 as const,
     nodes: [
-      { key: "inspect", type: "agent" as const, name: "Inspect" },
+      {
+        key: "inspect",
+        type: "agent" as const,
+        name: "Inspect",
+        configuration: { prompt: "Inspect the project." },
+      },
       {
         key: "apply",
         type: "agent" as const,
         name: reviewName,
+        configuration: { prompt: "Apply the review." },
         mutationMode: "write" as const,
         permissionRequirements: {
           filesystem: "workspace-write" as const,
@@ -196,7 +202,14 @@ describe.sequential("workflow definition API", () => {
             revision: {
               graph: {
                 version: 1,
-                nodes: [{ key: "audit", type: "agent", name: "Audit" }],
+                nodes: [
+                  {
+                    key: "audit",
+                    type: "agent",
+                    name: "Audit",
+                    configuration: { prompt: "Audit the project." },
+                  },
+                ],
               },
               trustState: "trusted",
             },
@@ -329,6 +342,168 @@ describe.sequential("workflow definition API", () => {
         url: `/api/workflows/${personalWorkflowId}/revisions/99`,
       }),
     ).toMatchObject({ statusCode: 404 });
+  });
+
+  it("persists normalized constrained orchestration primitives", async () => {
+    const nodes = [
+      {
+        key: "map-items",
+        type: "map" as const,
+        name: "Map items",
+        configuration: {
+          prompt: "Inspect this item.",
+          collectionPath: "/items",
+          maxConcurrency: 3,
+        },
+      },
+      {
+        key: "pipeline-items",
+        type: "pipeline" as const,
+        name: "Pipeline items",
+        configuration: {
+          collectionPath: "/items",
+          maxConcurrency: 2,
+          steps: [
+            { key: "inspect", name: "Inspect", prompt: "Inspect the item." },
+            { key: "review", name: "Review", prompt: "Review the item." },
+          ],
+        },
+      },
+      {
+        key: "reduce-findings",
+        type: "reduce" as const,
+        name: "Reduce findings",
+        configuration: { prompt: "Synthesize the findings." },
+      },
+      {
+        key: "verify-result",
+        type: "verify" as const,
+        name: "Verify result",
+        configuration: {
+          prompt: "Verify the synthesis.",
+          passCondition: {
+            path: "/passed",
+            operator: "equals" as const,
+            value: true,
+          },
+        },
+      },
+      {
+        key: "choose-path",
+        type: "condition" as const,
+        name: "Choose path",
+        configuration: {},
+      },
+      {
+        key: "improve-result",
+        type: "repeatUntil" as const,
+        name: "Improve result",
+        configuration: {
+          prompt: "Improve the synthesis.",
+          successCondition: {
+            path: "/score",
+            operator: "greater-than-or-equals" as const,
+            value: 0.9,
+          },
+          progressPath: "/score",
+          maxUnchangedIterations: 2,
+          maxIterations: 5,
+          maxDurationMs: 60_000,
+        },
+      },
+      {
+        key: "approve-result",
+        type: "gate" as const,
+        name: "Approve result",
+        configuration: { prompt: "Approve the synthesized result?" },
+      },
+    ];
+    const edges = [
+      { from: "map-items", to: "pipeline-items" },
+      { from: "pipeline-items", to: "reduce-findings" },
+      { from: "reduce-findings", to: "verify-result" },
+      { from: "verify-result", to: "choose-path" },
+      {
+        from: "choose-path",
+        to: "improve-result",
+        condition: {
+          path: "/passed",
+          operator: "equals" as const,
+          value: false,
+        },
+      },
+      { from: "choose-path", to: "approve-result" },
+    ];
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/workflows",
+      payload: {
+        scope: "personal",
+        slug: "orchestration-primitives",
+        name: "Orchestration primitives",
+        revision: { graph: { version: 1, nodes, edges } },
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    const created = workflowDefinitionDetailSchema.parse(response.json());
+    expect(created.revision?.nodes.map(({ type }) => type)).toEqual([
+      "map",
+      "pipeline",
+      "reduce",
+      "verify",
+      "condition",
+      "repeatUntil",
+      "gate",
+    ]);
+    expect(created.revision?.nodes).toMatchObject([
+      {
+        configuration: {
+          itemInputKey: "item",
+          failurePolicy: "fail-fast",
+        },
+      },
+      { configuration: { itemInputKey: "item" } },
+      { configuration: { emptyCollection: "fail" } },
+      { configuration: { failurePolicy: "fail-run" } },
+      { configuration: { requireMatch: true } },
+      { configuration: { maxIterations: 5 } },
+      { configuration: { denialPolicy: "fail-run", expiresAfterMs: null } },
+    ]);
+    expect(
+      workflowDefinitionDetailSchema.parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/workflows/${created.workflow.id}`,
+          })
+        ).json(),
+      ),
+    ).toEqual(created);
+
+    expect(
+      await app.inject({
+        method: "POST",
+        url: "/api/workflows",
+        payload: {
+          scope: "personal",
+          slug: "unbounded-map",
+          name: "Unbounded map",
+          revision: {
+            graph: {
+              version: 1,
+              nodes: [
+                {
+                  key: "map-items",
+                  type: "map",
+                  name: "Map items",
+                  configuration: { prompt: "Inspect this item." },
+                },
+              ],
+            },
+          },
+        },
+      }),
+    ).toMatchObject({ statusCode: 400 });
   });
 
   it("enforces owner boundaries in repository reads and writes", async () => {
