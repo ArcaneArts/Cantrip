@@ -11,7 +11,6 @@ import type {
   ProjectViewKind,
   ProjectViewSummary,
   QueuedPrompt,
-  RemoteDesktopCreate,
   SettingsBundle,
   SkillSummary,
   TerminalSummary,
@@ -79,7 +78,6 @@ import {
   GitHistoryView,
   type GitHistoryHeaderState,
 } from "@/components/git/git-history";
-import { CreateRemoteDesktopDialog } from "@/components/remote-desktop/create-remote-desktop-dialog";
 import { ProjectChatList } from "@/components/sidebar/project-chat-list";
 import { SettingsPage } from "@/components/settings/settings-page";
 import {
@@ -1461,9 +1459,6 @@ export function App() {
   >(popoutTarget?.kind === "view" ? popoutTarget.tabId : null);
   const [showImporter, setShowImporter] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [remoteDesktopProjectId, setRemoteDesktopProjectId] = useState<
-    string | null
-  >(null);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [gitHistoryHeader, setGitHistoryHeader] =
     useState<GitHistoryHeaderState | null>(null);
@@ -1834,13 +1829,7 @@ export function App() {
     },
   });
   const newRemoteDesktop = useMutation({
-    mutationFn: ({
-      input,
-      projectId,
-    }: {
-      input: RemoteDesktopCreate;
-      projectId: string;
-    }) => createRemoteDesktop(projectId, input),
+    mutationFn: (projectId: string) => createRemoteDesktop(projectId),
     onSuccess: (desktop) => {
       queryClient.setQueryData<ProjectViewSummary[]>(
         ["project-views", desktop.projectId],
@@ -1860,7 +1849,6 @@ export function App() {
           ].sort((left, right) => left.position - right.position),
       );
       queryClient.setQueryData(["remote-desktop", desktop.id], desktop);
-      setRemoteDesktopProjectId(null);
       openCreatedTab(desktop.projectId, "view", desktop.id);
       void queryClient.invalidateQueries({
         queryKey: ["project-views", desktop.projectId],
@@ -2546,7 +2534,7 @@ export function App() {
               }
               onCreateRemoteDesktop={(projectId) => {
                 newRemoteDesktop.reset();
-                setRemoteDesktopProjectId(projectId);
+                newRemoteDesktop.mutate(projectId);
               }}
               onCreateTerminal={(projectId) =>
                 newTerminal.mutate({ projectId })
@@ -2805,12 +2793,7 @@ export function App() {
                     ) : null}
                   </>
                 ) : selectedProjectView?.kind === "remote-desktop" ? (
-                  remoteDesktop.data ? (
-                    remoteDesktop.data.displayName ||
-                    `${remoteDesktop.data.host}:${remoteDesktop.data.port}`
-                  ) : (
-                    "Worker-hosted VNC/RFB session"
-                  )
+                  "Managed project-worker desktop"
                 ) : selectedBrowser ? (
                   selectedBrowser.url
                 ) : selectedExplorer ? (
@@ -3461,7 +3444,7 @@ export function App() {
               }
               onCreateRemoteDesktop={(projectId) => {
                 newRemoteDesktop.reset();
-                setRemoteDesktopProjectId(projectId);
+                newRemoteDesktop.mutate(projectId);
               }}
               onCreateTerminal={(projectId) =>
                 newTerminal.mutate({ projectId })
@@ -3589,34 +3572,11 @@ export function App() {
         </DialogContent>
       </Dialog>
 
-      <CreateRemoteDesktopDialog
-        open={Boolean(remoteDesktopProjectId)}
-        pending={newRemoteDesktop.isPending}
-        error={
-          newRemoteDesktop.isError ? errorText(newRemoteDesktop.error) : null
-        }
-        workers={workers.data ?? []}
-        defaultWorkerId={
-          projects.data?.find(
-            (project) => project.id === remoteDesktopProjectId,
-          )?.source?.workerId ??
-          onlineWorker?.workerId ??
-          null
-        }
-        onOpenChange={(open) => {
-          if (!open) {
-            setRemoteDesktopProjectId(null);
-            newRemoteDesktop.reset();
-          }
-        }}
-        onSubmit={(input) => {
-          if (!remoteDesktopProjectId) return;
-          newRemoteDesktop.mutate({
-            projectId: remoteDesktopProjectId,
-            input,
-          });
-        }}
-      />
+      {newRemoteDesktop.isError ? (
+        <div className="fixed bottom-5 right-5 z-50 max-w-md rounded-lg bg-destructive px-4 py-3 text-sm text-destructive-foreground shadow-xl">
+          Could not start Remote Desktop: {errorText(newRemoteDesktop.error)}
+        </div>
+      ) : null}
     </main>
   );
 }

@@ -2103,7 +2103,7 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true,
-          "default": "'{\"browser\":false,\"vnc\":false,\"transports\":[\"websocket\"],\"maxSessions\":4}'::jsonb"
+          "default": "'{\"browser\":false,\"desktop\":false,\"transports\":[\"websocket\"],\"maxSessions\":4}'::jsonb"
         },
         "started_at": {
           "name": "started_at",

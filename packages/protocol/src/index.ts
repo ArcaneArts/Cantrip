@@ -12,7 +12,7 @@ export const bootstrapModeSchema = z.enum([
 export const authModeSchema = z.enum(["none", "password", "accounts"]);
 
 export const remoteSurfaceProtocolVersionSchema = z.literal(1);
-export const remoteSurfaceKindSchema = z.enum(["browser", "vnc"]);
+export const remoteSurfaceKindSchema = z.enum(["browser", "desktop"]);
 export const remoteSurfaceTransportSchema = z.enum(["websocket", "webrtc"]);
 export const remoteSurfaceStatusSchema = z.enum([
   "idle",
@@ -27,13 +27,12 @@ export const remoteSurfaceChannelSchema = z.enum([
   "frame",
   "cursor",
   "clipboard",
-  "rfb",
   "webrtc-signal",
 ]);
 
 export const remoteSurfaceCapabilitiesSchema = z.object({
-  browser: z.boolean(),
-  vnc: z.boolean(),
+  browser: z.boolean().default(false),
+  desktop: z.boolean().default(false),
   transports: z.array(remoteSurfaceTransportSchema).min(1),
   maxSessions: z.number().int().positive(),
 });
@@ -76,7 +75,7 @@ function defaultRemoteSurfaceCapabilities(): z.infer<
 > {
   return {
     browser: false,
-    vnc: false,
+    desktop: false,
     transports: ["websocket"],
     maxSessions: 4,
   };
@@ -616,14 +615,7 @@ export const browserSummarySchema = z.object({
 
 export const browserListSchema = z.array(browserSummarySchema);
 
-export const remoteDesktopCreateSchema = z.object({
-  title: z.string().trim().min(1).max(200).default("Remote Desktop"),
-  workerId: z.string().min(1),
-  host: z.string().trim().min(1).max(253),
-  port: z.number().int().min(1).max(65_535).default(5_900),
-  displayName: z.string().trim().min(1).max(200).nullable().default(null),
-  password: z.string().max(1_024).nullable().default(null),
-});
+export const remoteDesktopCreateSchema = z.object({}).strict();
 
 export const remoteDesktopSummarySchema = z.object({
   id: z.string().min(1),
@@ -631,9 +623,6 @@ export const remoteDesktopSummarySchema = z.object({
   title: z.string().min(1),
   position: z.number().int().nonnegative(),
   workerId: z.string().min(1),
-  host: z.string().min(1),
-  port: z.number().int().min(1).max(65_535),
-  displayName: z.string().nullable(),
   status: remoteSurfaceStatusSchema,
   lastError: z.string().nullable(),
   createdAt: z.string().datetime(),
@@ -649,11 +638,7 @@ export const remoteSurfaceConfigurationSchema = z.discriminatedUnion("kind", [
     profileId: z.string().trim().min(1).max(200).nullable().default(null),
   }),
   z.object({
-    kind: z.literal("vnc"),
-    host: z.string().trim().min(1).max(253),
-    port: z.number().int().min(1).max(65_535).default(5_900),
-    displayName: z.string().trim().min(1).max(200).nullable().default(null),
-    secretRef: z.string().min(1).nullable().default(null),
+    kind: z.literal("desktop"),
   }),
 ]);
 
@@ -732,31 +717,59 @@ export const remoteSurfaceControlSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("resume") }),
 ]);
 
-export const remoteVncClientMessageSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("connect") }),
-  z.object({ type: z.literal("disconnect") }),
+export const remoteDesktopProbeResultSchema = z.object({
+  available: z.boolean(),
+  message: z.string().max(2_048).nullable(),
+});
+
+export const remoteDesktopClientMessageSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("viewport"),
+    viewport: remoteSurfaceViewportSchema,
+  }),
+  z.object({
+    type: z.literal("pointer"),
+    event: z.enum(["move", "down", "up", "wheel"]),
+    x: z.number().finite().nonnegative(),
+    y: z.number().finite().nonnegative(),
+    button: z
+      .enum(["none", "left", "middle", "right", "back", "forward"])
+      .default("none"),
+    buttons: z.number().int().nonnegative().max(31).default(0),
+    clickCount: z.number().int().min(0).max(3).default(0),
+    deltaX: z.number().finite().default(0),
+    deltaY: z.number().finite().default(0),
+    modifiers: z.number().int().nonnegative().max(15).default(0),
+  }),
+  z.object({
+    type: z.literal("key"),
+    event: z.enum(["down", "up"]),
+    key: z.string().max(100),
+    code: z.string().max(100),
+    text: z.string().max(10).default(""),
+    modifiers: z.number().int().nonnegative().max(15).default(0),
+  }),
+  z.object({ type: z.literal("focus") }),
+  z.object({
+    type: z.literal("clipboard"),
+    operation: z.enum(["copy", "paste-text"]),
+    text: z.string().max(1_000_000).default(""),
+  }),
 ]);
 
-export const remoteVncServerMessageSchema = z.object({
-  type: z.literal("vnc-state"),
-  status: z.enum([
-    "connecting",
-    "connected",
-    "disconnected",
-    "reconnecting",
-    "error",
-  ]),
-  message: z.string().max(2_048).nullable(),
-});
-
-export const remoteVncSecretResultSchema = z.object({
-  secretRef: z.string().min(1),
-});
-
-export const remoteVncProbeResultSchema = z.object({
-  reachable: z.boolean(),
-  message: z.string().max(2_048).nullable(),
-});
+export const remoteDesktopServerMessageSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("desktop-state"),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+    status: z.enum(["ready", "suspended", "error"]),
+    message: z.string().max(2_048).nullable(),
+  }),
+  z.object({
+    type: z.literal("desktop-clipboard"),
+    text: z.string().max(1_000_000),
+  }),
+]);
 
 export const remoteBrowserClientMessageSchema = z.discriminatedUnion("type", [
   z.object({
@@ -1727,18 +1740,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     surfaceId: z.string().min(1),
   }),
   z.object({
-    type: z.literal("surface.vnc.secret.set"),
-    surfaceId: z.string().min(1),
-    password: z.string().max(1_024),
-  }),
-  z.object({
-    type: z.literal("surface.vnc.secret.delete"),
-    secretRef: z.string().min(1),
-  }),
-  z.object({
-    type: z.literal("surface.vnc.probe"),
-    host: z.string().trim().min(1).max(253),
-    port: z.number().int().min(1).max(65_535),
+    type: z.literal("surface.desktop.probe"),
   }),
   z.object({
     type: z.literal("chat.turn"),
@@ -1999,14 +2001,15 @@ export type RemoteSurfaceAttachResult = z.infer<
   typeof remoteSurfaceAttachResultSchema
 >;
 export type RemoteSurfaceControl = z.infer<typeof remoteSurfaceControlSchema>;
-export type RemoteVncClientMessage = z.infer<
-  typeof remoteVncClientMessageSchema
+export type RemoteDesktopProbeResult = z.infer<
+  typeof remoteDesktopProbeResultSchema
 >;
-export type RemoteVncServerMessage = z.infer<
-  typeof remoteVncServerMessageSchema
+export type RemoteDesktopClientMessage = z.infer<
+  typeof remoteDesktopClientMessageSchema
 >;
-export type RemoteVncSecretResult = z.infer<typeof remoteVncSecretResultSchema>;
-export type RemoteVncProbeResult = z.infer<typeof remoteVncProbeResultSchema>;
+export type RemoteDesktopServerMessage = z.infer<
+  typeof remoteDesktopServerMessageSchema
+>;
 export type RemoteBrowserClientMessage = z.infer<
   typeof remoteBrowserClientMessageSchema
 >;

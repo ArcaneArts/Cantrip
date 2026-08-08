@@ -15,7 +15,7 @@ export function createHeartbeat(
   startedAt: string,
   remoteSurfaces: RemoteSurfaceCapabilities = {
     browser: false,
-    vnc: false,
+    desktop: false,
     transports: ["websocket"],
     maxSessions: 4,
   },
