@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Cantrip is a local-first, self-hostable command center for coding agents, terminals, Git, files, and the web."
+    />
+    <meta name="theme-color" content="#0b0d10" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Cantrip — Run the whole build" />
+    <meta
+      property="og:description"
+      content="One calm command center for coding agents, terminals, Git, files, and the web."
+    />
+    <meta property="og:url" content="https://cantrip.art" />
+    <meta property="og:image" content="https://cantrip.art/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Cantrip — Run the whole build" />
+    <meta
+      name="twitter:description"
+      content="One calm command center for coding agents, terminals, Git, files, and the web."
+    />
+    <meta name="twitter:image" content="https://cantrip.art/og.png" />
+    <link rel="canonical" href="https://cantrip.art" />
+    <script>
+      (() => {
+        const stored = localStorage.getItem("cantrip-site-theme");
+        const mode =
+          stored === "light" || stored === "dark" ? stored : "system";
+        const resolved =
+          mode === "system"
+            ? matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light"
+            : mode;
+        document.documentElement.dataset.theme = resolved;
+        document.documentElement.style.colorScheme = resolved;
+      })();
+    </script>
+    <title>Cantrip — Run the whole build</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
