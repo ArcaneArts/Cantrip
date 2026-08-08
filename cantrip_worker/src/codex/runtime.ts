@@ -17,6 +17,7 @@ import type {
 } from "./app-server.js";
 
 export interface CodexRuntimeDiagnostic {
+  id: string;
   at: string;
   direction: "from-runtime";
   kind:

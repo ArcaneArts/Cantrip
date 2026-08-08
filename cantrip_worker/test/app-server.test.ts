@@ -18,10 +18,228 @@ import {
   GOAL_CONTINUATION_PROMPT,
   goalShouldContinue,
   isKnownCodexNotificationMethod,
+  normalizeAgentMessage,
+  normalizeCodexThreadItem,
+  normalizeNoticeActivity,
+  normalizeRateLimitActivity,
+  normalizeTokenUsageActivity,
   parseCodexRpcMessage,
   parseCodexSkills,
   planQuestionId,
 } from "../src/codex/app-server.js";
+
+const correlation = {
+  sourceMethod: "item/completed",
+  diagnosticId: "runtime-session:12",
+  threadId: "thread-1",
+  turnId: "turn-1",
+  itemId: "item-1",
+};
+
+describe("Codex rich event normalization", () => {
+  it("keeps supported reasoning summaries and drops private reasoning content", () => {
+    const activity = normalizeCodexThreadItem(
+      {
+        type: "reasoning",
+        id: "reasoning-1",
+        summary: ["Compared the runtime capabilities."],
+        content: ["unsupported private chain of thought"],
+      },
+      "/workspace",
+      "completed",
+      { ...correlation, itemId: "reasoning-1" },
+    );
+
+    expect(activity).toEqual(
+      expect.objectContaining({
+        type: "reasoning",
+        status: "completed",
+        summary: ["Compared the runtime capabilities."],
+      }),
+    );
+    expect(activity).not.toHaveProperty("content");
+  });
+
+  it("normalizes tools, subagents, web, images, review, and compaction", () => {
+    const items = [
+      {
+        type: "mcpToolCall" as const,
+        id: "mcp-1",
+        server: "github",
+        tool: "search_issues",
+        status: "completed" as const,
+        error: null,
+        durationMs: 125,
+      },
+      {
+        type: "dynamicToolCall" as const,
+        id: "dynamic-1",
+        namespace: "cantrip",
+        tool: "worktree_status",
+        status: "completed" as const,
+        success: true,
+        durationMs: 25,
+      },
+      {
+        type: "collabAgentToolCall" as const,
+        id: "collab-1",
+        tool: "spawnAgent",
+        status: "inProgress" as const,
+        senderThreadId: "thread-1",
+        receiverThreadIds: ["thread-2"],
+        prompt: "Inspect the worker bridge.",
+        model: "gpt-5.6-sol",
+        agentsStates: {
+          "thread-2": { status: "running", message: "Inspecting." },
+        },
+      },
+      {
+        type: "subAgentActivity" as const,
+        id: "subagent-1",
+        kind: "started" as const,
+        agentThreadId: "thread-2",
+        agentPath: "/root/reviewer",
+      },
+      {
+        type: "webSearch" as const,
+        id: "search-1",
+        query: "Codex App Server events",
+        action: { type: "search", queries: ["Codex event schema"] },
+      },
+      {
+        type: "imageView" as const,
+        id: "image-1",
+        path: "/workspace/screenshots/app.png",
+      },
+      {
+        type: "enteredReviewMode" as const,
+        id: "review-1",
+        review: "Review the current diff.",
+      },
+      { type: "contextCompaction" as const, id: "compact-1" },
+    ];
+
+    expect(
+      items.map(
+        (item) =>
+          normalizeCodexThreadItem(item, "/workspace", "completed", {
+            ...correlation,
+            itemId: item.id,
+          })?.type,
+      ),
+    ).toEqual([
+      "mcpToolCall",
+      "dynamicToolCall",
+      "collabToolCall",
+      "subAgent",
+      "webSearch",
+      "imageView",
+      "reviewMode",
+      "contextCompaction",
+    ]);
+    expect(
+      normalizeCodexThreadItem(items[2]!, "/workspace", "completed", {
+        ...correlation,
+        itemId: "collab-1",
+      }),
+    ).toMatchObject({ type: "collabToolCall", prompt: null });
+    expect(
+      normalizeCodexThreadItem(
+        {
+          type: "webSearch",
+          id: "open-1",
+          query: "",
+          action: {
+            type: "open_page",
+            url: "https://user:secret@example.com/report?token=private#result",
+          },
+        },
+        "/workspace",
+        "completed",
+        { ...correlation, itemId: "open-1" },
+      ),
+    ).toMatchObject({
+      type: "webSearch",
+      action: "Opened https://example.com/report",
+    });
+  });
+
+  it("normalizes phased messages, token usage, and rate limits", () => {
+    expect(
+      normalizeAgentMessage(
+        {
+          type: "agentMessage",
+          id: "message-1",
+          text: "Checking the server bridge.",
+          phase: "commentary",
+        },
+        { ...correlation, itemId: "message-1" },
+      ),
+    ).toMatchObject({
+      phase: "commentary",
+      text: "Checking the server bridge.",
+    });
+
+    const breakdown = {
+      totalTokens: 1_500,
+      inputTokens: 1_000,
+      cachedInputTokens: 500,
+      cacheWriteInputTokens: 0,
+      outputTokens: 400,
+      reasoningOutputTokens: 100,
+    };
+    expect(
+      normalizeTokenUsageActivity(
+        {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          tokenUsage: {
+            total: breakdown,
+            last: breakdown,
+            modelContextWindow: 10_000,
+          },
+        },
+        { ...correlation, itemId: null },
+      ),
+    ).toMatchObject({ type: "usage", contextUsedPercent: 15 });
+
+    expect(
+      normalizeRateLimitActivity(
+        {
+          rateLimits: {
+            limitId: "codex",
+            limitName: "Codex",
+            planType: "plus",
+            primary: {
+              usedPercent: 42,
+              windowDurationMins: 300,
+              resetsAt: 1_786_212_000,
+            },
+            secondary: null,
+            rateLimitReachedType: null,
+          },
+        },
+        "turn-1",
+        { ...correlation, itemId: null },
+      ),
+    ).toMatchObject({ type: "rateLimit", primary: { usedPercent: 42 } });
+
+    expect(
+      normalizeNoticeActivity({
+        level: "error",
+        message: "The provider rejected the request.",
+        details: "Request id req-1",
+        willRetry: true,
+        correlation: { ...correlation, itemId: null },
+      }),
+    ).toMatchObject({
+      type: "notice",
+      status: "failed",
+      willRetry: true,
+      correlation: { diagnosticId: "runtime-session:12" },
+    });
+  });
+});
 
 describe("Codex agent interaction bridge", () => {
   it("normalizes all supported App Server request families", () => {

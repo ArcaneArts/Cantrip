@@ -130,6 +130,7 @@ import {
 } from "@cantrip/protocol";
 import Fastify from "fastify";
 import type {
+  AgentActivity,
   ChatMessage,
   ChatSummary,
   ChatTurnCreate,
@@ -221,6 +222,45 @@ function canFailOverRoute(error: unknown): boolean {
   );
 }
 
+function activityContinuationSummary(activity: AgentActivity): string {
+  switch (activity.type) {
+    case "command":
+      return `[command: ${activity.command}]`;
+    case "fileChange":
+      return `[files: ${activity.changes.map((change) => change.path).join(", ")}]`;
+    case "worktree":
+      return `[worktree: ${activity.summary}]`;
+    case "plan":
+      return `[plan: ${activity.text || activity.explanation || `${activity.steps.length} steps`}]`;
+    case "reasoning":
+      return `[reasoning summary: ${activity.summary.join(" ")}]`;
+    case "mcpToolCall":
+      return `[MCP tool: ${activity.server}/${activity.tool} ${activity.status}]`;
+    case "dynamicToolCall":
+      return `[tool: ${activity.namespace ? `${activity.namespace}/` : ""}${activity.tool} ${activity.status}]`;
+    case "collabToolCall":
+      return `[collaboration: ${activity.tool} ${activity.status}]`;
+    case "subAgent":
+      return `[subagent: ${activity.agentPath} ${activity.kind}]`;
+    case "webSearch":
+      return `[web search: ${activity.query}]`;
+    case "imageView":
+      return `[viewed image: ${activity.path}]`;
+    case "reviewMode":
+      return `[review mode ${activity.state}]`;
+    case "contextCompaction":
+      return "[context compacted]";
+    case "notice":
+      return `[${activity.level}: ${activity.message}]`;
+    case "usage":
+      return `[usage: ${activity.last.totalTokens} tokens]`;
+    case "rateLimit":
+      return `[rate limit: ${activity.primary?.usedPercent ?? "unknown"}% used]`;
+    case "turnSummary":
+      return `[turn ${activity.status}${activity.durationMs === null ? "" : ` in ${activity.durationMs}ms`}]`;
+  }
+}
+
 function continuationPrompt(messages: ChatMessage[], prompt: string): string {
   if (messages.length === 0) return prompt;
   const transcript = messages
@@ -229,15 +269,7 @@ function continuationPrompt(messages: ChatMessage[], prompt: string): string {
       const content = message.content
         .flatMap((item) => {
           if (item.type === "text") return [item.text];
-          if (item.activity.type === "command") {
-            return [`[command: ${item.activity.command}]`];
-          }
-          if (item.activity.type === "worktree") {
-            return [`[worktree: ${item.activity.summary}]`];
-          }
-          return [
-            `[files: ${item.activity.changes.map((change) => change.path).join(", ")}]`,
-          ];
+          return [activityContinuationSummary(item.activity)];
         })
         .join("\n");
       return `${message.role.toUpperCase()}: ${content}`;
@@ -1043,6 +1075,7 @@ export async function buildApp({
           let attemptActivity = false;
           const canResume = runtime.routeId === execution.modelRouteId;
           const threadId = canResume ? execution.threadId : null;
+          const finalAgentTurns = new Set<string>();
           const workerPrompt = threadId
             ? (options.workerPrompt ?? input.text)
             : continuationPrompt(
@@ -1139,14 +1172,45 @@ export async function buildApp({
                     );
                     return;
                   }
-                  if (event.type === "agent.checkpoint") {
-                    if (!event.text.trim()) return;
+                  if (event.type === "agent.message") {
+                    const turnId = event.message.correlation?.turnId;
                     await repository.upsertMessage(
                       LOCAL_USER_ID,
                       execution.chatId,
                       {
                         role: "assistant",
-                        content: [{ type: "text", text: event.text }],
+                        content: [
+                          {
+                            type: "text",
+                            text: event.message.text,
+                            phase: event.message.phase,
+                            correlation: event.message.correlation,
+                          },
+                        ],
+                        idempotencyKey: `agent-message:${turnId ?? userMessage.id}:${event.message.id}`,
+                      },
+                      attribution,
+                    );
+                    if (event.message.phase !== "commentary" && turnId) {
+                      finalAgentTurns.add(turnId);
+                    }
+                    return;
+                  }
+                  if (event.type === "agent.checkpoint") {
+                    if (!event.text.trim()) return;
+                    if (finalAgentTurns.has(event.turnId)) return;
+                    await repository.upsertMessage(
+                      LOCAL_USER_ID,
+                      execution.chatId,
+                      {
+                        role: "assistant",
+                        content: [
+                          {
+                            type: "text",
+                            text: event.text,
+                            phase: "final_answer",
+                          },
+                        ],
                         idempotencyKey: `goal-checkpoint:${userMessage.id}:${event.turnId}`,
                       },
                       attribution,
@@ -1207,22 +1271,25 @@ export async function buildApp({
               result.threadId,
               runtime.routeId,
             );
-            await repository.appendMessage(
-              LOCAL_USER_ID,
-              execution.chatId,
-              {
-                role: "assistant",
-                content: [
-                  {
-                    type: "text",
-                    text:
-                      result.text || "The agent completed without a message.",
-                  },
-                ],
-                idempotencyKey: `assistant:${userMessage.id}`,
-              },
-              attribution,
-            );
+            if (!result.turnId || !finalAgentTurns.has(result.turnId)) {
+              await repository.appendMessage(
+                LOCAL_USER_ID,
+                execution.chatId,
+                {
+                  role: "assistant",
+                  content: [
+                    {
+                      type: "text",
+                      text:
+                        result.text || "The agent completed without a message.",
+                      phase: "final_answer",
+                    },
+                  ],
+                  idempotencyKey: `assistant:${userMessage.id}`,
+                },
+                attribution,
+              );
+            }
             await repository.interruptAgentInteractionRequests(
               execution.chatId,
             );
@@ -4538,16 +4605,20 @@ export async function buildApp({
               },
               syncAttribution,
             );
-          } else if (
-            item.type === "agentMessage" &&
-            item.phase !== "commentary"
-          ) {
+          } else if (item.type === "agentMessage") {
             await repository.upsertMessage(
               LOCAL_USER_ID,
               context.chatId,
               {
                 role: "assistant",
-                content: [{ type: "text", text: item.text }],
+                content: [
+                  {
+                    type: "text",
+                    text: item.text,
+                    phase: item.phase,
+                    correlation: item.correlation,
+                  },
+                ],
                 idempotencyKey: `codex-sync:${turn.id}:${item.id}`,
               },
               syncAttribution,

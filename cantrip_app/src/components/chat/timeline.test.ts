@@ -101,4 +101,128 @@ describe("chat activity timeline", () => {
       endedAt: null,
     });
   });
+
+  it("preserves commentary phase and closes a recovered group from turn timing", () => {
+    const timeline = buildChatTimeline([
+      message("commentary", "assistant", "2026-08-07T12:00:01.000Z", [
+        {
+          type: "text",
+          text: "I’m inspecting the runtime schema.",
+          phase: "commentary",
+        },
+      ]),
+      message("reasoning", "assistant", "2026-08-07T12:00:02.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "reasoning",
+            id: "reasoning-1",
+            status: "completed",
+            summary: ["Compared the event unions."],
+          },
+        },
+      ]),
+      message("summary", "assistant", "2026-08-07T12:00:03.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "turnSummary",
+            id: "turn:turn-1:summary",
+            status: "completed",
+            durationMs: 3_000,
+            startedAt: 1_786_104_000,
+            completedAt: 1_786_104_003,
+          },
+        },
+      ]),
+    ]);
+
+    expect(timeline[0]).toMatchObject({
+      type: "message",
+      message: { content: [{ phase: "commentary" }] },
+    });
+    expect(timeline[1]).toMatchObject({
+      type: "activityGroup",
+      endedAt: "2026-08-07T12:00:03.000Z",
+    });
+  });
+
+  it("folds trailing turn metrics into the activity group before the final answer", () => {
+    const timeline = buildChatTimeline([
+      message("user", "user", "2026-08-07T12:00:00.000Z", [
+        { type: "text", text: "Inspect the runtime" },
+      ]),
+      message("command", "assistant", "2026-08-07T12:00:01.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            id: "command-1",
+            command: "codex --version",
+            cwd: ".",
+            status: "completed",
+            exitCode: 0,
+            output: "codex-cli 0.146.1",
+          },
+        },
+      ]),
+      message("answer", "assistant", "2026-08-07T12:00:02.000Z", [
+        {
+          type: "text",
+          text: "The runtime is compatible.",
+          phase: "final_answer",
+        },
+      ]),
+      message("summary", "assistant", "2026-08-07T12:00:03.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "turnSummary",
+            id: "turn:turn-1:summary",
+            status: "completed",
+            durationMs: 2_000,
+            startedAt: 1_786_104_000,
+            completedAt: 1_786_104_002,
+          },
+        },
+      ]),
+    ]);
+
+    expect(timeline).toHaveLength(3);
+    expect(timeline[1]).toMatchObject({
+      type: "activityGroup",
+      activities: [{ type: "command" }, { type: "turnSummary" }],
+    });
+    expect(timeline[2]).toMatchObject({
+      type: "message",
+      message: { id: "answer" },
+    });
+
+    const simpleTimeline = buildChatTimeline([
+      message("simple-user", "user", "2026-08-07T12:00:00.000Z", [
+        { type: "text", text: "Say hello" },
+      ]),
+      message("simple-answer", "assistant", "2026-08-07T12:00:02.000Z", [
+        { type: "text", text: "Hello", phase: "final_answer" },
+      ]),
+      message("simple-summary", "assistant", "2026-08-07T12:00:03.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "turnSummary",
+            id: "turn:simple:summary",
+            status: "completed",
+            durationMs: 2_000,
+            startedAt: 1_786_104_000,
+            completedAt: 1_786_104_002,
+          },
+        },
+      ]),
+    ]);
+    expect(simpleTimeline.map((entry) => entry.type)).toEqual([
+      "message",
+      "activityGroup",
+      "message",
+    ]);
+  });
 });

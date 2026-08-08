@@ -1117,26 +1117,55 @@ export const terminalOpenResultSchema = z.discriminatedUnion("status", [
 ]);
 
 export const chatMessageRoleSchema = z.enum(["user", "assistant", "system"]);
+export const agentMessagePhaseSchema = z.enum(["commentary", "final_answer"]);
 export const agentActivityStatusSchema = z.enum([
   "running",
   "completed",
   "failed",
   "declined",
 ]);
+export const codexEventCorrelationSchema = z.object({
+  sourceMethod: z.string().min(1).max(200),
+  diagnosticId: z.string().min(1).max(200).nullable(),
+  threadId: z.string().min(1).max(200).nullable(),
+  turnId: z.string().min(1).max(200).nullable(),
+  itemId: z.string().min(1).max(200).nullable(),
+});
+
+const agentActivityBaseShape = {
+  id: z.string().min(1),
+  status: agentActivityStatusSchema,
+  correlation: codexEventCorrelationSchema.nullable().optional(),
+};
+
+const tokenUsageBreakdownSchema = z.object({
+  totalTokens: z.number().int().nonnegative(),
+  inputTokens: z.number().int().nonnegative(),
+  cachedInputTokens: z.number().int().nonnegative(),
+  cacheWriteInputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  reasoningOutputTokens: z.number().int().nonnegative(),
+});
+
+const rateLimitWindowSchema = z.object({
+  usedPercent: z.number().min(0),
+  windowDurationMins: z.number().int().nonnegative().nullable(),
+  resetsAt: z.number().int().nonnegative().nullable(),
+});
+
 export const agentActivitySchema = z.discriminatedUnion("type", [
   z.object({
+    ...agentActivityBaseShape,
     type: z.literal("command"),
-    id: z.string().min(1),
     command: z.string().min(1),
     cwd: z.string().min(1),
-    status: agentActivityStatusSchema,
     exitCode: z.number().int().nullable(),
     output: z.string().nullable(),
+    durationMs: z.number().int().nonnegative().nullable().optional(),
   }),
   z.object({
+    ...agentActivityBaseShape,
     type: z.literal("fileChange"),
-    id: z.string().min(1),
-    status: agentActivityStatusSchema,
     changes: z.array(
       z.object({
         path: z.string().min(1),
@@ -1145,12 +1174,120 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
     ),
   }),
   z.object({
+    ...agentActivityBaseShape,
     type: z.literal("worktree"),
-    id: z.string().min(1),
     operation: z.string().min(1),
-    status: agentActivityStatusSchema,
     summary: z.string().min(1),
     worktreeId: z.string().min(1).nullable(),
+  }),
+  z.object({
+    ...agentActivityBaseShape,
+    type: z.literal("plan"),
+    text: z.string(),
+    explanation: z.string().nullable(),
+    steps: z.array(
+      z.object({
+        step: z.string().min(1),
+        status: z.enum(["pending", "inProgress", "completed"]),
+      }),
+    ),
+  }),
+  z.object({
+    ...agentActivityBaseShape,
+    type: z.literal("reasoning"),
+    summary: z.array(z.string().min(1)).max(100),
+  }),
+  z.object({
+    ...agentActivityBaseShape,
+    type: z.literal("mcpToolCall"),
+    server: z.string().min(1),
+    tool: z.string().min(1),
+    error: z.string().nullable(),
+    durationMs: z.number().int().nonnegative().nullable(),
+  }),
+  z.object({
+    ...agentActivityBaseShape,
+    type: z.literal("dynamicToolCall"),
+    namespace: z.string().min(1).nullable(),
+    tool: z.string().min(1),
+    success: z.boolean().nullable(),
+    durationMs: z.number().int().nonnegative().nullable(),
+  }),
+  z.object({
+    ...agentActivityBaseShape,
+    type: z.literal("collabToolCall"),
+    tool: z.string().min(1),
+    senderThreadId: z.string().min(1),
+    receiverThreadIds: z.array(z.string().min(1)).max(100),
+    prompt: z.string().nullable(),
+    model: z.string().nullable(),
+    agentStates: z.array(
+      z.object({
+        threadId: z.string().min(1),
+        status: z.string().min(1),
+        message: z.string().nullable(),
+      }),
+    ),
+  }),
+  z.object({
+    ...agentActivityBaseShape,
+    type: z.literal("subAgent"),
+    kind: z.enum(["started", "interacted", "interrupted"]),
+    agentThreadId: z.string().min(1),
+    agentPath: z.string().min(1),
+  }),
+  z.object({
+    ...agentActivityBaseShape,
+    type: z.literal("webSearch"),
+    query: z.string(),
+    action: z.string().nullable(),
+  }),
+  z.object({
+    ...agentActivityBaseShape,
+    type: z.literal("imageView"),
+    path: z.string().min(1),
+  }),
+  z.object({
+    ...agentActivityBaseShape,
+    type: z.literal("reviewMode"),
+    state: z.enum(["entered", "exited"]),
+    review: z.string(),
+  }),
+  z.object({
+    ...agentActivityBaseShape,
+    type: z.literal("contextCompaction"),
+  }),
+  z.object({
+    ...agentActivityBaseShape,
+    type: z.literal("notice"),
+    level: z.enum(["warning", "error"]),
+    message: z.string().min(1),
+    details: z.string().nullable(),
+    willRetry: z.boolean().nullable(),
+  }),
+  z.object({
+    ...agentActivityBaseShape,
+    type: z.literal("usage"),
+    total: tokenUsageBreakdownSchema,
+    last: tokenUsageBreakdownSchema,
+    modelContextWindow: z.number().int().positive().nullable(),
+    contextUsedPercent: z.number().min(0).nullable(),
+  }),
+  z.object({
+    ...agentActivityBaseShape,
+    type: z.literal("rateLimit"),
+    limitName: z.string().nullable(),
+    planType: z.string().nullable(),
+    reachedType: z.string().nullable(),
+    primary: rateLimitWindowSchema.nullable(),
+    secondary: rateLimitWindowSchema.nullable(),
+  }),
+  z.object({
+    ...agentActivityBaseShape,
+    type: z.literal("turnSummary"),
+    durationMs: z.number().int().nonnegative().nullable(),
+    startedAt: z.number().int().nonnegative().nullable(),
+    completedAt: z.number().int().nonnegative().nullable(),
   }),
 ]);
 export const chatMessageContentSchema = z.array(
@@ -1158,6 +1295,8 @@ export const chatMessageContentSchema = z.array(
     z.object({
       type: z.literal("text"),
       text: z.string().min(1),
+      phase: agentMessagePhaseSchema.nullable().optional(),
+      correlation: codexEventCorrelationSchema.nullable().optional(),
     }),
     z.object({
       type: z.literal("activity"),
@@ -1886,8 +2025,16 @@ export const worktreeSelectionSchema = z.object({
 
 export const agentTurnResultSchema = z.object({
   threadId: z.string().min(1),
+  turnId: z.string().min(1).optional(),
   text: z.string(),
   status: z.literal("completed"),
+});
+
+export const normalizedAgentMessageSchema = z.object({
+  id: z.string().min(1),
+  text: z.string().min(1),
+  phase: agentMessagePhaseSchema.nullable(),
+  correlation: codexEventCorrelationSchema.nullable().optional(),
 });
 
 export const agentThreadSyncItemSchema = z.discriminatedUnion("type", [
@@ -1898,9 +2045,7 @@ export const agentThreadSyncItemSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("agentMessage"),
-    id: z.string().min(1),
-    text: z.string().min(1),
-    phase: z.enum(["commentary", "final_answer"]).nullable(),
+    ...normalizedAgentMessageSchema.shape,
   }),
   z.object({
     type: z.literal("activity"),
@@ -2303,6 +2448,10 @@ export const workerEventSchema = z.discriminatedUnion("type", [
     type: z.literal("agent.activity"),
     activity: agentActivitySchema,
   }),
+  z.object({
+    type: z.literal("agent.message"),
+    message: normalizedAgentMessageSchema,
+  }),
   z.object({ type: z.literal("terminal.ready") }),
   z.object({
     type: z.literal("agent.checkpoint"),
@@ -2525,6 +2674,8 @@ export type ExplorerFile = z.infer<typeof explorerFileSchema>;
 export type TerminalClientMessage = z.infer<typeof terminalClientMessageSchema>;
 export type TerminalServerMessage = z.infer<typeof terminalServerMessageSchema>;
 export type TerminalOpenResult = z.infer<typeof terminalOpenResultSchema>;
+export type AgentMessagePhase = z.infer<typeof agentMessagePhaseSchema>;
+export type CodexEventCorrelation = z.infer<typeof codexEventCorrelationSchema>;
 export type ChatMessageContent = z.infer<typeof chatMessageContentSchema>;
 export type ChatMessageCreate = z.infer<typeof chatMessageCreateSchema>;
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
@@ -2605,6 +2756,9 @@ export type ChatPlanAnswer = z.infer<typeof chatPlanAnswerSchema>;
 export type ChatPlanAccepted = z.infer<typeof chatPlanAcceptedSchema>;
 export type AgentTurnResult = z.infer<typeof agentTurnResultSchema>;
 export type AgentActivity = z.infer<typeof agentActivitySchema>;
+export type NormalizedAgentMessage = z.infer<
+  typeof normalizedAgentMessageSchema
+>;
 export type AgentThreadSync = z.infer<typeof agentThreadSyncSchema>;
 export type AgentThreadSyncItem = z.infer<typeof agentThreadSyncItemSchema>;
 export type WorkerCommand = z.infer<typeof workerCommandSchema>;

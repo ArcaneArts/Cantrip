@@ -74,8 +74,11 @@ unsupported server requests are recorded explicitly; warnings log the method
 or response id without dumping payload contents to stderr.
 
 The in-memory buffer is intentionally bounded and is not a durable audit log.
-Later event-normalization work may persist selected, validated diagnostics, but
-must apply size limits and secret redaction before doing so.
+Normalized transcript records store the source method and an opaque diagnostic
+id so support tooling can correlate a rendered record while the raw entry is
+still present. Raw payloads are not copied into durable transcript state. See
+`docs/CODEX_EVENT_NORMALIZATION.md` for the normalized surface, redaction
+boundary, and restart behavior.
 
 To widen support for a new Codex release:
 
