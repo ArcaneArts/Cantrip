@@ -4,13 +4,16 @@ import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
 
 import {
   CANTRIP_WORKTREE_DYNAMIC_TOOLS,
+  agentInteractionRequestFromServerRequest,
   changedFiles,
+  codexResultForAgentInteraction,
   CodexAppServer,
   codexEndpointFromLine,
   codexModelProviderName,
   codexWorktreeTurnPolicy,
   codexWorkspaceContext,
   executeDynamicWorktreeTool,
+  failClosedAgentInteractionReply,
   GOAL_CONTINUATION_PROMPT,
   goalShouldContinue,
   isKnownCodexNotificationMethod,
@@ -18,6 +21,179 @@ import {
   parseCodexSkills,
   planQuestionId,
 } from "../src/codex/app-server.js";
+
+describe("Codex agent interaction bridge", () => {
+  it("normalizes all supported App Server request families", () => {
+    const now = Date.parse("2026-08-08T18:00:00.000Z");
+    const command = agentInteractionRequestFromServerRequest(
+      "item/commandExecution/requestApproval",
+      {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "item-command",
+        startedAtMs: now,
+        approvalId: null,
+        environmentId: null,
+        reason: "Needs registry access",
+        command: "pnpm install",
+        cwd: "/workspace",
+        commandActions: [{ type: "unknown", command: "pnpm install" }],
+        networkApprovalContext: {
+          host: "registry.npmjs.org",
+          protocol: "https",
+        },
+        additionalPermissions: null,
+        proposedExecpolicyAmendment: null,
+        proposedNetworkPolicyAmendments: null,
+        availableDecisions: ["accept", "decline", "cancel"],
+      },
+      "request-command",
+      now,
+    );
+    expect(command).toMatchObject({
+      requestKey: "request-command",
+      expiresAt: "2026-08-08T18:30:00.000Z",
+      payload: {
+        kind: "commandExecution",
+        command: "pnpm install",
+        availableDecisions: ["accept", "decline", "cancel"],
+      },
+    });
+
+    expect(
+      agentInteractionRequestFromServerRequest(
+        "item/fileChange/requestApproval",
+        {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "item-file",
+          startedAtMs: now,
+          reason: "Write a report",
+          grantRoot: "/workspace",
+        },
+        "request-file",
+        now,
+      )?.payload.kind,
+    ).toBe("fileChange");
+    expect(
+      agentInteractionRequestFromServerRequest(
+        "item/permissions/requestApproval",
+        {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "item-permissions",
+          startedAtMs: now,
+          environmentId: null,
+          cwd: "/workspace",
+          reason: "Read fixtures",
+          permissions: {
+            network: null,
+            fileSystem: { read: ["/fixtures"], write: null },
+          },
+        },
+        "request-permissions",
+        now,
+      )?.payload.kind,
+    ).toBe("permissions");
+    expect(
+      agentInteractionRequestFromServerRequest(
+        "item/tool/requestUserInput",
+        {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "item-question",
+          questions: [
+            {
+              id: "target",
+              header: "Target",
+              question: "Which target?",
+              isOther: true,
+              isSecret: false,
+              options: null,
+            },
+          ],
+          autoResolutionMs: 5_000,
+        },
+        "request-input",
+        now,
+      ),
+    ).toMatchObject({
+      expiresAt: "2026-08-08T18:00:05.000Z",
+      payload: { kind: "userInput", autoResolutionMs: 5_000 },
+    });
+    expect(
+      agentInteractionRequestFromServerRequest(
+        "mcpServer/elicitation/request",
+        {
+          threadId: "thread-1",
+          turnId: null,
+          serverName: "deployments",
+          mode: "url",
+          message: "Authorize deployments",
+          url: "https://example.com/oauth",
+          elicitationId: "elicitation-1",
+          _meta: { source: "test" },
+        },
+        "request-mcp",
+        now,
+      ),
+    ).toMatchObject({
+      turnId: null,
+      itemId: null,
+      payload: { kind: "mcpElicitation", mode: "url" },
+    });
+  });
+
+  it("maps responses exactly and fails closed by request family", () => {
+    expect(
+      codexResultForAgentInteraction({
+        kind: "commandExecution",
+        decision: "acceptWithExecpolicyAmendment",
+        execpolicyAmendment: ["pnpm", "test"],
+        networkPolicyAmendment: null,
+      }),
+    ).toEqual({
+      decision: {
+        acceptWithExecpolicyAmendment: {
+          execpolicy_amendment: ["pnpm", "test"],
+        },
+      },
+    });
+    expect(
+      codexResultForAgentInteraction({
+        kind: "mcpElicitation",
+        action: "accept",
+        content: { environment: "staging" },
+        metadata: { source: "cantrip" },
+      }),
+    ).toEqual({
+      action: "accept",
+      content: { environment: "staging" },
+      _meta: { source: "cantrip" },
+    });
+    expect(() =>
+      codexResultForAgentInteraction({
+        kind: "commandExecution",
+        decision: "acceptWithExecpolicyAmendment",
+        execpolicyAmendment: null,
+        networkPolicyAmendment: null,
+      }),
+    ).toThrow(/Missing execpolicy amendment/u);
+    expect(
+      failClosedAgentInteractionReply("commandExecution", "expired"),
+    ).toEqual({ result: { decision: "cancel" } });
+    expect(failClosedAgentInteractionReply("permissions", "expired")).toEqual({
+      result: {
+        permissions: {},
+        scope: "turn",
+        strictAutoReview: false,
+      },
+    });
+    expect(failClosedAgentInteractionReply("userInput", "expired")).toEqual({
+      error: { code: -32_000, message: "expired" },
+    });
+  });
+});
 
 describe("Cantrip dynamic worktree tools", () => {
   it("advertises all lifecycle operations with strict object schemas", () => {

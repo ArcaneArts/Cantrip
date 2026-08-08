@@ -524,6 +524,43 @@ function validateAgentInteractionResponse(
       );
     }
   }
+  if (payload.kind === "permissions") {
+    if (response.kind !== "permissions") return;
+    if (
+      !jsonPermissionSubset(response.permissions, payload.requestedPermissions)
+    ) {
+      throw new AgentInteractionConflictError(
+        "Granted permissions must be a subset of the requested permissions.",
+      );
+    }
+  }
+}
+
+function jsonPermissionSubset(granted: unknown, requested: unknown): boolean {
+  if (Array.isArray(granted)) {
+    if (!Array.isArray(requested)) return false;
+    return granted.every((candidate) =>
+      requested.some(
+        (allowed) => JSON.stringify(candidate) === JSON.stringify(allowed),
+      ),
+    );
+  }
+  if (granted && typeof granted === "object") {
+    if (
+      !requested ||
+      typeof requested !== "object" ||
+      Array.isArray(requested)
+    ) {
+      return false;
+    }
+    const requestedRecord = requested as Record<string, unknown>;
+    return Object.entries(granted).every(
+      ([key, value]) =>
+        key in requestedRecord &&
+        jsonPermissionSubset(value, requestedRecord[key]),
+    );
+  }
+  return Object.is(granted, requested);
 }
 
 function toRemoteSurfaceSummary(
@@ -4876,6 +4913,26 @@ export class ServerRepository {
     return rows[0] ? toAgentInteractionRequest(rows[0].request) : null;
   }
 
+  async getAgentInteractionRequestByKey(
+    ownerId: string,
+    requestKey: string,
+  ): Promise<AgentInteractionRequest | null> {
+    await this.expireAgentInteractionRequests();
+    const rows = await this.database
+      .select({ request: schema.agentInteractionRequests })
+      .from(schema.agentInteractionRequests)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.agentInteractionRequests.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.agentInteractionRequests.requestKey, requestKey))
+      .limit(1);
+    return rows[0] ? toAgentInteractionRequest(rows[0].request) : null;
+  }
+
   async resolveAgentInteractionRequest(
     ownerId: string,
     requestId: string,
@@ -4936,6 +4993,18 @@ export class ServerRepository {
     return toAgentInteractionRequest(rows[0]);
   }
 
+  async validateAgentInteractionResolution(
+    ownerId: string,
+    requestId: string,
+    input: AgentInteractionResolutionCreate,
+  ): Promise<AgentInteractionRequest | null> {
+    await this.expireAgentInteractionRequests();
+    const existing = await this.getAgentInteractionRequest(ownerId, requestId);
+    if (!existing) return null;
+    validateAgentInteractionResponse(existing.payload, input.response);
+    return existing;
+  }
+
   async expireAgentInteractionRequests(
     now = new Date(),
   ): Promise<AgentInteractionRequest[]> {
@@ -4973,6 +5042,30 @@ export class ServerRepository {
       )
       .returning();
     return rows.map(toAgentInteractionRequest);
+  }
+
+  async terminalizeAgentInteractionRequestFromWorker(
+    requestKey: string,
+    chatId: string,
+    workerId: string,
+    status: "expired" | "interrupted",
+  ): Promise<AgentInteractionRequest | null> {
+    const now = new Date();
+    const rows = await this.database
+      .update(schema.agentInteractionRequests)
+      .set({ status, resolvedAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(schema.agentInteractionRequests.requestKey, requestKey),
+          eq(schema.agentInteractionRequests.chatId, chatId),
+          eq(schema.agentInteractionRequests.workerId, workerId),
+          eq(schema.agentInteractionRequests.status, "pending"),
+        ),
+      )
+      .returning();
+    if (!rows[0]) return null;
+    await this.restoreChatAfterInteractions(chatId);
+    return toAgentInteractionRequest(rows[0]);
   }
 
   async listMessages(ownerId: string, chatId: string): Promise<ChatMessage[]> {

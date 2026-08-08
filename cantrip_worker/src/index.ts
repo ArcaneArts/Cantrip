@@ -281,6 +281,12 @@ async function start(): Promise<void> {
           worktreeMode: command.worktreeMode,
           worktreePolicy: command.worktreePolicy,
           onActivity: (activity) => emit({ type: "agent.activity", activity }),
+          onInteractionRequest: (request) =>
+            emit({ type: "agent.interaction.requested", request }),
+          onInteractionCleared: (requestKey) =>
+            emit({ type: "agent.interaction.cleared", requestKey }),
+          onInteractionExpired: (requestKey) =>
+            emit({ type: "agent.interaction.expired", requestKey }),
           onCheckpoint: ({ text, turnId }) =>
             emit({ type: "agent.checkpoint", text, turnId }),
           onPlan: ({ explanation, steps, turnId }) =>
@@ -405,6 +411,16 @@ async function start(): Promise<void> {
         return runtimeFor(command).answerPlanQuestion(
           command.questionId,
           command.answers,
+        );
+      case "agent.interaction.respond":
+        return runtimeFor(command).answerAgentInteraction(
+          command.requestKey,
+          command.response,
+        );
+      case "agent.interaction.cancel":
+        return runtimeFor(command).cancelAgentInteraction(
+          command.requestKey,
+          command.reason,
         );
       case "chat.steer":
         return runtimeFor(command).steerThread(

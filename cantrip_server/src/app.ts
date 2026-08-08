@@ -7,6 +7,7 @@ import {
   agentWorktreeToolResultSchema,
   agentThreadSyncSchema,
   agentTurnResultSchema,
+  agentInteractionAcceptedSchema,
   agentInteractionRequestListSchema,
   agentInteractionRequestQuerySchema,
   agentInteractionRequestSchema,
@@ -1032,6 +1033,55 @@ export async function buildApp({
                 onEvent: async (event) => {
                   attemptActivity = true;
                   anyActivity = true;
+                  if (event.type === "agent.interaction.requested") {
+                    try {
+                      await repository.recordAgentInteractionRequest({
+                        requestKey: event.request.requestKey,
+                        projectId: execution.projectId,
+                        provenance: {
+                          chatId: execution.chatId,
+                          threadId: event.request.threadId,
+                          turnId: event.request.turnId,
+                          itemId: event.request.itemId,
+                          executionLaneId,
+                          workflowRunId: null,
+                          workflowNodeId: null,
+                          workerId: execution.workerId,
+                        },
+                        payload: event.request.payload,
+                        expiresAt: event.request.expiresAt,
+                      });
+                    } catch (error) {
+                      try {
+                        await bridge.request(execution.workerId, {
+                          type: "agent.interaction.cancel",
+                          requestKey: event.request.requestKey,
+                          reason:
+                            "Cantrip could not persist the interaction safely.",
+                          model: runtime.model,
+                          provider: runtime.provider,
+                        });
+                      } catch {
+                        // The turn failure below remains fail closed.
+                      }
+                      throw error;
+                    }
+                    return;
+                  }
+                  if (
+                    event.type === "agent.interaction.cleared" ||
+                    event.type === "agent.interaction.expired"
+                  ) {
+                    await repository.terminalizeAgentInteractionRequestFromWorker(
+                      event.requestKey,
+                      execution.chatId,
+                      execution.workerId,
+                      event.type === "agent.interaction.expired"
+                        ? "expired"
+                        : "interrupted",
+                    );
+                    return;
+                  }
                   if (event.type === "agent.checkpoint") {
                     if (!event.text.trim()) return;
                     await repository.upsertMessage(
@@ -1116,6 +1166,9 @@ export async function buildApp({
               },
               attribution,
             );
+            await repository.interruptAgentInteractionRequests(
+              execution.chatId,
+            );
             await repository.finishChatExecutionLane(
               execution.chatId,
               executionLaneId,
@@ -1178,6 +1231,7 @@ export async function buildApp({
           },
           attribution,
         );
+        await repository.interruptAgentInteractionRequests(execution.chatId);
         await repository.finishChatExecutionLane(
           execution.chatId,
           executionLaneId,
@@ -1365,16 +1419,79 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       try {
+        const existing = await repository.validateAgentInteractionResolution(
+          LOCAL_USER_ID,
+          request.params.requestId,
+          input.data,
+        );
+        if (!existing) {
+          return reply.code(404).send({ error: "Agent request not found." });
+        }
+        if (existing.status !== "pending") {
+          const replay = await repository.resolveAgentInteractionRequest(
+            LOCAL_USER_ID,
+            request.params.requestId,
+            input.data,
+          );
+          return reply.send(agentInteractionRequestSchema.parse(replay));
+        }
+        if (!existing.provenance.chatId) {
+          return reply.code(409).send({
+            error: "Workflow interaction delivery is not available yet.",
+          });
+        }
+        const context = await repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          existing.provenance.chatId,
+        );
+        if (
+          !context ||
+          context.workerId !== existing.provenance.workerId ||
+          context.executionLaneId !== existing.provenance.executionLaneId
+        ) {
+          return reply.code(409).send({
+            error: "The interaction execution lane is no longer active.",
+          });
+        }
+        if (!bridge.isConnected(context.workerId)) {
+          return reply.code(503).send({ error: "Project worker is offline." });
+        }
+        const runtime = await runtimeForContext(context);
+        if (!runtime) {
+          return reply
+            .code(409)
+            .send({ error: "Selected model was not found." });
+        }
+        try {
+          agentInteractionAcceptedSchema.parse(
+            await bridge.request(
+              context.workerId,
+              {
+                type: "agent.interaction.respond",
+                requestKey: existing.requestKey,
+                response: input.data.response,
+                model: runtime.model,
+                provider: runtime.provider,
+              },
+              { timeoutMs: 30_000 },
+            ),
+          );
+        } catch (error) {
+          const status = error instanceof WorkerUnavailableError ? 503 : 409;
+          return reply.code(status).send({
+            error: `The runtime no longer accepts this interaction: ${errorMessage(error)}`,
+          });
+        }
         const interaction = await repository.resolveAgentInteractionRequest(
           LOCAL_USER_ID,
           request.params.requestId,
           input.data,
         );
-        if (!interaction) {
-          return reply.code(404).send({ error: "Agent request not found." });
-        }
         return reply.send(agentInteractionRequestSchema.parse(interaction));
       } catch (error) {
+        if (error instanceof WorkerUnavailableError) {
+          return reply.code(503).send({ error: error.message });
+        }
         if (error instanceof AgentInteractionConflictError) {
           return reply.code(409).send({ error: error.message });
         }
@@ -4043,6 +4160,30 @@ export async function buildApp({
           provider: runtime.provider,
         });
         const accepted = chatPlanAcceptedSchema.parse(result);
+        if (accepted.requestKey) {
+          const interaction = await repository.getAgentInteractionRequestByKey(
+            LOCAL_USER_ID,
+            accepted.requestKey,
+          );
+          if (interaction?.status === "pending") {
+            await repository.resolveAgentInteractionRequest(
+              LOCAL_USER_ID,
+              interaction.id,
+              {
+                idempotencyKey: `plan-answer:${accepted.requestKey}`,
+                response: {
+                  kind: "userInput",
+                  answers: Object.fromEntries(
+                    Object.entries(input.data.answers).map(([id, answers]) => [
+                      id,
+                      { answers },
+                    ]),
+                  ),
+                },
+              },
+            );
+          }
+        }
         const latest = await repository.getChatPlanState(
           LOCAL_USER_ID,
           context.chatId,
@@ -4050,7 +4191,7 @@ export async function buildApp({
         if (latest?.question?.id === state.question.id) {
           await repository.setPendingPlanQuestion(context.chatId, null);
         }
-        return reply.send(accepted);
+        return reply.send(chatPlanAcceptedSchema.parse({ accepted: true }));
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
       }
