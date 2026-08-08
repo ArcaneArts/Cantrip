@@ -180,7 +180,10 @@ password, or worker address exists in the app contract.
 Each Remote Desktop tab persists a capture target. Users can switch between
 the worker's monitors and individual application windows while connected, and
 the worker translates local pointer coordinates into the selected target's
-global desktop origin. Native monitor IDs and window IDs are only hints:
+global desktop origin. Application-window input first raises, unminimizes, and
+focuses that exact native window; if the operating system refuses activation,
+the worker blocks the input rather than clicking an unrelated foreground
+window. Native monitor IDs and window IDs are only hints:
 reconnect first matches them, then falls back to monitor name or application
 and window title. A missing saved application is launched by the worker and
 polled for a matching window; the client shows that launch state. If the

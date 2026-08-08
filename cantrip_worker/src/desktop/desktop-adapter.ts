@@ -46,25 +46,71 @@ const DEFAULT_STREAM_SETTINGS: DesktopStreamSettings = {
 type DisplaySize = DesktopDisplaySize;
 
 export interface DesktopAutomationClient {
-  click(x: number, y: number): Promise<ToolResult>;
+  activateWindow(windowId: number, timeoutMs?: number): Promise<ToolResult>;
+  click(
+    x: number,
+    y: number,
+    targetApp?: string,
+    options?: DesktopInputTargetOptions,
+  ): Promise<ToolResult>;
   close(): Promise<void>;
   doubleClick(x: number, y: number): Promise<ToolResult>;
   getDisplaySize(): Promise<ToolResult>;
-  key(combo: string): Promise<ToolResult>;
-  middleClick(x: number, y: number): Promise<ToolResult>;
-  mouseDown(x: number, y: number): Promise<ToolResult>;
-  mouseUp(x: number, y: number): Promise<ToolResult>;
-  moveMouse(x: number, y: number): Promise<ToolResult>;
+  key(
+    combo: string,
+    targetApp?: string,
+    options?: DesktopInputTargetOptions,
+  ): Promise<ToolResult>;
+  middleClick(
+    x: number,
+    y: number,
+    targetApp?: string,
+    options?: DesktopInputTargetOptions,
+  ): Promise<ToolResult>;
+  mouseDown(
+    x: number,
+    y: number,
+    targetApp?: string,
+    options?: DesktopInputTargetOptions,
+  ): Promise<ToolResult>;
+  mouseUp(
+    x: number,
+    y: number,
+    targetApp?: string,
+    options?: DesktopInputTargetOptions,
+  ): Promise<ToolResult>;
+  moveMouse(
+    x: number,
+    y: number,
+    targetApp?: string,
+    options?: DesktopInputTargetOptions,
+  ): Promise<ToolResult>;
   readClipboard(): Promise<ToolResult>;
-  rightClick(x: number, y: number): Promise<ToolResult>;
+  rightClick(
+    x: number,
+    y: number,
+    targetApp?: string,
+    options?: DesktopInputTargetOptions,
+  ): Promise<ToolResult>;
   screenshot(options: { quality: number; width: number }): Promise<ToolResult>;
   scroll(
     x: number,
     y: number,
     direction: "up" | "down" | "left" | "right",
     amount: number,
+    targetApp?: string,
+    options?: DesktopInputTargetOptions,
   ): Promise<ToolResult>;
-  type(text: string): Promise<ToolResult>;
+  type(
+    text: string,
+    targetApp?: string,
+    options?: DesktopInputTargetOptions,
+  ): Promise<ToolResult>;
+}
+
+interface DesktopInputTargetOptions {
+  focusStrategy: "strict";
+  targetWindowId: number;
 }
 
 export type DesktopAutomationClientFactory =
@@ -260,6 +306,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
   #closed = false;
   #encoding = false;
   #initialized = false;
+  #inputTargetError: string | null = null;
   #launchingApplication: string | null = null;
   #framesEmitted = 0;
   #lastEncodedWidth = 0;
@@ -378,7 +425,11 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
   resume(): void {
     this.#suspended = false;
     this.#nextCaptureAt = 0;
-    this.publishState(undefined, "ready", null);
+    this.publishState(
+      undefined,
+      this.#inputTargetError ? "error" : "ready",
+      this.#inputTargetError,
+    );
     this.scheduleCapture(0);
   }
 
@@ -547,7 +598,11 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       this.#observedFps = (this.#framesEmitted * 1_000) / elapsed;
       this.#framesEmitted = 0;
       this.#statsWindowStarted = now;
-      this.publishState(undefined, "ready", null);
+      this.publishState(
+        undefined,
+        this.#inputTargetError ? "error" : "ready",
+        this.#inputTargetError,
+      );
     }
   }
 
@@ -630,6 +685,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       this.#activeTarget = pipeline.target;
       this.#display = pipeline.display;
       this.#lastEncodedWidth = 0;
+      this.#inputTargetError = null;
       if (targetMatches(requested, pipeline.target)) {
         this.#targetMessage = captureError
           ? `Reconnected to ${targetName(pipeline.target)} after capture stopped.`
@@ -637,12 +693,24 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       } else {
         this.#targetMessage = `${targetName(requested)} is unavailable; showing ${targetName(pipeline.target)}.`;
       }
-      this.publishState(undefined, "ready", this.#targetMessage);
+      if (pipeline.target.kind === "window") {
+        try {
+          await this.focusInputTarget();
+        } catch (error) {
+          this.#inputTargetError = `Could not focus ${targetName(pipeline.target)}; remote input is paused: ${errorMessage(error)}`;
+        }
+      }
+      this.publishState(
+        undefined,
+        this.#inputTargetError ? "error" : "ready",
+        this.#inputTargetError ?? this.#targetMessage,
+      );
       await this.refreshTargets();
     } catch (error) {
       this.#framePipeline = null;
       this.#pipelineRevision += 1;
       this.#activeTarget = { kind: "monitor", id: null, name: null };
+      this.#inputTargetError = null;
       this.#targetMessage = `Desktop target unavailable; showing the default display: ${errorMessage(error)}`;
       this.publishState(undefined, "ready", this.#targetMessage);
       this.publishTargets();
@@ -667,6 +735,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     this.#pipelineRevision += 1;
     this.#pendingFrame = null;
     this.#activeTarget = { kind: "monitor", id: null, name: null };
+    this.#inputTargetError = null;
     this.#targetMessage = `Native capture stopped; showing the default display through compatibility capture: ${errorMessage(error)}`;
     this.publishState(undefined, "ready", this.#targetMessage);
     this.publishTargets();
@@ -737,6 +806,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     >,
   ): Promise<void> {
     if (message.type === "pointer") {
+      if (message.event !== "move") await this.focusInputTarget();
       const localX = Math.max(
         0,
         Math.min(this.#display.width - 1, Math.round(message.x)),
@@ -748,6 +818,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       const origin = this.#framePipeline?.origin ?? { x: 0, y: 0 };
       const x = localX + origin.x;
       const y = localY + origin.y;
+      const inputTarget = this.inputTargetOptions();
       if (message.event === "move") {
         assertResult(
           await this.#client.moveMouse(x, y),
@@ -768,27 +839,34 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
           Math.min(20, Math.ceil(Math.abs(delta) / 40)),
         );
         assertResult(
-          await this.#client.scroll(x, y, direction, amount),
+          await this.#client.scroll(
+            x,
+            y,
+            direction,
+            amount,
+            undefined,
+            inputTarget,
+          ),
           "Scrolling the desktop",
         );
       } else if (message.button === "right" && message.event === "up") {
         assertResult(
-          await this.#client.rightClick(x, y),
+          await this.#client.rightClick(x, y, undefined, inputTarget),
           "Right-clicking the desktop",
         );
       } else if (message.button === "middle" && message.event === "up") {
         assertResult(
-          await this.#client.middleClick(x, y),
+          await this.#client.middleClick(x, y, undefined, inputTarget),
           "Middle-clicking the desktop",
         );
       } else if (message.button === "left" && message.event === "down") {
         assertResult(
-          await this.#client.mouseDown(x, y),
+          await this.#client.mouseDown(x, y, undefined, inputTarget),
           "Pressing the desktop pointer",
         );
       } else if (message.button === "left" && message.event === "up") {
         assertResult(
-          await this.#client.mouseUp(x, y),
+          await this.#client.mouseUp(x, y, undefined, inputTarget),
           "Releasing the desktop pointer",
         );
       }
@@ -797,14 +875,16 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     }
     if (message.type === "key") {
       if (message.event === "up") return;
+      await this.focusInputTarget();
+      const inputTarget = this.inputTargetOptions();
       if (message.text && (message.modifiers & 7) === 0) {
         assertResult(
-          await this.#client.type(message.text),
+          await this.#client.type(message.text, undefined, inputTarget),
           "Typing on the desktop",
         );
       } else {
         assertResult(
-          await this.#client.key(shortcut(message)),
+          await this.#client.key(shortcut(message), undefined, inputTarget),
           "Sending a desktop key",
         );
       }
@@ -812,10 +892,12 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       return;
     }
     if (message.type === "clipboard") {
+      await this.focusInputTarget();
+      const inputTarget = this.inputTargetOptions();
       if (message.operation === "paste-text") {
         if (message.text) {
           assertResult(
-            await this.#client.type(message.text),
+            await this.#client.type(message.text, undefined, inputTarget),
             "Pasting on the desktop",
           );
         }
@@ -823,6 +905,8 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
         assertResult(
           await this.#client.key(
             process.platform === "darwin" ? "command+c" : "ctrl+c",
+            undefined,
+            inputTarget,
           ),
           "Copying from the desktop",
         );
@@ -844,6 +928,47 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       this.scheduleCapture(0);
       return;
     }
+  }
+
+  private async focusInputTarget(): Promise<void> {
+    const pipeline = this.#framePipeline;
+    if (!pipeline || pipeline.target.kind !== "window") return;
+    try {
+      const windowId = Number(pipeline.target.id);
+      if (!Number.isSafeInteger(windowId) || windowId < 0) {
+        throw new Error("The selected window has an invalid native ID.");
+      }
+      const result = await this.#client.activateWindow(windowId, 2_000);
+      assertResult(result, "Focusing the selected window");
+      const activation = structuredObject(result);
+      if (activation?.activated !== true) {
+        const reason =
+          typeof activation?.reason === "string"
+            ? `: ${activation.reason.replaceAll("_", " ")}`
+            : "";
+        throw new Error(
+          `The operating system refused window activation${reason}.`,
+        );
+      }
+      if (this.#inputTargetError) {
+        this.#inputTargetError = null;
+        this.publishState(undefined, "ready", this.#targetMessage);
+      }
+    } catch (error) {
+      this.#inputTargetError = `Could not focus ${targetName(pipeline.target)}; input was not sent: ${errorMessage(error)}`;
+      this.publishState(undefined, "error", this.#inputTargetError);
+      throw new Error(this.#inputTargetError);
+    }
+  }
+
+  private inputTargetOptions(): DesktopInputTargetOptions | undefined {
+    const target = this.#framePipeline?.target;
+    if (!target || target.kind !== "window") return undefined;
+    const targetWindowId = Number(target.id);
+    if (!Number.isSafeInteger(targetWindowId) || targetWindowId < 0) {
+      return undefined;
+    }
+    return { focusStrategy: "strict", targetWindowId };
   }
 }
 
