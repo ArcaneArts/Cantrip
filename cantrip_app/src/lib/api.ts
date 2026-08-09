@@ -116,7 +116,10 @@ import type {
 } from "@cantrip/protocol";
 import {
   workflowDefinitionDetailSchema,
+  workflowDefinitionCreateSchema,
   workflowDefinitionListSchema,
+  workflowDefinitionSummarySchema,
+  workflowDefinitionUpdateSchema,
   workflowGateDecisionSchema,
   workflowNodeRetrySchema,
   workflowRunCancelSchema,
@@ -125,8 +128,12 @@ import {
   workflowRunListSchema,
   workflowRunPauseSchema,
   workflowRunResumeSchema,
+  workflowRevisionCreateSchema,
+  workflowRevisionSchema,
   workflowWorktreeOutcomeRequestSchema,
   type WorkflowDefinitionQuery,
+  type WorkflowDefinitionCreate,
+  type WorkflowDefinitionUpdate,
   type WorkflowGateDecision,
   type WorkflowNodeRetry,
   type WorkflowRunCancel,
@@ -134,6 +141,7 @@ import {
   type WorkflowRunPause,
   type WorkflowRunQuery,
   type WorkflowRunResume,
+  type WorkflowRevisionCreate,
   type WorkflowWorktreeOutcomeRequest,
 } from "@cantrip/protocol/workflows";
 import { getActiveServerUrl } from "@/lib/server-connections";
@@ -204,6 +212,36 @@ export async function getWorkflows(
 export async function getWorkflow(workflowId: string) {
   return workflowDefinitionDetailSchema.parse(
     await request(`/api/workflows/${encodeURIComponent(workflowId)}`),
+  );
+}
+
+export async function createWorkflow(input: WorkflowDefinitionCreate) {
+  return workflowDefinitionDetailSchema.parse(
+    await post("/api/workflows", workflowDefinitionCreateSchema.parse(input)),
+  );
+}
+
+export async function updateWorkflow(
+  workflowId: string,
+  input: WorkflowDefinitionUpdate,
+) {
+  return workflowDefinitionSummarySchema.parse(
+    await request(`/api/workflows/${encodeURIComponent(workflowId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(workflowDefinitionUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function appendWorkflowRevision(
+  workflowId: string,
+  input: WorkflowRevisionCreate,
+) {
+  return workflowRevisionSchema.parse(
+    await post(
+      `/api/workflows/${encodeURIComponent(workflowId)}/revisions`,
+      workflowRevisionCreateSchema.parse(input),
+    ),
   );
 }
 
