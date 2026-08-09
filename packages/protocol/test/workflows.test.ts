@@ -25,6 +25,7 @@ import {
   workflowRunCreateSchema,
   workflowRunCancelSchema,
   workflowRunDetailSchema,
+  workflowRunNodeItemExecutionStateSchema,
   workflowRunStatusUpdateSchema,
   workflowVerifyNodeConfigurationSchema,
 } from "../src/workflows.js";
@@ -138,6 +139,48 @@ describe("workflow protocol", () => {
         })
         .steps.map(({ key }) => key),
     ).toEqual(["inspect", "verify"]);
+    expect(
+      workflowRunNodeItemExecutionStateSchema.parse({
+        kind: "pipeline",
+        currentStepPosition: 1,
+        currentStepAttemptCount: 2,
+        completedSteps: [
+          {
+            key: "inspect",
+            name: "Inspect",
+            position: 0,
+            structuredResult: { finding: true },
+            measuredUsage: {},
+            codexThreadId: "thread-1",
+            codexTurnId: "turn-1",
+            completedAt: timestamp,
+          },
+        ],
+      }),
+    ).toMatchObject({
+      kind: "pipeline",
+      currentStepPosition: 1,
+      completedSteps: [{ key: "inspect" }],
+    });
+    expect(() =>
+      workflowRunNodeItemExecutionStateSchema.parse({
+        kind: "pipeline",
+        currentStepPosition: 0,
+        currentStepAttemptCount: 0,
+        completedSteps: [
+          {
+            key: "inspect",
+            name: "Inspect",
+            position: 1,
+            structuredResult: { finding: true },
+            measuredUsage: {},
+            codexThreadId: "thread-1",
+            codexTurnId: "turn-1",
+            completedAt: timestamp,
+          },
+        ],
+      }),
+    ).toThrow();
     expect(
       workflowReduceNodeConfigurationSchema.parse({
         prompt: "Synthesize the findings.",
@@ -732,6 +775,7 @@ describe("workflow protocol", () => {
       itemKey: "alpha",
       position: 0,
       status: "ready" as const,
+      executionState: { kind: "map" as const },
       structuredInput: { item: 42 },
       structuredResult: null,
       measuredUsage: measuredUsage(),

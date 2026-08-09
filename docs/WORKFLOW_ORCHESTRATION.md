@@ -86,6 +86,28 @@ startup recovery marks interrupted items as recovering without re-expanding
 the collection. Downstream nodes are released only after the parent map reaches
 a durable terminal boundary.
 
+A pipeline uses the same durable collection expansion and concurrency rules,
+then advances each item through its immutable ordered `steps`. The first step
+receives the object formed with `itemInputKey`; each later step receives the
+previous step's structured result directly. Every step starts or resumes its
+own Codex thread, applies its own prompt, developer instructions, output schema,
+and automatic-retry ceiling, and commits its result before the next step can be
+scheduled. The item execution state records the current step position and
+attempt count plus a bounded ledger of completed step results, usage, Codex
+thread and turn attribution, and completion times. This is the restart boundary;
+completed steps are never replayed merely because a later step was orphaned or
+retried.
+
+Pipeline concurrency counts active items, while `maxParallelism` remains the
+run-wide ceiling. Each logical item-step invocation counts against `maxNodes`
+before expansion. A pipeline's collection failure policy applies when a step
+exhausts its attempts: `fail-fast` skips remaining ready items and best-effort
+interrupts attributed siblings, while `continue` preserves the
+failed step and emits the same explicit collection outcome envelope as `map`.
+Operator retry resumes the failed step and previously skipped items without
+discarding completed step ledgers. Empty collections complete without a Codex
+turn.
+
 A reduce node applies `collectionPath` to its durable node input before the
 selected array or object is rendered into the Codex prompt. A missing path or
 non-collection value fails explicitly. An empty collection is rejected when
@@ -118,8 +140,8 @@ work without creating a duplicate gate. Cancellation terminalizes pending
 gates, and decisions against cancelled or otherwise incompatible terminal
 states fail with a conflict.
 
-Unsupported dynamic nodes (`pipeline` and `repeatUntil`) still fail explicitly
-rather than falling back to an agent chat or an unvalidated interpretation.
+The unsupported dynamic node `repeatUntil` still fails explicitly rather than
+falling back to an agent chat or an unvalidated interpretation.
 Subsequent scheduler changes must preserve this contract, persist every
 intermediate boundary, and apply the run budget as an additional ceiling over
 node-local concurrency and loop limits.

@@ -1245,6 +1245,10 @@ export const workflowRunNodeItems = pgTable(
     itemKey: text("item_key").notNull(),
     position: integer("position").notNull(),
     status: text("status").notNull().default("ready"),
+    executionState: jsonb("execution_state")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({ kind: "map" }),
     structuredInput: jsonb("structured_input").$type<unknown>().notNull(),
     structuredResult: jsonb("structured_result").$type<unknown>(),
     measuredUsage: jsonb("measured_usage")
@@ -1320,6 +1324,7 @@ export const workflowNodeAttempts = pgTable(
       () => workflowRunNodeItems.id,
       { onDelete: "cascade" },
     ),
+    executionUnitKey: text("execution_unit_key"),
     attempt: integer("attempt").notNull(),
     status: text("status").notNull().default("queued"),
     idempotencyKey: text("idempotency_key").notNull(),
