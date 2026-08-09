@@ -3438,7 +3438,7 @@ export function App() {
           className="hidden w-72 shrink-0 flex-col border-r bg-background md:flex"
         >
           <div className="flex h-16 items-center gap-3 px-4">
-            <div className="grid size-9 place-items-center rounded-xl border bg-background shadow-sm">
+            <div className="grid size-9 place-items-center">
               <WandSparkles className="size-4" />
             </div>
             <div className="min-w-0 flex-1">
@@ -4130,10 +4130,10 @@ export function App() {
                 </>
               ) : null}
               {!showImporter && !showSettings && selectedProject ? (
-                <Badge variant="outline" className="gap-2">
+                <span className="flex items-center gap-2 px-2 text-xs">
                   <StatusDot online={Boolean(selectedWorker?.online)} />
                   {selectedWorker?.name ?? "Worker offline"}
-                </Badge>
+                </span>
               ) : null}
             </div>
             <span
