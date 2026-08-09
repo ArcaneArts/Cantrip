@@ -68,6 +68,8 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 
 import { Activity, ActivityGroup } from "@/components/chat/activity";
@@ -210,6 +212,7 @@ import {
   updateExplorerWorktree,
   updateProjectViewWorktree,
   updateQueuedPrompt,
+  updateSettings,
   updateTerminalWorktree,
   uploadChatAttachment,
 } from "@/lib/api";
@@ -223,6 +226,14 @@ import {
 } from "@/lib/desktop-popout";
 import { browserUpdateForPageState } from "@/lib/browser-page-state";
 import { selectDefaultProjectTab } from "@/lib/default-project-tab";
+import {
+  clampSidebarWidth,
+  DEFAULT_SIDEBAR_WIDTH,
+  MAX_SIDEBAR_WIDTH,
+  MIN_SIDEBAR_WIDTH,
+  sidebarWidthFromKey,
+  sidebarWidthFromPointer,
+} from "@/lib/sidebar-resize";
 import { cn } from "@/lib/utils";
 
 function modelDisplayName(model: ModelProfileSummary): string {
@@ -2255,6 +2266,8 @@ export function App() {
   const [showCustomizations, setShowCustomizations] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
+  const [sidebarResizing, setSidebarResizing] = useState(false);
   const [contentScrolled, setContentScrolled] = useState(false);
   const [gitHistoryHeader, setGitHistoryHeader] =
     useState<GitHistoryHeaderState | null>(null);
@@ -2275,6 +2288,15 @@ export function App() {
   );
   const contentRootRef = useRef<HTMLElement>(null);
   const scrolledContentRef = useRef(new Set<EventTarget>());
+  const sidebarRef = useRef<HTMLElement>(null);
+  const sidebarWidthRef = useRef(DEFAULT_SIDEBAR_WIDTH);
+  const sidebarResizePointerIdRef = useRef<number | null>(null);
+  const sidebarResizeLeftRef = useRef(0);
+  const sidebarResizeStartWidthRef = useRef(DEFAULT_SIDEBAR_WIDTH);
+  const sidebarResizeBodyStyleRef = useRef<{
+    cursor: string;
+    userSelect: string;
+  } | null>(null);
 
   const openCreatedTab = (
     projectId: string,
@@ -2323,6 +2345,13 @@ export function App() {
     refetchInterval: 3_000,
   });
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
+  const saveSidebarWidth = useMutation({
+    mutationFn: (width: number) => updateSettings({ sidebarWidth: width }),
+    onSuccess: (bundle) => queryClient.setQueryData(["settings"], bundle),
+    onError: (error) => {
+      console.error("Could not save the sidebar width", error);
+    },
+  });
   const projects = useQuery({
     queryFn: getProjects,
     queryKey: ["projects"],
@@ -3308,6 +3337,97 @@ export function App() {
     root.addEventListener("scroll", update, true);
     return () => root.removeEventListener("scroll", update, true);
   }, [isPopout]);
+  useEffect(() => {
+    if (
+      sidebarResizePointerIdRef.current !== null ||
+      settings.data?.preferences.sidebarWidth === undefined
+    ) {
+      return;
+    }
+    const width = clampSidebarWidth(settings.data.preferences.sidebarWidth);
+    sidebarWidthRef.current = width;
+    setSidebarWidth(width);
+  }, [settings.data?.preferences.sidebarWidth]);
+  useEffect(
+    () => () => {
+      const previous = sidebarResizeBodyStyleRef.current;
+      if (!previous) return;
+      document.body.style.cursor = previous.cursor;
+      document.body.style.userSelect = previous.userSelect;
+    },
+    [],
+  );
+
+  const applySidebarWidth = (width: number) => {
+    const next = clampSidebarWidth(width);
+    sidebarWidthRef.current = next;
+    setSidebarWidth(next);
+    return next;
+  };
+
+  const restoreSidebarResizeBodyStyle = () => {
+    const previous = sidebarResizeBodyStyleRef.current;
+    if (!previous) return;
+    document.body.style.cursor = previous.cursor;
+    document.body.style.userSelect = previous.userSelect;
+    sidebarResizeBodyStyleRef.current = null;
+  };
+
+  const beginSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    sidebarResizePointerIdRef.current = event.pointerId;
+    sidebarResizeLeftRef.current =
+      sidebarRef.current?.getBoundingClientRect().left ?? 0;
+    sidebarResizeStartWidthRef.current = sidebarWidthRef.current;
+    sidebarResizeBodyStyleRef.current = {
+      cursor: document.body.style.cursor,
+      userSelect: document.body.style.userSelect,
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setSidebarResizing(true);
+  };
+
+  const moveSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (sidebarResizePointerIdRef.current !== event.pointerId) return;
+    applySidebarWidth(
+      sidebarWidthFromPointer(event.clientX, sidebarResizeLeftRef.current),
+    );
+  };
+
+  const finishSidebarResize = (
+    event: ReactPointerEvent<HTMLDivElement>,
+    persist: boolean,
+  ) => {
+    if (sidebarResizePointerIdRef.current !== event.pointerId) return;
+    sidebarResizePointerIdRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    restoreSidebarResizeBodyStyle();
+    setSidebarResizing(false);
+    if (!persist) {
+      applySidebarWidth(sidebarResizeStartWidthRef.current);
+      return;
+    }
+    if (sidebarWidthRef.current !== sidebarResizeStartWidthRef.current) {
+      saveSidebarWidth.mutate(sidebarWidthRef.current);
+    }
+  };
+
+  const resizeSidebarWithKeyboard = (
+    event: ReactKeyboardEvent<HTMLDivElement>,
+  ) => {
+    const next = sidebarWidthFromKey(sidebarWidthRef.current, event.key);
+    if (next === null) return;
+    event.preventDefault();
+    if (next === sidebarWidthRef.current) return;
+    applySidebarWidth(next);
+    saveSidebarWidth.mutate(next);
+  };
+
   const showChatConsole = (chat: ChatSummary) => {
     const existing = terminals.data?.find(
       (terminal) => terminal.linkedChatId === chat.id,
@@ -3434,9 +3554,33 @@ export function App() {
     <main className="flex h-svh overflow-hidden bg-background text-foreground">
       {!isPopout && !sidebarCollapsed ? (
         <aside
+          ref={sidebarRef}
           data-slot="app-sidebar"
-          className="hidden w-72 shrink-0 flex-col border-r bg-background md:flex"
+          className="group/sidebar relative hidden shrink-0 flex-col bg-background md:flex"
+          style={{ width: sidebarWidth }}
         >
+          <div
+            data-slot="sidebar-resize-handle"
+            role="separator"
+            aria-label="Resize sidebar"
+            aria-orientation="vertical"
+            aria-valuemin={MIN_SIDEBAR_WIDTH}
+            aria-valuemax={MAX_SIDEBAR_WIDTH}
+            aria-valuenow={sidebarWidth}
+            tabIndex={0}
+            title="Drag to resize sidebar"
+            className={cn(
+              "absolute inset-y-0 -right-1 z-50 w-2 cursor-col-resize touch-none outline-none",
+              "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-border after:opacity-0 after:transition-opacity after:duration-150",
+              "group-hover/sidebar:after:opacity-100 hover:after:opacity-100 focus-visible:after:opacity-100",
+              sidebarResizing && "after:opacity-100",
+            )}
+            onKeyDown={resizeSidebarWithKeyboard}
+            onPointerDown={beginSidebarResize}
+            onPointerMove={moveSidebarResize}
+            onPointerUp={(event) => finishSidebarResize(event, true)}
+            onPointerCancel={(event) => finishSidebarResize(event, false)}
+          />
           <div className="flex h-16 items-center gap-3 px-4">
             <div className="grid size-9 place-items-center">
               <WandSparkles className="size-4" />

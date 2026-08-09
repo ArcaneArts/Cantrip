@@ -1,0 +1,1 @@
+ALTER TABLE "user_settings" ADD COLUMN "sidebar_width" integer DEFAULT 288 NOT NULL;

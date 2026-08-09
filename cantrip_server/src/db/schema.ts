@@ -147,6 +147,7 @@ export const userSettings = pgTable("user_settings", {
     .references(() => users.id, { onDelete: "cascade" }),
   theme: text("theme").notNull().default("system"),
   highContrast: boolean("high_contrast").notNull().default(false),
+  sidebarWidth: integer("sidebar_width").notNull().default(288),
   desktopFrameRate: integer("desktop_frame_rate").notNull().default(30),
   desktopStreamQuality: text("desktop_stream_quality")
     .notNull()

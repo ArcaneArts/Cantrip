@@ -549,6 +549,15 @@ export const systemHealthSchema = z.object({
 });
 
 export const themePreferenceSchema = z.enum(["system", "light", "dark"]);
+
+export const DEFAULT_SIDEBAR_WIDTH = 288;
+export const MIN_SIDEBAR_WIDTH = 224;
+export const MAX_SIDEBAR_WIDTH = 480;
+export const sidebarWidthPreferenceSchema = z
+  .number()
+  .int()
+  .min(MIN_SIDEBAR_WIDTH)
+  .max(MAX_SIDEBAR_WIDTH);
 export const modelProviderKindSchema = z.enum([
   "chatgpt",
   "ollama",
@@ -662,6 +671,7 @@ export const modelProfileListSchema = z.array(modelProfileSummarySchema);
 export const userSettingsSchema = z.object({
   theme: themePreferenceSchema,
   highContrast: z.boolean(),
+  sidebarWidth: sidebarWidthPreferenceSchema,
   desktopFrameRate: z.union([z.literal(15), z.literal(30), z.literal(60)]),
   desktopStreamQuality: z.enum(["adaptive", "data-saver", "balanced", "sharp"]),
   defaultModelId: z.string().min(1).nullable(),

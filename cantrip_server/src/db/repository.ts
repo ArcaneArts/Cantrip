@@ -878,6 +878,7 @@ export class ServerRepository {
         userId: ownerId,
         theme: "system",
         highContrast: false,
+        sidebarWidth: 288,
         desktopFrameRate: 30,
         desktopStreamQuality: "adaptive",
         defaultModelId: DEFAULT_MODEL_ID,
@@ -935,6 +936,7 @@ export class ServerRepository {
       preferences: {
         theme: settings.theme as ThemePreference,
         highContrast: settings.highContrast,
+        sidebarWidth: settings.sidebarWidth,
         desktopFrameRate:
           settings.desktopFrameRate as UserSettings["desktopFrameRate"],
         desktopStreamQuality:
@@ -965,6 +967,7 @@ export class ServerRepository {
     return {
       theme: settings.theme as ThemePreference,
       highContrast: settings.highContrast,
+      sidebarWidth: settings.sidebarWidth,
       desktopFrameRate:
         settings.desktopFrameRate as UserSettings["desktopFrameRate"],
       desktopStreamQuality:
