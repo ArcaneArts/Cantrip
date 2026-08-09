@@ -1148,7 +1148,7 @@ describe("local server foundation", () => {
 
     const mutationPreflight = await firstApp.inject({
       method: "OPTIONS",
-      url: "/api/projects/test-project/tabs/order",
+      url: "/api/projects/order",
       headers: {
         origin: config.appOrigins[0]!,
         "access-control-request-method": "PATCH",
@@ -2904,80 +2904,6 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toMatchObject({ kind: "history", title: "Repository history" });
-    expect(
-      await firstApp.inject({
-        method: "PATCH",
-        url: `/api/projects/${project.id}/tabs/order`,
-        payload: {
-          ids: [
-            `chat:${duplicatedChat.id}`,
-            `terminal:${reorderedTerminal.id}`,
-            `browser:${browser.id}`,
-            `view:${projectView.id}`,
-            `explorer:${explorer.id}`,
-            `chat:${forkedChat.id}`,
-            `chat:${chat.id}`,
-            `chat:${richChat.id}`,
-          ],
-        },
-      }),
-    ).toMatchObject({ statusCode: 204 });
-    const reorderedChats = chatListSchema.parse(
-      (
-        await firstApp.inject({
-          method: "GET",
-          url: `/api/projects/${project.id}/chats`,
-        })
-      ).json(),
-    );
-    expect(
-      reorderedChats.map(({ id, position }) => ({ id, position })),
-    ).toEqual([
-      { id: duplicatedChat.id, position: 0 },
-      { id: forkedChat.id, position: 5 },
-      { id: chat.id, position: 6 },
-      { id: richChat.id, position: 7 },
-    ]);
-    expect(
-      terminalListSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/projects/${project.id}/terminals`,
-          })
-        ).json(),
-      ),
-    ).toMatchObject([{ id: reorderedTerminal.id, position: 1 }]);
-    expect(
-      explorerListSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/projects/${project.id}/explorers`,
-          })
-        ).json(),
-      ),
-    ).toMatchObject([{ id: explorer.id, position: 4 }]);
-    expect(
-      browserListSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/projects/${project.id}/browsers`,
-          })
-        ).json(),
-      ),
-    ).toMatchObject([{ id: browser.id, position: 2 }]);
-    expect(
-      projectViewListSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/projects/${project.id}/views`,
-          })
-        ).json(),
-      ),
-    ).toMatchObject([{ id: projectView.id, position: 3 }]);
     const remoteDesktop = remoteDesktopSummarySchema.parse(
       (
         await firstApp.inject({
@@ -3175,6 +3101,27 @@ describe("local server foundation", () => {
         { tabKey: `view:${groupedIssuesView.id}` },
       ],
     });
+    const concurrentOrders = await Promise.all([
+      firstApp.inject({
+        method: "PATCH",
+        url: `/api/projects/${project.id}/tab-groups/order`,
+        payload: {
+          revision: mergedTabLayout.revision,
+          groupIds: mergedTabLayout.groups.map(({ id }) => id),
+        },
+      }),
+      firstApp.inject({
+        method: "PATCH",
+        url: `/api/projects/${project.id}/tab-groups/order`,
+        payload: {
+          revision: mergedTabLayout.revision,
+          groupIds: mergedTabLayout.groups.map(({ id }) => id).reverse(),
+        },
+      }),
+    ]);
+    expect(concurrentOrders.map(({ statusCode }) => statusCode).sort()).toEqual(
+      [200, 409],
+    );
     let resolveDesktopReady: ((message: unknown) => void) | null = null;
     const desktopReadyPromise = new Promise<unknown>((resolve) => {
       resolveDesktopReady = resolve;
@@ -3999,6 +3946,14 @@ describe("local server foundation", () => {
     );
     approvalLiveSocket.terminate();
 
+    const layoutBeforeRestart = projectTabLayoutSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/tab-groups`,
+        })
+      ).json(),
+    );
     await firstApp.close();
 
     const secondDatabase = await connectDatabase(config);
@@ -4038,6 +3993,15 @@ describe("local server foundation", () => {
     expect(projects).toHaveLength(1);
     expect(workers).toHaveLength(1);
     expect(workers[0]?.codexRuntime).toEqual(unprobedCodexRuntimeReport);
+    const restoredTabLayout = projectTabLayoutSummarySchema.parse(
+      (
+        await secondApp.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/tab-groups`,
+        })
+      ).json(),
+    );
+    expect(restoredTabLayout).toEqual(layoutBeforeRestart);
     expect(messages.slice(0, 4)).toMatchObject([
       firstMessage,
       {

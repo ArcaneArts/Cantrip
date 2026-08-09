@@ -1140,13 +1140,6 @@ export async function reorderProjects(ids: string[]) {
   });
 }
 
-export async function reorderProjectTabs(projectId: string, ids: string[]) {
-  await request(`/api/projects/${encodeURIComponent(projectId)}/tabs/order`, {
-    method: "PATCH",
-    body: JSON.stringify(orderedIdsSchema.parse({ ids })),
-  });
-}
-
 export async function getMessages(chatId: string) {
   return chatMessageListSchema.parse(
     await request(`/api/chats/${encodeURIComponent(chatId)}/messages`),

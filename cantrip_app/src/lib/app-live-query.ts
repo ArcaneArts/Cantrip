@@ -33,7 +33,9 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
     case "worker":
       return [["workers"], ["chat-sync"]];
     case "project":
-      return [["projects"]];
+      return projectId
+        ? [["projects"], ["project-tab-layout", projectId]]
+        : [["projects"]];
     case "worktree":
       return projectId
         ? [["worktrees", projectId]]
@@ -151,6 +153,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
       ];
     case "project":
       return [
+        ["project-tab-layout", scope.projectId],
         ["worktrees", scope.projectId],
         ["worktree-status", scope.projectId],
         ["chats", scope.projectId],

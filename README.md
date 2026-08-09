@@ -33,6 +33,29 @@ before producing command or file activity.
 
 The app can switch between the structured chat view and the linked live Codex console. Ordinary terminal, Explorer, browser, chat, and project tabs can be renamed and reordered together.
 
+### Persistent tab groups
+
+Project surfaces are organized into server-owned tab groups. Each group is one
+sidebar row and has an always-visible horizontal top bar; a singleton is simply
+a one-member group. Drag a singleton sidebar row into the visible top bar to
+join it, drag top tabs to reorder them, or drag a top tab back to the sidebar to
+split it. These grouping operations work in Vite, Capacitor, and Tauri and use
+one revision-checked server mutation, so refreshes and other clients see the
+same membership and order. The active member inside each group remains local to
+each window.
+
+On Tauri, the pop-out action opens the complete group rather than one isolated
+surface. A group has at most one local pop-out owner; selecting its row in the
+main sidebar focuses that window. Top tabs can be detached into new windows and
+docked into another visible Cantrip top bar. Tauri resolves native drops in
+physical screen coordinates, including negative monitor origins and mixed-DPI
+layouts, and closes a source pop-out only after an atomic server move succeeds
+and leaves the source group empty. Closing an ordinary pop-out never deletes
+its group or tabs. Native cross-window dragging is intentionally desktop-only;
+web and Capacitor clients retain all same-window grouping behavior. See
+[docs/TAB_GROUPS.md](docs/TAB_GROUPS.md) for the model, failure semantics, and
+QA matrix.
+
 ## Architecture
 
 Cantrip is split into three deployable applications plus one shared protocol package:
