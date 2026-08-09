@@ -123,7 +123,7 @@ import {
   type WorktreeStatusMap,
 } from "@/components/worktrees/worktree-control";
 import { hasScrolledContent } from "@/lib/scroll-divider";
-import { useAppLiveScope } from "@/lib/app-live-react";
+import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -2239,6 +2239,8 @@ function ChatTranscript({
 
 export function App() {
   const queryClient = useQueryClient();
+  const liveStatus = useAppLiveStatus();
+  const projectResourcesLive = liveStatus === "live";
   const desktopRuntime = useMemo(() => isDesktopRuntime(), []);
   const overlayTitlebar = useMemo(
     () => shouldUseOverlayTitlebar(desktopRuntime, navigator.userAgent),
@@ -2364,7 +2366,7 @@ export function App() {
   const workers = useQuery({
     queryFn: getWorkers,
     queryKey: ["workers"],
-    refetchInterval: 3_000,
+    refetchInterval: projectResourcesLive ? false : 10_000,
   });
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
   const saveSidebarWidth = useMutation({
@@ -2377,16 +2379,18 @@ export function App() {
   const projects = useQuery({
     queryFn: getProjects,
     queryKey: ["projects"],
-    refetchInterval: (query) =>
-      query.state.data?.some((project) => project.setupStatus === "cloning")
-        ? 750
-        : false,
+    refetchInterval: projectResourcesLive
+      ? false
+      : (query) =>
+          query.state.data?.some((project) => project.setupStatus === "cloning")
+            ? 3_000
+            : 15_000,
   });
   const worktrees = useQuery({
     enabled: Boolean(selectedProjectId),
     queryFn: () => getProjectWorktrees(selectedProjectId!),
     queryKey: ["worktrees", selectedProjectId],
-    refetchInterval: 3_000,
+    refetchInterval: projectResourcesLive ? false : 15_000,
   });
   const worktreeStatusQueries = useQueries({
     queries: (worktrees.data ?? []).map((worktree) => ({
@@ -2417,37 +2421,37 @@ export function App() {
     enabled: Boolean(selectedProjectId),
     queryFn: () => getChats(selectedProjectId!),
     queryKey: ["chats", selectedProjectId],
-    refetchInterval: 1_000,
+    refetchInterval: projectResourcesLive ? false : 10_000,
   });
   const terminals = useQuery({
     enabled: Boolean(selectedProjectId),
     queryFn: () => getTerminals(selectedProjectId!),
     queryKey: ["terminals", selectedProjectId],
-    refetchInterval: 1_000,
+    refetchInterval: projectResourcesLive ? false : 10_000,
   });
   const explorers = useQuery({
     enabled: Boolean(selectedProjectId),
     queryFn: () => getExplorers(selectedProjectId!),
     queryKey: ["explorers", selectedProjectId],
-    refetchInterval: 1_000,
+    refetchInterval: projectResourcesLive ? false : 10_000,
   });
   const browsers = useQuery({
     enabled: Boolean(selectedProjectId),
     queryFn: () => getBrowsers(selectedProjectId!),
     queryKey: ["browsers", selectedProjectId],
-    refetchInterval: 1_000,
+    refetchInterval: projectResourcesLive ? false : 10_000,
   });
   const codeTabs = useQuery({
     enabled: Boolean(selectedProjectId),
     queryFn: () => getCodeTabs(selectedProjectId!),
     queryKey: ["code-tabs", selectedProjectId],
-    refetchInterval: 2_000,
+    refetchInterval: projectResourcesLive ? false : 10_000,
   });
   const projectViews = useQuery({
     enabled: Boolean(selectedProjectId),
     queryFn: () => getProjectViews(selectedProjectId!),
     queryKey: ["project-views", selectedProjectId],
-    refetchInterval: 1_000,
+    refetchInterval: projectResourcesLive ? false : 10_000,
   });
   const selectedProjectViewForQuery = projectViews.data?.find(
     (view) => view.id === selectedProjectViewId,
@@ -2456,7 +2460,7 @@ export function App() {
     enabled: selectedProjectViewForQuery?.kind === "remote-desktop",
     queryFn: () => getRemoteDesktop(selectedProjectViewId!),
     queryKey: ["remote-desktop", selectedProjectViewId],
-    refetchInterval: 2_000,
+    refetchInterval: projectResourcesLive ? false : 10_000,
   });
   const newChat = useMutation({
     mutationFn: ({

@@ -96,6 +96,7 @@ export class ProjectWorktreeCoordinator {
   constructor(
     private readonly repository: WorktreeRepository,
     private readonly bridge: WorkerCommandBus,
+    private readonly onProjectChanged?: (projectId: string) => void,
   ) {}
 
   async serialize<T>(
@@ -110,12 +111,18 @@ export class ProjectWorktreeCoordinator {
     );
     this.#mutationQueues.set(projectId, settled);
     try {
-      return await current;
+      const result = await current;
+      this.notifyProjectChanged(projectId);
+      return result;
     } finally {
       if (this.#mutationQueues.get(projectId) === settled) {
         this.#mutationQueues.delete(projectId);
       }
     }
+  }
+
+  notifyProjectChanged(projectId: string): void {
+    this.onProjectChanged?.(projectId);
   }
 
   async create(
