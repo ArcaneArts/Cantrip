@@ -366,30 +366,38 @@ function CodeHeaderActions({
   const controlClass = floating
     ? "bg-background/75 shadow-md backdrop-blur-xl"
     : undefined;
+  const runtimeIssue =
+    header?.error ??
+    (header?.status === "failed" || header?.status === "offline"
+      ? `Editor ${header.status}.`
+      : null);
   return (
     <div className="flex items-center gap-1.5">
-      <Badge
-        variant="outline"
-        className={cn(
-          "hidden gap-1.5 font-normal capitalize sm:flex",
-          floating && "bg-background/75 shadow-md backdrop-blur-xl",
-          header?.error && "border-destructive/50 text-destructive",
-        )}
-        title={header?.error ?? undefined}
-      >
-        {header?.isBusy ? (
-          <Loader2 className="size-3 animate-spin" />
-        ) : (
-          <span
-            className={cn(
-              "size-1.5 rounded-full bg-muted-foreground",
-              header?.status === "running" && "bg-emerald-500",
-              header?.status === "failed" && "bg-destructive",
-            )}
-          />
-        )}
-        {header?.status ?? "connecting"}
-      </Badge>
+      {runtimeIssue ? (
+        <span
+          className={cn(
+            "grid size-8 place-items-center text-destructive",
+            controlClass,
+          )}
+          role="status"
+          title={runtimeIssue}
+        >
+          <CircleAlert className="size-4" />
+          <span className="sr-only">{runtimeIssue}</span>
+        </span>
+      ) : header?.isBusy ? (
+        <span
+          className={cn(
+            "grid size-8 place-items-center text-muted-foreground",
+            controlClass,
+          )}
+          role="status"
+          title="Connecting to editor"
+        >
+          <Loader2 className="size-4 animate-spin" />
+          <span className="sr-only">Connecting to editor</span>
+        </span>
+      ) : null}
       <Button
         size="icon"
         variant={floating ? "outline" : "ghost"}

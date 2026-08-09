@@ -46,6 +46,14 @@ export function isCodeAttachmentUnavailableMessage(value: unknown): boolean {
   );
 }
 
+export function isCodeSessionUnavailableError(error: unknown): boolean {
+  return (
+    error instanceof CantripApiError &&
+    error.status >= 500 &&
+    /^Cantrip Code session .+ is not open\.$/u.test(error.message)
+  );
+}
+
 function errorText(error: unknown): string {
   return error instanceof Error
     ? error.message
@@ -71,6 +79,7 @@ export function CodeView({
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [backgroundError, setBackgroundError] = useState<string | null>(null);
   const [connectAttempt, setConnectAttempt] = useState(0);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -98,6 +107,9 @@ export function CodeView({
     let ownedAttachmentId: string | null = null;
     stopped.current = false;
     setAttachment(null);
+    setActionError(null);
+    setActionMessage(null);
+    setBackgroundError(null);
     setConnectAttempt(0);
     setConnectError(null);
     setConnecting(false);
@@ -119,6 +131,7 @@ export function CodeView({
         }
         ownedAttachmentId = next.attachmentId;
         setAttachment(next);
+        setBackgroundError(null);
         setConnectError(null);
         setConnecting(false);
         setRetrying(false);
@@ -167,18 +180,34 @@ export function CodeView({
   }, [attachment, reload]);
 
   useEffect(() => {
+    if (!attachment) return;
     let cancelled = false;
     void setCodeTabTheme(codeTab.id, "follow-cantrip", appearance)
       .then(() => {
-        if (!cancelled) onChangedRef.current?.();
+        if (!cancelled) {
+          setBackgroundError(null);
+          onChangedRef.current?.();
+        }
       })
       .catch((error: unknown) => {
-        if (!cancelled) setActionError(errorText(error));
+        if (cancelled) return;
+        if (isCodeSessionUnavailableError(error)) {
+          setBackgroundError(null);
+          reload();
+          return;
+        }
+        setBackgroundError(errorText(error));
       });
     return () => {
       cancelled = true;
     };
-  }, [appearance, codeTab.id]);
+  }, [appearance, attachment?.attachmentId, codeTab.id, reload]);
+
+  useEffect(() => {
+    if (!actionMessage) return;
+    const timeout = setTimeout(() => setActionMessage(null), 2_500);
+    return () => clearTimeout(timeout);
+  }, [actionMessage]);
 
   const runAction = useCallback(
     async (name: string, action: () => Promise<void>) => {
@@ -220,7 +249,11 @@ export function CodeView({
       runAction("stop", async () => {
         stopped.current = true;
         connectionGeneration.current += 1;
-        await stopCodeTab(codeTab.id);
+        try {
+          await stopCodeTab(codeTab.id);
+        } catch (error) {
+          if (!isCodeSessionUnavailableError(error)) throw error;
+        }
         setAttachment(null);
         setFrameLoaded(false);
         setConnectError(null);
@@ -234,7 +267,11 @@ export function CodeView({
       runAction("restart", async () => {
         stopped.current = true;
         connectionGeneration.current += 1;
-        await stopCodeTab(codeTab.id);
+        try {
+          await stopCodeTab(codeTab.id);
+        } catch (error) {
+          if (!isCodeSessionUnavailableError(error)) throw error;
+        }
         stopped.current = false;
         setReloadVersion((version) => version + 1);
       }),
@@ -244,7 +281,7 @@ export function CodeView({
   const header = useMemo<CodeHeaderState>(
     () => ({
       attachmentExpiresAt: attachment?.expiresAt ?? null,
-      error: actionError ?? connectError,
+      error: actionError ?? connectError ?? backgroundError,
       isBusy:
         busyAction !== null ||
         connecting ||
@@ -261,6 +298,7 @@ export function CodeView({
     [
       actionError,
       attachment,
+      backgroundError,
       busyAction,
       codeTab.status,
       connectError,
