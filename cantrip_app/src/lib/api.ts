@@ -115,6 +115,10 @@ import type {
   WorktreePolicy,
 } from "@cantrip/protocol";
 import {
+  workflowAutomationTriggerCreateSchema,
+  workflowAutomationTriggerListSchema,
+  workflowAutomationTriggerSchema,
+  workflowAutomationTriggerUpdateSchema,
   workflowDefinitionDetailSchema,
   workflowDefinitionCreateSchema,
   workflowDefinitionGenerationCreateSchema,
@@ -123,6 +127,7 @@ import {
   workflowDefinitionSummarySchema,
   workflowDefinitionUpdateSchema,
   workflowGateDecisionSchema,
+  workflowGitEventDeliveryCreateSchema,
   workflowNodeRetrySchema,
   workflowRunCancelSchema,
   workflowRunCreateSchema,
@@ -138,11 +143,17 @@ import {
   workflowRevisionCreateSchema,
   workflowRevisionSchema,
   workflowWorktreeOutcomeRequestSchema,
+  workflowTriggerDeliveryCreateSchema,
+  workflowTriggerDeliveryResultSchema,
+  type WorkflowAutomationTriggerCreate,
+  type WorkflowAutomationTriggerQuery,
+  type WorkflowAutomationTriggerUpdate,
   type WorkflowDefinitionQuery,
   type WorkflowDefinitionCreate,
   type WorkflowDefinitionGenerationCreate,
   type WorkflowDefinitionUpdate,
   type WorkflowGateDecision,
+  type WorkflowGitEventDeliveryCreate,
   type WorkflowNodeRetry,
   type WorkflowRunCancel,
   type WorkflowRunCreate,
@@ -154,6 +165,7 @@ import {
   type WorkflowRepositoryImport,
   type WorkflowRevisionCreate,
   type WorkflowWorktreeOutcomeRequest,
+  type WorkflowTriggerDeliveryCreate,
 } from "@cantrip/protocol/workflows";
 import { getActiveServerUrl } from "@/lib/server-connections";
 
@@ -296,6 +308,68 @@ export async function exportWorkflowToRepository(
     await post(
       `/api/workflows/${encodeURIComponent(workflowId)}/repository-export`,
       workflowRepositoryExportSchema.parse(input),
+    ),
+  );
+}
+
+export async function getWorkflowAutomationTriggers(
+  input: Partial<WorkflowAutomationTriggerQuery> = {},
+) {
+  return workflowAutomationTriggerListSchema.parse(
+    await request(
+      withQuery("/api/workflow-triggers", {
+        projectId: input.projectId,
+        type: input.type,
+        enabled: input.enabled,
+        limit: input.limit,
+      }),
+    ),
+  );
+}
+
+export async function createWorkflowAutomationTrigger(
+  input: WorkflowAutomationTriggerCreate,
+) {
+  return workflowAutomationTriggerSchema.parse(
+    await post(
+      "/api/workflow-triggers",
+      workflowAutomationTriggerCreateSchema.parse(input),
+    ),
+  );
+}
+
+export async function updateWorkflowAutomationTrigger(
+  triggerId: string,
+  input: WorkflowAutomationTriggerUpdate,
+) {
+  return workflowAutomationTriggerSchema.parse(
+    await request(`/api/workflow-triggers/${encodeURIComponent(triggerId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(workflowAutomationTriggerUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function invokeSavedWorkflowCommand(
+  triggerId: string,
+  input: WorkflowTriggerDeliveryCreate,
+) {
+  return workflowTriggerDeliveryResultSchema.parse(
+    await post(
+      `/api/workflow-triggers/${encodeURIComponent(triggerId)}/invoke`,
+      workflowTriggerDeliveryCreateSchema.parse(input),
+    ),
+  );
+}
+
+export async function deliverWorkflowGitEvent(
+  triggerId: string,
+  input: WorkflowGitEventDeliveryCreate,
+) {
+  return workflowTriggerDeliveryResultSchema.parse(
+    await post(
+      `/api/workflow-triggers/${encodeURIComponent(triggerId)}/git-event`,
+      workflowGitEventDeliveryCreateSchema.parse(input),
     ),
   );
 }

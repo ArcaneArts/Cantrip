@@ -303,6 +303,90 @@ describe.sequential("workflow trigger API", () => {
     ).toMatchObject({ type: "webhook", sourceId: created.id });
   });
 
+  it("adapts matching Git events and saved command invocations", async () => {
+    const gitTrigger = workflowAutomationTriggerSchema.parse(
+      (
+        await createTrigger({
+          type: "git",
+          configuration: {
+            event: "push",
+            branchPattern: "release/*",
+            minimumIntervalSeconds: 1,
+          },
+        })
+      ).json(),
+    );
+    const wrongEvent = await app.inject({
+      method: "POST",
+      url: `/api/workflow-triggers/${gitTrigger.id}/git-event`,
+      payload: {
+        event: "pull-request",
+        branch: "release/v1",
+        deliveryId: "git-delivery-wrong-event",
+      },
+    });
+    expect(wrongEvent.statusCode).toBe(409);
+    const wrongBranch = await app.inject({
+      method: "POST",
+      url: `/api/workflow-triggers/${gitTrigger.id}/git-event`,
+      payload: {
+        event: "push",
+        branch: "main",
+        deliveryId: "git-delivery-wrong-branch",
+      },
+    });
+    expect(wrongBranch.statusCode).toBe(409);
+
+    const gitDelivery = workflowTriggerDeliveryResultSchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/workflow-triggers/${gitTrigger.id}/git-event`,
+          payload: {
+            event: "push",
+            branch: "refs/heads/release/v1",
+            deliveryId: "github-delivery-1",
+          },
+        })
+      ).json(),
+    );
+    expect(gitDelivery.run.run.trigger).toMatchObject({
+      type: "git",
+      actorType: "git",
+      metadata: {
+        event: "push",
+        branch: "refs/heads/release/v1",
+        deliveryId: "github-delivery-1",
+      },
+    });
+
+    const commandTrigger = workflowAutomationTriggerSchema.parse(
+      (
+        await createTrigger({
+          type: "saved-command",
+          configuration: {
+            command: "release-now",
+            minimumIntervalSeconds: 1,
+          },
+        })
+      ).json(),
+    );
+    const commandDelivery = workflowTriggerDeliveryResultSchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/workflow-triggers/${commandTrigger.id}/invoke`,
+          payload: { idempotencyKey: "command-invocation-1" },
+        })
+      ).json(),
+    );
+    expect(commandDelivery.run.run.trigger).toMatchObject({
+      type: "saved-command",
+      actorType: "user",
+      metadata: { command: "release-now" },
+    });
+  });
+
   it("persists offline schedule pause, queue, and catch-up decisions", async () => {
     connected = false;
     const pause = workflowAutomationTriggerSchema.parse(

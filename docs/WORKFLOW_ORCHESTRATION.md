@@ -386,7 +386,20 @@ returns the original delivery and run instead of launching twice.
 Structured delivery input is validated and merged with the trigger snapshot
 before persistence. Fields whose names indicate secrets, tokens, passwords,
 credentials, authorization values, or API keys are rejected recursively, and
-neither webhook credentials nor payloads are included in provenance. Git event
-and saved-command delivery adapters, plus operator-facing trigger management,
-are separate consumers of this control plane rather than alternate execution
-runtimes.
+neither webhook credentials nor payloads are included in provenance.
+
+Git/GitHub adapters deliver a normalized `push` or `pull-request` event to a
+specific trigger. Cantrip verifies the configured event and a bounded `*`
+branch pattern before claiming the provider delivery id; event, branch, and
+delivery id are retained as auditable provenance. Saved commands appear in the
+unified palette as `/command/<key>` and invoke their specific trigger with a
+fresh idempotency key. Both adapters use the same worker availability, trust,
+preauthorization, rate-limit, and secret-input checks as schedules and scoped
+webhooks.
+
+The workflow center creates every trigger disabled. It shows its pinned type,
+delivery surface, next due time, and latest durable error, and exposes explicit
+Enable and Disable actions. Webhook credentials are hashed in the client and
+cleared from the form; only the SHA-256 hash crosses the app/server boundary.
+The app remains a client of Cantrip Server, and Cantrip's trigger adapters remain
+control-plane consumers rather than alternate agent runtimes.

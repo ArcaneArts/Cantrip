@@ -2,6 +2,7 @@ import type { ChatSummary } from "@cantrip/protocol";
 import type {
   WorkflowDefinitionDetail,
   WorkflowDefinitionSummary,
+  WorkflowAutomationTrigger,
   WorkflowGraph,
   WorkflowJsonObject,
   WorkflowNodeAttempt,
@@ -51,6 +52,7 @@ import {
 import {
   cancelWorkflowRun,
   createWorkflowRun,
+  getWorkflowAutomationTriggers,
   decideWorkflowGate,
   exportWorkflowToRepository,
   getWorkflow,
@@ -64,9 +66,11 @@ import {
   resumeWorkflowRun,
   retryWorkflowNode,
   saveWorkflowRunRevision,
+  updateWorkflowAutomationTrigger,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { WorkflowAuthorDialog } from "./workflow-author-dialog";
+import { WorkflowAutomationDialog } from "./workflow-automation-dialog";
 
 const dateTime = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -197,6 +201,21 @@ function definitionLabel(workflow: WorkflowDefinitionSummary) {
   return `${workflow.scope === "personal" ? "personal" : "project"}/${workflow.slug}`;
 }
 
+export function workflowAutomationLabel(trigger: WorkflowAutomationTrigger) {
+  switch (trigger.type) {
+    case "schedule":
+      return `Every ${trigger.configuration.intervalSeconds}s · ${trigger.configuration.offlinePolicy} offline`;
+    case "api":
+      return `POST /api/workflow-triggers/${trigger.id}/deliver`;
+    case "webhook":
+      return `POST /api/workflow-hooks/${trigger.id}`;
+    case "git":
+      return `${trigger.configuration.event} · ${trigger.configuration.branchPattern}`;
+    case "saved-command":
+      return `/command/${trigger.configuration.command}`;
+  }
+}
+
 function workflowNodePrompt(node: WorkflowGraph["nodes"][number] | undefined) {
   if (!node || !("prompt" in node.configuration)) return null;
   return typeof node.configuration.prompt === "string"
@@ -235,6 +254,7 @@ export function WorkflowCenter({
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [launchOpen, setLaunchOpen] = useState(false);
   const [authorOpen, setAuthorOpen] = useState(false);
+  const [automationOpen, setAutomationOpen] = useState(false);
   const [authorWorkflow, setAuthorWorkflow] =
     useState<WorkflowDefinitionDetail | null>(null);
   const [generationSeed, setGenerationSeed] = useState<{
@@ -290,6 +310,10 @@ export function WorkflowCenter({
       query.state.data?.some(({ status }) => activeRunStatuses.has(status))
         ? 2_000
         : false,
+  });
+  const automations = useQuery({
+    queryFn: () => getWorkflowAutomationTriggers({ projectId, limit: 500 }),
+    queryKey: ["workflow-triggers", projectId],
   });
 
   useEffect(() => {
@@ -439,11 +463,36 @@ export function WorkflowCenter({
       void repository.refetch();
     },
   });
+  const updateAutomation = useMutation({
+    mutationFn: ({
+      enabled,
+      triggerId,
+    }: {
+      enabled: boolean;
+      triggerId: string;
+    }) => updateWorkflowAutomationTrigger(triggerId, { enabled }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<WorkflowAutomationTrigger[]>(
+        ["workflow-triggers", projectId],
+        (current) =>
+          current?.map((trigger) =>
+            trigger.id === updated.id ? updated : trigger,
+          ) ?? [updated],
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["workflow-triggers", projectId],
+      });
+    },
+  });
 
   const selectedDefinition = visibleWorkflows.find(
     ({ id }) => id === selectedWorkflowId,
   );
-  const controlError = control.error ?? launch.error ?? saveRun.error;
+  const selectedAutomations = (automations.data ?? []).filter(
+    ({ workflowId }) => workflowId === selectedWorkflowId,
+  );
+  const controlError =
+    control.error ?? launch.error ?? saveRun.error ?? updateAutomation.error;
 
   const prepareReview = () => {
     try {
@@ -478,17 +527,23 @@ export function WorkflowCenter({
           <Button
             size="sm"
             variant="ghost"
-            disabled={workflows.isFetching || runs.isFetching}
+            disabled={
+              workflows.isFetching || runs.isFetching || automations.isFetching
+            }
             onClick={() => {
               void workflows.refetch();
               void runs.refetch();
+              void automations.refetch();
               if (selectedRunId) void run.refetch();
             }}
           >
             <RefreshCw
               className={cn(
                 "size-4",
-                (workflows.isFetching || runs.isFetching) && "animate-spin",
+                (workflows.isFetching ||
+                  runs.isFetching ||
+                  automations.isFetching) &&
+                  "animate-spin",
               )}
             />
             Refresh
@@ -510,6 +565,7 @@ export function WorkflowCenter({
       workflow.isError ||
       runs.isError ||
       run.isError ||
+      automations.isError ||
       controlError ? (
         <div className="flex gap-2 rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
           <CircleAlert className="mt-0.5 size-4 shrink-0" />
@@ -519,6 +575,7 @@ export function WorkflowCenter({
                 workflow.error ??
                 runs.error ??
                 run.error ??
+                automations.error ??
                 controlError,
             )}
           </span>
@@ -596,6 +653,14 @@ export function WorkflowCenter({
                   <Button
                     size="sm"
                     variant="outline"
+                    disabled={!workflow.data.revision}
+                    onClick={() => setAutomationOpen(true)}
+                  >
+                    <Clock3 className="size-4" /> Automate
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
                     onClick={() => {
                       setAuthorWorkflow(workflow.data);
                       setAuthorOpen(true);
@@ -665,6 +730,71 @@ export function WorkflowCenter({
                   </div>
                 </>
               ) : null}
+
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h4 className="text-sm font-medium">
+                    Automations ({selectedAutomations.length})
+                  </h4>
+                  <span className="text-xs text-muted-foreground">
+                    Explicit enablement required
+                  </span>
+                </div>
+                <div className="grid gap-2">
+                  {selectedAutomations.map((trigger) => (
+                    <div
+                      key={trigger.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <strong className="text-sm font-medium">
+                            {trigger.name}
+                          </strong>
+                          <Badge variant="secondary" className="capitalize">
+                            {trigger.type.replaceAll("-", " ")}
+                          </Badge>
+                          <StatusBadge
+                            status={trigger.enabled ? "enabled" : "disabled"}
+                          />
+                        </div>
+                        <p className="mt-1 break-all font-mono text-[10px] text-muted-foreground">
+                          {workflowAutomationLabel(trigger)}
+                        </p>
+                        {trigger.nextRunAt ? (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Next: {dateTime.format(new Date(trigger.nextRunAt))}
+                          </p>
+                        ) : null}
+                        {trigger.lastError ? (
+                          <p className="mt-1 text-xs text-destructive">
+                            {trigger.lastError}
+                          </p>
+                        ) : null}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={trigger.enabled ? "outline" : "default"}
+                        disabled={updateAutomation.isPending}
+                        onClick={() =>
+                          updateAutomation.mutate({
+                            triggerId: trigger.id,
+                            enabled: !trigger.enabled,
+                          })
+                        }
+                      >
+                        {trigger.enabled ? "Disable" : "Enable"}
+                      </Button>
+                    </div>
+                  ))}
+                  {!automations.isPending && !selectedAutomations.length ? (
+                    <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+                      No triggers for this workflow. Add one to configure a
+                      schedule, API, webhook, Git event, or saved command.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
             </div>
           ) : (
             <div className="grid h-full place-items-center text-center text-sm text-muted-foreground">
@@ -1021,6 +1151,23 @@ export function WorkflowCenter({
           void queryClient.invalidateQueries({ queryKey: ["workflows"] });
         }}
       />
+      {workflow.data ? (
+        <WorkflowAutomationDialog
+          open={automationOpen}
+          projectId={projectId}
+          workflow={workflow.data}
+          onOpenChange={setAutomationOpen}
+          onCreated={(created) => {
+            queryClient.setQueryData<WorkflowAutomationTrigger[]>(
+              ["workflow-triggers", projectId],
+              (current) => [created, ...(current ?? [])],
+            );
+            void queryClient.invalidateQueries({
+              queryKey: ["workflow-triggers", projectId],
+            });
+          }}
+        />
+      ) : null}
     </section>
   );
 }
