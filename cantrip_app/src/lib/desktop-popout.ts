@@ -94,6 +94,7 @@ export async function closeCurrentDesktopWindow(): Promise<void> {
 export async function openDesktopPopoutGroup(
   target: DesktopPopoutGroupTarget,
   title: string,
+  position?: { x: number; y: number },
 ): Promise<"created" | "focused"> {
   if (!isDesktopRuntime()) {
     throw new Error("Pop-out windows are only available in the desktop app.");
@@ -128,6 +129,15 @@ export async function openDesktopPopoutGroup(
         );
       });
     });
+    if (position) {
+      const { PhysicalPosition } = await import("@tauri-apps/api/dpi");
+      await popout.setPosition(
+        new PhysicalPosition(
+          Math.round(position.x - 180),
+          Math.round(position.y - 24),
+        ),
+      );
+    }
     return "created";
   } catch (error) {
     // Two callers may race after both observe no owner. The stable label lets

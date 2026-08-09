@@ -251,6 +251,11 @@ import {
   sidebarWidthFromKey,
   sidebarWidthFromPointer,
 } from "@/lib/sidebar-resize";
+import {
+  focusDesktopWindow,
+  type DesktopNativeDropResolution,
+  type DesktopNativeTabDrag,
+} from "@/lib/desktop-window-coordinator";
 import { cn } from "@/lib/utils";
 import { applyOptimisticTabLayoutCommand } from "@/lib/project-tab-layout-optimistic";
 import type {
@@ -3544,14 +3549,21 @@ export function App() {
   }, [pendingSurfaceSelection, selectedProjectId, tabLayout.data]);
 
   useEffect(() => {
-    if (!popoutTarget || !tabLayout.isSuccess) return;
+    if (!popoutTarget || !tabLayout.isSuccess || tabLayoutMutation.isPending) {
+      return;
+    }
     if (tabLayout.data?.groups.some(({ id }) => id === popoutTarget.groupId)) {
       return;
     }
     void closeCurrentDesktopWindow().catch((error: unknown) => {
       console.error("Could not close an orphaned pop-out window", error);
     });
-  }, [popoutTarget, tabLayout.data, tabLayout.isSuccess]);
+  }, [
+    popoutTarget,
+    tabLayout.data,
+    tabLayout.isSuccess,
+    tabLayoutMutation.isPending,
+  ]);
 
   const revealWorkspace = () => {
     setMobileNavigationOpen(false);
@@ -3688,12 +3700,107 @@ export function App() {
     reordered.splice(to, 0, moved);
     reorderProjectsMutation.mutate(reordered.map(({ id }) => id));
   };
+  const handleDesktopTabDrop = async (
+    drag: DesktopNativeTabDrag,
+    resolution: DesktopNativeDropResolution,
+  ) => {
+    if (resolution.kind === "cancelled" || resolution.kind === "noop") return;
+    if (resolution.kind === "invalid") {
+      setWorkspaceDragError(resolution.reason);
+      return;
+    }
+    const layout = queryClient.getQueryData<ProjectTabLayoutSummary>([
+      "project-tab-layout",
+      drag.projectId,
+    ]);
+    if (!layout) {
+      setWorkspaceDragError("The project tab layout is unavailable.");
+      return;
+    }
+    if (tabLayoutMutation.isPending) {
+      setWorkspaceDragError("Wait for the current tab move to finish.");
+      return;
+    }
+    try {
+      if (resolution.kind === "dock") {
+        if (resolution.targetProjectId !== drag.projectId) {
+          setWorkspaceDragError("Tab groups cannot span projects.");
+          return;
+        }
+        await tabLayoutMutation.mutateAsync({
+          projectId: drag.projectId,
+          command: {
+            type: "move-member",
+            tabKey: drag.surface.tabKey,
+            targetGroupId: resolution.targetGroupId,
+            targetMemberPosition: resolution.targetMemberPosition,
+          },
+        });
+        await focusDesktopWindow(resolution.targetWindowLabel);
+        if (drag.sourceIsPopout && drag.sourceGroupSize === 1) {
+          await closeCurrentDesktopWindow();
+        } else if (!drag.sourceIsPopout && drag.sourceGroupSize === 1) {
+          setDetachedGroupId(resolution.targetGroupId);
+        }
+        return;
+      }
+
+      if (drag.sourceIsPopout && drag.sourceGroupSize === 1) {
+        return;
+      }
+      if (drag.sourceGroupSize === 1) {
+        await openDesktopPopoutGroup(
+          {
+            activeTabKey: drag.surface.tabKey,
+            groupId: drag.groupId,
+            projectId: drag.projectId,
+          },
+          drag.surface.title,
+          { x: resolution.screenX, y: resolution.screenY },
+        );
+        setDetachedGroupId(drag.groupId);
+        return;
+      }
+
+      const nextLayout = await tabLayoutMutation.mutateAsync({
+        projectId: drag.projectId,
+        command: {
+          type: "move-member",
+          tabKey: drag.surface.tabKey,
+          targetGroupId: null,
+          targetGroupPosition: layout.groups.length,
+          targetMemberPosition: 0,
+        },
+      });
+      const detachedGroup = nextLayout.groups.find(({ members }) =>
+        members.some(({ tabKey }) => tabKey === drag.surface.tabKey),
+      );
+      if (!detachedGroup) {
+        setWorkspaceDragError("The detached tab group could not be resolved.");
+        return;
+      }
+      await openDesktopPopoutGroup(
+        {
+          activeTabKey: drag.surface.tabKey,
+          groupId: detachedGroup.id,
+          projectId: drag.projectId,
+        },
+        drag.surface.title,
+        { x: resolution.screenX, y: resolution.screenY },
+      );
+    } catch (error) {
+      setWorkspaceDragError(errorText(error));
+    }
+  };
 
   return (
     <WorkspaceDndProvider
       className="flex h-svh overflow-hidden bg-background text-foreground"
+      desktopRuntime={desktopRuntime}
+      isPopout={isPopout}
       layout={tabLayout.data}
       projects={projects.data ?? []}
+      onDesktopTabDrop={handleDesktopTabDrop}
       onOperation={handleWorkspaceDrop}
       tauriTitlebar={overlayTitlebar ? "overlay" : undefined}
     >
@@ -4486,6 +4593,7 @@ export function App() {
           <ProjectTabBar
             activeTabKey={selectedTabKey}
             creatingKinds={creatingSurfaceKinds}
+            desktopRuntime={desktopRuntime}
             surfaces={selectedGroupSurfaces}
             onCreate={createSurfaceInSelectedGroup}
             onDelete={deleteSurface}
