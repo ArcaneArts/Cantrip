@@ -1257,6 +1257,12 @@ export const workflowWorktreeLeaseStateSchema = z.enum([
   "released",
   "failed",
 ]);
+export const workflowWorktreeOutcomeSchema = z.enum([
+  "kept",
+  "delivered",
+  "discarded",
+  "released",
+]);
 export const workflowWorktreeLeaseSchema = z.object({
   id: idSchema,
   runId: idSchema,
@@ -1276,8 +1282,12 @@ export const workflowWorktreeLeaseSchema = z.object({
   producedChanges: workflowJsonObjectSchema,
   errorCode: z.string().max(200).nullable(),
   errorMessage: z.string().max(5_000).nullable(),
+  outcome: workflowWorktreeOutcomeSchema.nullable(),
+  resolvedByActorType: z.string().min(1).max(100).nullable(),
+  resolvedByActorId: z.string().max(500).nullable(),
   activatedAt: nullableTimestamp,
   checkpointedAt: nullableTimestamp,
+  resolvedAt: nullableTimestamp,
   releasedAt: nullableTimestamp,
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -1392,6 +1402,12 @@ export const workflowRunPauseSchema = z.object({
 
 export const workflowRunResumeSchema = z.object({
   reason: z.string().trim().min(1).max(2_000).nullable().default(null),
+  idempotencyKey: z.string().trim().min(1).max(200),
+});
+
+export const workflowWorktreeOutcomeRequestSchema = z.object({
+  action: z.enum(["keep", "deliver", "discard", "release"]),
+  expectedEndingRevision: z.string().trim().min(1).max(500),
   idempotencyKey: z.string().trim().min(1).max(200),
 });
 
@@ -1569,6 +1585,9 @@ export type WorkflowNodeAttempt = z.infer<typeof workflowNodeAttemptSchema>;
 export type WorkflowWorktreeLeaseState = z.infer<
   typeof workflowWorktreeLeaseStateSchema
 >;
+export type WorkflowWorktreeOutcome = z.infer<
+  typeof workflowWorktreeOutcomeSchema
+>;
 export type WorkflowWorktreeLease = z.infer<typeof workflowWorktreeLeaseSchema>;
 export type WorkflowRunEvent = z.infer<typeof workflowRunEventSchema>;
 export type WorkflowApprovalGateStatus = z.infer<
@@ -1585,6 +1604,9 @@ export type WorkflowRunStatusUpdate = z.infer<
 export type WorkflowRunCancel = z.infer<typeof workflowRunCancelSchema>;
 export type WorkflowRunPause = z.infer<typeof workflowRunPauseSchema>;
 export type WorkflowRunResume = z.infer<typeof workflowRunResumeSchema>;
+export type WorkflowWorktreeOutcomeRequest = z.infer<
+  typeof workflowWorktreeOutcomeRequestSchema
+>;
 export type WorkflowNodeRetry = z.infer<typeof workflowNodeRetrySchema>;
 export type WorkflowGateDecision = z.infer<typeof workflowGateDecisionSchema>;
 export type WorkflowNodeExecutionRequest = z.infer<

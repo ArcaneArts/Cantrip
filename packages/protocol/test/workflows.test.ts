@@ -32,6 +32,7 @@ import {
   workflowRunStatusUpdateSchema,
   workflowVerifyNodeConfigurationSchema,
   workflowWorktreeLeaseSchema,
+  workflowWorktreeOutcomeRequestSchema,
 } from "../src/workflows.js";
 
 const timestamp = "2026-08-08T17:00:00.000Z";
@@ -655,6 +656,19 @@ describe("workflow protocol", () => {
     expect(
       workflowNodeRetrySchema.parse({ idempotencyKey: "retry-1" }),
     ).toEqual({ reason: null, idempotencyKey: "retry-1" });
+    for (const action of ["keep", "deliver", "discard", "release"] as const) {
+      expect(
+        workflowWorktreeOutcomeRequestSchema.parse({
+          action,
+          expectedEndingRevision: "a".repeat(40),
+          idempotencyKey: `worktree-${action}`,
+        }),
+      ).toEqual({
+        action,
+        expectedEndingRevision: "a".repeat(40),
+        idempotencyKey: `worktree-${action}`,
+      });
+    }
     expect(
       workflowRunCancelSchema.safeParse({
         reason: "",
@@ -859,8 +873,12 @@ describe("workflow protocol", () => {
       producedChanges: {},
       errorCode: null,
       errorMessage: null,
+      outcome: null,
+      resolvedByActorType: null,
+      resolvedByActorId: null,
       activatedAt: null,
       checkpointedAt: null,
+      resolvedAt: null,
       releasedAt: null,
       createdAt: timestamp,
       updatedAt: timestamp,

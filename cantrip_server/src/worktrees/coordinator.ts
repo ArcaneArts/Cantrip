@@ -3,13 +3,19 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   worktreeCreateResultSchema,
   worktreeInventorySchema,
+  worktreeRemoveResultSchema,
   worktreeStatusResultSchema,
   type ProjectWorktreeSummary,
   type WorktreeCreateMode,
 } from "@cantrip/protocol";
-import type { WorkflowWorktreeLease } from "@cantrip/protocol/workflows";
+import type {
+  WorkflowRunDetail,
+  WorkflowWorktreeLease,
+  WorkflowWorktreeOutcomeRequest,
+} from "@cantrip/protocol/workflows";
 
 import type { ServerRepository } from "../db/repository.js";
+import { WorkflowControlConflictError } from "../db/workflow-runs.js";
 import {
   type WorkerCommandBus,
   WorkerUnavailableError,
@@ -40,6 +46,19 @@ export interface WorkflowWorktreeAllocationRequest {
 export interface WorkflowWorktreeAllocation {
   lease: WorkflowWorktreeLease;
   worktree: ProjectWorktreeSummary;
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
+  }
+  if (value !== null && typeof value === "object") {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 export function workflowLaneIdentity(
@@ -303,6 +322,139 @@ export class ProjectWorktreeCoordinator {
         );
         throw error;
       }
+    });
+  }
+
+  async resolveWorkflowLane(
+    ownerId: string,
+    runId: string,
+    leaseId: string,
+    input: WorkflowWorktreeOutcomeRequest,
+  ): Promise<WorkflowRunDetail | null> {
+    const initial = await this.repository.workflowRuns.getRun(ownerId, runId);
+    if (!initial) return null;
+    if (!initial.run.projectId) {
+      throw new WorkflowControlConflictError(
+        "The workflow run has no project worktree to resolve.",
+      );
+    }
+    const projectId = initial.run.projectId;
+    return this.serialize(projectId, async () => {
+      const preflight =
+        await this.repository.workflowRuns.preflightWorktreeLeaseOutcome(
+          ownerId,
+          runId,
+          leaseId,
+          input,
+        );
+      if (!preflight) return null;
+      if (preflight.replayed) {
+        return this.repository.workflowRuns.getRun(ownerId, runId);
+      }
+      if (input.action === "keep") {
+        await this.repository.workflowRuns.resolveWorktreeLeaseOutcome(
+          ownerId,
+          runId,
+          leaseId,
+          input,
+          false,
+        );
+        return this.repository.workflowRuns.getRun(ownerId, runId);
+      }
+
+      const lease = preflight.lease;
+      const context = await this.repository.getProjectWorktreeContext(
+        ownerId,
+        projectId,
+        lease.worktreeId!,
+      );
+      if (
+        !context ||
+        context.projectSourceId !== lease.projectSourceId ||
+        context.workerId !== lease.workerId ||
+        context.worktree.isPrimary ||
+        context.worktree.origin !== "cantrip"
+      ) {
+        throw new WorkflowControlConflictError(
+          "The checkpointed workflow worktree no longer matches its managed lane.",
+        );
+      }
+      const inspected = worktreeStatusResultSchema.parse(
+        await this.bridge.request(context.workerId, {
+          type: "worktree.status",
+          sourcePath: context.sourcePath,
+          worktreePath: context.worktree.path,
+        }),
+      );
+      const observed = await this.repository.observeProjectWorktree(
+        ownerId,
+        projectId,
+        context.worktree.id,
+        inspected.worktree,
+      );
+      const producedChanges = {
+        git: {
+          branch: inspected.status.branch,
+          head: inspected.status.head,
+          upstream: inspected.status.upstream,
+          ahead: inspected.status.ahead,
+          behind: inspected.status.behind,
+          files: inspected.status.files,
+        },
+      };
+      if (
+        !observed ||
+        observed.isPrimary ||
+        observed.lifecycleState !== "ready" ||
+        observed.locked ||
+        !inspected.worktree.managed ||
+        observed.branch !== lease.branchName ||
+        inspected.status.head !== lease.endingRevision ||
+        inspected.worktree.head !== lease.endingRevision ||
+        inspected.status.files.length > 0 !== lease.worktreeDirty ||
+        canonicalJson(producedChanges) !== canonicalJson(lease.producedChanges)
+      ) {
+        throw new WorkflowControlConflictError(
+          "The workflow worktree changed after its checkpoint; keep it and inspect the drift before resolving it.",
+        );
+      }
+
+      let worktreeRemoved = false;
+      if (input.action === "discard") {
+        const result = worktreeRemoveResultSchema.parse(
+          await this.bridge.request(context.workerId, {
+            type: "worktree.remove",
+            sourcePath: context.sourcePath,
+            worktreePath: context.worktree.path,
+            force: true,
+            allowExternal: false,
+          }),
+        );
+        if (
+          result.removedPath !== context.worktree.path ||
+          result.inventory.worktrees.some(
+            ({ path }) => path === context.worktree.path,
+          )
+        ) {
+          throw new Error(
+            "The worker did not confirm removal of the discarded workflow lane.",
+          );
+        }
+        await this.repository.reconcileProjectWorktrees(
+          ownerId,
+          projectId,
+          result.inventory,
+        );
+        worktreeRemoved = true;
+      }
+      await this.repository.workflowRuns.resolveWorktreeLeaseOutcome(
+        ownerId,
+        runId,
+        leaseId,
+        input,
+        worktreeRemoved,
+      );
+      return this.repository.workflowRuns.getRun(ownerId, runId);
     });
   }
 

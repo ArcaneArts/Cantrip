@@ -232,6 +232,13 @@
       "when": 1786241859167,
       "tag": "0032_absent_stellaris",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1786246539945,
+      "tag": "0033_smooth_winter_soldier",
+      "breakpoints": true
     }
   ]
 }

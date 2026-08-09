@@ -27,6 +27,7 @@ import {
   workflowRunSchema,
   workflowVerifyNodeConfigurationSchema,
   workflowWorktreeLeaseSchema,
+  workflowWorktreeOutcomeRequestSchema,
   type WorkflowPermissionRequirements,
   type WorkflowAgentNodeConfiguration,
   type WorkflowBudget,
@@ -55,6 +56,7 @@ import {
   type WorkflowRunNodeItemExecutionState,
   type WorkflowVerifyNodeConfiguration,
   type WorkflowWorktreeLease,
+  type WorkflowWorktreeOutcomeRequest,
 } from "@cantrip/protocol/workflows";
 import {
   and,
@@ -200,6 +202,7 @@ function toWorkflowWorktreeLease(
     ...lease,
     activatedAt: nullableISOString(lease.activatedAt),
     checkpointedAt: nullableISOString(lease.checkpointedAt),
+    resolvedAt: nullableISOString(lease.resolvedAt),
     releasedAt: nullableISOString(lease.releasedAt),
     createdAt: toISOString(lease.createdAt),
     updatedAt: toISOString(lease.updatedAt),
@@ -254,6 +257,11 @@ export interface WorkflowWorktreeLeaseReservationInput {
 export interface WorkflowWorktreeLeaseReservationResult {
   created: boolean;
   lease: WorkflowWorktreeLease;
+}
+
+export interface WorkflowWorktreeOutcomePreflight {
+  lease: WorkflowWorktreeLease;
+  replayed: boolean;
 }
 
 export interface WorkflowAttemptLease {
@@ -1359,6 +1367,163 @@ export class WorkflowRunRepository {
       actorId: null,
     });
     return toWorkflowWorktreeLease(lease);
+  }
+
+  async preflightWorktreeLeaseOutcome(
+    ownerId: string,
+    runId: string,
+    leaseId: string,
+    request: WorkflowWorktreeOutcomeRequest,
+  ): Promise<WorkflowWorktreeOutcomePreflight | null> {
+    const input = workflowWorktreeOutcomeRequestSchema.parse(request);
+    const rows = await this.database
+      .select({ lease: schema.workflowWorktreeLeases })
+      .from(schema.workflowWorktreeLeases)
+      .innerJoin(
+        schema.workflowRuns,
+        and(
+          eq(schema.workflowRuns.id, schema.workflowWorktreeLeases.runId),
+          eq(schema.workflowRuns.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.workflowWorktreeLeases.id, leaseId),
+          eq(schema.workflowWorktreeLeases.runId, runId),
+        ),
+      )
+      .limit(1);
+    const lease = rows[0]?.lease;
+    if (!lease) return null;
+    const eventKey = `worktree-outcome:${leaseId}:${input.idempotencyKey}`;
+    const existingEvents = await this.database
+      .select({ payload: schema.workflowRunEvents.payload })
+      .from(schema.workflowRunEvents)
+      .where(
+        and(
+          eq(schema.workflowRunEvents.runId, runId),
+          eq(schema.workflowRunEvents.eventKey, eventKey),
+        ),
+      )
+      .limit(1);
+    if (existingEvents[0]) {
+      this.assertWorktreeOutcomeReplay(existingEvents[0].payload, input);
+      return { lease: toWorkflowWorktreeLease(lease), replayed: true };
+    }
+    this.assertWorktreeOutcomeEligible(lease, input);
+    return { lease: toWorkflowWorktreeLease(lease), replayed: false };
+  }
+
+  async resolveWorktreeLeaseOutcome(
+    ownerId: string,
+    runId: string,
+    leaseId: string,
+    request: WorkflowWorktreeOutcomeRequest,
+    worktreeRemoved: boolean,
+  ): Promise<WorkflowWorktreeLease | null> {
+    const input = workflowWorktreeOutcomeRequestSchema.parse(request);
+    if (worktreeRemoved !== (input.action === "discard")) {
+      throw new WorkflowControlConflictError(
+        "The workflow worktree outcome does not match its filesystem result.",
+      );
+    }
+    const eventKey = `worktree-outcome:${leaseId}:${input.idempotencyKey}`;
+    const outcome =
+      input.action === "keep"
+        ? "kept"
+        : input.action === "deliver"
+          ? "delivered"
+          : input.action === "discard"
+            ? "discarded"
+            : "released";
+    for (let retry = 0; retry < 20; retry += 1) {
+      try {
+        const lease = await this.database.transaction(async (transaction) => {
+          const rows = await transaction
+            .select({ lease: schema.workflowWorktreeLeases })
+            .from(schema.workflowWorktreeLeases)
+            .innerJoin(
+              schema.workflowRuns,
+              and(
+                eq(schema.workflowRuns.id, schema.workflowWorktreeLeases.runId),
+                eq(schema.workflowRuns.ownerId, ownerId),
+              ),
+            )
+            .where(
+              and(
+                eq(schema.workflowWorktreeLeases.id, leaseId),
+                eq(schema.workflowWorktreeLeases.runId, runId),
+              ),
+            )
+            .for("update")
+            .limit(1);
+          const current = rows[0]?.lease;
+          if (!current) return null;
+          const existingEvents = await transaction
+            .select({ payload: schema.workflowRunEvents.payload })
+            .from(schema.workflowRunEvents)
+            .where(
+              and(
+                eq(schema.workflowRunEvents.runId, runId),
+                eq(schema.workflowRunEvents.eventKey, eventKey),
+              ),
+            )
+            .limit(1);
+          if (existingEvents[0]) {
+            this.assertWorktreeOutcomeReplay(existingEvents[0].payload, input);
+            return current;
+          }
+          this.assertWorktreeOutcomeEligible(current, input);
+          const now = new Date();
+          const terminal = input.action !== "keep";
+          const updated = await transaction
+            .update(schema.workflowWorktreeLeases)
+            .set({
+              state: terminal ? "released" : "checkpointed",
+              outcome,
+              resolvedByActorType: "user",
+              resolvedByActorId: ownerId,
+              resolvedAt: now,
+              releasedAt: terminal ? now : null,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(schema.workflowWorktreeLeases.id, leaseId),
+                eq(schema.workflowWorktreeLeases.state, "checkpointed"),
+              ),
+            )
+            .returning();
+          if (!updated[0]) {
+            throw new WorkflowControlConflictError(
+              "The workflow worktree lease changed while resolving its outcome.",
+            );
+          }
+          await insertWorkflowRunEvent(transaction, {
+            runId,
+            runNodeId: current.runNodeId,
+            attemptId: null,
+            eventKey,
+            type: `worktree.lease.${outcome}`,
+            payload: {
+              leaseId,
+              worktreeId: current.worktreeId,
+              branchName: current.branchName,
+              endingRevision: current.endingRevision,
+              worktreeRemoved,
+              request: input,
+            },
+            actorType: "user",
+            actorId: ownerId,
+          });
+          return updated[0];
+        });
+        return lease ? toWorkflowWorktreeLease(lease) : null;
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+      }
+    }
+    throw new Error("Workflow worktree outcome contention exceeded its limit.");
   }
 
   async listEvents(
@@ -7061,6 +7226,44 @@ export class WorkflowRunRepository {
     ) {
       throw new WorkflowRunConflictError(
         "The workflow execution unit already has a different worktree reservation.",
+      );
+    }
+  }
+
+  private assertWorktreeOutcomeEligible(
+    lease: typeof schema.workflowWorktreeLeases.$inferSelect,
+    input: WorkflowWorktreeOutcomeRequest,
+  ): void {
+    if (lease.state !== "checkpointed") {
+      throw new WorkflowControlConflictError(
+        `A ${lease.state} workflow worktree lease cannot accept an outcome.`,
+      );
+    }
+    if (
+      !lease.worktreeId ||
+      !lease.workerId ||
+      !lease.projectSourceId ||
+      !lease.endingRevision
+    ) {
+      throw new WorkflowControlConflictError(
+        "The checkpointed workflow worktree lease is incomplete.",
+      );
+    }
+    if (lease.endingRevision !== input.expectedEndingRevision) {
+      throw new WorkflowControlConflictError(
+        "The workflow worktree ending revision changed before the outcome was applied.",
+      );
+    }
+  }
+
+  private assertWorktreeOutcomeReplay(
+    payload: unknown,
+    input: WorkflowWorktreeOutcomeRequest,
+  ): void {
+    const existing = workflowJsonObjectSchema.parse(payload);
+    if (canonicalJson(existing.request) !== canonicalJson(input)) {
+      throw new WorkflowControlConflictError(
+        "This worktree outcome idempotency key was already used with different input.",
       );
     }
   }

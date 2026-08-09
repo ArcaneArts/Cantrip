@@ -1,0 +1,5 @@
+ALTER TABLE "workflow_worktree_leases" ADD COLUMN "outcome" text;--> statement-breakpoint
+ALTER TABLE "workflow_worktree_leases" ADD COLUMN "resolved_by_actor_type" text;--> statement-breakpoint
+ALTER TABLE "workflow_worktree_leases" ADD COLUMN "resolved_by_actor_id" text;--> statement-breakpoint
+ALTER TABLE "workflow_worktree_leases" ADD COLUMN "resolved_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "workflow_worktree_leases" ADD CONSTRAINT "workflow_worktree_leases_outcome_check" CHECK ("workflow_worktree_leases"."outcome" IS NULL OR ("workflow_worktree_leases"."outcome" = 'kept' AND "workflow_worktree_leases"."state" = 'checkpointed') OR ("workflow_worktree_leases"."outcome" IN ('delivered', 'discarded', 'released') AND "workflow_worktree_leases"."state" = 'released'));

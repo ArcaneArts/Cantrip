@@ -193,6 +193,7 @@ import {
   workflowRunPauseSchema,
   workflowRunQuerySchema,
   workflowRunResumeSchema,
+  workflowWorktreeOutcomeRequestSchema,
 } from "@cantrip/protocol/workflows";
 
 import { resolveCodeSurfaceConfig, type ServerConfig } from "./config.js";
@@ -2401,6 +2402,34 @@ export async function buildApp({
       return run
         ? reply.send(workflowRunDetailSchema.parse(run))
         : reply.code(404).send({ error: "Workflow run not found." });
+    },
+  );
+
+  app.post<{ Params: { leaseId: string; runId: string } }>(
+    "/api/workflow-runs/:runId/worktree-leases/:leaseId/outcome",
+    async (request, reply) => {
+      const input = workflowWorktreeOutcomeRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const run = await worktreeCoordinator.resolveWorkflowLane(
+          LOCAL_USER_ID,
+          request.params.runId,
+          request.params.leaseId,
+          input.data,
+        );
+        return run
+          ? reply.send(workflowRunDetailSchema.parse(run))
+          : reply
+              .code(404)
+              .send({ error: "Workflow run or worktree lease not found." });
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
     },
   );
 

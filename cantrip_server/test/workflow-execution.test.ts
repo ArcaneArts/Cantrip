@@ -80,7 +80,10 @@ const interruptCommands: Array<
   Extract<WorkerCommand, { type: "workflow.node.interrupt" }>
 > = [];
 const worktreeCommands: Array<
-  Extract<WorkerCommand, { type: "worktree.create" | "worktree.status" }>
+  Extract<
+    WorkerCommand,
+    { type: "worktree.create" | "worktree.remove" | "worktree.status" }
+  >
 > = [];
 const workflowWorktrees = new Map<string, WorkerWorktreeSummary>();
 const dirtyWorkflowWorktrees = new Set<string>();
@@ -280,6 +283,19 @@ const workerBridge: WorkerCommandBus = {
         worktree,
         worktreeId ? dirtyWorkflowWorktrees.has(worktreeId) : false,
       );
+    }
+    if (command.type === "worktree.remove") {
+      worktreeCommands.push(command);
+      const entry = [...workflowWorktrees.entries()].find(
+        ([, worktree]) => worktree.path === command.worktreePath,
+      );
+      if (!entry) throw new Error("Unknown workflow test worktree.");
+      workflowWorktrees.delete(entry[0]);
+      dirtyWorkflowWorktrees.delete(entry[0]);
+      return {
+        removedPath: command.worktreePath,
+        inventory: worktreeInventory(),
+      };
     }
     if (command.type === "workflow.node.execute") {
       executionCommands.push(command);
@@ -694,6 +710,37 @@ async function runDetail(runId: string) {
   );
 }
 
+async function createCheckpointedWriteRun(
+  slug: string,
+  idempotencyKey: string,
+) {
+  const revision = await createWorkflowRevision(slug, [
+    {
+      key: "write",
+      type: "agent",
+      name: "Write",
+      mutationMode: "write",
+      permissionRequirements: { filesystem: "workspace-write" },
+      configuration: { prompt: "Write isolated change." },
+    },
+  ]);
+  connected = true;
+  mode = "success";
+  const response = await createRunForRevision(
+    revision,
+    idempotencyKey,
+    {},
+    { target: "generated.txt" },
+    { filesystem: "workspace-write" },
+  );
+  const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+  await vi.waitFor(async () => {
+    expect((await runDetail(runId)).run.status).toBe("completed");
+  });
+  const detail = await runDetail(runId);
+  return { detail, lease: detail.worktreeLeases[0]!, runId };
+}
+
 beforeAll(async () => {
   database = await connectDatabase(config);
   await database.repository.recordWorker({
@@ -1006,6 +1053,192 @@ describe.sequential("single-agent workflow execution", () => {
     });
     expect(cancellation.statusCode).toBe(200);
     connected = true;
+  });
+
+  it("keeps a checkpoint for inspection and then delivers its managed lane", async () => {
+    const { lease, runId } = await createCheckpointedWriteRun(
+      "keep-and-deliver-write",
+      "execute-keep-and-deliver-write",
+    );
+    const keepPayload = {
+      action: "keep",
+      expectedEndingRevision: lease.endingRevision,
+      idempotencyKey: "keep-workflow-lane-once",
+    };
+    const kept = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/worktree-leases/${lease.id}/outcome`,
+      payload: keepPayload,
+    });
+    expect(kept.statusCode).toBe(200);
+    expect(
+      workflowRunDetailSchema.parse(kept.json()).worktreeLeases[0],
+    ).toMatchObject({
+      state: "checkpointed",
+      outcome: "kept",
+      resolvedByActorType: "user",
+      resolvedByActorId: LOCAL_USER_ID,
+      resolvedAt: expect.any(String),
+      releasedAt: null,
+    });
+    const replay = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/worktree-leases/${lease.id}/outcome`,
+      payload: keepPayload,
+    });
+    expect(replay.statusCode).toBe(200);
+    const driftedReplay = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/worktree-leases/${lease.id}/outcome`,
+      payload: { ...keepPayload, action: "release" },
+    });
+    expect(driftedReplay.statusCode).toBe(409);
+
+    const delivered = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/worktree-leases/${lease.id}/outcome`,
+      payload: {
+        action: "deliver",
+        expectedEndingRevision: lease.endingRevision,
+        idempotencyKey: "deliver-workflow-lane-once",
+      },
+    });
+    expect(delivered.statusCode).toBe(200);
+    expect(
+      workflowRunDetailSchema.parse(delivered.json()).worktreeLeases[0],
+    ).toMatchObject({
+      state: "released",
+      outcome: "delivered",
+      releasedAt: expect.any(String),
+    });
+    expect(workflowWorktrees.has(lease.worktreeId!)).toBe(true);
+    expect(
+      (
+        await database.repository.getWorktreeRemovalBlockers(
+          LOCAL_USER_ID,
+          projectId,
+          lease.worktreeId!,
+        )
+      )?.workflowLeaseIds,
+    ).toEqual([]);
+    const events = workflowRunEventPageSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/workflow-runs/${runId}/events`,
+        })
+      ).json(),
+    );
+    expect(
+      events.events
+        .map(({ type }) => type)
+        .filter((type) => type.startsWith("worktree.lease.")),
+    ).toEqual([
+      "worktree.lease.reserved",
+      "worktree.lease.activated",
+      "worktree.lease.checkpointed",
+      "worktree.lease.kept",
+      "worktree.lease.delivered",
+    ]);
+  });
+
+  it("discards only an unchanged checkpointed lane and replays after removal", async () => {
+    const { lease, runId } = await createCheckpointedWriteRun(
+      "discard-checkpointed-write",
+      "execute-discard-checkpointed-write",
+    );
+    const before = worktreeCommands.length;
+    const payload = {
+      action: "discard",
+      expectedEndingRevision: lease.endingRevision,
+      idempotencyKey: "discard-workflow-lane-once",
+    };
+    const discarded = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/worktree-leases/${lease.id}/outcome`,
+      payload,
+    });
+    expect(discarded.statusCode).toBe(200);
+    expect(
+      workflowRunDetailSchema.parse(discarded.json()).worktreeLeases[0],
+    ).toMatchObject({
+      state: "released",
+      outcome: "discarded",
+      releasedAt: expect.any(String),
+    });
+    expect(worktreeCommands.slice(before)).toEqual([
+      expect.objectContaining({ type: "worktree.status" }),
+      expect.objectContaining({
+        type: "worktree.remove",
+        force: true,
+        allowExternal: false,
+      }),
+    ]);
+    expect(workflowWorktrees.has(lease.worktreeId!)).toBe(false);
+
+    const replayBefore = worktreeCommands.length;
+    const replay = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/worktree-leases/${lease.id}/outcome`,
+      payload,
+    });
+    expect(replay.statusCode).toBe(200);
+    expect(worktreeCommands).toHaveLength(replayBefore);
+  });
+
+  it("releases an unchanged checkpointed lane without removing it", async () => {
+    const { lease, runId } = await createCheckpointedWriteRun(
+      "release-checkpointed-write",
+      "execute-release-checkpointed-write",
+    );
+    const before = worktreeCommands.length;
+    const released = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/worktree-leases/${lease.id}/outcome`,
+      payload: {
+        action: "release",
+        expectedEndingRevision: lease.endingRevision,
+        idempotencyKey: "release-workflow-lane-once",
+      },
+    });
+    expect(released.statusCode).toBe(200);
+    expect(
+      workflowRunDetailSchema.parse(released.json()).worktreeLeases[0],
+    ).toMatchObject({ state: "released", outcome: "released" });
+    expect(worktreeCommands.slice(before).map(({ type }) => type)).toEqual([
+      "worktree.status",
+    ]);
+    expect(workflowWorktrees.has(lease.worktreeId!)).toBe(true);
+  });
+
+  it("rejects terminal outcomes when a lane drifts after checkpointing", async () => {
+    const { lease, runId } = await createCheckpointedWriteRun(
+      "drifted-checkpointed-write",
+      "execute-drifted-checkpointed-write",
+    );
+    const worktree = workflowWorktrees.get(lease.worktreeId!)!;
+    workflowWorktrees.set(lease.worktreeId!, {
+      ...worktree,
+      head: "b".repeat(40),
+    });
+    const release = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/worktree-leases/${lease.id}/outcome`,
+      payload: {
+        action: "release",
+        expectedEndingRevision: lease.endingRevision,
+        idempotencyKey: "reject-drifted-workflow-lane",
+      },
+    });
+    expect(release.statusCode).toBe(409);
+    expect(release.json()).toMatchObject({
+      error: expect.stringContaining("changed after its checkpoint"),
+    });
+    expect((await runDetail(runId)).worktreeLeases[0]).toMatchObject({
+      state: "checkpointed",
+      outcome: null,
+    });
+    workflowWorktrees.set(lease.worktreeId!, worktree);
   });
 
   it("isolates parallel write roots in distinct checkpointed lanes", async () => {
