@@ -35,10 +35,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { remoteSurfaceWebSocketUrl } from "@/lib/api";
-import {
-  RemoteSurfaceWebRtcClient,
-  type RemoteSurfaceWebRtcState,
-} from "@/lib/remote-surface-webrtc";
+import { RemoteSurfaceWebRtcClient } from "@/lib/remote-surface-webrtc";
 
 const decoder = new TextDecoder();
 const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
@@ -174,8 +171,6 @@ export function BrowserView({
   >("ready");
   const [runtimeMessage, setRuntimeMessage] = useState<string | null>(null);
   const [clipboardMessage, setClipboardMessage] = useState<string | null>(null);
-  const [transportState, setTransportState] =
-    useState<RemoteSurfaceWebRtcState | null>(null);
   onPageStateRef.current = onPageState;
 
   const sendFrame = useCallback(
@@ -230,7 +225,6 @@ export function BrowserView({
     pageStateRef.current = null;
     setRuntimeStatus("ready");
     setRuntimeMessage(null);
-    setTransportState(null);
   }, [browser.id]);
 
   useEffect(() => {
@@ -412,12 +406,10 @@ export function BrowserView({
                     true,
                   );
                 },
-                onState: setTransportState,
+                onState: () => undefined,
               });
               webRtcRef.current = client;
               void client.start();
-            } else {
-              setTransportState("fallback");
             }
             send({ type: "viewport", viewport: viewportRef.current });
           } else {
@@ -728,11 +720,6 @@ export function BrowserView({
         {clipboardMessage ? (
           <div className="pointer-events-none absolute bottom-4 right-4 rounded-md bg-background/90 px-3 py-2 text-xs text-foreground shadow-lg backdrop-blur-xl">
             {clipboardMessage}
-          </div>
-        ) : null}
-        {connectionState === "ready" && transportState === "fallback" ? (
-          <div className="pointer-events-none absolute left-4 top-3 rounded-md bg-background/80 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur-xl">
-            WebSocket stream
           </div>
         ) : null}
       </div>
