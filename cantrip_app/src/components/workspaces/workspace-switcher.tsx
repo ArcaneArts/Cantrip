@@ -3,7 +3,6 @@ import type { ProjectWorkspaceSummary } from "@cantrip/protocol";
 import {
   Check,
   ChevronDown,
-  FolderPlus,
   Layers3,
   Loader2,
   Plus,
@@ -72,70 +71,78 @@ export function WorkspaceSwitcher({
 
   return (
     <>
-      <DropdownMenuPrimitive.Root>
-        <DropdownMenuPrimitive.Trigger asChild>
-          <button
-            type="button"
-            className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <Layers3 className="size-3.5 shrink-0" />
-            <span className="truncate">{active?.name ?? "Workspace"}</span>
-            <ChevronDown className="ml-auto size-3.5 shrink-0" />
-          </button>
-        </DropdownMenuPrimitive.Trigger>
-        <DropdownMenuPrimitive.Portal>
-          <DropdownMenuPrimitive.Content
-            align="start"
-            sideOffset={4}
-            className="z-[80] min-w-64 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg"
-          >
-            <DropdownMenuPrimitive.Label className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              Workspaces
-            </DropdownMenuPrimitive.Label>
-            {workspaces.map((workspace) => (
+      <div className="flex min-w-0 items-center gap-1">
+        <DropdownMenuPrimitive.Root>
+          <DropdownMenuPrimitive.Trigger asChild>
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Layers3 className="size-3.5 shrink-0" />
+              <span className="truncate">{active?.name ?? "Workspace"}</span>
+              <ChevronDown className="ml-auto size-3.5 shrink-0" />
+            </button>
+          </DropdownMenuPrimitive.Trigger>
+          <DropdownMenuPrimitive.Portal>
+            <DropdownMenuPrimitive.Content
+              align="start"
+              sideOffset={4}
+              className="z-[80] min-w-64 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg"
+            >
+              <DropdownMenuPrimitive.Label className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Workspaces
+              </DropdownMenuPrimitive.Label>
+              {workspaces.map((workspace) => (
+                <DropdownMenuPrimitive.Item
+                  key={workspace.id}
+                  className={itemClass}
+                  onSelect={() => onSelect(workspace.id)}
+                >
+                  <Layers3 className="size-4 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate">
+                    {workspace.name}
+                  </span>
+                  <span className="text-[10px] tabular-nums text-muted-foreground">
+                    {workspace.projectIds.length}
+                  </span>
+                  {workspace.id === active?.id ? (
+                    <Check className="size-4" />
+                  ) : null}
+                </DropdownMenuPrimitive.Item>
+              ))}
+              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
               <DropdownMenuPrimitive.Item
-                key={workspace.id}
                 className={itemClass}
-                onSelect={() => onSelect(workspace.id)}
+                onSelect={() => {
+                  setError(null);
+                  setDialogOpen(true);
+                }}
               >
-                <Layers3 className="size-4 text-muted-foreground" />
-                <span className="min-w-0 flex-1 truncate">
-                  {workspace.name}
-                </span>
-                <span className="text-[10px] tabular-nums text-muted-foreground">
-                  {workspace.projectIds.length}
-                </span>
-                {workspace.id === active?.id ? (
-                  <Check className="size-4" />
-                ) : null}
+                <Plus className="size-4" /> Workspace
               </DropdownMenuPrimitive.Item>
-            ))}
-            <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-            <DropdownMenuPrimitive.Item
-              className={itemClass}
-              onSelect={onAddProject}
-            >
-              <FolderPlus className="size-4" /> Add project to
-              {active ? ` ${active.name}` : " current workspace"}
-            </DropdownMenuPrimitive.Item>
-            <DropdownMenuPrimitive.Item
-              className={itemClass}
-              onSelect={() => {
-                setError(null);
-                setDialogOpen(true);
-              }}
-            >
-              <Plus className="size-4" /> Workspace
-            </DropdownMenuPrimitive.Item>
-            <DropdownMenuPrimitive.Item
-              className={itemClass}
-              onSelect={onManage}
-            >
-              <Settings className="size-4" /> Manage workspaces
-            </DropdownMenuPrimitive.Item>
-          </DropdownMenuPrimitive.Content>
-        </DropdownMenuPrimitive.Portal>
-      </DropdownMenuPrimitive.Root>
+              <DropdownMenuPrimitive.Item
+                className={itemClass}
+                onSelect={onManage}
+              >
+                <Settings className="size-4" /> Manage workspaces
+              </DropdownMenuPrimitive.Item>
+            </DropdownMenuPrimitive.Content>
+          </DropdownMenuPrimitive.Portal>
+        </DropdownMenuPrimitive.Root>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="size-7 shrink-0"
+          title={`Add project to ${active?.name ?? "current workspace"}`}
+          onClick={onAddProject}
+        >
+          <Plus className="size-4" />
+          <span className="sr-only">
+            Add project to {active?.name ?? "current workspace"}
+          </span>
+        </Button>
+      </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
