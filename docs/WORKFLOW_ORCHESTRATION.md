@@ -280,6 +280,17 @@ reviews structured JSON input plus the snapshotted permission and budget
 envelopes before launch. The app communicates only with the Cantrip Server API;
 it does not access worker files or Codex App Server directly.
 
+The same surface creates personal or project definitions and edits an existing
+definition by appending an immutable revision. Slug and scope are fixed after
+creation. Graph, declared input/output schemas, defaults, and permission
+requirements remain data-only JSON and are parsed with the shared strict
+workflow schemas before any request is sent. The authoring form cannot bypass
+cycle, node-configuration, predicate, permission, concurrency, or repeat-limit
+validation. A manual edit records its source revision and prior source/trust
+state in provenance; editing a previously trusted definition defaults the new
+revision to `modified` until the operator explicitly chooses another trust
+state.
+
 Project runs poll while active and expose durable run and recovery states,
 node duration and usage, worker/worktree/model/Codex attribution, pending
 approval gates, and checkpointed execution lanes. Operators can pause, resume,

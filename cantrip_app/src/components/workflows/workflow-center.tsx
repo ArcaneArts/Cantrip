@@ -1,4 +1,5 @@
 import type {
+  WorkflowDefinitionDetail,
   WorkflowDefinitionSummary,
   WorkflowGraph,
   WorkflowJsonObject,
@@ -20,7 +21,9 @@ import {
   Loader2,
   Network,
   OctagonX,
+  Pencil,
   Play,
+  Plus,
   RefreshCw,
   RotateCcw,
   ShieldCheck,
@@ -53,6 +56,7 @@ import {
   retryWorkflowNode,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { WorkflowAuthorDialog } from "./workflow-author-dialog";
 
 const dateTime = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -218,6 +222,9 @@ export function WorkflowCenter({
   );
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [launchOpen, setLaunchOpen] = useState(false);
+  const [authorOpen, setAuthorOpen] = useState(false);
+  const [authorWorkflow, setAuthorWorkflow] =
+    useState<WorkflowDefinitionDetail | null>(null);
   const [launchStep, setLaunchStep] = useState<"input" | "review">("input");
   const [inputText, setInputText] = useState("{}");
   const [inputError, setInputError] = useState<string | null>(null);
@@ -391,24 +398,35 @@ export function WorkflowCenter({
             Cantrip execution lanes.
           </p>
         </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={workflows.isFetching || runs.isFetching}
-          onClick={() => {
-            void workflows.refetch();
-            void runs.refetch();
-            if (selectedRunId) void run.refetch();
-          }}
-        >
-          <RefreshCw
-            className={cn(
-              "size-4",
-              (workflows.isFetching || runs.isFetching) && "animate-spin",
-            )}
-          />
-          Refresh
-        </Button>
+        <div className="flex gap-1.5">
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={workflows.isFetching || runs.isFetching}
+            onClick={() => {
+              void workflows.refetch();
+              void runs.refetch();
+              if (selectedRunId) void run.refetch();
+            }}
+          >
+            <RefreshCw
+              className={cn(
+                "size-4",
+                (workflows.isFetching || runs.isFetching) && "animate-spin",
+              )}
+            />
+            Refresh
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => {
+              setAuthorWorkflow(null);
+              setAuthorOpen(true);
+            }}
+          >
+            <Plus className="size-4" /> New workflow
+          </Button>
+        </div>
       </div>
 
       {workflows.isError ||
@@ -497,27 +515,39 @@ export function WorkflowCenter({
                       : " · no revision"}
                   </p>
                 </div>
-                <Button
-                  size="sm"
-                  disabled={
-                    !workflow.data.revision ||
-                    workflow.data.workflow.trustState === "blocked"
-                  }
-                  onClick={() => {
-                    setInputText(
-                      JSON.stringify(
-                        workflow.data?.revision?.defaults ?? {},
-                        null,
-                        2,
-                      ),
-                    );
-                    setInputError(null);
-                    setLaunchStep("input");
-                    setLaunchOpen(true);
-                  }}
-                >
-                  <Play className="size-4" /> Run
-                </Button>
+                <div className="flex gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setAuthorWorkflow(workflow.data);
+                      setAuthorOpen(true);
+                    }}
+                  >
+                    <Pencil className="size-4" /> Edit
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={
+                      !workflow.data.revision ||
+                      workflow.data.workflow.trustState === "blocked"
+                    }
+                    onClick={() => {
+                      setInputText(
+                        JSON.stringify(
+                          workflow.data?.revision?.defaults ?? {},
+                          null,
+                          2,
+                        ),
+                      );
+                      setInputError(null);
+                      setLaunchStep("input");
+                      setLaunchOpen(true);
+                    }}
+                  >
+                    <Play className="size-4" /> Run
+                  </Button>
+                </div>
               </div>
 
               {workflow.data.revision ? (
@@ -728,6 +758,18 @@ export function WorkflowCenter({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <WorkflowAuthorDialog
+        open={authorOpen}
+        projectId={projectId}
+        workflow={authorWorkflow}
+        onOpenChange={setAuthorOpen}
+        onSaved={(saved) => {
+          setSelectedWorkflowId(saved.workflow.id);
+          setAuthorWorkflow(saved);
+          queryClient.setQueryData(["workflow", saved.workflow.id], saved);
+          void queryClient.invalidateQueries({ queryKey: ["workflows"] });
+        }}
+      />
     </section>
   );
 }
