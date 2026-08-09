@@ -323,10 +323,12 @@ export class CodeSupervisor {
     session.lastError = null;
     session.status = "starting";
     await this.#writeWorkspace(session);
-    await this.#bridge.setTheme(session.sessionId, session.appearance);
     try {
       const profile = this.#profiles.get(session.profileKey)!;
       await this.#ensureProfile(profile);
+      void this.#bridge
+        .setTheme(session.sessionId, session.appearance)
+        .catch(() => undefined);
       session.status = "running";
       session.startedAt ??= isoNow();
       session.lastActivityAt = isoNow();
@@ -371,7 +373,7 @@ export class CodeSupervisor {
     session.appearance = appearance;
     session.lastActivityAt = isoNow();
     await this.#writeWorkspace(session);
-    await this.#bridge.setTheme(sessionId, appearance);
+    void this.#bridge.setTheme(sessionId, appearance).catch(() => undefined);
     await this.#persistState();
     return this.#status(session);
   }

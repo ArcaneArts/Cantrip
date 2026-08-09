@@ -66,6 +66,34 @@ function respond(socket: WebSocket, request: WorkbenchRequest, result = {}) {
 }
 
 describe("Cantrip workbench bridge", () => {
+  it("retires an unresponsive surface and replays its theme on reconnect", async () => {
+    const bridge = new CodeWorkbenchBridge({ requestTimeoutMs: 25 });
+    bridges.push(bridge);
+    await bridge.start();
+    const url = bridge.register("recovering-session", "recovering-secret");
+    const stale = await openSocket(url);
+    await nextRequest(stale);
+
+    await expect(
+      bridge.setTheme("recovering-session", "high-contrast-light"),
+    ).resolves.toBeUndefined();
+    await new Promise<void>((resolve) => {
+      if (stale.readyState === WebSocket.CLOSED) resolve();
+      else stale.once("close", () => resolve());
+    });
+    expect(bridge.connected("recovering-session")).toBe(false);
+
+    const recovered = await openSocket(url);
+    const recoveredTheme = await nextRequest(recovered);
+    expect(recoveredTheme).toMatchObject({
+      method: "setTheme",
+      params: { appearance: "high-contrast-light" },
+    });
+    respond(recovered, recoveredTheme);
+    expect(bridge.connected("recovering-session")).toBe(true);
+    recovered.close();
+  });
+
   it("authenticates sessions and exchanges dirty-buffer RPC state", async () => {
     const bridge = new CodeWorkbenchBridge();
     bridges.push(bridge);

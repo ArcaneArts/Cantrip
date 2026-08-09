@@ -66,6 +66,11 @@ const DEFAULT_WORKBENCH_STATE: CodeWorkbenchState = {
   agentStatus: "idle",
 };
 const MAX_BRIDGE_PAYLOAD_BYTES = 1024 * 1024;
+const DEFAULT_REQUEST_TIMEOUT_MS = 5_000;
+
+export interface CodeWorkbenchBridgeOptions {
+  requestTimeoutMs?: number;
+}
 
 function secureTokenEqual(left: string, right: string): boolean {
   const a = Buffer.from(left);
@@ -92,8 +97,16 @@ function parseDirtyEditors(value: unknown): CodeDirtyEditor[] {
 export class CodeWorkbenchBridge {
   #http: Server | null = null;
   #origin: string | null = null;
+  readonly #requestTimeoutMs: number;
   #sessions = new Map<string, BridgeSession>();
   #webSockets: WebSocketServer | null = null;
+
+  constructor(options: CodeWorkbenchBridgeOptions = {}) {
+    this.#requestTimeoutMs = Math.max(
+      10,
+      options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+    );
+  }
 
   async start(): Promise<void> {
     if (this.#http) return;
@@ -302,16 +315,11 @@ export class CodeWorkbenchBridge {
         this.#requestOnSocket(session, socket, "setTheme", { appearance }),
       );
     if (requests.length === 0) return;
-    const results = await Promise.allSettled(requests);
-    if (results.every((result) => result.status === "rejected")) {
-      const failure = results.find(
-        (result): result is PromiseRejectedResult =>
-          result.status === "rejected",
-      );
-      throw failure?.reason instanceof Error
-        ? failure.reason
-        : new Error("Cantrip workbench theme update failed.");
-    }
+    // The workspace file is the durable theme source. A workbench socket can
+    // remain OPEN after its extension host has stopped responding, so theme
+    // delivery must converge when a healthy surface reconnects rather than
+    // making Code availability depend on an acknowledgement from every view.
+    await Promise.allSettled(requests);
   }
 
   async notifyExternalFiles(
@@ -380,9 +388,6 @@ export class CodeWorkbenchBridge {
       return;
     }
     session.sockets.add(socket);
-    void this.#requestOnSocket(session, socket, "setTheme", {
-      appearance: session.appearance,
-    }).catch(() => undefined);
     socket.on("message", (data, isBinary) => {
       if (!isBinary) this.#onMessage(session, socket, data.toString());
     });
@@ -394,6 +399,9 @@ export class CodeWorkbenchBridge {
         socket,
       );
     });
+    void this.#requestOnSocket(session, socket, "setTheme", {
+      appearance: session.appearance,
+    }).catch(() => undefined);
   }
 
   #onMessage(session: BridgeSession, socket: WebSocket, raw: string): void {
@@ -457,16 +465,35 @@ export class CodeWorkbenchBridge {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         session.pending.delete(id);
-        reject(new Error(`Cantrip workbench ${method} request timed out.`));
-      }, 5_000);
+        const error = new Error(
+          `Cantrip workbench ${method} request timed out.`,
+        );
+        reject(error);
+        this.#retireSocket(session, socket, error.message);
+      }, this.#requestTimeoutMs);
       session.pending.set(id, { resolve, reject, socket, timer });
       socket.send(JSON.stringify(request), (error) => {
         if (!error) return;
         clearTimeout(timer);
         session.pending.delete(id);
         reject(error);
+        this.#retireSocket(
+          session,
+          socket,
+          "Cantrip workbench bridge send failed.",
+        );
       });
     });
+  }
+
+  #retireSocket(
+    session: BridgeSession,
+    socket: WebSocket,
+    message: string,
+  ): void {
+    session.sockets.delete(socket);
+    this.#rejectPending(session, message, socket);
+    if (socket.readyState !== WebSocket.CLOSED) socket.terminate();
   }
 
   #rejectPending(
