@@ -6969,6 +6969,14 @@ export async function buildApp({
       }
       const worker = await repository.recordWorker(heartbeat.data);
       void resumePendingWorktreeTransitionsForWorker(heartbeat.data.workerId);
+      void workflowExecutor
+        .recoverWorktreeLeases(heartbeat.data.workerId)
+        .catch((error) => {
+          app.log.error(
+            { err: error, workerId: heartbeat.data.workerId },
+            "Could not recover workflow worktree leases",
+          );
+        });
       void workflowExecutor.queueAvailableRuns().catch((error) => {
         app.log.error({ err: error }, "Could not dispatch queued workflows");
       });
@@ -6989,6 +6997,14 @@ export async function buildApp({
       }
       bridge.attach(request.query.workerId, socket);
       void resumePendingWorktreeTransitionsForWorker(request.query.workerId);
+      void workflowExecutor
+        .recoverWorktreeLeases(request.query.workerId)
+        .catch((error) => {
+          app.log.error(
+            { err: error, workerId: request.query.workerId },
+            "Could not recover workflow worktree leases",
+          );
+        });
       void workflowExecutor.queueAvailableRuns().catch((error) => {
         app.log.error({ err: error }, "Could not dispatch queued workflows");
       });

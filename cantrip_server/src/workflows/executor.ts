@@ -73,9 +73,58 @@ export class WorkflowExecutor {
   ) {}
 
   async recoverAfterRestart(): Promise<number> {
-    return this.repository.workflowRuns.recoverInterruptedAttempts(
-      LOCAL_USER_ID,
+    const interruptedAttempts =
+      await this.repository.workflowRuns.recoverInterruptedAttempts(
+        LOCAL_USER_ID,
+      );
+    try {
+      await this.recoverWorktreeLeases();
+    } catch (error) {
+      this.logger.warn(
+        { err: error },
+        "Workflow worktree recovery scan could not complete during startup",
+      );
+    }
+    return interruptedAttempts;
+  }
+
+  async recoverWorktreeLeases(workerId: string | null = null): Promise<number> {
+    const candidates =
+      await this.repository.workflowRuns.listRecoverableWorktreeLeases(
+        LOCAL_USER_ID,
+        workerId,
+      );
+    let resumed = 0;
+    await Promise.all(
+      candidates.map(async (candidate) => {
+        if (!this.bridge.isConnected(candidate.workerId)) return;
+        try {
+          if (candidate.pendingOutcomeRequest) {
+            const resolved = await this.worktreeCoordinator.resolveWorkflowLane(
+              LOCAL_USER_ID,
+              candidate.runId,
+              candidate.leaseId,
+              candidate.pendingOutcomeRequest,
+            );
+            if (resolved) resumed += 1;
+            return;
+          }
+          this.queueRun(candidate.runId);
+          resumed += 1;
+        } catch (error) {
+          this.logger.warn(
+            {
+              err: error,
+              workflowRunId: candidate.runId,
+              workflowWorktreeLeaseId: candidate.leaseId,
+              workerId: candidate.workerId,
+            },
+            "Workflow worktree recovery could not complete",
+          );
+        }
+      }),
     );
+    return resumed;
   }
 
   queueRun(runId: string): void {
