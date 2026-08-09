@@ -32,13 +32,106 @@ async function eventually(
 
 afterEach(async () => {
   await Promise.all(
-    temporaryDirectories
-      .splice(0)
-      .map((directory) => rm(directory, { force: true, recursive: true })),
+    temporaryDirectories.splice(0).map((directory) =>
+      rm(directory, {
+        force: true,
+        maxRetries: 5,
+        recursive: true,
+        retryDelay: 100,
+      }),
+    ),
   );
 });
 
 describe("BrowserRemoteSurfaceAdapter", () => {
+  it.skipIf(!findChromiumExecutable())(
+    "adopts an active Cantrip browser profile instead of relaunching it",
+    async () => {
+      const server = createServer((_request, response) => {
+        response.setHeader("content-type", "text/html; charset=utf-8");
+        response.end("<title>Adopted</title><p>Still running</p>");
+      });
+      await new Promise<void>((resolve) =>
+        server.listen(0, "127.0.0.1", resolve),
+      );
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Test browser server did not expose a TCP address.");
+      }
+      const root = `http://127.0.0.1:${address.port}/`;
+      const dataDirectory = await mkdtemp(
+        path.join(os.tmpdir(), "cantrip-browser-adoption-"),
+      );
+      temporaryDirectories.push(dataDirectory);
+      const firstLaunches: ChildProcess[] = [];
+      const adoptedLaunches: ChildProcess[] = [];
+      const firstAdapter = new BrowserRemoteSurfaceAdapter({
+        dataDirectory,
+        onLaunch: (process) => firstLaunches.push(process),
+      });
+      const adoptedAdapter = new BrowserRemoteSurfaceAdapter({
+        dataDirectory,
+        onLaunch: (process) => adoptedLaunches.push(process),
+      });
+      const command = {
+        type: "surface.attach" as const,
+        surfaceId: "browser-adoption-test",
+        attachmentId: "first-attachment",
+        projectId: "project-test",
+        configuration: {
+          kind: "browser" as const,
+          initialUrl: root,
+          profileId: null,
+        },
+        preferredTransport: "websocket" as const,
+        viewport: { width: 640, height: 480, devicePixelRatio: 1 },
+        desktopStream: null,
+      };
+      const firstSession = await firstAdapter.open(command, () => true);
+      const emissions: Array<{
+        attachmentId: string;
+        channel: RemoteSurfaceChannel;
+      }> = [];
+      let adoptedSession: Awaited<
+        ReturnType<BrowserRemoteSurfaceAdapter["open"]>
+      > | null = null;
+
+      try {
+        await firstSession.attach({
+          id: "first-attachment",
+          viewport: command.viewport,
+        });
+        expect(firstLaunches).toHaveLength(1);
+
+        adoptedSession = await adoptedAdapter.open(
+          { ...command, attachmentId: "adopted-attachment" },
+          (attachmentId, channel) => {
+            emissions.push({ attachmentId, channel });
+            return true;
+          },
+        );
+        await adoptedSession.attach({
+          id: "adopted-attachment",
+          viewport: command.viewport,
+        });
+        await eventually(() =>
+          emissions.some(
+            ({ attachmentId, channel }) =>
+              attachmentId === "adopted-attachment" && channel === "frame",
+          ),
+        );
+
+        expect(adoptedLaunches).toHaveLength(0);
+        expect(adoptedAdapter.session(command.surfaceId)).not.toBeNull();
+      } finally {
+        await adoptedSession?.close();
+        await firstSession.close();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    },
+    30_000,
+  );
+
   it.skipIf(!findChromiumExecutable())(
     "streams a real Chromium page and accepts worker-side navigation",
     async () => {

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 
@@ -99,6 +99,30 @@ function waitForDevtoolsUrl(
   });
 }
 
+async function connectToActiveBrowser(
+  userDataDirectory: string,
+): Promise<CdpClient | null> {
+  try {
+    const [portLine, pathLine] = (
+      await readFile(path.join(userDataDirectory, "DevToolsActivePort"), "utf8")
+    )
+      .trim()
+      .split(/\r?\n/);
+    const port = Number(portLine);
+    if (
+      !Number.isSafeInteger(port) ||
+      port < 1 ||
+      port > 65_535 ||
+      !pathLine?.startsWith("/devtools/browser/")
+    ) {
+      return null;
+    }
+    return await CdpClient.connect(`ws://127.0.0.1:${port}${pathLine}`, 1_000);
+  } catch {
+    return null;
+  }
+}
+
 function launchChromium(
   executable: string,
   userDataDirectory: string,
@@ -132,7 +156,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   readonly #cdp: BrowserCdpSession;
   readonly #emit: Parameters<RemoteSurfaceAdapter["open"]>[1];
   readonly #onCrash: (error: Error) => void;
-  readonly #process: ChildProcess;
+  readonly #process: ChildProcess | null;
   readonly #targetId: string;
   #closed = false;
   #currentUrl: string;
@@ -147,7 +171,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     configuration: RemoteSurfaceConfiguration;
     emit: Parameters<RemoteSurfaceAdapter["open"]>[1];
     onCrash(error: Error): void;
-    process: ChildProcess;
+    process: ChildProcess | null;
     targetId: string;
   }) {
     this.#client = options.client;
@@ -164,7 +188,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     this.#client.onClose((error) => {
       if (!this.#closed) this.#onCrash(error);
     });
-    this.#process.once("exit", (code, signal) => {
+    this.#process?.once("exit", (code, signal) => {
       if (this.#closed) return;
       this.#onCrash(
         new Error(
@@ -198,14 +222,18 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
       options.configuration.profileId,
     );
     await mkdir(userDataDirectory, { recursive: true });
-    const process = launchChromium(
-      options.executable,
-      userDataDirectory,
-      options.viewport,
-    );
-    options.onLaunch?.(process);
+    let process: ChildProcess | null = null;
+    let client = await connectToActiveBrowser(userDataDirectory);
     try {
-      const client = await CdpClient.connect(await waitForDevtoolsUrl(process));
+      if (!client) {
+        process = launchChromium(
+          options.executable,
+          userDataDirectory,
+          options.viewport,
+        );
+        options.onLaunch?.(process);
+        client = await CdpClient.connect(await waitForDevtoolsUrl(process));
+      }
       const { targetId } = await client.request<{ targetId: string }>(
         "Target.createTarget",
         { url: "about:blank" },
@@ -227,7 +255,8 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
       await session.initialize(options.viewport);
       return session;
     } catch (error) {
-      process.kill();
+      client?.close();
+      if (process?.exitCode === null) process.kill();
       throw error;
     }
   }
@@ -311,8 +340,14 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     await this.#client
       .request("Target.closeTarget", { targetId: this.#targetId })
       .catch(() => undefined);
+    if (!this.#process) {
+      await Promise.race([
+        this.#client.request("Browser.close").catch(() => undefined),
+        new Promise<void>((resolve) => setTimeout(resolve, 1_000)),
+      ]);
+    }
     this.#client.close();
-    if (this.#process.exitCode === null) this.#process.kill();
+    if (this.#process?.exitCode === null) this.#process.kill();
     this.#attachments.clear();
   }
 
@@ -751,7 +786,7 @@ class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
       this.#restartTimer = null;
       void this.ensureSession().catch((error: unknown) => {
         this.publishRuntime(
-          "error",
+          "recovering",
           error instanceof Error ? error.message : String(error),
         );
         this.scheduleRestart();
@@ -780,6 +815,10 @@ class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
 
 export class BrowserRemoteSurfaceAdapter implements RemoteSurfaceAdapter {
   readonly executable: string | null;
+  readonly #openings = new Map<
+    string,
+    Promise<ResilientBrowserRemoteSurfaceSession>
+  >();
   readonly #sessions = new Map<string, ResilientBrowserRemoteSurfaceSession>();
 
   constructor(private readonly options: BrowserAdapterOptions) {
@@ -806,18 +845,34 @@ export class BrowserRemoteSurfaceAdapter implements RemoteSurfaceAdapter {
         "No Chromium browser was found. Set CANTRIP_CHROMIUM_EXECUTABLE.",
       );
     }
-    const session = await ResilientBrowserRemoteSurfaceSession.open({
+    const existing = this.#sessions.get(command.surfaceId);
+    if (existing) return existing;
+    const opening = this.#openings.get(command.surfaceId);
+    if (opening) return opening;
+
+    let session: ResilientBrowserRemoteSurfaceSession | null = null;
+    const next = ResilientBrowserRemoteSurfaceSession.open({
       command,
       emit,
       executable: this.executable,
       onClose: () => {
-        if (this.#sessions.get(command.surfaceId) === session) {
+        if (session && this.#sessions.get(command.surfaceId) === session) {
           this.#sessions.delete(command.surfaceId);
         }
       },
       options: this.options,
+    }).then((opened) => {
+      session = opened;
+      this.#sessions.set(command.surfaceId, opened);
+      return opened;
     });
-    this.#sessions.set(command.surfaceId, session);
-    return session;
+    this.#openings.set(command.surfaceId, next);
+    try {
+      return await next;
+    } finally {
+      if (this.#openings.get(command.surfaceId) === next) {
+        this.#openings.delete(command.surfaceId);
+      }
+    }
   }
 }
