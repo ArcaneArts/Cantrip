@@ -1,6 +1,6 @@
 # Cantrip Project Plan
 
-- Status: foundation in progress; local-only vertical slice is the active target
+- Status: local-only foundation, Codex-native customization, and durable workflow control plane implemented; hosted hardening remains
 - Canonical domain: `cantrip.art`
 - Desktop/mobile application identifier: `art.cantrip`
 - Package manager: pnpm workspaces
@@ -673,8 +673,16 @@ Exit: browser, desktop, and mobile clients share the same protocol and can recon
 - Add organization roles only with a complete tenancy model.
 - Add chat fork/branch and export/import.
 - Extend the implemented local worktree workflows with Git-assisted cross-worker synchronization and explicit transfer handling for uncommitted changes.
-- Add richer file previews, plugins/skills controls, and scheduled tasks as demand warrants.
+- Harden the implemented native customization and scheduled workflow controls for authenticated hosted deployment; enable plugin mutations only after the pinned Codex App Server exposes a stable contract.
 - Add protocol compatibility matrices, upgrade tooling, load tests, and disaster-recovery exercises.
+
+The implemented local workflow boundary is specified in the
+[orchestration contract](WORKFLOW_ORCHESTRATION.md) and
+[ADR 0004](adr/0004-codex-native-workflow-control-plane.md). Operational
+recovery, trigger trust, migration, backup, and rollback guidance lives in the
+[workflow operations guide](WORKFLOW_OPERATIONS.md); the final evidence and
+pull-request ledger live in the
+[workflow implementation audit](WORKFLOW_IMPLEMENTATION_AUDIT.md).
 
 ## 16. MVP acceptance criteria
 
@@ -693,6 +701,7 @@ The first meaningful release is complete when all of the following are true:
 - Conversation history remains readable from PGlite when the worker is stopped; files remain worker-only.
 - ChatGPT login is completed on the worker, quota state is visible, and raw tokens never enter the server database.
 - A tested OpenAI-compatible profile and a worker-local Ollama profile can run, with unsupported capabilities visibly disabled.
+- A trusted workflow can execute bounded Codex nodes, survive durable-boundary restarts, isolate mutations in leased worktrees, and be invoked through explicitly enabled schedule/API/webhook/Git/saved-command triggers without adding a second agent runtime.
 - Security tests cover unauthorized chat access, forged worker events, replayed commands, path traversal, symlink escape, secret leakage, and approval spoofing.
 
 ## 17. Major risks and mitigations

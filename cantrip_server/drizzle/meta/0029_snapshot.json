@@ -202,12 +202,8 @@
           "name": "agent_interaction_requests_project_id_projects_id_fk",
           "tableFrom": "agent_interaction_requests",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -215,12 +211,8 @@
           "name": "agent_interaction_requests_chat_id_chats_id_fk",
           "tableFrom": "agent_interaction_requests",
           "tableTo": "chats",
-          "columnsFrom": [
-            "chat_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["chat_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -228,12 +220,8 @@
           "name": "agent_interaction_requests_worker_id_workers_id_fk",
           "tableFrom": "agent_interaction_requests",
           "tableTo": "workers",
-          "columnsFrom": [
-            "worker_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worker_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -241,12 +229,8 @@
           "name": "agent_interaction_requests_execution_lane_id_chat_execution_lanes_id_fk",
           "tableFrom": "agent_interaction_requests",
           "tableTo": "chat_execution_lanes",
-          "columnsFrom": [
-            "execution_lane_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["execution_lane_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -254,12 +238,8 @@
           "name": "agent_interaction_requests_resolved_by_user_id_users_id_fk",
           "tableFrom": "agent_interaction_requests",
           "tableTo": "users",
-          "columnsFrom": [
-            "resolved_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["resolved_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -327,12 +307,8 @@
           "name": "browsers_project_id_projects_id_fk",
           "tableFrom": "browsers",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -478,12 +454,8 @@
           "name": "chat_attachments_chat_id_chats_id_fk",
           "tableFrom": "chat_attachments",
           "tableTo": "chats",
-          "columnsFrom": [
-            "chat_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["chat_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -491,12 +463,8 @@
           "name": "chat_attachments_worker_id_workers_id_fk",
           "tableFrom": "chat_attachments",
           "tableTo": "workers",
-          "columnsFrom": [
-            "worker_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worker_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -672,12 +640,8 @@
           "name": "chat_execution_lanes_chat_id_chats_id_fk",
           "tableFrom": "chat_execution_lanes",
           "tableTo": "chats",
-          "columnsFrom": [
-            "chat_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["chat_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -685,12 +649,8 @@
           "name": "chat_execution_lanes_worktree_id_project_worktrees_id_fk",
           "tableFrom": "chat_execution_lanes",
           "tableTo": "project_worktrees",
-          "columnsFrom": [
-            "worktree_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worktree_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -698,12 +658,8 @@
           "name": "chat_execution_lanes_worker_id_workers_id_fk",
           "tableFrom": "chat_execution_lanes",
           "tableTo": "workers",
-          "columnsFrom": [
-            "worker_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worker_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -711,12 +667,8 @@
           "name": "chat_execution_lanes_runtime_session_id_chat_runtime_sessions_id_fk",
           "tableFrom": "chat_execution_lanes",
           "tableTo": "chat_runtime_sessions",
-          "columnsFrom": [
-            "runtime_session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["runtime_session_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -852,12 +804,8 @@
           "name": "chat_messages_chat_id_chats_id_fk",
           "tableFrom": "chat_messages",
           "tableTo": "chats",
-          "columnsFrom": [
-            "chat_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["chat_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -865,12 +813,8 @@
           "name": "chat_messages_worktree_id_project_worktrees_id_fk",
           "tableFrom": "chat_messages",
           "tableTo": "project_worktrees",
-          "columnsFrom": [
-            "worktree_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worktree_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -878,12 +822,8 @@
           "name": "chat_messages_execution_lane_id_chat_execution_lanes_id_fk",
           "tableFrom": "chat_messages",
           "tableTo": "chat_execution_lanes",
-          "columnsFrom": [
-            "execution_lane_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["execution_lane_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -891,12 +831,8 @@
           "name": "chat_messages_model_id_model_profiles_id_fk",
           "tableFrom": "chat_messages",
           "tableTo": "model_profiles",
-          "columnsFrom": [
-            "model_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["model_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -904,12 +840,8 @@
           "name": "chat_messages_model_route_id_model_routes_id_fk",
           "tableFrom": "chat_messages",
           "tableTo": "model_routes",
-          "columnsFrom": [
-            "model_route_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["model_route_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -917,12 +849,8 @@
           "name": "chat_messages_provider_id_model_providers_id_fk",
           "tableFrom": "chat_messages",
           "tableTo": "model_providers",
-          "columnsFrom": [
-            "provider_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["provider_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1029,12 +957,8 @@
           "name": "chat_runtime_sessions_chat_id_chats_id_fk",
           "tableFrom": "chat_runtime_sessions",
           "tableTo": "chats",
-          "columnsFrom": [
-            "chat_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["chat_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1042,12 +966,8 @@
           "name": "chat_runtime_sessions_worker_id_workers_id_fk",
           "tableFrom": "chat_runtime_sessions",
           "tableTo": "workers",
-          "columnsFrom": [
-            "worker_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worker_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1055,12 +975,8 @@
           "name": "chat_runtime_sessions_worktree_id_project_worktrees_id_fk",
           "tableFrom": "chat_runtime_sessions",
           "tableTo": "project_worktrees",
-          "columnsFrom": [
-            "worktree_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worktree_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1068,12 +984,8 @@
           "name": "chat_runtime_sessions_model_route_id_model_routes_id_fk",
           "tableFrom": "chat_runtime_sessions",
           "tableTo": "model_routes",
-          "columnsFrom": [
-            "model_route_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["model_route_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1205,12 +1117,8 @@
           "name": "chats_project_id_projects_id_fk",
           "tableFrom": "chats",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1218,12 +1126,8 @@
           "name": "chats_active_worker_id_workers_id_fk",
           "tableFrom": "chats",
           "tableTo": "workers",
-          "columnsFrom": [
-            "active_worker_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["active_worker_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -1231,12 +1135,8 @@
           "name": "chats_active_worktree_id_project_worktrees_id_fk",
           "tableFrom": "chats",
           "tableTo": "project_worktrees",
-          "columnsFrom": [
-            "active_worktree_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["active_worktree_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1244,12 +1144,8 @@
           "name": "chats_model_id_model_profiles_id_fk",
           "tableFrom": "chats",
           "tableTo": "model_profiles",
-          "columnsFrom": [
-            "model_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["model_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1443,12 +1339,8 @@
           "name": "code_sessions_code_tab_id_code_tabs_id_fk",
           "tableFrom": "code_sessions",
           "tableTo": "code_tabs",
-          "columnsFrom": [
-            "code_tab_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["code_tab_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1456,12 +1348,8 @@
           "name": "code_sessions_project_id_projects_id_fk",
           "tableFrom": "code_sessions",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1469,12 +1357,8 @@
           "name": "code_sessions_worker_id_workers_id_fk",
           "tableFrom": "code_sessions",
           "tableTo": "workers",
-          "columnsFrom": [
-            "worker_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worker_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1482,12 +1366,8 @@
           "name": "code_sessions_worktree_id_project_worktrees_id_fk",
           "tableFrom": "code_sessions",
           "tableTo": "project_worktrees",
-          "columnsFrom": [
-            "worktree_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worktree_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1618,12 +1498,8 @@
           "name": "code_tabs_project_id_projects_id_fk",
           "tableFrom": "code_tabs",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1631,12 +1507,8 @@
           "name": "code_tabs_active_worker_id_workers_id_fk",
           "tableFrom": "code_tabs",
           "tableTo": "workers",
-          "columnsFrom": [
-            "active_worker_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["active_worker_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1644,12 +1516,8 @@
           "name": "code_tabs_worktree_id_project_worktrees_id_fk",
           "tableFrom": "code_tabs",
           "tableTo": "project_worktrees",
-          "columnsFrom": [
-            "worktree_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worktree_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1731,12 +1599,8 @@
           "name": "explorers_project_id_projects_id_fk",
           "tableFrom": "explorers",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1744,12 +1608,8 @@
           "name": "explorers_active_worker_id_workers_id_fk",
           "tableFrom": "explorers",
           "tableTo": "workers",
-          "columnsFrom": [
-            "active_worker_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["active_worker_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1757,12 +1617,8 @@
           "name": "explorers_worktree_id_project_worktrees_id_fk",
           "tableFrom": "explorers",
           "tableTo": "project_worktrees",
-          "columnsFrom": [
-            "worktree_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worktree_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1829,12 +1685,8 @@
           "name": "model_profiles_owner_id_users_id_fk",
           "tableFrom": "model_profiles",
           "tableTo": "users",
-          "columnsFrom": [
-            "owner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1928,12 +1780,8 @@
           "name": "model_providers_owner_id_users_id_fk",
           "tableFrom": "model_providers",
           "tableTo": "users",
-          "columnsFrom": [
-            "owner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2035,12 +1883,8 @@
           "name": "model_routes_model_id_model_profiles_id_fk",
           "tableFrom": "model_routes",
           "tableTo": "model_profiles",
-          "columnsFrom": [
-            "model_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["model_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2048,12 +1892,8 @@
           "name": "model_routes_provider_id_model_providers_id_fk",
           "tableFrom": "model_routes",
           "tableTo": "model_providers",
-          "columnsFrom": [
-            "provider_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["provider_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -2141,12 +1981,8 @@
           "name": "project_sources_project_id_projects_id_fk",
           "tableFrom": "project_sources",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2154,12 +1990,8 @@
           "name": "project_sources_worker_id_workers_id_fk",
           "tableFrom": "project_sources",
           "tableTo": "workers",
-          "columnsFrom": [
-            "worker_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worker_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2232,12 +2064,8 @@
           "name": "project_views_project_id_projects_id_fk",
           "tableFrom": "project_views",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2245,12 +2073,8 @@
           "name": "project_views_worktree_id_project_worktrees_id_fk",
           "tableFrom": "project_views",
           "tableTo": "project_worktrees",
-          "columnsFrom": [
-            "worktree_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worktree_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -2441,12 +2265,8 @@
           "name": "project_worktrees_project_source_id_project_sources_id_fk",
           "tableFrom": "project_worktrees",
           "tableTo": "project_sources",
-          "columnsFrom": [
-            "project_source_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_source_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2454,12 +2274,8 @@
           "name": "project_worktrees_worker_id_workers_id_fk",
           "tableFrom": "project_worktrees",
           "tableTo": "workers",
-          "columnsFrom": [
-            "worker_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worker_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2580,12 +2396,8 @@
           "name": "projects_owner_id_users_id_fk",
           "tableFrom": "projects",
           "tableTo": "users",
-          "columnsFrom": [
-            "owner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2707,12 +2519,8 @@
           "name": "queued_prompts_chat_id_chats_id_fk",
           "tableFrom": "queued_prompts",
           "tableTo": "chats",
-          "columnsFrom": [
-            "chat_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["chat_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2720,12 +2528,8 @@
           "name": "queued_prompts_model_id_model_profiles_id_fk",
           "tableFrom": "queued_prompts",
           "tableTo": "model_profiles",
-          "columnsFrom": [
-            "model_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["model_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -2733,12 +2537,8 @@
           "name": "queued_prompts_worktree_id_project_worktrees_id_fk",
           "tableFrom": "queued_prompts",
           "tableTo": "project_worktrees",
-          "columnsFrom": [
-            "worktree_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worktree_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -2836,12 +2636,8 @@
           "name": "remote_surfaces_project_id_projects_id_fk",
           "tableFrom": "remote_surfaces",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2849,12 +2645,8 @@
           "name": "remote_surfaces_worker_id_workers_id_fk",
           "tableFrom": "remote_surfaces",
           "tableTo": "workers",
-          "columnsFrom": [
-            "worker_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worker_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2973,12 +2765,8 @@
           "name": "terminals_project_id_projects_id_fk",
           "tableFrom": "terminals",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2986,12 +2774,8 @@
           "name": "terminals_active_worker_id_workers_id_fk",
           "tableFrom": "terminals",
           "tableTo": "workers",
-          "columnsFrom": [
-            "active_worker_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["active_worker_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2999,12 +2783,8 @@
           "name": "terminals_worktree_id_project_worktrees_id_fk",
           "tableFrom": "terminals",
           "tableTo": "project_worktrees",
-          "columnsFrom": [
-            "worktree_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worktree_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -3012,12 +2792,8 @@
           "name": "terminals_linked_chat_id_chats_id_fk",
           "tableFrom": "terminals",
           "tableTo": "chats",
-          "columnsFrom": [
-            "linked_chat_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["linked_chat_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3027,9 +2803,7 @@
         "terminals_linked_chat_id_unique": {
           "name": "terminals_linked_chat_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "linked_chat_id"
-          ]
+          "columns": ["linked_chat_id"]
         }
       },
       "policies": {},
@@ -3101,12 +2875,8 @@
           "name": "user_settings_user_id_users_id_fk",
           "tableFrom": "user_settings",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3114,12 +2884,8 @@
           "name": "user_settings_default_model_id_model_profiles_id_fk",
           "tableFrom": "user_settings",
           "tableTo": "model_profiles",
-          "columnsFrom": [
-            "default_model_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["default_model_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -3186,9 +2952,7 @@
         "users_email_unique": {
           "name": "users_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {},
@@ -3289,12 +3053,8 @@
           "name": "workers_owner_id_users_id_fk",
           "tableFrom": "workers",
           "tableTo": "users",
-          "columnsFrom": [
-            "owner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3480,12 +3240,8 @@
           "name": "workflow_approval_gates_run_id_workflow_runs_id_fk",
           "tableFrom": "workflow_approval_gates",
           "tableTo": "workflow_runs",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3493,12 +3249,8 @@
           "name": "workflow_approval_gates_run_node_id_workflow_run_nodes_id_fk",
           "tableFrom": "workflow_approval_gates",
           "tableTo": "workflow_run_nodes",
-          "columnsFrom": [
-            "run_node_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["run_node_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -3506,12 +3258,8 @@
           "name": "workflow_approval_gates_interaction_request_id_agent_interaction_requests_id_fk",
           "tableFrom": "workflow_approval_gates",
           "tableTo": "agent_interaction_requests",
-          "columnsFrom": [
-            "interaction_request_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["interaction_request_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -3519,12 +3267,8 @@
           "name": "workflow_approval_gates_decided_by_user_id_users_id_fk",
           "tableFrom": "workflow_approval_gates",
           "tableTo": "users",
-          "columnsFrom": [
-            "decided_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["decided_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -3731,12 +3475,8 @@
           "name": "workflow_definitions_owner_id_users_id_fk",
           "tableFrom": "workflow_definitions",
           "tableTo": "users",
-          "columnsFrom": [
-            "owner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3744,12 +3484,8 @@
           "name": "workflow_definitions_project_id_projects_id_fk",
           "tableFrom": "workflow_definitions",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -4003,12 +3739,8 @@
           "name": "workflow_node_attempts_run_node_id_workflow_run_nodes_id_fk",
           "tableFrom": "workflow_node_attempts",
           "tableTo": "workflow_run_nodes",
-          "columnsFrom": [
-            "run_node_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["run_node_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4016,12 +3748,8 @@
           "name": "workflow_node_attempts_worker_id_workers_id_fk",
           "tableFrom": "workflow_node_attempts",
           "tableTo": "workers",
-          "columnsFrom": [
-            "worker_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worker_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -4029,12 +3757,8 @@
           "name": "workflow_node_attempts_worktree_id_project_worktrees_id_fk",
           "tableFrom": "workflow_node_attempts",
           "tableTo": "project_worktrees",
-          "columnsFrom": [
-            "worktree_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worktree_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -4042,12 +3766,8 @@
           "name": "workflow_node_attempts_model_route_id_model_routes_id_fk",
           "tableFrom": "workflow_node_attempts",
           "tableTo": "model_routes",
-          "columnsFrom": [
-            "model_route_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["model_route_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -4183,12 +3903,8 @@
           "name": "workflow_revision_edges_revision_id_workflow_revisions_id_fk",
           "tableFrom": "workflow_revision_edges",
           "tableTo": "workflow_revisions",
-          "columnsFrom": [
-            "revision_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["revision_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4196,12 +3912,8 @@
           "name": "workflow_revision_edges_from_node_id_workflow_revision_nodes_id_fk",
           "tableFrom": "workflow_revision_edges",
           "tableTo": "workflow_revision_nodes",
-          "columnsFrom": [
-            "from_node_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["from_node_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4209,12 +3921,8 @@
           "name": "workflow_revision_edges_to_node_id_workflow_revision_nodes_id_fk",
           "tableFrom": "workflow_revision_edges",
           "tableTo": "workflow_revision_nodes",
-          "columnsFrom": [
-            "to_node_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["to_node_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -4378,12 +4086,8 @@
           "name": "workflow_revision_nodes_revision_id_workflow_revisions_id_fk",
           "tableFrom": "workflow_revision_nodes",
           "tableTo": "workflow_revisions",
-          "columnsFrom": [
-            "revision_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["revision_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4391,12 +4095,8 @@
           "name": "workflow_revision_nodes_model_route_id_model_routes_id_fk",
           "tableFrom": "workflow_revision_nodes",
           "tableTo": "model_routes",
-          "columnsFrom": [
-            "model_route_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["model_route_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -4582,12 +4282,8 @@
           "name": "workflow_revisions_workflow_id_workflow_definitions_id_fk",
           "tableFrom": "workflow_revisions",
           "tableTo": "workflow_definitions",
-          "columnsFrom": [
-            "workflow_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workflow_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4595,12 +4291,8 @@
           "name": "workflow_revisions_created_by_user_id_users_id_fk",
           "tableFrom": "workflow_revisions",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -4784,12 +4476,8 @@
           "name": "workflow_run_events_run_id_workflow_runs_id_fk",
           "tableFrom": "workflow_run_events",
           "tableTo": "workflow_runs",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4797,12 +4485,8 @@
           "name": "workflow_run_events_run_node_id_workflow_run_nodes_id_fk",
           "tableFrom": "workflow_run_events",
           "tableTo": "workflow_run_nodes",
-          "columnsFrom": [
-            "run_node_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["run_node_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -4810,12 +4494,8 @@
           "name": "workflow_run_events_attempt_id_workflow_node_attempts_id_fk",
           "tableFrom": "workflow_run_events",
           "tableTo": "workflow_node_attempts",
-          "columnsFrom": [
-            "attempt_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["attempt_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -4954,12 +4634,8 @@
           "name": "workflow_run_node_dependencies_run_id_workflow_runs_id_fk",
           "tableFrom": "workflow_run_node_dependencies",
           "tableTo": "workflow_runs",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4967,12 +4643,8 @@
           "name": "workflow_run_node_dependencies_revision_edge_id_workflow_revision_edges_id_fk",
           "tableFrom": "workflow_run_node_dependencies",
           "tableTo": "workflow_revision_edges",
-          "columnsFrom": [
-            "revision_edge_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["revision_edge_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -4980,12 +4652,8 @@
           "name": "workflow_run_node_dependencies_from_node_id_workflow_run_nodes_id_fk",
           "tableFrom": "workflow_run_node_dependencies",
           "tableTo": "workflow_run_nodes",
-          "columnsFrom": [
-            "from_node_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["from_node_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4993,12 +4661,8 @@
           "name": "workflow_run_node_dependencies_to_node_id_workflow_run_nodes_id_fk",
           "tableFrom": "workflow_run_node_dependencies",
           "tableTo": "workflow_run_nodes",
-          "columnsFrom": [
-            "to_node_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["to_node_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -5318,12 +4982,8 @@
           "name": "workflow_run_nodes_run_id_workflow_runs_id_fk",
           "tableFrom": "workflow_run_nodes",
           "tableTo": "workflow_runs",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -5331,12 +4991,8 @@
           "name": "workflow_run_nodes_revision_node_id_workflow_revision_nodes_id_fk",
           "tableFrom": "workflow_run_nodes",
           "tableTo": "workflow_revision_nodes",
-          "columnsFrom": [
-            "revision_node_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["revision_node_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -5344,12 +5000,8 @@
           "name": "workflow_run_nodes_worker_id_workers_id_fk",
           "tableFrom": "workflow_run_nodes",
           "tableTo": "workers",
-          "columnsFrom": [
-            "worker_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worker_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -5357,12 +5009,8 @@
           "name": "workflow_run_nodes_worktree_id_project_worktrees_id_fk",
           "tableFrom": "workflow_run_nodes",
           "tableTo": "project_worktrees",
-          "columnsFrom": [
-            "worktree_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worktree_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -5370,12 +5018,8 @@
           "name": "workflow_run_nodes_model_route_id_model_routes_id_fk",
           "tableFrom": "workflow_run_nodes",
           "tableTo": "model_routes",
-          "columnsFrom": [
-            "model_route_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["model_route_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -5699,12 +5343,8 @@
           "name": "workflow_runs_workflow_id_workflow_definitions_id_fk",
           "tableFrom": "workflow_runs",
           "tableTo": "workflow_definitions",
-          "columnsFrom": [
-            "workflow_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workflow_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -5712,12 +5352,8 @@
           "name": "workflow_runs_workflow_revision_id_workflow_revisions_id_fk",
           "tableFrom": "workflow_runs",
           "tableTo": "workflow_revisions",
-          "columnsFrom": [
-            "workflow_revision_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workflow_revision_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -5725,12 +5361,8 @@
           "name": "workflow_runs_owner_id_users_id_fk",
           "tableFrom": "workflow_runs",
           "tableTo": "users",
-          "columnsFrom": [
-            "owner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -5738,12 +5370,8 @@
           "name": "workflow_runs_project_id_projects_id_fk",
           "tableFrom": "workflow_runs",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -5751,12 +5379,8 @@
           "name": "workflow_runs_selected_model_route_id_model_routes_id_fk",
           "tableFrom": "workflow_runs",
           "tableTo": "model_routes",
-          "columnsFrom": [
-            "selected_model_route_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["selected_model_route_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -5764,12 +5388,8 @@
           "name": "workflow_runs_worker_id_workers_id_fk",
           "tableFrom": "workflow_runs",
           "tableTo": "workers",
-          "columnsFrom": [
-            "worker_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worker_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -5777,12 +5397,8 @@
           "name": "workflow_runs_worktree_id_project_worktrees_id_fk",
           "tableFrom": "workflow_runs",
           "tableTo": "project_worktrees",
-          "columnsFrom": [
-            "worktree_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["worktree_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }

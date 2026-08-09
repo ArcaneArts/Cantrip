@@ -214,6 +214,10 @@ const workerBridge = {
       case "git.action":
         gitActionPaths.push(command.cwd);
         return { status: status(), output: "done" };
+      case "code.prepareAgentTurn":
+        return { prepared: true, sessions: [] };
+      case "code.agentTurnState":
+        return { notifiedSessions: 0, refreshed: [], conflicts: [] };
       case "chat.plan.set":
         return {
           mode: command.mode,
@@ -469,7 +473,7 @@ describe.sequential("server worktree control plane", () => {
       url: `/api/chats/${first.id}/turns`,
       payload: { text: "Run pwd", idempotencyKey: "primary-turn-1" },
     });
-    expect(started.statusCode).toBe(202);
+    expect(started.statusCode, started.body).toBe(202);
     await expect
       .poll(async () => {
         const context = await database.repository.getChatExecutionContext(
@@ -847,8 +851,7 @@ describe.sequential("server worktree control plane", () => {
         code: {
           available: true,
           version: "1.109.5",
-          upstreamRevision:
-            "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+          upstreamRevision: "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
           patchset: 1,
           transport: "web-proxy",
           maxSessions: 4,
