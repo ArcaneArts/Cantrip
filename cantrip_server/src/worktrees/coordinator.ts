@@ -379,6 +379,33 @@ export class ProjectWorktreeCoordinator {
           "The checkpointed workflow worktree no longer matches its managed lane.",
         );
       }
+      if (lease.state === "recovering" && input.action === "discard") {
+        const inventory = worktreeInventorySchema.parse(
+          await this.bridge.request(context.workerId, {
+            type: "worktree.reconcile",
+            sourcePath: context.sourcePath,
+          }),
+        );
+        await this.repository.reconcileProjectWorktrees(
+          ownerId,
+          projectId,
+          inventory,
+        );
+        if (
+          !inventory.worktrees.some(
+            ({ path }) => path === context.worktree.path,
+          )
+        ) {
+          await this.repository.workflowRuns.resolveWorktreeLeaseOutcome(
+            ownerId,
+            runId,
+            leaseId,
+            input,
+            true,
+          );
+          return this.repository.workflowRuns.getRun(ownerId, runId);
+        }
+      }
       const inspected = worktreeStatusResultSchema.parse(
         await this.bridge.request(context.workerId, {
           type: "worktree.status",
@@ -417,6 +444,17 @@ export class ProjectWorktreeCoordinator {
         throw new WorkflowControlConflictError(
           "The workflow worktree changed after its checkpoint; keep it and inspect the drift before resolving it.",
         );
+      }
+      const started =
+        await this.repository.workflowRuns.beginWorktreeLeaseOutcome(
+          ownerId,
+          runId,
+          leaseId,
+          input,
+        );
+      if (!started) return null;
+      if (started.state !== "recovering") {
+        return this.repository.workflowRuns.getRun(ownerId, runId);
       }
 
       let worktreeRemoved = false;

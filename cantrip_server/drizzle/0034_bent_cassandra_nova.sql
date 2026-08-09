@@ -1,0 +1,4 @@
+ALTER TABLE "workflow_worktree_leases" ADD COLUMN "pending_outcome" text;--> statement-breakpoint
+ALTER TABLE "workflow_worktree_leases" ADD COLUMN "pending_outcome_request" jsonb;--> statement-breakpoint
+ALTER TABLE "workflow_worktree_leases" ADD COLUMN "outcome_started_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "workflow_worktree_leases" ADD CONSTRAINT "workflow_worktree_leases_pending_outcome_check" CHECK (("workflow_worktree_leases"."pending_outcome" IS NULL AND "workflow_worktree_leases"."pending_outcome_request" IS NULL AND "workflow_worktree_leases"."outcome_started_at" IS NULL) OR ("workflow_worktree_leases"."pending_outcome" IN ('deliver', 'discard', 'release') AND "workflow_worktree_leases"."pending_outcome_request" IS NOT NULL AND "workflow_worktree_leases"."outcome_started_at" IS NOT NULL AND "workflow_worktree_leases"."state" = 'recovering'));

@@ -239,6 +239,13 @@
       "when": 1786246539945,
       "tag": "0033_smooth_winter_soldier",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1786247516150,
+      "tag": "0034_bent_cassandra_nova",
+      "breakpoints": true
     }
   ]
 }

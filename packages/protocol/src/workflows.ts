@@ -1263,6 +1263,22 @@ export const workflowWorktreeOutcomeSchema = z.enum([
   "discarded",
   "released",
 ]);
+export const workflowWorktreeOutcomeActionSchema = z.enum([
+  "keep",
+  "deliver",
+  "discard",
+  "release",
+]);
+export const workflowWorktreeOutcomeRequestSchema = z.object({
+  action: workflowWorktreeOutcomeActionSchema,
+  expectedEndingRevision: z.string().trim().min(1).max(500),
+  idempotencyKey: z.string().trim().min(1).max(200),
+});
+export const workflowWorktreePendingOutcomeSchema = z.enum([
+  "deliver",
+  "discard",
+  "release",
+]);
 export const workflowWorktreeLeaseSchema = z.object({
   id: idSchema,
   runId: idSchema,
@@ -1283,10 +1299,13 @@ export const workflowWorktreeLeaseSchema = z.object({
   errorCode: z.string().max(200).nullable(),
   errorMessage: z.string().max(5_000).nullable(),
   outcome: workflowWorktreeOutcomeSchema.nullable(),
+  pendingOutcome: workflowWorktreePendingOutcomeSchema.nullable(),
+  pendingOutcomeRequest: workflowWorktreeOutcomeRequestSchema.nullable(),
   resolvedByActorType: z.string().min(1).max(100).nullable(),
   resolvedByActorId: z.string().max(500).nullable(),
   activatedAt: nullableTimestamp,
   checkpointedAt: nullableTimestamp,
+  outcomeStartedAt: nullableTimestamp,
   resolvedAt: nullableTimestamp,
   releasedAt: nullableTimestamp,
   createdAt: z.string().datetime(),
@@ -1402,12 +1421,6 @@ export const workflowRunPauseSchema = z.object({
 
 export const workflowRunResumeSchema = z.object({
   reason: z.string().trim().min(1).max(2_000).nullable().default(null),
-  idempotencyKey: z.string().trim().min(1).max(200),
-});
-
-export const workflowWorktreeOutcomeRequestSchema = z.object({
-  action: z.enum(["keep", "deliver", "discard", "release"]),
-  expectedEndingRevision: z.string().trim().min(1).max(500),
   idempotencyKey: z.string().trim().min(1).max(200),
 });
 
@@ -1587,6 +1600,9 @@ export type WorkflowWorktreeLeaseState = z.infer<
 >;
 export type WorkflowWorktreeOutcome = z.infer<
   typeof workflowWorktreeOutcomeSchema
+>;
+export type WorkflowWorktreeOutcomeAction = z.infer<
+  typeof workflowWorktreeOutcomeActionSchema
 >;
 export type WorkflowWorktreeLease = z.infer<typeof workflowWorktreeLeaseSchema>;
 export type WorkflowRunEvent = z.infer<typeof workflowRunEventSchema>;
