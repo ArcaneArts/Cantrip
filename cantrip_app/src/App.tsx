@@ -241,6 +241,10 @@ import {
   updateDesktopWindowTheme,
   updateDesktopWindowTitle,
 } from "@/lib/desktop-popout";
+import {
+  desktopProjectRevealLabel,
+  revealProjectInNativeFileManager,
+} from "@/lib/desktop-project-share";
 import { browserUpdateForPageState } from "@/lib/browser-page-state";
 import {
   buildProjectSurfaceIndex,
@@ -2321,6 +2325,10 @@ export function App() {
   const liveStatus = useAppLiveStatus();
   const projectResourcesLive = liveStatus === "live";
   const desktopRuntime = useMemo(() => isDesktopRuntime(), []);
+  const projectRevealLabel = useMemo(
+    () => desktopProjectRevealLabel(desktopRuntime, navigator.userAgent),
+    [desktopRuntime],
+  );
   const overlayTitlebar = useMemo(
     () => shouldUseOverlayTitlebar(desktopRuntime, navigator.userAgent),
     [desktopRuntime],
@@ -4111,6 +4119,8 @@ export function App() {
                   })
                 }
                 onOpenProjectSettings={openProjectSettings}
+                projectRevealLabel={projectRevealLabel ?? undefined}
+                onRevealProject={revealProjectInNativeFileManager}
                 onSelectProject={selectProjectFromSidebar}
                 onSelectGroup={selectGroupFromSidebar}
               />

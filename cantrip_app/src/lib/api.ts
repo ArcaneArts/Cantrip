@@ -67,6 +67,7 @@ import {
   modelProviderUpdateSchema,
   orderedIdsSchema,
   projectListSchema,
+  projectShareAttachmentSchema,
   projectSummarySchema,
   projectWorkspaceCreateSchema,
   projectWorkspaceListSchema,
@@ -261,6 +262,21 @@ export async function getCachedGithubRepositories(
 
 export async function getProjects() {
   return projectListSchema.parse(await request("/api/projects"));
+}
+
+export async function createProjectNetworkShare(projectId: string) {
+  return projectShareAttachmentSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/network-shares`,
+      {},
+    ),
+  );
+}
+
+export async function deleteProjectNetworkShare(attachmentId: string) {
+  await request(`/api/project-shares/${encodeURIComponent(attachmentId)}`, {
+    method: "DELETE",
+  });
 }
 
 export async function getProjectWorkspaces() {

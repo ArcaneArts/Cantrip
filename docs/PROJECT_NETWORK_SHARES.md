@@ -49,6 +49,12 @@ worker command messages, and the server never makes an inbound connection to a
 worker. Request bodies and file responses stream with explicit congestion and
 client backpressure handling.
 
+The share stays writable so edits made through Finder or File Explorer update
+the worker-owned checkout. The worker rejects operating-system metadata
+artifacts such as `.DS_Store`, AppleDouble sidecars, `Thumbs.db`, and
+`desktop.ini` at the WebDAV boundary so merely browsing a project does not
+dirty its checkout.
+
 ## Native client boundary
 
 The project action is available only when the React application is running in
@@ -58,11 +64,13 @@ mounts the WebDAV volume using the host operating system, and opens the mounted
 project in Finder or Explorer. Credentials must be passed without placing them
 in a URL, log line, or shell-expanded command string.
 
-Windows uses the WebDAV Redirector through an argument-safe native process and
-opens the resulting drive in Explorer. macOS mounts with `mount_webdav` into a
-Cantrip-owned mount directory and reveals that volume in Finder. Native mounts
-must be reusable for repeated reveals and explicitly released when their server
-share expires or the desktop runtime shuts down.
+Windows passes credentials in memory to the WebDAV Redirector with
+`WNetAddConnection2W`, maps a temporary drive, and opens it in Explorer. macOS
+mounts with `mount_webdav` into a Cantrip-owned mount directory. Its credentials
+travel through the inherited URLMount credential descriptor, not process
+arguments, and the resulting volume opens in Finder. Native mounts are reused
+for repeated reveals and released when they are replaced or the desktop runtime
+shuts down.
 
 ## Security and lifecycle invariants
 
@@ -90,5 +98,6 @@ share expires or the desktop runtime shuts down.
    protocol.
 2. Completed: server-authorized project share sessions and multiplexed worker
    tunnel.
-3. Desktop-only project menu action and native macOS/Windows mount commands.
+3. Completed: desktop-only project menu action and native macOS/Windows mount
+   commands.
 4. Expiration, reconnect, unmount cleanup, and end-to-end local/remote QA.

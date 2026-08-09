@@ -132,6 +132,60 @@ describe("ProjectShareManager", () => {
       readFile(path.join(root, "from-network-drive.txt"), "utf8"),
     ).resolves.toBe("worker-owned\n");
 
+    const macOsProbe = await authenticatedRequest(
+      descriptor,
+      "PUT",
+      `${descriptor.publicBasePath}/from-macos.txt`,
+      "finder-owned\n",
+      { if: "(<DAV:no-lock>)" },
+    );
+    expect([201, 204]).toContain(macOsProbe.status);
+    await expect(
+      readFile(path.join(root, "from-macos.txt"), "utf8"),
+    ).resolves.toBe("finder-owned\n");
+
+    const failedCondition = await authenticatedRequest(
+      descriptor,
+      "PUT",
+      `${descriptor.publicBasePath}/rejected.txt`,
+      "must not be written\n",
+      { if: "(Not <DAV:no-lock>)" },
+    );
+    expect(failedCondition.status).toBe(412);
+
+    for (const metadataName of [
+      ".DS_Store",
+      "._README.md",
+      ".Spotlight-V100",
+      "Thumbs.db",
+    ]) {
+      const metadataWrite = await authenticatedRequest(
+        descriptor,
+        "PUT",
+        `${descriptor.publicBasePath}/${metadataName}`,
+        "file-manager metadata\n",
+      );
+      expect(metadataWrite.status).toBe(403);
+      await expect(
+        readFile(path.join(root, metadataName)),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    }
+
+    await writeFile(path.join(root, ".existing-finder-temp"), "temporary\n");
+    const metadataMove = await authenticatedRequest(
+      descriptor,
+      "MOVE",
+      `${descriptor.publicBasePath}/.existing-finder-temp`,
+      undefined,
+      {
+        destination: `http://${descriptor.loopbackHost}:${descriptor.loopbackPort}${descriptor.publicBasePath}/.DS_Store`,
+      },
+    );
+    expect(metadataMove.status).toBe(403);
+    await expect(
+      readFile(path.join(root, ".existing-finder-temp"), "utf8"),
+    ).resolves.toBe("temporary\n");
+
     await expect(manager.close("share-1")).resolves.toBe(true);
     expect(manager.get("share-1")).toBeNull();
     await expect(

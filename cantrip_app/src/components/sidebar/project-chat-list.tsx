@@ -24,6 +24,7 @@ import {
   CirclePause,
   Code2,
   FolderGit2,
+  FolderOpen,
   FolderTree,
   GitCommitHorizontal,
   Globe2,
@@ -919,9 +920,12 @@ function SortableProject({
   onCreateRemoteDesktop,
   onCreateTerminal,
   onOpenSettings,
+  onReveal,
   onRemove,
   onSelect,
   project,
+  projectRevealLabel,
+  revealDisabled,
 }: {
   active: boolean;
   children?: ReactNode;
@@ -940,9 +944,12 @@ function SortableProject({
   onCreateRemoteDesktop(): void;
   onCreateTerminal(): void;
   onOpenSettings(): void;
+  onReveal?: () => void;
   onRemove(): void;
   onSelect(): void;
   project: ProjectSummary;
+  projectRevealLabel?: string;
+  revealDisabled: boolean;
 }) {
   const cloning = project.setupStatus === "cloning";
   const failed = project.setupStatus === "failed";
@@ -1094,6 +1101,15 @@ function SortableProject({
                 >
                   <Settings className="size-4" /> Settings
                 </DropdownMenuPrimitive.Item>
+                {onReveal ? (
+                  <DropdownMenuPrimitive.Item
+                    className={menuItemClass}
+                    disabled={revealDisabled}
+                    onSelect={onReveal}
+                  >
+                    <FolderOpen className="size-4" /> {projectRevealLabel}
+                  </DropdownMenuPrimitive.Item>
+                ) : null}
                 <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
                 <DropdownMenuPrimitive.Item
                   className={cn(
@@ -1144,6 +1160,7 @@ export function ProjectChatList({
   onOpenChatHistory,
   onOpenChatTerminal,
   onOpenProjectSettings,
+  onRevealProject,
   onCreateTerminal,
   onDeleteTerminal,
   onRemoveProject,
@@ -1157,6 +1174,7 @@ export function ProjectChatList({
   onSelectGroup,
   onSelectProject,
   projects,
+  projectRevealLabel,
   selectedTabKey,
   selectedProjectId,
   tabLayout,
@@ -1198,6 +1216,7 @@ export function ProjectChatList({
   onOpenChatHistory(chat: ChatSummary): void;
   onOpenChatTerminal(chat: ChatSummary): void;
   onOpenProjectSettings(projectId: string): void;
+  onRevealProject?: (project: ProjectSummary) => Promise<void>;
   onCreateTerminal(projectId: string): void;
   onDeleteTerminal(terminalId: string): void;
   onRemoveProject(projectId: string, deleteLocalFiles: boolean): void;
@@ -1211,6 +1230,7 @@ export function ProjectChatList({
   onSelectGroup(groupId: string): void;
   onSelectProject(projectId: string): void;
   projects: ProjectSummary[];
+  projectRevealLabel?: string;
   selectedTabKey: string | null;
   selectedProjectId: string | null;
   tabLayout: ProjectTabLayoutSummary | null;
@@ -1246,6 +1266,12 @@ export function ProjectChatList({
   const [removeProjectTarget, setRemoveProjectTarget] =
     useState<ProjectSummary | null>(null);
   const [deleteLocalFiles, setDeleteLocalFiles] = useState(false);
+  const [revealingProjectId, setRevealingProjectId] = useState<string | null>(
+    null,
+  );
+  const [projectRevealError, setProjectRevealError] = useState<string | null>(
+    null,
+  );
   const standaloneTerminals = terminals.filter(
     (terminal) => terminal.linkedChatId === null,
   );
@@ -1471,6 +1497,26 @@ export function ProjectChatList({
                 onCreateRemoteDesktop={() => onCreateRemoteDesktop(project.id)}
                 onCreateTerminal={() => onCreateTerminal(project.id)}
                 onOpenSettings={() => onOpenProjectSettings(project.id)}
+                onReveal={
+                  project.source && projectRevealLabel && onRevealProject
+                    ? () => {
+                        if (revealingProjectId) return;
+                        setProjectRevealError(null);
+                        setRevealingProjectId(project.id);
+                        void onRevealProject(project)
+                          .catch((error: unknown) => {
+                            setProjectRevealError(
+                              error instanceof Error
+                                ? error.message
+                                : "Could not reveal this project.",
+                            );
+                          })
+                          .finally(() => setRevealingProjectId(null));
+                      }
+                    : undefined
+                }
+                projectRevealLabel={projectRevealLabel}
+                revealDisabled={revealingProjectId !== null}
                 onSelect={() => onSelectProject(project.id)}
                 onRemove={() => {
                   setDeleteLocalFiles(false);
@@ -1674,6 +1720,15 @@ export function ProjectChatList({
           })}
         </SortableContext>
       </div>
+
+      {projectRevealError ? (
+        <div
+          role="alert"
+          className="fixed bottom-5 right-5 z-50 max-w-md rounded-lg bg-destructive px-4 py-3 text-sm text-destructive-foreground shadow-xl"
+        >
+          Could not reveal project: {projectRevealError}
+        </div>
+      ) : null}
 
       <Dialog
         open={Boolean(deleteTarget)}

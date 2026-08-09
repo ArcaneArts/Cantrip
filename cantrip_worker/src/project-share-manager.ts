@@ -12,6 +12,29 @@ import { v2 as webdav } from "webdav-server";
 const LOOPBACK_HOST = "127.0.0.1" as const;
 const SHARE_REALM = "Cantrip Project Share";
 const DEFAULT_MAX_SHARES = 8;
+const FILE_MANAGER_METADATA_NAMES = new Set([
+  ".appledouble",
+  ".documentrevisions-v100",
+  ".fseventsd",
+  ".lsoverride",
+  ".spotlight-v100",
+  ".temporaryitems",
+  ".trashes",
+  "desktop.ini",
+  "ehthumbs.db",
+  "icon\r",
+  "thumbs.db",
+]);
+const MUTATING_METHODS = new Set([
+  "COPY",
+  "DELETE",
+  "LOCK",
+  "MKCOL",
+  "MOVE",
+  "PROPPATCH",
+  "PUT",
+  "UNLOCK",
+]);
 
 interface ManagedProjectShare {
   descriptor: WorkerProjectShareOpenResult;
@@ -29,6 +52,52 @@ export interface ProjectShareOpenInput {
 
 export interface ProjectShareManagerOptions {
   maxShares?: number;
+}
+
+function isFileManagerMetadataSegment(segment: string): boolean {
+  const normalized = segment.toLowerCase();
+  return (
+    normalized === ".ds_store" ||
+    normalized.startsWith(".ds_store.") ||
+    normalized.startsWith("._") ||
+    FILE_MANAGER_METADATA_NAMES.has(normalized)
+  );
+}
+
+function destinationSegments(destination: string | null): string[] {
+  if (!destination) return [];
+  try {
+    return new URL(destination, "http://cantrip.invalid").pathname
+      .split("/")
+      .filter(Boolean)
+      .map((segment) => decodeURIComponent(segment));
+  } catch {
+    return [];
+  }
+}
+
+function requestTargetsFileManagerMetadata(
+  context: webdav.HTTPRequestContext,
+): boolean {
+  return [
+    ...context.requested.path.paths,
+    ...destinationSegments(context.headers.find("destination")),
+  ].some(isFileManagerMetadataSegment);
+}
+
+function rejectFileManagerMetadataRequests(server: webdav.WebDAVServer): void {
+  server.beforeRequest((context, next) => {
+    if (!requestTargetsFileManagerMetadata(context)) {
+      next();
+      return;
+    }
+
+    const method = context.request.method?.toUpperCase() ?? "";
+    context.setCode(MUTATING_METHODS.has(method) ? 403 : 404);
+    context.response.setHeader("Cache-Control", "no-store");
+    context.request.resume();
+    context.exit();
+  });
 }
 
 export class ProjectShareManager {
@@ -146,6 +215,7 @@ export class ProjectShareManager {
       requireAuthentification: true,
       serverName: "Cantrip",
     });
+    rejectFileManagerMetadataRequests(server);
     if (
       !server.setFileSystemSync(
         input.publicBasePath,

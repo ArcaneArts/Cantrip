@@ -10,8 +10,10 @@ use std::{
 
 use tauri::{Manager, RunEvent, State};
 
+mod project_share;
 mod window_coordinator;
 
+use project_share::ProjectShareMounts;
 use window_coordinator::WindowCoordinator;
 
 struct ManagedRuntime {
@@ -225,6 +227,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             local_server_url,
+            project_share::reveal_project_share,
             window_coordinator::begin_native_tab_drag,
             window_coordinator::cancel_native_tab_drag,
             window_coordinator::finish_native_tab_drag,
@@ -235,6 +238,7 @@ pub fn run() {
         .setup(|app| {
             let runtime = build_runtime(app).map_err(std::io::Error::other)?;
             app.manage(runtime);
+            app.manage(ProjectShareMounts::default());
             app.manage(WindowCoordinator::default());
             Ok(())
         })
@@ -250,6 +254,7 @@ pub fn run() {
 
     app.run(|handle, event| {
         if matches!(event, RunEvent::Exit) {
+            handle.state::<ProjectShareMounts>().cleanup();
             let runtime = handle.state::<ManagedRuntime>();
             if let Ok(mut children) = runtime.children.lock() {
                 for child in children.iter_mut().rev() {
