@@ -3540,7 +3540,7 @@ export function App() {
         <div
           data-slot="app-sidebar-shell"
           className={cn(
-            "relative hidden shrink-0 md:block",
+            "group/sidebar-shell relative hidden shrink-0 md:block",
             sidebarResizing
               ? "transition-none"
               : "transition-[width] duration-150 ease-out motion-reduce:transition-none",
@@ -3561,28 +3561,6 @@ export function App() {
             )}
             style={{ width: sidebarWidth }}
           >
-            <div
-              data-slot="sidebar-resize-handle"
-              role="separator"
-              aria-label="Resize sidebar"
-              aria-orientation="vertical"
-              aria-valuemin={MIN_SIDEBAR_WIDTH}
-              aria-valuemax={MAX_SIDEBAR_WIDTH}
-              aria-valuenow={sidebarWidth}
-              tabIndex={0}
-              title="Drag to resize sidebar"
-              className={cn(
-                "absolute inset-y-0 -right-1 z-50 w-2 cursor-col-resize touch-none outline-none",
-                "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-border after:opacity-0 after:transition-opacity after:duration-150",
-                "group-hover/sidebar:after:opacity-100 hover:after:opacity-100 focus-visible:after:opacity-100",
-                sidebarResizing && "after:opacity-100",
-              )}
-              onKeyDown={resizeSidebarWithKeyboard}
-              onPointerDown={beginSidebarResize}
-              onPointerMove={moveSidebarResize}
-              onPointerUp={(event) => finishSidebarResize(event, true)}
-              onPointerCancel={(event) => finishSidebarResize(event, false)}
-            />
             <div
               className={
                 overlayTitlebar
@@ -3781,6 +3759,29 @@ export function App() {
               </div>
             </div>
           </aside>
+          <div
+            data-slot="sidebar-resize-handle"
+            role="separator"
+            aria-label="Resize sidebar"
+            aria-orientation="vertical"
+            aria-valuemin={MIN_SIDEBAR_WIDTH}
+            aria-valuemax={MAX_SIDEBAR_WIDTH}
+            aria-valuenow={sidebarWidth}
+            tabIndex={sidebarCollapsed ? -1 : 0}
+            title="Drag to resize sidebar"
+            className={cn(
+              "absolute inset-y-0 -right-1 z-40 w-2 cursor-col-resize touch-none outline-none",
+              "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-border after:opacity-0 after:transition-opacity after:duration-150",
+              "group-hover/sidebar-shell:after:opacity-100 hover:after:opacity-100 focus-visible:after:opacity-100",
+              sidebarCollapsed && "pointer-events-none opacity-0",
+              sidebarResizing && "after:opacity-100",
+            )}
+            onKeyDown={resizeSidebarWithKeyboard}
+            onPointerDown={beginSidebarResize}
+            onPointerMove={moveSidebarResize}
+            onPointerUp={(event) => finishSidebarResize(event, true)}
+            onPointerCancel={(event) => finishSidebarResize(event, false)}
+          />
         </div>
       ) : null}
 
