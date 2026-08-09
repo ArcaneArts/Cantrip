@@ -67,6 +67,10 @@ import {
   orderedIdsSchema,
   projectListSchema,
   projectSummarySchema,
+  projectWorkspaceCreateSchema,
+  projectWorkspaceListSchema,
+  projectWorkspaceSummarySchema,
+  projectWorkspaceUpdateSchema,
   projectTabLayoutSummarySchema,
   projectWorktreeListSchema,
   projectWorktreeSummarySchema,
@@ -110,11 +114,14 @@ import type {
   GitDiffScope,
   GithubIssueKind,
   GithubIssueState,
+  GithubProjectCreate,
   ModelProfileCreate,
   ModelProfileUpdate,
   ModelProviderCreate,
   ModelProviderUpdate,
   ProjectViewKind,
+  ProjectWorkspaceCreate,
+  ProjectWorkspaceUpdate,
   ProjectWorktreeCreate,
   RemoteDesktopTarget,
   UserSettingsUpdate,
@@ -252,6 +259,34 @@ export async function getCachedGithubRepositories(
 
 export async function getProjects() {
   return projectListSchema.parse(await request("/api/projects"));
+}
+
+export async function getProjectWorkspaces() {
+  return projectWorkspaceListSchema.parse(await request("/api/workspaces"));
+}
+
+export async function createProjectWorkspace(input: ProjectWorkspaceCreate) {
+  return projectWorkspaceSummarySchema.parse(
+    await post("/api/workspaces", projectWorkspaceCreateSchema.parse(input)),
+  );
+}
+
+export async function updateProjectWorkspace(
+  workspaceId: string,
+  input: ProjectWorkspaceUpdate,
+) {
+  return projectWorkspaceSummarySchema.parse(
+    await request(`/api/workspaces/${encodeURIComponent(workspaceId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(projectWorkspaceUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function deleteProjectWorkspace(workspaceId: string) {
+  await request(`/api/workspaces/${encodeURIComponent(workspaceId)}`, {
+    method: "DELETE",
+  });
 }
 
 export async function getProjectWorktrees(projectId: string) {
@@ -460,12 +495,7 @@ export async function removeProject(
   });
 }
 
-export async function createGithubProject(input: {
-  nameWithOwner: string;
-  repositoryId: string;
-  url: string;
-  workerId: string;
-}) {
+export async function createGithubProject(input: GithubProjectCreate) {
   return projectSummarySchema.parse(
     await post("/api/projects/from-github", input),
   );

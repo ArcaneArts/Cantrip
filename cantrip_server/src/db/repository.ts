@@ -62,6 +62,9 @@ import type {
   RemoteSurfaceUpdate,
   ProjectCloneResult,
   ProjectSummary,
+  ProjectWorkspaceCreate,
+  ProjectWorkspaceSummary,
+  ProjectWorkspaceUpdate,
   ProjectWorktreePolicyUpdate,
   ProjectWorktreeSummary,
   ProjectViewCreate,
@@ -122,6 +125,7 @@ type RepositoryDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type ProjectRow = typeof schema.projects.$inferSelect;
 type ProjectSourceRow = typeof schema.projectSources.$inferSelect;
 type ProjectWorktreeRow = typeof schema.projectWorktrees.$inferSelect;
+type ProjectWorkspaceRow = typeof schema.projectWorkspaces.$inferSelect;
 
 export interface ChatExecutionContext {
   automationPaused: boolean;
@@ -151,6 +155,7 @@ export interface ChatAttachmentRecord extends ChatAttachmentSummary {
 export class ExecutionLaneConflictError extends Error {}
 export class AgentInteractionConflictError extends Error {}
 export class CodeCapabilityUnavailableError extends Error {}
+export class ProjectWorkspaceInvariantError extends Error {}
 
 export interface TerminalExecutionContext {
   cwd: string;
@@ -322,6 +327,21 @@ function toProjectSummary(
       : null,
     createdAt: toISOString(project.createdAt),
     updatedAt: toISOString(project.updatedAt),
+  };
+}
+
+function toProjectWorkspaceSummary(
+  workspace: ProjectWorkspaceRow,
+  projectIds: string[],
+): ProjectWorkspaceSummary {
+  return {
+    id: workspace.id,
+    name: workspace.name,
+    position: workspace.position,
+    isDefault: workspace.isDefault,
+    projectIds,
+    createdAt: toISOString(workspace.createdAt),
+    updatedAt: toISOString(workspace.updatedAt),
   };
 }
 
@@ -856,6 +876,7 @@ export class ServerRepository {
       })
       .returning();
     const user = firstOrThrow(result, "ensuring the local user");
+    await this.ensureDefaultProjectWorkspace(user.id);
 
     return {
       id: user.id,
@@ -1442,6 +1463,204 @@ export class ServerRepository {
       .where(eq(schema.projects.ownerId, ownerId))
       .orderBy(asc(schema.projects.position), asc(schema.projects.createdAt));
     return rows.map(({ project, source }) => toProjectSummary(project, source));
+  }
+
+  async ensureDefaultProjectWorkspace(
+    ownerId: string,
+  ): Promise<ProjectWorkspaceSummary> {
+    const defaultId = `workspace:default:${ownerId}`;
+    await this.database
+      .insert(schema.projectWorkspaces)
+      .values({
+        id: defaultId,
+        ownerId,
+        name: "Default",
+        position: 0,
+        isDefault: true,
+      })
+      .onConflictDoNothing();
+    const rows = await this.database
+      .select()
+      .from(schema.projectWorkspaces)
+      .where(
+        and(
+          eq(schema.projectWorkspaces.ownerId, ownerId),
+          eq(schema.projectWorkspaces.isDefault, true),
+        ),
+      )
+      .limit(1);
+    const workspace = firstOrThrow(rows, "ensuring the default workspace");
+    const memberships = await this.database
+      .select({ projectId: schema.projectWorkspaceMemberships.projectId })
+      .from(schema.projectWorkspaceMemberships)
+      .where(eq(schema.projectWorkspaceMemberships.workspaceId, workspace.id));
+    return toProjectWorkspaceSummary(
+      workspace,
+      memberships.map(({ projectId }) => projectId),
+    );
+  }
+
+  async listProjectWorkspaces(
+    ownerId: string,
+  ): Promise<ProjectWorkspaceSummary[]> {
+    await this.ensureDefaultProjectWorkspace(ownerId);
+    const [workspaces, memberships] = await Promise.all([
+      this.database
+        .select()
+        .from(schema.projectWorkspaces)
+        .where(eq(schema.projectWorkspaces.ownerId, ownerId))
+        .orderBy(
+          asc(schema.projectWorkspaces.position),
+          asc(schema.projectWorkspaces.createdAt),
+        ),
+      this.database
+        .select({
+          workspaceId: schema.projectWorkspaceMemberships.workspaceId,
+          projectId: schema.projectWorkspaceMemberships.projectId,
+        })
+        .from(schema.projectWorkspaceMemberships)
+        .innerJoin(
+          schema.projectWorkspaces,
+          eq(
+            schema.projectWorkspaces.id,
+            schema.projectWorkspaceMemberships.workspaceId,
+          ),
+        )
+        .where(eq(schema.projectWorkspaces.ownerId, ownerId)),
+    ]);
+    const projectIds = new Map<string, string[]>();
+    for (const membership of memberships) {
+      const current = projectIds.get(membership.workspaceId) ?? [];
+      current.push(membership.projectId);
+      projectIds.set(membership.workspaceId, current);
+    }
+    return workspaces.map((workspace) =>
+      toProjectWorkspaceSummary(workspace, projectIds.get(workspace.id) ?? []),
+    );
+  }
+
+  async createProjectWorkspace(
+    ownerId: string,
+    input: ProjectWorkspaceCreate,
+  ): Promise<ProjectWorkspaceSummary> {
+    await this.ensureDefaultProjectWorkspace(ownerId);
+    const last = await this.database
+      .select({ position: schema.projectWorkspaces.position })
+      .from(schema.projectWorkspaces)
+      .where(eq(schema.projectWorkspaces.ownerId, ownerId))
+      .orderBy(desc(schema.projectWorkspaces.position))
+      .limit(1);
+    const rows = await this.database
+      .insert(schema.projectWorkspaces)
+      .values({
+        id: randomUUID(),
+        ownerId,
+        name: input.name,
+        position: (last[0]?.position ?? -1) + 1,
+        isDefault: false,
+      })
+      .returning();
+    return toProjectWorkspaceSummary(
+      firstOrThrow(rows, "creating a project workspace"),
+      [],
+    );
+  }
+
+  async updateProjectWorkspace(
+    ownerId: string,
+    workspaceId: string,
+    input: ProjectWorkspaceUpdate,
+  ): Promise<ProjectWorkspaceSummary | null> {
+    const rows = await this.database
+      .select()
+      .from(schema.projectWorkspaces)
+      .where(
+        and(
+          eq(schema.projectWorkspaces.id, workspaceId),
+          eq(schema.projectWorkspaces.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    const workspace = rows[0];
+    if (!workspace) return null;
+    if (workspace.isDefault && input.name !== undefined) {
+      throw new ProjectWorkspaceInvariantError(
+        "The Default workspace cannot be renamed.",
+      );
+    }
+    const projectIds = input.projectIds
+      ? [...new Set(input.projectIds)]
+      : undefined;
+    if (projectIds) {
+      const ownedProjects = projectIds.length
+        ? await this.database
+            .select({ id: schema.projects.id })
+            .from(schema.projects)
+            .where(
+              and(
+                eq(schema.projects.ownerId, ownerId),
+                inArray(schema.projects.id, projectIds),
+              ),
+            )
+        : [];
+      if (ownedProjects.length !== projectIds.length) {
+        throw new ProjectWorkspaceInvariantError(
+          "Workspace membership contained an unknown project.",
+        );
+      }
+    }
+    await this.database.transaction(async (transaction) => {
+      await transaction
+        .update(schema.projectWorkspaces)
+        .set({
+          ...(input.name === undefined ? {} : { name: input.name }),
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.projectWorkspaces.id, workspaceId));
+      if (projectIds !== undefined) {
+        await transaction
+          .delete(schema.projectWorkspaceMemberships)
+          .where(
+            eq(schema.projectWorkspaceMemberships.workspaceId, workspaceId),
+          );
+        if (projectIds.length) {
+          await transaction
+            .insert(schema.projectWorkspaceMemberships)
+            .values(
+              projectIds.map((projectId) => ({ workspaceId, projectId })),
+            );
+        }
+      }
+    });
+    return (await this.listProjectWorkspaces(ownerId)).find(
+      ({ id }) => id === workspaceId,
+    )!;
+  }
+
+  async deleteProjectWorkspace(
+    ownerId: string,
+    workspaceId: string,
+  ): Promise<boolean> {
+    const rows = await this.database
+      .select({ isDefault: schema.projectWorkspaces.isDefault })
+      .from(schema.projectWorkspaces)
+      .where(
+        and(
+          eq(schema.projectWorkspaces.id, workspaceId),
+          eq(schema.projectWorkspaces.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    if (!rows[0]) return false;
+    if (rows[0].isDefault) {
+      throw new ProjectWorkspaceInvariantError(
+        "The Default workspace cannot be deleted.",
+      );
+    }
+    await this.database
+      .delete(schema.projectWorkspaces)
+      .where(eq(schema.projectWorkspaces.id, workspaceId));
+    return true;
   }
 
   async updateProjectWorktreePolicy(
@@ -2868,6 +3087,24 @@ export class ServerRepository {
     ownerId: string,
     input: GithubProjectCreate,
   ): Promise<ProjectSummary> {
+    const defaultWorkspace = await this.ensureDefaultProjectWorkspace(ownerId);
+    const workspaceIds = [
+      ...new Set(input.workspaceIds ?? [defaultWorkspace.id]),
+    ];
+    const ownedWorkspaces = await this.database
+      .select({ id: schema.projectWorkspaces.id })
+      .from(schema.projectWorkspaces)
+      .where(
+        and(
+          eq(schema.projectWorkspaces.ownerId, ownerId),
+          inArray(schema.projectWorkspaces.id, workspaceIds),
+        ),
+      );
+    if (ownedWorkspaces.length !== workspaceIds.length) {
+      throw new ProjectWorkspaceInvariantError(
+        "Project import referenced an unknown workspace.",
+      );
+    }
     const project = await this.database.transaction(async (transaction) => {
       const lastProjects = await transaction
         .select({ position: schema.projects.position })
@@ -2889,7 +3126,14 @@ export class ServerRepository {
           githubRepositoryUrl: input.url,
         })
         .returning();
-      return firstOrThrow(projectResult, "creating a GitHub project");
+      const created = firstOrThrow(projectResult, "creating a GitHub project");
+      await transaction.insert(schema.projectWorkspaceMemberships).values(
+        workspaceIds.map((workspaceId) => ({
+          workspaceId,
+          projectId: created.id,
+        })),
+      );
+      return created;
     });
     return toProjectSummary(project);
   }

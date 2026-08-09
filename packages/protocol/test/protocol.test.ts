@@ -42,6 +42,9 @@ import {
   normalizeResponsesBaseUrl,
   chatPermissionProfileStateSchema,
   queuedPromptSchema,
+  projectWorkspaceCreateSchema,
+  projectWorkspaceSummarySchema,
+  projectWorkspaceUpdateSchema,
   projectWorktreeSummarySchema,
   projectTabLayoutSummarySchema,
   remoteDesktopCreateSchema,
@@ -118,6 +121,29 @@ describe("Cantrip protocol", () => {
         },
       }).notification.type,
     ).toBe("worktree.status.observed");
+  });
+
+  it("validates project workspace names, memberships, and summaries", () => {
+    expect(
+      projectWorkspaceCreateSchema.parse({ name: "  Personal  " }),
+    ).toEqual({ name: "Personal" });
+    expect(
+      projectWorkspaceUpdateSchema.parse({
+        projectIds: ["project-1", "project-2"],
+      }),
+    ).toEqual({ projectIds: ["project-1", "project-2"] });
+    expect(() => projectWorkspaceUpdateSchema.parse({})).toThrow();
+    expect(() =>
+      projectWorkspaceSummarySchema.parse({
+        id: "workspace-1",
+        name: "Personal",
+        position: 0,
+        isDefault: false,
+        projectIds: [""],
+        createdAt: "2026-08-09T12:00:00.000Z",
+        updatedAt: "2026-08-09T12:00:00.000Z",
+      }),
+    ).toThrow();
   });
 
   it("bounds GitHub issue pagination to pages of at most 100", () => {

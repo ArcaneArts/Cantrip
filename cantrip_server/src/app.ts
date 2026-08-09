@@ -112,6 +112,10 @@ import {
   projectListSchema,
   projectRemoveSchema,
   projectSummarySchema,
+  projectWorkspaceCreateSchema,
+  projectWorkspaceListSchema,
+  projectWorkspaceSummarySchema,
+  projectWorkspaceUpdateSchema,
   projectTabLayoutSummarySchema,
   projectWorktreeCreateSchema,
   projectWorktreeListSchema,
@@ -249,6 +253,7 @@ import {
   CodeCapabilityUnavailableError,
   ExecutionLaneConflictError,
   LOCAL_USER_ID,
+  ProjectWorkspaceInvariantError,
   WORKER_ONLINE_WINDOW_MS,
   type ChatExecutionContext,
   type ModelRuntime,
@@ -3335,6 +3340,70 @@ export async function buildApp({
     return reply.send(projectListSchema.parse(projects));
   });
 
+  app.get("/api/workspaces", async (_request, reply) => {
+    return reply.send(
+      projectWorkspaceListSchema.parse(
+        await repository.listProjectWorkspaces(LOCAL_USER_ID),
+      ),
+    );
+  });
+
+  app.post("/api/workspaces", async (request, reply) => {
+    const input = projectWorkspaceCreateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      return reply
+        .code(201)
+        .send(
+          projectWorkspaceSummarySchema.parse(
+            await repository.createProjectWorkspace(LOCAL_USER_ID, input.data),
+          ),
+        );
+    } catch (error) {
+      return reply.code(409).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.patch<{ Params: { workspaceId: string } }>(
+    "/api/workspaces/:workspaceId",
+    async (request, reply) => {
+      const input = projectWorkspaceUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const workspace = await repository.updateProjectWorkspace(
+          LOCAL_USER_ID,
+          request.params.workspaceId,
+          input.data,
+        );
+        return workspace
+          ? reply.send(projectWorkspaceSummarySchema.parse(workspace))
+          : reply.code(404).send({ error: "Workspace not found." });
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.delete<{ Params: { workspaceId: string } }>(
+    "/api/workspaces/:workspaceId",
+    async (request, reply) => {
+      try {
+        return (await repository.deleteProjectWorkspace(
+          LOCAL_USER_ID,
+          request.params.workspaceId,
+        ))
+          ? reply.code(204).send()
+          : reply.code(404).send({ error: "Workspace not found." });
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
   app.get<{
     Querystring: {
       enabled?: string;
@@ -5230,6 +5299,9 @@ export async function buildApp({
       queueProjectSetup(project.id, input.data);
       return reply.code(202).send(projectSummarySchema.parse(project));
     } catch (error) {
+      if (error instanceof ProjectWorkspaceInvariantError) {
+        return reply.code(400).send({ error: error.message });
+      }
       if (
         await repository.hasGithubProject(
           LOCAL_USER_ID,

@@ -13,6 +13,7 @@ import type {
   ModelProfileSummary,
   ProjectSummary,
   ProjectTabLayoutSummary,
+  ProjectWorkspaceSummary,
   ProjectWorktreeCreate,
   ProjectWorktreeSummary,
   ProjectViewKind,
@@ -120,6 +121,8 @@ import {
   type ProjectSurfaceCreateKind,
 } from "@/components/workspace/project-tab-bar";
 import { WorkspaceDndProvider } from "@/components/workspace/workspace-dnd-provider";
+import { WorkspaceMembershipPicker } from "@/components/workspaces/workspace-membership-picker";
+import { WorkspaceSwitcher } from "@/components/workspaces/workspace-switcher";
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { ServerSwitcher } from "@/components/servers/server-switcher";
@@ -157,6 +160,7 @@ import {
   createGithubProject,
   createProjectWorktree,
   createProjectView,
+  createProjectWorkspace,
   createRemoteDesktop,
   createTerminal,
   compactChat,
@@ -183,6 +187,7 @@ import {
   getMessages,
   getAgentInteractionRequests,
   getProjects,
+  getProjectWorkspaces,
   getProjectTabLayout,
   getProjectWorktrees,
   getProjectWorktreeStatus,
@@ -258,6 +263,10 @@ import {
 } from "@/lib/desktop-window-coordinator";
 import { cn } from "@/lib/utils";
 import { applyOptimisticTabLayoutCommand } from "@/lib/project-tab-layout-optimistic";
+import {
+  projectsInWorkspace,
+  resolveProjectWorkspace,
+} from "@/lib/project-workspaces";
 import type {
   TabLayoutCommand,
   WorkspaceDropOperation,
@@ -480,11 +489,15 @@ function CodeHeaderActions({
 }
 
 function RepositoryImporter({
+  activeWorkspaceId,
   projects,
   workerId,
+  workspaces,
 }: {
+  activeWorkspaceId: string | null;
   projects: ProjectSummary[];
   workerId: string | null;
+  workspaces: ProjectWorkspaceSummary[];
 }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
@@ -495,6 +508,14 @@ function RepositoryImporter({
   const [importErrors, setImportErrors] = useState<Map<string, string>>(
     new Map(),
   );
+  const [selectedWorkspaceIds, setSelectedWorkspaceIds] = useState(
+    () => new Set(activeWorkspaceId ? [activeWorkspaceId] : []),
+  );
+  useEffect(() => {
+    setSelectedWorkspaceIds(
+      new Set(activeWorkspaceId ? [activeWorkspaceId] : []),
+    );
+  }, [activeWorkspaceId]);
   const github = useQuery({
     enabled: Boolean(workerId),
     queryFn: () => getGithubStatus(workerId!),
@@ -514,7 +535,12 @@ function RepositoryImporter({
     staleTime: 30_000,
   });
   const queueImport = (repository: GithubRepository) => {
-    if (!workerId || pendingRepositoryIdsRef.current.has(repository.id)) return;
+    if (
+      !workerId ||
+      !activeWorkspaceId ||
+      pendingRepositoryIdsRef.current.has(repository.id)
+    )
+      return;
     pendingRepositoryIdsRef.current.add(repository.id);
     setPendingRepositoryIds(new Set(pendingRepositoryIdsRef.current));
     setImportErrors((current) => {
@@ -523,11 +549,14 @@ function RepositoryImporter({
       return next;
     });
 
+    const workspaceIds = new Set(selectedWorkspaceIds);
+    workspaceIds.add(activeWorkspaceId);
     void createGithubProject({
       workerId: workerId!,
       repositoryId: repository.id,
       nameWithOwner: repository.nameWithOwner,
       url: repository.url,
+      workspaceIds: [...workspaceIds],
     })
       .then((project) => {
         queryClient.setQueryData<ProjectSummary[]>(
@@ -551,6 +580,9 @@ function RepositoryImporter({
             github.data.login,
           ]);
         }
+        void queryClient.invalidateQueries({
+          queryKey: ["project-workspaces"],
+        });
       })
       .catch((error: unknown) => {
         setImportErrors((current) =>
@@ -654,6 +686,15 @@ function RepositoryImporter({
               </div>
             </div>
 
+            {activeWorkspaceId ? (
+              <WorkspaceMembershipPicker
+                requiredWorkspaceId={activeWorkspaceId}
+                selectedIds={selectedWorkspaceIds}
+                workspaces={workspaces}
+                onChange={setSelectedWorkspaceIds}
+              />
+            ) : null}
+
             {!hasRepositoryData &&
             (repositories.isLoading || cachedRepositories.isLoading) ? (
               <div className="grid flex-1 place-items-center text-muted-foreground">
@@ -699,7 +740,10 @@ function RepositoryImporter({
                         project?.setupStatus === "cloning";
                       const failed = project?.setupStatus === "failed";
                       const disabled = Boolean(
-                        repository.imported || project || importing,
+                        !activeWorkspaceId ||
+                        repository.imported ||
+                        project ||
+                        importing,
                       );
                       const importError =
                         project?.setupError ?? importErrors.get(repository.id);
@@ -2327,7 +2371,13 @@ export function App() {
   );
   const [showImporter, setShowImporter] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<
+    "general" | "workspaces"
+  >("general");
   const [showProjectSettings, setShowProjectSettings] = useState(false);
+  const [activeProjectWorkspaceId, setActiveProjectWorkspaceId] = useState<
+    string | null
+  >(() => window.localStorage.getItem("cantrip:active-project-workspace"));
   const [selectedWorkflowIntentId, setSelectedWorkflowIntentId] = useState<
     string | null
   >(null);
@@ -2425,6 +2475,30 @@ export function App() {
           query.state.data?.some((project) => project.setupStatus === "cloning")
             ? 3_000
             : 15_000,
+  });
+  const projectWorkspaces = useQuery({
+    queryFn: getProjectWorkspaces,
+    queryKey: ["project-workspaces"],
+  });
+  const createWorkspaceMutation = useMutation({
+    mutationFn: (name: string) => createProjectWorkspace({ name }),
+    onSuccess: (workspace) => {
+      queryClient.setQueryData<ProjectWorkspaceSummary[]>(
+        ["project-workspaces"],
+        (current = []) => [...current, workspace],
+      );
+      setActiveProjectWorkspaceId(workspace.id);
+      window.localStorage.setItem(
+        "cantrip:active-project-workspace",
+        workspace.id,
+      );
+      setSelectedProjectId(null);
+      setWorkspaceSelection(emptyWorkspaceSelection());
+      setShowImporter(true);
+      setShowSettings(false);
+      setShowProjectSettings(false);
+      setMobileNavigationOpen(false);
+    },
   });
   const tabLayout = useQuery({
     enabled: Boolean(selectedProjectId),
@@ -3037,6 +3111,7 @@ export function App() {
       }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["projects"] }),
+        queryClient.invalidateQueries({ queryKey: ["project-workspaces"] }),
         queryClient.invalidateQueries({ queryKey: ["github-repositories"] }),
       ]);
     },
@@ -3126,6 +3201,14 @@ export function App() {
   });
 
   const onlineWorker = workers.data?.find((worker) => worker.online) ?? null;
+  const activeProjectWorkspace = resolveProjectWorkspace(
+    projectWorkspaces.data ?? [],
+    activeProjectWorkspaceId,
+  );
+  const visibleProjects = useMemo(
+    () => projectsInWorkspace(projects.data ?? [], activeProjectWorkspace),
+    [activeProjectWorkspace, projects.data],
+  );
   const selectedProject = projects.data?.find(
     (project) => project.id === selectedProjectId,
   );
@@ -3507,6 +3590,22 @@ export function App() {
   ]);
 
   useEffect(() => {
+    if (!projectWorkspaces.data?.length) return;
+    const resolved =
+      projectWorkspaces.data.find(
+        ({ id }) => id === activeProjectWorkspaceId,
+      ) ??
+      projectWorkspaces.data.find(({ isDefault }) => isDefault) ??
+      projectWorkspaces.data[0]!;
+    if (resolved.id === activeProjectWorkspaceId) return;
+    setActiveProjectWorkspaceId(resolved.id);
+    window.localStorage.setItem(
+      "cantrip:active-project-workspace",
+      resolved.id,
+    );
+  }, [activeProjectWorkspaceId, projectWorkspaces.data]);
+
+  useEffect(() => {
     if (!projects.data) return;
     if (projects.data.length === 0) {
       setShowImporter(true);
@@ -3515,10 +3614,14 @@ export function App() {
       setSelectedProjectId(null);
       return;
     }
-    if (!projects.data.some((project) => project.id === selectedProjectId)) {
-      setSelectedProjectId(projects.data[0]?.id ?? null);
+    if (!visibleProjects.some((project) => project.id === selectedProjectId)) {
+      const projectId = visibleProjects[0]?.id ?? null;
+      setSelectedProjectId(projectId);
+      setWorkspaceSelection(emptyWorkspaceSelection(projectId));
+      setPendingSurfaceSelection(null);
+      setChatConsoleChatId(null);
     }
-  }, [projects.data, selectedProjectId]);
+  }, [projects.data, selectedProjectId, visibleProjects]);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -3572,6 +3675,29 @@ export function App() {
     setShowImporter(false);
     setShowSettings(false);
     setShowProjectSettings(false);
+  };
+  const selectProjectWorkspace = (workspaceId: string) => {
+    const workspace = projectWorkspaces.data?.find(
+      ({ id }) => id === workspaceId,
+    );
+    if (!workspace) return;
+    setActiveProjectWorkspaceId(workspace.id);
+    window.localStorage.setItem(
+      "cantrip:active-project-workspace",
+      workspace.id,
+    );
+    const projectIds = new Set(workspace.projectIds);
+    const nextProjectId = projectIds.has(selectedProjectId ?? "")
+      ? selectedProjectId
+      : (projects.data?.find(({ id }) => projectIds.has(id))?.id ?? null);
+    setSelectedProjectId(nextProjectId);
+    setWorkspaceSelection(emptyWorkspaceSelection(nextProjectId));
+    setPendingSurfaceSelection(null);
+    setChatConsoleChatId(null);
+    setShowImporter(!nextProjectId);
+    setShowSettings(false);
+    setShowProjectSettings(false);
+    setMobileNavigationOpen(false);
   };
   const selectProjectFromSidebar = (projectId: string) => {
     setSelectedProjectId(projectId);
@@ -3801,7 +3927,7 @@ export function App() {
       desktopRuntime={desktopRuntime}
       isPopout={isPopout}
       layout={tabLayout.data}
-      projects={projects.data ?? []}
+      projects={visibleProjects}
       onDesktopTabDrop={handleDesktopTabDrop}
       onOperation={handleWorkspaceDrop}
       tauriTitlebar={overlayTitlebar ? "overlay" : undefined}
@@ -3884,29 +4010,32 @@ export function App() {
               </Button>
             </div>
 
-            <div className="flex items-center justify-between px-4 pb-2 pt-4">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Projects
-              </p>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="size-7"
-                onClick={() => {
+            <div className="px-3 pb-2 pt-4">
+              <WorkspaceSwitcher
+                activeWorkspaceId={activeProjectWorkspace?.id ?? null}
+                workspaces={projectWorkspaces.data ?? []}
+                onSelect={selectProjectWorkspace}
+                onCreate={async (name) => {
+                  await createWorkspaceMutation.mutateAsync(name);
+                }}
+                onAddProject={() => {
                   setShowImporter(true);
                   setShowSettings(false);
                   setShowProjectSettings(false);
                 }}
-              >
-                <Plus className="size-4" />
-                <span className="sr-only">Add project</span>
-              </Button>
+                onManage={() => {
+                  setSettingsSection("workspaces");
+                  setShowSettings(true);
+                  setShowImporter(false);
+                  setShowProjectSettings(false);
+                }}
+              />
             </div>
 
             <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
               <ProjectChatList
                 browsers={browsers.data ?? []}
-                projects={projects.data ?? []}
+                projects={visibleProjects}
                 chats={chats.data ?? []}
                 codeTabs={codeTabs.data ?? []}
                 explorers={explorers.data ?? []}
@@ -4023,6 +4152,7 @@ export function App() {
                   variant="ghost"
                   className="size-8"
                   onClick={() => {
+                    setSettingsSection("general");
                     setShowSettings(true);
                     setShowImporter(false);
                     setShowProjectSettings(false);
@@ -4411,6 +4541,7 @@ export function App() {
                     size="icon"
                     variant="ghost"
                     onClick={() => {
+                      setSettingsSection("general");
                       setShowSettings(true);
                       setShowImporter(false);
                       setShowProjectSettings(false);
@@ -4676,7 +4807,7 @@ export function App() {
         ) : null}
 
         {showSettings ? (
-          <SettingsPage />
+          <SettingsPage initialSection={settingsSection} />
         ) : showProjectSettings && selectedProject ? (
           <ProjectSettingsPage
             initialWorkflowId={selectedWorkflowIntentId}
@@ -4724,8 +4855,10 @@ export function App() {
           />
         ) : showImporter ? (
           <RepositoryImporter
+            activeWorkspaceId={activeProjectWorkspace?.id ?? null}
             projects={projects.data ?? []}
             workerId={onlineWorker?.workerId ?? null}
+            workspaces={projectWorkspaces.data ?? []}
           />
         ) : groupOwnedElsewhere && selectedTabGroup ? (
           <div className="grid flex-1 place-items-center p-6 text-center">
@@ -5125,10 +5258,31 @@ export function App() {
               Tap and hold a chat for actions, or use its menu button.
             </DialogDescription>
           </DialogHeader>
+          <WorkspaceSwitcher
+            activeWorkspaceId={activeProjectWorkspace?.id ?? null}
+            workspaces={projectWorkspaces.data ?? []}
+            onSelect={selectProjectWorkspace}
+            onCreate={async (name) => {
+              await createWorkspaceMutation.mutateAsync(name);
+            }}
+            onAddProject={() => {
+              setShowImporter(true);
+              setShowSettings(false);
+              setShowProjectSettings(false);
+              setMobileNavigationOpen(false);
+            }}
+            onManage={() => {
+              setSettingsSection("workspaces");
+              setShowSettings(true);
+              setShowImporter(false);
+              setShowProjectSettings(false);
+              setMobileNavigationOpen(false);
+            }}
+          />
           <div className="min-h-0 overflow-y-auto">
             <ProjectChatList
               browsers={browsers.data ?? []}
-              projects={projects.data ?? []}
+              projects={visibleProjects}
               chats={chats.data ?? []}
               codeTabs={codeTabs.data ?? []}
               explorers={explorers.data ?? []}

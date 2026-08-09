@@ -762,7 +762,36 @@ export const githubProjectCreateSchema = z.object({
   repositoryId: z.string().min(1),
   nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
   url: z.url(),
+  workspaceIds: z.array(z.string().min(1)).min(1).max(100).optional(),
 });
+
+export const projectWorkspaceCreateSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+});
+
+export const projectWorkspaceUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80).optional(),
+    projectIds: z.array(z.string().min(1)).max(10_000).optional(),
+  })
+  .refine(
+    (input) => input.name !== undefined || input.projectIds !== undefined,
+    { message: "At least one workspace field is required." },
+  );
+
+export const projectWorkspaceSummarySchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  position: z.number().int().nonnegative(),
+  isDefault: z.boolean(),
+  projectIds: z.array(z.string().min(1)),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const projectWorkspaceListSchema = z.array(
+  projectWorkspaceSummarySchema,
+);
 
 export const projectSourceSummarySchema = z.object({
   id: z.string().min(1),
@@ -3770,6 +3799,15 @@ export type UserSettings = z.infer<typeof userSettingsSchema>;
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
 export type SettingsBundle = z.infer<typeof settingsBundleSchema>;
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
+export type ProjectWorkspaceCreate = z.infer<
+  typeof projectWorkspaceCreateSchema
+>;
+export type ProjectWorkspaceUpdate = z.infer<
+  typeof projectWorkspaceUpdateSchema
+>;
+export type ProjectWorkspaceSummary = z.infer<
+  typeof projectWorkspaceSummarySchema
+>;
 export type WorktreePolicy = z.infer<typeof worktreePolicySchema>;
 export type WorktreeOrigin = z.infer<typeof worktreeOriginSchema>;
 export type WorktreeLifecycleState = z.infer<

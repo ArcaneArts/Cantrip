@@ -24,6 +24,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -229,6 +230,57 @@ export const projects = pgTable(
       table.ownerId,
       table.githubRepositoryId,
     ),
+  ],
+);
+
+export const projectWorkspaces = pgTable(
+  "project_workspaces",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    position: integer("position").notNull().default(0),
+    isDefault: boolean("is_default").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("project_workspaces_owner_name_unique").on(
+      table.ownerId,
+      table.name,
+    ),
+    uniqueIndex("project_workspaces_owner_default_unique")
+      .on(table.ownerId)
+      .where(sql`${table.isDefault} = true`),
+    index("project_workspaces_owner_position_index").on(
+      table.ownerId,
+      table.position,
+    ),
+  ],
+);
+
+export const projectWorkspaceMemberships = pgTable(
+  "project_workspace_memberships",
+  {
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => projectWorkspaces.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.workspaceId, table.projectId] }),
+    index("project_workspace_memberships_project_index").on(table.projectId),
   ],
 );
 
