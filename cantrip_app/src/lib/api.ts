@@ -67,6 +67,7 @@ import {
   orderedIdsSchema,
   projectListSchema,
   projectSummarySchema,
+  projectTabLayoutSummarySchema,
   projectWorktreeListSchema,
   projectWorktreeSummarySchema,
   projectViewListSchema,
@@ -79,6 +80,7 @@ import {
   settingsBundleSchema,
   skillListSchema,
   systemHealthSchema,
+  tabGroupOrderSchema,
   terminalListSchema,
   terminalSummarySchema,
   worktreeStatusResultSchema,
@@ -488,17 +490,41 @@ export async function getChats(projectId: string) {
   );
 }
 
+export async function getProjectTabLayout(projectId: string) {
+  return projectTabLayoutSummarySchema.parse(
+    await request(`/api/projects/${encodeURIComponent(projectId)}/tab-groups`),
+  );
+}
+
+export async function reorderProjectTabGroups(
+  projectId: string,
+  revision: number,
+  groupIds: string[],
+) {
+  return projectTabLayoutSummarySchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/tab-groups/order`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(tabGroupOrderSchema.parse({ revision, groupIds })),
+      },
+    ),
+  );
+}
+
 export async function createChat(
   projectId: string,
   title: string,
   worktreeId?: string,
   worktreeMode?: "agent-managed" | "pinned",
+  tabGroupId?: string,
 ) {
   return chatSummarySchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/chats`, {
       title,
       ...(worktreeId ? { worktreeId } : {}),
       ...(worktreeMode ? { worktreeMode } : {}),
+      ...(tabGroupId ? { tabGroupId } : {}),
     }),
   );
 }
@@ -513,11 +539,13 @@ export async function createTerminal(
   projectId: string,
   title: string,
   worktreeId?: string,
+  tabGroupId?: string,
 ) {
   return terminalSummarySchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/terminals`, {
       title,
       ...(worktreeId ? { worktreeId } : {}),
+      ...(tabGroupId ? { tabGroupId } : {}),
     }),
   );
 }
@@ -559,11 +587,13 @@ export async function createExplorer(
   projectId: string,
   title: string,
   worktreeId?: string,
+  tabGroupId?: string,
 ) {
   return explorerSummarySchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/explorers`, {
       title,
       ...(worktreeId ? { worktreeId } : {}),
+      ...(tabGroupId ? { tabGroupId } : {}),
     }),
   );
 }
@@ -601,10 +631,15 @@ export async function getBrowsers(projectId: string) {
   );
 }
 
-export async function createBrowser(projectId: string, title: string) {
+export async function createBrowser(
+  projectId: string,
+  title: string,
+  tabGroupId?: string,
+) {
   return browserSummarySchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/browsers`, {
       title,
+      ...(tabGroupId ? { tabGroupId } : {}),
     }),
   );
 }
@@ -641,11 +676,14 @@ export async function getRemoteDesktop(desktopId: string) {
   );
 }
 
-export async function createRemoteDesktop(projectId: string) {
+export async function createRemoteDesktop(
+  projectId: string,
+  tabGroupId?: string,
+) {
   return remoteDesktopSummarySchema.parse(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/remote-desktops`,
-      {},
+      tabGroupId ? { tabGroupId } : {},
     ),
   );
 }
@@ -678,11 +716,13 @@ export async function createCodeTab(
   projectId: string,
   title = "Code",
   worktreeId?: string,
+  tabGroupId?: string,
 ) {
   return codeTabSummarySchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/code-tabs`, {
       title,
       ...(worktreeId ? { worktreeId } : {}),
+      ...(tabGroupId ? { tabGroupId } : {}),
     }),
   );
 }
@@ -767,12 +807,14 @@ export async function createProjectView(
   kind: ProjectViewKind,
   title: string,
   worktreeId?: string,
+  tabGroupId?: string,
 ) {
   return projectViewSummarySchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/views`, {
       kind,
       title,
       ...(worktreeId ? { worktreeId } : {}),
+      ...(tabGroupId ? { tabGroupId } : {}),
     }),
   );
 }

@@ -22,6 +22,7 @@ import type {
   CodeTabSummary,
   ExplorerSummary,
   ProjectSummary,
+  ProjectTabLayoutSummary,
   ProjectWorktreeSummary,
   ProjectViewSummary,
   TerminalSummary,
@@ -1081,23 +1082,14 @@ export function ProjectChatList({
   onRenameExplorer,
   onRenameProjectView,
   onRenameTerminal,
-  onReorderTabs,
+  onReorderGroups,
   onReorderProjects,
-  onSelectChat,
-  onSelectBrowser,
-  onSelectExplorer,
-  onSelectCode,
-  onSelectProjectView,
-  onSelectTerminal,
+  onSelectTab,
   onSelectProject,
   projects,
-  selectedChatId,
-  selectedBrowserId,
-  selectedExplorerId,
-  selectedCodeTabId,
-  selectedProjectViewId,
+  selectedTabKey,
   selectedProjectId,
-  selectedTerminalId,
+  tabLayout,
   terminals,
   workers,
   worktrees,
@@ -1146,23 +1138,14 @@ export function ProjectChatList({
   onRenameExplorer(explorerId: string, title: string): void;
   onRenameProjectView(viewId: string, title: string): void;
   onRenameTerminal(terminalId: string, title: string): void;
-  onReorderTabs(projectId: string, ids: string[]): void;
+  onReorderGroups(projectId: string, groupIds: string[]): void;
   onReorderProjects(ids: string[]): void;
-  onSelectChat(chatId: string): void;
-  onSelectBrowser(browserId: string): void;
-  onSelectCode(codeTabId: string): void;
-  onSelectExplorer(explorerId: string): void;
-  onSelectProjectView(viewId: string): void;
-  onSelectTerminal(terminalId: string): void;
+  onSelectTab(tabKey: string): void;
   onSelectProject(projectId: string): void;
   projects: ProjectSummary[];
-  selectedChatId: string | null;
-  selectedBrowserId: string | null;
-  selectedCodeTabId: string | null;
-  selectedExplorerId: string | null;
-  selectedProjectViewId: string | null;
+  selectedTabKey: string | null;
   selectedProjectId: string | null;
-  selectedTerminalId: string | null;
+  tabLayout: ProjectTabLayoutSummary | null;
   terminals: TerminalSummary[];
   workers: WorkerSummary[];
   worktrees: ProjectWorktreeSummary[];
@@ -1202,10 +1185,7 @@ export function ProjectChatList({
   const standaloneTerminals = terminals.filter(
     (terminal) => terminal.linkedChatId === null,
   );
-  const selectedLinkedChatId = terminals.find(
-    (terminal) => terminal.id === selectedTerminalId,
-  )?.linkedChatId;
-  const tabs: Array<
+  type SidebarTab =
     | { id: string; kind: "chat"; chat: ChatSummary; position: number }
     | {
         id: string;
@@ -1236,8 +1216,8 @@ export function ProjectChatList({
         kind: "view";
         view: ProjectViewSummary;
         position: number;
-      }
-  > = [
+      };
+  const legacyTabs: SidebarTab[] = [
     ...chats.map((chat) => ({
       id: chatId(chat.id),
       kind: "chat" as const,
@@ -1275,6 +1255,23 @@ export function ProjectChatList({
       position: view.position,
     })),
   ].sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
+  const legacyTabByKey = new Map(legacyTabs.map((tab) => [tab.id, tab]));
+  const layoutTabKeys = new Set(
+    tabLayout?.groups.flatMap(({ members }) =>
+      members.map(({ tabKey }) => tabKey),
+    ) ?? [],
+  );
+  const tabs = tabLayout
+    ? [
+        ...tabLayout.groups.flatMap(({ members }) =>
+          members.flatMap(({ tabKey }) => {
+            const tab = legacyTabByKey.get(tabKey);
+            return tab ? [tab] : [];
+          }),
+        ),
+        ...legacyTabs.filter(({ id }) => !layoutTabKeys.has(id)),
+      ]
+    : legacyTabs;
   const worktreeById = new Map(
     worktrees.map((worktree) => [worktree.id, worktree]),
   );
@@ -1380,13 +1377,28 @@ export function ProjectChatList({
       !activeId.startsWith("project:") &&
       !overId.startsWith("project:")
     ) {
+      if (
+        !tabLayout ||
+        tabLayout.groups.some(({ members }) => members.length !== 1)
+      ) {
+        return;
+      }
       const from = tabs.findIndex((tab) => tab.id === activeId);
       const to = tabs.findIndex((tab) => tab.id === overId);
-      if (from >= 0 && to >= 0)
-        onReorderTabs(
-          selectedProjectId,
-          arrayMove(tabs, from, to).map((tab) => tab.id),
-        );
+      const groupByTabKey = new Map(
+        tabLayout.groups.flatMap((group) =>
+          group.members.map(({ tabKey }) => [tabKey, group.id] as const),
+        ),
+      );
+      if (from >= 0 && to >= 0) {
+        const groupIds = arrayMove(tabs, from, to).flatMap((tab) => {
+          const groupId = groupByTabKey.get(tab.id);
+          return groupId ? [groupId] : [];
+        });
+        if (groupIds.length === tabLayout.groups.length) {
+          onReorderGroups(selectedProjectId, groupIds);
+        }
+      }
     }
   };
   const draggedProject = projects.find(
@@ -1461,15 +1473,12 @@ export function ProjectChatList({
                           <SortableChat
                             key={tab.id}
                             chat={tab.chat}
-                            active={
-                              tab.chat.id === selectedChatId ||
-                              tab.chat.id === selectedLinkedChatId
-                            }
+                            active={tab.id === selectedTabKey}
                             editing={editingChatId === tab.chat.id}
                             renameValue={renameValue}
                             setRenameValue={setRenameValue}
                             submitRename={() => finishRename(tab.chat)}
-                            onSelect={() => onSelectChat(tab.chat.id)}
+                            onSelect={() => onSelectTab(tab.id)}
                             onRename={() => beginRename(tab.chat)}
                             onDuplicate={() => onDuplicateChat(tab.chat.id)}
                             onDelete={() => setDeleteTarget(tab.chat)}
@@ -1510,14 +1519,14 @@ export function ProjectChatList({
                           <TerminalTab
                             key={tab.id}
                             terminal={tab.terminal}
-                            active={tab.terminal.id === selectedTerminalId}
+                            active={tab.id === selectedTabKey}
                             editing={editingTerminalId === tab.terminal.id}
                             renameValue={renameValue}
                             setRenameValue={setRenameValue}
                             submitRename={() =>
                               finishTerminalRename(tab.terminal)
                             }
-                            onSelect={() => onSelectTerminal(tab.terminal.id)}
+                            onSelect={() => onSelectTab(tab.id)}
                             onRename={() => beginTerminalRename(tab.terminal)}
                             onDelete={() =>
                               setDeleteTerminalTarget(tab.terminal)
@@ -1532,14 +1541,14 @@ export function ProjectChatList({
                           <ExplorerTab
                             key={tab.id}
                             explorer={tab.explorer}
-                            active={tab.explorer.id === selectedExplorerId}
+                            active={tab.id === selectedTabKey}
                             editing={editingExplorerId === tab.explorer.id}
                             renameValue={renameValue}
                             setRenameValue={setRenameValue}
                             submitRename={() =>
                               finishExplorerRename(tab.explorer)
                             }
-                            onSelect={() => onSelectExplorer(tab.explorer.id)}
+                            onSelect={() => onSelectTab(tab.id)}
                             onRename={() => beginExplorerRename(tab.explorer)}
                             onDelete={() =>
                               setDeleteExplorerTarget(tab.explorer)
@@ -1554,14 +1563,14 @@ export function ProjectChatList({
                           <BrowserTab
                             key={tab.id}
                             browser={tab.browser}
-                            active={tab.browser.id === selectedBrowserId}
+                            active={tab.id === selectedTabKey}
                             editing={editingBrowserId === tab.browser.id}
                             renameValue={renameValue}
                             setRenameValue={setRenameValue}
                             submitRename={() =>
                               finishBrowserRename(tab.browser)
                             }
-                            onSelect={() => onSelectBrowser(tab.browser.id)}
+                            onSelect={() => onSelectTab(tab.id)}
                             onRename={() => beginBrowserRename(tab.browser)}
                             onDelete={() => setDeleteBrowserTarget(tab.browser)}
                           />
@@ -1569,12 +1578,12 @@ export function ProjectChatList({
                           <CodeTab
                             key={tab.id}
                             codeTab={tab.codeTab}
-                            active={tab.codeTab.id === selectedCodeTabId}
+                            active={tab.id === selectedTabKey}
                             editing={editingCodeId === tab.codeTab.id}
                             renameValue={renameValue}
                             setRenameValue={setRenameValue}
                             submitRename={() => finishCodeRename(tab.codeTab)}
-                            onSelect={() => onSelectCode(tab.codeTab.id)}
+                            onSelect={() => onSelectTab(tab.id)}
                             onRename={() => beginCodeRename(tab.codeTab)}
                             onDelete={() => setDeleteCodeTarget(tab.codeTab)}
                             workers={workers}
@@ -1587,14 +1596,14 @@ export function ProjectChatList({
                           <ProjectViewTab
                             key={tab.id}
                             view={tab.view}
-                            active={tab.view.id === selectedProjectViewId}
+                            active={tab.id === selectedTabKey}
                             editing={editingProjectViewId === tab.view.id}
                             renameValue={renameValue}
                             setRenameValue={setRenameValue}
                             submitRename={() =>
                               finishProjectViewRename(tab.view)
                             }
-                            onSelect={() => onSelectProjectView(tab.view.id)}
+                            onSelect={() => onSelectTab(tab.id)}
                             onRename={() => beginProjectViewRename(tab.view)}
                             onDelete={() =>
                               setDeleteProjectViewTarget(tab.view)
