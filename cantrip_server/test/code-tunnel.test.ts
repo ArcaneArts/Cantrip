@@ -134,6 +134,40 @@ const runtime: CodeRuntimeStatus = {
 };
 
 describe("Cantrip Code isolated editor surface", () => {
+  it("keeps concurrent view attachments independent", async () => {
+    const worker = new LoopbackWorker();
+    const broker = new CodeTunnelBroker(worker, {
+      surfaceOrigin: "http://127.0.0.1:4311",
+      allowedFrameAncestors: ["tauri://localhost"],
+    });
+    const first = broker.createAttachment({
+      codeTabId: "code-1",
+      ownerId: "user-1",
+      runtime,
+      sessionId: runtime.sessionId,
+      workerId: "worker-1",
+    });
+    const second = broker.createAttachment({
+      codeTabId: "code-1",
+      ownerId: "user-1",
+      runtime,
+      sessionId: runtime.sessionId,
+      workerId: "worker-1",
+    });
+    const firstToken = new URL(first.url).pathname.split("/")[2]!;
+    const secondToken = new URL(second.url).pathname.split("/")[2]!;
+
+    expect(first.sessionId).toBe(second.sessionId);
+    expect(first.attachmentId).not.toBe(second.attachmentId);
+    expect(broker.hasAttachment(firstToken)).toBe(true);
+    expect(broker.hasAttachment(secondToken)).toBe(true);
+    expect(broker.revokeAttachment(first.attachmentId, "user-2")).toBe(false);
+    expect(broker.revokeAttachment(first.attachmentId, "user-1")).toBe(true);
+    expect(broker.hasAttachment(firstToken)).toBe(false);
+    expect(broker.hasAttachment(secondToken)).toBe(true);
+    broker.close();
+  });
+
   it("requires an attachment token and sanitizes worker responses", async () => {
     const worker = new LoopbackWorker();
     const broker = new CodeTunnelBroker(worker, {
@@ -174,6 +208,9 @@ describe("Cantrip Code isolated editor surface", () => {
       `http://127.0.0.1:${port}/code/${"x".repeat(43)}/`,
     );
     expect(missing.status).toBe(404);
+    expect(await missing.text()).toContain(
+      "cantrip-code-attachment-unavailable-v1",
+    );
     expect(
       await fetch(`http://127.0.0.1:${port}/api/bootstrap`).then(
         (result) => result.status,

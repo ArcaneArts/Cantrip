@@ -179,6 +179,7 @@ export class CodeSupervisor {
   readonly #installation: CantripCodeInstallation | null;
   readonly #idleSweepIntervalMs: number;
   readonly #idleTimeoutMs: number;
+  readonly #openOperations = new Map<string, Promise<CodeRuntimeStatus>>();
   readonly #profiles = new Map<string, ProfileProcess>();
   readonly #readinessTimeoutMs: number;
   readonly #sessions = new Map<string, CodeSession>();
@@ -229,6 +230,21 @@ export class CodeSupervisor {
   }
 
   async open(command: CodeOpenCommand): Promise<CodeRuntimeStatus> {
+    const previous = this.#openOperations.get(command.sessionId);
+    const operation = (previous ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() => this.#open(command));
+    this.#openOperations.set(command.sessionId, operation);
+    try {
+      return await operation;
+    } finally {
+      if (this.#openOperations.get(command.sessionId) === operation) {
+        this.#openOperations.delete(command.sessionId);
+      }
+    }
+  }
+
+  async #open(command: CodeOpenCommand): Promise<CodeRuntimeStatus> {
     this.#assertAvailable();
     if (this.#closed) throw new Error("Cantrip Code supervisor is stopped.");
     const cwd = path.resolve(command.cwd);
@@ -476,6 +492,8 @@ export class CodeSupervisor {
       clearInterval(this.#idleSweepTimer);
       this.#idleSweepTimer = null;
     }
+    await Promise.allSettled(this.#openOperations.values());
+    this.#openOperations.clear();
     const now = isoNow();
     for (const session of this.#sessions.values()) {
       this.#bridge.unregister(session.sessionId);
