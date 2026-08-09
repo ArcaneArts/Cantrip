@@ -55,6 +55,7 @@ import {
   githubIssueListSchema,
   githubRepositoryListSchema,
   gitActionResultSchema,
+  gitFileDiffSchema,
   gitHistorySchema,
   gitStatusSchema,
   modelProfileCreateSchema,
@@ -102,6 +103,7 @@ import type {
   CodexSkillConfigUpdate,
   CodexSkillRootsUpdate,
   GitAction,
+  GitDiffScope,
   GithubIssueKind,
   GithubIssueState,
   ModelProfileCreate,
@@ -261,6 +263,19 @@ export async function getProjectWorktreeStatus(
   return worktreeStatusResultSchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/status`,
+    ),
+  );
+}
+
+export async function getProjectWorktreeFileDiff(
+  projectId: string,
+  worktreeId: string,
+  path: string,
+  scope: GitDiffScope,
+) {
+  return gitFileDiffSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/diff?path=${encodeURIComponent(path)}&scope=${scope}`,
     ),
   );
 }

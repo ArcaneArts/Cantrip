@@ -95,6 +95,8 @@ import {
   githubWorkerRepositoryListSchema,
   gitActionResultSchema,
   gitActionSchema,
+  gitDiffScopeSchema,
+  gitFileDiffSchema,
   gitHistorySchema,
   gitStatusSchema,
   modelProfileCreateSchema,
@@ -3781,6 +3783,42 @@ export async function buildApp({
           result.worktree,
         );
         return reply.send(result);
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string; worktreeId: string };
+    Querystring: { path?: string; scope?: string };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/diff",
+    async (request, reply) => {
+      const filePath = request.query.path;
+      const scope = gitDiffScopeSchema.safeParse(request.query.scope);
+      if (!filePath || filePath.length > 4_096 || !scope.success) {
+        return reply.code(400).send({
+          error: "A valid path and staged or unstaged scope are required.",
+        });
+      }
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      try {
+        const result = await bridge.request(context.workerId, {
+          type: "git.diff",
+          cwd: context.worktree.path,
+          path: filePath,
+          scope: scope.data,
+        });
+        return reply.send(gitFileDiffSchema.parse(result));
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
         return reply.code(status).send({ error: errorMessage(error) });
