@@ -337,6 +337,7 @@ export type GitViewSection = "history" | "issues" | "prs";
 
 export function GitHistoryView({
   chats,
+  contentScrolled = false,
   onCreateChat,
   onCreateExplorer,
   onCreateHistory,
@@ -353,6 +354,7 @@ export function GitHistoryView({
   worktrees,
 }: {
   chats: ChatSummary[];
+  contentScrolled?: boolean;
   onCreateChat(worktreeId: string): void;
   onCreateExplorer(worktreeId: string): void;
   onCreateHistory(worktreeId: string): void;
@@ -620,8 +622,8 @@ export function GitHistoryView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-11 shrink-0 items-center gap-3 px-3">
-        <div className="flex rounded-lg bg-muted/50 p-0.5">
+      <div className="relative flex h-8 shrink-0 items-center gap-2 px-3">
+        <div className="flex rounded-md bg-muted/50 p-px">
           {(["history", "issues", "prs"] as const).map((candidate) => (
             <button
               key={candidate}
@@ -630,7 +632,7 @@ export function GitHistoryView({
               disabled={candidate !== "history" && !project.github}
               onClick={() => setSection(candidate)}
               className={cn(
-                "rounded-md px-3 py-1.5 text-xs text-muted-foreground transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+                "h-6 rounded px-2.5 py-0 text-[11px] leading-none text-muted-foreground transition-colors disabled:cursor-not-allowed disabled:opacity-40",
                 candidate === section &&
                   "bg-background font-medium text-foreground shadow-sm",
               )}
@@ -662,10 +664,11 @@ export function GitHistoryView({
               <Button
                 size="sm"
                 variant="ghost"
+                className="h-6 gap-1 px-2 text-[11px]"
                 disabled={gitAction.isPending || !selectedAvailable}
                 onClick={() => gitAction.mutate("pull")}
               >
-                <ArrowDownToLine className="size-4" /> Pull
+                <ArrowDownToLine className="size-3" /> Pull
               </Button>
               {Boolean(
                 status?.head &&
@@ -679,16 +682,17 @@ export function GitHistoryView({
                 <Button
                   size="sm"
                   variant="ghost"
+                  className="h-6 gap-1 px-2 text-[11px]"
                   disabled={gitAction.isPending}
                   onClick={() => gitAction.mutate("push")}
                 >
-                  <ArrowUpFromLine className="size-4" /> Push
+                  <ArrowUpFromLine className="size-3" /> Push
                 </Button>
               ) : null}
             </>
           ) : null}
           {section !== "history" ? (
-            <div className="mr-1 flex rounded-lg bg-muted/50 p-0.5">
+            <div className="mr-0.5 flex rounded-md bg-muted/50 p-px">
               {(["open", "closed"] as const).map((candidate) => (
                 <button
                   key={candidate}
@@ -696,7 +700,7 @@ export function GitHistoryView({
                   aria-pressed={candidate === issueState}
                   onClick={() => setIssueState(candidate)}
                   className={cn(
-                    "rounded-md px-3 py-1.5 text-xs capitalize text-muted-foreground",
+                    "h-6 rounded px-2.5 py-0 text-[11px] leading-none capitalize text-muted-foreground",
                     candidate === issueState &&
                       "bg-background font-medium text-foreground shadow-sm",
                   )}
@@ -710,7 +714,7 @@ export function GitHistoryView({
             <Button
               size="icon"
               variant="ghost"
-              className="size-8"
+              className="size-6"
               disabled={
                 section === "history"
                   ? history.isFetching || reconcile.isPending
@@ -723,7 +727,7 @@ export function GitHistoryView({
             >
               <RefreshCw
                 className={cn(
-                  "size-4",
+                  "size-3",
                   (section === "history"
                     ? history.isFetching || reconcile.isPending
                     : issuesRefreshing) && "animate-spin",
@@ -733,6 +737,13 @@ export function GitHistoryView({
             </Button>
           ) : null}
         </div>
+        <span
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute inset-x-0 bottom-0 h-px bg-border transition-opacity duration-200",
+            contentScrolled ? "opacity-100" : "opacity-0",
+          )}
+        />
       </div>
       {gitAction.error ? (
         <p className="shrink-0 bg-destructive/10 px-4 py-2 text-xs text-destructive">
