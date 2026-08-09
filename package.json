@@ -26,6 +26,7 @@
     "dev:prepare": "pnpm --filter @cantrip/protocol build && pnpm codex:build && pnpm code:ready",
     "dev": "pnpm run dev:prepare && concurrently --kill-others --names protocol,server,worker,app --prefix-colors gray,blue,magenta,green \"pnpm --filter @cantrip/protocol dev\" \"pnpm --filter @cantrip/server dev\" \"node scripts/wait-for-server.mjs && pnpm --filter @cantrip/worker dev\" \"node scripts/wait-for-server.mjs && pnpm --filter @cantrip/app dev\"",
     "devtop": "pnpm run dev:prepare && concurrently --kill-others --names protocol,server,worker,desktop --prefix-colors gray,blue,magenta,green \"pnpm --filter @cantrip/protocol dev\" \"pnpm --filter @cantrip/server dev\" \"node scripts/wait-for-server.mjs && pnpm --filter @cantrip/worker dev\" \"node scripts/wait-for-server.mjs && pnpm --filter @cantrip/app tauri:dev\"",
+    "site": "pnpm --filter @cantrip/site dev",
     "qa:remote-surfaces": "node scripts/remote-surface-fixture.mjs",
     "dev:postgres": "pnpm run dev:prepare && cross-env DATABASE_URL=postgresql://cantrip:cantrip@127.0.0.1:54329/cantrip concurrently --kill-others --names database,protocol,server,worker,app --prefix-colors yellow,gray,blue,magenta,green \"docker compose -f compose.dev.yml up\" \"pnpm --filter @cantrip/protocol dev\" \"pnpm --filter @cantrip/server dev\" \"node scripts/wait-for-server.mjs && pnpm --filter @cantrip/worker dev\" \"node scripts/wait-for-server.mjs && pnpm --filter @cantrip/app dev\"",
     "package:server": "node scripts/package-distributions.mjs server",
