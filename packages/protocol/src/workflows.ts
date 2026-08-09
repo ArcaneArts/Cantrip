@@ -1037,9 +1037,48 @@ export const workflowNodeAttemptStatusSchema = z.enum([
   "interrupted",
   "orphaned",
 ]);
+export const workflowRunNodeItemStatusSchema = z.enum([
+  "ready",
+  "running",
+  "waiting-for-approval",
+  "cancelled",
+  "failed",
+  "completed",
+  "recovering",
+  "skipped",
+]);
+export const workflowRunNodeItemSchema = z.object({
+  id: idSchema,
+  runNodeId: idSchema,
+  itemKey: z.string().max(10_000),
+  position: z.number().int().nonnegative(),
+  status: workflowRunNodeItemStatusSchema,
+  structuredInput: workflowJsonValueSchema,
+  structuredResult: workflowJsonValueSchema.nullable(),
+  measuredUsage: workflowMeasuredUsageSchema,
+  errorCode: z.string().max(200).nullable(),
+  errorMessage: z.string().max(5_000).nullable(),
+  workerId: idSchema.nullable(),
+  worktreeId: idSchema.nullable(),
+  modelRouteId: idSchema.nullable(),
+  permissionProfileId: idSchema.nullable(),
+  codexThreadId: idSchema.nullable(),
+  codexTurnId: idSchema.nullable(),
+  executionLeaseKey: z.string().max(500).nullable(),
+  attemptCount: z.number().int().nonnegative(),
+  notBefore: nullableTimestamp,
+  timeoutAt: nullableTimestamp,
+  readyAt: nullableTimestamp,
+  startedAt: nullableTimestamp,
+  waitingAt: nullableTimestamp,
+  completedAt: nullableTimestamp,
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
 export const workflowNodeAttemptSchema = z.object({
   id: idSchema,
   runNodeId: idSchema,
+  runNodeItemId: idSchema.nullable().default(null),
   attempt: z.number().int().positive(),
   status: workflowNodeAttemptStatusSchema,
   idempotencyKey: z.string().min(1).max(200),
@@ -1127,6 +1166,7 @@ export const workflowApprovalGateSchema = z
 export const workflowRunDetailSchema = z.object({
   run: workflowRunSchema,
   nodes: z.array(workflowRunNodeSchema).max(1_000),
+  items: z.array(workflowRunNodeItemSchema).max(10_000).default([]),
   dependencies: z.array(workflowRunNodeDependencySchema).max(10_000),
   attempts: z.array(workflowNodeAttemptSchema).max(10_000),
   gates: z.array(workflowApprovalGateSchema).max(1_000),
@@ -1313,6 +1353,10 @@ export type WorkflowDependencyStatus = z.infer<
 export type WorkflowRunNodeDependency = z.infer<
   typeof workflowRunNodeDependencySchema
 >;
+export type WorkflowRunNodeItemStatus = z.infer<
+  typeof workflowRunNodeItemStatusSchema
+>;
+export type WorkflowRunNodeItem = z.infer<typeof workflowRunNodeItemSchema>;
 export type WorkflowNodeAttemptStatus = z.infer<
   typeof workflowNodeAttemptStatusSchema
 >;

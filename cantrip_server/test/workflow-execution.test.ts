@@ -48,6 +48,8 @@ type ExecutionMode =
   | "failure"
   | "hold-success"
   | "interaction"
+  | "map-sibling-failure"
+  | "map-terminal-failure"
   | "parallel"
   | "parallel-hold"
   | "sibling-failure"
@@ -77,23 +79,35 @@ const interruptCommands: Array<
 function resultFor(
   command: Extract<WorkerCommand, { type: "workflow.node.execute" }>,
 ) {
-  const structuredResult = command.prompt.includes("Alpha branch")
-    ? { finding: "alpha" }
-    : command.prompt.includes("Beta branch")
-      ? { finding: "beta" }
-      : command.prompt.includes("Gamma branch")
-        ? { finding: "gamma" }
-        : command.prompt.includes("Synthesize branches")
-          ? { summary: "combined" }
-          : command.prompt.includes("Collect nested findings")
-            ? { payload: { findings: [{ finding: "nested" }] } }
-            : command.prompt.includes("Synthesize selected findings")
-              ? { summary: "selected" }
-              : command.prompt.includes("Verify failing")
-                ? { passed: false }
-                : command.prompt.includes("Verify passing")
-                  ? { passed: true }
-                  : { approved: true };
+  const inputMarker = "Structured workflow input (JSON):\n";
+  const inputOffset = command.prompt.lastIndexOf(inputMarker);
+  const structuredInput =
+    inputOffset === -1
+      ? null
+      : (JSON.parse(
+          command.prompt.slice(inputOffset + inputMarker.length),
+        ) as Record<string, unknown>);
+  const structuredResult = command.prompt.includes("Map collection item")
+    ? { mapped: structuredInput?.item }
+    : command.prompt.includes("Reduce mapped collection")
+      ? { summary: "mapped" }
+      : command.prompt.includes("Alpha branch")
+        ? { finding: "alpha" }
+        : command.prompt.includes("Beta branch")
+          ? { finding: "beta" }
+          : command.prompt.includes("Gamma branch")
+            ? { finding: "gamma" }
+            : command.prompt.includes("Synthesize branches")
+              ? { summary: "combined" }
+              : command.prompt.includes("Collect nested findings")
+                ? { payload: { findings: [{ finding: "nested" }] } }
+                : command.prompt.includes("Synthesize selected findings")
+                  ? { summary: "selected" }
+                  : command.prompt.includes("Verify failing")
+                    ? { passed: false }
+                    : command.prompt.includes("Verify passing")
+                      ? { passed: true }
+                      : { approved: true };
   return {
     threadId: `thread-${command.attemptId}`,
     turnId: `turn-${command.attemptId}`,
@@ -185,16 +199,44 @@ const workerBridge: WorkerCommandBus = {
         throw new Error("Codex turn failed at a durable boundary.");
       }
       if (
-        mode === "sibling-failure" &&
-        command.prompt.includes("Alpha branch")
+        mode === "map-terminal-failure" &&
+        command.prompt.includes("Map collection item") &&
+        command.prompt.includes('"item":"bad"')
+      ) {
+        throw new Error("The selected map item failed.");
+      }
+      if (
+        (mode === "sibling-failure" &&
+          command.prompt.includes("Alpha branch")) ||
+        (mode === "map-sibling-failure" &&
+          command.prompt.includes('"item":"bad"'))
       ) {
         await awaitAlphaFailure;
         throw new Error("Alpha failed while its sibling was active.");
       }
       if (
-        mode === "sibling-failure" &&
-        command.prompt.includes("Beta branch")
+        (mode === "sibling-failure" &&
+          command.prompt.includes("Beta branch")) ||
+        (mode === "map-sibling-failure" &&
+          command.prompt.includes('"item":"late"'))
       ) {
+        await options?.onEvent?.({
+          type: "workflow.node.activity",
+          attemptId: command.attemptId,
+          activity: {
+            type: "reasoning",
+            id: `late-start-${command.attemptId}`,
+            status: "completed",
+            summary: ["The late sibling started."],
+            correlation: {
+              sourceMethod: "item/completed",
+              diagnosticId: null,
+              threadId: `thread-${command.attemptId}`,
+              turnId: `turn-${command.attemptId}`,
+              itemId: `late-start-${command.attemptId}`,
+            },
+          },
+        });
         triggerAlphaFailure?.();
         triggerAlphaFailure = null;
         await new Promise<void>((resolve) => {
@@ -256,7 +298,8 @@ const workerBridge: WorkerCommandBus = {
         mode === "parallel" &&
         (command.prompt.includes("Alpha branch") ||
           command.prompt.includes("Beta branch") ||
-          command.prompt.includes("Gamma branch"))
+          command.prompt.includes("Gamma branch") ||
+          command.prompt.includes("Map collection item"))
       ) {
         parallelInFlight += 1;
         parallelPeak = Math.max(parallelPeak, parallelInFlight);
@@ -276,7 +319,8 @@ const workerBridge: WorkerCommandBus = {
       if (
         mode === "parallel-hold" &&
         (command.prompt.includes("Alpha branch") ||
-          command.prompt.includes("Beta branch"))
+          command.prompt.includes("Beta branch") ||
+          command.prompt.includes("Map collection item"))
       ) {
         await new Promise<void>((resolve) => {
           heldParallelExecutions.set(command.attemptId, resolve);
@@ -320,6 +364,8 @@ const workerBridge: WorkerCommandBus = {
       interruptCommands.push(command);
       heldExecution?.();
       heldParallelExecutions.get(command.attemptId)?.();
+      releaseLateSibling?.();
+      releaseLateSibling = null;
       return { interrupted: true };
     }
     if (command.type === "agent.interaction.respond") {
@@ -355,6 +401,7 @@ async function createRunForRevision(
   workflowRevisionId: string,
   idempotencyKey: string,
   budget: Record<string, unknown> = {},
+  structuredInput: Record<string, unknown> = { target: "src" },
 ) {
   return app.inject({
     method: "POST",
@@ -362,7 +409,7 @@ async function createRunForRevision(
     payload: {
       workflowRevisionId,
       projectId,
-      structuredInput: { target: "src" },
+      structuredInput,
       budget: {
         maxAttemptsPerNode: 2,
         maxNodeDurationMs: 60_000,
@@ -1422,6 +1469,563 @@ describe.sequential("single-agent workflow execution", () => {
       detail.attempts.map(({ attempt, status }) => ({ attempt, status })),
     ).toEqual([
       { attempt: 1, status: "failed" },
+      { attempt: 2, status: "completed" },
+    ]);
+  });
+
+  it("maps array items with bounded concurrency and feeds the ordered aggregate to reduce", async () => {
+    const revision = await createWorkflowRevision(
+      "map-array-reduce",
+      [
+        {
+          key: "map_items",
+          type: "map",
+          name: "Map items",
+          configuration: {
+            prompt: "Map collection item.",
+            collectionPath: "/values",
+            itemInputKey: "item",
+            maxConcurrency: 2,
+            failurePolicy: "fail-fast",
+          },
+          outputSchema: { type: "object" },
+        },
+        {
+          key: "reduce_items",
+          type: "reduce",
+          name: "Reduce items",
+          configuration: {
+            prompt: "Reduce mapped collection.",
+            collectionPath: "",
+            emptyCollection: "fail",
+          },
+          outputSchema: { type: "object" },
+        },
+      ],
+      [{ from: "map_items", to: "reduce_items" }],
+    );
+    mode = "parallel";
+    parallelInFlight = 0;
+    parallelPeak = 0;
+    parallelWaiters = [];
+    parallelBarrierReleased = false;
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-map-array-reduce",
+      { maxParallelism: 2, maxNodes: 10 },
+      { values: ["one", "two", "three"] },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    mode = "success";
+    const detail = await runDetail(runId);
+    const commands = executionCommands.slice(before);
+    expect(commands).toHaveLength(4);
+    expect(parallelPeak).toBe(2);
+    expect(commands.at(-1)?.prompt).toContain(
+      '[{"mapped":"one"},{"mapped":"two"},{"mapped":"three"}]',
+    );
+    expect(detail).toMatchObject({
+      run: { status: "completed", structuredResult: { summary: "mapped" } },
+      nodes: [
+        {
+          nodeKey: "map_items",
+          status: "completed",
+          structuredResult: [
+            { mapped: "one" },
+            { mapped: "two" },
+            { mapped: "three" },
+          ],
+        },
+        {
+          nodeKey: "reduce_items",
+          status: "completed",
+          structuredInput: [
+            { mapped: "one" },
+            { mapped: "two" },
+            { mapped: "three" },
+          ],
+        },
+      ],
+    });
+    expect(
+      detail.items.map(({ itemKey, position, status }) => ({
+        itemKey,
+        position,
+        status,
+      })),
+    ).toEqual([
+      { itemKey: "0", position: 0, status: "completed" },
+      { itemKey: "1", position: 1, status: "completed" },
+      { itemKey: "2", position: 2, status: "completed" },
+    ]);
+    expect(
+      detail.attempts.filter(({ runNodeItemId }) => runNodeItemId),
+    ).toHaveLength(3);
+  });
+
+  it("orders object keys deterministically and completes empty collections without worker turns", async () => {
+    const objectRevision = await createWorkflowRevision("map-object-order", [
+      {
+        key: "map_items",
+        type: "map",
+        name: "Map items",
+        configuration: {
+          prompt: "Map collection item.",
+          collectionPath: "/values",
+          itemInputKey: "item",
+          maxConcurrency: 1,
+          failurePolicy: "fail-fast",
+        },
+      },
+    ]);
+    mode = "success";
+    const objectResponse = await createRunForRevision(
+      objectRevision,
+      "execute-map-object-order",
+      { maxNodes: 10 },
+      { values: { zeta: 3, alpha: 1, middle: 2 } },
+    );
+    const objectRunId = workflowRunDetailSchema.parse(objectResponse.json()).run
+      .id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(objectRunId)).run.status).toBe("completed");
+    });
+    const objectDetail = await runDetail(objectRunId);
+    expect(objectDetail.items.map(({ itemKey }) => itemKey)).toEqual([
+      "alpha",
+      "middle",
+      "zeta",
+    ]);
+    expect(objectDetail.run.structuredResult).toEqual({
+      alpha: { mapped: 1 },
+      middle: { mapped: 2 },
+      zeta: { mapped: 3 },
+    });
+
+    const emptyRevision = await createWorkflowRevision("map-empty", [
+      {
+        key: "map_items",
+        type: "map",
+        name: "Map items",
+        configuration: {
+          prompt: "Map collection item.",
+          collectionPath: "/values",
+          itemInputKey: "item",
+          maxConcurrency: 1,
+          failurePolicy: "fail-fast",
+        },
+      },
+    ]);
+    const before = executionCommands.length;
+    const emptyResponse = await createRunForRevision(
+      emptyRevision,
+      "execute-map-empty",
+      { maxNodes: 10 },
+      { values: [] },
+    );
+    const emptyRunId = workflowRunDetailSchema.parse(emptyResponse.json()).run
+      .id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(emptyRunId)).run.status).toBe("completed");
+    });
+    expect(await runDetail(emptyRunId)).toMatchObject({
+      run: { status: "completed", structuredResult: [] },
+      nodes: [{ status: "completed", structuredResult: [] }],
+      items: [],
+      attempts: [],
+    });
+    expect(executionCommands).toHaveLength(before);
+
+    const boundedResponse = await createRunForRevision(
+      objectRevision,
+      "execute-map-node-budget",
+      { maxNodes: 2 },
+      { values: ["one", "two"] },
+    );
+    const boundedRunId = workflowRunDetailSchema.parse(boundedResponse.json())
+      .run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(boundedRunId)).run.status).toBe("failed");
+    });
+    expect(await runDetail(boundedRunId)).toMatchObject({
+      run: {
+        status: "failed",
+        errorCode: "unsupported-workflow-shape",
+        errorMessage: expect.stringContaining("node budget"),
+      },
+      items: [],
+      attempts: [],
+    });
+    expect(executionCommands).toHaveLength(before);
+  });
+
+  it("continues map execution with explicit outcome envelopes after an item failure", async () => {
+    const revision = await createWorkflowRevision("map-continue-failure", [
+      {
+        key: "map_items",
+        type: "map",
+        name: "Map items",
+        configuration: {
+          prompt: "Map collection item.",
+          collectionPath: "/values",
+          itemInputKey: "item",
+          maxConcurrency: 1,
+          failurePolicy: "continue",
+          automaticRetries: 0,
+        },
+      },
+    ]);
+    mode = "map-terminal-failure";
+    const response = await createRunForRevision(
+      revision,
+      "execute-map-continue-failure",
+      { maxNodes: 10 },
+      { values: ["ok", "bad", "after"] },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    mode = "success";
+    const detail = await runDetail(runId);
+    expect(detail.items.map(({ status }) => status)).toEqual([
+      "completed",
+      "failed",
+      "completed",
+    ]);
+    expect(detail.run.structuredResult).toEqual([
+      { status: "completed", result: { mapped: "ok" } },
+      {
+        status: "failed",
+        error: {
+          code: "node-execution-failed",
+          message: "The selected map item failed.",
+        },
+      },
+      { status: "completed", result: { mapped: "after" } },
+    ]);
+  });
+
+  it("fails fast before dispatching later map items", async () => {
+    const revision = await createWorkflowRevision(
+      "map-fail-fast",
+      [
+        {
+          key: "map_items",
+          type: "map",
+          name: "Map items",
+          configuration: {
+            prompt: "Map collection item.",
+            collectionPath: "/values",
+            itemInputKey: "item",
+            maxConcurrency: 1,
+            failurePolicy: "fail-fast",
+            automaticRetries: 0,
+          },
+        },
+        {
+          key: "after",
+          type: "agent",
+          name: "After",
+          configuration: { prompt: "Must not execute after map failure." },
+        },
+      ],
+      [{ from: "map_items", to: "after" }],
+    );
+    mode = "map-terminal-failure";
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-map-fail-fast",
+      { maxNodes: 10 },
+      { values: ["bad", "never"] },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("failed");
+    });
+    mode = "success";
+    const detail = await runDetail(runId);
+    expect(executionCommands).toHaveLength(before + 1);
+    expect(detail.nodes.map(({ status }) => status)).toEqual([
+      "failed",
+      "skipped",
+    ]);
+    expect(detail.items.map(({ status }) => status)).toEqual([
+      "failed",
+      "skipped",
+    ]);
+
+    const retry = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/nodes/${detail.nodes[0]!.id}/retry`,
+      payload: {
+        reason: "Retry the failed item, then continue the collection.",
+        idempotencyKey: "retry-map-fail-fast",
+      },
+    });
+    expect(retry.statusCode).toBe(200);
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    expect(
+      (await runDetail(runId)).items.map(({ attemptCount, status }) => ({
+        attemptCount,
+        status,
+      })),
+    ).toEqual([
+      { attemptCount: 2, status: "completed" },
+      { attemptCount: 1, status: "completed" },
+    ]);
+  });
+
+  it("does not let a late in-flight map item revive a failed parent", async () => {
+    const revision = await createWorkflowRevision("map-terminal-race", [
+      {
+        key: "map_items",
+        type: "map",
+        name: "Map items",
+        configuration: {
+          prompt: "Map collection item.",
+          collectionPath: "/values",
+          itemInputKey: "item",
+          maxConcurrency: 2,
+          failurePolicy: "fail-fast",
+          automaticRetries: 0,
+        },
+      },
+    ]);
+    mode = "map-sibling-failure";
+    const interruptsBefore = interruptCommands.length;
+    awaitAlphaFailure = new Promise<void>((resolve) => {
+      triggerAlphaFailure = resolve;
+    });
+    releaseLateSibling = null;
+    const response = await createRunForRevision(
+      revision,
+      "execute-map-terminal-race",
+      { maxParallelism: 2, maxNodes: 10 },
+      { values: ["bad", "late"] },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      const detail = await runDetail(runId);
+      expect(detail.run.status).toBe("failed");
+      expect(detail.nodes[0]?.status).toBe("failed");
+    });
+    await vi.waitFor(async () => {
+      expect(
+        (await runDetail(runId)).items.map(({ status }) => status),
+      ).toEqual(["failed", "completed"]);
+    });
+    mode = "success";
+    awaitAlphaFailure = null;
+    const terminal = await runDetail(runId);
+    expect(terminal.run.status).toBe("failed");
+    expect(terminal.nodes[0]?.status).toBe("failed");
+    expect(interruptCommands).toHaveLength(interruptsBefore + 1);
+  });
+
+  it("retries only the failed map item within its own attempt budget", async () => {
+    const revision = await createWorkflowRevision("map-item-retry", [
+      {
+        key: "map_items",
+        type: "map",
+        name: "Map items",
+        configuration: {
+          prompt: "Map collection item.",
+          collectionPath: "/values",
+          itemInputKey: "item",
+          maxConcurrency: 1,
+          failurePolicy: "fail-fast",
+          automaticRetries: 1,
+        },
+      },
+    ]);
+    mode = "failure";
+    const response = await createRunForRevision(
+      revision,
+      "execute-map-item-retry",
+      { maxAttemptsPerNode: 2, maxNodes: 10 },
+      { values: ["first", "second"] },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    const detail = await runDetail(runId);
+    const attemptsByItem = new Map<string, number[]>();
+    for (const attempt of detail.attempts) {
+      const attempts = attemptsByItem.get(attempt.runNodeItemId!) ?? [];
+      attempts.push(attempt.attempt);
+      attemptsByItem.set(attempt.runNodeItemId!, attempts);
+    }
+    expect(
+      detail.items.map(({ attemptCount, status }) => ({
+        attemptCount,
+        status,
+      })),
+    ).toEqual([
+      { attemptCount: 2, status: "completed" },
+      { attemptCount: 1, status: "completed" },
+    ]);
+    expect([...attemptsByItem.values()]).toEqual([[1, 2], [1]]);
+  });
+
+  it("cancels every active and pending map item and interrupts each live turn", async () => {
+    const revision = await createWorkflowRevision("map-cancel", [
+      {
+        key: "map_items",
+        type: "map",
+        name: "Map items",
+        configuration: {
+          prompt: "Map collection item.",
+          collectionPath: "/values",
+          itemInputKey: "item",
+          maxConcurrency: 2,
+          failurePolicy: "fail-fast",
+        },
+      },
+    ]);
+    connected = true;
+    mode = "parallel-hold";
+    const interruptsBefore = interruptCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-map-cancel",
+      { maxParallelism: 2, maxNodes: 10 },
+      { values: ["one", "two", "three"] },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect(
+        (await runDetail(runId)).items.filter(
+          ({ status }) => status === "running",
+        ),
+      ).toHaveLength(2);
+    });
+    const cancellation = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/cancel`,
+      payload: {
+        reason: "Cancel the collection.",
+        idempotencyKey: "cancel-map-once",
+      },
+    });
+    expect(cancellation.statusCode).toBe(200);
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("cancelled");
+    });
+    mode = "success";
+    const detail = await runDetail(runId);
+    expect(detail.items.map(({ status }) => status)).toEqual([
+      "cancelled",
+      "cancelled",
+      "cancelled",
+    ]);
+    expect(detail.attempts.map(({ status }) => status)).toEqual([
+      "interrupted",
+      "interrupted",
+    ]);
+    expect(interruptCommands).toHaveLength(interruptsBefore + 2);
+  });
+
+  it("recovers an orphaned map item after restart without re-expanding the collection", async () => {
+    const revision = await createWorkflowRevision("map-restart-recovery", [
+      {
+        key: "map_items",
+        type: "map",
+        name: "Map items",
+        configuration: {
+          prompt: "Map collection item.",
+          collectionPath: "/values",
+          itemInputKey: "item",
+          maxConcurrency: 1,
+          failurePolicy: "fail-fast",
+          automaticRetries: 0,
+        },
+      },
+    ]);
+    connected = false;
+    mode = "success";
+    const response = await createRunForRevision(
+      revision,
+      "execute-map-restart-recovery",
+      { maxAttemptsPerNode: 2, maxNodes: 10 },
+      { values: ["survive"] },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).items).toHaveLength(1);
+    });
+    const candidates =
+      await database.repository.workflowRuns.getReadyAgentCandidates(
+        LOCAL_USER_ID,
+        runId,
+      );
+    const source = await database.repository.getProjectSource(
+      LOCAL_USER_ID,
+      projectId,
+    );
+    const lease = await database.repository.workflowRuns.claimAgentAttempt(
+      LOCAL_USER_ID,
+      candidates![0]!,
+      {
+        cwd: source!.cwd,
+        modelRouteId: DEFAULT_MODEL_ROUTE_ID,
+        permissionProfileId: null,
+        workerId: source!.workerId,
+        worktreeId: source!.worktreeId,
+      },
+    );
+    expect(lease?.candidate.item).not.toBeNull();
+
+    await app.close();
+    database = await connectDatabase(config);
+    app = await buildApp({ config, database, logger: false, workerBridge });
+    expect(await runDetail(runId)).toMatchObject({
+      run: {
+        status: "recovering",
+        recoveryState: "blocked",
+        errorCode: "server-restarted",
+      },
+      nodes: [{ status: "recovering" }],
+      items: [{ status: "recovering", attemptCount: 1 }],
+      attempts: [{ status: "orphaned", runNodeItemId: expect.any(String) }],
+    });
+
+    connected = true;
+    const recovering = await runDetail(runId);
+    const retry = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/nodes/${recovering.nodes[0]!.id}/retry`,
+      payload: {
+        reason: "Resume the durable collection item.",
+        idempotencyKey: "retry-map-after-restart",
+      },
+    });
+    expect(retry.statusCode).toBe(200);
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    const completed = await runDetail(runId);
+    expect(completed.items).toHaveLength(1);
+    expect(completed.items[0]).toMatchObject({
+      status: "completed",
+      attemptCount: 2,
+      structuredResult: { mapped: "survive" },
+    });
+    expect(
+      completed.attempts.map(({ attempt, status }) => ({
+        attempt,
+        status,
+      })),
+    ).toEqual([
+      { attempt: 1, status: "orphaned" },
       { attempt: 2, status: "completed" },
     ]);
   });

@@ -21,6 +21,7 @@ import {
 import type {
   WorkflowAttemptLease,
   WorkflowAgentCandidate,
+  WorkflowCancellationExecutionContext,
 } from "../db/workflow-runs.js";
 import {
   type WorkerCommandBus,
@@ -110,8 +111,22 @@ export class WorkflowExecutor {
     if (!requested?.executions.length || requested.replayed) {
       return requested?.run ?? null;
     }
+    await this.interruptExecutions(
+      requested.executions,
+      "Workflow cancellation was persisted but runtime interruption failed",
+    );
+    return (
+      (await this.repository.workflowRuns.getRun(LOCAL_USER_ID, runId)) ??
+      requested.run
+    );
+  }
+
+  private async interruptExecutions(
+    executions: WorkflowCancellationExecutionContext[],
+    failureMessage: string,
+  ): Promise<void> {
     await Promise.all(
-      requested.executions.map(async (execution) => {
+      executions.map(async (execution) => {
         const runtime = await this.repository.getModelRuntimeByRoute(
           LOCAL_USER_ID,
           execution.modelRouteId,
@@ -135,17 +150,13 @@ export class WorkflowExecutor {
           this.logger.warn(
             {
               err: error,
-              workflowRunId: runId,
+              workflowRunId: execution.runId,
               workflowRunNodeId: execution.runNodeId,
             },
-            "Workflow cancellation was persisted but runtime interruption failed",
+            failureMessage,
           );
         }
       }),
-    );
-    return (
-      (await this.repository.workflowRuns.getRun(LOCAL_USER_ID, runId)) ??
-      requested.run
     );
   }
 
@@ -205,11 +216,16 @@ export class WorkflowExecutor {
     if (!runId || !runNodeId) {
       throw new Error("The interaction is not attributed to a workflow node.");
     }
+    const threadId = interaction.provenance.threadId;
+    if (!threadId) {
+      throw new Error("The interaction is not attributed to a Codex thread.");
+    }
     const context =
       await this.repository.workflowRuns.getInteractionExecutionContext(
         LOCAL_USER_ID,
         runId,
         runNodeId,
+        threadId,
       );
     if (!context) {
       throw new Error("The workflow attempt is no longer active.");
@@ -252,6 +268,13 @@ export class WorkflowExecutor {
   private async executeRun(runId: string): Promise<void> {
     const active = new Set<Promise<void>>();
     while (!this.#stopping) {
+      const collectionAdvanced =
+        await this.repository.workflowRuns.advanceReadyCollectionNode(
+          LOCAL_USER_ID,
+          runId,
+        );
+      if (collectionAdvanced === null) break;
+      if (collectionAdvanced) continue;
       const controlAdvanced =
         await this.repository.workflowRuns.advanceReadyControlNode(
           LOCAL_USER_ID,
@@ -351,7 +374,9 @@ export class WorkflowExecutor {
           idempotencyKey: lease.idempotencyKey,
           worktreeId,
           cwd,
-          threadId: lease.candidate.node.codexThreadId,
+          threadId:
+            lease.candidate.item?.codexThreadId ??
+            lease.candidate.node.codexThreadId,
           prompt: workflowAgentPrompt(
             lease.candidate.configuration!,
             lease.candidate.structuredInput,
@@ -400,10 +425,14 @@ export class WorkflowExecutor {
         result,
       );
     } catch (error) {
-      await this.repository.workflowRuns.failAgentAttempt(
+      const failure = await this.repository.workflowRuns.failAgentAttempt(
         LOCAL_USER_ID,
         lease,
         this.failureFrom(error),
+      );
+      await this.interruptExecutions(
+        failure.interruptions,
+        "Map failure was persisted but sibling runtime interruption failed",
       );
     }
   }
@@ -446,9 +475,11 @@ export class WorkflowExecutor {
       event.type === "workflow.node.interaction.expired"
     ) {
       if (!this.#respondingInteractions.has(event.requestKey)) {
-        await this.repository.workflowRuns.terminalizeWorkflowInteractions(
+        await this.repository.workflowRuns.terminalizeWorkflowInteraction(
           lease.candidate.run.id,
           lease.candidate.node.id,
+          lease.attemptId,
+          event.requestKey,
           event.type === "workflow.node.interaction.expired"
             ? "expired"
             : "interrupted",

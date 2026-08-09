@@ -73,7 +73,8 @@ describe("workflow domain migration", () => {
           id, revision_id, node_key, node_type, name, position, mutation_mode
         ) VALUES
           ('revision-node-1', 'revision-1', 'inspect', 'agent', 'Inspect', 0, 'read-only'),
-          ('revision-node-2', 'revision-1', 'verify', 'verify', 'Verify', 1, 'read-only');
+          ('revision-node-2', 'revision-1', 'verify', 'verify', 'Verify', 1, 'read-only'),
+          ('revision-node-3', 'revision-1', 'map', 'map', 'Map', 2, 'read-only');
 
         INSERT INTO workflow_revision_edges (
           id, revision_id, from_node_id, to_node_id, position
@@ -104,6 +105,10 @@ describe("workflow domain migration", () => {
           (
             'run-node-2', 'run-1', 'revision-node-2', 'verify', 'verify',
             'blocked', '{}'::jsonb, null, null, null
+          ),
+          (
+            'run-node-3', 'run-1', 'revision-node-3', 'map', 'map',
+            'completed', '{"items":["alpha"]}'::jsonb, null, null, null
           );
 
         INSERT INTO workflow_run_node_dependencies (
@@ -121,6 +126,23 @@ describe("workflow domain migration", () => {
           'attempt-1', 'run-node-1', 1, 'running', 'dispatch-1',
           '{"target":"src"}'::jsonb, 'worker-1', 'worktree-1', 'thread-1',
           'turn-1', 'abc123'
+        );
+
+        INSERT INTO workflow_run_node_items (
+          id, run_node_id, item_key, position, structured_input, worker_id,
+          worktree_id, attempt_count
+        ) VALUES (
+          'run-node-item-1', 'run-node-3', 'alpha', 0,
+          '{"item":"alpha"}'::jsonb, 'worker-1', 'worktree-1', 1
+        );
+
+        INSERT INTO workflow_node_attempts (
+          id, run_node_id, run_node_item_id, attempt, status, idempotency_key,
+          structured_input, worker_id, worktree_id
+        ) VALUES (
+          'attempt-item-1', 'run-node-3', 'run-node-item-1', 1, 'completed',
+          'dispatch-item-1', '{"item":"alpha"}'::jsonb, 'worker-1',
+          'worktree-1'
         );
 
         INSERT INTO workflow_run_events (
@@ -146,6 +168,7 @@ describe("workflow domain migration", () => {
         dependencies: number;
         events: number;
         gates: number;
+        items: number;
         nodes: number;
         recovery_state: string;
         revisions: number;
@@ -155,7 +178,8 @@ describe("workflow domain migration", () => {
           (SELECT count(*)::int FROM workflow_revisions WHERE workflow_id = 'workflow-1') AS revisions,
           (SELECT count(*)::int FROM workflow_run_nodes WHERE run_id = 'run-1') AS nodes,
           (SELECT count(*)::int FROM workflow_run_node_dependencies WHERE run_id = 'run-1') AS dependencies,
-          (SELECT count(*)::int FROM workflow_node_attempts WHERE run_node_id = 'run-node-1') AS attempts,
+          (SELECT count(*)::int FROM workflow_node_attempts WHERE run_node_id IN (SELECT id FROM workflow_run_nodes WHERE run_id = 'run-1')) AS attempts,
+          (SELECT count(*)::int FROM workflow_run_node_items WHERE run_node_id = 'run-node-3') AS items,
           (SELECT count(*)::int FROM workflow_run_events WHERE run_id = 'run-1') AS events,
           (SELECT count(*)::int FROM workflow_approval_gates WHERE run_id = 'run-1') AS gates,
           (SELECT recovery_state FROM workflow_runs WHERE id = 'run-1') AS recovery_state,
@@ -163,11 +187,12 @@ describe("workflow domain migration", () => {
       `);
       expect(graph.rows).toEqual([
         {
-          attempts: 1,
+          attempts: 2,
           dependencies: 1,
           events: 1,
           gates: 1,
-          nodes: 2,
+          items: 1,
+          nodes: 3,
           recovery_state: "stable",
           revisions: 1,
           run_worktree_id: "worktree-1",

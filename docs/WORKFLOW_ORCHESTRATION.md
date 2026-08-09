@@ -52,15 +52,39 @@ selection remains deterministic across restarts.
 
 ## Runtime rollout
 
-The static DAG runtime executes read-only `agent`, `reduce`, `verify`,
-`condition`, and `gate` nodes. It claims independent Codex-backed roots up to
-the run's maximum parallelism, persists each attempt independently, aggregates
-usage, and only releases a downstream node after every incoming dependency is
-durably satisfied. Deterministic condition and gate transitions do not consume
-an agent concurrency slot. A single dependency passes its selected result
+The runtime executes read-only `agent`, `map`, `reduce`, `verify`, `condition`,
+and `gate` nodes. It claims independent Codex-backed roots up to the run's
+maximum parallelism, persists each attempt independently, aggregates usage,
+and only releases a downstream node after every incoming dependency is durably
+satisfied. Deterministic condition and gate transitions do not consume an
+agent concurrency slot. A single dependency passes its selected result
 directly. Fan-in without explicit target names builds an object keyed by source
 node; explicit target names build the same object under those names. Duplicate
 target names are rejected when the revision is saved.
+
+A map node expands the array or object selected by `collectionPath` into
+durable collection-item rows before dispatching any Codex turn. Array order is
+preserved. Object keys are processed in lexical order, and the final object
+retains the original keys. Each item owns its attempt counter, lease, worker
+and worktree attribution, Codex thread and turn attribution, structured result,
+usage, errors, and timestamps. `maxConcurrency` limits active items within the
+map while the run's `maxParallelism` remains the global ceiling. Expansion also
+counts against `maxNodes`, so a collection that would exceed the immutable run
+budget fails before its first item is dispatched. An empty collection completes
+at the expansion boundary without a worker turn.
+
+With `failurePolicy: fail-fast`, an exhausted item fails the map, skips items
+that have not started, and best-effort interrupts in-flight sibling turns with
+persisted Codex thread attribution. With `continue`, all items run and the aggregate
+contains explicit outcome envelopes: completed entries have
+`{ status: "completed", result }`, and failed entries have
+`{ status: "failed", error: { code, message } }`. Automatic retries are
+calculated per item and cannot exceed the run's per-node attempt ceiling.
+Operator retry resumes only retryable or previously skipped items; completed
+items are retained. Cancellation terminalizes active and pending items, while
+startup recovery marks interrupted items as recovering without re-expanding
+the collection. Downstream nodes are released only after the parent map reaches
+a durable terminal boundary.
 
 A reduce node applies `collectionPath` to its durable node input before the
 selected array or object is rendered into the Codex prompt. A missing path or
@@ -94,14 +118,14 @@ work without creating a duplicate gate. Cancellation terminalizes pending
 gates, and decisions against cancelled or otherwise incompatible terminal
 states fail with a conflict.
 
-Unsupported dynamic nodes (`map`, `pipeline`, and `repeatUntil`) still fail
-explicitly rather than falling back to an agent chat or an unvalidated
-interpretation. Subsequent scheduler changes must preserve this contract,
-persist every intermediate boundary, and apply the run budget as an additional
-ceiling over node-local concurrency and loop limits.
+Unsupported dynamic nodes (`pipeline` and `repeatUntil`) still fail explicitly
+rather than falling back to an agent chat or an unvalidated interpretation.
+Subsequent scheduler changes must preserve this contract, persist every
+intermediate boundary, and apply the run budget as an additional ceiling over
+node-local concurrency and loop limits.
 
 Write-capable `agent`, `map`, `pipeline`, `reduce`, `verify`, and `repeatUntil`
 nodes use the same declared filesystem permission invariant as other workflow
-nodes. `condition` and `gate` nodes are always read-only. Worktree allocation
-and write-lane leasing are defined separately by the workflow worktree
-milestone; this contract does not authorize writes to Primary.
+nodes. `condition` and `gate` nodes are always read-only. Until workflow
+worktree allocation lands, the runtime rejects every write-capable executable
+node, including `map`. This contract does not authorize writes to Primary.
