@@ -11,6 +11,8 @@ import {
   type WorkflowNodeRetry,
   type WorkflowRunCancel,
   type WorkflowRunDetail,
+  type WorkflowRunPause,
+  type WorkflowRunResume,
 } from "@cantrip/protocol/workflows";
 
 import {
@@ -119,6 +121,28 @@ export class WorkflowExecutor {
       (await this.repository.workflowRuns.getRun(LOCAL_USER_ID, runId)) ??
       requested.run
     );
+  }
+
+  async pauseRun(
+    runId: string,
+    input: WorkflowRunPause,
+  ): Promise<WorkflowRunDetail | null> {
+    return this.repository.workflowRuns.pauseRun(LOCAL_USER_ID, runId, input);
+  }
+
+  async resumeRun(
+    runId: string,
+    input: WorkflowRunResume,
+  ): Promise<WorkflowRunDetail | null> {
+    const run = await this.repository.workflowRuns.resumeRun(
+      LOCAL_USER_ID,
+      runId,
+      input,
+    );
+    if (run && !["completed", "failed"].includes(run.run.status)) {
+      this.queueRun(runId);
+    }
+    return run;
   }
 
   private async interruptExecutions(

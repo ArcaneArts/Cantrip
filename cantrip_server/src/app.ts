@@ -192,7 +192,9 @@ import {
   workflowRunEventQuerySchema,
   workflowRunListSchema,
   workflowNodeRetrySchema,
+  workflowRunPauseSchema,
   workflowRunQuerySchema,
+  workflowRunResumeSchema,
 } from "@cantrip/protocol/workflows";
 
 import { resolveCodeSurfaceConfig, type ServerConfig } from "./config.js";
@@ -2431,6 +2433,54 @@ export async function buildApp({
       return run
         ? reply.send(workflowRunDetailSchema.parse(run))
         : reply.code(404).send({ error: "Workflow run not found." });
+    },
+  );
+
+  app.post<{ Params: { runId: string } }>(
+    "/api/workflow-runs/:runId/pause",
+    async (request, reply) => {
+      const input = workflowRunPauseSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const run = await workflowExecutor.pauseRun(
+          request.params.runId,
+          input.data,
+        );
+        return run
+          ? reply.send(workflowRunDetailSchema.parse(run))
+          : reply.code(404).send({ error: "Workflow run not found." });
+      } catch (error) {
+        if (error instanceof WorkflowControlConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: { runId: string } }>(
+    "/api/workflow-runs/:runId/resume",
+    async (request, reply) => {
+      const input = workflowRunResumeSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const run = await workflowExecutor.resumeRun(
+          request.params.runId,
+          input.data,
+        );
+        return run
+          ? reply.send(workflowRunDetailSchema.parse(run))
+          : reply.code(404).send({ error: "Workflow run not found." });
+      } catch (error) {
+        if (error instanceof WorkflowControlConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
     },
   );
 

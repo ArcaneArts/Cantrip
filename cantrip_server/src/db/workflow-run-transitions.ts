@@ -427,7 +427,7 @@ export async function recomputeWorkflowRun(
   const allCompleted = nodes.every(({ status }) =>
     ["completed", "skipped"].includes(status),
   );
-  const status: WorkflowRunStatus = allCompleted
+  const computedStatus: WorkflowRunStatus = allCompleted
     ? "completed"
     : nodes.some(({ status: nodeStatus }) => nodeStatus === "failed")
       ? "failed"
@@ -446,6 +446,11 @@ export async function recomputeWorkflowRun(
                   )
                 ? "recovering"
                 : "failed";
+  const status: WorkflowRunStatus =
+    input.lockedRun.status === "paused" &&
+    ["queued", "running", "waiting", "paused"].includes(computedStatus)
+      ? "paused"
+      : computedStatus;
   const sourceNodeIds = new Set(
     dependencies.map(({ fromNodeId }) => fromNodeId),
   );
@@ -494,11 +499,15 @@ export async function recomputeWorkflowRun(
         ? "No workflow node can make durable progress."
         : null,
       pauseReason:
-        status === "waiting"
-          ? (pendingGate?.prompt ?? input.lockedRun.pauseReason)
-          : null,
+        status === "paused"
+          ? input.lockedRun.pauseReason
+          : status === "waiting"
+            ? (pendingGate?.prompt ?? input.lockedRun.pauseReason)
+            : null,
       pausedAt:
-        status === "waiting" ? (input.lockedRun.pausedAt ?? input.now) : null,
+        status === "paused" || status === "waiting"
+          ? (input.lockedRun.pausedAt ?? input.now)
+          : null,
       recoveryState: "stable",
       completedAt: terminal ? input.now : null,
       updatedAt: input.now,
