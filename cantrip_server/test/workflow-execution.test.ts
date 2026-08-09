@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   agentInteractionRequestListSchema,
   type WorkerCommand,
+  type WorkerWorktreeSummary,
   unprobedCodexRuntimeReport,
 } from "@cantrip/protocol";
 import {
@@ -78,6 +79,63 @@ const executionCommands: Array<
 const interruptCommands: Array<
   Extract<WorkerCommand, { type: "workflow.node.interrupt" }>
 > = [];
+const worktreeCommands: Array<
+  Extract<WorkerCommand, { type: "worktree.create" | "worktree.status" }>
+> = [];
+const workflowWorktrees = new Map<string, WorkerWorktreeSummary>();
+const dirtyWorkflowWorktrees = new Set<string>();
+const primaryHead = "a".repeat(40);
+
+const primaryWorktree: WorkerWorktreeSummary = {
+  path: projectPath,
+  head: primaryHead,
+  branch: "main",
+  detached: false,
+  isPrimary: true,
+  managed: false,
+  locked: false,
+  lockReason: null,
+  prunable: false,
+  pruneReason: null,
+  missing: false,
+};
+
+function worktreeInventory() {
+  return {
+    sourcePath: projectPath,
+    primaryPath: projectPath,
+    gitCommonDir: `${projectPath}/.git`,
+    managedRoot: path.join(dataDirectory, "workflow-worktrees"),
+    repositoryFingerprint: "a".repeat(64),
+    worktrees: [primaryWorktree, ...workflowWorktrees.values()],
+  };
+}
+
+function worktreeStatus(worktree: WorkerWorktreeSummary, dirty: boolean) {
+  return {
+    worktree,
+    status: {
+      branch: worktree.branch ?? "",
+      head: worktree.head,
+      upstream: null,
+      ahead: 0,
+      behind: 0,
+      files: dirty
+        ? [
+            {
+              path: "generated.txt",
+              originalPath: null,
+              indexStatus: "?",
+              worktreeStatus: "?",
+              staged: false,
+              unstaged: true,
+            },
+          ]
+        : [],
+      branches: [],
+    },
+  };
+}
 
 function resultFor(
   command: Extract<WorkerCommand, { type: "workflow.node.execute" }>,
@@ -178,8 +236,56 @@ const workerBridge: WorkerCommandBus = {
   },
   async request(_workerId, command, options) {
     if (!connected) throw new WorkerUnavailableError("Worker disconnected.");
+    if (command.type === "worktree.create") {
+      worktreeCommands.push(command);
+      if (command.mode.type !== "newBranch") {
+        throw new Error("Workflow tests only create new worktree branches.");
+      }
+      let worktree = workflowWorktrees.get(command.worktreeId);
+      if (!worktree) {
+        worktree = {
+          path: path.join(
+            dataDirectory,
+            "workflow-worktrees",
+            command.worktreeId,
+          ),
+          head: primaryHead,
+          branch: command.mode.branch,
+          detached: false,
+          isPrimary: false,
+          managed: true,
+          locked: false,
+          lockReason: null,
+          prunable: false,
+          pruneReason: null,
+          missing: false,
+        };
+        workflowWorktrees.set(command.worktreeId, worktree);
+      }
+      return { worktree, inventory: worktreeInventory() };
+    }
+    if (command.type === "worktree.status") {
+      worktreeCommands.push(command);
+      const worktree =
+        command.worktreePath === projectPath
+          ? primaryWorktree
+          : [...workflowWorktrees.values()].find(
+              ({ path: candidate }) => candidate === command.worktreePath,
+            );
+      if (!worktree) throw new Error("Unknown workflow test worktree.");
+      const worktreeId = [...workflowWorktrees.entries()].find(
+        ([, candidate]) => candidate.path === worktree.path,
+      )?.[0];
+      return worktreeStatus(
+        worktree,
+        worktreeId ? dirtyWorkflowWorktrees.has(worktreeId) : false,
+      );
+    }
     if (command.type === "workflow.node.execute") {
       executionCommands.push(command);
+      if (command.mutationMode === "write") {
+        dirtyWorkflowWorktrees.add(command.worktreeId);
+      }
       if (mode === "token-budget") {
         const released = new Promise<void>((resolve) => {
           heldExecution = resolve;
@@ -522,6 +628,9 @@ async function createRunForRevision(
   idempotencyKey: string,
   budget: Record<string, unknown> = {},
   structuredInput: Record<string, unknown> = { target: "src" },
+  permissionManifest: Record<string, unknown> = {
+    filesystem: "read-only",
+  },
 ) {
   return app.inject({
     method: "POST",
@@ -535,7 +644,7 @@ async function createRunForRevision(
         maxNodeDurationMs: 60_000,
         ...budget,
       },
-      permissionManifest: { filesystem: "read-only" },
+      permissionManifest,
       selectedModelRouteId: DEFAULT_MODEL_ROUTE_ID,
       selectedPermissionProfileId: null,
       trigger: {
@@ -726,6 +835,230 @@ describe.sequential("single-agent workflow execution", () => {
     expect(replay.statusCode).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(executionCommands).toHaveLength(before + 1);
+  });
+
+  it("executes a write node in an isolated lane and checkpoints its Git state", async () => {
+    const writeRevision = await createWorkflowRevision(
+      "isolated-write-execution",
+      [
+        {
+          key: "write",
+          type: "agent",
+          name: "Write",
+          mutationMode: "write",
+          permissionRequirements: { filesystem: "workspace-write" },
+          configuration: { prompt: "Write isolated change." },
+          outputSchema: {
+            type: "object",
+            properties: { approved: { type: "boolean" } },
+            required: ["approved"],
+          },
+        },
+      ],
+    );
+    connected = true;
+    mode = "success";
+    const executionsBefore = executionCommands.length;
+    const worktreesBefore = worktreeCommands.length;
+    const response = await createRunForRevision(
+      writeRevision,
+      "execute-isolated-write",
+      {},
+      { target: "generated.txt" },
+      { filesystem: "workspace-write" },
+    );
+    expect(response.statusCode).toBe(201);
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+
+    const detail = await runDetail(runId);
+    const command = executionCommands[executionsBefore]!;
+    expect(command).toMatchObject({
+      type: "workflow.node.execute",
+      workflowRunId: runId,
+      mutationMode: "write",
+      prompt: expect.stringContaining("Write isolated change."),
+    });
+    expect(command.cwd).not.toBe(projectPath);
+    expect(command.worktreeId).not.toBe(
+      (await database.repository.getProjectSource(LOCAL_USER_ID, projectId))
+        ?.worktreeId,
+    );
+    expect(detail).toMatchObject({
+      run: {
+        status: "completed",
+        worktreeId: command.worktreeId,
+      },
+      nodes: [
+        {
+          status: "completed",
+          worktreeId: command.worktreeId,
+          writeCapable: true,
+        },
+      ],
+      attempts: [
+        {
+          status: "completed",
+          worktreeId: command.worktreeId,
+        },
+      ],
+      worktreeLeases: [
+        {
+          state: "checkpointed",
+          worktreeId: command.worktreeId,
+          startingRevision: primaryHead,
+          endingRevision: primaryHead,
+          worktreeDirty: true,
+          producedChanges: {
+            git: {
+              head: primaryHead,
+              files: [expect.objectContaining({ path: "generated.txt" })],
+            },
+          },
+        },
+      ],
+    });
+    expect(
+      worktreeCommands.slice(worktreesBefore).map(({ type }) => type),
+    ).toEqual([
+      "worktree.status",
+      "worktree.create",
+      "worktree.status",
+      "worktree.status",
+    ]);
+    const events = workflowRunEventPageSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/workflow-runs/${runId}/events`,
+        })
+      ).json(),
+    );
+    expect(events.events.map(({ type }) => type)).toEqual([
+      "run.created",
+      "worktree.lease.reserved",
+      "worktree.lease.activated",
+      "node.attempt.started",
+      "workflow.node.activity",
+      "worktree.lease.checkpointed",
+      "node.attempt.completed",
+    ]);
+  });
+
+  it("rejects a write attempt claim without its exact active worktree lease", async () => {
+    const writeRevision = await createWorkflowRevision(
+      "write-claim-requires-lease",
+      [
+        {
+          key: "write",
+          type: "agent",
+          name: "Write",
+          mutationMode: "write",
+          permissionRequirements: { filesystem: "workspace-write" },
+          configuration: { prompt: "Write only after lane allocation." },
+        },
+      ],
+    );
+    connected = false;
+    const response = await createRunForRevision(
+      writeRevision,
+      "execute-write-without-lease",
+      {},
+      { target: "generated.txt" },
+      { filesystem: "workspace-write" },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    const candidate =
+      (await database.repository.workflowRuns.getReadyAgentCandidates(
+        LOCAL_USER_ID,
+        runId,
+      ))![0]!;
+    const source = await database.repository.getProjectSource(
+      LOCAL_USER_ID,
+      projectId,
+    );
+
+    expect(candidate.node.writeCapable).toBe(true);
+    expect(
+      await database.repository.workflowRuns.claimAgentAttempt(
+        LOCAL_USER_ID,
+        candidate,
+        {
+          cwd: source!.cwd,
+          modelRouteId: DEFAULT_MODEL_ROUTE_ID,
+          permissionProfileId: null,
+          workerId: source!.workerId,
+          worktreeId: source!.worktreeId,
+        },
+      ),
+    ).toBeNull();
+    expect((await runDetail(runId)).attempts).toEqual([]);
+
+    const cancellation = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/cancel`,
+      payload: {
+        reason: "Test cleanup after the rejected claim.",
+        idempotencyKey: "cancel-rejected-write-claim",
+      },
+    });
+    expect(cancellation.statusCode).toBe(200);
+    connected = true;
+  });
+
+  it("isolates parallel write roots in distinct checkpointed lanes", async () => {
+    const revision = await createWorkflowRevision("parallel-isolated-writes", [
+      {
+        key: "alpha",
+        type: "agent",
+        name: "Alpha",
+        mutationMode: "write",
+        permissionRequirements: { filesystem: "workspace-write" },
+        configuration: { prompt: "Alpha branch." },
+      },
+      {
+        key: "beta",
+        type: "agent",
+        name: "Beta",
+        mutationMode: "write",
+        permissionRequirements: { filesystem: "workspace-write" },
+        configuration: { prompt: "Beta branch." },
+      },
+    ]);
+    mode = "parallel";
+    parallelInFlight = 0;
+    parallelPeak = 0;
+    parallelWaiters = [];
+    parallelBarrierReleased = false;
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-parallel-isolated-writes",
+      { maxParallelism: 2 },
+      { target: "src" },
+      { filesystem: "workspace-write" },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    mode = "success";
+
+    const commands = executionCommands.slice(before);
+    expect(commands).toHaveLength(2);
+    expect(commands.every(({ mutationMode }) => mutationMode === "write")).toBe(
+      true,
+    );
+    expect(new Set(commands.map(({ worktreeId }) => worktreeId)).size).toBe(2);
+    expect(new Set(commands.map(({ cwd }) => cwd)).size).toBe(2);
+    expect(commands.every(({ cwd }) => cwd !== projectPath)).toBe(true);
+    expect(parallelPeak).toBe(2);
+    expect((await runDetail(runId)).worktreeLeases).toEqual([
+      expect.objectContaining({ state: "checkpointed", worktreeDirty: true }),
+      expect.objectContaining({ state: "checkpointed", worktreeDirty: true }),
+    ]);
   });
 
   it("runs independent roots in parallel and durably reduces their mapped results", async () => {
@@ -2416,6 +2749,87 @@ describe.sequential("single-agent workflow execution", () => {
       errorMessage: expect.stringContaining("node budget"),
     });
     expect(executionCommands).toHaveLength(emptyBefore);
+  });
+
+  it("reuses one isolated write lane through a pipeline and checkpoints only its terminal step", async () => {
+    const revision = await createWorkflowRevision("pipeline-isolated-write", [
+      {
+        key: "pipeline_write",
+        type: "pipeline",
+        name: "Pipeline write",
+        mutationMode: "write",
+        permissionRequirements: { filesystem: "workspace-write" },
+        configuration: {
+          collectionPath: "/values",
+          itemInputKey: "item",
+          maxConcurrency: 1,
+          failurePolicy: "fail-fast",
+          steps: [
+            {
+              key: "inspect",
+              name: "Inspect",
+              prompt: "Pipeline inspect step.",
+              outputSchema: { type: "object" },
+            },
+            {
+              key: "summarize",
+              name: "Summarize",
+              prompt: "Pipeline summarize step.",
+              outputSchema: { type: "object" },
+            },
+          ],
+        },
+      },
+    ]);
+    const before = executionCommands.length;
+    const createsBefore = worktreeCommands.filter(
+      ({ type }) => type === "worktree.create",
+    ).length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-pipeline-isolated-write",
+      { maxNodes: 10 },
+      { values: ["one"] },
+      { filesystem: "workspace-write" },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+
+    const commands = executionCommands.slice(before);
+    expect(commands).toHaveLength(2);
+    expect(commands.map(({ mutationMode }) => mutationMode)).toEqual([
+      "write",
+      "write",
+    ]);
+    expect(new Set(commands.map(({ worktreeId }) => worktreeId)).size).toBe(1);
+    expect(
+      worktreeCommands.filter(({ type }) => type === "worktree.create").length,
+    ).toBe(createsBefore + 1);
+    expect(await runDetail(runId)).toMatchObject({
+      run: { structuredResult: [{ summary: "one" }] },
+      worktreeLeases: [
+        {
+          state: "checkpointed",
+          worktreeId: commands[0]!.worktreeId,
+          worktreeDirty: true,
+        },
+      ],
+    });
+    const events = workflowRunEventPageSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/workflow-runs/${runId}/events`,
+        })
+      ).json(),
+    );
+    expect(
+      events.events.filter(
+        ({ type }) => type === "worktree.lease.checkpointed",
+      ),
+    ).toHaveLength(1);
   });
 
   it("continues other pipeline items with a durable failed-step envelope", async () => {

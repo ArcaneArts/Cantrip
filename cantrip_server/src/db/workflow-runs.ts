@@ -79,6 +79,7 @@ import {
   lockWorkflowRun,
   recomputeWorkflowRun,
   settleWorkflowDependencies,
+  type WorkflowRunTransaction,
 } from "./workflow-run-transitions.js";
 import { evaluateWorkflowPredicate } from "../workflows/values.js";
 import { workflowValueAtPointer } from "../workflows/values.js";
@@ -264,6 +265,13 @@ export interface WorkflowAttemptLease {
   idempotencyKey: string;
   timeoutMs: number;
   unitAttempt: number;
+  worktreeLeaseId: string | null;
+}
+
+export interface WorkflowWorktreeCheckpoint {
+  endingRevision: string;
+  producedChanges: WorkflowJsonObject;
+  worktreeDirty: boolean;
 }
 
 export interface WorkflowInteractionExecutionContext {
@@ -521,6 +529,82 @@ function workerEventPayload(event: WorkerEvent): Record<string, unknown> {
       truncated: true,
     };
   }
+}
+
+async function checkpointWorkflowWorktreeLease(
+  transaction: WorkflowRunTransaction,
+  lease: WorkflowAttemptLease,
+  checkpoint: WorkflowWorktreeCheckpoint | null,
+  now: Date,
+): Promise<boolean> {
+  if (!checkpoint) return false;
+  if (!lease.candidate.node.writeCapable || !lease.worktreeLeaseId) {
+    throw new Error(
+      "A workflow worktree checkpoint requires an attributed write lease.",
+    );
+  }
+  const endingRevision = checkpoint.endingRevision.trim();
+  if (!endingRevision || endingRevision.length > 500) {
+    throw new Error("The workflow checkpoint ending revision is invalid.");
+  }
+  const producedChanges = workflowJsonObjectSchema.parse(
+    checkpoint.producedChanges,
+  );
+  const updated = await transaction
+    .update(schema.workflowWorktreeLeases)
+    .set({
+      state: "checkpointed",
+      endingRevision,
+      worktreeDirty: checkpoint.worktreeDirty,
+      producedChanges,
+      checkpointedAt: now,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(schema.workflowWorktreeLeases.id, lease.worktreeLeaseId),
+        eq(schema.workflowWorktreeLeases.runId, lease.candidate.run.id),
+        eq(schema.workflowWorktreeLeases.runNodeId, lease.candidate.node.id),
+        lease.candidate.item
+          ? eq(
+              schema.workflowWorktreeLeases.runNodeItemId,
+              lease.candidate.item.id,
+            )
+          : isNull(schema.workflowWorktreeLeases.runNodeItemId),
+        eq(
+          schema.workflowWorktreeLeases.worktreeId,
+          lease.assignment.worktreeId,
+        ),
+        eq(schema.workflowWorktreeLeases.state, "active"),
+      ),
+    )
+    .returning({
+      id: schema.workflowWorktreeLeases.id,
+      startingRevision: schema.workflowWorktreeLeases.startingRevision,
+    });
+  if (!updated[0]) {
+    throw new Error(
+      "The active workflow worktree lease changed before checkpointing.",
+    );
+  }
+  await insertWorkflowRunEvent(transaction, {
+    runId: lease.candidate.run.id,
+    runNodeId: lease.candidate.node.id,
+    attemptId: lease.attemptId,
+    eventKey: `worktree-lease-checkpointed:${lease.worktreeLeaseId}`,
+    type: "worktree.lease.checkpointed",
+    payload: {
+      leaseId: lease.worktreeLeaseId,
+      worktreeId: lease.assignment.worktreeId,
+      startingRevision: updated[0].startingRevision,
+      endingRevision,
+      worktreeDirty: checkpoint.worktreeDirty,
+      producedChanges,
+    },
+    actorType: "server",
+    actorId: null,
+  });
+  return true;
 }
 
 export class WorkflowRunRepository {
@@ -1767,10 +1851,6 @@ export class WorkflowRunRepository {
       if (!configuration && !unsupportedReason) {
         unsupportedReason = `The ${node.nodeType} node configuration is invalid.`;
       }
-      if (!unsupportedReason && node.writeCapable) {
-        unsupportedReason =
-          "Write-capable workflow nodes require an isolated workflow worktree.";
-      }
       if (!unsupportedReason && !detail.run.projectId) {
         unsupportedReason =
           "Executable workflows must select a project working directory.";
@@ -1830,14 +1910,6 @@ export class WorkflowRunRepository {
         ownerId,
         runId,
         "The ready collection node is unavailable.",
-      );
-      return true;
-    }
-    if (node.writeCapable) {
-      await this.failUnsupportedRun(
-        ownerId,
-        runId,
-        "Write-capable collection nodes require isolated workflow worktrees.",
       );
       return true;
     }
@@ -1913,14 +1985,6 @@ export class WorkflowRunRepository {
       const node = readyNodes.find(
         ({ revisionNodeId }) => revisionNodeId === revisionNode.id,
       )!;
-      if (node.writeCapable) {
-        await this.failUnsupportedRun(
-          ownerId,
-          runId,
-          "Write-capable repeat-until nodes require an isolated workflow worktree.",
-        );
-        return true;
-      }
       const configuration =
         workflowRepeatUntilNodeConfigurationSchema.safeParse(
           revisionNode.configuration,
@@ -2184,6 +2248,7 @@ export class WorkflowRunRepository {
     const timeoutAt = new Date(now.getTime() + timeoutMs);
 
     let claimed: boolean;
+    let worktreeLeaseId: string | null = null;
     try {
       claimed = await this.database.transaction(async (transaction) => {
         const runs = await transaction
@@ -2203,6 +2268,32 @@ export class WorkflowRunRepository {
           )
           .limit(1);
         if (!runs[0]) return false;
+        if (candidate.node.writeCapable) {
+          const worktreeLeases = await transaction
+            .select({ id: schema.workflowWorktreeLeases.id })
+            .from(schema.workflowWorktreeLeases)
+            .where(
+              and(
+                eq(schema.workflowWorktreeLeases.runId, candidate.run.id),
+                eq(schema.workflowWorktreeLeases.runNodeId, candidate.node.id),
+                candidate.item
+                  ? eq(
+                      schema.workflowWorktreeLeases.runNodeItemId,
+                      candidate.item.id,
+                    )
+                  : isNull(schema.workflowWorktreeLeases.runNodeItemId),
+                eq(
+                  schema.workflowWorktreeLeases.worktreeId,
+                  assignment.worktreeId,
+                ),
+                eq(schema.workflowWorktreeLeases.workerId, assignment.workerId),
+                eq(schema.workflowWorktreeLeases.state, "active"),
+              ),
+            )
+            .limit(1);
+          if (!worktreeLeases[0]) return false;
+          worktreeLeaseId = worktreeLeases[0].id;
+        }
         if (candidate.item) {
           const items = await transaction
             .update(schema.workflowRunNodeItems)
@@ -2413,6 +2504,7 @@ export class WorkflowRunRepository {
       idempotencyKey,
       timeoutMs,
       unitAttempt,
+      worktreeLeaseId,
     };
   }
 
@@ -2655,15 +2747,31 @@ export class WorkflowRunRepository {
       threadId: string;
       turnId: string;
     },
+    checkpoint: WorkflowWorktreeCheckpoint | null = null,
   ): Promise<boolean> {
+    if (lease.candidate.node.writeCapable !== Boolean(checkpoint)) {
+      throw new Error(
+        "Workflow completion worktree attribution does not match its mutation mode.",
+      );
+    }
     if (lease.candidate.pipeline) {
-      return this.completePipelineStepAttempt(ownerId, lease, result);
+      return this.completePipelineStepAttempt(
+        ownerId,
+        lease,
+        result,
+        checkpoint,
+      );
     }
     if (lease.candidate.repeatUntil) {
-      return this.completeRepeatUntilAttempt(ownerId, lease, result);
+      return this.completeRepeatUntilAttempt(
+        ownerId,
+        lease,
+        result,
+        checkpoint,
+      );
     }
     if (lease.candidate.item) {
-      return this.completeMapItemAttempt(ownerId, lease, result);
+      return this.completeMapItemAttempt(ownerId, lease, result, checkpoint);
     }
     const now = new Date();
     const measuredUsage = workflowMeasuredUsageSchema.parse(
@@ -2717,6 +2825,12 @@ export class WorkflowRunRepository {
           updatedAt: now,
         })
         .where(eq(schema.workflowRunNodes.id, lease.candidate.node.id));
+      await checkpointWorkflowWorktreeLease(
+        transaction,
+        lease,
+        checkpoint,
+        now,
+      );
 
       const lockedRun = await lockWorkflowRun(
         transaction,
@@ -2779,6 +2893,7 @@ export class WorkflowRunRepository {
       threadId: string;
       turnId: string;
     },
+    checkpoint: WorkflowWorktreeCheckpoint | null,
   ): Promise<boolean> {
     const repeatUntil = lease.candidate.repeatUntil!;
     const iteration = repeatUntil.state.currentIteration;
@@ -2913,6 +3028,12 @@ export class WorkflowRunRepository {
             updatedAt: now,
           })
           .where(eq(schema.workflowRuns.id, lockedRun.id));
+        await checkpointWorkflowWorktreeLease(
+          transaction,
+          lease,
+          checkpoint,
+          now,
+        );
         return {
           completed: true,
           failed: null,
@@ -3039,6 +3160,14 @@ export class WorkflowRunRepository {
           updatedAt: now,
         })
         .where(eq(schema.workflowRunNodes.id, lockedNode.id));
+      if (failed || success) {
+        await checkpointWorkflowWorktreeLease(
+          transaction,
+          lease,
+          checkpoint,
+          now,
+        );
+      }
 
       let readyNodeIds: string[] = [];
       let runStateUpdated = false;
@@ -3175,6 +3304,7 @@ export class WorkflowRunRepository {
       threadId: string;
       turnId: string;
     },
+    checkpoint: WorkflowWorktreeCheckpoint | null,
   ): Promise<boolean> {
     const item = lease.candidate.item!;
     const pipeline = lease.candidate.pipeline!;
@@ -3322,6 +3452,12 @@ export class WorkflowRunRepository {
               eq(schema.workflowRuns.ownerId, ownerId),
             ),
           );
+        await checkpointWorkflowWorktreeLease(
+          transaction,
+          lease,
+          checkpoint,
+          now,
+        );
         return {
           completed: true,
           readyNodeIds: [] as string[],
@@ -3351,6 +3487,14 @@ export class WorkflowRunRepository {
           updatedAt: now,
         })
         .where(eq(schema.workflowRunNodeItems.id, item.id));
+      if (!nextStep) {
+        await checkpointWorkflowWorktreeLease(
+          transaction,
+          lease,
+          checkpoint,
+          now,
+        );
+      }
       const collectionItems = await transaction
         .select()
         .from(schema.workflowRunNodeItems)
@@ -3475,6 +3619,7 @@ export class WorkflowRunRepository {
       threadId: string;
       turnId: string;
     },
+    checkpoint: WorkflowWorktreeCheckpoint | null,
   ): Promise<boolean> {
     const item = lease.candidate.item!;
     const now = new Date();
@@ -3535,6 +3680,12 @@ export class WorkflowRunRepository {
           updatedAt: now,
         })
         .where(eq(schema.workflowRunNodeItems.id, item.id));
+      await checkpointWorkflowWorktreeLease(
+        transaction,
+        lease,
+        checkpoint,
+        now,
+      );
       const nodeRows = await transaction
         .select()
         .from(schema.workflowRunNodes)
@@ -4754,6 +4905,14 @@ export class WorkflowRunRepository {
               : repeatUntilState
                 ? repeatUntilState.currentIterationAttemptCount
                 : row.attempt.attempt,
+          worktreeLeaseId:
+            detail.worktreeLeases.find(
+              (worktreeLease) =>
+                worktreeLease.runNodeId === node.id &&
+                worktreeLease.runNodeItemId === (item?.id ?? null) &&
+                worktreeLease.worktreeId === row.attempt.worktreeId &&
+                worktreeLease.state === "active",
+            )?.id ?? null,
         },
         {
           code: "server-restarted",
