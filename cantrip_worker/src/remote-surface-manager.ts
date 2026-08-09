@@ -76,6 +76,7 @@ export class RemoteSurfaceManager {
     Record<RemoteSurfaceConfiguration["kind"], RemoteSurfaceAdapter>
   >;
   readonly #outboundSequences = new Map<string, number>();
+  readonly #openingSessions = new Map<string, Promise<ManagedSession>>();
   readonly #sessions = new Map<string, ManagedSession>();
   #emitFrame: RemoteSurfaceFrameEmitter = () => false;
 
@@ -101,27 +102,9 @@ export class RemoteSurfaceManager {
   }> {
     let managed = this.#sessions.get(command.surfaceId);
     if (!managed) {
-      if (this.#sessions.size >= this.maxSessions) {
-        throw new Error(
-          `Worker Remote Surface limit of ${this.maxSessions} sessions reached.`,
-        );
-      }
-      const adapter = this.#adapters[command.configuration.kind];
-      if (!adapter) {
-        throw new Error(
-          `Worker does not support ${command.configuration.kind} Remote Surfaces.`,
-        );
-      }
-      const session = await adapter.open(
-        command,
-        (attachmentId, channel, payload) =>
-          this.emit(command.surfaceId, attachmentId, channel, payload),
-      );
-      managed = { attachments: new Map(), session };
-      this.#sessions.set(command.surfaceId, managed);
-    } else if (
-      managed.session.configuration.kind !== command.configuration.kind
-    ) {
+      managed = await this.openSession(command);
+    }
+    if (managed.session.configuration.kind !== command.configuration.kind) {
       throw new Error(
         "Remote Surface kind changed while its session was live.",
       );
@@ -236,6 +219,39 @@ export class RemoteSurfaceManager {
     await Promise.allSettled(
       [...this.#sessions.keys()].map((surfaceId) => this.close(surfaceId)),
     );
+  }
+
+  private async openSession(command: AttachCommand): Promise<ManagedSession> {
+    const opening = this.#openingSessions.get(command.surfaceId);
+    if (opening) return opening;
+    if (this.#sessions.size + this.#openingSessions.size >= this.maxSessions) {
+      throw new Error(
+        `Worker Remote Surface limit of ${this.maxSessions} sessions reached.`,
+      );
+    }
+    const adapter = this.#adapters[command.configuration.kind];
+    if (!adapter) {
+      throw new Error(
+        `Worker does not support ${command.configuration.kind} Remote Surfaces.`,
+      );
+    }
+    const next = adapter
+      .open(command, (attachmentId, channel, payload) =>
+        this.emit(command.surfaceId, attachmentId, channel, payload),
+      )
+      .then((session) => {
+        const managed = { attachments: new Map(), session };
+        this.#sessions.set(command.surfaceId, managed);
+        return managed;
+      });
+    this.#openingSessions.set(command.surfaceId, next);
+    try {
+      return await next;
+    } finally {
+      if (this.#openingSessions.get(command.surfaceId) === next) {
+        this.#openingSessions.delete(command.surfaceId);
+      }
+    }
   }
 
   async handleFrame(

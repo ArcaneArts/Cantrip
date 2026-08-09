@@ -112,6 +112,48 @@ describe("RemoteSurfaceManager", () => {
     expect(detach).toHaveBeenCalledWith("attachment-1");
   });
 
+  it("serializes concurrent attachments while a surface is opening", async () => {
+    const attach = vi.fn();
+    const session = {
+      configuration: attachCommand.configuration,
+      transport: "websocket" as const,
+      attach,
+      close: vi.fn(),
+      detach: vi.fn(),
+      handleFrame: vi.fn(),
+      resume: vi.fn(),
+      suspend: vi.fn(),
+    } satisfies RemoteSurfaceSession;
+    let releaseOpen: (() => void) | undefined;
+    const openGate = new Promise<void>((resolve) => {
+      releaseOpen = resolve;
+    });
+    const open = vi.fn(async () => {
+      await openGate;
+      return session;
+    });
+    const manager = new RemoteSurfaceManager({ browser: { open } });
+
+    const first = manager.attach(attachCommand);
+    const second = manager.attach({
+      ...attachCommand,
+      attachmentId: "attachment-2",
+    });
+    releaseOpen?.();
+    await Promise.all([first, second]);
+
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(attach).toHaveBeenCalledTimes(2);
+    expect(attach).toHaveBeenCalledWith({
+      id: "attachment-1",
+      viewport: attachCommand.viewport,
+    });
+    expect(attach).toHaveBeenCalledWith({
+      id: "attachment-2",
+      viewport: attachCommand.viewport,
+    });
+  });
+
   it("rejects kinds for which the worker has no adapter", async () => {
     const manager = new RemoteSurfaceManager();
     await expect(manager.attach(attachCommand)).rejects.toThrow(

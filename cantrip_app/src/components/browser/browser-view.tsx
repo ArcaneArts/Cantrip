@@ -337,6 +337,7 @@ export function BrowserView({
           if (state.type === "browser-runtime") {
             setRuntimeStatus(state.status);
             setRuntimeMessage(state.message);
+            if (state.status === "ready") setError(null);
           } else {
             const normalized = normalizeBrowserAddress(state.url);
             if (normalized) {
