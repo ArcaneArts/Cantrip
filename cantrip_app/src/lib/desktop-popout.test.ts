@@ -1,40 +1,47 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  desktopPopoutSearch,
-  parseDesktopPopoutTarget,
+  desktopPopoutGroupSearch,
+  desktopPopoutGroupWindowLabel,
+  parseDesktopPopoutGroupTarget,
   shouldUseOverlayTitlebar,
-  type DesktopPopoutTarget,
+  type DesktopPopoutGroupTarget,
 } from "./desktop-popout";
 
-describe("desktop pop-out targets", () => {
-  const targets: DesktopPopoutTarget[] = [
-    { kind: "chat", projectId: "project one", tabId: "chat/1" },
-    { kind: "terminal", projectId: "project one", tabId: "terminal:1" },
-    { kind: "explorer", projectId: "project one", tabId: "explorer_1" },
-    { kind: "browser", projectId: "project one", tabId: "browser-1" },
-    { kind: "code", projectId: "project one", tabId: "code-1" },
-    { kind: "view", projectId: "project one", tabId: "history-1" },
-    { kind: "view", projectId: "project one", tabId: "issues-1" },
-  ];
+describe("desktop pop-out groups", () => {
+  const target: DesktopPopoutGroupTarget = {
+    activeTabKey: "chat:chat/1",
+    groupId: "group one",
+    projectId: "project one",
+  };
 
-  it.each(targets)("round-trips $kind targets", (target) => {
-    expect(parseDesktopPopoutTarget(desktopPopoutSearch(target))).toEqual(
-      target,
-    );
+  it("round-trips the group and active member", () => {
+    expect(
+      parseDesktopPopoutGroupTarget(desktopPopoutGroupSearch(target)),
+    ).toEqual(target);
   });
 
-  it("rejects incomplete and unsupported targets", () => {
+  it("rejects incomplete targets", () => {
     expect(
-      parseDesktopPopoutTarget("?cantrip-popout=chat&project=p"),
+      parseDesktopPopoutGroupTarget(
+        "?cantrip-popout-group=group&project=project",
+      ),
     ).toBeNull();
     expect(
-      parseDesktopPopoutTarget("?cantrip-popout=git&project=p&view=branches"),
+      parseDesktopPopoutGroupTarget(
+        "?cantrip-popout-group=group&active=chat%3Achat",
+      ),
     ).toBeNull();
-    expect(
-      parseDesktopPopoutTarget("?cantrip-popout=settings&project=p&tab=s"),
-    ).toBeNull();
-    expect(parseDesktopPopoutTarget("?cantrip-popout=chat&tab=c")).toBeNull();
+    expect(parseDesktopPopoutGroupTarget("?cantrip-popout=chat")).toBeNull();
+  });
+
+  it("uses one stable Tauri window label per group", () => {
+    expect(desktopPopoutGroupWindowLabel("abc-123")).toBe(
+      "cantrip-group-abc-123",
+    );
+    expect(desktopPopoutGroupWindowLabel("group with spaces")).toBe(
+      "cantrip-group-group_with_spaces",
+    );
   });
 });
 

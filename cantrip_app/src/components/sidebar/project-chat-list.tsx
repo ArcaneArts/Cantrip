@@ -1528,6 +1528,10 @@ export function ProjectChatList({
                     >
                       {sidebarGroups.map((group) => {
                         const tab = group.anchor;
+                        const selectGroup = () =>
+                          group.persisted
+                            ? onSelectGroup(group.id)
+                            : onSelectTab(tab.id);
                         if (group.members.length > 1) {
                           const visualKinds = new Set(
                             group.members.map(tabVisualKind),
@@ -1537,11 +1541,7 @@ export function ProjectChatList({
                               key={group.id}
                               active={group.id === selectedGroupId}
                               count={group.members.length}
-                              onSelect={() =>
-                                group.persisted
-                                  ? onSelectGroup(group.id)
-                                  : onSelectTab(tab.id)
-                              }
+                              onSelect={selectGroup}
                               sortId={group.sortId}
                               title={tabTitle(tab)}
                               visualKind={
@@ -1562,7 +1562,7 @@ export function ProjectChatList({
                             renameValue={renameValue}
                             setRenameValue={setRenameValue}
                             submitRename={() => finishRename(tab.chat)}
-                            onSelect={() => onSelectTab(tab.id)}
+                            onSelect={selectGroup}
                             onRename={() => beginRename(tab.chat)}
                             onDuplicate={() => onDuplicateChat(tab.chat.id)}
                             onDelete={() => setDeleteTarget(tab.chat)}
@@ -1610,7 +1610,7 @@ export function ProjectChatList({
                             submitRename={() =>
                               finishTerminalRename(tab.terminal)
                             }
-                            onSelect={() => onSelectTab(tab.id)}
+                            onSelect={selectGroup}
                             onRename={() => beginTerminalRename(tab.terminal)}
                             onDelete={() =>
                               setDeleteTerminalTarget(tab.terminal)
@@ -1632,7 +1632,7 @@ export function ProjectChatList({
                             submitRename={() =>
                               finishExplorerRename(tab.explorer)
                             }
-                            onSelect={() => onSelectTab(tab.id)}
+                            onSelect={selectGroup}
                             onRename={() => beginExplorerRename(tab.explorer)}
                             onDelete={() =>
                               setDeleteExplorerTarget(tab.explorer)
@@ -1654,7 +1654,7 @@ export function ProjectChatList({
                             submitRename={() =>
                               finishBrowserRename(tab.browser)
                             }
-                            onSelect={() => onSelectTab(tab.id)}
+                            onSelect={selectGroup}
                             onRename={() => beginBrowserRename(tab.browser)}
                             onDelete={() => setDeleteBrowserTarget(tab.browser)}
                           />
@@ -1667,7 +1667,7 @@ export function ProjectChatList({
                             renameValue={renameValue}
                             setRenameValue={setRenameValue}
                             submitRename={() => finishCodeRename(tab.codeTab)}
-                            onSelect={() => onSelectTab(tab.id)}
+                            onSelect={selectGroup}
                             onRename={() => beginCodeRename(tab.codeTab)}
                             onDelete={() => setDeleteCodeTarget(tab.codeTab)}
                             workers={workers}
@@ -1687,7 +1687,7 @@ export function ProjectChatList({
                             submitRename={() =>
                               finishProjectViewRename(tab.view)
                             }
-                            onSelect={() => onSelectTab(tab.id)}
+                            onSelect={selectGroup}
                             onRename={() => beginProjectViewRename(tab.view)}
                             onDelete={() =>
                               setDeleteProjectViewTarget(tab.view)

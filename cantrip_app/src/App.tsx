@@ -227,13 +227,14 @@ import {
   uploadChatAttachment,
 } from "@/lib/api";
 import {
+  closeCurrentDesktopWindow,
+  focusDesktopPopoutGroup,
   isDesktopRuntime,
-  openDesktopPopout,
-  parseDesktopPopoutTarget,
+  openDesktopPopoutGroup,
+  parseDesktopPopoutGroupTarget,
   shouldUseOverlayTitlebar,
   updateDesktopWindowTheme,
   updateDesktopWindowTitle,
-  type DesktopPopoutTarget,
 } from "@/lib/desktop-popout";
 import { browserUpdateForPageState } from "@/lib/browser-page-state";
 import {
@@ -2273,25 +2274,29 @@ export function App() {
   );
   const popoutTarget = useMemo(
     () =>
-      desktopRuntime ? parseDesktopPopoutTarget(window.location.search) : null,
+      desktopRuntime
+        ? parseDesktopPopoutGroupTarget(window.location.search)
+        : null,
     [desktopRuntime],
   );
   const isPopout = popoutTarget !== null;
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     popoutTarget?.projectId ?? null,
   );
-  const popoutTabKey = popoutTarget
-    ? projectSurfaceTabKey(popoutTarget.kind, popoutTarget.tabId)
-    : null;
   const [workspaceSelection, setWorkspaceSelection] = useState(() =>
     emptyWorkspaceSelection(popoutTarget?.projectId ?? null),
   );
   const [pendingSurfaceSelection, setPendingSurfaceSelection] = useState<{
+    groupId?: string;
     projectId: string;
     tabKey: string;
   } | null>(
     popoutTarget
-      ? { projectId: popoutTarget.projectId, tabKey: popoutTabKey! }
+      ? {
+          groupId: popoutTarget.groupId,
+          projectId: popoutTarget.projectId,
+          tabKey: popoutTarget.activeTabKey,
+        }
       : null,
   );
   const [chatConsoleChatId, setChatConsoleChatId] = useState<string | null>(
@@ -2334,6 +2339,7 @@ export function App() {
   const [codeHeader, setCodeHeader] = useState<CodeHeaderState | null>(null);
   const [popoutPending, setPopoutPending] = useState(false);
   const [popoutError, setPopoutError] = useState<string | null>(null);
+  const [detachedGroupId, setDetachedGroupId] = useState<string | null>(null);
   const [worktreeCreateTarget, setWorktreeCreateTarget] =
     useState<WorktreeBindingTarget | null>(null);
   const [worktreeActionError, setWorktreeActionError] = useState<string | null>(
@@ -3264,86 +3270,44 @@ export function App() {
       worktreeId: chat.activeWorktreeId,
     });
   const currentSurface = useMemo<{
-    target: DesktopPopoutTarget;
+    tabKey: string;
     title: string;
   } | null>(() => {
     if (showImporter || showSettings || showProjectSettings) return null;
-    if (selectedProjectView && selectedProject) {
-      return {
-        target: {
-          kind: "view",
-          projectId: selectedProject.id,
-          tabId: selectedProjectView.id,
-        },
-        title: selectedProjectView.title,
-      };
-    }
-    if (selectedCodeTab) {
-      return {
-        target: {
-          kind: "code",
-          projectId: selectedCodeTab.projectId,
-          tabId: selectedCodeTab.id,
-        },
-        title: selectedCodeTab.title,
-      };
-    }
-    if (selectedBrowser) {
-      return {
-        target: {
-          kind: "browser",
-          projectId: selectedBrowser.projectId,
-          tabId: selectedBrowser.id,
-        },
-        title: selectedBrowser.title,
-      };
-    }
-    if (selectedExplorer) {
-      return {
-        target: {
-          kind: "explorer",
-          projectId: selectedExplorer.projectId,
-          tabId: selectedExplorer.id,
-        },
-        title: selectedExplorer.title,
-      };
-    }
-    if (selectedChat) {
-      return {
-        target: {
-          kind: "chat",
-          projectId: selectedChat.projectId,
-          tabId: selectedChat.id,
-        },
-        title: linkedConsoleTerminal
-          ? `${selectedChat.title} · Codex console`
-          : selectedChat.title,
-      };
-    }
-    if (selectedTerminal) {
-      return {
-        target: {
-          kind: "terminal",
-          projectId: selectedTerminal.projectId,
-          tabId: selectedTerminal.id,
-        },
-        title: selectedTerminal.title,
-      };
-    }
-    return null;
+    if (!selectedSurface) return null;
+    return {
+      tabKey: selectedSurface.tabKey,
+      title:
+        selectedSurface.kind === "chat" && linkedConsoleTerminal
+          ? `${selectedSurface.title} · Codex console`
+          : selectedSurface.title,
+    };
   }, [
     linkedConsoleTerminal,
-    selectedBrowser,
-    selectedChat,
-    selectedCodeTab,
-    selectedExplorer,
-    selectedProjectView,
-    selectedTerminal,
+    selectedSurface,
     showImporter,
     showProjectSettings,
     showSettings,
   ]);
-  const activePopout = desktopRuntime && !isPopout ? currentSurface : null;
+  const activePopout =
+    desktopRuntime &&
+    !isPopout &&
+    currentSurface &&
+    selectedProject &&
+    selectedTabGroup
+      ? {
+          target: {
+            activeTabKey: currentSurface.tabKey,
+            groupId: selectedTabGroup.id,
+            projectId: selectedProject.id,
+          },
+          title: currentSurface.title,
+        }
+      : null;
+  const groupOwnedElsewhere =
+    !isPopout &&
+    detachedGroupId !== null &&
+    detachedGroupId === selectedTabGroup?.id;
   const activeContentKey = showImporter
     ? "importer"
     : showSettings
@@ -3351,13 +3315,14 @@ export function App() {
       : showProjectSettings
         ? `project-settings:${selectedProjectId ?? "none"}`
         : currentSurface
-          ? `${currentSurface.target.kind}:${currentSurface.target.tabId}:${gitHistoryHeader?.section ?? "content"}`
+          ? `${currentSurface.tabKey}:${gitHistoryHeader?.section ?? "content"}`
           : `project:${selectedProjectId ?? "none"}`;
   const popOutActiveView = () => {
     if (!activePopout || popoutPending) return;
     setPopoutPending(true);
     setPopoutError(null);
-    void openDesktopPopout(activePopout.target, activePopout.title)
+    void openDesktopPopoutGroup(activePopout.target, activePopout.title)
+      .then(() => setDetachedGroupId(activePopout.target.groupId))
       .catch((error: unknown) => setPopoutError(errorText(error)))
       .finally(() => setPopoutPending(false));
   };
@@ -3555,13 +3520,16 @@ export function App() {
     }
     const layout = tabLayout.data;
     if (!layout || layout.projectId !== selectedProjectId) return;
+    const pendingGroup = pendingSurfaceSelection?.groupId
+      ? layout.groups.find(({ id }) => id === pendingSurfaceSelection.groupId)
+      : undefined;
     const pendingTabKey =
       pendingSurfaceSelection?.projectId === selectedProjectId &&
       layout.groups.some(({ members }) =>
         members.some(({ tabKey }) => tabKey === pendingSurfaceSelection.tabKey),
       )
         ? pendingSurfaceSelection.tabKey
-        : null;
+        : (pendingGroup?.anchorTabKey ?? null);
     setWorkspaceSelection((current) => {
       const reconciled = reconcileWorkspaceSelection(
         current,
@@ -3574,6 +3542,16 @@ export function App() {
     });
     if (pendingTabKey) setPendingSurfaceSelection(null);
   }, [pendingSurfaceSelection, selectedProjectId, tabLayout.data]);
+
+  useEffect(() => {
+    if (!popoutTarget || !tabLayout.isSuccess) return;
+    if (tabLayout.data?.groups.some(({ id }) => id === popoutTarget.groupId)) {
+      return;
+    }
+    void closeCurrentDesktopWindow().catch((error: unknown) => {
+      console.error("Could not close an orphaned pop-out window", error);
+    });
+  }, [popoutTarget, tabLayout.data, tabLayout.isSuccess]);
 
   const revealWorkspace = () => {
     setMobileNavigationOpen(false);
@@ -3599,16 +3577,38 @@ export function App() {
       setPendingSurfaceSelection({ projectId: selectedProjectId, tabKey });
     }
     setChatConsoleChatId(null);
+    setDetachedGroupId(null);
     revealWorkspace();
   };
   const selectGroupFromSidebar = (groupId: string) => {
     const layout = tabLayout.data;
     if (!layout) return;
-    setWorkspaceSelection((current) =>
-      selectWorkspaceGroup(current, layout, groupId),
-    );
-    setChatConsoleChatId(null);
-    revealWorkspace();
+    const selectLocally = () => {
+      setWorkspaceSelection((current) =>
+        selectWorkspaceGroup(current, layout, groupId),
+      );
+      setDetachedGroupId(null);
+      setChatConsoleChatId(null);
+      revealWorkspace();
+    };
+    if (!desktopRuntime || isPopout) {
+      selectLocally();
+      return;
+    }
+    void focusDesktopPopoutGroup(groupId)
+      .then((focused) => {
+        if (focused) {
+          setWorkspaceSelection((current) =>
+            selectWorkspaceGroup(current, layout, groupId),
+          );
+          setDetachedGroupId(groupId);
+          setChatConsoleChatId(null);
+          revealWorkspace();
+        } else {
+          selectLocally();
+        }
+      })
+      .catch(() => selectLocally());
   };
   const createSurfaceInSelectedGroup = (kind: ProjectSurfaceCreateKind) => {
     if (!selectedProject || !selectedTabGroup) return;
@@ -4479,6 +4479,7 @@ export function App() {
         {!showImporter &&
         !showSettings &&
         !showProjectSettings &&
+        !groupOwnedElsewhere &&
         selectedTabKey &&
         selectedTabGroup &&
         selectedGroupSurfaces.length > 0 ? (
@@ -4499,7 +4500,7 @@ export function App() {
         ) : null}
 
         {isPopout && activeChat && !showImporter && !showSettings ? (
-          <div className="absolute right-3 top-3 z-40 flex gap-2">
+          <div className="absolute right-3 top-12 z-40 flex gap-2">
             <Button
               size="icon"
               variant="outline"
@@ -4538,7 +4539,7 @@ export function App() {
         ) : null}
 
         {isPopout && selectedExplorer && explorerHeader ? (
-          <div className="absolute right-3 top-3 z-40">
+          <div className="absolute right-3 top-12 z-40">
             <Button
               size="icon"
               variant="outline"
@@ -4559,7 +4560,7 @@ export function App() {
         ) : null}
 
         {isPopout && selectedCodeTab ? (
-          <div className="absolute right-3 top-3 z-40">
+          <div className="absolute right-3 top-12 z-40">
             <CodeHeaderActions floating header={codeHeader} />
           </div>
         ) : null}
@@ -4616,6 +4617,32 @@ export function App() {
             projects={projects.data ?? []}
             workerId={onlineWorker?.workerId ?? null}
           />
+        ) : groupOwnedElsewhere && selectedTabGroup ? (
+          <div className="grid flex-1 place-items-center p-6 text-center">
+            <div>
+              <div className="mx-auto grid size-12 place-items-center rounded-2xl border bg-card">
+                <ExternalLink className="size-5" />
+              </div>
+              <h1 className="mt-4 font-semibold">Open in another window</h1>
+              <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
+                This tab group is attached to its desktop pop-out.
+              </p>
+              <Button
+                className="mt-5"
+                variant="outline"
+                onClick={() =>
+                  void focusDesktopPopoutGroup(selectedTabGroup.id)
+                    .then((focused) => {
+                      if (!focused) setDetachedGroupId(null);
+                    })
+                    .catch((error: unknown) => setPopoutError(errorText(error)))
+                }
+              >
+                <ExternalLink className="size-4" />
+                Focus window
+              </Button>
+            </div>
+          </div>
         ) : selectedProjectView?.kind === "remote-desktop" ? (
           remoteDesktop.data ? (
             <Suspense
