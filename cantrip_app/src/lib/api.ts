@@ -80,6 +80,8 @@ import {
   settingsBundleSchema,
   skillListSchema,
   systemHealthSchema,
+  tabGroupMemberMoveSchema,
+  tabGroupMemberOrderSchema,
   tabGroupOrderSchema,
   terminalListSchema,
   terminalSummarySchema,
@@ -507,6 +509,46 @@ export async function reorderProjectTabGroups(
       {
         method: "PATCH",
         body: JSON.stringify(tabGroupOrderSchema.parse({ revision, groupIds })),
+      },
+    ),
+  );
+}
+
+export async function reorderProjectTabGroupMembers(
+  projectId: string,
+  groupId: string,
+  revision: number,
+  tabKeys: string[],
+) {
+  return projectTabLayoutSummarySchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/tab-groups/${encodeURIComponent(groupId)}/members/order`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(
+          tabGroupMemberOrderSchema.parse({ revision, tabKeys }),
+        ),
+      },
+    ),
+  );
+}
+
+export async function moveProjectTabGroupMember(
+  projectId: string,
+  input: {
+    revision: number;
+    tabKey: string;
+    targetGroupId: string | null;
+    targetMemberPosition: number;
+    targetGroupPosition?: number;
+  },
+) {
+  return projectTabLayoutSummarySchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/tab-groups/member`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(tabGroupMemberMoveSchema.parse(input)),
       },
     ),
   );

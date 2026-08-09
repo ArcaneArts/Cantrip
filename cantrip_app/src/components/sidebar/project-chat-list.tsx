@@ -1,15 +1,5 @@
+import { useDroppable } from "@dnd-kit/core";
 import {
-  closestCenter,
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
   SortableContext,
   useSortable,
   verticalListSortingStrategy,
@@ -73,6 +63,10 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { ProjectTabGroupVisualKind } from "@/lib/project-tab-group";
+import {
+  type WorkspaceDndData,
+  workspaceSidebarDropId,
+} from "@/lib/workspace-dnd-model";
 import {
   WorktreeIndicator,
   type WorktreeStatusMap,
@@ -1160,8 +1154,6 @@ export function ProjectChatList({
   onRenameExplorer,
   onRenameProjectView,
   onRenameTerminal,
-  onReorderGroups,
-  onReorderProjects,
   onSelectGroup,
   onSelectTab,
   onSelectProject,
@@ -1217,8 +1209,6 @@ export function ProjectChatList({
   onRenameExplorer(explorerId: string, title: string): void;
   onRenameProjectView(viewId: string, title: string): void;
   onRenameTerminal(terminalId: string, title: string): void;
-  onReorderGroups(projectId: string, groupIds: string[]): void;
-  onReorderProjects(ids: string[]): void;
   onSelectGroup(groupId: string): void;
   onSelectTab(tabKey: string): void;
   onSelectProject(projectId: string): void;
@@ -1231,10 +1221,6 @@ export function ProjectChatList({
   worktrees: ProjectWorktreeSummary[];
   worktreeStatuses: WorktreeStatusMap;
 }) {
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-  );
-  const [activeDrag, setActiveDrag] = useState<string | null>(null);
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editingBrowserId, setEditingBrowserId] = useState<string | null>(null);
   const [editingCodeId, setEditingCodeId] = useState<string | null>(null);
@@ -1478,76 +1464,24 @@ export function ProjectChatList({
     setEditingProjectViewId(null);
     if (title && title !== view.title) onRenameProjectView(view.id, title);
   };
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveDrag(String(event.active.id));
-  };
-  const handleDragEnd = (event: DragEndEvent) => {
-    setActiveDrag(null);
-    if (!event.over || event.active.id === event.over.id) return;
-    const activeId = String(event.active.id);
-    const overId = String(event.over.id);
-    if (activeId.startsWith("project:") && overId.startsWith("project:")) {
-      const from = projects.findIndex(
-        (project) => projectId(project.id) === activeId,
-      );
-      const to = projects.findIndex(
-        (project) => projectId(project.id) === overId,
-      );
-      if (from >= 0 && to >= 0)
-        onReorderProjects(arrayMove(projects, from, to).map((item) => item.id));
-    }
-    if (
-      selectedProjectId &&
-      !activeId.startsWith("project:") &&
-      !overId.startsWith("project:")
-    ) {
-      if (!tabLayout) return;
-      const from = sidebarGroups.findIndex(
-        (group) => group.sortId === activeId,
-      );
-      const to = sidebarGroups.findIndex((group) => group.sortId === overId);
-      if (from >= 0 && to >= 0) {
-        const groupIds = arrayMove(sidebarGroups, from, to).flatMap((group) =>
-          group.persisted ? [group.id] : [],
-        );
-        if (groupIds.length === tabLayout.groups.length) {
-          onReorderGroups(selectedProjectId, groupIds);
-        }
-      }
-    }
-  };
-  const draggedProject = projects.find(
-    (project) => projectId(project.id) === activeDrag,
-  );
-  const draggedChat = chats.find((chat) => chatId(chat.id) === activeDrag);
-  const draggedTerminal = standaloneTerminals.find(
-    (terminal) => terminalId(terminal.id) === activeDrag,
-  );
-  const draggedExplorer = explorers.find(
-    (explorer) => explorerId(explorer.id) === activeDrag,
-  );
-  const draggedBrowser = browsers.find(
-    (browser) => browserId(browser.id) === activeDrag,
-  );
-  const draggedCode = codeTabs.find(
-    (codeTab) => codeId(codeTab.id) === activeDrag,
-  );
-  const draggedProjectView = projectViews.find(
-    (view) => viewId(view.id) === activeDrag,
-  );
-  const draggedGroup = sidebarGroups.find(
-    (group) => group.sortId === activeDrag,
-  );
+  const sidebarDrop = useDroppable({
+    id: workspaceSidebarDropId(selectedProjectId ?? "none"),
+    disabled: !selectedProjectId || !tabLayout,
+    data: {
+      drop:
+        selectedProjectId && tabLayout
+          ? {
+              type: "sidebar-project" as const,
+              projectId: selectedProjectId,
+              groupPosition: tabLayout.groups.length,
+            }
+          : undefined,
+    } satisfies WorkspaceDndData,
+  });
 
   return (
     <>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragStart={handleDragStart}
-        onDragCancel={() => setActiveDrag(null)}
-        onDragEnd={handleDragEnd}
-      >
+      <div className="contents">
         <SortableContext
           items={projects.map((project) => projectId(project.id))}
           strategy={verticalListSortingStrategy}
@@ -1581,7 +1515,13 @@ export function ProjectChatList({
                 }}
               >
                 {active ? (
-                  <div className="mt-1">
+                  <div
+                    ref={sidebarDrop.setNodeRef}
+                    className={cn(
+                      "mt-1 min-h-8 rounded-md transition-colors",
+                      sidebarDrop.isOver && "bg-muted/40",
+                    )}
+                  >
                     <SortableContext
                       items={sidebarGroups.map((group) => group.sortId)}
                       strategy={verticalListSortingStrategy}
@@ -1773,64 +1713,7 @@ export function ProjectChatList({
             );
           })}
         </SortableContext>
-        <DragOverlay dropAnimation={null}>
-          {draggedProject ? (
-            <div className="flex w-64 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-sm shadow-xl">
-              <FolderGit2 className="size-4" />
-              <span className="truncate">{draggedProject.name}</span>
-            </div>
-          ) : draggedGroup && draggedGroup.members.length > 1 ? (
-            <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
-              <ProjectSurfaceIcon
-                kind={
-                  new Set(draggedGroup.members.map(tabVisualKind)).size > 1
-                    ? "mixed"
-                    : tabVisualKind(draggedGroup.anchor)
-                }
-                className="size-3.5"
-              />
-              <span className="truncate">{tabTitle(draggedGroup.anchor)}</span>
-              <span className="ml-auto text-[10px] text-muted-foreground">
-                {draggedGroup.members.length}
-              </span>
-            </div>
-          ) : draggedChat ? (
-            <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
-              <MessageSquare className="size-3.5" />
-              <span className="truncate">{draggedChat.title}</span>
-            </div>
-          ) : draggedTerminal ? (
-            <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
-              <SquareTerminal className="size-3.5" />
-              <span className="truncate">{draggedTerminal.title}</span>
-            </div>
-          ) : draggedExplorer ? (
-            <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
-              <FolderTree className="size-3.5" />
-              <span className="truncate">{draggedExplorer.title}</span>
-            </div>
-          ) : draggedBrowser ? (
-            <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
-              <Globe2 className="size-3.5" />
-              <span className="truncate">{draggedBrowser.title}</span>
-            </div>
-          ) : draggedCode ? (
-            <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
-              <Code2 className="size-3.5" />
-              <span className="truncate">{draggedCode.title}</span>
-            </div>
-          ) : draggedProjectView ? (
-            <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
-              {draggedProjectView.kind === "remote-desktop" ? (
-                <MonitorUp className="size-3.5" />
-              ) : (
-                <GitCommitHorizontal className="size-3.5" />
-              )}
-              <span className="truncate">{draggedProjectView.title}</span>
-            </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+      </div>
 
       <Dialog
         open={Boolean(deleteTarget)}
