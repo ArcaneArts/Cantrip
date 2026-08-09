@@ -1,4 +1,4 @@
-import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
@@ -162,9 +162,7 @@ import {
 } from "@cantrip/protocol";
 import Fastify from "fastify";
 import type {
-  AgentActivity,
   ChatMessage,
-  ChatSummary,
   ChatTurnCreate,
   CodeRuntimeStatus,
 } from "@cantrip/protocol";
@@ -217,6 +215,13 @@ import {
 } from "@cantrip/protocol/workflows";
 
 import { resolveCodeSurfaceConfig, type ServerConfig } from "./config.js";
+import {
+  canFailOverRoute,
+  chatIsExecuting,
+  continuationPrompt,
+  effectivePermissionProfile,
+  scopedCodeProfileId,
+} from "./chats/execution-helpers.js";
 import { CodeTunnelBroker } from "./code/tunnel.js";
 import type { DatabaseConnection } from "./db/index.js";
 import {
@@ -244,7 +249,23 @@ import {
 import { RemoteSurfaceRelay } from "./remote-surfaces/relay.js";
 import { createRemoteSurfaceWebRtcConfiguration } from "./remote-surfaces/webrtc.js";
 import { WorkflowExecutor } from "./workflows/executor.js";
+import {
+  parseGeneratedJson,
+  workflowGenerationTranscript,
+} from "./workflows/generation-helpers.js";
+import {
+  gitBranchMatches,
+  safeCredentialMatch,
+  sensitiveTriggerInputPath,
+  triggerDeliveryIdempotencyKey,
+} from "./workflows/trigger-helpers.js";
 import { ProjectWorktreeCoordinator } from "./worktrees/coordinator.js";
+import {
+  errorMessage,
+  invalidBody,
+  optionalToolString,
+  requiredToolString,
+} from "./http/request-helpers.js";
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -252,53 +273,6 @@ export interface BuildAppOptions {
   logger?: boolean;
   codeTunnel?: CodeTunnelBroker;
   workerBridge?: WorkerCommandBus;
-}
-
-function invalidBody(issues: unknown) {
-  return { error: "Invalid request body", issues };
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function chatIsExecuting(status: ChatSummary["status"]): boolean {
-  return status === "running" || status === "waiting-for-approval";
-}
-
-const DEFAULT_PERMISSION_PROFILE_ID = ":workspace";
-
-function effectivePermissionProfile(context: ChatExecutionContext) {
-  const selectedId =
-    context.permissionProfileId ?? DEFAULT_PERMISSION_PROFILE_ID;
-  const forcedByWorktreePolicy =
-    context.isPrimary && context.worktreePolicy === "required-for-writes";
-  return {
-    selectedId,
-    effectiveId: forcedByWorktreePolicy ? ":read-only" : selectedId,
-    forcedByWorktreePolicy,
-  };
-}
-
-function requiredToolString(
-  input: Record<string, unknown>,
-  key: string,
-): string {
-  const value = input[key];
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error(`${key} is required.`);
-  }
-  return value.trim();
-}
-
-function optionalToolString(
-  input: Record<string, unknown>,
-  key: string,
-): string | null {
-  const value = input[key];
-  if (value === undefined || value === null || value === "") return null;
-  if (typeof value !== "string") throw new Error(`${key} must be a string.`);
-  return value.trim() || null;
 }
 
 const ROUTE_FAILURE_COOLDOWN_MS = 60_000;
@@ -342,151 +316,6 @@ The graph is constrained JSON data with {"version":1,"nodes":[],"edges":[]}. It 
 Every node needs key, type, name, configuration, inputSchema, outputSchema, permissionRequirements, mutationMode, modelRouteId, and permissionProfileId. Agent configuration has prompt, developerInstructions, includeStructuredInput, and automaticRetries. Read-only nodes must request filesystem read-only; write nodes must request workspace-write. Network defaults to none. Do not request skills, MCP servers, native subagents, unrestricted network, preauthorization, or workspace writes unless the source explicitly requires them. Condition and gate nodes are always read-only. Every repeatUntil node must have successCondition, progressPath, maxUnchangedIterations, maxIterations, and maxDurationMs.
 
 Edges need from, to, sourceOutput, targetInput, and condition. Only condition nodes may have conditional outgoing edges. Schemas, defaults, and permissions are JSON objects. Encode graphJson, declaredInputsJson, declaredOutputsJson, defaultsJson, and permissionRequirementsJson as complete JSON strings. Use an empty description string when no description is useful. The server will reject any output that does not pass the canonical Cantrip workflow schemas.`;
-
-const SENSITIVE_TRIGGER_KEY =
-  /(?:^|[-_])(secret|token|password|authorization|credential|api[-_]?key)(?:$|[-_])/iu;
-
-function sensitiveTriggerInputPath(
-  value: unknown,
-  path = "input",
-): string | null {
-  if (Array.isArray(value)) {
-    for (const [index, item] of value.entries()) {
-      const found = sensitiveTriggerInputPath(item, `${path}[${index}]`);
-      if (found) return found;
-    }
-    return null;
-  }
-  if (!value || typeof value !== "object") return null;
-  for (const [key, item] of Object.entries(value)) {
-    if (SENSITIVE_TRIGGER_KEY.test(key)) return `${path}.${key}`;
-    const found = sensitiveTriggerInputPath(item, `${path}.${key}`);
-    if (found) return found;
-  }
-  return null;
-}
-
-function safeCredentialMatch(value: string, expectedHash: string): boolean {
-  const actual = Buffer.from(
-    createHash("sha256").update(value).digest("hex"),
-    "hex",
-  );
-  const expected = Buffer.from(expectedHash, "hex");
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
-
-function gitBranchMatches(pattern: string, branch: string): boolean {
-  const expression = pattern
-    .split("*")
-    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
-    .join(".*");
-  const matcher = new RegExp(`^${expression}$`, "u");
-  const normalizedBranch = branch.replace(/^refs\/heads\//u, "");
-  return matcher.test(branch) || matcher.test(normalizedBranch);
-}
-
-function scopedCodeProfileId(ownerId: string, profileId: string): string {
-  return createHash("sha256").update(`${ownerId}\0${profileId}`).digest("hex");
-}
-
-function canFailOverRoute(error: unknown): boolean {
-  return /(quota|usage limit|rate.?limit|\b429\b|unauthori[sz]ed|\b401\b|forbidden|\b403\b|authentication|credentials|model.+(?:not found|unavailable)|\b404\b|timed? out|timeout|ECONN|connection|network|socket|\b5\d\d\b|service unavailable|overloaded)/i.test(
-    errorMessage(error),
-  );
-}
-
-function activityContinuationSummary(activity: AgentActivity): string {
-  switch (activity.type) {
-    case "command":
-      return `[command: ${activity.command}]`;
-    case "fileChange":
-      return `[files: ${activity.changes.map((change) => change.path).join(", ")}]`;
-    case "worktree":
-      return `[worktree: ${activity.summary}]`;
-    case "plan":
-      return `[plan: ${activity.text || activity.explanation || `${activity.steps.length} steps`}]`;
-    case "reasoning":
-      return `[reasoning summary: ${activity.summary.join(" ")}]`;
-    case "mcpToolCall":
-      return `[MCP tool: ${activity.server}/${activity.tool} ${activity.status}]`;
-    case "dynamicToolCall":
-      return `[tool: ${activity.namespace ? `${activity.namespace}/` : ""}${activity.tool} ${activity.status}]`;
-    case "collabToolCall":
-      return `[collaboration: ${activity.tool} ${activity.status}]`;
-    case "subAgent":
-      return `[subagent: ${activity.agentPath} ${activity.kind}]`;
-    case "webSearch":
-      return `[web search: ${activity.query}]`;
-    case "imageView":
-      return `[viewed image: ${activity.path}]`;
-    case "reviewMode":
-      return `[review mode ${activity.state}]`;
-    case "contextCompaction":
-      return "[context compacted]";
-    case "notice":
-      return `[${activity.level}: ${activity.message}]`;
-    case "usage":
-      return `[usage: ${activity.last.totalTokens} tokens]`;
-    case "rateLimit":
-      return `[rate limit: ${activity.primary?.usedPercent ?? "unknown"}% used]`;
-    case "turnSummary":
-      return `[turn ${activity.status}${activity.durationMs === null ? "" : ` in ${activity.durationMs}ms`}]`;
-  }
-}
-
-function continuationPrompt(messages: ChatMessage[], prompt: string): string {
-  if (messages.length === 0) return prompt;
-  const transcript = messages
-    .slice(-100)
-    .map((message) => {
-      const content = message.content
-        .flatMap((item) => {
-          if (item.type === "text") return [item.text];
-          if (item.type === "attachment") {
-            return [
-              `[attachment: ${item.attachment.fileName} (${item.attachment.mimeType})]`,
-            ];
-          }
-          return [activityContinuationSummary(item.activity)];
-        })
-        .join("\n");
-      return `${message.role.toUpperCase()}: ${content}`;
-    })
-    .join("\n\n");
-  return `Continue this existing Cantrip conversation. The server-owned history follows:\n\n${transcript}\n\nUSER: ${prompt}`;
-}
-
-function workflowGenerationTranscript(messages: ChatMessage[]): string {
-  const transcript = messages
-    .slice(-80)
-    .map((message) => {
-      const text = message.content
-        .flatMap((item) => {
-          if (item.type === "text") return [item.text];
-          if (item.type === "attachment") {
-            return [`[attachment: ${item.attachment.fileName}]`];
-          }
-          return [];
-        })
-        .join("\n");
-      return text ? `${message.role.toUpperCase()}: ${text}` : null;
-    })
-    .filter((value): value is string => Boolean(value))
-    .join("\n\n");
-  return transcript.length <= 40_000
-    ? transcript
-    : transcript.slice(transcript.length - 40_000);
-}
-
-function parseGeneratedJson(value: string, label: string): unknown {
-  try {
-    return JSON.parse(value);
-  } catch (error) {
-    throw new Error(
-      `Codex returned invalid ${label} JSON: ${errorMessage(error)}`,
-    );
-  }
-}
 
 export async function buildApp({
   config,
@@ -656,9 +485,10 @@ export async function buildApp({
         selectedPermissionProfileId:
           context.trigger.selectedPermissionProfileId,
         trigger: provenance,
-        idempotencyKey: `trigger:${createHash("sha256")
-          .update(`${triggerId}\0${idempotencyKey}`)
-          .digest("hex")}`,
+        idempotencyKey: triggerDeliveryIdempotencyKey(
+          triggerId,
+          idempotencyKey,
+        ),
       });
       if (!runResult) {
         throw new WorkflowTriggerConflictError(

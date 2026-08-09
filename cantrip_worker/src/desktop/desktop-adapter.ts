@@ -13,15 +13,26 @@ import {
   type DesktopStreamSettings,
 } from "@cantrip/protocol";
 import type {
-  ComputerUseClient,
-  ToolResult,
-} from "@zavora-ai/computer-use-mcp/client";
-
-import type {
   RemoteSurfaceAdapter,
   RemoteSurfaceAttachment,
   RemoteSurfaceSession,
 } from "../remote-surface-manager.js";
+import {
+  assertComputerUseResult,
+  computerUseResultObject,
+  createDesktopAutomationClient,
+  desktopClipboardText,
+  desktopDisplaySize,
+  desktopImageBytes,
+  type DesktopAutomationClient,
+  type DesktopAutomationClientFactory,
+  type DesktopInputTargetOptions,
+} from "./automation-client.js";
+import {
+  desktopShortcut,
+  desktopTargetMatches,
+  desktopTargetName,
+} from "./desktop-input.js";
 import {
   AdaptiveDesktopStreamTuner,
   createNativeDesktopFramePipeline,
@@ -45,76 +56,7 @@ const DEFAULT_STREAM_SETTINGS: DesktopStreamSettings = {
 
 type DisplaySize = DesktopDisplaySize;
 
-export interface DesktopAutomationClient {
-  activateWindow(windowId: number, timeoutMs?: number): Promise<ToolResult>;
-  click(
-    x: number,
-    y: number,
-    targetApp?: string,
-    options?: DesktopInputTargetOptions,
-  ): Promise<ToolResult>;
-  close(): Promise<void>;
-  doubleClick(x: number, y: number): Promise<ToolResult>;
-  getDisplaySize(): Promise<ToolResult>;
-  key(
-    combo: string,
-    targetApp?: string,
-    options?: DesktopInputTargetOptions,
-  ): Promise<ToolResult>;
-  middleClick(
-    x: number,
-    y: number,
-    targetApp?: string,
-    options?: DesktopInputTargetOptions,
-  ): Promise<ToolResult>;
-  mouseDown(
-    x: number,
-    y: number,
-    targetApp?: string,
-    options?: DesktopInputTargetOptions,
-  ): Promise<ToolResult>;
-  mouseUp(
-    x: number,
-    y: number,
-    targetApp?: string,
-    options?: DesktopInputTargetOptions,
-  ): Promise<ToolResult>;
-  moveMouse(
-    x: number,
-    y: number,
-    targetApp?: string,
-    options?: DesktopInputTargetOptions,
-  ): Promise<ToolResult>;
-  readClipboard(): Promise<ToolResult>;
-  rightClick(
-    x: number,
-    y: number,
-    targetApp?: string,
-    options?: DesktopInputTargetOptions,
-  ): Promise<ToolResult>;
-  screenshot(options: { quality: number; width: number }): Promise<ToolResult>;
-  scroll(
-    x: number,
-    y: number,
-    direction: "up" | "down" | "left" | "right",
-    amount: number,
-    targetApp?: string,
-    options?: DesktopInputTargetOptions,
-  ): Promise<ToolResult>;
-  type(
-    text: string,
-    targetApp?: string,
-    options?: DesktopInputTargetOptions,
-  ): Promise<ToolResult>;
-}
-
-interface DesktopInputTargetOptions {
-  focusStrategy: "strict";
-  targetWindowId: number;
-}
-
-export type DesktopAutomationClientFactory =
-  () => Promise<DesktopAutomationClient>;
+export type { DesktopAutomationClient } from "./automation-client.js";
 export type DesktopFramePipelineFactory = (
   target?: RemoteDesktopTarget,
 ) => Promise<NativeDesktopFramePipeline>;
@@ -126,165 +68,8 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function resultText(result: ToolResult): string | null {
-  return result.content.find((item) => item.type === "text")?.text ?? null;
-}
-
-function assertResult(result: ToolResult, operation: string): void {
-  if (!result.isError) return;
-  throw new Error(resultText(result) ?? `${operation} failed.`);
-}
-
-function structuredObject(result: ToolResult): Record<string, unknown> | null {
-  if (result.structuredContent) return result.structuredContent;
-  const text = resultText(result);
-  if (!text) return null;
-  try {
-    const parsed = JSON.parse(text);
-    return parsed && typeof parsed === "object"
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function displaySize(result: ToolResult): DisplaySize {
-  assertResult(result, "Reading the desktop size");
-  const value = structuredObject(result);
-  const width = Number(value?.width);
-  const height = Number(value?.height);
-  if (
-    !Number.isFinite(width) ||
-    width <= 0 ||
-    !Number.isFinite(height) ||
-    height <= 0
-  ) {
-    throw new Error("The worker returned an invalid desktop size.");
-  }
-  return { width: Math.round(width), height: Math.round(height) };
-}
-
-function imageBytes(result: ToolResult): Uint8Array {
-  assertResult(result, "Capturing the desktop");
-  const image = result.content.find((item) => item.type === "image");
-  if (!image || image.type !== "image") {
-    throw new Error(
-      resultText(result) ?? "The worker did not return a desktop frame.",
-    );
-  }
-  return Buffer.from(image.data, "base64");
-}
-
-function clipboardText(result: ToolResult): string {
-  assertResult(result, "Reading the desktop clipboard");
-  return resultText(result) ?? "";
-}
-
-function modifierNames(modifiers: number): string[] {
-  return [
-    ...(modifiers & 2 ? ["ctrl"] : []),
-    ...(modifiers & 1
-      ? [process.platform === "darwin" ? "option" : "alt"]
-      : []),
-    ...(modifiers & 8 ? ["shift"] : []),
-    ...(modifiers & 4
-      ? [process.platform === "darwin" ? "command" : "win"]
-      : []),
-  ];
-}
-
-function normalizedKey(key: string): string {
-  const names: Record<string, string> = {
-    " ": "space",
-    ArrowDown: "down",
-    ArrowLeft: "left",
-    ArrowRight: "right",
-    ArrowUp: "up",
-    Backspace: "backspace",
-    Delete: "delete",
-    End: "end",
-    Enter: "return",
-    Escape: "escape",
-    Home: "home",
-    PageDown: "pagedown",
-    PageUp: "pageup",
-    Tab: "tab",
-  };
-  return names[key] ?? key.toLowerCase();
-}
-
-function shortcut(
-  message: Extract<RemoteDesktopClientMessage, { type: "key" }>,
-): string {
-  return [...modifierNames(message.modifiers), normalizedKey(message.key)].join(
-    "+",
-  );
-}
-
-function targetMatches(
-  requested: RemoteDesktopTarget,
-  active: RemoteDesktopTarget,
-): boolean {
-  if (requested.kind !== active.kind) return false;
-  if (requested.kind === "monitor" && active.kind === "monitor") {
-    return (
-      (Boolean(requested.id) && requested.id === active.id) ||
-      (Boolean(requested.name) && requested.name === active.name) ||
-      (!requested.id && !requested.name)
-    );
-  }
-  if (requested.kind === "window" && active.kind === "window") {
-    return (
-      (Boolean(requested.id) && requested.id === active.id) ||
-      (Boolean(requested.title) &&
-        requested.application === active.application &&
-        requested.title === active.title) ||
-      (!requested.id &&
-        !requested.title &&
-        requested.application === active.application)
-    );
-  }
-  return false;
-}
-
-function targetName(target: RemoteDesktopTarget): string {
-  return target.kind === "window"
-    ? target.title
-      ? `${target.application} — ${target.title}`
-      : target.application
-    : (target.name ?? "primary display");
-}
-
 function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-async function defaultClientFactory(): Promise<DesktopAutomationClient> {
-  const [{ createComputerUseServer }, { connectInProcess }] = await Promise.all(
-    [
-      import("@zavora-ai/computer-use-mcp"),
-      import("@zavora-ai/computer-use-mcp/client"),
-    ],
-  );
-  // Cantrip's authenticated Remote Surface is the approval boundary. The
-  // desktop backend must not write a second log containing user input.
-  const previousAuditSetting = process.env.COMPUTER_USE_AUDIT_LOG;
-  process.env.COMPUTER_USE_AUDIT_LOG = "false";
-  try {
-    return (await connectInProcess(
-      createComputerUseServer({
-        elicitApproval: async () => true,
-        profile: "full",
-      }),
-    )) as ComputerUseClient;
-  } finally {
-    if (previousAuditSetting === undefined) {
-      delete process.env.COMPUTER_USE_AUDIT_LOG;
-    } else {
-      process.env.COMPUTER_USE_AUDIT_LOG = previousAuditSetting;
-    }
-  }
 }
 
 class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
@@ -573,7 +358,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       this.#display.width,
     );
     const payload = await this.enqueue(async () =>
-      imageBytes(
+      desktopImageBytes(
         await this.#client.screenshot({
           quality: encoding.quality,
           width: encoding.width,
@@ -614,7 +399,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       this.#targetInventory = await this.#listTargets();
       if (
         restoreRequested &&
-        !targetMatches(this.configuration.target, this.#activeTarget)
+        !desktopTargetMatches(this.configuration.target, this.#activeTarget)
       ) {
         await this.switchTarget(this.configuration.target, true);
         return;
@@ -686,18 +471,18 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       this.#display = pipeline.display;
       this.#lastEncodedWidth = 0;
       this.#inputTargetError = null;
-      if (targetMatches(requested, pipeline.target)) {
+      if (desktopTargetMatches(requested, pipeline.target)) {
         this.#targetMessage = captureError
-          ? `Reconnected to ${targetName(pipeline.target)} after capture stopped.`
+          ? `Reconnected to ${desktopTargetName(pipeline.target)} after capture stopped.`
           : null;
       } else {
-        this.#targetMessage = `${targetName(requested)} is unavailable; showing ${targetName(pipeline.target)}.`;
+        this.#targetMessage = `${desktopTargetName(requested)} is unavailable; showing ${desktopTargetName(pipeline.target)}.`;
       }
       if (pipeline.target.kind === "window") {
         try {
           await this.focusInputTarget();
         } catch (error) {
-          this.#inputTargetError = `Could not focus ${targetName(pipeline.target)}; remote input is paused: ${errorMessage(error)}`;
+          this.#inputTargetError = `Could not focus ${desktopTargetName(pipeline.target)}; remote input is paused: ${errorMessage(error)}`;
         }
       }
       this.publishState(
@@ -820,7 +605,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       const y = localY + origin.y;
       const inputTarget = this.inputTargetOptions();
       if (message.event === "move") {
-        assertResult(
+        assertComputerUseResult(
           await this.#client.moveMouse(x, y),
           "Moving the desktop pointer",
         );
@@ -838,7 +623,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
           1,
           Math.min(20, Math.ceil(Math.abs(delta) / 40)),
         );
-        assertResult(
+        assertComputerUseResult(
           await this.#client.scroll(
             x,
             y,
@@ -850,22 +635,22 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
           "Scrolling the desktop",
         );
       } else if (message.button === "right" && message.event === "up") {
-        assertResult(
+        assertComputerUseResult(
           await this.#client.rightClick(x, y, undefined, inputTarget),
           "Right-clicking the desktop",
         );
       } else if (message.button === "middle" && message.event === "up") {
-        assertResult(
+        assertComputerUseResult(
           await this.#client.middleClick(x, y, undefined, inputTarget),
           "Middle-clicking the desktop",
         );
       } else if (message.button === "left" && message.event === "down") {
-        assertResult(
+        assertComputerUseResult(
           await this.#client.mouseDown(x, y, undefined, inputTarget),
           "Pressing the desktop pointer",
         );
       } else if (message.button === "left" && message.event === "up") {
-        assertResult(
+        assertComputerUseResult(
           await this.#client.mouseUp(x, y, undefined, inputTarget),
           "Releasing the desktop pointer",
         );
@@ -878,13 +663,17 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       await this.focusInputTarget();
       const inputTarget = this.inputTargetOptions();
       if (message.text && (message.modifiers & 7) === 0) {
-        assertResult(
+        assertComputerUseResult(
           await this.#client.type(message.text, undefined, inputTarget),
           "Typing on the desktop",
         );
       } else {
-        assertResult(
-          await this.#client.key(shortcut(message), undefined, inputTarget),
+        assertComputerUseResult(
+          await this.#client.key(
+            desktopShortcut(message),
+            undefined,
+            inputTarget,
+          ),
           "Sending a desktop key",
         );
       }
@@ -896,13 +685,13 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       const inputTarget = this.inputTargetOptions();
       if (message.operation === "paste-text") {
         if (message.text) {
-          assertResult(
+          assertComputerUseResult(
             await this.#client.type(message.text, undefined, inputTarget),
             "Pasting on the desktop",
           );
         }
       } else {
-        assertResult(
+        assertComputerUseResult(
           await this.#client.key(
             process.platform === "darwin" ? "command+c" : "ctrl+c",
             undefined,
@@ -911,7 +700,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
           "Copying from the desktop",
         );
         await new Promise((resolve) => setTimeout(resolve, 60));
-        const text = clipboardText(await this.#client.readClipboard());
+        const text = desktopClipboardText(await this.#client.readClipboard());
         this.#emit(
           attachmentId,
           "clipboard",
@@ -939,8 +728,8 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
         throw new Error("The selected window has an invalid native ID.");
       }
       const result = await this.#client.activateWindow(windowId, 2_000);
-      assertResult(result, "Focusing the selected window");
-      const activation = structuredObject(result);
+      assertComputerUseResult(result, "Focusing the selected window");
+      const activation = computerUseResultObject(result);
       if (activation?.activated !== true) {
         const reason =
           typeof activation?.reason === "string"
@@ -955,7 +744,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
         this.publishState(undefined, "ready", this.#targetMessage);
       }
     } catch (error) {
-      this.#inputTargetError = `Could not focus ${targetName(pipeline.target)}; input was not sent: ${errorMessage(error)}`;
+      this.#inputTargetError = `Could not focus ${desktopTargetName(pipeline.target)}; input was not sent: ${errorMessage(error)}`;
       this.publishState(undefined, "error", this.#inputTargetError);
       throw new Error(this.#inputTargetError);
     }
@@ -979,7 +768,7 @@ export class ManagedDesktopRemoteSurfaceAdapter implements RemoteSurfaceAdapter 
   #initializationError: string | null = null;
 
   constructor(
-    private readonly createClient: DesktopAutomationClientFactory = defaultClientFactory,
+    private readonly createClient: DesktopAutomationClientFactory = createDesktopAutomationClient,
     private readonly createFramePipeline: DesktopFramePipelineFactory = createNativeDesktopFramePipeline,
     private readonly listTargets: DesktopTargetInventoryFactory = listNativeDesktopTargets,
     private readonly launchApplication: DesktopApplicationLauncher = launchDesktopApplication,
@@ -1003,7 +792,7 @@ export class ManagedDesktopRemoteSurfaceAdapter implements RemoteSurfaceAdapter 
       return;
     }
     try {
-      displaySize(await (await this.client()).getDisplaySize());
+      desktopDisplaySize(await (await this.client()).getDisplaySize());
       try {
         const pipeline = await this.createFramePipeline();
         if (pipeline.display.width <= 0 || pipeline.display.height <= 0) {
@@ -1052,7 +841,7 @@ export class ManagedDesktopRemoteSurfaceAdapter implements RemoteSurfaceAdapter 
       );
     }
     const client = await this.client();
-    const display = displaySize(await client.getDisplaySize());
+    const display = desktopDisplaySize(await client.getDisplaySize());
     return new ManagedDesktopRemoteSurfaceSession({
       client,
       configuration: command.configuration,
