@@ -8,7 +8,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { CopyPlus, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { ProjectSurfaceIcon, surfaceKindLabel } from "./project-surface-icon";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { nextProjectTabAfterRemoval } from "@/lib/project-tab-group";
 import type { ProjectSurface } from "@/lib/project-surface";
+import { watchDesktopTopBar } from "@/lib/desktop-window-coordinator";
 import { cn } from "@/lib/utils";
 import {
   type WorkspaceDndData,
@@ -51,6 +52,7 @@ const createKinds: ProjectSurfaceCreateKind[] = [
 export interface ProjectTabBarProps {
   activeTabKey: string;
   creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
+  desktopRuntime?: boolean;
   onCreate(kind: ProjectSurfaceCreateKind): void;
   onDelete(surface: ProjectSurface): void;
   onDuplicate?(surface: ProjectSurface): void;
@@ -62,6 +64,7 @@ export interface ProjectTabBarProps {
 export function ProjectTabBar({
   activeTabKey,
   creatingKinds = new Set(),
+  desktopRuntime = false,
   onCreate,
   onDelete,
   onDuplicate,
@@ -74,6 +77,11 @@ export function ProjectTabBar({
   const [deleteTarget, setDeleteTarget] = useState<ProjectSurface | null>(null);
   const groupId = surfaces[0]?.groupId ?? "empty";
   const projectId = surfaces[0]?.projectId ?? "empty";
+  const topBarElement = useRef<HTMLDivElement | null>(null);
+  const tabKeys = useMemo(
+    () => surfaces.map(({ tabKey }) => tabKey).join("\n"),
+    [surfaces],
+  );
   const topBarDrop = useDroppable({
     id: workspaceTopBarDropId(groupId),
     disabled: surfaces.length === 0,
@@ -97,11 +105,29 @@ export function ProjectTabBar({
     if (title && title !== surface.title) onRename(surface, title);
   };
 
+  useEffect(() => {
+    const element = topBarElement.current;
+    if (!desktopRuntime || !element || surfaces.length === 0) return;
+    let disposed = false;
+    let stop: (() => void) | undefined;
+    void watchDesktopTopBar(element, projectId, groupId).then((cleanup) => {
+      if (disposed) cleanup();
+      else stop = cleanup;
+    });
+    return () => {
+      disposed = true;
+      stop?.();
+    };
+  }, [desktopRuntime, groupId, projectId, surfaces.length, tabKeys]);
+
   return (
     <>
       <div className="relative z-20 flex h-10 shrink-0 items-stretch bg-background">
         <div
-          ref={topBarDrop.setNodeRef}
+          ref={(node) => {
+            topBarElement.current = node;
+            topBarDrop.setNodeRef(node);
+          }}
           className={cn(
             "flex min-w-0 flex-1 items-stretch overflow-x-auto overscroll-x-contain px-1 transition-colors [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             topBarDrop.isOver && "bg-muted/30",
@@ -127,6 +153,7 @@ export function ProjectTabBar({
                   <ContextMenu.Root>
                     <ContextMenu.Trigger asChild>
                       <div
+                        data-project-tab-key={surface.tabKey}
                         className={cn(
                           "group relative flex min-w-0 max-w-56 shrink-0 items-center rounded-t-md text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                           active && "bg-muted text-foreground",

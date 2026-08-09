@@ -2,15 +2,18 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "popouts",
   "description": "Capabilities for project tabs opened in their own desktop window",
-  "windows": ["popout-*"],
+  "windows": ["cantrip-group-*", "cantrip-tab-drag-preview"],
   "permissions": [
     "core:default",
     "core:webview:allow-create-webview",
+    "core:webview:allow-create-webview-window",
     "core:webview:allow-set-webview-position",
     "core:webview:allow-set-webview-size",
     "core:webview:allow-webview-close",
     "core:window:allow-set-theme",
     "core:window:allow-set-title",
+    "core:window:allow-set-position",
+    "core:window:allow-start-dragging",
     "opener:default"
   ]
 }

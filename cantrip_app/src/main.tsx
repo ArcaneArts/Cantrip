@@ -3,6 +3,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
 import { AppLiveClient, appLiveWebSocketUrl } from "@/lib/app-live-client";
 import { AppLiveQueryBridge } from "@/lib/app-live-query";
 import { AppLiveProvider } from "@/lib/app-live-react";
@@ -11,6 +12,7 @@ import {
   getActiveServerConnection,
   initializeServerConnections,
 } from "@/lib/server-connections";
+import { parseDesktopTabDragPreview } from "@/lib/desktop-window-coordinator";
 
 import "./index.css";
 
@@ -57,4 +59,18 @@ async function start(): Promise<void> {
   );
 }
 
-void start();
+const dragPreview = parseDesktopTabDragPreview(window.location.search);
+if (dragPreview) {
+  document.documentElement.classList.toggle(
+    "dark",
+    dragPreview.theme === "dark",
+  );
+  createRoot(document.getElementById("root")!).render(
+    <div className="flex h-full items-center gap-2 overflow-hidden border bg-popover px-3 text-xs text-popover-foreground shadow-xl">
+      <ProjectSurfaceIcon kind={dragPreview.kind} className="size-4 shrink-0" />
+      <span className="truncate">{dragPreview.title}</span>
+    </div>,
+  );
+} else {
+  void start();
+}

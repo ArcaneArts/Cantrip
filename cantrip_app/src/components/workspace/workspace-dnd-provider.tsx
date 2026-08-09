@@ -9,6 +9,7 @@ import {
   type CollisionDetection,
   type DragCancelEvent,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
@@ -17,7 +18,7 @@ import type {
   ProjectTabLayoutSummary,
 } from "@cantrip/protocol";
 import { Ban, FolderGit2 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import { ProjectSurfaceIcon } from "./project-surface-icon";
 import {
@@ -29,6 +30,16 @@ import {
   type WorkspaceDropTarget,
 } from "@/lib/workspace-dnd-model";
 import { cn } from "@/lib/utils";
+import {
+  beginDesktopNativeTabDrag,
+  cancelDesktopNativeTabDrag,
+  finishDesktopNativeTabDrag,
+  moveDesktopNativeTabDragPreview,
+  startDesktopNativeWindowDrag,
+  type DesktopNativeDragStart,
+  type DesktopNativeDropResolution,
+  type DesktopNativeTabDrag,
+} from "@/lib/desktop-window-coordinator";
 
 const workspaceCollisionDetection: CollisionDetection = (arguments_) => {
   const pointerCollisions = pointerWithin(arguments_);
@@ -107,13 +118,22 @@ export function WorkspaceDndProvider({
   children,
   className,
   layout,
+  desktopRuntime = false,
+  isPopout = false,
+  onDesktopTabDrop,
   onOperation,
   projects,
   tauriTitlebar,
 }: {
   children: ReactNode;
   className?: string;
+  desktopRuntime?: boolean;
+  isPopout?: boolean;
   layout: ProjectTabLayoutSummary | null | undefined;
+  onDesktopTabDrop?(
+    drag: DesktopNativeTabDrag,
+    resolution: DesktopNativeDropResolution,
+  ): Promise<void>;
   onOperation(operation: WorkspaceDropOperation): void;
   projects: readonly ProjectSummary[];
   tauriTitlebar?: string;
@@ -123,6 +143,81 @@ export function WorkspaceDndProvider({
   );
   const [activeDrag, setActiveDrag] = useState<WorkspaceDragItem | null>(null);
   const [decision, setDecision] = useState<WorkspaceDropDecision | null>(null);
+  const nativeDragRef = useRef<DesktopNativeTabDrag | null>(null);
+  const nativeStartRef = useRef<Promise<DesktopNativeDragStart> | null>(null);
+  const nativeFinishingRef = useRef(false);
+  const previewFrameRef = useRef<number | null>(null);
+
+  const finishNativeDrag = async () => {
+    if (nativeFinishingRef.current) return;
+    const drag = nativeDragRef.current;
+    const started = nativeStartRef.current;
+    if (!drag || !started || !onDesktopTabDrop) return;
+    nativeFinishingRef.current = true;
+    try {
+      await started;
+      const resolution = await finishDesktopNativeTabDrag();
+      await onDesktopTabDrop(drag, resolution);
+    } finally {
+      nativeDragRef.current = null;
+      nativeStartRef.current = null;
+      nativeFinishingRef.current = false;
+    }
+  };
+
+  const beginNativeDrag = (drag: WorkspaceDragItem | undefined) => {
+    if (
+      !desktopRuntime ||
+      !onDesktopTabDrop ||
+      drag?.type !== "surface" ||
+      !layout
+    ) {
+      return;
+    }
+    const sourceGroup = layout.groups.find(({ id }) => id === drag.groupId);
+    if (!sourceGroup) return;
+    const nativeDrag: DesktopNativeTabDrag = {
+      groupId: drag.groupId,
+      projectId: drag.projectId,
+      sourceGroupSize: sourceGroup.members.length,
+      sourceIsPopout: isPopout,
+      surface: {
+        kind: drag.visualKind,
+        tabKey: drag.tabKey,
+        title: drag.label,
+      },
+    };
+    nativeDragRef.current = nativeDrag;
+    nativeFinishingRef.current = false;
+    const started = beginDesktopNativeTabDrag(nativeDrag);
+    nativeStartRef.current = started;
+    void started
+      .then((result) =>
+        result.mode === "move-window"
+          ? startDesktopNativeWindowDrag().then(finishNativeDrag)
+          : undefined,
+      )
+      .catch((error) => {
+        console.error("Could not begin native tab dragging", error);
+        nativeDragRef.current = null;
+        nativeStartRef.current = null;
+        void cancelDesktopNativeTabDrag();
+      });
+  };
+
+  const cancelNativeDrag = () => {
+    const started = nativeStartRef.current;
+    nativeDragRef.current = null;
+    nativeStartRef.current = null;
+    nativeFinishingRef.current = false;
+    if (previewFrameRef.current !== null) {
+      window.cancelAnimationFrame(previewFrameRef.current);
+      previewFrameRef.current = null;
+    }
+    void (started
+      ? started.catch(() => undefined).then(cancelDesktopNativeTabDrag)
+      : cancelDesktopNativeTabDrag());
+  };
 
   const clear = (_event?: DragCancelEvent) => {
     setActiveDrag(null);
@@ -134,8 +229,23 @@ export function WorkspaceDndProvider({
       sensors={sensors}
       collisionDetection={workspaceCollisionDetection}
       onDragStart={(event) => {
-        setActiveDrag(dragData(event, layout, projects) ?? null);
+        const drag = dragData(event, layout, projects);
+        setActiveDrag(drag ?? null);
         setDecision(null);
+        beginNativeDrag(drag);
+      }}
+      onDragMove={(_event: DragMoveEvent) => {
+        if (!nativeStartRef.current || previewFrameRef.current !== null) return;
+        previewFrameRef.current = window.requestAnimationFrame(() => {
+          previewFrameRef.current = null;
+          void nativeStartRef.current
+            ?.then((started) =>
+              started.mode === "preview"
+                ? moveDesktopNativeTabDragPreview()
+                : undefined,
+            )
+            .catch(() => undefined);
+        });
       }}
       onDragOver={(event) =>
         setDecision(
@@ -146,14 +256,35 @@ export function WorkspaceDndProvider({
           ),
         )
       }
-      onDragCancel={clear}
+      onDragCancel={(event) => {
+        cancelNativeDrag();
+        clear(event);
+      }}
       onDragEnd={(event) => {
         const nextDecision = decideWorkspaceDrop(
           layout,
           dragData(event, layout, projects) ?? activeDrag,
           dropData(event, layout) ?? null,
         );
-        if (nextDecision.status === "valid") {
+        const nativeStarted = nativeStartRef.current;
+        if (nativeStarted) {
+          void nativeStarted
+            .then((started) => {
+              if (started.mode === "move-window") {
+                void finishNativeDrag();
+                return;
+              }
+              if (nextDecision.status === "valid") {
+                cancelNativeDrag();
+                onOperation(nextDecision.operation);
+              } else if (nextDecision.status === "noop" && event.over) {
+                cancelNativeDrag();
+              } else {
+                void finishNativeDrag();
+              }
+            })
+            .catch(() => undefined);
+        } else if (nextDecision.status === "valid") {
           onOperation(nextDecision.operation);
         }
         clear();
