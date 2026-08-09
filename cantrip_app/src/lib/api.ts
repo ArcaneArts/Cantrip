@@ -117,6 +117,8 @@ import type {
 import {
   workflowDefinitionDetailSchema,
   workflowDefinitionCreateSchema,
+  workflowDefinitionGenerationCreateSchema,
+  workflowDefinitionGenerationResultSchema,
   workflowDefinitionListSchema,
   workflowDefinitionSummarySchema,
   workflowDefinitionUpdateSchema,
@@ -134,6 +136,7 @@ import {
   workflowWorktreeOutcomeRequestSchema,
   type WorkflowDefinitionQuery,
   type WorkflowDefinitionCreate,
+  type WorkflowDefinitionGenerationCreate,
   type WorkflowDefinitionUpdate,
   type WorkflowGateDecision,
   type WorkflowNodeRetry,
@@ -220,6 +223,18 @@ export async function getWorkflow(workflowId: string) {
 export async function createWorkflow(input: WorkflowDefinitionCreate) {
   return workflowDefinitionDetailSchema.parse(
     await post("/api/workflows", workflowDefinitionCreateSchema.parse(input)),
+  );
+}
+
+export async function generateWorkflowDefinition(
+  chatId: string,
+  input: WorkflowDefinitionGenerationCreate,
+) {
+  return workflowDefinitionGenerationResultSchema.parse(
+    await post(
+      `/api/chats/${encodeURIComponent(chatId)}/workflow-generation`,
+      workflowDefinitionGenerationCreateSchema.parse(input),
+    ),
   );
 }
 

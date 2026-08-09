@@ -402,6 +402,7 @@ export function ProjectSettingsPage({
         </section>
 
         <WorkflowCenter
+          chats={chats}
           initialWorkflowId={initialWorkflowId}
           projectId={project.id}
           onOpenHistory={onCreateHistory}

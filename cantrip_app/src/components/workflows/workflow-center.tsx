@@ -1,3 +1,4 @@
+import type { ChatSummary } from "@cantrip/protocol";
 import type {
   WorkflowDefinitionDetail,
   WorkflowDefinitionSummary,
@@ -210,10 +211,12 @@ type ControlAction =
   | { type: "retry"; runId: string; nodeId: string };
 
 export function WorkflowCenter({
+  chats,
   initialWorkflowId,
   onOpenHistory,
   projectId,
 }: {
+  chats: ChatSummary[];
   initialWorkflowId?: string | null;
   onOpenHistory(worktreeId: string): void;
   projectId: string;
@@ -774,6 +777,7 @@ export function WorkflowCenter({
         </DialogContent>
       </Dialog>
       <WorkflowAuthorDialog
+        chats={chats}
         open={authorOpen}
         projectId={projectId}
         workflow={authorWorkflow}

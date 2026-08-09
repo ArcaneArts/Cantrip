@@ -571,6 +571,27 @@ async function start(): Promise<void> {
               turnId,
             }),
         });
+      case "workflow.definition.generate":
+        return runtimeFor(command).runWorkflowNode({
+          workflowRunId: `generation:${command.generationId}`,
+          runNodeId: "definition",
+          attemptId: command.generationId,
+          idempotencyKey: command.generationId,
+          worktreeId: null,
+          cwd: command.cwd,
+          threadId: null,
+          prompt: command.prompt,
+          developerInstructions: command.developerInstructions,
+          skillNames: [],
+          outputSchema: command.outputSchema,
+          mutationMode: "read-only",
+          networkAccess: "none",
+          approvalMode: "preauthorized",
+          permissionProfileId: null,
+          timeoutMs: command.timeoutMs,
+          model: command.model,
+          provider: command.provider,
+        });
       case "workflow.node.interrupt":
         return runtimeFor(command).interruptThread(command.threadId);
       case "chat.pause.set":

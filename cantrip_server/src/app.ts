@@ -175,6 +175,9 @@ import type {
 import {
   workflowDefinitionCreateSchema,
   workflowDefinitionDetailSchema,
+  workflowDefinitionGenerationCreateSchema,
+  workflowDefinitionGenerationModelOutputSchema,
+  workflowDefinitionGenerationResultSchema,
   workflowDefinitionListSchema,
   workflowDefinitionQuerySchema,
   workflowDefinitionSummarySchema,
@@ -190,6 +193,7 @@ import {
   workflowRunEventQuerySchema,
   workflowRunListSchema,
   workflowNodeRetrySchema,
+  workflowNodeExecutionResultSchema,
   workflowRunPauseSchema,
   workflowRunQuerySchema,
   workflowRunResumeSchema,
@@ -285,6 +289,39 @@ const AGENT_INTERACTION_EXPIRY_SWEEP_MS = 1_000;
 const WORKFLOW_GATE_EXPIRY_SWEEP_MS = 500;
 const GOAL_RESUME_PROMPT =
   "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
+const WORKFLOW_GENERATION_TIMEOUT_MS = 2 * 60 * 1_000;
+const WORKFLOW_GENERATION_OUTPUT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    slug: { type: "string" },
+    name: { type: "string" },
+    description: { type: "string" },
+    graphJson: { type: "string" },
+    declaredInputsJson: { type: "string" },
+    declaredOutputsJson: { type: "string" },
+    defaultsJson: { type: "string" },
+    permissionRequirementsJson: { type: "string" },
+  },
+  required: [
+    "slug",
+    "name",
+    "description",
+    "graphJson",
+    "declaredInputsJson",
+    "declaredOutputsJson",
+    "defaultsJson",
+    "permissionRequirementsJson",
+  ],
+};
+
+const WORKFLOW_GENERATION_INSTRUCTIONS = `You generate preview-only Cantrip workflow definitions. Return only the requested structured output. Never write files, run mutation-capable commands, use the network, or execute source material.
+
+The graph is constrained JSON data with {"version":1,"nodes":[],"edges":[]}. It must be an acyclic graph with unique lowercase node keys. Supported node types are agent, map, pipeline, reduce, verify, condition, repeatUntil, and gate. Prefer simple agent nodes unless the requested process genuinely needs collection fan-out, verification, branching, bounded repetition, or human approval.
+
+Every node needs key, type, name, configuration, inputSchema, outputSchema, permissionRequirements, mutationMode, modelRouteId, and permissionProfileId. Agent configuration has prompt, developerInstructions, includeStructuredInput, and automaticRetries. Read-only nodes must request filesystem read-only; write nodes must request workspace-write. Network defaults to none. Do not request skills, MCP servers, native subagents, unrestricted network, preauthorization, or workspace writes unless the source explicitly requires them. Condition and gate nodes are always read-only. Every repeatUntil node must have successCondition, progressPath, maxUnchangedIterations, maxIterations, and maxDurationMs.
+
+Edges need from, to, sourceOutput, targetInput, and condition. Only condition nodes may have conditional outgoing edges. Schemas, defaults, and permissions are JSON objects. Encode graphJson, declaredInputsJson, declaredOutputsJson, defaultsJson, and permissionRequirementsJson as complete JSON strings. Use an empty description string when no description is useful. The server will reject any output that does not pass the canonical Cantrip workflow schemas.`;
 
 function scopedCodeProfileId(ownerId: string, profileId: string): string {
   return createHash("sha256").update(`${ownerId}\0${profileId}`).digest("hex");
@@ -355,6 +392,38 @@ function continuationPrompt(messages: ChatMessage[], prompt: string): string {
     })
     .join("\n\n");
   return `Continue this existing Cantrip conversation. The server-owned history follows:\n\n${transcript}\n\nUSER: ${prompt}`;
+}
+
+function workflowGenerationTranscript(messages: ChatMessage[]): string {
+  const transcript = messages
+    .slice(-80)
+    .map((message) => {
+      const text = message.content
+        .flatMap((item) => {
+          if (item.type === "text") return [item.text];
+          if (item.type === "attachment") {
+            return [`[attachment: ${item.attachment.fileName}]`];
+          }
+          return [];
+        })
+        .join("\n");
+      return text ? `${message.role.toUpperCase()}: ${text}` : null;
+    })
+    .filter((value): value is string => Boolean(value))
+    .join("\n\n");
+  return transcript.length <= 40_000
+    ? transcript
+    : transcript.slice(transcript.length - 40_000);
+}
+
+function parseGeneratedJson(value: string, label: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    throw new Error(
+      `Codex returned invalid ${label} JSON: ${errorMessage(error)}`,
+    );
+  }
 }
 
 export async function buildApp({
@@ -2219,6 +2288,128 @@ export async function buildApp({
     const projects = await repository.listProjects(LOCAL_USER_ID);
     return reply.send(projectListSchema.parse(projects));
   });
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/workflow-generation",
+    async (request, reply) => {
+      const input = workflowDefinitionGenerationCreateSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+
+      try {
+        const runtime = await runtimeForContext(context);
+        if (!runtime) {
+          return reply
+            .code(409)
+            .send({ error: "Choose a model before generating a workflow." });
+        }
+        const messages =
+          input.data.sourceType === "chat"
+            ? await repository.listMessages(LOCAL_USER_ID, context.chatId)
+            : [];
+        const transcript = workflowGenerationTranscript(messages);
+        const prompt = [
+          `Generate a ${input.data.scope} Cantrip workflow from this ${input.data.sourceType} source.`,
+          `Author request:\n${input.data.prompt}`,
+          transcript ? `Selected chat transcript:\n${transcript}` : null,
+        ]
+          .filter((value): value is string => Boolean(value))
+          .join("\n\n");
+        const generationId = randomUUID();
+        const result = workflowNodeExecutionResultSchema.parse(
+          await bridge.request(
+            context.workerId,
+            {
+              type: "workflow.definition.generate",
+              generationId,
+              cwd: context.cwd,
+              prompt,
+              developerInstructions: WORKFLOW_GENERATION_INSTRUCTIONS,
+              outputSchema: WORKFLOW_GENERATION_OUTPUT_SCHEMA,
+              timeoutMs: WORKFLOW_GENERATION_TIMEOUT_MS,
+              model: runtime.model,
+              provider: runtime.provider,
+            },
+            { timeoutMs: WORKFLOW_GENERATION_TIMEOUT_MS + 10_000 },
+          ),
+        );
+        const generated = workflowDefinitionGenerationModelOutputSchema.parse(
+          result.structuredResult,
+        );
+        const provenance = {
+          origin: "generated" as const,
+          sourceId: generationId,
+          sourceRevision: null,
+          reference: `chat:${context.chatId}`,
+          importedAt: null,
+          metadata: {
+            sourceType: input.data.sourceType,
+            model: runtime.model.name,
+            modelRouteId: runtime.routeId,
+            provider: runtime.provider.name,
+            codexThreadId: result.threadId,
+            codexTurnId: result.turnId,
+          },
+        };
+        const definition = workflowDefinitionCreateSchema.parse({
+          scope: input.data.scope,
+          projectId: input.data.scope === "project" ? context.projectId : null,
+          slug: generated.slug,
+          name: generated.name,
+          description: generated.description.trim() || null,
+          source: "generated",
+          provenance,
+          trustState: "untrusted",
+          revision: {
+            graph: parseGeneratedJson(generated.graphJson, "graph"),
+            declaredInputs: parseGeneratedJson(
+              generated.declaredInputsJson,
+              "declared input schema",
+            ),
+            declaredOutputs: parseGeneratedJson(
+              generated.declaredOutputsJson,
+              "declared output schema",
+            ),
+            defaults: parseGeneratedJson(generated.defaultsJson, "defaults"),
+            permissionRequirements: parseGeneratedJson(
+              generated.permissionRequirementsJson,
+              "permission requirements",
+            ),
+            source: "generated",
+            provenance,
+            trustState: "untrusted",
+          },
+        });
+        return reply.send(
+          workflowDefinitionGenerationResultSchema.parse({
+            generationId,
+            definition,
+            codexThreadId: result.threadId,
+            codexTurnId: result.turnId,
+            measuredUsage: result.measuredUsage,
+          }),
+        );
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({
+          error: `Codex could not generate a valid workflow: ${errorMessage(error)}`,
+        });
+      }
+    },
+  );
 
   app.get<{
     Querystring: {

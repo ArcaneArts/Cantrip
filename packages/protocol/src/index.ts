@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  workflowJsonObjectSchema,
   workflowNodeExecutionRequestSchema,
   workflowNodeExecutionResultSchema,
 } from "./workflows.js";
@@ -3269,6 +3270,21 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   workflowNodeExecutionRequestSchema.extend({
     type: z.literal("workflow.node.execute"),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
+    type: z.literal("workflow.definition.generate"),
+    generationId: z.string().min(1).max(200),
+    cwd: z.string().trim().min(1).max(8_192),
+    prompt: z.string().trim().min(1).max(100_000),
+    developerInstructions: z.string().trim().min(1).max(100_000),
+    outputSchema: workflowJsonObjectSchema,
+    timeoutMs: z
+      .number()
+      .int()
+      .min(1_000)
+      .max(15 * 60 * 1_000),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
   }),
