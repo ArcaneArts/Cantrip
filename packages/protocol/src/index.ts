@@ -1208,6 +1208,11 @@ export const projectShareAttachmentSchema = z.object({
   password: z.string().min(24).max(256),
   realm: z.string().min(1).max(200),
   expiresAt: z.string().datetime(),
+  mountLeaseMs: z
+    .number()
+    .int()
+    .positive()
+    .max(24 * 60 * 60_000),
 });
 
 export const projectSharePublicBasePathSchema = z

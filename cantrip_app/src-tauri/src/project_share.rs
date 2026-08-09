@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 
 use serde::Deserialize;
@@ -16,6 +17,7 @@ use zeroize::Zeroize;
 #[serde(rename_all = "camelCase")]
 pub struct RevealProjectShareRequest {
     attachment_id: String,
+    mount_lease_ms: u64,
     password: String,
     project_id: String,
     project_name: String,
@@ -25,6 +27,7 @@ pub struct RevealProjectShareRequest {
 
 struct MountedProjectShare {
     attachment_id: String,
+    expires_at: Instant,
     location: NativeMount,
 }
 
@@ -39,6 +42,8 @@ enum NativeMount {
 pub struct ProjectShareMounts {
     mounts: Arc<Mutex<HashMap<String, MountedProjectShare>>>,
 }
+
+const MAX_NATIVE_MOUNT_LEASE_MS: u64 = 24 * 60 * 60_000;
 
 impl ProjectShareMounts {
     pub fn cleanup(&self) {
@@ -68,20 +73,35 @@ pub async fn reveal_project_share(
 
 fn reveal_project_share_blocking(
     app: &AppHandle,
-    mounts: Arc<Mutex<HashMap<String, MountedProjectShare>>>,
+    mount_registry: Arc<Mutex<HashMap<String, MountedProjectShare>>>,
     mut request: RevealProjectShareRequest,
 ) -> Result<(), String> {
     let result = (|| {
         let url = validate_request(&request)?;
-        let mut mounts = mounts
+        let expires_at = mount_expiration_deadline(request.mount_lease_ms)?;
+        let mut mounts = mount_registry
             .lock()
             .map_err(|_| "The native project mount registry is unavailable.".to_string())?;
 
-        if let Some(existing) = mounts.get(&request.project_id) {
+        if let Some(existing) = mounts.get_mut(&request.project_id) {
             if existing.attachment_id == request.attachment_id
                 && native_mount_is_active(&existing.location)
             {
-                return open_native_mount(&existing.location);
+                let reschedule = expires_at < existing.expires_at;
+                if reschedule {
+                    existing.expires_at = expires_at;
+                }
+                let opened = open_native_mount(&existing.location);
+                drop(mounts);
+                if reschedule {
+                    schedule_native_mount_expiration(
+                        Arc::clone(&mount_registry),
+                        request.project_id.clone(),
+                        request.attachment_id.clone(),
+                        expires_at,
+                    );
+                }
+                return opened;
             }
         }
 
@@ -98,13 +118,53 @@ fn reveal_project_share_blocking(
             request.project_id.clone(),
             MountedProjectShare {
                 attachment_id: request.attachment_id.clone(),
+                expires_at,
                 location,
             },
+        );
+        drop(mounts);
+        schedule_native_mount_expiration(
+            Arc::clone(&mount_registry),
+            request.project_id.clone(),
+            request.attachment_id.clone(),
+            expires_at,
         );
         Ok(())
     })();
     request.password.zeroize();
     result
+}
+
+fn mount_expiration_deadline(mount_lease_ms: u64) -> Result<Instant, String> {
+    if mount_lease_ms == 0 || mount_lease_ms > MAX_NATIVE_MOUNT_LEASE_MS {
+        return Err("The project share mount lease is invalid.".into());
+    }
+    Instant::now()
+        .checked_add(Duration::from_millis(mount_lease_ms))
+        .ok_or_else(|| "The project share mount lease is invalid.".to_string())
+}
+
+fn schedule_native_mount_expiration(
+    mounts: Arc<Mutex<HashMap<String, MountedProjectShare>>>,
+    project_id: String,
+    attachment_id: String,
+    expires_at: Instant,
+) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep_until(expires_at.into()).await;
+        let expired = match mounts.lock() {
+            Ok(mut mounts) => {
+                let should_remove = mounts.get(&project_id).is_some_and(|mount| {
+                    mount.attachment_id == attachment_id && mount.expires_at <= Instant::now()
+                });
+                should_remove.then(|| mounts.remove(&project_id)).flatten()
+            }
+            Err(_) => None,
+        };
+        if let Some(mount) = expired {
+            let _ = release_native_mount(&mount.location);
+        }
+    });
 }
 
 fn validate_request(request: &RevealProjectShareRequest) -> Result<Url, String> {
@@ -544,6 +604,7 @@ mod tests {
     fn request(url: &str) -> RevealProjectShareRequest {
         RevealProjectShareRequest {
             attachment_id: "ad6b8438-6418-4cdb-bf74-c7bd0f35035b".into(),
+            mount_lease_ms: 60_000,
             password: "p".repeat(32),
             project_id: "project-1".into(),
             project_name: "Cantrip".into(),
@@ -574,6 +635,13 @@ mod tests {
         assert_eq!(project_volume_name("\0\n"), "Cantrip Project");
     }
 
+    #[test]
+    fn bounds_native_mount_leases() {
+        assert!(mount_expiration_deadline(1).is_ok());
+        assert!(mount_expiration_deadline(0).is_err());
+        assert!(mount_expiration_deadline(MAX_NATIVE_MOUNT_LEASE_MS + 1).is_err());
+    }
+
     #[cfg(target_os = "macos")]
     #[test]
     fn encodes_credentials_for_mount_webdav_without_text_delimiters() {
@@ -583,5 +651,45 @@ mod tests {
         assert_eq!(&encoded[8..12], &8_u32.to_be_bytes());
         assert_eq!(&encoded[12..20], b"password");
         assert_eq!(&encoded[20..], &[0_u8; 12]);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn releases_native_mounts_when_the_server_lease_ends() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "cantrip-project-share-lease-{}-{nonce}",
+            std::process::id()
+        ));
+        let path = root.join("attachment-1");
+        std::fs::create_dir_all(&path).unwrap();
+        let expires_at = Instant::now() + Duration::from_millis(20);
+        let registry = Arc::new(Mutex::new(HashMap::from([(
+            "project-1".into(),
+            MountedProjectShare {
+                attachment_id: "attachment-1".into(),
+                expires_at,
+                location: NativeMount::MacOs(path.clone()),
+            },
+        )])));
+        schedule_native_mount_expiration(
+            Arc::clone(&registry),
+            "project-1".into(),
+            "attachment-1".into(),
+            expires_at,
+        );
+
+        for _ in 0..100 {
+            if !path.exists() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!path.exists());
+        assert!(registry.lock().unwrap().is_empty());
+        std::fs::remove_dir(root).unwrap();
     }
 }

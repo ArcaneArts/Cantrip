@@ -55,7 +55,21 @@ describe("project share tunnel protocol", () => {
         password: "a-strong-random-password-value",
         realm: "Cantrip Project Share",
         expiresAt: "2026-08-10T00:00:00.000Z",
+        mountLeaseMs: 12 * 60 * 60_000,
       }),
     ).toMatchObject({ protocol: "webdav", projectId: "project-1" });
+    expect(() =>
+      projectShareAttachmentSchema.parse({
+        attachmentId: "share-1",
+        projectId: "project-1",
+        protocol: "webdav",
+        url: "https://surface.cantrip.example/project-shares/token/",
+        username: "cantrip-user",
+        password: "a-strong-random-password-value",
+        realm: "Cantrip Project Share",
+        expiresAt: "2026-08-10T00:00:00.000Z",
+        mountLeaseMs: 24 * 60 * 60_000 + 1,
+      }),
+    ).toThrow();
   });
 });

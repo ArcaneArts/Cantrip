@@ -27,6 +27,21 @@ export function desktopProjectRevealLabel(
   return null;
 }
 
+export function nativeProjectShareRequest(
+  attachment: ProjectShareAttachment,
+  project: ProjectSummary,
+) {
+  return {
+    attachmentId: attachment.attachmentId,
+    mountLeaseMs: attachment.mountLeaseMs,
+    password: attachment.password,
+    projectId: attachment.projectId,
+    projectName: project.name,
+    url: attachment.url,
+    username: attachment.username,
+  };
+}
+
 export async function coordinateDesktopProjectReveal(
   project: ProjectSummary,
   operations: DesktopProjectRevealOperations,
@@ -50,14 +65,7 @@ export async function revealProjectInNativeFileManager(
     invokeNative: async (attachment, target) => {
       const { invoke } = await import("@tauri-apps/api/core");
       await invoke("reveal_project_share", {
-        request: {
-          attachmentId: attachment.attachmentId,
-          password: attachment.password,
-          projectId: attachment.projectId,
-          projectName: target.name,
-          url: attachment.url,
-          username: attachment.username,
-        },
+        request: nativeProjectShareRequest(attachment, target),
       });
     },
     revokeAttachment: deleteProjectNetworkShare,
