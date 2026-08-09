@@ -161,6 +161,32 @@ work without creating a duplicate gate. Cancellation terminalizes pending
 gates, and decisions against cancelled or otherwise incompatible terminal
 states fail with a conflict.
 
+## Run-wide budgets
+
+Every run snapshots immutable limits for expanded node count, attempts per
+execution unit, parallelism, node duration, total tokens, elapsed run time, and
+optional estimated cost. The scheduler checks the run-wide limits before every
+durable transition and after a worker boundary. A live token-usage update that
+reaches `maxTokens` terminalizes the run immediately and best-effort interrupts
+all attributed active turns. Worker turn timeouts are capped by both the node
+limit and the remaining `maxDurationMs` measured from the run's first start, so
+a later node cannot receive a fresh full-run time allowance.
+
+When a nonterminal run reaches a token, elapsed-time, or available-cost limit,
+no additional work is claimed. A final result may equal its configured maximum
+but cannot exceed it. Budget terminalization atomically fails the run, cancels
+pending nodes, items, and gates, interrupts active attempts, and appends one
+`run.budget.exceeded` event containing the limit, observed value, error code,
+and measured usage. This boundary is durable across restart and cannot be
+bypassed by pause, resume, or node retry.
+
+`maxEstimatedCostUsd` is a hard opt-in guard. Cost is aggregated only from
+turns that have actually reported usage; untouched zero-usage nodes do not make
+an otherwise measured total unavailable. Once a completed attempt has real
+usage, the run fails closed with `workflow-cost-budget-unavailable` if its cost
+signal is absent. Runs without an estimated-cost limit continue to expose
+`costAvailable: false` without failing.
+
 ## Durable pause and resume
 
 `POST /api/workflow-runs/:runId/pause` is a graceful durable pause. The server

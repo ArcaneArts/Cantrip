@@ -292,6 +292,18 @@ export class WorkflowExecutor {
   private async executeRun(runId: string): Promise<void> {
     const active = new Set<Promise<void>>();
     while (!this.#stopping) {
+      const budget = await this.repository.workflowRuns.enforceRunBudget(
+        LOCAL_USER_ID,
+        runId,
+      );
+      if (!budget) break;
+      if (budget.violation) {
+        await this.interruptExecutions(
+          budget.interruptions,
+          "Workflow budget failure was persisted but runtime interruption failed",
+        );
+        break;
+      }
       const collectionAdvanced =
         await this.repository.workflowRuns.advanceReadyCollectionNode(
           LOCAL_USER_ID,
@@ -523,6 +535,21 @@ export class WorkflowExecutor {
         lease,
         event,
       );
+      if (
+        event.type === "workflow.node.activity" &&
+        event.activity.type === "usage"
+      ) {
+        const budget = await this.repository.workflowRuns.enforceRunBudget(
+          LOCAL_USER_ID,
+          lease.candidate.run.id,
+        );
+        if (budget?.violation) {
+          await this.interruptExecutions(
+            budget.interruptions,
+            "Workflow budget failure was persisted but runtime interruption failed",
+          );
+        }
+      }
     } catch (error) {
       if (event.type === "workflow.node.interaction.requested") {
         await this.cancelWorkerInteraction(

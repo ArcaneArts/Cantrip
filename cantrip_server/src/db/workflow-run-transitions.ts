@@ -88,9 +88,19 @@ export function aggregateWorkflowUsage(
   const usages = values.map((value) =>
     workflowMeasuredUsageSchema.parse(value),
   );
+  const costBearingUsages = usages.filter(
+    (usage) =>
+      usage.costAvailable ||
+      usage.estimatedCostUsd !== null ||
+      usage.inputTokens > 0 ||
+      usage.outputTokens > 0 ||
+      usage.cachedInputTokens > 0 ||
+      usage.totalTokens > 0 ||
+      usage.durationMs > 0,
+  );
   const costAvailable =
-    usages.length > 0 &&
-    usages.every(
+    costBearingUsages.length > 0 &&
+    costBearingUsages.every(
       ({ costAvailable: available, estimatedCostUsd }) =>
         available && estimatedCostUsd !== null,
     );
