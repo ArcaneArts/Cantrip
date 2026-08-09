@@ -50,11 +50,11 @@ describe("workflow domain migration", () => {
 
         INSERT INTO project_worktrees (
           id, project_source_id, worker_id, name, absolute_path, display_path,
-          is_primary, is_default, origin, lifecycle_state
+          is_primary, is_default, origin, lifecycle_state, branch, head
         ) VALUES (
           'worktree-1', 'source-1', 'worker-1', 'Workflow lane',
           '/worktrees/workflow-1', 'worktrees/workflow-1', false, false,
-          'workflow', 'ready'
+          'cantrip', 'ready', 'cantrip/workflow/run-1/inspect', 'abc123'
         );
 
         INSERT INTO workflow_definitions (
@@ -76,7 +76,7 @@ describe("workflow domain migration", () => {
         INSERT INTO workflow_revision_nodes (
           id, revision_id, node_key, node_type, name, position, mutation_mode
         ) VALUES
-          ('revision-node-1', 'revision-1', 'inspect', 'agent', 'Inspect', 0, 'read-only'),
+          ('revision-node-1', 'revision-1', 'inspect', 'agent', 'Inspect', 0, 'write'),
           ('revision-node-2', 'revision-1', 'verify', 'verify', 'Verify', 1, 'read-only'),
           ('revision-node-3', 'revision-1', 'pipeline', 'pipeline', 'Pipeline', 2, 'read-only');
 
@@ -94,25 +94,27 @@ describe("workflow domain migration", () => {
           'run-1', 'workflow-1', 'revision-1', 'user-1', 'project-1', 'running',
           'manual', '{"actorType":"user","actorId":"user-1","deliveredAt":"2026-08-08T17:00:00.000Z","metadata":{}}'::jsonb,
           'launch-1', '{"target":"src"}'::jsonb, '{}'::jsonb,
-          '{"filesystem":"read-only"}'::jsonb, 'worker-1', 'worktree-1', 'stable'
+          '{"filesystem":"workspace-write"}'::jsonb, 'worker-1', 'worktree-1', 'stable'
         );
 
         INSERT INTO workflow_run_nodes (
           id, run_id, revision_node_id, node_key, node_type, status,
-          structured_input, worker_id, worktree_id, codex_thread_id
+          structured_input, worker_id, worktree_id, codex_thread_id,
+          write_capable
         ) VALUES
           (
             'run-node-1', 'run-1', 'revision-node-1', 'inspect', 'agent',
             'running', '{"target":"src"}'::jsonb, 'worker-1', 'worktree-1',
-            'thread-1'
+            'thread-1', true
           ),
           (
             'run-node-2', 'run-1', 'revision-node-2', 'verify', 'verify',
-            'blocked', '{}'::jsonb, null, null, null
+            'blocked', '{}'::jsonb, null, null, null, false
           ),
           (
             'run-node-3', 'run-1', 'revision-node-3', 'pipeline', 'pipeline',
-            'completed', '{"items":["alpha"]}'::jsonb, null, null, null
+            'completed', '{"items":["alpha"]}'::jsonb, null, null, null,
+            false
           );
 
         INSERT INTO workflow_run_node_dependencies (
@@ -150,16 +152,6 @@ describe("workflow domain migration", () => {
           'worktree-1', 'inspect'
         );
 
-        INSERT INTO workflow_worktree_leases (
-          id, run_id, run_node_id, project_source_id, worker_id,
-          requested_worktree_id, worktree_id, lease_key, state, branch_name,
-          base_revision, starting_revision, activated_at
-        ) VALUES (
-          'workflow-lease-1', 'run-1', 'run-node-1', 'source-1', 'worker-1',
-          'requested-worktree-1', 'worktree-1', 'lease-1', 'active',
-          'cantrip/workflow/run-1/inspect', 'main', 'abc123', now()
-        );
-
         INSERT INTO workflow_run_events (
           run_id, run_node_id, attempt_id, sequence, event_key, type, payload,
           actor_type, actor_id
@@ -176,6 +168,111 @@ describe("workflow domain migration", () => {
           'Approve the verification stage?', 'workflow-node', 'run-node-2',
           '{"filesystem":"read-only"}'::jsonb
         );
+      `);
+
+      const repository = new ServerRepository(drizzle(database, { schema }));
+      const reservation = await repository.workflowRuns.reserveWorktreeLease(
+        "user-1",
+        {
+          runId: "run-1",
+          runNodeId: "run-node-1",
+          runNodeItemId: null,
+          projectSourceId: "source-1",
+          workerId: "worker-1",
+          requestedWorktreeId: "worktree-1",
+          branchName: "cantrip/workflow/run-1/inspect",
+          baseRevision: "abc123",
+        },
+      );
+      expect(reservation).toMatchObject({
+        created: true,
+        lease: {
+          requestedWorktreeId: "worktree-1",
+          state: "allocating",
+        },
+      });
+      await expect(
+        repository.workflowRuns.reserveWorktreeLease("user-1", {
+          runId: "run-1",
+          runNodeId: "run-node-1",
+          runNodeItemId: null,
+          projectSourceId: "source-1",
+          workerId: "worker-1",
+          requestedWorktreeId: "ignored-on-replay",
+          branchName: "cantrip/workflow/run-1/inspect",
+          baseRevision: "abc123",
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        lease: { id: reservation!.lease.id, state: "allocating" },
+      });
+      await expect(
+        repository.workflowRuns.reserveWorktreeLease("user-1", {
+          runId: "run-1",
+          runNodeId: "run-node-1",
+          runNodeItemId: null,
+          projectSourceId: "source-1",
+          workerId: "worker-1",
+          branchName: "cantrip/workflow/run-1/different",
+          baseRevision: "abc123",
+        }),
+      ).rejects.toThrow(/different worktree reservation/u);
+      await expect(
+        repository.workflowRuns.activateWorktreeLease(
+          "user-1",
+          reservation!.lease.id,
+          { worktreeId: "different-worktree", startingRevision: "abc123" },
+        ),
+      ).rejects.toThrow(/reserved identity/u);
+      await expect(
+        repository.workflowRuns.activateWorktreeLease(
+          "user-1",
+          reservation!.lease.id,
+          { worktreeId: "worktree-1", startingRevision: "abc123" },
+        ),
+      ).resolves.toMatchObject({
+        id: reservation!.lease.id,
+        state: "active",
+        startingRevision: "abc123",
+        worktreeId: "worktree-1",
+      });
+      await expect(
+        repository.workflowRuns.activateWorktreeLease(
+          "user-1",
+          reservation!.lease.id,
+          { worktreeId: "worktree-1", startingRevision: "abc123" },
+        ),
+      ).resolves.toMatchObject({ state: "active" });
+      await expect(
+        repository.workflowRuns.activateWorktreeLease(
+          "user-1",
+          reservation!.lease.id,
+          { worktreeId: "worktree-1", startingRevision: "different" },
+        ),
+      ).rejects.toThrow(/already active elsewhere/u);
+      await database.exec(`
+        UPDATE workflow_run_nodes
+        SET status = 'completed'
+        WHERE id = 'run-node-1';
+      `);
+      await expect(
+        repository.workflowRuns.reserveWorktreeLease("user-1", {
+          runId: "run-1",
+          runNodeId: "run-node-1",
+          runNodeItemId: null,
+          projectSourceId: "source-1",
+          workerId: "worker-1",
+          branchName: "cantrip/workflow/run-1/inspect",
+          baseRevision: "abc123",
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        lease: { id: reservation!.lease.id, state: "active" },
+      });
+      await database.exec(`
+        UPDATE workflow_run_nodes
+        SET status = 'running'
+        WHERE id = 'run-node-1';
       `);
 
       const graph = await database.query<{
@@ -210,7 +307,7 @@ describe("workflow domain migration", () => {
         {
           attempts: 2,
           dependencies: 1,
-          events: 1,
+          events: 3,
           gates: 1,
           items: 1,
           item_state_kind: "pipeline",
@@ -223,14 +320,13 @@ describe("workflow domain migration", () => {
         },
       ]);
 
-      const repository = new ServerRepository(drizzle(database, { schema }));
       expect(
         (await repository.workflowRuns.getRun("user-1", "run-1"))
           ?.worktreeLeases,
       ).toEqual([
         expect.objectContaining({
-          id: "workflow-lease-1",
-          requestedWorktreeId: "requested-worktree-1",
+          id: reservation!.lease.id,
+          requestedWorktreeId: "worktree-1",
           startingRevision: "abc123",
           state: "active",
           worktreeId: "worktree-1",
@@ -242,11 +338,11 @@ describe("workflow domain migration", () => {
           "project-1",
           "worktree-1",
         ),
-      ).toMatchObject({ workflowLeaseIds: ["workflow-lease-1"] });
+      ).toMatchObject({ workflowLeaseIds: [reservation!.lease.id] });
       await database.exec(`
         UPDATE workflow_worktree_leases
         SET state = 'released', released_at = now()
-        WHERE id = 'workflow-lease-1';
+        WHERE run_id = 'run-1';
       `);
       expect(
         await repository.getWorktreeRemovalBlockers(
@@ -255,6 +351,53 @@ describe("workflow domain migration", () => {
           "worktree-1",
         ),
       ).toMatchObject({ workflowLeaseIds: [] });
+
+      const retryReservation =
+        await repository.workflowRuns.reserveWorktreeLease("user-1", {
+          runId: "run-1",
+          runNodeId: "run-node-1",
+          runNodeItemId: null,
+          projectSourceId: "source-1",
+          workerId: "worker-1",
+          requestedWorktreeId: "retry-worktree",
+          branchName: "cantrip/workflow/run-1/inspect",
+          baseRevision: "abc123",
+        });
+      await expect(
+        repository.workflowRuns.failWorktreeLeaseAllocation(
+          "user-1",
+          retryReservation!.lease.id,
+          {
+            code: "worker-offline",
+            message: "The selected worker disconnected.",
+            recoverable: true,
+          },
+        ),
+      ).resolves.toMatchObject({
+        errorCode: "worker-offline",
+        state: "recovering",
+      });
+      await expect(
+        repository.workflowRuns.failWorktreeLeaseAllocation(
+          "user-1",
+          retryReservation!.lease.id,
+          {
+            code: "branch-conflict",
+            message: "The reserved branch cannot be reconciled.",
+            recoverable: false,
+          },
+        ),
+      ).resolves.toMatchObject({
+        errorCode: "branch-conflict",
+        state: "failed",
+      });
+      await expect(
+        repository.workflowRuns.activateWorktreeLease(
+          "user-1",
+          retryReservation!.lease.id,
+          { worktreeId: "retry-worktree", startingRevision: "abc123" },
+        ),
+      ).rejects.toThrow(/cannot be activated/u);
     } finally {
       await database.close();
     }
