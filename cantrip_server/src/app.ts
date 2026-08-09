@@ -179,6 +179,7 @@ import {
   workflowDefinitionQuerySchema,
   workflowDefinitionSummarySchema,
   workflowDefinitionUpdateSchema,
+  workflowGateDecisionSchema,
   workflowRevisionCreateSchema,
   workflowRevisionListSchema,
   workflowRevisionSchema,
@@ -276,6 +277,7 @@ const ROUTE_FAILURE_COOLDOWN_MS = 60_000;
 const MAX_ATTACHMENT_BYTES = 25 * 1_024 * 1_024;
 const ATTACHMENT_CHUNK_BYTES = 256 * 1_024;
 const AGENT_INTERACTION_EXPIRY_SWEEP_MS = 1_000;
+const WORKFLOW_GATE_EXPIRY_SWEEP_MS = 500;
 const GOAL_RESUME_PROMPT =
   "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
 
@@ -387,6 +389,7 @@ export async function buildApp({
   await repository.resetTransientRemoteSurfaceStatuses();
   await repository.resetInterruptedChatExecutions();
   await workflowExecutor.recoverAfterRestart();
+  await workflowExecutor.expireGates();
   void workflowExecutor.queueAvailableRuns().catch((error) => {
     app.log.error({ err: error }, "Could not resume queued workflow runs");
   });
@@ -414,6 +417,12 @@ export async function buildApp({
     });
   }, AGENT_INTERACTION_EXPIRY_SWEEP_MS);
   agentInteractionExpiryTimer.unref();
+  const workflowGateExpiryTimer = setInterval(() => {
+    void workflowExecutor.expireGates().catch((error) => {
+      app.log.error({ err: error }, "Could not expire workflow gates");
+    });
+  }, WORKFLOW_GATE_EXPIRY_SWEEP_MS);
+  workflowGateExpiryTimer.unref();
 
   const serializeWorktreeMutation = async <T>(
     projectId: string,
@@ -2378,6 +2387,31 @@ export async function buildApp({
         return run
           ? reply.send(workflowRunDetailSchema.parse(run))
           : reply.code(404).send({ error: "Workflow run not found." });
+      } catch (error) {
+        if (error instanceof WorkflowControlConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: { gateId: string; runId: string } }>(
+    "/api/workflow-runs/:runId/gates/:gateId/decision",
+    async (request, reply) => {
+      const input = workflowGateDecisionSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const run = await workflowExecutor.decideGate(
+          request.params.runId,
+          request.params.gateId,
+          input.data,
+        );
+        return run
+          ? reply.send(workflowRunDetailSchema.parse(run))
+          : reply.code(404).send({ error: "Workflow run or gate not found." });
       } catch (error) {
         if (error instanceof WorkflowControlConflictError) {
           return reply.code(409).send({ error: error.message });
@@ -6881,6 +6915,7 @@ export async function buildApp({
 
   app.addHook("onClose", async () => {
     clearInterval(agentInteractionExpiryTimer);
+    clearInterval(workflowGateExpiryTimer);
     workflowExecutor.stop();
     codeTunnel.close();
     bridge.close();

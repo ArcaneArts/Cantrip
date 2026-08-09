@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   workflowApprovalGateSchema,
+  workflowGateDecisionSchema,
   workflowAgentNodeConfigurationSchema,
   workflowDefinitionCreateSchema,
   workflowDefinitionQuerySchema,
@@ -534,6 +535,16 @@ describe("workflow protocol", () => {
         decidedAt: timestamp,
       }).status,
     ).toBe("approved");
+    expect(
+      workflowGateDecisionSchema.parse({
+        decision: "denied",
+        idempotencyKey: "gate-decision-1",
+      }),
+    ).toEqual({
+      decision: "denied",
+      reason: null,
+      idempotencyKey: "gate-decision-1",
+    });
   });
 
   it("parses explicit false query parameters and rejects bad statuses", () => {
