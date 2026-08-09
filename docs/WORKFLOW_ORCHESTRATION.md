@@ -355,3 +355,38 @@ must review the resulting `modified` trust state before relying on it for
 unattended work. Repeating the same save is content-hash idempotent and returns
 the existing revision; active, failed, cancelled, or archived workflows fail
 closed.
+
+## Unattended trigger control plane
+
+Cantrip owns durable trigger delivery above the Codex agent runtime. Trigger
+records pin an immutable workflow revision, project, structured input, budget,
+permission manifest, and optional model and permission-profile routes. Delivery
+records persist the idempotency key, sanitized provenance, status, run identity,
+and bounded failure details. Schedule triggers additionally persist their next
+due time, last delivery, catch-up policy, and offline policy so a server restart
+does not duplicate an accepted interval.
+
+Only a `trusted` definition and revision whose revision-level and node-level
+approval modes are all `preauthorized` can be attached to an unattended
+trigger. The trigger manifest must also be preauthorized. These conditions are
+checked when the trigger is created or re-enabled, at every delivery claim, and
+again when the run is created. A later trust downgrade or permission change
+therefore fails closed rather than inheriting stale authority. Normal workflow
+permission coverage and runtime enforcement still apply inside every node.
+
+Schedule triggers choose `skip` or one-delivery catch-up behavior and either
+pause while their worker is offline or persist a queued run for later dispatch.
+The scheduler advances due times with compare-and-set updates. API deliveries
+use the operator API's trigger-scoped endpoint and webhook deliveries use a
+separate trigger-scoped endpoint with a constant-time comparison against a stored
+SHA-256 credential hash; public trigger responses never return that hash.
+Every trigger has a durable minimum interval, and repeating an idempotency key
+returns the original delivery and run instead of launching twice.
+
+Structured delivery input is validated and merged with the trigger snapshot
+before persistence. Fields whose names indicate secrets, tokens, passwords,
+credentials, authorization values, or API keys are rejected recursively, and
+neither webhook credentials nor payloads are included in provenance. Git event
+and saved-command delivery adapters, plus operator-facing trigger management,
+are separate consumers of this control plane rather than alternate execution
+runtimes.

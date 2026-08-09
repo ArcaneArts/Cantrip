@@ -101,6 +101,7 @@ import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import * as schema from "./schema.js";
 import { WorkflowRunRepository } from "./workflow-runs.js";
 import { WorkflowRepository } from "./workflows.js";
+import { WorkflowTriggerRepository } from "./workflow-triggers.js";
 
 export const LOCAL_USER_ID = "00000000-0000-0000-0000-000000000001";
 export const DEFAULT_OLLAMA_PROVIDER_ID =
@@ -804,10 +805,12 @@ function toQueuedPrompt(
 export class ServerRepository {
   readonly workflows: WorkflowRepository;
   readonly workflowRuns: WorkflowRunRepository;
+  readonly workflowTriggers: WorkflowTriggerRepository;
 
   constructor(private readonly database: RepositoryDatabase) {
     this.workflows = new WorkflowRepository(database);
     this.workflowRuns = new WorkflowRunRepository(database);
+    this.workflowTriggers = new WorkflowTriggerRepository(database);
   }
 
   async ensureLocalIdentity(): Promise<UserSummary> {

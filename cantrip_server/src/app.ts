@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
@@ -173,6 +173,11 @@ import type {
   AgentWorktreeToolResult,
 } from "@cantrip/protocol";
 import {
+  workflowAutomationTriggerCreateSchema,
+  workflowAutomationTriggerListSchema,
+  workflowAutomationTriggerQuerySchema,
+  workflowAutomationTriggerSchema,
+  workflowAutomationTriggerUpdateSchema,
   workflowDefinitionCreateSchema,
   workflowDefinitionDetailSchema,
   workflowDefinitionGenerationCreateSchema,
@@ -183,6 +188,7 @@ import {
   workflowDefinitionSummarySchema,
   workflowDefinitionUpdateSchema,
   workflowGateDecisionSchema,
+  workflowJsonObjectSchema,
   workflowRevisionCreateSchema,
   workflowRevisionListSchema,
   workflowRevisionSchema,
@@ -198,6 +204,9 @@ import {
   workflowRunQuerySchema,
   workflowRunResumeSchema,
   workflowRunSaveRevisionSchema,
+  workflowTriggerDeliveryCreateSchema,
+  workflowTriggerDeliveryResultSchema,
+  workflowTriggerProvenanceSchema,
   workflowRepositoryDocumentSchema,
   workflowRepositoryExportSchema,
   workflowRepositoryImportSchema,
@@ -222,6 +231,10 @@ import {
   WorkflowRunConflictError,
 } from "./db/workflow-runs.js";
 import { WorkflowConflictError } from "./db/workflows.js";
+import {
+  WorkflowTriggerConflictError,
+  WorkflowTriggerRateLimitError,
+} from "./db/workflow-triggers.js";
 import {
   WorkerBridge,
   type WorkerCommandBus,
@@ -295,6 +308,7 @@ const WORKFLOW_GATE_EXPIRY_SWEEP_MS = 500;
 const GOAL_RESUME_PROMPT =
   "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
 const WORKFLOW_GENERATION_TIMEOUT_MS = 2 * 60 * 1_000;
+const WORKFLOW_SCHEDULE_POLL_MS = 1_000;
 const WORKFLOW_GENERATION_OUTPUT_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -327,6 +341,38 @@ The graph is constrained JSON data with {"version":1,"nodes":[],"edges":[]}. It 
 Every node needs key, type, name, configuration, inputSchema, outputSchema, permissionRequirements, mutationMode, modelRouteId, and permissionProfileId. Agent configuration has prompt, developerInstructions, includeStructuredInput, and automaticRetries. Read-only nodes must request filesystem read-only; write nodes must request workspace-write. Network defaults to none. Do not request skills, MCP servers, native subagents, unrestricted network, preauthorization, or workspace writes unless the source explicitly requires them. Condition and gate nodes are always read-only. Every repeatUntil node must have successCondition, progressPath, maxUnchangedIterations, maxIterations, and maxDurationMs.
 
 Edges need from, to, sourceOutput, targetInput, and condition. Only condition nodes may have conditional outgoing edges. Schemas, defaults, and permissions are JSON objects. Encode graphJson, declaredInputsJson, declaredOutputsJson, defaultsJson, and permissionRequirementsJson as complete JSON strings. Use an empty description string when no description is useful. The server will reject any output that does not pass the canonical Cantrip workflow schemas.`;
+
+const SENSITIVE_TRIGGER_KEY =
+  /(?:^|[-_])(secret|token|password|authorization|credential|api[-_]?key)(?:$|[-_])/iu;
+
+function sensitiveTriggerInputPath(
+  value: unknown,
+  path = "input",
+): string | null {
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      const found = sensitiveTriggerInputPath(item, `${path}[${index}]`);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (!value || typeof value !== "object") return null;
+  for (const [key, item] of Object.entries(value)) {
+    if (SENSITIVE_TRIGGER_KEY.test(key)) return `${path}.${key}`;
+    const found = sensitiveTriggerInputPath(item, `${path}.${key}`);
+    if (found) return found;
+  }
+  return null;
+}
+
+function safeCredentialMatch(value: string, expectedHash: string): boolean {
+  const actual = Buffer.from(
+    createHash("sha256").update(value).digest("hex"),
+    "hex",
+  );
+  const expected = Buffer.from(expectedHash, "hex");
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
 
 function scopedCodeProfileId(ownerId: string, profileId: string): string {
   return createHash("sha256").update(`${ownerId}\0${profileId}`).digest("hex");
@@ -495,6 +541,232 @@ export async function buildApp({
   const projectSetupTasks = new Set<Promise<void>>();
   const routeCooldowns = new Map<string, number>();
   const surfaceAttachmentCounts = new Map<string, number>();
+
+  const deliverWorkflowTrigger = async ({
+    actorId,
+    actorType,
+    allowOfflineQueue,
+    allowedType,
+    idempotencyKey,
+    structuredInput,
+    triggerId,
+  }: {
+    actorId: string | null;
+    actorType: "api" | "schedule" | "webhook" | "git";
+    allowOfflineQueue: boolean;
+    allowedType: "api" | "schedule" | "webhook" | "git" | "saved-command";
+    idempotencyKey: string;
+    structuredInput: Record<string, unknown>;
+    triggerId: string;
+  }) => {
+    const context = await repository.workflowTriggers.getDeliveryContext(
+      LOCAL_USER_ID,
+      triggerId,
+    );
+    if (!context || context.trigger.type !== allowedType) {
+      throw new WorkflowTriggerConflictError(
+        "Workflow trigger not found for this delivery route.",
+      );
+    }
+    const source = await repository.getProjectSource(
+      LOCAL_USER_ID,
+      context.trigger.projectId,
+    );
+    if (!source) {
+      throw new WorkflowTriggerConflictError(
+        "Workflow trigger project source is unavailable.",
+      );
+    }
+    if (!allowOfflineQueue && !bridge.isConnected(source.workerId)) {
+      throw new WorkerUnavailableError("Project worker is offline.");
+    }
+    const mergedInput = workflowJsonObjectSchema.parse({
+      ...context.trigger.structuredInput,
+      ...structuredInput,
+    });
+    const sensitivePath = sensitiveTriggerInputPath(mergedInput);
+    if (sensitivePath) {
+      throw new WorkflowTriggerConflictError(
+        "Trigger input cannot contain secret-bearing fields.",
+      );
+    }
+    const deliveredAt = new Date().toISOString();
+    const provenance = workflowTriggerProvenanceSchema.parse({
+      type: context.trigger.type,
+      sourceId: context.trigger.id,
+      actorType,
+      actorId,
+      deliveredAt,
+      metadata: {
+        triggerName: context.trigger.name,
+        projectId: context.trigger.projectId,
+      },
+    });
+    const claim = await repository.workflowTriggers.claimDelivery(
+      LOCAL_USER_ID,
+      triggerId,
+      idempotencyKey,
+      provenance,
+    );
+    if (!claim || claim.kind === "disabled") {
+      throw new WorkflowTriggerConflictError(
+        "Workflow trigger is disabled or unavailable.",
+      );
+    }
+    if (claim.kind === "replay" && claim.delivery.status === "failed") {
+      throw new WorkflowTriggerConflictError(
+        claim.delivery.errorMessage ?? "Workflow trigger delivery failed.",
+      );
+    }
+    if (claim.kind === "replay" && claim.delivery.runId) {
+      const existingRun = await repository.workflowRuns.getRun(
+        LOCAL_USER_ID,
+        claim.delivery.runId,
+      );
+      if (existingRun) {
+        return workflowTriggerDeliveryResultSchema.parse({
+          delivery: claim.delivery,
+          run: existingRun,
+          replayed: true,
+        });
+      }
+    }
+    try {
+      const runResult = await repository.workflowRuns.createRun(LOCAL_USER_ID, {
+        workflowRevisionId: context.trigger.workflowRevisionId,
+        projectId: context.trigger.projectId,
+        structuredInput: mergedInput,
+        budget: context.trigger.budget,
+        permissionManifest: context.trigger.permissionManifest,
+        selectedModelRouteId: context.trigger.selectedModelRouteId,
+        selectedPermissionProfileId:
+          context.trigger.selectedPermissionProfileId,
+        trigger: provenance,
+        idempotencyKey: `trigger:${createHash("sha256")
+          .update(`${triggerId}\0${idempotencyKey}`)
+          .digest("hex")}`,
+      });
+      if (!runResult) {
+        throw new WorkflowTriggerConflictError(
+          "Workflow trigger revision or project is unavailable.",
+        );
+      }
+      const delivery = await repository.workflowTriggers.acceptDelivery(
+        claim.delivery.id,
+        triggerId,
+        runResult.run.run.id,
+      );
+      workflowExecutor.queueRun(runResult.run.run.id);
+      return workflowTriggerDeliveryResultSchema.parse({
+        delivery,
+        run: runResult.run,
+        replayed: claim.kind === "replay" || !runResult.created,
+      });
+    } catch (error) {
+      await repository.workflowTriggers.failDelivery(
+        claim.delivery.id,
+        triggerId,
+        "workflow-trigger-delivery-failed",
+        errorMessage(error),
+      );
+      throw error;
+    }
+  };
+
+  let scheduleTickRunning = false;
+  let activeScheduleTick: Promise<void> | null = null;
+  const deliverDueSchedules = async () => {
+    if (scheduleTickRunning) return;
+    scheduleTickRunning = true;
+    try {
+      const now = new Date();
+      const due = await repository.workflowTriggers.listDueSchedules(now);
+      for (const candidate of due) {
+        if (candidate.trigger.type !== "schedule" || !candidate.row.nextRunAt) {
+          continue;
+        }
+        const expected = candidate.row.nextRunAt;
+        const intervalMs =
+          candidate.trigger.configuration.intervalSeconds * 1_000;
+        if (
+          candidate.trigger.configuration.catchUpPolicy === "skip" &&
+          now.getTime() - expected.getTime() > intervalMs
+        ) {
+          await repository.workflowTriggers.advanceSchedule(
+            candidate.trigger.id,
+            expected,
+            new Date(now.getTime() + intervalMs),
+            "Skipped an overdue scheduled delivery by policy.",
+          );
+          continue;
+        }
+        const source = await repository.getProjectSource(
+          LOCAL_USER_ID,
+          candidate.trigger.projectId,
+        );
+        if (
+          candidate.trigger.configuration.offlinePolicy === "pause" &&
+          (!source || !bridge.isConnected(source.workerId))
+        ) {
+          await repository.workflowTriggers.advanceSchedule(
+            candidate.trigger.id,
+            expected,
+            new Date(now.getTime() + Math.min(intervalMs, 30_000)),
+            "Project worker is offline; scheduled delivery is paused.",
+          );
+          continue;
+        }
+        try {
+          await deliverWorkflowTrigger({
+            actorId: null,
+            actorType: "schedule",
+            allowOfflineQueue:
+              candidate.trigger.configuration.offlinePolicy === "queue",
+            allowedType: "schedule",
+            idempotencyKey: expected.toISOString(),
+            structuredInput: {},
+            triggerId: candidate.trigger.id,
+          });
+          await repository.workflowTriggers.advanceSchedule(
+            candidate.trigger.id,
+            expected,
+            new Date(Date.now() + intervalMs),
+          );
+        } catch (error) {
+          app.log.warn(
+            { err: error, workflowTriggerId: candidate.trigger.id },
+            "Scheduled workflow delivery failed",
+          );
+          await repository.workflowTriggers.advanceSchedule(
+            candidate.trigger.id,
+            expected,
+            new Date(Date.now() + Math.min(intervalMs, 30_000)),
+            errorMessage(error),
+          );
+        }
+      }
+    } finally {
+      scheduleTickRunning = false;
+    }
+  };
+
+  const queueScheduleTick = () => {
+    if (activeScheduleTick) return;
+    activeScheduleTick = deliverDueSchedules()
+      .catch((error) => {
+        app.log.error({ err: error }, "Workflow schedule scan failed");
+      })
+      .finally(() => {
+        activeScheduleTick = null;
+      });
+  };
+
+  const workflowScheduleTimer = setInterval(() => {
+    queueScheduleTick();
+  }, WORKFLOW_SCHEDULE_POLL_MS);
+  workflowScheduleTimer.unref();
+  queueScheduleTick();
+
   const agentInteractionExpiryTimer = setInterval(() => {
     void repository.expireAgentInteractionRequests().catch((error) => {
       app.log.error(
@@ -2294,6 +2566,173 @@ export async function buildApp({
     return reply.send(projectListSchema.parse(projects));
   });
 
+  app.get<{
+    Querystring: {
+      enabled?: string;
+      limit?: string;
+      projectId?: string;
+      type?: string;
+    };
+  }>("/api/workflow-triggers", async (request, reply) => {
+    const query = workflowAutomationTriggerQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.code(400).send(invalidBody(query.error.issues));
+    }
+    return reply.send(
+      workflowAutomationTriggerListSchema.parse(
+        await repository.workflowTriggers.list(LOCAL_USER_ID, query.data),
+      ),
+    );
+  });
+
+  app.post("/api/workflow-triggers", async (request, reply) => {
+    const input = workflowAutomationTriggerCreateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    const sensitivePath = sensitiveTriggerInputPath(input.data.structuredInput);
+    if (sensitivePath) {
+      return reply.code(400).send({
+        error: "Trigger input cannot contain secret-bearing fields.",
+      });
+    }
+    try {
+      const trigger = await repository.workflowTriggers.create(
+        LOCAL_USER_ID,
+        input.data,
+      );
+      return trigger
+        ? reply.code(201).send(workflowAutomationTriggerSchema.parse(trigger))
+        : reply
+            .code(404)
+            .send({ error: "Workflow revision or project not found." });
+    } catch (error) {
+      if (error instanceof WorkflowTriggerConflictError) {
+        return reply.code(409).send({ error: error.message });
+      }
+      throw error;
+    }
+  });
+
+  app.patch<{ Params: { triggerId: string } }>(
+    "/api/workflow-triggers/:triggerId",
+    async (request, reply) => {
+      const input = workflowAutomationTriggerUpdateSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const trigger = await repository.workflowTriggers.update(
+          LOCAL_USER_ID,
+          request.params.triggerId,
+          input.data,
+        );
+        return trigger
+          ? reply.send(workflowAutomationTriggerSchema.parse(trigger))
+          : reply.code(404).send({ error: "Workflow trigger not found." });
+      } catch (error) {
+        if (error instanceof WorkflowTriggerConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: { triggerId: string } }>(
+    "/api/workflow-triggers/:triggerId/deliver",
+    async (request, reply) => {
+      const input = workflowTriggerDeliveryCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const result = await deliverWorkflowTrigger({
+          actorId: LOCAL_USER_ID,
+          actorType: "api",
+          allowOfflineQueue: false,
+          allowedType: "api",
+          idempotencyKey: input.data.idempotencyKey,
+          structuredInput: input.data.structuredInput,
+          triggerId: request.params.triggerId,
+        });
+        return reply
+          .code(result.replayed ? 200 : 201)
+          .send(workflowTriggerDeliveryResultSchema.parse(result));
+      } catch (error) {
+        if (error instanceof WorkflowTriggerRateLimitError) {
+          return reply
+            .header("retry-after", String(error.retryAfterSeconds))
+            .code(429)
+            .send({ error: error.message });
+        }
+        const status =
+          error instanceof WorkerUnavailableError
+            ? 503
+            : error instanceof WorkflowTriggerConflictError ||
+                error instanceof WorkflowRunConflictError
+              ? 409
+              : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{
+    Headers: { "x-cantrip-webhook-token"?: string };
+    Params: { triggerId: string };
+  }>("/api/workflow-hooks/:triggerId", async (request, reply) => {
+    const context = await repository.workflowTriggers.getDeliveryContext(
+      LOCAL_USER_ID,
+      request.params.triggerId,
+    );
+    const token = request.headers["x-cantrip-webhook-token"];
+    if (
+      !context ||
+      context.trigger.type !== "webhook" ||
+      !context.credentialHash ||
+      typeof token !== "string" ||
+      !safeCredentialMatch(token, context.credentialHash)
+    ) {
+      return reply.code(404).send({ error: "Webhook not found." });
+    }
+    const input = workflowTriggerDeliveryCreateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const result = await deliverWorkflowTrigger({
+        actorId: null,
+        actorType: "webhook",
+        allowOfflineQueue: false,
+        allowedType: "webhook",
+        idempotencyKey: input.data.idempotencyKey,
+        structuredInput: input.data.structuredInput,
+        triggerId: request.params.triggerId,
+      });
+      return reply
+        .code(result.replayed ? 200 : 201)
+        .send(workflowTriggerDeliveryResultSchema.parse(result));
+    } catch (error) {
+      if (error instanceof WorkflowTriggerRateLimitError) {
+        return reply
+          .header("retry-after", String(error.retryAfterSeconds))
+          .code(429)
+          .send({ error: error.message });
+      }
+      const status =
+        error instanceof WorkerUnavailableError
+          ? 503
+          : error instanceof WorkflowTriggerConflictError ||
+              error instanceof WorkflowRunConflictError
+            ? 409
+            : 502;
+      return reply.code(status).send({ error: errorMessage(error) });
+    }
+  });
+
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/workflow-generation",
     async (request, reply) => {
@@ -2759,6 +3198,12 @@ export async function buildApp({
     const input = workflowRunCreateSchema.safeParse(request.body);
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    if (input.data.trigger.type !== "manual") {
+      return reply.code(400).send({
+        error:
+          "Non-manual workflow runs must use their scoped trigger delivery endpoint.",
+      });
     }
     try {
       const result = await repository.workflowRuns.createRun(
@@ -7489,9 +7934,11 @@ export async function buildApp({
   app.addHook("onClose", async () => {
     clearInterval(agentInteractionExpiryTimer);
     clearInterval(workflowGateExpiryTimer);
+    clearInterval(workflowScheduleTimer);
     workflowExecutor.stop();
     codeTunnel.close();
     bridge.close();
+    await activeScheduleTick;
     await workflowExecutor.drain();
     await Promise.allSettled(projectSetupTasks);
     await database.close();
