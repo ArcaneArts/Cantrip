@@ -204,15 +204,17 @@ type ControlAction =
   | { type: "retry"; runId: string; nodeId: string };
 
 export function WorkflowCenter({
+  initialWorkflowId,
   onOpenHistory,
   projectId,
 }: {
+  initialWorkflowId?: string | null;
   onOpenHistory(worktreeId: string): void;
   projectId: string;
 }) {
   const queryClient = useQueryClient();
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(
-    null,
+    initialWorkflowId ?? null,
   );
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [launchOpen, setLaunchOpen] = useState(false);
@@ -235,13 +237,14 @@ export function WorkflowCenter({
   );
 
   useEffect(() => {
+    if (workflows.isPending) return;
     if (
       !selectedWorkflowId ||
       !visibleWorkflows.some(({ id }) => id === selectedWorkflowId)
     ) {
       setSelectedWorkflowId(visibleWorkflows[0]?.id ?? null);
     }
-  }, [selectedWorkflowId, visibleWorkflows]);
+  }, [selectedWorkflowId, visibleWorkflows, workflows.isPending]);
 
   const workflow = useQuery({
     enabled: Boolean(selectedWorkflowId),

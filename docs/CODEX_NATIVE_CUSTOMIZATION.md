@@ -21,6 +21,18 @@ normalizes supported App Server responses into the shared protocol.
 Use `?refresh=true` to ask Codex to bypass its skill cache. This refreshes
 discovery only; it does not edit a skill or configuration.
 
+## Unified composer discovery
+
+Typing `/` at the start of an otherwise empty chat draft searches one portable
+palette containing Cantrip built-in chat commands, Codex skills discovered for
+that chat runtime, and the active project's personal and project workflows.
+Collisions stay explicit through stable invocation namespaces: built-ins use
+`/name`, workflows use `/personal/slug` or `/project/slug`, and skills use
+`$name`. Choosing a skill inserts its native mention into the draft; choosing a
+workflow opens its server-backed review and launch surface in Project Settings.
+The palette does not reinterpret a workflow as a Codex slash command or copy a
+skill into Cantrip-owned storage.
+
 `POST /api/chats/:chatId/customizations/mcp-resource` reads one advertised MCP
 resource through Codex. Cantrip limits the normalized response to 5 MB before
 it crosses the worker bridge.
