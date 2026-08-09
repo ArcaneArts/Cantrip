@@ -18,6 +18,7 @@ import {
   bigserial,
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -211,6 +212,7 @@ export const projects = pgTable(
     setupStatus: text("setup_status").notNull().default("ready"),
     setupError: text("setup_error"),
     worktreePolicy: text("worktree_policy").notNull().default("agent-managed"),
+    tabLayoutRevision: integer("tab_layout_revision").notNull().default(0),
     githubRepositoryId: text("github_repository_id"),
     githubRepositoryFullName: text("github_repository_full_name"),
     githubRepositoryUrl: text("github_repository_url"),
@@ -225,6 +227,68 @@ export const projects = pgTable(
     uniqueIndex("projects_owner_github_repository_unique").on(
       table.ownerId,
       table.githubRepositoryId,
+    ),
+  ],
+);
+
+export const tabGroups = pgTable(
+  "tab_groups",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    position: integer("position").notNull().default(0),
+    anchorTabKey: text("anchor_tab_key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("tab_groups_id_project_unique").on(table.id, table.projectId),
+    index("tab_groups_project_position_index").on(
+      table.projectId,
+      table.position,
+    ),
+  ],
+);
+
+export const tabGroupMembers = pgTable(
+  "tab_group_members",
+  {
+    tabKey: text("tab_key").primaryKey(),
+    groupId: text("group_id").notNull(),
+    projectId: text("project_id").notNull(),
+    tabKind: text("tab_kind").notNull(),
+    tabId: text("tab_id").notNull(),
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.groupId, table.projectId],
+      foreignColumns: [tabGroups.id, tabGroups.projectId],
+      name: "tab_group_members_group_project_fk",
+    }).onDelete("cascade"),
+    uniqueIndex("tab_group_members_surface_unique").on(
+      table.tabKind,
+      table.tabId,
+    ),
+    index("tab_group_members_group_position_index").on(
+      table.groupId,
+      table.position,
+    ),
+    check(
+      "tab_group_members_kind_check",
+      sql`${table.tabKind} IN ('chat', 'terminal', 'explorer', 'browser', 'code', 'history', 'issues', 'remote-desktop')`,
     ),
   ],
 );

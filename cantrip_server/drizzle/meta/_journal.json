@@ -260,6 +260,13 @@
       "when": 1786306774912,
       "tag": "0036_yielding_thing",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1786307802436,
+      "tag": "0037_freezing_captain_stacy",
+      "breakpoints": true
     }
   ]
 }

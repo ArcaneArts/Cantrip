@@ -102,6 +102,12 @@ import * as schema from "./schema.js";
 import { WorkflowRunRepository } from "./workflow-runs.js";
 import { WorkflowRepository } from "./workflows.js";
 import { WorkflowTriggerRepository } from "./workflow-triggers.js";
+import {
+  attachProjectTab,
+  detachProjectTab,
+  projectTabKey,
+  ProjectTabLayoutRepository,
+} from "./tab-layouts.js";
 
 export const LOCAL_USER_ID = "00000000-0000-0000-0000-000000000001";
 export const DEFAULT_OLLAMA_PROVIDER_ID =
@@ -148,6 +154,7 @@ export class CodeCapabilityUnavailableError extends Error {}
 export interface TerminalExecutionContext {
   cwd: string;
   linkedChatId: string | null;
+  projectId: string;
   status: TerminalSummary["status"];
   terminalId: string;
   workerId: string;
@@ -212,6 +219,7 @@ export interface ChatWorktreeTransitionResult {
 
 export interface ExplorerExecutionContext {
   explorerId: string;
+  projectId: string;
   root: string;
   workerId: string;
 }
@@ -803,6 +811,7 @@ function toQueuedPrompt(
 }
 
 export class ServerRepository {
+  readonly tabLayouts: ProjectTabLayoutRepository;
   readonly workflows: WorkflowRepository;
   readonly workflowRuns: WorkflowRunRepository;
   readonly workflowTriggers: WorkflowTriggerRepository;
@@ -811,6 +820,7 @@ export class ServerRepository {
     this.workflows = new WorkflowRepository(database);
     this.workflowRuns = new WorkflowRunRepository(database);
     this.workflowTriggers = new WorkflowTriggerRepository(database);
+    this.tabLayouts = new ProjectTabLayoutRepository(database);
   }
 
   async ensureLocalIdentity(): Promise<UserSummary> {
@@ -2957,6 +2967,12 @@ export class ServerRepository {
         startingHead,
         runtimeSessionId,
       });
+      await attachProjectTab(transaction, {
+        projectId,
+        tabGroupId: input.tabGroupId,
+        tabId: chat.id,
+        tabKind: "chat",
+      });
       return toChatSummary(chat);
     });
   }
@@ -3005,18 +3021,27 @@ export class ServerRepository {
       return null;
 
     const position = await this.nextProjectTabPosition(projectId);
-    const result = await this.database
-      .insert(schema.terminals)
-      .values({
-        id: randomUUID(),
+    return this.database.transaction(async (transaction) => {
+      const result = await transaction
+        .insert(schema.terminals)
+        .values({
+          id: randomUUID(),
+          projectId,
+          title: input.title,
+          position,
+          activeWorkerId: workerId,
+          worktreeId,
+        })
+        .returning();
+      const terminal = firstOrThrow(result, "creating a terminal");
+      await attachProjectTab(transaction, {
         projectId,
-        title: input.title,
-        position,
-        activeWorkerId: workerId,
-        worktreeId,
-      })
-      .returning();
-    return toTerminalSummary(firstOrThrow(result, "creating a terminal"));
+        tabGroupId: input.tabGroupId,
+        tabId: terminal.id,
+        tabKind: "terminal",
+      });
+      return toTerminalSummary(terminal);
+    });
   }
 
   async getOrCreateChatConsole(
@@ -3168,18 +3193,27 @@ export class ServerRepository {
     )
       return null;
     const position = await this.nextProjectTabPosition(projectId);
-    const result = await this.database
-      .insert(schema.explorers)
-      .values({
-        id: randomUUID(),
+    return this.database.transaction(async (transaction) => {
+      const result = await transaction
+        .insert(schema.explorers)
+        .values({
+          id: randomUUID(),
+          projectId,
+          title: input.title,
+          position,
+          activeWorkerId: workerId,
+          worktreeId,
+        })
+        .returning();
+      const explorer = firstOrThrow(result, "creating an explorer");
+      await attachProjectTab(transaction, {
         projectId,
-        title: input.title,
-        position,
-        activeWorkerId: workerId,
-        worktreeId,
-      })
-      .returning();
-    return toExplorerSummary(firstOrThrow(result, "creating an explorer"));
+        tabGroupId: input.tabGroupId,
+        tabId: explorer.id,
+        tabKind: "explorer",
+      });
+      return toExplorerSummary(explorer);
+    });
   }
 
   async updateExplorerWorktree(
@@ -3246,6 +3280,7 @@ export class ServerRepository {
     return row
       ? {
           explorerId: row.explorer.id,
+          projectId: row.explorer.projectId,
           root: row.worktree.absolutePath,
           workerId: row.worktree.workerId,
         }
@@ -3268,13 +3303,20 @@ export class ServerRepository {
   }
 
   async deleteExplorer(ownerId: string, explorerId: string): Promise<boolean> {
-    if (!(await this.getExplorerExecutionContext(ownerId, explorerId)))
-      return false;
-    const result = await this.database
-      .delete(schema.explorers)
-      .where(eq(schema.explorers.id, explorerId))
-      .returning({ id: schema.explorers.id });
-    return result.length === 1;
+    const context = await this.getExplorerExecutionContext(ownerId, explorerId);
+    if (!context) return false;
+    return this.database.transaction(async (transaction) => {
+      await detachProjectTab(
+        transaction,
+        context.projectId,
+        projectTabKey("explorer", explorerId),
+      );
+      const result = await transaction
+        .delete(schema.explorers)
+        .where(eq(schema.explorers.id, explorerId))
+        .returning({ id: schema.explorers.id });
+      return result.length === 1;
+    });
   }
 
   async listCodeTabs(
@@ -3336,20 +3378,30 @@ export class ServerRepository {
         capabilities?.reason ?? "Cantrip Code is unavailable on this worker.",
       );
     }
-    const result = await this.database
-      .insert(schema.codeTabs)
-      .values({
-        id: randomUUID(),
+    const position = await this.nextProjectTabPosition(projectId);
+    return this.database.transaction(async (transaction) => {
+      const result = await transaction
+        .insert(schema.codeTabs)
+        .values({
+          id: randomUUID(),
+          projectId,
+          title: input.title,
+          position,
+          activeWorkerId: workerId,
+          worktreeId,
+          profileId: input.profileId,
+          themeMode: input.themeMode,
+        })
+        .returning();
+      const codeTab = firstOrThrow(result, "creating a Code tab");
+      await attachProjectTab(transaction, {
         projectId,
-        title: input.title,
-        position: await this.nextProjectTabPosition(projectId),
-        activeWorkerId: workerId,
-        worktreeId,
-        profileId: input.profileId,
-        themeMode: input.themeMode,
-      })
-      .returning();
-    return toCodeTabSummary(firstOrThrow(result, "creating a Code tab"));
+        tabGroupId: input.tabGroupId,
+        tabId: codeTab.id,
+        tabKind: "code",
+      });
+      return toCodeTabSummary(codeTab);
+    });
   }
 
   async getCodeTabExecutionContext(
@@ -3450,9 +3502,16 @@ export class ServerRepository {
   ): Promise<CodeTabExecutionContext | null> {
     const context = await this.getCodeTabExecutionContext(ownerId, codeTabId);
     if (!context) return null;
-    await this.database
-      .delete(schema.codeTabs)
-      .where(eq(schema.codeTabs.id, codeTabId));
+    await this.database.transaction(async (transaction) => {
+      await detachProjectTab(
+        transaction,
+        context.codeTab.projectId,
+        projectTabKey("code", codeTabId),
+      );
+      await transaction
+        .delete(schema.codeTabs)
+        .where(eq(schema.codeTabs.id, codeTabId));
+    });
     return context;
   }
 
@@ -3640,6 +3699,12 @@ export class ServerRepository {
           profileId: null,
         },
       });
+      await attachProjectTab(transaction, {
+        projectId,
+        tabGroupId: input.tabGroupId,
+        tabId: browser.id,
+        tabKind: "browser",
+      });
       return toBrowserSummary(browser);
     });
   }
@@ -3683,8 +3748,17 @@ export class ServerRepository {
   }
 
   async deleteBrowser(ownerId: string, browserId: string): Promise<boolean> {
-    if (!(await this.browserIsOwnedBy(ownerId, browserId))) return false;
+    const context = await this.getRemoteSurfaceExecutionContext(
+      ownerId,
+      browserId,
+    );
+    if (!context || context.surface.kind !== "browser") return false;
     return this.database.transaction(async (transaction) => {
+      await detachProjectTab(
+        transaction,
+        context.surface.projectId,
+        projectTabKey("browser", browserId),
+      );
       await transaction
         .delete(schema.remoteSurfaces)
         .where(eq(schema.remoteSurfaces.id, browserId));
@@ -3979,6 +4053,7 @@ export class ServerRepository {
     projectId: string,
     desktopId: string,
     workerId: string,
+    tabGroupId?: string,
   ): Promise<RemoteDesktopSummary | null> {
     const [projectRows, workerRows] = await Promise.all([
       this.database
@@ -4024,6 +4099,12 @@ export class ServerRepository {
           kind: "desktop",
           target: { kind: "monitor", id: null, name: null },
         },
+      });
+      await attachProjectTab(transaction, {
+        projectId,
+        tabGroupId,
+        tabId: desktopId,
+        tabKind: "remote-desktop",
       });
     });
     return this.getRemoteDesktop(ownerId, desktopId);
@@ -4076,20 +4157,27 @@ export class ServerRepository {
     )
       return null;
     const position = await this.nextProjectTabPosition(projectId);
-    const result = await this.database
-      .insert(schema.projectViews)
-      .values({
-        id: randomUUID(),
+    return this.database.transaction(async (transaction) => {
+      const result = await transaction
+        .insert(schema.projectViews)
+        .values({
+          id: randomUUID(),
+          projectId,
+          title: input.title,
+          kind: input.kind,
+          worktreeId: input.kind === "history" ? worktreeId : null,
+          position,
+        })
+        .returning();
+      const view = firstOrThrow(result, "creating a project view");
+      await attachProjectTab(transaction, {
         projectId,
-        title: input.title,
-        kind: input.kind,
-        worktreeId: input.kind === "history" ? worktreeId : null,
-        position,
-      })
-      .returning();
-    return toProjectViewSummary(
-      firstOrThrow(result, "creating a project view"),
-    );
+        tabGroupId: input.tabGroupId,
+        tabId: view.id,
+        tabKind: input.kind,
+      });
+      return toProjectViewSummary(view);
+    });
   }
 
   async updateProjectView(
@@ -4150,8 +4238,26 @@ export class ServerRepository {
   }
 
   async deleteProjectView(ownerId: string, viewId: string): Promise<boolean> {
-    if (!(await this.projectViewIsOwnedBy(ownerId, viewId))) return false;
+    const rows = await this.database
+      .select({ view: schema.projectViews })
+      .from(schema.projectViews)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.projectViews.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.projectViews.id, viewId))
+      .limit(1);
+    const view = rows[0]?.view;
+    if (!view) return false;
     const result = await this.database.transaction(async (transaction) => {
+      await detachProjectTab(
+        transaction,
+        view.projectId,
+        projectTabKey(view.kind as ProjectViewSummary["kind"], viewId),
+      );
       await transaction
         .delete(schema.remoteSurfaces)
         .where(eq(schema.remoteSurfaces.id, viewId));
@@ -4207,9 +4313,16 @@ export class ServerRepository {
   ): Promise<TerminalExecutionContext | null> {
     const context = await this.getTerminalExecutionContext(ownerId, terminalId);
     if (!context) return null;
-    await this.database
-      .delete(schema.terminals)
-      .where(eq(schema.terminals.id, terminalId));
+    await this.database.transaction(async (transaction) => {
+      await detachProjectTab(
+        transaction,
+        context.projectId,
+        projectTabKey("terminal", terminalId),
+      );
+      await transaction
+        .delete(schema.terminals)
+        .where(eq(schema.terminals.id, terminalId));
+    });
     return context;
   }
 
@@ -4240,6 +4353,7 @@ export class ServerRepository {
     return row
       ? {
           terminalId: row.terminal.id,
+          projectId: row.terminal.projectId,
           workerId: row.worktree.workerId,
           worktreeId: row.worktree.id,
           cwd: row.worktree.absolutePath,
@@ -4497,7 +4611,14 @@ export class ServerRepository {
     const chat = rows[0]?.chat;
     if (!chat) return false;
     if (chatIsExecuting(chat.status as ChatSummary["status"])) return "running";
-    await this.database.delete(schema.chats).where(eq(schema.chats.id, chatId));
+    await this.database.transaction(async (transaction) => {
+      await detachProjectTab(
+        transaction,
+        chat.projectId,
+        projectTabKey("chat", chatId),
+      );
+      await transaction.delete(schema.chats).where(eq(schema.chats.id, chatId));
+    });
     return true;
   }
 
@@ -4659,6 +4780,11 @@ export class ServerRepository {
         startingHead: target.head,
         runtimeSessionId,
       });
+      await attachProjectTab(transaction, {
+        projectId: row.chat.projectId,
+        tabId: fork.id,
+        tabKind: "chat",
+      });
       if (sourceMessages.length > 0) {
         await transaction.insert(schema.chatMessages).values(
           sourceMessages.map((message) => ({
@@ -4710,6 +4836,7 @@ export class ServerRepository {
       codeRows,
       browserRows,
       viewRows,
+      memberRows,
     ] = await Promise.all([
       this.database
         .select({ id: schema.chats.id })
@@ -4782,6 +4909,13 @@ export class ServerRepository {
           ),
         )
         .where(eq(schema.projectViews.projectId, projectId)),
+      this.database
+        .select({
+          groupId: schema.tabGroupMembers.groupId,
+          tabKey: schema.tabGroupMembers.tabKey,
+        })
+        .from(schema.tabGroupMembers)
+        .where(eq(schema.tabGroupMembers.projectId, projectId)),
     ]);
     const expected = new Set([
       ...chatRows.map(({ id }) => `chat:${id}`),
@@ -4794,6 +4928,17 @@ export class ServerRepository {
     if (
       expected.size !== input.ids.length ||
       input.ids.some((id) => !expected.has(id))
+    ) {
+      return false;
+    }
+    const groupByTabKey = new Map(
+      memberRows.map(({ groupId, tabKey }) => [tabKey, groupId]),
+    );
+    if (
+      memberRows.length !== expected.size ||
+      new Set(memberRows.map(({ groupId }) => groupId)).size !==
+        memberRows.length ||
+      input.ids.some((tabKey) => !groupByTabKey.has(tabKey))
     ) {
       return false;
     }
@@ -4833,7 +4978,18 @@ export class ServerRepository {
             .set({ position })
             .where(eq(schema.projectViews.id, id));
         }
+        await transaction
+          .update(schema.tabGroups)
+          .set({ position, updatedAt: new Date() })
+          .where(eq(schema.tabGroups.id, groupByTabKey.get(taggedId)!));
       }
+      await transaction
+        .update(schema.projects)
+        .set({
+          tabLayoutRevision: sql`${schema.projects.tabLayoutRevision} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.projects.id, projectId));
     });
     return true;
   }

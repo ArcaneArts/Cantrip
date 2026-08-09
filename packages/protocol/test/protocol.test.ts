@@ -42,6 +42,7 @@ import {
   chatPermissionProfileStateSchema,
   queuedPromptSchema,
   projectWorktreeSummarySchema,
+  projectTabLayoutSummarySchema,
   remoteDesktopCreateSchema,
   remoteDesktopClientMessageSchema,
   remoteDesktopSummarySchema,
@@ -51,6 +52,9 @@ import {
   systemHealthSchema,
   terminalClientMessageSchema,
   terminalServerMessageSchema,
+  tabGroupMemberMoveSchema,
+  tabGroupMemberOrderSchema,
+  tabGroupOrderSchema,
   unprobedCodexRuntimeReport,
   userSettingsSchema,
   workerCommandSchema,
@@ -928,6 +932,9 @@ describe("Cantrip protocol", () => {
 
   it("validates one-click managed desktops without client configuration", () => {
     expect(remoteDesktopCreateSchema.parse({})).toEqual({});
+    expect(remoteDesktopCreateSchema.parse({ tabGroupId: "group-1" })).toEqual({
+      tabGroupId: "group-1",
+    });
     expect(
       remoteDesktopCreateSchema.safeParse({ host: "127.0.0.1" }).success,
     ).toBe(false);
@@ -1038,6 +1045,67 @@ describe("Cantrip protocol", () => {
         defaultModelId: null,
       }).success,
     ).toBe(false);
+  });
+
+  it("validates revisioned project tab layouts and unique order mutations", () => {
+    expect(
+      projectTabLayoutSummarySchema.parse({
+        projectId: "project-1",
+        revision: 3,
+        groups: [
+          {
+            id: "group-1",
+            projectId: "project-1",
+            position: 0,
+            anchorTabKey: "chat:chat-1",
+            members: [
+              {
+                tabKey: "chat:chat-1",
+                groupId: "group-1",
+                projectId: "project-1",
+                tabKind: "chat",
+                tabId: "chat-1",
+                title: "Chat",
+                position: 0,
+                createdAt: "2026-08-09T12:00:00.000Z",
+                updatedAt: "2026-08-09T12:00:00.000Z",
+              },
+            ],
+            createdAt: "2026-08-09T12:00:00.000Z",
+            updatedAt: "2026-08-09T12:00:00.000Z",
+          },
+        ],
+      }),
+    ).toMatchObject({ revision: 3 });
+    expect(
+      tabGroupOrderSchema.safeParse({
+        revision: 3,
+        groupIds: ["group-1", "group-1"],
+      }).success,
+    ).toBe(false);
+    expect(
+      tabGroupMemberOrderSchema.safeParse({
+        revision: 3,
+        tabKeys: ["chat:chat-1", "chat:chat-1"],
+      }).success,
+    ).toBe(false);
+    expect(
+      tabGroupMemberMoveSchema.safeParse({
+        revision: 3,
+        tabKey: "chat:chat-1",
+        targetGroupId: null,
+        targetMemberPosition: 0,
+      }).success,
+    ).toBe(false);
+    expect(
+      tabGroupMemberMoveSchema.parse({
+        revision: 3,
+        tabKey: "chat:chat-1",
+        targetGroupId: null,
+        targetMemberPosition: 0,
+        targetGroupPosition: 1,
+      }),
+    ).toMatchObject({ targetGroupId: null, targetGroupPosition: 1 });
   });
 
   it("rejects an unhealthy server payload", () => {
