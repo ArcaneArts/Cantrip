@@ -4290,7 +4290,9 @@ export function App() {
               aria-hidden="true"
               className={cn(
                 "pointer-events-none absolute inset-x-0 bottom-0 h-px bg-border transition-opacity duration-200",
-                contentScrolled ? "opacity-100" : "opacity-0",
+                contentScrolled && !gitHistoryProject
+                  ? "opacity-100"
+                  : "opacity-0",
               )}
             />
           </header>
@@ -4432,6 +4434,7 @@ export function App() {
           <GitHistoryView
             key={selectedProjectView?.id}
             chats={chats.data ?? []}
+            contentScrolled={contentScrolled}
             view={selectedProjectView?.kind ?? "history"}
             standalone={isPopout}
             project={gitHistoryProject}
