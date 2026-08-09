@@ -551,7 +551,7 @@ export const systemHealthSchema = z.object({
 export const themePreferenceSchema = z.enum(["system", "light", "dark"]);
 
 export const DEFAULT_SIDEBAR_WIDTH = 288;
-export const MIN_SIDEBAR_WIDTH = 224;
+export const MIN_SIDEBAR_WIDTH = 192;
 export const MAX_SIDEBAR_WIDTH = 480;
 export const sidebarWidthPreferenceSchema = z
   .number()
