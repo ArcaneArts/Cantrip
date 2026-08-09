@@ -1022,11 +1022,22 @@ describe("Cantrip protocol", () => {
       userSettingsSchema.parse({
         theme: "system",
         highContrast: false,
+        sidebarWidth: 288,
         desktopFrameRate: 30,
         desktopStreamQuality: "adaptive",
         defaultModelId: null,
       }),
     ).toMatchObject({ desktopFrameRate: 30 });
+    expect(
+      userSettingsSchema.safeParse({
+        theme: "system",
+        highContrast: false,
+        sidebarWidth: 200,
+        desktopFrameRate: 30,
+        desktopStreamQuality: "adaptive",
+        defaultModelId: null,
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects an unhealthy server payload", () => {

@@ -1173,6 +1173,7 @@ describe("local server foundation", () => {
     expect(initialSettings.preferences).toMatchObject({
       theme: "system",
       highContrast: false,
+      sidebarWidth: 288,
       desktopFrameRate: 30,
       desktopStreamQuality: "adaptive",
       defaultModelId: expect.any(String),
@@ -1269,6 +1270,7 @@ describe("local server foundation", () => {
           payload: {
             theme: "dark",
             highContrast: true,
+            sidebarWidth: 352,
             desktopFrameRate: 60,
             desktopStreamQuality: "balanced",
             defaultModelId: selectedModel.id,
@@ -1279,6 +1281,7 @@ describe("local server foundation", () => {
     expect(updatedSettings.preferences).toEqual({
       theme: "dark",
       highContrast: true,
+      sidebarWidth: 352,
       desktopFrameRate: 60,
       desktopStreamQuality: "balanced",
       defaultModelId: selectedModel.id,
@@ -3745,6 +3748,7 @@ describe("local server foundation", () => {
     expect(restoredSettings.preferences).toEqual({
       theme: "dark",
       highContrast: true,
+      sidebarWidth: 352,
       desktopFrameRate: 60,
       desktopStreamQuality: "balanced",
       defaultModelId: selectedModel.id,
