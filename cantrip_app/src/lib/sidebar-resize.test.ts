@@ -10,6 +10,10 @@ import {
 } from "./sidebar-resize";
 
 describe("sidebar resizing", () => {
+  it("supports the compact sidebar width enabled by flat project tabs", () => {
+    expect(MIN_SIDEBAR_WIDTH).toBe(192);
+  });
+
   it("rounds and clamps pointer widths to the supported range", () => {
     expect(sidebarWidthFromPointer(361.6, 10)).toBe(352);
     expect(sidebarWidthFromPointer(100)).toBe(MIN_SIDEBAR_WIDTH);

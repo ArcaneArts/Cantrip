@@ -38,6 +38,7 @@ import {
   gitActionSchema,
   gitFileDiffSchema,
   mentionedSkillNames,
+  MIN_SIDEBAR_WIDTH,
   normalizeResponsesBaseUrl,
   chatPermissionProfileStateSchema,
   queuedPromptSchema,
@@ -1039,7 +1040,17 @@ describe("Cantrip protocol", () => {
       userSettingsSchema.safeParse({
         theme: "system",
         highContrast: false,
-        sidebarWidth: 200,
+        sidebarWidth: MIN_SIDEBAR_WIDTH,
+        desktopFrameRate: 30,
+        desktopStreamQuality: "adaptive",
+        defaultModelId: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      userSettingsSchema.safeParse({
+        theme: "system",
+        highContrast: false,
+        sidebarWidth: MIN_SIDEBAR_WIDTH - 1,
         desktopFrameRate: 30,
         desktopStreamQuality: "adaptive",
         defaultModelId: null,

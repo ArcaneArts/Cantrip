@@ -1463,7 +1463,7 @@ export function ProjectChatList({
                 }}
               >
                 {active ? (
-                  <div className="ml-5 mt-1 border-l border-transparent pl-2 transition-colors duration-200 group-hover:border-border group-focus-within:border-border [@media(pointer:coarse)]:border-border">
+                  <div className="mt-1">
                     <SortableContext
                       items={tabs.map((tab) => tab.id)}
                       strategy={verticalListSortingStrategy}
