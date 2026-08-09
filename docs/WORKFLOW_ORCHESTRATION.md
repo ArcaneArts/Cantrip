@@ -262,3 +262,11 @@ pending terminal intent, preserves the checkout and cleanup blocker, and
 returns the lease to its checkpointed `kept` state. Replaying a finalized
 outcome with the same key and payload is safe; reusing the key with different
 input is a conflict.
+
+Cantrip scans durable `recovering` workflow leases during server startup and
+again when the owning worker sends a heartbeat or attaches its command socket.
+An interrupted allocation is requeued through the normal workflow scheduler;
+a pending terminal outcome is replayed through the same checkpoint validation
+and worker-owned Git commands as the original request. Offline or unsafe lanes
+remain visibly recovering and continue blocking cleanup instead of being
+silently released.

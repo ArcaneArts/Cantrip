@@ -767,9 +767,8 @@ async function createCheckpointedWriteRun(
   return { detail, lease: detail.worktreeLeases[0]!, runId };
 }
 
-beforeAll(async () => {
-  database = await connectDatabase(config);
-  await database.repository.recordWorker({
+function testWorkerHeartbeat() {
+  return {
     workerId: "test-worker",
     name: "Test Worker",
     platform: "darwin",
@@ -778,11 +777,16 @@ beforeAll(async () => {
     codexRuntime: unprobedCodexRuntimeReport,
     remoteSurfaces: {
       browser: false,
-      transports: ["websocket"],
+      transports: ["websocket" as const],
       maxSessions: 1,
     },
     startedAt: new Date().toISOString(),
-  });
+  };
+}
+
+beforeAll(async () => {
+  database = await connectDatabase(config);
+  await database.repository.recordWorker(testWorkerHeartbeat());
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "test-worker",
     repositoryId: "workflow-execution-repository",
@@ -1309,6 +1313,89 @@ describe.sequential("single-agent workflow execution", () => {
       "worktree.lease.outcome-started",
       "worktree.lease.discarded",
     ]);
+  });
+
+  it("finalizes a persisted discard intent automatically during server startup", async () => {
+    const { lease, runId } = await createCheckpointedWriteRun(
+      "restart-recover-discarded-write",
+      "execute-restart-recover-discarded-write",
+    );
+    disconnectAfterWorkflowWorktreeRemoval = true;
+    const interrupted = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/worktree-leases/${lease.id}/outcome`,
+      payload: {
+        action: "discard",
+        expectedEndingRevision: lease.endingRevision,
+        idempotencyKey: "restart-recover-discarded-workflow-lane",
+      },
+    });
+    expect(interrupted.statusCode).toBe(503);
+    expect((await runDetail(runId)).worktreeLeases[0]).toMatchObject({
+      state: "recovering",
+      pendingOutcome: "discard",
+    });
+    expect(workflowWorktrees.has(lease.worktreeId!)).toBe(false);
+    const beforeRestart = worktreeCommands.length;
+
+    await app.close();
+    connected = true;
+    database = await connectDatabase(config);
+    app = await buildApp({ config, database, logger: false, workerBridge });
+
+    expect((await runDetail(runId)).worktreeLeases[0]).toMatchObject({
+      state: "released",
+      outcome: "discarded",
+      pendingOutcome: null,
+      pendingOutcomeRequest: null,
+      outcomeStartedAt: null,
+    });
+    expect(worktreeCommands.slice(beforeRestart)).toEqual([
+      expect.objectContaining({ type: "worktree.reconcile" }),
+    ]);
+  });
+
+  it("resumes a persisted discard intent when its worker reconnects", async () => {
+    const { lease, runId } = await createCheckpointedWriteRun(
+      "reconnect-recover-discarded-write",
+      "execute-reconnect-recover-discarded-write",
+    );
+    disconnectBeforeWorkflowWorktreeRemoval = true;
+    const interrupted = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/worktree-leases/${lease.id}/outcome`,
+      payload: {
+        action: "discard",
+        expectedEndingRevision: lease.endingRevision,
+        idempotencyKey: "reconnect-recover-discarded-workflow-lane",
+      },
+    });
+    expect(interrupted.statusCode).toBe(503);
+    expect((await runDetail(runId)).worktreeLeases[0]).toMatchObject({
+      state: "recovering",
+      pendingOutcome: "discard",
+    });
+    expect(workflowWorktrees.has(lease.worktreeId!)).toBe(true);
+    const beforeReconnect = worktreeCommands.length;
+
+    connected = true;
+    const heartbeat = await app.inject({
+      method: "POST",
+      url: "/api/internal/workers/heartbeat",
+      headers: { authorization: `Bearer ${config.workerToken}` },
+      payload: testWorkerHeartbeat(),
+    });
+    expect(heartbeat.statusCode).toBe(202);
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).worktreeLeases[0]).toMatchObject({
+        state: "released",
+        outcome: "discarded",
+      });
+    });
+    expect(workflowWorktrees.has(lease.worktreeId!)).toBe(false);
+    expect(
+      worktreeCommands.slice(beforeReconnect).map(({ type }) => type),
+    ).toEqual(["worktree.reconcile", "worktree.status", "worktree.remove"]);
   });
 
   it("keeps a recovering lane to cancel a terminal intent without removing it", async () => {

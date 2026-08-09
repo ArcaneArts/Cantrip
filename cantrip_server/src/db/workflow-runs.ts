@@ -244,6 +244,14 @@ export interface WorkflowAttemptAssignment {
   worktreeId: string;
 }
 
+export interface WorkflowWorktreeRecoveryCandidate {
+  leaseId: string;
+  pendingOutcomeRequest: WorkflowWorktreeOutcomeRequest | null;
+  projectId: string;
+  runId: string;
+  workerId: string;
+}
+
 export interface WorkflowWorktreeLeaseReservationInput {
   baseRevision: string;
   branchName: string;
@@ -1711,6 +1719,74 @@ export class WorkflowRunRepository {
       .orderBy(asc(schema.workflowRuns.queuedAt))
       .limit(Math.max(1, Math.min(limit, 500)));
     return rows.map(({ id }) => id);
+  }
+
+  async listRecoverableWorktreeLeases(
+    ownerId: string,
+    workerId: string | null = null,
+    limit = 500,
+  ): Promise<WorkflowWorktreeRecoveryCandidate[]> {
+    const rows = await this.database
+      .select({
+        leaseId: schema.workflowWorktreeLeases.id,
+        pendingOutcome: schema.workflowWorktreeLeases.pendingOutcome,
+        pendingOutcomeRequest:
+          schema.workflowWorktreeLeases.pendingOutcomeRequest,
+        projectId: schema.workflowRuns.projectId,
+        runRecoveryState: schema.workflowRuns.recoveryState,
+        runId: schema.workflowWorktreeLeases.runId,
+        runStatus: schema.workflowRuns.status,
+        workerId: schema.workflowWorktreeLeases.workerId,
+      })
+      .from(schema.workflowWorktreeLeases)
+      .innerJoin(
+        schema.workflowRuns,
+        and(
+          eq(schema.workflowRuns.id, schema.workflowWorktreeLeases.runId),
+          eq(schema.workflowRuns.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.workflowWorktreeLeases.state, "recovering"),
+          workerId
+            ? eq(schema.workflowWorktreeLeases.workerId, workerId)
+            : sql`TRUE`,
+        ),
+      )
+      .orderBy(asc(schema.workflowWorktreeLeases.updatedAt))
+      .limit(Math.max(1, Math.min(limit, 500)));
+    return rows.flatMap((row) => {
+      if (!row.projectId || !row.workerId) return [];
+      const pendingOutcomeRequest = row.pendingOutcomeRequest
+        ? workflowWorktreeOutcomeRequestSchema.parse(row.pendingOutcomeRequest)
+        : null;
+      if (
+        (row.pendingOutcome === null) !== (pendingOutcomeRequest === null) ||
+        (row.pendingOutcome &&
+          row.pendingOutcome !== pendingOutcomeRequest?.action)
+      ) {
+        throw new Error(
+          `Workflow worktree lease ${row.leaseId} has inconsistent recovery state.`,
+        );
+      }
+      if (
+        !pendingOutcomeRequest &&
+        (row.runRecoveryState !== "stable" ||
+          !["queued", "running", "waiting"].includes(row.runStatus))
+      ) {
+        return [];
+      }
+      return [
+        {
+          leaseId: row.leaseId,
+          pendingOutcomeRequest,
+          projectId: row.projectId,
+          runId: row.runId,
+          workerId: row.workerId,
+        },
+      ];
+    });
   }
 
   async enforceRunBudget(
