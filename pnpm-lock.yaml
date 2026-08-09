@@ -5,6 +5,9 @@ settings:
   excludeLinksFromLockfile: false
   injectWorkspacePackages: true
 
+patchedDependencies:
+  webdav-server@2.6.3: 6d9ab239e94069970537406374780261e3dc976865163fad26cafb6643d2da2f
+
 importers:
   .:
     devDependencies:
@@ -229,7 +232,7 @@ importers:
         version: 0.34.4
       webdav-server:
         specifier: 2.6.3
-        version: 2.6.3
+        version: 2.6.3(patch_hash=6d9ab239e94069970537406374780261e3dc976865163fad26cafb6643d2da2f)
       werift:
         specifier: ^0.24.3
         version: 0.24.3(supports-color@10.2.2)
@@ -11352,7 +11355,7 @@ snapshots:
     transitivePeerDependencies:
       - msw
 
-  webdav-server@2.6.3:
+  webdav-server@2.6.3(patch_hash=6d9ab239e94069970537406374780261e3dc976865163fad26cafb6643d2da2f):
     dependencies:
       mime-types: 2.1.35
       xml-js-builder: 1.0.3
