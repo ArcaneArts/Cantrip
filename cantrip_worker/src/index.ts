@@ -229,6 +229,9 @@ async function start(): Promise<void> {
         return worktrees.prune(command.sourcePath, command.allowExternal);
       case "worktree.status":
         return worktrees.status(command.sourcePath, command.worktreePath);
+      case "worktree.observation.configure":
+        worktrees.configureObservation(command.targets);
+        return { accepted: true };
       case "explorer.directory.list":
         return listExplorerDirectory(command.root, command.path);
       case "explorer.file.read":
@@ -748,6 +751,9 @@ async function start(): Promise<void> {
     (header, payload) => remoteSurfaces.handleFrame(header, payload),
     (header, payload) => codeTunnel.handleFrame(header, payload),
   );
+  worktrees.setObservationEmitter((notification) =>
+    commandConnection.sendNotification(notification),
+  );
   remoteSurfaces.setFrameEmitter((header, payload) =>
     commandConnection.sendSurfaceFrame(header, payload),
   );
@@ -796,6 +802,7 @@ async function start(): Promise<void> {
 
       stopping = true;
       clearInterval(heartbeatTimer);
+      worktrees.close();
       commandConnection.close();
       for (const client of codexAuthClients.values()) client.close();
       terminals.closeAll();

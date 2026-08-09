@@ -2887,6 +2887,29 @@ export const worktreeStatusResultSchema = z.object({
   status: gitStatusSchema,
 });
 
+export const worktreeObservationTargetSchema = z.object({
+  sourcePath: z.string().min(1).max(8_192),
+  worktreePath: z.string().min(1).max(8_192),
+});
+
+export const worktreeObservationTargetsSchema = z
+  .array(worktreeObservationTargetSchema)
+  .max(128)
+  .superRefine((targets, context) => {
+    const keys = new Set<string>();
+    for (const [index, target] of targets.entries()) {
+      const key = `${target.sourcePath}\0${target.worktreePath}`;
+      if (keys.has(key)) {
+        context.addIssue({
+          code: "custom",
+          message: "Worktree observation targets must be unique.",
+          path: [index],
+        });
+      }
+      keys.add(key);
+    }
+  });
+
 export const projectWorktreeCreateSchema = z.object({
   name: z.string().trim().min(1).max(200),
   mode: worktreeCreateModeSchema,
@@ -3138,6 +3161,10 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("worktree.status"),
     sourcePath: z.string().min(1),
     worktreePath: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("worktree.observation.configure"),
+    targets: worktreeObservationTargetsSchema,
   }),
   z.object({
     type: z.literal("explorer.directory.list"),
@@ -3678,6 +3705,25 @@ export const workerEventEnvelopeSchema = z.object({
   event: workerEventSchema,
 });
 
+export const workerNotificationSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("worktree.inventory.observed"),
+    sourcePath: worktreeObservationTargetSchema.shape.sourcePath,
+    inventory: worktreeInventorySchema,
+  }),
+  z.object({
+    type: z.literal("worktree.status.observed"),
+    sourcePath: worktreeObservationTargetSchema.shape.sourcePath,
+    worktreePath: worktreeObservationTargetSchema.shape.worktreePath,
+    result: worktreeStatusResultSchema,
+  }),
+]);
+
+export const workerNotificationEnvelopeSchema = z.object({
+  kind: z.literal("notification"),
+  notification: workerNotificationSchema,
+});
+
 export type DatabaseEngine = z.infer<typeof databaseEngineSchema>;
 export type DeploymentMode = z.infer<typeof deploymentModeSchema>;
 export type BootstrapMode = z.infer<typeof bootstrapModeSchema>;
@@ -3766,6 +3812,9 @@ export type WorktreeMutationResult = z.infer<
 export type WorktreeRemoveResult = z.infer<typeof worktreeRemoveResultSchema>;
 export type WorktreePruneResult = z.infer<typeof worktreePruneResultSchema>;
 export type WorktreeStatusResult = z.infer<typeof worktreeStatusResultSchema>;
+export type WorktreeObservationTarget = z.infer<
+  typeof worktreeObservationTargetSchema
+>;
 export type ProjectWorktreeCreate = z.infer<typeof projectWorktreeCreateSchema>;
 export type ProjectWorktreeLock = z.infer<typeof projectWorktreeLockSchema>;
 export type ProjectWorktreeRemove = z.infer<typeof projectWorktreeRemoveSchema>;
@@ -4066,3 +4115,7 @@ export type WorkerResponseEnvelope = z.infer<
   typeof workerResponseEnvelopeSchema
 >;
 export type WorkerEventEnvelope = z.infer<typeof workerEventEnvelopeSchema>;
+export type WorkerNotification = z.infer<typeof workerNotificationSchema>;
+export type WorkerNotificationEnvelope = z.infer<
+  typeof workerNotificationEnvelopeSchema
+>;

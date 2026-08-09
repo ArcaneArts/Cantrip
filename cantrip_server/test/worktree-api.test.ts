@@ -30,7 +30,10 @@ import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
-import type { WorkerCommandBus } from "../src/workers/bridge.js";
+import {
+  WorkerUnavailableError,
+  type WorkerCommandBus,
+} from "../src/workers/bridge.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-worktree-api-"),
@@ -128,7 +131,7 @@ const workerBridge = {
     return () => undefined;
   },
   async request(_workerId, command, options) {
-    if (!connected) throw new Error("Worker is offline.");
+    if (!connected) throw new WorkerUnavailableError("Worker is offline.");
     switch (command.type) {
       case "worktree.list":
       case "worktree.reconcile":
@@ -1152,6 +1155,16 @@ describe.sequential("server worktree control plane", () => {
         await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId)
       ).find(({ id }) => id === target.id)?.head,
     ).toBe(observedHead);
+    connected = false;
+    const offlineStatus = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/status`,
+    });
+    expect(offlineStatus.statusCode).toBe(200);
+    expect(
+      worktreeStatusResultSchema.parse(offlineStatus.json()),
+    ).toMatchObject({ worktree: { path: target.path, head: observedHead } });
+    connected = true;
     const historyResponse = await app.inject({
       method: "GET",
       url: `/api/projects/${projectId}/worktrees/${target.id}/history`,
@@ -1291,7 +1304,7 @@ describe.sequential("server worktree control plane", () => {
       method: "POST",
       url: `/api/projects/${projectId}/worktrees/reconcile`,
     });
-    expect(reconcile.statusCode).toBe(502);
+    expect(reconcile.statusCode).toBe(503);
     connected = true;
   });
 });

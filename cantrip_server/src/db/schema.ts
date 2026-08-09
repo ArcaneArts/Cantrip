@@ -12,6 +12,7 @@ import type {
   PlanStep,
   RemoteSurfaceCapabilities,
   RemoteSurfaceConfiguration,
+  WorktreeStatusResult,
 } from "@cantrip/protocol";
 import { sql } from "drizzle-orm";
 import {
@@ -340,6 +341,8 @@ export const projectWorktrees = pgTable(
     detached: boolean("detached").notNull().default(false),
     locked: boolean("locked").notNull().default(false),
     lockReason: text("lock_reason"),
+    statusSnapshot: jsonb("status_snapshot").$type<WorktreeStatusResult>(),
+    statusObservedAt: timestamp("status_observed_at", { withTimezone: true }),
     lastScannedAt: timestamp("last_scanned_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

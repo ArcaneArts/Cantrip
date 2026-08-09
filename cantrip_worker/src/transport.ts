@@ -9,6 +9,8 @@ import {
   type WorkerCommand,
   workerEventEnvelopeSchema,
   type WorkerEvent,
+  workerNotificationEnvelopeSchema,
+  type WorkerNotification,
   workerRequestEnvelopeSchema,
   workerResponseEnvelopeSchema,
 } from "@cantrip/protocol";
@@ -32,6 +34,7 @@ type CodeTunnelFrameHandler = (
 ) => Promise<void> | void;
 
 const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
+const MAX_BUFFERED_NOTIFICATION_BYTES = 1 * 1_024 * 1_024;
 const CODE_TUNNEL_LOW_WATER_BYTES = 256 * 1_024;
 
 function rawDataBytes(data: RawData): Uint8Array {
@@ -137,6 +140,30 @@ export class WorkerConnection {
     if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) return false;
     try {
       socket.send(encodeCodeTunnelFrame(header, payload), { binary: true });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  sendNotification(notification: WorkerNotification): boolean {
+    const socket = this.#socket;
+    if (
+      !socket ||
+      socket.readyState !== WebSocket.OPEN ||
+      socket.bufferedAmount > MAX_BUFFERED_NOTIFICATION_BYTES
+    ) {
+      return false;
+    }
+    try {
+      socket.send(
+        JSON.stringify(
+          workerNotificationEnvelopeSchema.parse({
+            kind: "notification",
+            notification,
+          }),
+        ),
+      );
       return true;
     } catch {
       return false;

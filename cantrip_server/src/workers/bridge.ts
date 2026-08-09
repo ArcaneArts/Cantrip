@@ -11,6 +11,8 @@ import {
   type WorkerCommand,
   workerEventEnvelopeSchema,
   type WorkerEvent,
+  workerNotificationEnvelopeSchema,
+  type WorkerNotification,
   workerRequestEnvelopeSchema,
   workerResponseEnvelopeSchema,
 } from "@cantrip/protocol";
@@ -38,6 +40,10 @@ export type WorkerCodeTunnelFrameListener = (
   payload: Uint8Array,
 ) => void;
 
+export type WorkerNotificationListener = (
+  notification: WorkerNotification,
+) => Promise<void> | void;
+
 export interface WorkerCommandBus {
   attach(workerId: string, socket: WorkerSocket): void;
   close(): void;
@@ -60,6 +66,10 @@ export interface WorkerCommandBus {
   subscribeCodeTunnelFrames?(
     workerId: string,
     listener: WorkerCodeTunnelFrameListener,
+  ): () => void;
+  subscribeNotifications?(
+    workerId: string,
+    listener: WorkerNotificationListener,
   ): () => void;
   request(
     workerId: string,
@@ -114,6 +124,10 @@ export class WorkerBridge implements WorkerCommandBus {
     string,
     Set<WorkerSurfaceFrameListener>
   >();
+  readonly #notificationListeners = new Map<
+    string,
+    Set<WorkerNotificationListener>
+  >();
   readonly #workerDisconnectListeners = new Map<string, Set<() => void>>();
 
   attach(workerId: string, socket: WorkerSocket): void {
@@ -152,6 +166,17 @@ export class WorkerBridge implements WorkerCommandBus {
       }
       const response = workerResponseEnvelopeSchema.safeParse(payload);
       if (!response.success) {
+        const notification =
+          workerNotificationEnvelopeSchema.safeParse(payload);
+        if (notification.success) {
+          for (const listener of this.#notificationListeners.get(workerId) ??
+            []) {
+            void Promise.resolve(
+              listener(notification.data.notification),
+            ).catch(() => undefined);
+          }
+          return;
+        }
         const event = workerEventEnvelopeSchema.safeParse(payload);
         if (!event.success) {
           return;
@@ -207,6 +232,22 @@ export class WorkerBridge implements WorkerCommandBus {
 
   isConnected(workerId: string): boolean {
     return this.#sockets.get(workerId)?.readyState === 1;
+  }
+
+  subscribeNotifications(
+    workerId: string,
+    listener: WorkerNotificationListener,
+  ): () => void {
+    let listeners = this.#notificationListeners.get(workerId);
+    if (!listeners) {
+      listeners = new Set();
+      this.#notificationListeners.set(workerId, listeners);
+    }
+    listeners.add(listener);
+    return () => {
+      listeners?.delete(listener);
+      if (listeners?.size === 0) this.#notificationListeners.delete(workerId);
+    };
   }
 
   sendSurfaceFrame(
@@ -354,6 +395,7 @@ export class WorkerBridge implements WorkerCommandBus {
     this.#sockets.clear();
     this.#codeTunnelListeners.clear();
     this.#surfaceListeners.clear();
+    this.#notificationListeners.clear();
     for (const listeners of this.#workerDisconnectListeners.values()) {
       for (const listener of listeners) listener();
     }

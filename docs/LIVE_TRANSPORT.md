@@ -55,8 +55,12 @@ Project lists, workers, worktree metadata, tabs, terminals, explorers,
 browsers, Code tabs, project views, and Remote Desktop metadata now use live
 invalidations while the connection is healthy. During connection startup,
 reconnect, or resynchronization, the app retains a bounded 10–15 second HTTP
-fallback. The per-worktree external Git-status observer remains a separate
-temporary polling path until its worker-owned reconciliation migration.
+fallback. Worktree Git status is also live: the worker publishes debounced
+filesystem observations and a bounded reconciliation sweep, the server stores
+the latest status snapshot, and the app applies complete Git-status payloads
+directly. The former three-second, per-worktree client polling loop is disabled
+while live; a connected worker uses a 15-second HTTP fallback only when the app
+control socket is unavailable.
 
 Active chats also use the live channel while it is healthy. Persisted messages
 and normalized activity (including commentary, final answers, usage, and turn

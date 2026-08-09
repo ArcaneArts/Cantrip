@@ -2,6 +2,7 @@ import {
   chatMessageSchema,
   codexExternalImportStatusSchema,
   codexMcpOauthStatusSchema,
+  gitStatusSchema,
 } from "@cantrip/protocol";
 import type {
   AppLiveResyncReason,
@@ -10,6 +11,7 @@ import type {
   ChatMessage,
   CodexExternalImportStatus,
   CodexMcpOauthStatus,
+  GitStatus,
 } from "@cantrip/protocol";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 
@@ -40,7 +42,11 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
           : [];
     case "worktree-status":
       return projectId
-        ? [["worktree-status", projectId]]
+        ? [
+            event.entityId
+              ? ["worktree-status", projectId, event.entityId]
+              : ["worktree-status", projectId],
+          ]
         : event.scope.kind === "current-user"
           ? [["worktree-status"]]
           : [];
@@ -195,6 +201,7 @@ export class AppLiveQueryBridge {
   handleEvent(event: AppLiveEvent): void {
     if (!this.#acceptWorkflowEvent(event)) return;
     if (this.#applyChatMessageEvent(event)) return;
+    if (this.#applyWorktreeStatusEvent(event)) return;
     if (this.#applyCustomizationStatusEvent(event)) return;
     for (const key of appLiveEventQueryKeys(event)) {
       this.#pendingKeys.set(JSON.stringify(key), key);
@@ -296,6 +303,24 @@ export class AppLiveQueryBridge {
     );
     this.#queryClient.setQueryData<ChatMessage[]>(queryKey, next);
     this.#messageCursors.set(entityKey, event.cursor);
+    return true;
+  }
+
+  #applyWorktreeStatusEvent(event: AppLiveEvent): boolean {
+    if (
+      event.resource !== "worktree-status" ||
+      event.action !== "updated" ||
+      event.scope.kind !== "project" ||
+      !event.entityId
+    ) {
+      return false;
+    }
+    const parsed = gitStatusSchema.safeParse(event.payload);
+    if (!parsed.success) return false;
+    this.#queryClient.setQueryData<GitStatus>(
+      ["worktree-status", event.scope.projectId, event.entityId],
+      parsed.data,
+    );
     return true;
   }
 

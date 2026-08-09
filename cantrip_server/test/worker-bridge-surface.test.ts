@@ -3,6 +3,7 @@ import {
   decodeRemoteSurfaceFrame,
   encodeCodeTunnelFrame,
   encodeRemoteSurfaceFrame,
+  workerNotificationEnvelopeSchema,
   type CodeTunnelFrameHeader,
   type RemoteSurfaceFrameHeader,
 } from "@cantrip/protocol";
@@ -143,6 +144,36 @@ describe("WorkerBridge Remote Surface transport", () => {
       code: 1013,
       reason: "Remote Surface worker channel is congested",
     });
+    bridge.close();
+  });
+
+  it("delivers validated unsolicited worker notifications separately", () => {
+    const bridge = new WorkerBridge();
+    const socket = new TestWorkerSocket();
+    bridge.attach("worker-1", socket);
+    const listener = vi.fn();
+    bridge.subscribeNotifications("worker-1", listener);
+    const notification = workerNotificationEnvelopeSchema.parse({
+      kind: "notification",
+      notification: {
+        type: "worktree.inventory.observed",
+        sourcePath: "/repo",
+        inventory: {
+          sourcePath: "/repo",
+          primaryPath: "/repo",
+          gitCommonDir: "/repo/.git",
+          managedRoot: "/worker/worktrees/fingerprint",
+          repositoryFingerprint: "a".repeat(64),
+          worktrees: [],
+        },
+      },
+    });
+
+    socket.emit("message", JSON.stringify(notification), false);
+    socket.emit("message", JSON.stringify({ kind: "notification" }), false);
+
+    expect(listener).toHaveBeenCalledOnce();
+    expect(listener).toHaveBeenCalledWith(notification.notification);
     bridge.close();
   });
 });

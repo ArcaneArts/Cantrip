@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
+import { watch, type FSWatcher } from "node:fs";
 import { lstat, mkdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -11,11 +12,13 @@ import {
   worktreePruneResultSchema,
   worktreeRemoveResultSchema,
   worktreeStatusResultSchema,
+  type WorkerNotification,
   type WorkerWorktreeSummary,
   type WorktreeCreateMode,
   type WorktreeCreateResult,
   type WorktreeInventory,
   type WorktreeMutationResult,
+  type WorktreeObservationTarget,
   type WorktreePruneResult,
   type WorktreeRemoveResult,
   type WorktreeStatusResult,
@@ -25,6 +28,34 @@ import { readGitStatus } from "./git.js";
 
 const execFileAsync = promisify(execFile);
 const GIT_BUFFER = 16 * 1024 * 1024;
+const OBSERVATION_DEBOUNCE_MS = 500;
+const OBSERVATION_RECONCILE_MS = 30_000;
+const OBSERVATION_SCAN_CONCURRENCY = 4;
+
+interface ObservedWorktree extends WorktreeObservationTarget {
+  worktree: WorkerWorktreeSummary | null;
+}
+
+function observationKey(target: WorktreeObservationTarget): string {
+  return `${target.sourcePath}\0${target.worktreePath}`;
+}
+
+async function forEachConcurrent<T>(
+  items: T[],
+  limit: number,
+  visit: (item: T) => Promise<void>,
+): Promise<void> {
+  let index = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (index < items.length) {
+        const item = items[index];
+        index += 1;
+        if (item !== undefined) await visit(item);
+      }
+    }),
+  );
+}
 
 export interface ParsedWorktreeRecord {
   branch: string | null;
@@ -171,8 +202,220 @@ export function parseGitWorktreePorcelain(
 
 export class WorktreeManager {
   private readonly mutationQueues = new Map<string, Promise<void>>();
+  private readonly observationFingerprints = new Map<string, string>();
+  private readonly observationInventoryFingerprints = new Map<string, string>();
+  private readonly observationTargets = new Map<string, ObservedWorktree>();
+  private readonly observationTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+  private readonly observationWatchers = new Map<string, FSWatcher>();
+  private observationEmitter: (notification: WorkerNotification) => boolean =
+    () => false;
+  private observationSweep: ReturnType<typeof setInterval> | null = null;
+  private observationSweepRunning = false;
 
   constructor(private readonly dataDirectory: string) {}
+
+  setObservationEmitter(
+    emitter: (notification: WorkerNotification) => boolean,
+  ): void {
+    this.observationEmitter = emitter;
+  }
+
+  configureObservation(targets: WorktreeObservationTarget[]): void {
+    const next = new Map(
+      targets.map((target) => [
+        observationKey(target),
+        { ...target, worktree: null } satisfies ObservedWorktree,
+      ]),
+    );
+    if (
+      next.size === this.observationTargets.size &&
+      [...next.keys()].every((key) => this.observationTargets.has(key))
+    ) {
+      void this.refreshObservedSources(false);
+      return;
+    }
+    for (const [key, watcher] of this.observationWatchers) {
+      if (next.has(key)) continue;
+      watcher.close();
+      this.observationWatchers.delete(key);
+    }
+    for (const [key, timer] of this.observationTimers) {
+      if (next.has(key)) continue;
+      clearTimeout(timer);
+      this.observationTimers.delete(key);
+    }
+    for (const key of this.observationTargets.keys()) {
+      if (next.has(key)) continue;
+      this.observationFingerprints.delete(key);
+    }
+    this.observationTargets.clear();
+    for (const [key, target] of next) {
+      this.observationTargets.set(key, target);
+    }
+    if (this.observationTargets.size > 0 && !this.observationSweep) {
+      this.observationSweep = setInterval(
+        () => void this.refreshObservedSources(false),
+        OBSERVATION_RECONCILE_MS,
+      );
+      this.observationSweep.unref();
+    } else if (this.observationTargets.size === 0 && this.observationSweep) {
+      clearInterval(this.observationSweep);
+      this.observationSweep = null;
+    }
+    void this.refreshObservedSources(true);
+  }
+
+  close(): void {
+    if (this.observationSweep) clearInterval(this.observationSweep);
+    this.observationSweep = null;
+    for (const timer of this.observationTimers.values()) clearTimeout(timer);
+    this.observationTimers.clear();
+    for (const watcher of this.observationWatchers.values()) watcher.close();
+    this.observationWatchers.clear();
+    this.observationTargets.clear();
+  }
+
+  private watchTarget(key: string, target: ObservedWorktree): void {
+    try {
+      const watcher = watch(target.worktreePath, { recursive: true }, () =>
+        this.scheduleObservedTarget(key),
+      );
+      watcher.on("error", () => {
+        if (this.observationWatchers.get(key) === watcher) {
+          this.observationWatchers.delete(key);
+        }
+        watcher.close();
+      });
+      this.observationWatchers.set(key, watcher);
+    } catch {
+      // The bounded reconciliation sweep remains authoritative when watching
+      // is unavailable for this platform, path, or filesystem.
+    }
+  }
+
+  private scheduleObservedTarget(key: string): void {
+    const existing = this.observationTimers.get(key);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      this.observationTimers.delete(key);
+      void this.refreshObservedTarget(key);
+    }, OBSERVATION_DEBOUNCE_MS);
+    timer.unref();
+    this.observationTimers.set(key, timer);
+  }
+
+  private async refreshObservedTarget(key: string): Promise<void> {
+    const target = this.observationTargets.get(key);
+    if (!target?.worktree || target.worktree.missing) {
+      await this.refreshObservedSource(target?.sourcePath ?? "", false);
+      return;
+    }
+    try {
+      await this.emitObservedStatus(key, target, false);
+    } catch {
+      // A later source reconciliation handles deleted, moved, or temporarily
+      // inaccessible worktrees without trusting watcher paths.
+    }
+  }
+
+  private async refreshObservedSources(force: boolean): Promise<void> {
+    if (this.observationSweepRunning) return;
+    this.observationSweepRunning = true;
+    try {
+      const sources = [
+        ...new Set(
+          [...this.observationTargets.values()].map(
+            ({ sourcePath }) => sourcePath,
+          ),
+        ),
+      ];
+      await forEachConcurrent(sources, 2, (sourcePath) =>
+        this.refreshObservedSource(sourcePath, force),
+      );
+    } finally {
+      this.observationSweepRunning = false;
+    }
+  }
+
+  private async refreshObservedSource(
+    sourcePath: string,
+    force: boolean,
+  ): Promise<void> {
+    if (!sourcePath) return;
+    try {
+      const inventory = await this.list(sourcePath);
+      const inventoryFingerprint = JSON.stringify(inventory);
+      if (
+        (force ||
+          inventoryFingerprint !==
+            this.observationInventoryFingerprints.get(sourcePath)) &&
+        this.observationEmitter({
+          type: "worktree.inventory.observed",
+          sourcePath,
+          inventory,
+        })
+      ) {
+        this.observationInventoryFingerprints.set(
+          sourcePath,
+          inventoryFingerprint,
+        );
+      }
+      const targets = [...this.observationTargets.entries()].filter(
+        ([, target]) => target.sourcePath === sourcePath,
+      );
+      for (const [key, target] of targets) {
+        target.worktree =
+          inventory.worktrees.find(
+            ({ path: candidate }) => candidate === target.worktreePath,
+          ) ?? null;
+        if (
+          target.worktree &&
+          !target.worktree.missing &&
+          !this.observationWatchers.has(key)
+        ) {
+          this.watchTarget(key, target);
+        }
+      }
+      await forEachConcurrent(
+        targets,
+        OBSERVATION_SCAN_CONCURRENCY,
+        async ([key, target]) => {
+          if (!target.worktree || target.worktree.missing) return;
+          await this.emitObservedStatus(key, target, force);
+        },
+      );
+    } catch {
+      // Watch events and future reconciliation sweeps retry transient Git and
+      // filesystem failures without producing an incorrect empty snapshot.
+    }
+  }
+
+  private async emitObservedStatus(
+    key: string,
+    target: ObservedWorktree,
+    force: boolean,
+  ): Promise<void> {
+    if (!target.worktree) return;
+    const result = worktreeStatusResultSchema.parse({
+      worktree: target.worktree,
+      status: await readGitStatus(target.worktree.path),
+    });
+    const fingerprint = JSON.stringify(result);
+    if (
+      (force || fingerprint !== this.observationFingerprints.get(key)) &&
+      this.observationEmitter({
+        type: "worktree.status.observed",
+        sourcePath: target.sourcePath,
+        worktreePath: target.worktreePath,
+        result,
+      })
+    ) {
+      this.observationFingerprints.set(key, fingerprint);
+    }
+  }
 
   private managedRoot(): string {
     return path.resolve(this.dataDirectory, "worktrees");

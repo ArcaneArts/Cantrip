@@ -2440,16 +2440,18 @@ export function App() {
   });
   const worktreeStatusQueries = useQueries({
     queries: (worktrees.data ?? []).map((worktree) => ({
-      enabled: Boolean(
-        workers.data?.find(({ workerId }) => workerId === worktree.workerId)
-          ?.online && worktree.lifecycleState === "ready",
-      ),
+      enabled: worktree.lifecycleState === "ready",
       queryFn: () =>
         getProjectWorktreeStatus(worktree.projectId, worktree.id).then(
           ({ status }) => status,
         ),
       queryKey: ["worktree-status", worktree.projectId, worktree.id],
-      refetchInterval: 3_000,
+      refetchInterval:
+        projectResourcesLive ||
+        !workers.data?.find(({ workerId }) => workerId === worktree.workerId)
+          ?.online
+          ? false
+          : 15_000,
       retry: false,
     })),
   });
