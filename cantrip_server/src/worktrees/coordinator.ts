@@ -1,18 +1,27 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   worktreeCreateResultSchema,
   worktreeInventorySchema,
+  worktreeStatusResultSchema,
   type ProjectWorktreeSummary,
   type WorktreeCreateMode,
 } from "@cantrip/protocol";
+import type { WorkflowWorktreeLease } from "@cantrip/protocol/workflows";
 
 import type { ServerRepository } from "../db/repository.js";
-import type { WorkerCommandBus } from "../workers/bridge.js";
+import {
+  type WorkerCommandBus,
+  WorkerUnavailableError,
+} from "../workers/bridge.js";
 
 type WorktreeRepository = Pick<
   ServerRepository,
-  "getProjectSource" | "reconcileProjectWorktrees"
+  | "getProjectSource"
+  | "getProjectWorktreeContext"
+  | "observeProjectWorktree"
+  | "reconcileProjectWorktrees"
+  | "workflowRuns"
 >;
 
 export interface ProjectWorktreeCreateRequest {
@@ -20,6 +29,40 @@ export interface ProjectWorktreeCreateRequest {
   name: string;
   origin: ProjectWorktreeSummary["origin"];
   worktreeId?: string;
+}
+
+export interface WorkflowWorktreeAllocationRequest {
+  runId: string;
+  runNodeId: string;
+  runNodeItemId: string | null;
+}
+
+export interface WorkflowWorktreeAllocation {
+  lease: WorkflowWorktreeLease;
+  worktree: ProjectWorktreeSummary;
+}
+
+export function workflowLaneIdentity(
+  input: WorkflowWorktreeAllocationRequest,
+): {
+  branchName: string;
+  name: string;
+} {
+  const unitId = input.runNodeItemId ?? input.runNodeId;
+  const label = unitId
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, 32);
+  const identity = createHash("sha256")
+    .update(`${input.runId}\0${input.runNodeId}\0${input.runNodeItemId ?? ""}`)
+    .digest("hex")
+    .slice(0, 16);
+  return {
+    branchName: `cantrip/workflow/${label || "unit"}-${identity}`,
+    name: `Workflow ${label || "unit"} ${identity}`,
+  };
 }
 
 /**
@@ -61,35 +104,205 @@ export class ProjectWorktreeCoordinator {
     projectId: string,
     input: ProjectWorktreeCreateRequest,
   ): Promise<ProjectWorktreeSummary | null> {
+    return this.serialize(projectId, () =>
+      this.createInProject(ownerId, projectId, input),
+    );
+  }
+
+  async allocateWorkflowLane(
+    ownerId: string,
+    projectId: string,
+    input: WorkflowWorktreeAllocationRequest,
+  ): Promise<WorkflowWorktreeAllocation | null> {
     return this.serialize(projectId, async () => {
+      const identity = workflowLaneIdentity(input);
+      const detail = await this.repository.workflowRuns.getRun(
+        ownerId,
+        input.runId,
+      );
+      if (!detail || detail.run.projectId !== projectId) return null;
+      let lease = detail.worktreeLeases.find(
+        (candidate) =>
+          candidate.runNodeId === input.runNodeId &&
+          candidate.runNodeItemId === input.runNodeItemId &&
+          candidate.state !== "released",
+      );
+      if (lease && lease.branchName !== identity.branchName) {
+        throw new Error(
+          "The workflow execution unit already reserved a different branch.",
+        );
+      }
+
       const source = await this.repository.getProjectSource(ownerId, projectId);
       if (!source) return null;
-      const worktreeId = input.worktreeId ?? randomUUID();
-      const result = worktreeCreateResultSchema.parse(
-        await this.bridge.request(source.workerId, {
-          type: "worktree.create",
-          sourcePath: source.cwd,
-          worktreeId,
-          name: input.name,
-          mode: input.mode,
-        }),
-      );
-      const reconciled = await this.repository.reconcileProjectWorktrees(
+      const primaryContext = await this.repository.getProjectWorktreeContext(
         ownerId,
         projectId,
-        result.inventory,
-        {
-          id: worktreeId,
-          name: input.name,
-          origin: input.origin,
-          path: result.worktree.path,
-        },
+        source.worktreeId,
       );
-      const created = reconciled?.find(({ id }) => id === worktreeId);
-      if (!created) {
-        throw new Error("Created worktree could not be reconciled.");
+      if (!primaryContext || !primaryContext.worktree.isPrimary) {
+        throw new Error("The workflow project has no valid Primary worktree.");
       }
-      return created;
+
+      if (!lease) {
+        const primary = await this.inspectWorktree(
+          ownerId,
+          projectId,
+          primaryContext,
+        );
+        if (
+          primary.lifecycleState !== "ready" ||
+          !primary.isPrimary ||
+          !primary.head
+        ) {
+          throw new Error(
+            "The workflow project Primary is not ready for lane allocation.",
+          );
+        }
+        const reservation =
+          await this.repository.workflowRuns.reserveWorktreeLease(ownerId, {
+            runId: input.runId,
+            runNodeId: input.runNodeId,
+            runNodeItemId: input.runNodeItemId,
+            projectSourceId: primary.projectSourceId,
+            workerId: primary.workerId,
+            branchName: identity.branchName,
+            baseRevision: primary.head,
+          });
+        if (!reservation) return null;
+        lease = reservation.lease;
+      }
+
+      if (
+        !lease.projectSourceId ||
+        !lease.workerId ||
+        !lease.branchName ||
+        !lease.baseRevision ||
+        lease.projectSourceId !== primaryContext.projectSourceId ||
+        lease.workerId !== primaryContext.workerId
+      ) {
+        throw new Error(
+          "The workflow worktree reservation no longer matches its project source.",
+        );
+      }
+      if (lease.state === "active") {
+        if (!lease.worktreeId) {
+          throw new Error(
+            "The active workflow worktree lease has no worktree.",
+          );
+        }
+        const context = await this.repository.getProjectWorktreeContext(
+          ownerId,
+          projectId,
+          lease.worktreeId,
+        );
+        if (
+          !context ||
+          context.projectSourceId !== lease.projectSourceId ||
+          context.workerId !== lease.workerId ||
+          context.worktree.isPrimary
+        ) {
+          throw new Error(
+            "The active workflow worktree lease no longer matches its lane.",
+          );
+        }
+        const worktree = await this.inspectWorktree(
+          ownerId,
+          projectId,
+          context,
+        );
+        if (
+          worktree.lifecycleState !== "ready" ||
+          worktree.branch !== lease.branchName
+        ) {
+          throw new Error("The active workflow worktree lane is not ready.");
+        }
+        return { lease, worktree };
+      }
+      if (!["allocating", "recovering"].includes(lease.state)) {
+        throw new Error(
+          `A ${lease.state} workflow worktree lease cannot be allocated.`,
+        );
+      }
+
+      try {
+        const created = await this.createInProject(ownerId, projectId, {
+          worktreeId: lease.requestedWorktreeId,
+          name: identity.name,
+          origin: "cantrip",
+          mode: {
+            type: "newBranch",
+            branch: lease.branchName,
+            startPoint: lease.baseRevision,
+          },
+        });
+        if (!created) return null;
+        const context = await this.repository.getProjectWorktreeContext(
+          ownerId,
+          projectId,
+          created.id,
+        );
+        if (!context) {
+          throw new Error("The created workflow worktree is unavailable.");
+        }
+        const inspected = worktreeStatusResultSchema.parse(
+          await this.bridge.request(context.workerId, {
+            type: "worktree.status",
+            sourcePath: context.sourcePath,
+            worktreePath: context.worktree.path,
+          }),
+        );
+        const worktree = await this.repository.observeProjectWorktree(
+          ownerId,
+          projectId,
+          created.id,
+          inspected.worktree,
+        );
+        if (
+          !worktree ||
+          worktree.isPrimary ||
+          worktree.lifecycleState !== "ready" ||
+          worktree.projectSourceId !== lease.projectSourceId ||
+          worktree.workerId !== lease.workerId ||
+          worktree.branch !== lease.branchName ||
+          worktree.head !== lease.baseRevision ||
+          inspected.status.head !== lease.baseRevision ||
+          inspected.status.files.length > 0
+        ) {
+          throw new Error(
+            "The created workflow worktree did not match its clean reservation.",
+          );
+        }
+        const activated =
+          await this.repository.workflowRuns.activateWorktreeLease(
+            ownerId,
+            lease.id,
+            {
+              worktreeId: worktree.id,
+              startingRevision: lease.baseRevision,
+            },
+          );
+        if (!activated) {
+          throw new Error(
+            "The workflow worktree lease could not be activated.",
+          );
+        }
+        return { lease: activated, worktree };
+      } catch (error) {
+        await this.repository.workflowRuns.failWorktreeLeaseAllocation(
+          ownerId,
+          lease.id,
+          {
+            code:
+              error instanceof WorkerUnavailableError
+                ? "worker-unavailable"
+                : "worktree-allocation-failed",
+            message: error instanceof Error ? error.message : String(error),
+            recoverable: error instanceof WorkerUnavailableError,
+          },
+        );
+        throw error;
+      }
     });
   }
 
@@ -112,5 +325,69 @@ export class ProjectWorktreeCoordinator {
         inventory,
       );
     });
+  }
+
+  private async createInProject(
+    ownerId: string,
+    projectId: string,
+    input: ProjectWorktreeCreateRequest,
+  ): Promise<ProjectWorktreeSummary | null> {
+    const source = await this.repository.getProjectSource(ownerId, projectId);
+    if (!source) return null;
+    const worktreeId = input.worktreeId ?? randomUUID();
+    const result = worktreeCreateResultSchema.parse(
+      await this.bridge.request(source.workerId, {
+        type: "worktree.create",
+        sourcePath: source.cwd,
+        worktreeId,
+        name: input.name,
+        mode: input.mode,
+      }),
+    );
+    const reconciled = await this.repository.reconcileProjectWorktrees(
+      ownerId,
+      projectId,
+      result.inventory,
+      {
+        id: worktreeId,
+        name: input.name,
+        origin: input.origin,
+        path: result.worktree.path,
+      },
+    );
+    const created = reconciled?.find(({ id }) => id === worktreeId);
+    if (!created) {
+      throw new Error("Created worktree could not be reconciled.");
+    }
+    return created;
+  }
+
+  private async inspectWorktree(
+    ownerId: string,
+    projectId: string,
+    context: NonNullable<
+      Awaited<ReturnType<ServerRepository["getProjectWorktreeContext"]>>
+    >,
+  ): Promise<ProjectWorktreeSummary> {
+    const result = worktreeStatusResultSchema.parse(
+      await this.bridge.request(context.workerId, {
+        type: "worktree.status",
+        sourcePath: context.sourcePath,
+        worktreePath: context.worktree.path,
+      }),
+    );
+    if (result.status.head !== result.worktree.head) {
+      throw new Error("Worker Git status disagreed with its worktree head.");
+    }
+    const observed = await this.repository.observeProjectWorktree(
+      ownerId,
+      projectId,
+      context.worktree.id,
+      result.worktree,
+    );
+    if (!observed) {
+      throw new Error("The inspected project worktree could not be observed.");
+    }
+    return observed;
   }
 }
