@@ -3631,7 +3631,7 @@ export function App() {
             <div
               className={
                 overlayTitlebar
-                  ? "flex h-12 items-center gap-2 pl-20 pr-3"
+                  ? "flex h-8 items-center gap-1.5 pl-20 pr-2"
                   : "flex h-16 items-center gap-3 px-4"
               }
               data-slot="sidebar-titlebar"
@@ -3640,13 +3640,13 @@ export function App() {
               <div
                 className={
                   overlayTitlebar
-                    ? "grid size-7 place-items-center"
+                    ? "grid size-5 place-items-center"
                     : "grid size-9 place-items-center"
                 }
                 data-tauri-drag-region={overlayTitlebar ? "" : undefined}
               >
                 <WandSparkles
-                  className="size-4"
+                  className={overlayTitlebar ? "size-3" : "size-4"}
                   data-tauri-drag-region={overlayTitlebar ? "" : undefined}
                 />
               </div>
@@ -3657,7 +3657,7 @@ export function App() {
                 <p
                   className={cn(
                     "font-semibold tracking-tight",
-                    overlayTitlebar && "text-sm",
+                    overlayTitlebar && "text-xs leading-none",
                   )}
                   data-tauri-drag-region={overlayTitlebar ? "" : undefined}
                 >
@@ -3670,11 +3670,13 @@ export function App() {
               <Button
                 size="icon"
                 variant="ghost"
-                className={overlayTitlebar ? "size-7" : "size-8"}
+                className={overlayTitlebar ? "size-6" : "size-8"}
                 onClick={() => setSidebarCollapsed(true)}
                 title="Collapse sidebar"
               >
-                <PanelLeftClose className="size-4" />
+                <PanelLeftClose
+                  className={overlayTitlebar ? "size-3" : "size-4"}
+                />
                 <span className="sr-only">Collapse sidebar</span>
               </Button>
             </div>
@@ -3914,8 +3916,10 @@ export function App() {
         {!isPopout ? (
           <header
             className={cn(
-              "relative z-30 flex shrink-0 items-center justify-between gap-4",
-              overlayTitlebar ? "h-12 px-4 sm:px-5" : "h-16 px-4 sm:px-6",
+              "relative z-30 flex shrink-0 items-center justify-between",
+              overlayTitlebar
+                ? "h-8 gap-2 px-3 text-[11px] sm:px-4 [&_[data-slot=badge]]:h-5 [&_[data-slot=badge]]:gap-1 [&_[data-slot=badge]]:px-1.5 [&_[data-slot=badge]]:text-[10px] [&_[data-slot=button]]:h-6 [&_[data-slot=button]]:min-w-6 [&_[data-slot=button]]:w-auto [&_[data-slot=button]]:gap-1 [&_[data-slot=button]]:px-1.5 [&_[data-slot=button]]:py-0 [&_[data-slot=button]]:text-[11px] [&_svg]:size-3"
+                : "h-16 gap-4 px-4 sm:px-6",
             )}
             data-slot="content-titlebar"
             data-tauri-drag-region={overlayTitlebar ? "" : undefined}
@@ -3926,7 +3930,7 @@ export function App() {
                 variant="ghost"
                 className={cn(
                   "absolute hidden size-8 md:inline-flex",
-                  overlayTitlebar ? "left-20 top-2" : "left-4 top-4",
+                  overlayTitlebar ? "left-20 top-1" : "left-4 top-4",
                 )}
                 onClick={() => setSidebarCollapsed(false)}
                 title="Expand sidebar"
@@ -3938,13 +3942,18 @@ export function App() {
             <div
               className={cn(
                 "min-w-0",
+                overlayTitlebar &&
+                  "flex flex-1 items-center gap-2 overflow-hidden",
                 sidebarCollapsed &&
-                  (overlayTitlebar ? "pl-[7.25rem]" : "pl-10"),
+                  (overlayTitlebar ? "pl-[6.25rem]" : "pl-10"),
               )}
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
               <div
-                className="flex min-w-0 items-center gap-2 text-sm font-medium"
+                className={cn(
+                  "flex min-w-0 items-center font-medium",
+                  overlayTitlebar ? "gap-1.5 text-xs" : "gap-2 text-sm",
+                )}
                 data-tauri-drag-region={overlayTitlebar ? "" : undefined}
               >
                 <span
@@ -4044,7 +4053,12 @@ export function App() {
                 ) : null}
               </div>
               <p
-                className="truncate text-xs text-muted-foreground"
+                className={cn(
+                  "truncate text-muted-foreground",
+                  overlayTitlebar
+                    ? "hidden min-w-0 flex-1 text-[10px] leading-none lg:block"
+                    : "text-xs",
+                )}
                 data-tauri-drag-region={overlayTitlebar ? "" : undefined}
               >
                 {showImporter ? (
@@ -4101,7 +4115,10 @@ export function App() {
               </p>
             </div>
             <div
-              className="flex items-center gap-2 md:hidden"
+              className={cn(
+                "flex items-center md:hidden",
+                overlayTitlebar ? "gap-1" : "gap-2",
+              )}
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
               {!isPopout ? (
@@ -4260,7 +4277,10 @@ export function App() {
               ) : null}
             </div>
             <div
-              className="ml-auto hidden items-center gap-2 md:flex"
+              className={cn(
+                "ml-auto hidden items-center md:flex",
+                overlayTitlebar ? "gap-1" : "gap-2",
+              )}
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
               {gitHistoryProject &&
@@ -4386,7 +4406,14 @@ export function App() {
                 </>
               ) : null}
               {!showImporter && !showSettings && selectedProject ? (
-                <span className="flex items-center gap-2 px-2 text-xs">
+                <span
+                  className={cn(
+                    "flex items-center",
+                    overlayTitlebar
+                      ? "gap-1.5 px-1 text-[10px]"
+                      : "gap-2 px-2 text-xs",
+                  )}
+                >
                   <StatusDot online={Boolean(selectedWorker?.online)} />
                   {selectedWorker?.name ?? "Worker offline"}
                 </span>
