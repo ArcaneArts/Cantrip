@@ -160,6 +160,20 @@ function openSocket(url: string): Promise<WebSocket> {
 }
 
 describe("Cantrip Code supervisor", () => {
+  it("serializes concurrent opens for the same durable session", async () => {
+    const { repository, supervisor } = await fixture();
+    const command = openCommand("shared", repository, "primary");
+    const [first, second, third] = await Promise.all([
+      supervisor.open(command),
+      supervisor.open(command),
+      supervisor.open(command),
+    ]);
+
+    expect(second.processInstanceId).toBe(first.processInstanceId);
+    expect(third.processInstanceId).toBe(first.processInstanceId);
+    expect(supervisor.status("shared").status).toBe("running");
+  });
+
   it("shares a persistent profile process while isolating tab workspaces", async () => {
     const { dataDirectory, repository, supervisor } = await fixture();
     const first = await supervisor.open(

@@ -1469,13 +1469,36 @@ describe("local server foundation", () => {
       payload: { appearance: "high-contrast-dark" },
     });
     expect(codeAttachmentResponse.statusCode).toBe(201);
-    expect(
-      codeAttachmentSchema.parse(codeAttachmentResponse.json()),
-    ).toMatchObject({
+    const codeAttachment = codeAttachmentSchema.parse(
+      codeAttachmentResponse.json(),
+    );
+    expect(codeAttachment).toMatchObject({
       sessionId: expect.any(String),
       url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:4311\/code\//u),
       runtime: { status: "running", processInstanceId: "code-process-1" },
     });
+    const secondCodeAttachment = codeAttachmentSchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/code-tabs/${codeTab.id}/attachments`,
+          payload: { appearance: "high-contrast-dark" },
+        })
+      ).json(),
+    );
+    expect(secondCodeAttachment).toMatchObject({
+      sessionId: codeAttachment.sessionId,
+      runtime: { processInstanceId: "code-process-1" },
+    });
+    expect(secondCodeAttachment.attachmentId).not.toBe(
+      codeAttachment.attachmentId,
+    );
+    expect(
+      await firstApp.inject({
+        method: "DELETE",
+        url: `/api/code-attachments/${codeAttachment.attachmentId}`,
+      }),
+    ).toMatchObject({ statusCode: 204 });
     expect(
       codeSaveAllResultSchema.parse(
         (

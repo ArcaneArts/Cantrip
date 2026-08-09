@@ -13,13 +13,14 @@ import { Button } from "@/components/ui/button";
 import {
   CantripApiError,
   createCodeAttachment,
+  releaseCodeAttachment,
   saveAllCodeTab,
   setCodeTabTheme,
   stopCodeTab,
 } from "@/lib/api";
 
-const CONTROL_CHANNEL = "cantrip-code-control-v1";
 const MAX_RECONNECT_DELAY_MS = 15_000;
+const ATTACHMENT_UNAVAILABLE_MESSAGE = "cantrip-code-attachment-unavailable-v1";
 
 export interface CodeHeaderState {
   attachmentExpiresAt: string | null;
@@ -37,6 +38,15 @@ export interface CodeHeaderState {
 
 export function codeReconnectDelayMs(attempt: number): number {
   return Math.min(MAX_RECONNECT_DELAY_MS, 1_000 * 2 ** Math.max(0, attempt));
+}
+
+export function isCodeAttachmentUnavailableMessage(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === ATTACHMENT_UNAVAILABLE_MESSAGE
+  );
 }
 
 function errorText(error: unknown): string {
@@ -70,11 +80,10 @@ export function CodeView({
   const [frameLoaded, setFrameLoaded] = useState(false);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [retrying, setRetrying] = useState(false);
-  const [superseded, setSuperseded] = useState(false);
   const appearanceRef = useRef(appearance);
   const connectionGeneration = useRef(0);
+  const frameRef = useRef<HTMLIFrameElement>(null);
   const stopped = useRef(false);
-  const instanceId = useRef(crypto.randomUUID());
   const onChangedRef = useRef(onChanged);
 
   appearanceRef.current = appearance;
@@ -82,39 +91,14 @@ export function CodeView({
 
   const reload = useCallback(() => {
     stopped.current = false;
-    setSuperseded(false);
     setReloadVersion((version) => version + 1);
   }, []);
-
-  useEffect(() => {
-    if (typeof BroadcastChannel === "undefined") return;
-    const channel = new BroadcastChannel(CONTROL_CHANNEL);
-    channel.onmessage = (event: MessageEvent<unknown>) => {
-      const value = event.data as
-        | { attachmentId?: string; codeTabId?: string; instanceId?: string }
-        | undefined;
-      if (
-        value?.codeTabId !== codeTab.id ||
-        value.instanceId === instanceId.current ||
-        !value.attachmentId
-      ) {
-        return;
-      }
-      connectionGeneration.current += 1;
-      stopped.current = true;
-      setAttachment(null);
-      setFrameLoaded(false);
-      setConnectError(null);
-      setConnecting(false);
-      setSuperseded(true);
-    };
-    return () => channel.close();
-  }, [codeTab.id]);
 
   useEffect(() => {
     const generation = ++connectionGeneration.current;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let cancelled = false;
+    let ownedAttachmentId: string | null = null;
     stopped.current = false;
     setAttachment(null);
     setConnectAttempt(0);
@@ -132,22 +116,17 @@ export function CodeView({
           codeTab.id,
           appearanceRef.current,
         );
-        if (cancelled || generation !== connectionGeneration.current) return;
+        if (cancelled || generation !== connectionGeneration.current) {
+          void releaseCodeAttachment(next.attachmentId).catch(() => undefined);
+          return;
+        }
+        ownedAttachmentId = next.attachmentId;
         setAttachment(next);
         setConnectError(null);
         setConnecting(false);
         setRetrying(false);
         setFrameLoaded(false);
         onChangedRef.current?.();
-        if (typeof BroadcastChannel !== "undefined") {
-          const channel = new BroadcastChannel(CONTROL_CHANNEL);
-          channel.postMessage({
-            attachmentId: next.attachmentId,
-            codeTabId: codeTab.id,
-            instanceId: instanceId.current,
-          });
-          channel.close();
-        }
       } catch (error) {
         if (cancelled || generation !== connectionGeneration.current) return;
         setConnectError(errorText(error));
@@ -167,8 +146,28 @@ export function CodeView({
     return () => {
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
+      if (ownedAttachmentId) {
+        void releaseCodeAttachment(ownedAttachmentId).catch(() => undefined);
+      }
     };
   }, [codeTab.activeWorkerId, codeTab.id, codeTab.worktreeId, reloadVersion]);
+
+  useEffect(() => {
+    if (!attachment) return;
+    const attachmentOrigin = new URL(attachment.url).origin;
+    const recover = (event: MessageEvent<unknown>) => {
+      if (
+        event.origin !== attachmentOrigin ||
+        event.source !== frameRef.current?.contentWindow ||
+        !isCodeAttachmentUnavailableMessage(event.data)
+      ) {
+        return;
+      }
+      reload();
+    };
+    window.addEventListener("message", recover);
+    return () => window.removeEventListener("message", recover);
+  }, [attachment, reload]);
 
   useEffect(() => {
     if (codeTab.themeMode !== "follow-cantrip") return;
@@ -229,7 +228,6 @@ export function CodeView({
         setAttachment(null);
         setFrameLoaded(false);
         setConnectError(null);
-        setSuperseded(false);
         setActionMessage("Editor stopped.");
       }),
     [codeTab.id, runAction],
@@ -242,7 +240,6 @@ export function CodeView({
         connectionGeneration.current += 1;
         await stopCodeTab(codeTab.id);
         stopped.current = false;
-        setSuperseded(false);
         setReloadVersion((version) => version + 1);
       }),
     [codeTab.id, runAction],
@@ -263,7 +260,7 @@ export function CodeView({
       isBusy:
         busyAction !== null ||
         connecting ||
-        (!attachment && retrying && !superseded && !stopped.current),
+        (!attachment && retrying && !stopped.current),
       runtime: attachment?.runtime ?? null,
       status:
         attachment?.runtime.status ??
@@ -289,7 +286,6 @@ export function CodeView({
       saveAll,
       setThemeMode,
       stop,
-      superseded,
     ],
   );
 
@@ -308,6 +304,7 @@ export function CodeView({
             className="min-h-0 w-full flex-1 border-0 bg-background"
             onLoad={() => setFrameLoaded(true)}
             referrerPolicy="no-referrer"
+            ref={frameRef}
             src={attachment.url}
             title={`${codeTab.title} — Cantrip Code`}
           />
@@ -326,31 +323,27 @@ export function CodeView({
             <div className="mx-auto grid size-12 place-items-center rounded-2xl border bg-card">
               {connectError && !retrying ? (
                 <AlertTriangle className="size-5 text-destructive" />
-              ) : superseded || stopped.current ? (
+              ) : stopped.current ? (
                 <Code2 className="size-5" />
               ) : (
                 <Loader2 className="size-5 animate-spin" />
               )}
             </div>
             <h2 className="mt-4 font-semibold">
-              {superseded
-                ? "Code is controlling from another window"
-                : stopped.current
-                  ? "Editor stopped"
-                  : connectError && retrying
-                    ? "Reconnecting to Cantrip Code"
-                    : connectError
-                      ? "Cantrip Code is unavailable"
-                      : "Starting Cantrip Code"}
+              {stopped.current
+                ? "Editor stopped"
+                : connectError && retrying
+                  ? "Reconnecting to Cantrip Code"
+                  : connectError
+                    ? "Cantrip Code is unavailable"
+                    : "Starting Cantrip Code"}
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {superseded
-                ? "Only one window controls an editor session at a time. Take control here to move the session back."
-                : connectError
-                  ? `${connectError}${connectAttempt > 0 ? ` Retrying (attempt ${connectAttempt + 1})…` : ""}`
-                  : stopped.current
-                    ? "The persistent profile and workspace state remain on the worker."
-                    : "The worker is opening the pinned editor build and this worktree workspace."}
+              {connectError
+                ? `${connectError}${connectAttempt > 0 ? ` Retrying (attempt ${connectAttempt + 1})…` : ""}`
+                : stopped.current
+                  ? "The persistent profile and workspace state remain on the worker."
+                  : "The worker is opening the pinned editor build and this worktree workspace."}
             </p>
             <Button
               className="mt-4"
@@ -358,11 +351,7 @@ export function CodeView({
               onClick={reload}
             >
               <RefreshCw className="size-4" />
-              {superseded
-                ? "Take control"
-                : stopped.current
-                  ? "Start editor"
-                  : "Retry now"}
+              {stopped.current ? "Start editor" : "Retry now"}
             </Button>
           </div>
         </div>

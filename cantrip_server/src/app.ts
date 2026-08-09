@@ -4665,6 +4665,14 @@ export async function buildApp({
     },
   );
 
+  app.delete<{ Params: { attachmentId: string } }>(
+    "/api/code-attachments/:attachmentId",
+    async (request, reply) => {
+      codeTunnel.revokeAttachment(request.params.attachmentId, LOCAL_USER_ID);
+      return reply.code(204).send();
+    },
+  );
+
   app.post<{ Params: { codeTabId: string } }>(
     "/api/code-tabs/:codeTabId/save-all",
     async (request, reply) => {

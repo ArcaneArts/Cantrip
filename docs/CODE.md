@@ -490,13 +490,14 @@ status, last attachment, and last error without storing editor credentials.
 - Worker shutdown terminates editor processes cleanly.
 - A worker update replaces the embedded editor and performs compatible profile
   migrations before accepting Code sessions.
-- Multiple attached clients initially use a single control lease for operations
-  where simultaneous input would be unsafe.
+- Main and pop-out windows may attach concurrently to the same worker-owned
+  editor session. Each renderer receives its own short-lived surface attachment
+  and releases it when the view closes or switches tabs.
 
-The current server tunnel revokes an older attachment when another controller
-attaches to the same Code session. Main and desktop pop-out windows additionally
-coordinate ownership in the client, so the first release intentionally favors a
-single writable workbench over concurrent unsynchronized input.
+Concurrent views share the editor process, persistent profile, generated
+workspace, and filesystem state without transferring control between windows.
+Expired or revoked surface attachments render a bounded recovery document that
+asks their owning app view to obtain a fresh credential.
 
 The worker persists only non-secret session identity and reconstructs compatible
 sessions as offline after restart. A new authorized attachment lazily relaunches

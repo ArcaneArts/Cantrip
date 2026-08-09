@@ -713,6 +713,13 @@ export async function createCodeAttachment(
   );
 }
 
+export async function releaseCodeAttachment(attachmentId: string) {
+  await request(`/api/code-attachments/${encodeURIComponent(attachmentId)}`, {
+    keepalive: true,
+    method: "DELETE",
+  });
+}
+
 export async function saveAllCodeTab(codeTabId: string) {
   return codeSaveAllResultSchema.parse(
     await post(`/api/code-tabs/${encodeURIComponent(codeTabId)}/save-all`, {}),

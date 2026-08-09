@@ -147,10 +147,6 @@ export class CodeTunnelBroker {
       }
       workspacePath = decodeURIComponent(workspace.pathname);
     }
-    // The initial multi-client policy grants one controlling attachment per
-    // editor session. A newly authorized client takes the lease and revokes
-    // the prior surface instead of allowing concurrent keyboard input.
-    this.revokeSession(input.sessionId);
     if (this.#attachments.size >= this.#maxAttachments) {
       throw new Error(
         "This server has reached its Cantrip Code attachment limit.",
@@ -193,12 +189,17 @@ export class CodeTunnelBroker {
     return this.#resolve(token) !== null;
   }
 
-  revokeAttachment(attachmentId: string): void {
+  revokeAttachment(attachmentId: string, ownerId: string): boolean {
     for (const [token, binding] of this.#attachments) {
-      if (binding.attachmentId === attachmentId) {
+      if (
+        binding.attachmentId === attachmentId &&
+        binding.ownerId === ownerId
+      ) {
         this.#removeAttachment(token, binding);
+        return true;
       }
     }
+    return false;
   }
 
   revokeSession(sessionId: string): void {
@@ -223,7 +224,7 @@ export class CodeTunnelBroker {
   ): void {
     const binding = this.#resolve(token);
     if (!binding) {
-      response.writeHead(404, { "cache-control": "no-store" }).end("Not found");
+      this.#writeUnavailable(response);
       return;
     }
     const sendFrame = this.bridge.sendCodeTunnelFrame;
@@ -724,6 +725,25 @@ export class CodeTunnelBroker {
     response.setHeader("Referrer-Policy", "no-referrer");
     response.setHeader("X-Content-Type-Options", "nosniff");
     response.writeHead(statusCode);
+  }
+
+  #writeUnavailable(response: ServerResponse): void {
+    const message = JSON.stringify({
+      type: "cantrip-code-attachment-unavailable-v1",
+    });
+    response.writeHead(404, {
+      "cache-control": "no-store",
+      "content-security-policy": `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors ${this.#allowedFrameAncestors}`,
+      "content-type": "text/html; charset=utf-8",
+      "referrer-policy": "no-referrer",
+      "x-content-type-options": "nosniff",
+    });
+    response.end(`<!doctype html>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<style>html,body{height:100%;margin:0}body{display:grid;place-items:center;background:Canvas;color:GrayText;font:14px system-ui,sans-serif}</style>
+<p>Reconnecting to Cantrip Code…</p>
+<script>window.parent.postMessage(${message}, "*");</script>`);
   }
 
   #sendCancel(
