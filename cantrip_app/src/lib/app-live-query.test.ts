@@ -1,4 +1,5 @@
-import type { AppLiveServerMessage } from "@cantrip/protocol";
+import { chatMessageSchema } from "@cantrip/protocol";
+import type { AppLiveServerMessage, ChatMessage } from "@cantrip/protocol";
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
@@ -77,8 +78,155 @@ describe("application live query bridge", () => {
     bridge.handleEvent({ ...workerEvent, cursor: 2 });
     await Promise.resolve();
     await Promise.resolve();
-    expect(invalidate).toHaveBeenCalledTimes(1);
+    expect(invalidate).toHaveBeenCalledTimes(2);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["workers"] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chat-sync"] });
+  });
+
+  it("upserts persisted message payloads without a follow-up GET", async () => {
+    const queryClient = new QueryClient();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const bridge = new AppLiveQueryBridge(queryClient);
+    const first = chatMessageSchema.parse({
+      id: "message-one",
+      chatId: "chat-one",
+      worktreeId: "worktree-one",
+      executionLaneId: "lane-one",
+      sequence: 1,
+      role: "user",
+      mode: "default",
+      content: [{ type: "text", text: "Start" }],
+      modelId: null,
+      modelRouteId: null,
+      providerId: null,
+      providerName: null,
+      providerModelName: null,
+      createdAt: "2026-08-09T12:00:00.000Z",
+    });
+    const streamed = chatMessageSchema.parse({
+      ...first,
+      id: "message-two",
+      sequence: 2,
+      role: "assistant",
+      content: [{ type: "text", text: "Working", phase: "commentary" }],
+    });
+    queryClient.setQueryData<ChatMessage[]>(["messages", "chat-one"], [first]);
+
+    bridge.handleEvent({
+      ...event({
+        entityId: streamed.id,
+        resource: "chat-message",
+        scope: { kind: "chat", chatId: "chat-one" },
+      }),
+      cursor: 2,
+      payload: streamed,
+      revision: streamed.sequence,
+    });
+
+    expect(
+      queryClient.getQueryData<ChatMessage[]>(["messages", "chat-one"]),
+    ).toEqual([first, streamed]);
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it("ignores duplicate and out-of-order payloads for the same message", () => {
+    const queryClient = new QueryClient();
+    const bridge = new AppLiveQueryBridge(queryClient);
+    const message = chatMessageSchema.parse({
+      id: "message-one",
+      chatId: "chat-one",
+      worktreeId: "worktree-one",
+      executionLaneId: "lane-one",
+      sequence: 1,
+      role: "assistant",
+      mode: "default",
+      content: [{ type: "text", text: "old", phase: "commentary" }],
+      modelId: null,
+      modelRouteId: null,
+      providerId: null,
+      providerName: null,
+      providerModelName: null,
+      createdAt: "2026-08-09T12:00:00.000Z",
+    });
+    queryClient.setQueryData<ChatMessage[]>(
+      ["messages", "chat-one"],
+      [message],
+    );
+    const send = (cursor: number, text: string) =>
+      bridge.handleEvent({
+        ...event({
+          entityId: message.id,
+          resource: "chat-message",
+          scope: { kind: "chat", chatId: "chat-one" },
+        }),
+        cursor,
+        payload: {
+          ...message,
+          content: [{ type: "text", text, phase: "commentary" }],
+        },
+      });
+
+    send(5, "newest");
+    send(5, "duplicate");
+    send(4, "stale");
+
+    expect(
+      queryClient.getQueryData<ChatMessage[]>(["messages", "chat-one"])?.[0]
+        ?.content,
+    ).toEqual([{ type: "text", text: "newest", phase: "commentary" }]);
+  });
+
+  it("accepts a lower cursor after authoritative chat recovery", async () => {
+    const queryClient = new QueryClient();
+    vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+    const bridge = new AppLiveQueryBridge(queryClient);
+    const message = chatMessageSchema.parse({
+      id: "message-one",
+      chatId: "chat-one",
+      worktreeId: "worktree-one",
+      executionLaneId: null,
+      sequence: 1,
+      role: "assistant",
+      mode: "default",
+      content: [{ type: "text", text: "before restart" }],
+      modelId: null,
+      modelRouteId: null,
+      providerId: null,
+      providerName: null,
+      providerModelName: null,
+      createdAt: "2026-08-09T12:00:00.000Z",
+    });
+    queryClient.setQueryData<ChatMessage[]>(
+      ["messages", "chat-one"],
+      [message],
+    );
+    const send = (cursor: number, text: string) =>
+      bridge.handleEvent({
+        ...event({
+          entityId: message.id,
+          resource: "chat-message",
+          scope: { kind: "chat", chatId: "chat-one" },
+        }),
+        cursor,
+        payload: {
+          ...message,
+          content: [{ type: "text", text }],
+        },
+      });
+
+    send(50, "old epoch");
+    await bridge.recoverScopes(
+      [{ kind: "chat", chatId: "chat-one" }],
+      "server-epoch-changed",
+    );
+    send(1, "new epoch");
+
+    expect(
+      queryClient.getQueryData<ChatMessage[]>(["messages", "chat-one"])?.[0]
+        ?.content,
+    ).toEqual([{ type: "text", text: "new epoch" }]);
   });
 
   it("awaits all authoritative scope invalidations during recovery", async () => {

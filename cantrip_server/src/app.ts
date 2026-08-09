@@ -12,6 +12,7 @@ import {
   agentInteractionRequestQuerySchema,
   agentInteractionRequestSchema,
   agentInteractionResolutionCreateSchema,
+  appLiveEventPayloadSchema,
   browserCreateSchema,
   browserListSchema,
   browserSummarySchema,
@@ -299,6 +300,16 @@ const GOAL_RESUME_PROMPT =
   "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
 const WORKFLOW_GENERATION_TIMEOUT_MS = 2 * 60 * 1_000;
 const WORKFLOW_SCHEDULE_POLL_MS = 1_000;
+type ChatLiveResource = Extract<
+  AppLiveResource,
+  | "agent-interaction"
+  | "chat"
+  | "chat-goal"
+  | "chat-message"
+  | "chat-plan"
+  | "chat-queue"
+>;
+
 function mutationLiveResources(route: string): AppLiveResource[] {
   if (route === "/api/internal/agent-tools/worktree") return ["worktree"];
   if (
@@ -343,6 +354,11 @@ function mutationLiveResources(route: string): AppLiveResource[] {
   ) {
     return ["project-view"];
   }
+  return [];
+}
+
+function mutationChatLiveResources(route: string): ChatLiveResource[] {
+  if (route === "/api/chats/:chatId/goal") return ["chat-goal"];
   return [];
 }
 
@@ -435,6 +451,208 @@ export async function buildApp({
       );
     }
   };
+  const publishChatInvalidation = (
+    chatId: string,
+    resource: ChatLiveResource,
+    entityId: string | null = null,
+  ): void => {
+    if (!livePublishingEnabled) return;
+    try {
+      liveHub.publish({
+        scope: { kind: "chat", chatId },
+        resource,
+        action: "invalidated",
+        entityId,
+        revision: null,
+        payload: null,
+      });
+    } catch (error) {
+      app.log.error(
+        { chatId, err: error, resource },
+        "Could not publish chat live invalidation",
+      );
+    }
+  };
+  const publishChatMessage = (message: ChatMessage): void => {
+    if (!livePublishingEnabled) return;
+    try {
+      liveHub.publish({
+        scope: { kind: "chat", chatId: message.chatId },
+        resource: "chat-message",
+        action: "updated",
+        entityId: message.id,
+        revision: message.sequence,
+        payload: appLiveEventPayloadSchema.parse(
+          chatMessageSchema.parse(message),
+        ),
+      });
+    } catch (error) {
+      app.log.error(
+        { chatId: message.chatId, err: error, messageId: message.id },
+        "Could not publish persisted chat message",
+      );
+    }
+  };
+  const appendLiveChatMessage = async (
+    ...input: Parameters<typeof repository.appendMessage>
+  ): ReturnType<typeof repository.appendMessage> => {
+    const message = await repository.appendMessage(...input);
+    if (message) publishChatMessage(message);
+    return message;
+  };
+  const upsertLiveChatMessage = async (
+    ...input: Parameters<typeof repository.upsertMessage>
+  ): ReturnType<typeof repository.upsertMessage> => {
+    const message = await repository.upsertMessage(...input);
+    if (message) publishChatMessage(message);
+    return message;
+  };
+  const setLiveChatMessageModelRoute = async (
+    ...input: Parameters<typeof repository.setMessageModelRoute>
+  ): ReturnType<typeof repository.setMessageModelRoute> => {
+    const message = await repository.setMessageModelRoute(...input);
+    if (message) publishChatMessage(message);
+    return message;
+  };
+  const publishChatSummary = (chatId: string, projectId: string): void => {
+    publishLiveInvalidation("chat", { entityId: chatId, projectId });
+  };
+  const publishChatTurnBoundary = (chatId: string, projectId: string): void => {
+    publishChatSummary(chatId, projectId);
+    publishChatInvalidation(chatId, "chat");
+    publishChatInvalidation(chatId, "chat-goal");
+    publishChatInvalidation(chatId, "chat-plan");
+  };
+  const recordLiveAgentInteractionRequest = async (
+    ...input: Parameters<typeof repository.recordAgentInteractionRequest>
+  ): ReturnType<typeof repository.recordAgentInteractionRequest> => {
+    const interaction = await repository.recordAgentInteractionRequest(
+      ...input,
+    );
+    if (interaction.provenance.chatId) {
+      publishChatInvalidation(
+        interaction.provenance.chatId,
+        "agent-interaction",
+        interaction.id,
+      );
+      publishChatSummary(interaction.provenance.chatId, interaction.projectId);
+    }
+    return interaction;
+  };
+  const resolveLiveAgentInteractionRequest = async (
+    ...input: Parameters<typeof repository.resolveAgentInteractionRequest>
+  ): ReturnType<typeof repository.resolveAgentInteractionRequest> => {
+    const interaction = await repository.resolveAgentInteractionRequest(
+      ...input,
+    );
+    if (interaction?.provenance.chatId) {
+      publishChatInvalidation(
+        interaction.provenance.chatId,
+        "agent-interaction",
+        interaction.id,
+      );
+      publishChatSummary(interaction.provenance.chatId, interaction.projectId);
+    }
+    return interaction;
+  };
+  const terminalizeLiveAgentInteractionRequest = async (
+    ...input: Parameters<
+      typeof repository.terminalizeAgentInteractionRequestFromWorker
+    >
+  ): ReturnType<
+    typeof repository.terminalizeAgentInteractionRequestFromWorker
+  > => {
+    const interaction =
+      await repository.terminalizeAgentInteractionRequestFromWorker(...input);
+    if (interaction?.provenance.chatId) {
+      publishChatInvalidation(
+        interaction.provenance.chatId,
+        "agent-interaction",
+        interaction.id,
+      );
+      publishChatSummary(interaction.provenance.chatId, interaction.projectId);
+    }
+    return interaction;
+  };
+  const interruptLiveAgentInteractionRequests = async (
+    ...input: Parameters<typeof repository.interruptAgentInteractionRequests>
+  ): ReturnType<typeof repository.interruptAgentInteractionRequests> => {
+    const interactions = await repository.interruptAgentInteractionRequests(
+      ...input,
+    );
+    const chatId = input[0];
+    publishChatInvalidation(chatId, "agent-interaction");
+    const projectId = interactions[0]?.projectId;
+    if (projectId) publishChatSummary(chatId, projectId);
+    return interactions;
+  };
+  const expireLiveAgentInteractionRequests = async (
+    ...input: Parameters<typeof repository.expireAgentInteractionRequests>
+  ): ReturnType<typeof repository.expireAgentInteractionRequests> => {
+    const interactions = await repository.expireAgentInteractionRequests(
+      ...input,
+    );
+    const chats = new Map<string, string>();
+    for (const interaction of interactions) {
+      if (interaction.provenance.chatId) {
+        chats.set(interaction.provenance.chatId, interaction.projectId);
+      }
+    }
+    for (const [chatId, projectId] of chats) {
+      publishChatInvalidation(chatId, "agent-interaction");
+      publishChatSummary(chatId, projectId);
+    }
+    return interactions;
+  };
+  const updateLiveChatPlanMode = async (
+    ...input: Parameters<typeof repository.updateChatPlanMode>
+  ): ReturnType<typeof repository.updateChatPlanMode> => {
+    const state = await repository.updateChatPlanMode(...input);
+    if (state) publishChatInvalidation(input[1], "chat-plan");
+    return state;
+  };
+  const updateLiveChatPlanSnapshot = async (
+    ...input: Parameters<typeof repository.updateChatPlanSnapshot>
+  ): ReturnType<typeof repository.updateChatPlanSnapshot> => {
+    const result = await repository.updateChatPlanSnapshot(...input);
+    publishChatInvalidation(input[0], "chat-plan");
+    return result;
+  };
+  const setLivePendingPlanQuestion = async (
+    ...input: Parameters<typeof repository.setPendingPlanQuestion>
+  ): ReturnType<typeof repository.setPendingPlanQuestion> => {
+    const result = await repository.setPendingPlanQuestion(...input);
+    publishChatInvalidation(input[0], "chat-plan");
+    return result;
+  };
+  const createLiveQueuedPrompt = async (
+    ...input: Parameters<typeof repository.createQueuedPrompt>
+  ): ReturnType<typeof repository.createQueuedPrompt> => {
+    const prompt = await repository.createQueuedPrompt(...input);
+    if (prompt) publishChatInvalidation(prompt.chatId, "chat-queue", prompt.id);
+    return prompt;
+  };
+  const updateLiveQueuedPrompt = async (
+    ...input: Parameters<typeof repository.updateQueuedPrompt>
+  ): ReturnType<typeof repository.updateQueuedPrompt> => {
+    const prompt = await repository.updateQueuedPrompt(...input);
+    if (prompt) publishChatInvalidation(prompt.chatId, "chat-queue", prompt.id);
+    return prompt;
+  };
+  const deleteLiveQueuedPrompt = async (
+    ...input: Parameters<typeof repository.deleteQueuedPrompt>
+  ): ReturnType<typeof repository.deleteQueuedPrompt> => {
+    const prompt = await repository.deleteQueuedPrompt(...input);
+    if (prompt) publishChatInvalidation(prompt.chatId, "chat-queue", prompt.id);
+    return prompt;
+  };
+  const reorderLiveQueuedPrompts = async (
+    ...input: Parameters<typeof repository.reorderQueuedPrompts>
+  ): ReturnType<typeof repository.reorderQueuedPrompts> => {
+    const reordered = await repository.reorderQueuedPrompts(...input);
+    if (reordered) publishChatInvalidation(input[1], "chat-queue");
+    return reordered;
+  };
   const worktreeCoordinator = new ProjectWorktreeCoordinator(
     repository,
     bridge,
@@ -509,8 +727,10 @@ export async function buildApp({
     ) {
       return;
     }
-    const resources = mutationLiveResources(request.routeOptions.url ?? "");
-    if (resources.length === 0) return;
+    const route = request.routeOptions.url ?? "";
+    const resources = mutationLiveResources(route);
+    const chatResources = mutationChatLiveResources(route);
+    if (resources.length === 0 && chatResources.length === 0) return;
     const params = request.params as Record<string, unknown>;
     const projectId =
       typeof params.projectId === "string" ? params.projectId : null;
@@ -528,6 +748,12 @@ export async function buildApp({
     ].find((value): value is string => typeof value === "string");
     for (const resource of resources) {
       publishLiveInvalidation(resource, { entityId, projectId });
+    }
+    const chatId = typeof params.chatId === "string" ? params.chatId : null;
+    if (chatId) {
+      for (const resource of chatResources) {
+        publishChatInvalidation(chatId, resource);
+      }
     }
   });
 
@@ -819,7 +1045,7 @@ export async function buildApp({
   queueScheduleTick();
 
   const agentInteractionExpiryTimer = setInterval(() => {
-    void repository.expireAgentInteractionRequests().catch((error) => {
+    void expireLiveAgentInteractionRequests().catch((error) => {
       app.log.error(
         { err: error },
         "Failed to expire pending agent interaction requests",
@@ -1328,7 +1554,7 @@ export async function buildApp({
               chatId,
               pending.lane.id,
             );
-            await repository.appendMessage(LOCAL_USER_ID, chatId, {
+            await appendLiveChatMessage(LOCAL_USER_ID, chatId, {
               role: "system",
               content: [
                 {
@@ -1381,7 +1607,7 @@ export async function buildApp({
           { chatId, err: error },
           "Could not start a worktree continuation",
         );
-        await repository.appendMessage(
+        await appendLiveChatMessage(
           LOCAL_USER_ID,
           chatId,
           {
@@ -1535,7 +1761,7 @@ export async function buildApp({
         modelId: prompt.modelId,
         idempotencyKey: `queue:${prompt.id}`,
       });
-      await repository.deleteQueuedPrompt(LOCAL_USER_ID, prompt.id);
+      await deleteLiveQueuedPrompt(LOCAL_USER_ID, prompt.id);
     } catch (error) {
       app.log.error({ chatId, err: error }, "Queued prompt dispatch failed");
     } finally {
@@ -1582,6 +1808,7 @@ export async function buildApp({
     if (!execution || !execution.executionLaneId) {
       throw new Error("Chat execution lane could not be acquired.");
     }
+    publishChatSummary(execution.chatId, execution.projectId);
     const executionLaneId = execution.executionLaneId;
     const attribution = {
       executionLaneId,
@@ -1590,7 +1817,7 @@ export async function buildApp({
     let priorMessages: ChatMessage[];
     let userMessage: ChatMessage;
     try {
-      await repository.updateChatPlanMode(
+      await updateLiveChatPlanMode(
         LOCAL_USER_ID,
         execution.chatId,
         turnPlanMode,
@@ -1620,11 +1847,7 @@ export async function buildApp({
       );
       if (!appended) throw new Error("Chat not found.");
       userMessage = appended;
-      await repository.setMessageModelRoute(
-        userMessage.id,
-        modelId,
-        runtimes[0]!,
-      );
+      await setLiveChatMessageModelRoute(userMessage.id, modelId, runtimes[0]!);
       await repository.setChatModel(LOCAL_USER_ID, execution.chatId, {
         modelId,
       });
@@ -1634,6 +1857,7 @@ export async function buildApp({
         executionLaneId,
         "failed",
       );
+      publishChatSummary(execution.chatId, execution.projectId);
       throw error;
     }
 
@@ -1654,11 +1878,13 @@ export async function buildApp({
           const workerPrompt = threadId
             ? requestedPrompt
             : continuationPrompt(priorMessages, requestedPrompt);
-          await repository.setMessageModelRoute(
-            userMessage.id,
-            modelId,
-            runtime,
-          );
+          if (index > 0) {
+            await setLiveChatMessageModelRoute(
+              userMessage.id,
+              modelId,
+              runtime,
+            );
+          }
           await repository.updateChatRuntime(
             execution.chatId,
             execution.workerId,
@@ -1704,7 +1930,7 @@ export async function buildApp({
                   anyActivity = true;
                   if (event.type === "agent.interaction.requested") {
                     try {
-                      await repository.recordAgentInteractionRequest({
+                      await recordLiveAgentInteractionRequest({
                         requestKey: event.request.requestKey,
                         projectId: execution.projectId,
                         provenance: {
@@ -1741,7 +1967,7 @@ export async function buildApp({
                     event.type === "agent.interaction.cleared" ||
                     event.type === "agent.interaction.expired"
                   ) {
-                    await repository.terminalizeAgentInteractionRequestFromWorker(
+                    await terminalizeLiveAgentInteractionRequest(
                       event.requestKey,
                       execution.chatId,
                       execution.workerId,
@@ -1753,7 +1979,7 @@ export async function buildApp({
                   }
                   if (event.type === "agent.message") {
                     const turnId = event.message.correlation?.turnId;
-                    await repository.upsertMessage(
+                    await upsertLiveChatMessage(
                       LOCAL_USER_ID,
                       execution.chatId,
                       {
@@ -1778,7 +2004,7 @@ export async function buildApp({
                   if (event.type === "agent.checkpoint") {
                     if (!event.text.trim()) return;
                     if (finalAgentTurns.has(event.turnId)) return;
-                    await repository.upsertMessage(
+                    await upsertLiveChatMessage(
                       LOCAL_USER_ID,
                       execution.chatId,
                       {
@@ -1797,7 +2023,7 @@ export async function buildApp({
                     return;
                   }
                   if (event.type === "agent.plan.updated") {
-                    await repository.updateChatPlanSnapshot(
+                    await updateLiveChatPlanSnapshot(
                       execution.chatId,
                       event.explanation,
                       event.steps,
@@ -1805,7 +2031,7 @@ export async function buildApp({
                     return;
                   }
                   if (event.type === "agent.plan.question") {
-                    await repository.setPendingPlanQuestion(
+                    await setLivePendingPlanQuestion(
                       execution.chatId,
                       event.question,
                     );
@@ -1817,10 +2043,7 @@ export async function buildApp({
                       execution.chatId,
                     );
                     if (state?.question?.id === event.questionId) {
-                      await repository.setPendingPlanQuestion(
-                        execution.chatId,
-                        null,
-                      );
+                      await setLivePendingPlanQuestion(execution.chatId, null);
                     }
                     return;
                   }
@@ -1830,7 +2053,7 @@ export async function buildApp({
                       changedPaths.add(change.path);
                     }
                   }
-                  await repository.upsertMessage(
+                  await upsertLiveChatMessage(
                     LOCAL_USER_ID,
                     execution.chatId,
                     {
@@ -1857,7 +2080,7 @@ export async function buildApp({
               runtime.routeId,
             );
             if (!result.turnId || !finalAgentTurns.has(result.turnId)) {
-              await repository.appendMessage(
+              await appendLiveChatMessage(
                 LOCAL_USER_ID,
                 execution.chatId,
                 {
@@ -1875,14 +2098,13 @@ export async function buildApp({
                 attribution,
               );
             }
-            await repository.interruptAgentInteractionRequests(
-              execution.chatId,
-            );
+            await interruptLiveAgentInteractionRequests(execution.chatId);
             await repository.finishChatExecutionLane(
               execution.chatId,
               executionLaneId,
               "idle",
             );
+            publishChatTurnBoundary(execution.chatId, execution.projectId);
             if (!(await continuePendingWorktreeTransition(execution.chatId))) {
               void dispatchNextQueuedPrompt(execution.chatId);
             }
@@ -1924,7 +2146,7 @@ export async function buildApp({
           { chatId: execution.chatId, err: error },
           "Agent turn failed",
         );
-        await repository.appendMessage(
+        await appendLiveChatMessage(
           LOCAL_USER_ID,
           execution.chatId,
           {
@@ -1941,12 +2163,13 @@ export async function buildApp({
           },
           attribution,
         );
-        await repository.interruptAgentInteractionRequests(execution.chatId);
+        await interruptLiveAgentInteractionRequests(execution.chatId);
         await repository.finishChatExecutionLane(
           execution.chatId,
           executionLaneId,
           interrupted ? "idle" : "failed",
         );
+        publishChatTurnBoundary(execution.chatId, execution.projectId);
         if (!(await continuePendingWorktreeTransition(execution.chatId))) {
           void dispatchNextQueuedPrompt(execution.chatId);
         }
@@ -1989,6 +2212,7 @@ export async function buildApp({
       }),
     );
     if (!result.goal) throw new Error("Codex did not create the goal.");
+    publishChatInvalidation(context.chatId, "chat-goal");
     await repository.updateChatRuntime(
       context.chatId,
       context.workerId,
@@ -2198,7 +2422,7 @@ export async function buildApp({
           return reply.code(404).send({ error: "Agent request not found." });
         }
         if (existing.status !== "pending") {
-          const replay = await repository.resolveAgentInteractionRequest(
+          const replay = await resolveLiveAgentInteractionRequest(
             LOCAL_USER_ID,
             request.params.requestId,
             input.data,
@@ -2226,7 +2450,7 @@ export async function buildApp({
             });
           }
           try {
-            const interaction = await repository.resolveAgentInteractionRequest(
+            const interaction = await resolveLiveAgentInteractionRequest(
               LOCAL_USER_ID,
               request.params.requestId,
               input.data,
@@ -2278,7 +2502,7 @@ export async function buildApp({
             error: `The runtime no longer accepts this interaction: ${errorMessage(error)}`,
           });
         }
-        const interaction = await repository.resolveAgentInteractionRequest(
+        const interaction = await resolveLiveAgentInteractionRequest(
           LOCAL_USER_ID,
           request.params.requestId,
           input.data,
@@ -6254,7 +6478,7 @@ export async function buildApp({
         if (!released) {
           return reply.code(404).send({ error: "Execution lane not found." });
         }
-        await repository.appendMessage(
+        await appendLiveChatMessage(
           LOCAL_USER_ID,
           request.params.chatId,
           {
@@ -6399,7 +6623,7 @@ export async function buildApp({
         parsedResult.interrupted &&
         context.status === "waiting-for-approval"
       ) {
-        await repository.interruptAgentInteractionRequests(context.chatId);
+        await interruptLiveAgentInteractionRequests(context.chatId);
       }
       return reply.send(parsedResult);
     },
@@ -6526,7 +6750,7 @@ export async function buildApp({
             })) as { mode?: unknown };
             const mode = chatPlanUpdateSchema.safeParse({ mode: result.mode });
             if (mode.success && mode.data.mode !== context.planMode) {
-              await repository.updateChatPlanMode(
+              await updateLiveChatPlanMode(
                 LOCAL_USER_ID,
                 context.chatId,
                 mode.data.mode,
@@ -6595,7 +6819,7 @@ export async function buildApp({
           result.threadId,
           runtime.routeId,
         );
-        const state = await repository.updateChatPlanMode(
+        const state = await updateLiveChatPlanMode(
           LOCAL_USER_ID,
           context.chatId,
           nativeMode.mode,
@@ -6662,7 +6886,7 @@ export async function buildApp({
             accepted.requestKey,
           );
           if (interaction?.status === "pending") {
-            await repository.resolveAgentInteractionRequest(
+            await resolveLiveAgentInteractionRequest(
               LOCAL_USER_ID,
               interaction.id,
               {
@@ -6685,7 +6909,7 @@ export async function buildApp({
           context.chatId,
         );
         if (latest?.question?.id === state.question.id) {
-          await repository.setPendingPlanQuestion(context.chatId, null);
+          await setLivePendingPlanQuestion(context.chatId, null);
         }
         return reply.send(chatPlanAcceptedSchema.parse({ accepted: true }));
       } catch (error) {
@@ -6953,7 +7177,10 @@ export async function buildApp({
           "agent",
           "Linked Codex console turn",
         );
-        if (acquired) syncExecution = acquired;
+        if (acquired) {
+          syncExecution = acquired;
+          publishChatSummary(acquired.chatId, acquired.projectId);
+        }
       }
       const syncAttribution = syncExecution.executionLaneId
         ? {
@@ -6964,7 +7191,7 @@ export async function buildApp({
       for (const turn of sync.turns) {
         for (const item of turn.items) {
           if (item.type === "userMessage") {
-            await repository.upsertMessage(
+            await upsertLiveChatMessage(
               LOCAL_USER_ID,
               context.chatId,
               {
@@ -6975,7 +7202,7 @@ export async function buildApp({
               syncAttribution,
             );
           } else if (item.type === "agentMessage") {
-            await repository.upsertMessage(
+            await upsertLiveChatMessage(
               LOCAL_USER_ID,
               context.chatId,
               {
@@ -6993,7 +7220,7 @@ export async function buildApp({
               syncAttribution,
             );
           } else if (item.type === "activity") {
-            await repository.upsertMessage(
+            await upsertLiveChatMessage(
               LOCAL_USER_ID,
               context.chatId,
               {
@@ -7006,7 +7233,7 @@ export async function buildApp({
           }
         }
         if (turn.status === "failed" || turn.status === "interrupted") {
-          await repository.upsertMessage(
+          await upsertLiveChatMessage(
             LOCAL_USER_ID,
             context.chatId,
             {
@@ -7036,6 +7263,7 @@ export async function buildApp({
         } else {
           await repository.setChatStatus(context.chatId, sync.status);
         }
+        publishChatSummary(context.chatId, context.projectId);
         if (sync.status === "idle") {
           if (!(await continuePendingWorktreeTransition(context.chatId))) {
             void dispatchNextQueuedPrompt(context.chatId);
@@ -7462,7 +7690,7 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const message = await repository.appendMessage(
+      const message = await appendLiveChatMessage(
         LOCAL_USER_ID,
         request.params.chatId,
         input.data,
@@ -7819,7 +8047,7 @@ export async function buildApp({
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
       }
-      const prompt = await repository.createQueuedPrompt(
+      const prompt = await createLiveQueuedPrompt(
         LOCAL_USER_ID,
         context.chatId,
         input.data,
@@ -7841,7 +8069,7 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const reordered = await repository.reorderQueuedPrompts(
+      const reordered = await reorderLiveQueuedPrompts(
         LOCAL_USER_ID,
         request.params.chatId,
         input.data,
@@ -7891,7 +8119,7 @@ export async function buildApp({
           .code(400)
           .send({ error: "A prompt needs text or at least one attachment." });
       }
-      const prompt = await repository.updateQueuedPrompt(
+      const prompt = await updateLiveQueuedPrompt(
         LOCAL_USER_ID,
         request.params.promptId,
         input.data,
@@ -7910,7 +8138,7 @@ export async function buildApp({
   app.delete<{ Params: { promptId: string } }>(
     "/api/queued-prompts/:promptId",
     async (request, reply) => {
-      const prompt = await repository.deleteQueuedPrompt(
+      const prompt = await deleteLiveQueuedPrompt(
         LOCAL_USER_ID,
         request.params.promptId,
       );
@@ -7975,7 +8203,7 @@ export async function buildApp({
             model: runtime.model,
             provider: runtime.provider,
           });
-          const appended = await repository.appendMessage(
+          const appended = await appendLiveChatMessage(
             LOCAL_USER_ID,
             context.chatId,
             {
@@ -8022,7 +8250,7 @@ export async function buildApp({
             idempotencyKey: `queue:${queued.id}`,
           });
         }
-        await repository.deleteQueuedPrompt(LOCAL_USER_ID, queued.id);
+        await deleteLiveQueuedPrompt(LOCAL_USER_ID, queued.id);
         return reply.send(
           chatPromptSteerResultSchema.parse({ steered: true, message }),
         );
@@ -8071,7 +8299,7 @@ export async function buildApp({
         } catch (error) {
           return reply.code(409).send({ error: errorMessage(error) });
         }
-        const prompt = await repository.createQueuedPrompt(
+        const prompt = await createLiveQueuedPrompt(
           LOCAL_USER_ID,
           context.chatId,
           { ...input.data, modelId, frozen: false, worktreeId: null },
@@ -8136,7 +8364,7 @@ export async function buildApp({
         if (!context) throw new Error("Chat execution context not found.");
         attribution.worktreeId = context.worktreeId;
         const result = await executeAgentWorktreeTool(input.data);
-        await repository.upsertMessage(
+        await upsertLiveChatMessage(
           LOCAL_USER_ID,
           input.data.chatId,
           {
@@ -8161,7 +8389,7 @@ export async function buildApp({
         return reply.send(agentWorktreeToolResultSchema.parse(result));
       } catch (error) {
         if (attribution.worktreeId) {
-          await repository.upsertMessage(
+          await upsertLiveChatMessage(
             LOCAL_USER_ID,
             input.data.chatId,
             {

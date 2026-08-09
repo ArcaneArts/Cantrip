@@ -4,6 +4,7 @@ import path from "node:path";
 
 import {
   appLiveServerMessageSchema,
+  chatMessageSchema,
   unprobedCodexRuntimeReport,
 } from "@cantrip/protocol";
 import type { AppLiveServerMessage } from "@cantrip/protocol";
@@ -229,6 +230,36 @@ describe.sequential("application live WebSocket", () => {
               message.scope.kind === "current-user",
           ),
       ).toBe(true),
+    );
+
+    const messageEventStart = messages.length;
+    const messageResponse = await app.inject({
+      method: "POST",
+      url: `/api/chats/${chatId}/messages`,
+      payload: {
+        role: "system",
+        content: [{ type: "text", text: "Persist before publishing" }],
+        idempotencyKey: "live-api-message",
+      },
+    });
+    expect(messageResponse.statusCode).toBe(201);
+    const persistedMessage = chatMessageSchema.parse(messageResponse.json());
+    await vi.waitFor(() =>
+      expect(
+        messages
+          .slice(messageEventStart)
+          .find(
+            (message) =>
+              message.type === "event" &&
+              message.resource === "chat-message" &&
+              message.entityId === persistedMessage.id,
+          ),
+      ).toMatchObject({
+        type: "event",
+        scope: { kind: "chat", chatId },
+        payload: persistedMessage,
+        revision: persistedMessage.sequence,
+      }),
     );
 
     socket.terminate();

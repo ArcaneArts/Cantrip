@@ -57,3 +57,18 @@ invalidations while the connection is healthy. During connection startup,
 reconnect, or resynchronization, the app retains a bounded 10–15 second HTTP
 fallback. The per-worktree external Git-status observer remains a separate
 temporary polling path until its worker-owned reconciliation migration.
+
+Active chats also use the live channel while it is healthy. Persisted messages
+and normalized activity (including commentary, final answers, usage, and turn
+summaries) carry their complete typed message payload so an already-loaded
+transcript can update without another GET. Queue, goal, plan, interaction,
+execution-status, and chat-list changes use coalesced scoped invalidations. The
+server always commits these records before publishing.
+
+The 750 ms chat and Codex-sync loops are disabled while live. Codex transcript
+reconciliation is instead triggered at chat-scope recovery, a worker presence
+transition, and a completed turn; cursor gaps and server restarts use the same
+authoritative scope-recovery barrier. When live is unavailable, active chats
+fall back to a 3 second snapshot interval and idle chats to 10 seconds. This
+fallback preserves convergence without making the WebSocket a second durable
+transcript.

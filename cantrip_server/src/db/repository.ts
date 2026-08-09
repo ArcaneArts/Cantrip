@@ -5985,8 +5985,8 @@ export class ServerRepository {
     messageId: string,
     modelId: string,
     runtime: ModelRuntime,
-  ): Promise<void> {
-    await this.database
+  ): Promise<ChatMessage | null> {
+    const rows = await this.database
       .update(schema.chatMessages)
       .set({
         modelId,
@@ -5995,7 +5995,9 @@ export class ServerRepository {
         providerName: runtime.provider.name,
         providerModelName: runtime.model.name,
       })
-      .where(eq(schema.chatMessages.id, messageId));
+      .where(eq(schema.chatMessages.id, messageId))
+      .returning();
+    return rows[0] ? toChatMessage(rows[0]) : null;
   }
 
   async upsertMessage(
