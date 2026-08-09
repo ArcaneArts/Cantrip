@@ -119,6 +119,7 @@ import {
   ProjectTabBar,
   type ProjectSurfaceCreateKind,
 } from "@/components/workspace/project-tab-bar";
+import { WorkspaceDndProvider } from "@/components/workspace/workspace-dnd-provider";
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { ServerSwitcher } from "@/components/servers/server-switcher";
@@ -201,6 +202,8 @@ import {
   renameProjectView,
   renameTerminal,
   removeProject,
+  moveProjectTabGroupMember,
+  reorderProjectTabGroupMembers,
   reorderProjectTabGroups,
   reorderProjects,
   reorderQueuedPrompts,
@@ -248,6 +251,11 @@ import {
   sidebarWidthFromPointer,
 } from "@/lib/sidebar-resize";
 import { cn } from "@/lib/utils";
+import { applyOptimisticTabLayoutCommand } from "@/lib/project-tab-layout-optimistic";
+import type {
+  TabLayoutCommand,
+  WorkspaceDropOperation,
+} from "@/lib/workspace-dnd-model";
 import {
   emptyWorkspaceSelection,
   reconcileWorkspaceSelection,
@@ -2289,6 +2297,9 @@ export function App() {
   const [chatConsoleChatId, setChatConsoleChatId] = useState<string | null>(
     null,
   );
+  const [workspaceDragError, setWorkspaceDragError] = useState<string | null>(
+    null,
+  );
   const selectedTabKey = selectedWorkspaceTabKey(workspaceSelection);
   const selectedChatId = projectSurfaceTabId(selectedTabKey, "chat");
   const selectedTerminalId = projectSurfaceTabId(selectedTabKey, "terminal");
@@ -3034,42 +3045,62 @@ export function App() {
       queryClient.setQueryData(["projects"], context?.previous),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
   });
-  const reorderGroupsMutation = useMutation({
+  const tabLayoutMutation = useMutation({
     mutationFn: ({
+      command,
       projectId,
-      groupIds,
     }: {
       projectId: string;
-      groupIds: string[];
+      command: TabLayoutCommand;
     }) => {
       const current = queryClient.getQueryData<ProjectTabLayoutSummary>([
         "project-tab-layout",
         projectId,
       ]);
       if (!current) throw new Error("The project tab layout is not loaded.");
-      return reorderProjectTabGroups(projectId, current.revision, groupIds);
+      if (command.type === "reorder-groups") {
+        return reorderProjectTabGroups(
+          projectId,
+          current.revision,
+          command.groupIds,
+        );
+      }
+      if (command.type === "reorder-members") {
+        return reorderProjectTabGroupMembers(
+          projectId,
+          command.groupId,
+          current.revision,
+          command.tabKeys,
+        );
+      }
+      return moveProjectTabGroupMember(projectId, {
+        revision: current.revision,
+        tabKey: command.tabKey,
+        targetGroupId: command.targetGroupId,
+        targetMemberPosition: command.targetMemberPosition,
+        ...(command.targetGroupPosition === undefined
+          ? {}
+          : { targetGroupPosition: command.targetGroupPosition }),
+      });
     },
-    onMutate: async ({ projectId, groupIds }) => {
+    onMutate: async ({ command, projectId }) => {
+      setWorkspaceDragError(null);
       const queryKey = ["project-tab-layout", projectId] as const;
       await queryClient.cancelQueries({ queryKey });
       const previous =
         queryClient.getQueryData<ProjectTabLayoutSummary>(queryKey);
       if (previous) {
-        const groupById = new Map(
-          previous.groups.map((group) => [group.id, group]),
+        queryClient.setQueryData<ProjectTabLayoutSummary>(
+          queryKey,
+          applyOptimisticTabLayoutCommand(previous, command),
         );
-        queryClient.setQueryData<ProjectTabLayoutSummary>(queryKey, {
-          ...previous,
-          groups: groupIds.flatMap((id, position) => {
-            const group = groupById.get(id);
-            return group ? [{ ...group, position }] : [];
-          }),
-        });
       }
       return { previous, queryKey };
     },
-    onError: (_error, _input, context) =>
-      queryClient.setQueryData(context?.queryKey ?? [], context?.previous),
+    onError: (error, _input, context) => {
+      queryClient.setQueryData(context?.queryKey ?? [], context?.previous);
+      setWorkspaceDragError(errorText(error));
+    },
     onSuccess: (layout) =>
       queryClient.setQueryData(
         ["project-tab-layout", layout.projectId],
@@ -3632,11 +3663,39 @@ export function App() {
     ...(newProjectView.isPending ? (["history", "issues"] as const) : []),
     ...(newRemoteDesktop.isPending ? (["remote-desktop"] as const) : []),
   ]);
+  const handleWorkspaceDrop = (operation: WorkspaceDropOperation) => {
+    setWorkspaceDragError(null);
+    if (operation.type === "tab-layout") {
+      if (tabLayoutMutation.isPending) {
+        setWorkspaceDragError("Wait for the current tab move to finish.");
+        return;
+      }
+      tabLayoutMutation.mutate({
+        projectId: operation.projectId,
+        command: operation.command,
+      });
+      return;
+    }
+    const current = projects.data ?? [];
+    const from = current.findIndex(
+      ({ id }) => id === operation.sourceProjectId,
+    );
+    const to = current.findIndex(({ id }) => id === operation.targetProjectId);
+    if (from < 0 || to < 0) return;
+    const reordered = [...current];
+    const [moved] = reordered.splice(from, 1);
+    if (!moved) return;
+    reordered.splice(to, 0, moved);
+    reorderProjectsMutation.mutate(reordered.map(({ id }) => id));
+  };
 
   return (
-    <main
+    <WorkspaceDndProvider
       className="flex h-svh overflow-hidden bg-background text-foreground"
-      data-tauri-titlebar={overlayTitlebar ? "overlay" : undefined}
+      layout={tabLayout.data}
+      projects={projects.data ?? []}
+      onOperation={handleWorkspaceDrop}
+      tauriTitlebar={overlayTitlebar ? "overlay" : undefined}
     >
       {!isPopout ? (
         <div
@@ -3802,7 +3861,10 @@ export function App() {
                   deleteCodeTabMutation.mutate(codeTabId)
                 }
                 onRenameBrowser={(browserId, title) =>
-                  updateBrowserMutation.mutate({ browserId, input: { title } })
+                  updateBrowserMutation.mutate({
+                    browserId,
+                    input: { title },
+                  })
                 }
                 onDeleteBrowser={(browserId) =>
                   deleteBrowserMutation.mutate(browserId)
@@ -3826,13 +3888,12 @@ export function App() {
                   deleteTerminalMutation.mutate(terminalId)
                 }
                 onRemoveProject={(projectId, deleteLocalFiles) =>
-                  removeProjectMutation.mutate({ projectId, deleteLocalFiles })
+                  removeProjectMutation.mutate({
+                    projectId,
+                    deleteLocalFiles,
+                  })
                 }
                 onOpenProjectSettings={openProjectSettings}
-                onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
-                onReorderGroups={(projectId, groupIds) =>
-                  reorderGroupsMutation.mutate({ projectId, groupIds })
-                }
                 onSelectProject={selectProjectFromSidebar}
                 onSelectGroup={selectGroupFromSidebar}
                 onSelectTab={selectTabFromSidebar}
@@ -3894,6 +3955,17 @@ export function App() {
         ref={contentRootRef}
         className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
       >
+        {workspaceDragError ? (
+          <button
+            type="button"
+            className="absolute right-3 top-3 z-50 flex max-w-sm items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-left text-xs text-destructive shadow-lg backdrop-blur-xl"
+            onClick={() => setWorkspaceDragError(null)}
+            title="Dismiss"
+          >
+            <CircleAlert className="size-4 shrink-0" />
+            <span className="truncate">{workspaceDragError}</span>
+          </button>
+        ) : null}
         {!isPopout ? (
           <header
             className={cn(
@@ -4520,10 +4592,16 @@ export function App() {
               })
             }
             onCreateTerminal={(worktreeId) =>
-              newTerminal.mutate({ projectId: selectedProject.id, worktreeId })
+              newTerminal.mutate({
+                projectId: selectedProject.id,
+                worktreeId,
+              })
             }
             onCreateExplorer={(worktreeId) =>
-              newExplorer.mutate({ projectId: selectedProject.id, worktreeId })
+              newExplorer.mutate({
+                projectId: selectedProject.id,
+                worktreeId,
+              })
             }
             onCreateHistory={(worktreeId) =>
               newProjectView.mutate({
@@ -5004,10 +5082,6 @@ export function App() {
                 setMobileNavigationOpen(false);
               }}
               onOpenProjectSettings={openProjectSettings}
-              onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
-              onReorderGroups={(projectId, groupIds) =>
-                reorderGroupsMutation.mutate({ projectId, groupIds })
-              }
               onSelectProject={selectProjectFromSidebar}
               onSelectGroup={selectGroupFromSidebar}
               onSelectTab={selectTabFromSidebar}
@@ -5026,6 +5100,6 @@ export function App() {
           Could not create Code tab: {errorText(newCodeTab.error)}
         </div>
       ) : null}
-    </main>
+    </WorkspaceDndProvider>
   );
 }
