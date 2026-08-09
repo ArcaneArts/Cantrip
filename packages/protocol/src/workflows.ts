@@ -1170,6 +1170,12 @@ export const workflowNodeRetrySchema = z.object({
   idempotencyKey: z.string().trim().min(1).max(200),
 });
 
+export const workflowGateDecisionSchema = z.object({
+  decision: z.enum(["approved", "denied"]),
+  reason: z.string().trim().min(1).max(5_000).nullable().default(null),
+  idempotencyKey: z.string().trim().min(1).max(200),
+});
+
 export const workflowNodeExecutionRequestSchema = z.object({
   workflowRunId: idSchema,
   runNodeId: idSchema,
@@ -1325,6 +1331,7 @@ export type WorkflowRunStatusUpdate = z.infer<
 >;
 export type WorkflowRunCancel = z.infer<typeof workflowRunCancelSchema>;
 export type WorkflowNodeRetry = z.infer<typeof workflowNodeRetrySchema>;
+export type WorkflowGateDecision = z.infer<typeof workflowGateDecisionSchema>;
 export type WorkflowNodeExecutionRequest = z.infer<
   typeof workflowNodeExecutionRequestSchema
 >;

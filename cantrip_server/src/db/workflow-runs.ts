@@ -4,11 +4,14 @@ import type { WorkerEvent } from "@cantrip/protocol";
 import {
   workflowApprovalGateSchema,
   workflowAgentNodeConfigurationSchema,
+  workflowConditionNodeConfigurationSchema,
+  workflowGateNodeConfigurationSchema,
   workflowJsonObjectSchema,
   workflowJsonValueSchema,
   workflowMeasuredUsageSchema,
   workflowNodeAttemptSchema,
   workflowPermissionRequirementsSchema,
+  workflowPredicateSchema,
   workflowReduceNodeConfigurationSchema,
   workflowRunDetailSchema,
   workflowRunEventPageSchema,
@@ -20,6 +23,8 @@ import {
   type WorkflowPermissionRequirements,
   type WorkflowAgentNodeConfiguration,
   type WorkflowBudget,
+  type WorkflowGateDecision,
+  type WorkflowGateNodeConfiguration,
   type WorkflowJsonValue,
   type WorkflowJsonObject,
   type WorkflowMeasuredUsage,
@@ -34,11 +39,20 @@ import {
   type WorkflowRunNode,
   type WorkflowVerifyNodeConfiguration,
 } from "@cantrip/protocol/workflows";
-import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lte } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
 import * as schema from "./schema.js";
+import {
+  aggregateWorkflowUsage,
+  cancelPendingWorkflowGates,
+  insertWorkflowRunEvent,
+  lockWorkflowRun,
+  recomputeWorkflowRun,
+  settleWorkflowDependencies,
+} from "./workflow-run-transitions.js";
+import { evaluateWorkflowPredicate } from "../workflows/values.js";
 import { workflowValueAtPointer } from "../workflows/values.js";
 
 type WorkflowRunDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
@@ -210,52 +224,15 @@ export interface WorkflowCancellationRequestResult {
   run: WorkflowRunDetail;
 }
 
+export interface WorkflowGateDecisionResult {
+  replayed: boolean;
+  run: WorkflowRunDetail;
+}
+
 function jsonObject(value: unknown): Record<string, unknown> {
   return workflowJsonObjectSchema.parse(
     JSON.parse(JSON.stringify(value)) as unknown,
   );
-}
-
-function mappedWorkflowValue(
-  result: unknown,
-  selector: string | null,
-): WorkflowJsonValue {
-  const value = workflowJsonValueSchema.parse(result);
-  if (selector === null) return value;
-  const pointer = selector.startsWith("/")
-    ? selector
-    : `/${selector.replaceAll("~", "~0").replaceAll("/", "~1")}`;
-  const selected = workflowValueAtPointer(value, pointer);
-  if (!selected.found) {
-    throw new Error(`Workflow result selector ${selector} did not match.`);
-  }
-  return selected.value!;
-}
-
-function aggregateWorkflowUsage(values: unknown[]): WorkflowMeasuredUsage {
-  const usages = values.map((value) =>
-    workflowMeasuredUsageSchema.parse(value),
-  );
-  const costAvailable =
-    usages.length > 0 &&
-    usages.every(
-      ({ costAvailable: available, estimatedCostUsd }) =>
-        available && estimatedCostUsd !== null,
-    );
-  return workflowMeasuredUsageSchema.parse({
-    inputTokens: usages.reduce((sum, usage) => sum + usage.inputTokens, 0),
-    outputTokens: usages.reduce((sum, usage) => sum + usage.outputTokens, 0),
-    cachedInputTokens: usages.reduce(
-      (sum, usage) => sum + usage.cachedInputTokens,
-      0,
-    ),
-    totalTokens: usages.reduce((sum, usage) => sum + usage.totalTokens, 0),
-    durationMs: usages.reduce((sum, usage) => sum + usage.durationMs, 0),
-    estimatedCostUsd: costAvailable
-      ? usages.reduce((sum, usage) => sum + (usage.estimatedCostUsd ?? 0), 0)
-      : null,
-    costAvailable,
-  });
 }
 
 function workerEventIdentity(event: WorkerEvent): string {
@@ -699,15 +676,20 @@ export class WorkflowRunRepository {
     ) {
       return null;
     }
-    const activeCount = detail.nodes.filter(({ status }) =>
-      ["running", "waiting-for-approval"].includes(status),
+    const activeCount = detail.nodes.filter(
+      ({ nodeType, status }) =>
+        status === "running" ||
+        (status === "waiting-for-approval" && nodeType !== "gate"),
     ).length;
     const capacity = Math.max(
       0,
       detail.run.budget.maxParallelism - activeCount,
     );
     const readyNodes = detail.nodes
-      .filter(({ status }) => status === "ready")
+      .filter(
+        ({ nodeType, status }) =>
+          status === "ready" && nodeType !== "condition" && nodeType !== "gate",
+      )
       .slice(0, capacity);
     if (readyNodes.length === 0) return [];
     const revisionRows = await this.database
@@ -797,6 +779,81 @@ export class WorkflowRunRepository {
         verification,
       };
     });
+  }
+
+  async advanceReadyControlNode(
+    ownerId: string,
+    runId: string,
+  ): Promise<boolean | null> {
+    const detail = await this.getRun(ownerId, runId);
+    if (
+      !detail ||
+      !["queued", "running", "waiting"].includes(detail.run.status) ||
+      detail.run.recoveryState !== "stable"
+    ) {
+      return null;
+    }
+    const readyControls = detail.nodes.filter(
+      ({ nodeType, status }) =>
+        status === "ready" && (nodeType === "condition" || nodeType === "gate"),
+    );
+    if (readyControls.length === 0) return false;
+    const revisionRows = await this.database
+      .select()
+      .from(schema.workflowRevisionNodes)
+      .where(
+        inArray(
+          schema.workflowRevisionNodes.id,
+          readyControls.map(({ revisionNodeId }) => revisionNodeId),
+        ),
+      )
+      .orderBy(asc(schema.workflowRevisionNodes.position))
+      .limit(1);
+    const revisionNode = revisionRows[0];
+    const node = revisionNode
+      ? readyControls.find(
+          ({ revisionNodeId }) => revisionNodeId === revisionNode.id,
+        )
+      : null;
+    if (!revisionNode || !node) {
+      await this.failUnsupportedRun(
+        ownerId,
+        runId,
+        "The ready workflow control node is unavailable.",
+      );
+      return true;
+    }
+    if (node.nodeType === "condition") {
+      const configuration = workflowConditionNodeConfigurationSchema.safeParse(
+        revisionNode.configuration,
+      );
+      if (!configuration.success) {
+        await this.failUnsupportedRun(
+          ownerId,
+          runId,
+          "The condition node configuration is invalid.",
+        );
+        return true;
+      }
+      return this.completeConditionNode(
+        ownerId,
+        detail,
+        node,
+        configuration.data.requireMatch,
+      );
+    }
+    const configuration = workflowGateNodeConfigurationSchema.safeParse(
+      revisionNode.configuration,
+    );
+    if (!configuration.success) {
+      await this.failUnsupportedRun(
+        ownerId,
+        runId,
+        "The gate node configuration is invalid.",
+      );
+      return true;
+    }
+    return this.openGateNode(ownerId, detail, node, configuration.data);
   }
 
   async failUnsupportedRun(
@@ -1202,204 +1259,31 @@ export class WorkflowRunRepository {
         })
         .where(eq(schema.workflowRunNodes.id, lease.candidate.node.id));
 
-      await transaction
-        .select({ id: schema.workflowRuns.id })
-        .from(schema.workflowRuns)
-        .where(
-          and(
-            eq(schema.workflowRuns.id, lease.candidate.run.id),
-            eq(schema.workflowRuns.ownerId, ownerId),
-          ),
-        )
-        .for("update");
-
-      const satisfied = await transaction
-        .update(schema.workflowRunNodeDependencies)
-        .set({ status: "satisfied", satisfiedAt: now })
-        .where(
-          and(
-            eq(
-              schema.workflowRunNodeDependencies.fromNodeId,
-              lease.candidate.node.id,
-            ),
-            eq(schema.workflowRunNodeDependencies.status, "blocked"),
-          ),
-        )
-        .returning({
-          targetNodeId: schema.workflowRunNodeDependencies.toNodeId,
-        });
-      const readyNodeIds: string[] = [];
-      const targetNodeIds = [
-        ...new Set(satisfied.map(({ targetNodeId }) => targetNodeId)),
-      ].sort();
-      for (const targetNodeId of targetNodeIds) {
-        const targetRows = await transaction
-          .select({ status: schema.workflowRunNodes.status })
-          .from(schema.workflowRunNodes)
-          .where(
-            and(
-              eq(schema.workflowRunNodes.id, targetNodeId),
-              eq(schema.workflowRunNodes.runId, lease.candidate.run.id),
-            ),
-          )
-          .for("update");
-        if (targetRows[0]?.status !== "blocked") continue;
-        const incoming = await transaction
-          .select({
-            dependency: schema.workflowRunNodeDependencies,
-            source: schema.workflowRunNodes,
-          })
-          .from(schema.workflowRunNodeDependencies)
-          .innerJoin(
-            schema.workflowRunNodes,
-            eq(
-              schema.workflowRunNodes.id,
-              schema.workflowRunNodeDependencies.fromNodeId,
-            ),
-          )
-          .where(eq(schema.workflowRunNodeDependencies.toNodeId, targetNodeId))
-          .orderBy(asc(schema.workflowRunNodeDependencies.createdAt));
-        if (
-          incoming.length === 0 ||
-          incoming.some(({ dependency }) => dependency.status !== "satisfied")
-        ) {
-          continue;
-        }
-        const mapped = incoming.map(({ dependency, source }) => {
-          const mapping = workflowJsonObjectSchema.parse(
-            dependency.resultMapping,
-          );
-          const sourceOutput =
-            typeof mapping.sourceOutput === "string"
-              ? mapping.sourceOutput
-              : null;
-          const targetInput =
-            typeof mapping.targetInput === "string"
-              ? mapping.targetInput
-              : null;
-          return {
-            sourceNodeKey: source.nodeKey,
-            targetInput,
-            value: mappedWorkflowValue(source.structuredResult, sourceOutput),
-          };
-        });
-        let structuredInput: WorkflowJsonValue;
-        if (mapped.length === 1 && mapped[0]!.targetInput === null) {
-          structuredInput = mapped[0]!.value;
-        } else {
-          const aggregate: Record<string, WorkflowJsonValue> = {};
-          for (const item of mapped) {
-            const key = item.targetInput ?? item.sourceNodeKey;
-            if (Object.hasOwn(aggregate, key)) {
-              throw new Error(
-                `Workflow dependency mappings collide at target input ${key}.`,
-              );
-            }
-            aggregate[key] = item.value;
-          }
-          structuredInput = aggregate;
-        }
-        const targets = await transaction
-          .update(schema.workflowRunNodes)
-          .set({
-            status: "ready",
-            dependencyState: {
-              remaining: 0,
-              satisfied: incoming.length,
-            },
-            structuredInput,
-            readyAt: now,
-            updatedAt: now,
-          })
-          .where(
-            and(
-              eq(schema.workflowRunNodes.id, targetNodeId),
-              eq(schema.workflowRunNodes.status, "blocked"),
-            ),
-          )
-          .returning({ id: schema.workflowRunNodes.id });
-        if (targets[0]) readyNodeIds.push(targets[0].id);
-      }
-
-      const [nodes, dependencies] = await Promise.all([
-        transaction
-          .select()
-          .from(schema.workflowRunNodes)
-          .where(eq(schema.workflowRunNodes.runId, lease.candidate.run.id)),
-        transaction
-          .select()
-          .from(schema.workflowRunNodeDependencies)
-          .where(
-            eq(
-              schema.workflowRunNodeDependencies.runId,
-              lease.candidate.run.id,
-            ),
-          ),
-      ]);
-      const allCompleted = nodes.every(({ status }) =>
-        ["completed", "skipped"].includes(status),
+      const lockedRun = await lockWorkflowRun(
+        transaction,
+        ownerId,
+        lease.candidate.run.id,
       );
-      const runStatus = allCompleted
-        ? "completed"
-        : nodes.some(({ status }) => status === "waiting-for-approval")
-          ? "waiting"
-          : nodes.some(({ status }) => status === "running")
-            ? "running"
-            : nodes.some(({ status }) => status === "ready")
-              ? "queued"
-              : "failed";
-      const usage = aggregateWorkflowUsage(
-        nodes.map(({ measuredUsage }) => measuredUsage),
+      if (!lockedRun) throw new Error("Workflow run is unavailable.");
+      const dependencyTransition = await settleWorkflowDependencies(
+        transaction,
+        {
+          now,
+          runId: lease.candidate.run.id,
+          selectedDependencyIds: null,
+          sourceNodeId: lease.candidate.node.id,
+        },
       );
-      const sourceNodeIds = new Set(
-        dependencies.map(({ fromNodeId }) => fromNodeId),
-      );
-      const sinkNodes = nodes.filter(({ id }) => !sourceNodeIds.has(id));
-      const structuredResult = allCompleted
-        ? sinkNodes.length === 1
-          ? workflowJsonValueSchema.parse(sinkNodes[0]!.structuredResult)
-          : workflowJsonObjectSchema.parse(
-              Object.fromEntries(
-                sinkNodes.map(({ nodeKey, structuredResult: value }) => [
-                  nodeKey,
-                  value,
-                ]),
-              ),
-            )
-        : null;
-      const runs = await transaction
-        .update(schema.workflowRuns)
-        .set({
-          status: runStatus,
-          structuredResult,
-          measuredUsage: usage,
-          codexThreadId: nodes.length === 1 ? result.threadId : null,
-          errorCode: runStatus === "failed" ? "workflow-deadlock" : null,
-          errorMessage:
-            runStatus === "failed"
-              ? "No workflow node can make durable progress."
-              : null,
-          recoveryState: "stable",
-          completedAt: allCompleted ? now : null,
-          updatedAt: now,
-        })
-        .where(
-          and(
-            eq(schema.workflowRuns.id, lease.candidate.run.id),
-            eq(schema.workflowRuns.ownerId, ownerId),
-            inArray(schema.workflowRuns.status, [
-              "queued",
-              "running",
-              "waiting",
-            ]),
-          ),
-        )
-        .returning({ id: schema.workflowRuns.id });
+      const runTransition = await recomputeWorkflowRun(transaction, {
+        codexThreadId: result.threadId,
+        lockedRun,
+        now,
+      });
       return {
         completed: true,
-        readyNodeIds,
-        runStateUpdated: Boolean(runs[0]),
-        runStatus,
+        readyNodeIds: dependencyTransition.readyNodeIds,
+        runStateUpdated: runTransition.updated,
+        runStatus: runTransition.status,
       };
     });
     if (outcome.completed) {
@@ -1819,6 +1703,15 @@ export class WorkflowRunRepository {
             ),
           );
       }
+      await transaction
+        .update(schema.workflowApprovalGates)
+        .set({ status: "cancelled", updatedAt: now })
+        .where(
+          and(
+            eq(schema.workflowApprovalGates.runId, runId),
+            eq(schema.workflowApprovalGates.status, "pending"),
+          ),
+        );
       const runs = await transaction
         .update(schema.workflowRuns)
         .set({
@@ -1828,6 +1721,8 @@ export class WorkflowRunRepository {
           errorMessage: input.reason,
           cancelReason: input.reason,
           cancelRequestedAt: now,
+          pauseReason: null,
+          pausedAt: null,
           recoveryState: "stable",
           completedAt: now,
           updatedAt: now,
@@ -1936,6 +1831,11 @@ export class WorkflowRunRepository {
     if (!detail) return null;
     const node = detail.nodes.find(({ id }) => id === runNodeId);
     if (!node) return null;
+    if (node.nodeType === "condition" || node.nodeType === "gate") {
+      throw new WorkflowControlConflictError(
+        `${node.nodeType} decisions are deterministic and final; start a new run instead of retrying this node.`,
+      );
+    }
     if (!["failed", "cancelled", "recovering"].includes(node.status)) {
       throw new WorkflowControlConflictError(
         `A ${node.status} workflow node cannot be retried.`,
@@ -2075,6 +1975,100 @@ export class WorkflowRunRepository {
     return this.getRun(ownerId, runId);
   }
 
+  async decideGate(
+    ownerId: string,
+    runId: string,
+    gateId: string,
+    input: WorkflowGateDecision,
+  ): Promise<WorkflowGateDecisionResult | null> {
+    await this.expirePendingGates(ownerId);
+    return this.resolveGate(ownerId, runId, gateId, {
+      actorId: ownerId,
+      actorType: "user",
+      eventKey: `gate-decision:${gateId}:${input.idempotencyKey}`,
+      idempotencyPayload: {
+        gateId,
+        decision: input.decision,
+        reason: input.reason,
+        idempotencyKey: input.idempotencyKey,
+      },
+      outcome: input.decision,
+      reason: input.reason,
+    });
+  }
+
+  async expirePendingGates(
+    ownerId: string,
+    now = new Date(),
+  ): Promise<string[]> {
+    const terminalGateRows = await this.database
+      .select({ runId: schema.workflowApprovalGates.runId })
+      .from(schema.workflowApprovalGates)
+      .innerJoin(
+        schema.workflowRuns,
+        and(
+          eq(schema.workflowRuns.id, schema.workflowApprovalGates.runId),
+          eq(schema.workflowRuns.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.workflowApprovalGates.status, "pending"),
+          inArray(schema.workflowRuns.status, [
+            "completed",
+            "failed",
+            "cancelled",
+          ]),
+        ),
+      )
+      .limit(100);
+    for (const terminalRunId of new Set(
+      terminalGateRows.map(({ runId }) => runId),
+    )) {
+      await this.database.transaction((transaction) =>
+        cancelPendingWorkflowGates(transaction, {
+          now,
+          runId: terminalRunId,
+        }),
+      );
+    }
+    const rows = await this.database
+      .select({
+        gateId: schema.workflowApprovalGates.id,
+        runId: schema.workflowApprovalGates.runId,
+      })
+      .from(schema.workflowApprovalGates)
+      .innerJoin(
+        schema.workflowRuns,
+        and(
+          eq(schema.workflowRuns.id, schema.workflowApprovalGates.runId),
+          eq(schema.workflowRuns.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.workflowApprovalGates.status, "pending"),
+          lte(schema.workflowApprovalGates.expiresAt, now),
+        ),
+      )
+      .orderBy(asc(schema.workflowApprovalGates.expiresAt))
+      .limit(100);
+    const runIds = new Set<string>();
+    for (const row of rows) {
+      const result = await this.resolveGate(ownerId, row.runId, row.gateId, {
+        actorId: null,
+        actorType: "server",
+        eventKey: `gate-expired:${row.gateId}`,
+        idempotencyPayload: null,
+        outcome: "expired",
+        reason: "The workflow approval gate expired before a decision.",
+        now,
+      });
+      if (result) runIds.add(row.runId);
+    }
+    return [...runIds];
+  }
+
   async getInteractionExecutionContext(
     ownerId: string,
     runId: string,
@@ -2139,6 +2133,622 @@ export class WorkflowRunRepository {
       )
       .returning({ id: schema.agentInteractionRequests.id });
     return rows.length;
+  }
+
+  private async resolveGate(
+    ownerId: string,
+    runId: string,
+    gateId: string,
+    control: {
+      actorId: string | null;
+      actorType: string;
+      eventKey: string;
+      idempotencyPayload: Record<string, unknown> | null;
+      now?: Date;
+      outcome: "approved" | "denied" | "expired";
+      reason: string | null;
+    },
+  ): Promise<WorkflowGateDecisionResult | null> {
+    const now = control.now ?? new Date();
+    for (let retry = 0; retry < 20; retry += 1) {
+      try {
+        const transition = await this.database.transaction(
+          async (transaction) => {
+            const gateRows = await transaction
+              .select({
+                gate: schema.workflowApprovalGates,
+                node: schema.workflowRunNodes,
+                revisionNode: schema.workflowRevisionNodes,
+              })
+              .from(schema.workflowApprovalGates)
+              .innerJoin(
+                schema.workflowRunNodes,
+                eq(
+                  schema.workflowRunNodes.id,
+                  schema.workflowApprovalGates.runNodeId,
+                ),
+              )
+              .innerJoin(
+                schema.workflowRevisionNodes,
+                eq(
+                  schema.workflowRevisionNodes.id,
+                  schema.workflowRunNodes.revisionNodeId,
+                ),
+              )
+              .innerJoin(
+                schema.workflowRuns,
+                and(
+                  eq(schema.workflowRuns.id, runId),
+                  eq(schema.workflowRuns.ownerId, ownerId),
+                ),
+              )
+              .where(
+                and(
+                  eq(schema.workflowApprovalGates.id, gateId),
+                  eq(schema.workflowApprovalGates.runId, runId),
+                ),
+              )
+              .limit(1);
+            const row = gateRows[0];
+            if (!row) return null;
+            const lockedNodes = await transaction
+              .select({ id: schema.workflowRunNodes.id })
+              .from(schema.workflowRunNodes)
+              .where(
+                and(
+                  eq(schema.workflowRunNodes.id, row.node.id),
+                  eq(schema.workflowRunNodes.runId, runId),
+                ),
+              )
+              .for("update")
+              .limit(1);
+            if (!lockedNodes[0]) return null;
+            const lockedGates = await transaction
+              .select()
+              .from(schema.workflowApprovalGates)
+              .where(
+                and(
+                  eq(schema.workflowApprovalGates.id, gateId),
+                  eq(schema.workflowApprovalGates.runId, runId),
+                ),
+              )
+              .for("update")
+              .limit(1);
+            const lockedGate = lockedGates[0];
+            if (!lockedGate) return null;
+            const lockedRun = await lockWorkflowRun(
+              transaction,
+              ownerId,
+              runId,
+            );
+            if (!lockedRun) return null;
+            const existingEvents = await transaction
+              .select({ payload: schema.workflowRunEvents.payload })
+              .from(schema.workflowRunEvents)
+              .where(
+                and(
+                  eq(schema.workflowRunEvents.runId, runId),
+                  eq(schema.workflowRunEvents.eventKey, control.eventKey),
+                ),
+              )
+              .limit(1);
+            if (existingEvents[0]) {
+              if (
+                control.idempotencyPayload &&
+                canonicalJson(
+                  workflowJsonObjectSchema.parse(existingEvents[0].payload)
+                    .request,
+                ) !== canonicalJson(control.idempotencyPayload)
+              ) {
+                throw new WorkflowControlConflictError(
+                  "This gate decision idempotency key was already used with different input.",
+                );
+              }
+              return {
+                replayed: true,
+                terminalizedRun: lockedRun.status === "failed",
+              };
+            }
+            if (lockedGate.status !== "pending") {
+              if (
+                lockedGate.status === control.outcome ||
+                control.outcome === "expired"
+              ) {
+                return {
+                  replayed: true,
+                  terminalizedRun: lockedRun.status === "failed",
+                };
+              }
+              throw new WorkflowControlConflictError(
+                `A ${lockedGate.status} workflow gate cannot be ${control.outcome}.`,
+              );
+            }
+            if (!["queued", "running", "waiting"].includes(lockedRun.status)) {
+              if (control.outcome === "expired") {
+                return { replayed: true, terminalizedRun: true };
+              }
+              throw new WorkflowControlConflictError(
+                `A gate on a ${lockedRun.status} workflow run cannot accept a decision.`,
+              );
+            }
+            if (
+              control.outcome !== "expired" &&
+              lockedGate.expiresAt &&
+              lockedGate.expiresAt.getTime() <= now.getTime()
+            ) {
+              throw new WorkflowControlConflictError(
+                "The workflow gate has expired and can no longer accept a decision.",
+              );
+            }
+            const configuration = workflowGateNodeConfigurationSchema.parse(
+              row.revisionNode.configuration,
+            );
+            const gates = await transaction
+              .update(schema.workflowApprovalGates)
+              .set({
+                status: control.outcome,
+                decision:
+                  control.outcome === "expired" ? null : control.outcome,
+                decidedByUserId:
+                  control.actorType === "user" ? control.actorId : null,
+                decisionReason: control.reason,
+                decidedAt: control.outcome === "expired" ? null : now,
+                updatedAt: now,
+              })
+              .where(
+                and(
+                  eq(schema.workflowApprovalGates.id, gateId),
+                  eq(schema.workflowApprovalGates.status, "pending"),
+                ),
+              )
+              .returning({ id: schema.workflowApprovalGates.id });
+            if (!gates[0]) {
+              return { replayed: true, terminalizedRun: false };
+            }
+
+            const approved = control.outcome === "approved";
+            const skipDownstream =
+              !approved && configuration.denialPolicy === "skip-downstream";
+            await transaction
+              .update(schema.workflowRunNodes)
+              .set({
+                status: approved
+                  ? "completed"
+                  : skipDownstream
+                    ? "skipped"
+                    : "failed",
+                structuredResult: approved ? row.node.structuredInput : null,
+                waitingAt: null,
+                completedAt: now,
+                updatedAt: now,
+              })
+              .where(
+                and(
+                  eq(schema.workflowRunNodes.id, row.node.id),
+                  eq(schema.workflowRunNodes.status, "waiting-for-approval"),
+                ),
+              );
+            let readyNodeIds: string[] = [];
+            let skippedNodeIds: string[] = [];
+            let runStatus: string | null = null;
+            if (approved || skipDownstream) {
+              const dependencyTransition = await settleWorkflowDependencies(
+                transaction,
+                {
+                  now,
+                  runId,
+                  selectedDependencyIds: approved ? null : new Set(),
+                  sourceNodeId: row.node.id,
+                },
+              );
+              readyNodeIds = dependencyTransition.readyNodeIds;
+              skippedNodeIds = dependencyTransition.skippedNodeIds;
+              const runTransition = await recomputeWorkflowRun(transaction, {
+                codexThreadId: null,
+                lockedRun,
+                now,
+              });
+              runStatus = runTransition.updated ? runTransition.status : null;
+            } else {
+              await transaction
+                .update(schema.workflowRunNodes)
+                .set({ status: "skipped", completedAt: now, updatedAt: now })
+                .where(
+                  and(
+                    eq(schema.workflowRunNodes.runId, runId),
+                    inArray(schema.workflowRunNodes.status, [
+                      "blocked",
+                      "ready",
+                    ]),
+                  ),
+                );
+              await transaction
+                .update(schema.workflowRunNodeDependencies)
+                .set({ status: "failed" })
+                .where(
+                  and(
+                    eq(schema.workflowRunNodeDependencies.runId, runId),
+                    eq(schema.workflowRunNodeDependencies.status, "blocked"),
+                  ),
+                );
+              await transaction
+                .update(schema.workflowRuns)
+                .set({
+                  status: "failed",
+                  errorCode:
+                    control.outcome === "expired"
+                      ? "gate-expired"
+                      : "gate-denied",
+                  errorMessage:
+                    control.reason ??
+                    (control.outcome === "expired"
+                      ? "The workflow approval gate expired."
+                      : "The workflow approval gate was denied."),
+                  pauseReason: null,
+                  pausedAt: null,
+                  completedAt: now,
+                  updatedAt: now,
+                })
+                .where(eq(schema.workflowRuns.id, runId));
+              runStatus = "failed";
+            }
+            await insertWorkflowRunEvent(transaction, {
+              runId,
+              runNodeId: row.node.id,
+              attemptId: null,
+              eventKey: control.eventKey,
+              type: `node.gate.${control.outcome}`,
+              payload: {
+                gateId,
+                outcome: control.outcome,
+                reason: control.reason,
+                resolvedAt: now.toISOString(),
+                request: control.idempotencyPayload,
+                readyNodeIds,
+                skippedNodeIds,
+                runStatus,
+              },
+              actorType: control.actorType,
+              actorId: control.actorId,
+            });
+            return {
+              replayed: false,
+              terminalizedRun: runStatus === "failed",
+            };
+          },
+        );
+        if (!transition) return null;
+        if (transition.terminalizedRun) {
+          await this.database.transaction((transaction) =>
+            cancelPendingWorkflowGates(transaction, { now, runId }),
+          );
+        }
+        const run = await this.getRun(ownerId, runId);
+        return run ? { replayed: transition.replayed, run } : null;
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+      }
+    }
+    throw new Error("Gate decision event contention exceeded its limit.");
+  }
+
+  private async completeConditionNode(
+    ownerId: string,
+    detail: WorkflowRunDetail,
+    node: WorkflowRunNode,
+    requireMatch: boolean,
+  ): Promise<boolean> {
+    const structuredInput = workflowJsonValueSchema.parse(node.structuredInput);
+    for (let retry = 0; retry < 20; retry += 1) {
+      try {
+        const transition = await this.database.transaction(
+          async (transaction) => {
+            const outgoing = await transaction
+              .select({
+                dependency: schema.workflowRunNodeDependencies,
+                position: schema.workflowRevisionEdges.position,
+              })
+              .from(schema.workflowRunNodeDependencies)
+              .leftJoin(
+                schema.workflowRevisionEdges,
+                eq(
+                  schema.workflowRevisionEdges.id,
+                  schema.workflowRunNodeDependencies.revisionEdgeId,
+                ),
+              )
+              .where(
+                and(
+                  eq(schema.workflowRunNodeDependencies.runId, detail.run.id),
+                  eq(schema.workflowRunNodeDependencies.fromNodeId, node.id),
+                  eq(schema.workflowRunNodeDependencies.status, "blocked"),
+                ),
+              )
+              .orderBy(
+                asc(schema.workflowRevisionEdges.position),
+                asc(schema.workflowRunNodeDependencies.createdAt),
+              );
+            const matching = outgoing.find(({ dependency }) => {
+              const mapping = workflowJsonObjectSchema.parse(
+                dependency.resultMapping,
+              );
+              return mapping.condition
+                ? evaluateWorkflowPredicate(
+                    structuredInput,
+                    workflowPredicateSchema.parse(mapping.condition),
+                  )
+                : false;
+            });
+            const fallback = outgoing.find(({ dependency }) => {
+              const mapping = workflowJsonObjectSchema.parse(
+                dependency.resultMapping,
+              );
+              return mapping.condition === null;
+            });
+            const selected = matching ?? fallback ?? null;
+            const now = new Date();
+            if (!selected && requireMatch) {
+              const nodes = await transaction
+                .update(schema.workflowRunNodes)
+                .set({
+                  status: "failed",
+                  structuredResult: structuredInput,
+                  completedAt: now,
+                  updatedAt: now,
+                })
+                .where(
+                  and(
+                    eq(schema.workflowRunNodes.id, node.id),
+                    eq(schema.workflowRunNodes.status, "ready"),
+                  ),
+                )
+                .returning({ id: schema.workflowRunNodes.id });
+              if (!nodes[0]) {
+                return { advanced: false, terminalizedRun: false };
+              }
+              const lockedRun = await lockWorkflowRun(
+                transaction,
+                ownerId,
+                detail.run.id,
+              );
+              if (
+                !lockedRun ||
+                !["queued", "running", "waiting"].includes(lockedRun.status)
+              ) {
+                throw new Error(
+                  "The workflow run changed state during its condition transition.",
+                );
+              }
+              await transaction
+                .update(schema.workflowRunNodes)
+                .set({ status: "skipped", completedAt: now, updatedAt: now })
+                .where(
+                  and(
+                    eq(schema.workflowRunNodes.runId, detail.run.id),
+                    inArray(schema.workflowRunNodes.status, [
+                      "blocked",
+                      "ready",
+                    ]),
+                  ),
+                );
+              await transaction
+                .update(schema.workflowRunNodeDependencies)
+                .set({ status: "failed" })
+                .where(
+                  and(
+                    eq(schema.workflowRunNodeDependencies.runId, detail.run.id),
+                    eq(schema.workflowRunNodeDependencies.status, "blocked"),
+                  ),
+                );
+              await transaction
+                .update(schema.workflowRuns)
+                .set({
+                  status: "failed",
+                  errorCode: "condition-no-match",
+                  errorMessage:
+                    "No condition branch matched and the node requires a match.",
+                  pauseReason: null,
+                  pausedAt: null,
+                  completedAt: now,
+                  updatedAt: now,
+                })
+                .where(eq(schema.workflowRuns.id, detail.run.id));
+              await insertWorkflowRunEvent(transaction, {
+                runId: detail.run.id,
+                runNodeId: node.id,
+                attemptId: null,
+                eventKey: `condition-failed:${node.id}`,
+                type: "node.condition.failed",
+                payload: {
+                  code: "condition-no-match",
+                  requireMatch,
+                },
+                actorType: "server",
+                actorId: null,
+              });
+              return { advanced: true, terminalizedRun: true };
+            }
+            const nodes = await transaction
+              .update(schema.workflowRunNodes)
+              .set({
+                status: "completed",
+                structuredResult: structuredInput,
+                completedAt: now,
+                updatedAt: now,
+              })
+              .where(
+                and(
+                  eq(schema.workflowRunNodes.id, node.id),
+                  eq(schema.workflowRunNodes.status, "ready"),
+                ),
+              )
+              .returning({ id: schema.workflowRunNodes.id });
+            if (!nodes[0]) {
+              return { advanced: false, terminalizedRun: false };
+            }
+            const lockedRun = await lockWorkflowRun(
+              transaction,
+              ownerId,
+              detail.run.id,
+            );
+            if (
+              !lockedRun ||
+              !["queued", "running", "waiting"].includes(lockedRun.status)
+            ) {
+              throw new Error(
+                "The workflow run changed state during its condition transition.",
+              );
+            }
+            const dependencyTransition = await settleWorkflowDependencies(
+              transaction,
+              {
+                now,
+                runId: detail.run.id,
+                selectedDependencyIds: new Set(
+                  selected ? [selected.dependency.id] : [],
+                ),
+                sourceNodeId: node.id,
+              },
+            );
+            const runTransition = await recomputeWorkflowRun(transaction, {
+              codexThreadId: null,
+              lockedRun,
+              now,
+            });
+            await insertWorkflowRunEvent(transaction, {
+              runId: detail.run.id,
+              runNodeId: node.id,
+              attemptId: null,
+              eventKey: `condition-completed:${node.id}`,
+              type: "node.condition.completed",
+              payload: {
+                requireMatch,
+                selectedDependencyId: selected?.dependency.id ?? null,
+                selectedTargetNodeId: selected?.dependency.toNodeId ?? null,
+                readyNodeIds: dependencyTransition.readyNodeIds,
+                skippedNodeIds: dependencyTransition.skippedNodeIds,
+                runStatus: runTransition.updated ? runTransition.status : null,
+              },
+              actorType: "server",
+              actorId: null,
+            });
+            return { advanced: true, terminalizedRun: false };
+          },
+        );
+        if (transition.terminalizedRun) {
+          await this.database.transaction((transaction) =>
+            cancelPendingWorkflowGates(transaction, {
+              now: new Date(),
+              runId: detail.run.id,
+            }),
+          );
+        }
+        return transition.advanced;
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+      }
+    }
+    throw new Error(
+      "Condition transition event contention exceeded its limit.",
+    );
+  }
+
+  private async openGateNode(
+    ownerId: string,
+    detail: WorkflowRunDetail,
+    node: WorkflowRunNode,
+    configuration: WorkflowGateNodeConfiguration,
+  ): Promise<boolean> {
+    const gateId = randomUUID();
+    const now = new Date();
+    const expiresAt = configuration.expiresAfterMs
+      ? new Date(now.getTime() + configuration.expiresAfterMs)
+      : null;
+    for (let retry = 0; retry < 20; retry += 1) {
+      try {
+        return await this.database.transaction(async (transaction) => {
+          const nodes = await transaction
+            .update(schema.workflowRunNodes)
+            .set({
+              status: "waiting-for-approval",
+              waitingAt: now,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(schema.workflowRunNodes.id, node.id),
+                eq(schema.workflowRunNodes.status, "ready"),
+              ),
+            )
+            .returning({ id: schema.workflowRunNodes.id });
+          if (!nodes[0]) return false;
+          const lockedRun = await lockWorkflowRun(
+            transaction,
+            ownerId,
+            detail.run.id,
+          );
+          if (
+            !lockedRun ||
+            !["queued", "running", "waiting"].includes(lockedRun.status)
+          ) {
+            throw new Error(
+              "The workflow run changed state while opening an approval gate.",
+            );
+          }
+          await transaction.insert(schema.workflowApprovalGates).values({
+            id: gateId,
+            runId: detail.run.id,
+            runNodeId: node.id,
+            gateKey: node.nodeKey,
+            status: "pending",
+            prompt: configuration.prompt,
+            permissionManifest: node.permissionManifest,
+            requestedByType: "workflow",
+            requestedById: node.id,
+            expiresAt,
+            createdAt: now,
+            updatedAt: now,
+          });
+          const activeNodes = await transaction
+            .select({ status: schema.workflowRunNodes.status })
+            .from(schema.workflowRunNodes)
+            .where(eq(schema.workflowRunNodes.runId, detail.run.id));
+          const runStatus = activeNodes.some(
+            ({ status }) => status === "running",
+          )
+            ? "running"
+            : "waiting";
+          await transaction
+            .update(schema.workflowRuns)
+            .set({
+              status: runStatus,
+              pauseReason: configuration.prompt,
+              pausedAt: runStatus === "waiting" ? now : null,
+              updatedAt: now,
+            })
+            .where(eq(schema.workflowRuns.id, detail.run.id));
+          await insertWorkflowRunEvent(transaction, {
+            runId: detail.run.id,
+            runNodeId: node.id,
+            attemptId: null,
+            eventKey: `gate-requested:${gateId}`,
+            type: "node.gate.requested",
+            payload: {
+              gateId,
+              gateKey: node.nodeKey,
+              prompt: configuration.prompt,
+              expiresAt: expiresAt?.toISOString() ?? null,
+              denialPolicy: configuration.denialPolicy,
+            },
+            actorType: "server",
+            actorId: null,
+          });
+          return true;
+        });
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+      }
+    }
+    throw new Error("Gate transition event contention exceeded its limit.");
   }
 
   private cancellationContexts(

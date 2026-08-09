@@ -806,6 +806,495 @@ describe.sequential("single-agent workflow execution", () => {
     });
   });
 
+  it("selects one deterministic condition branch and cascades skipped dependencies", async () => {
+    const revision = await createWorkflowRevision(
+      "condition-selected-branch",
+      [
+        {
+          key: "route",
+          type: "condition",
+          name: "Route",
+          configuration: {},
+        },
+        {
+          key: "matched",
+          type: "agent",
+          name: "Matched",
+          configuration: { prompt: "Run matched branch." },
+        },
+        {
+          key: "fallback",
+          type: "agent",
+          name: "Fallback",
+          configuration: { prompt: "Run fallback branch." },
+        },
+      ],
+      [
+        {
+          from: "route",
+          to: "matched",
+          condition: {
+            path: "/target",
+            operator: "equals",
+            value: "src",
+          },
+        },
+        { from: "route", to: "fallback" },
+      ],
+    );
+    mode = "success";
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-condition-selected",
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    expect(
+      executionCommands
+        .slice(before)
+        .map(({ prompt }) => prompt.split("\n", 1)[0]),
+    ).toEqual(["Run matched branch."]);
+    expect(await runDetail(runId)).toMatchObject({
+      nodes: [
+        { nodeKey: "route", status: "completed" },
+        { nodeKey: "matched", status: "completed" },
+        { nodeKey: "fallback", status: "skipped" },
+      ],
+      dependencies: [{ status: "satisfied" }, { status: "skipped" }],
+      attempts: [{ status: "completed" }],
+    });
+    const events = workflowRunEventPageSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/workflow-runs/${runId}/events`,
+        })
+      ).json(),
+    );
+    expect(events.events.map(({ type }) => type)).toContain(
+      "node.condition.completed",
+    );
+  });
+
+  it("completes a non-required unmatched condition without dispatching skipped branches", async () => {
+    const revision = await createWorkflowRevision(
+      "condition-no-match-allowed",
+      [
+        {
+          key: "route",
+          type: "condition",
+          name: "Route",
+          configuration: { requireMatch: false },
+        },
+        {
+          key: "first",
+          type: "agent",
+          name: "First",
+          configuration: { prompt: "Never first." },
+        },
+        {
+          key: "second",
+          type: "agent",
+          name: "Second",
+          configuration: { prompt: "Never second." },
+        },
+      ],
+      [
+        {
+          from: "route",
+          to: "first",
+          condition: { path: "/target", operator: "equals", value: "other" },
+        },
+        {
+          from: "route",
+          to: "second",
+          condition: { path: "/target", operator: "equals", value: "another" },
+        },
+      ],
+    );
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-condition-no-match-allowed",
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    expect(executionCommands).toHaveLength(before);
+    expect((await runDetail(runId)).nodes).toMatchObject([
+      { nodeKey: "route", status: "completed" },
+      { nodeKey: "first", status: "skipped" },
+      { nodeKey: "second", status: "skipped" },
+    ]);
+  });
+
+  it("fails a required condition when no branch matches", async () => {
+    const revision = await createWorkflowRevision(
+      "condition-no-match-required",
+      [
+        {
+          key: "route",
+          type: "condition",
+          name: "Route",
+          configuration: {},
+        },
+        {
+          key: "first",
+          type: "agent",
+          name: "First",
+          configuration: { prompt: "Never required first." },
+        },
+        {
+          key: "second",
+          type: "agent",
+          name: "Second",
+          configuration: { prompt: "Never required second." },
+        },
+      ],
+      [
+        {
+          from: "route",
+          to: "first",
+          condition: { path: "/target", operator: "equals", value: "other" },
+        },
+        {
+          from: "route",
+          to: "second",
+          condition: { path: "/target", operator: "equals", value: "another" },
+        },
+      ],
+    );
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-condition-no-match-required",
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("failed");
+    });
+    expect(executionCommands).toHaveLength(before);
+    expect(await runDetail(runId)).toMatchObject({
+      run: { status: "failed", errorCode: "condition-no-match" },
+      nodes: [
+        { nodeKey: "route", status: "failed" },
+        { nodeKey: "first", status: "skipped" },
+        { nodeKey: "second", status: "skipped" },
+      ],
+      dependencies: [{ status: "failed" }, { status: "failed" }],
+      attempts: [],
+    });
+  });
+
+  it("waits durably at a gate and resumes after an idempotent approval", async () => {
+    const revision = await createWorkflowRevision(
+      "gate-approval",
+      [
+        {
+          key: "approval",
+          type: "gate",
+          name: "Approval",
+          configuration: { prompt: "Approve the next stage?" },
+        },
+        {
+          key: "continue",
+          type: "agent",
+          name: "Continue",
+          configuration: { prompt: "Continue after approval." },
+        },
+      ],
+      [{ from: "approval", to: "continue" }],
+    );
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-gate-approval",
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("waiting");
+    });
+    const waiting = await runDetail(runId);
+    expect(waiting).toMatchObject({
+      run: { pauseReason: "Approve the next stage?" },
+      nodes: [
+        { nodeKey: "approval", status: "waiting-for-approval" },
+        { nodeKey: "continue", status: "blocked" },
+      ],
+      gates: [{ status: "pending", gateKey: "approval" }],
+      attempts: [],
+    });
+    expect(executionCommands).toHaveLength(before);
+    const payload = {
+      decision: "approved",
+      reason: "Reviewed.",
+      idempotencyKey: "approve-gate-once",
+    };
+    const decisions = await Promise.all(
+      Array.from({ length: 2 }, () =>
+        app.inject({
+          method: "POST",
+          url: `/api/workflow-runs/${runId}/gates/${waiting.gates[0]!.id}/decision`,
+          payload,
+        }),
+      ),
+    );
+    expect(decisions.map(({ statusCode }) => statusCode)).toEqual([200, 200]);
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    expect(await runDetail(runId)).toMatchObject({
+      run: { pauseReason: null },
+      nodes: [
+        { nodeKey: "approval", status: "completed" },
+        { nodeKey: "continue", status: "completed" },
+      ],
+      gates: [
+        {
+          status: "approved",
+          decision: "approved",
+          decisionReason: "Reviewed.",
+        },
+      ],
+    });
+    const replay = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/gates/${waiting.gates[0]!.id}/decision`,
+      payload,
+    });
+    expect(replay.statusCode).toBe(200);
+    const drift = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/gates/${waiting.gates[0]!.id}/decision`,
+      payload: { ...payload, decision: "denied" },
+    });
+    expect(drift.statusCode).toBe(409);
+    expect(executionCommands).toHaveLength(before + 1);
+    const events = workflowRunEventPageSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/workflow-runs/${runId}/events`,
+        })
+      ).json(),
+    );
+    const eventTypes = events.events.map(({ type }) => type);
+    expect(
+      eventTypes.filter((type) => type === "node.gate.approved"),
+    ).toHaveLength(1);
+    expect(eventTypes.indexOf("node.gate.requested")).toBeLessThan(
+      eventTypes.indexOf("node.gate.approved"),
+    );
+    expect(eventTypes.indexOf("node.gate.approved")).toBeLessThan(
+      eventTypes.indexOf("node.attempt.started"),
+    );
+    expect(events.events.map(({ sequence }) => sequence)).toEqual(
+      events.events.map((_, index) => index),
+    );
+  });
+
+  it("applies gate denial and expiry policies without starting Codex attempts", async () => {
+    const deniedRevision = await createWorkflowRevision(
+      "gate-denial-skip",
+      [
+        {
+          key: "approval",
+          type: "gate",
+          name: "Approval",
+          configuration: {
+            prompt: "Approve optional work?",
+            denialPolicy: "skip-downstream",
+          },
+        },
+        {
+          key: "optional",
+          type: "agent",
+          name: "Optional",
+          configuration: { prompt: "Never optional." },
+        },
+      ],
+      [{ from: "approval", to: "optional" }],
+    );
+    const before = executionCommands.length;
+    const deniedResponse = await createRunForRevision(
+      deniedRevision,
+      "execute-gate-denial-skip",
+    );
+    const deniedRunId = workflowRunDetailSchema.parse(deniedResponse.json()).run
+      .id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(deniedRunId)).run.status).toBe("waiting");
+    });
+    const deniedWaiting = await runDetail(deniedRunId);
+    const denial = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${deniedRunId}/gates/${deniedWaiting.gates[0]!.id}/decision`,
+      payload: {
+        decision: "denied",
+        reason: "Not needed.",
+        idempotencyKey: "deny-gate-once",
+      },
+    });
+    expect(denial.statusCode).toBe(200);
+    expect(workflowRunDetailSchema.parse(denial.json())).toMatchObject({
+      run: { status: "completed" },
+      nodes: [{ status: "skipped" }, { status: "skipped" }],
+      gates: [{ status: "denied", decision: "denied" }],
+      attempts: [],
+    });
+
+    const expiredRevision = await createWorkflowRevision(
+      "gate-expiry-fails",
+      [
+        {
+          key: "approval",
+          type: "gate",
+          name: "Approval",
+          configuration: {
+            prompt: "Approve quickly?",
+            expiresAfterMs: 1_000,
+          },
+        },
+        {
+          key: "later",
+          type: "agent",
+          name: "Later",
+          configuration: { prompt: "Never after expiry." },
+        },
+      ],
+      [{ from: "approval", to: "later" }],
+    );
+    const expiredResponse = await createRunForRevision(
+      expiredRevision,
+      "execute-gate-expiry",
+    );
+    const expiredRunId = workflowRunDetailSchema.parse(expiredResponse.json())
+      .run.id;
+    await vi.waitFor(
+      async () => {
+        expect((await runDetail(expiredRunId)).run.status).toBe("failed");
+      },
+      { timeout: 3_000 },
+    );
+    expect(await runDetail(expiredRunId)).toMatchObject({
+      run: { errorCode: "gate-expired" },
+      nodes: [{ status: "failed" }, { status: "skipped" }],
+      gates: [{ status: "expired", decision: null }],
+      attempts: [],
+    });
+    expect(executionCommands).toHaveLength(before);
+  });
+
+  it("cancels a pending gate and rejects a later decision", async () => {
+    const revision = await createWorkflowRevision("gate-cancellation", [
+      {
+        key: "approval",
+        type: "gate",
+        name: "Approval",
+        configuration: { prompt: "Approve cancellable work?" },
+      },
+    ]);
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-gate-cancellation",
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("waiting");
+    });
+    const waiting = await runDetail(runId);
+    const cancellation = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/cancel`,
+      payload: {
+        reason: "The gated work is no longer needed.",
+        idempotencyKey: "cancel-pending-gate",
+      },
+    });
+    expect(cancellation.statusCode).toBe(200);
+    expect(workflowRunDetailSchema.parse(cancellation.json())).toMatchObject({
+      run: { status: "cancelled", pauseReason: null, pausedAt: null },
+      nodes: [{ status: "cancelled" }],
+      gates: [{ status: "cancelled", decision: null }],
+      attempts: [],
+    });
+    const lateDecision = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/gates/${waiting.gates[0]!.id}/decision`,
+      payload: {
+        decision: "approved",
+        reason: null,
+        idempotencyKey: "approve-cancelled-gate",
+      },
+    });
+    expect(lateDecision.statusCode).toBe(409);
+    expect(executionCommands).toHaveLength(before);
+  });
+
+  it("terminalizes sibling gates when one gate fails the run", async () => {
+    const revision = await createWorkflowRevision("parallel-gate-failure", [
+      {
+        key: "first-approval",
+        type: "gate",
+        name: "First approval",
+        configuration: { prompt: "Approve the first branch?" },
+      },
+      {
+        key: "second-approval",
+        type: "gate",
+        name: "Second approval",
+        configuration: { prompt: "Approve the second branch?" },
+      },
+    ]);
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-parallel-gate-failure",
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).gates).toHaveLength(2);
+    });
+    const waiting = await runDetail(runId);
+    const denials = await Promise.all(
+      waiting.gates.map((gate) =>
+        app.inject({
+          method: "POST",
+          url: `/api/workflow-runs/${runId}/gates/${gate.id}/decision`,
+          payload: {
+            decision: "denied",
+            reason: "Stop the whole run.",
+            idempotencyKey: `deny-parallel-gate-${gate.gateKey}`,
+          },
+        }),
+      ),
+    );
+    expect(denials.map(({ statusCode }) => statusCode).sort()).toEqual([
+      200, 409,
+    ]);
+    const terminal = await runDetail(runId);
+    expect(terminal.run).toMatchObject({
+      status: "failed",
+      errorCode: "gate-denied",
+      pauseReason: null,
+      pausedAt: null,
+    });
+    expect(terminal.nodes.map(({ status }) => status).sort()).toEqual([
+      "cancelled",
+      "failed",
+    ]);
+    expect(terminal.gates.map(({ status }) => status).sort()).toEqual([
+      "cancelled",
+      "denied",
+    ]);
+    expect(executionCommands).toHaveLength(before);
+  });
+
   it("does not let a late parallel worker event revive a failed run", async () => {
     const revision = await createWorkflowRevision("parallel-terminal-race", [
       {
@@ -1230,6 +1719,68 @@ describe.sequential("single-agent workflow execution", () => {
         { nodeKey: "second", status: "completed", attemptCount: 1 },
       ],
     });
+  });
+
+  it("preserves a pending approval gate across a server restart", async () => {
+    connected = true;
+    mode = "success";
+    const revision = await createWorkflowRevision(
+      "gate-restart",
+      [
+        {
+          key: "approval",
+          type: "gate",
+          name: "Approval",
+          configuration: { prompt: "Approve after restart?" },
+        },
+        {
+          key: "continue",
+          type: "agent",
+          name: "Continue",
+          configuration: { prompt: "Continue after restarted approval." },
+        },
+      ],
+      [{ from: "approval", to: "continue" }],
+    );
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-gate-restart",
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("waiting");
+    });
+    const gateId = (await runDetail(runId)).gates[0]!.id;
+
+    await app.close();
+    connected = true;
+    database = await connectDatabase(config);
+    app = await buildApp({ config, database, logger: false, workerBridge });
+    expect(await runDetail(runId)).toMatchObject({
+      run: { status: "waiting", pauseReason: "Approve after restart?" },
+      nodes: [
+        { nodeKey: "approval", status: "waiting-for-approval" },
+        { nodeKey: "continue", status: "blocked" },
+      ],
+      gates: [{ id: gateId, status: "pending" }],
+      attempts: [],
+    });
+
+    const decision = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/gates/${gateId}/decision`,
+      payload: {
+        decision: "approved",
+        reason: "State survived restart.",
+        idempotencyKey: "approve-restarted-gate",
+      },
+    });
+    expect(decision.statusCode).toBe(200);
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    expect(executionCommands).toHaveLength(before + 1);
   });
 
   it("orphans in-flight attempts during restart recovery", async () => {

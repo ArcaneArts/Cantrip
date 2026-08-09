@@ -52,14 +52,15 @@ selection remains deterministic across restarts.
 
 ## Runtime rollout
 
-The static DAG runtime executes read-only `agent`, `reduce`, and `verify` nodes.
-It claims independent roots up to the run's maximum parallelism, persists each
-attempt independently, aggregates usage, and only releases a downstream node
-after every incoming dependency is durably satisfied. A single dependency
-passes its selected result directly. Fan-in without explicit target names
-builds an object keyed by source node; explicit target names build the same
-object under those names. Duplicate target names are rejected when the
-revision is saved.
+The static DAG runtime executes read-only `agent`, `reduce`, `verify`,
+`condition`, and `gate` nodes. It claims independent Codex-backed roots up to
+the run's maximum parallelism, persists each attempt independently, aggregates
+usage, and only releases a downstream node after every incoming dependency is
+durably satisfied. Deterministic condition and gate transitions do not consume
+an agent concurrency slot. A single dependency passes its selected result
+directly. Fan-in without explicit target names builds an object keyed by source
+node; explicit target names build the same object under those names. Duplicate
+target names are rejected when the revision is saved.
 
 A reduce node applies `collectionPath` to its durable node input before the
 selected array or object is rendered into the Codex prompt. A missing path or
@@ -74,11 +75,30 @@ The optional `automaticRetries` setting narrows automatic attempts without
 increasing the immutable run budget, leaving remaining attempts available for
 an explicit operator retry.
 
-Unsupported dynamic or control nodes still fail explicitly rather than
-falling back to an agent chat or an unvalidated interpretation. Subsequent
-scheduler changes must preserve this contract, persist every intermediate
-boundary, and apply the run budget as an additional ceiling over node-local
-concurrency and loop limits.
+Condition nodes evaluate outgoing predicates in immutable edge order, choose
+the first match, and use the final fallback only when no predicate matches.
+Unselected dependencies and downstream paths are durably skipped. When no edge
+matches, `requireMatch: true` fails the run with `condition-no-match`;
+`requireMatch: false` completes the condition and skips every branch. A
+condition decision and its event are committed atomically, so a restart cannot
+choose a different path. Deterministic condition and gate decisions are final
+and cannot be retried in place.
+
+Gate nodes create a durable pending approval record and move the node to
+`waiting-for-approval`. The run remains waiting until an idempotent operator
+decision, cancellation, or optional expiry is persisted. Approval passes the
+gate input downstream. Denial and expiry either fail the run or skip the gated
+path according to the revision's denial policy. Startup recovery preserves
+pending gates, expires overdue records before dispatch, and resumes approved
+work without creating a duplicate gate. Cancellation terminalizes pending
+gates, and decisions against cancelled or otherwise incompatible terminal
+states fail with a conflict.
+
+Unsupported dynamic nodes (`map`, `pipeline`, and `repeatUntil`) still fail
+explicitly rather than falling back to an agent chat or an unvalidated
+interpretation. Subsequent scheduler changes must preserve this contract,
+persist every intermediate boundary, and apply the run budget as an additional
+ceiling over node-local concurrency and loop limits.
 
 Write-capable `agent`, `map`, `pipeline`, `reduce`, `verify`, and `repeatUntil`
 nodes use the same declared filesystem permission invariant as other workflow

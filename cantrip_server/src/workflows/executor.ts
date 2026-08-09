@@ -7,6 +7,7 @@ import {
 import {
   workflowNodeExecutionResultSchema,
   type WorkflowAgentNodeConfiguration,
+  type WorkflowGateDecision,
   type WorkflowNodeRetry,
   type WorkflowRunCancel,
   type WorkflowRunDetail,
@@ -54,6 +55,7 @@ export function workflowAgentPrompt(
 
 export class WorkflowExecutor {
   readonly #activeRuns = new Map<string, Promise<void>>();
+  readonly #rerunRequested = new Set<string>();
   readonly #respondingInteractions = new Set<string>();
   #stopping = false;
 
@@ -70,7 +72,11 @@ export class WorkflowExecutor {
   }
 
   queueRun(runId: string): void {
-    if (this.#stopping || this.#activeRuns.has(runId)) return;
+    if (this.#stopping) return;
+    if (this.#activeRuns.has(runId)) {
+      this.#rerunRequested.add(runId);
+      return;
+    }
     const task = this.executeRun(runId)
       .catch((error: unknown) => {
         this.logger.error(
@@ -78,7 +84,10 @@ export class WorkflowExecutor {
           "Workflow dispatch failed",
         );
       })
-      .finally(() => this.#activeRuns.delete(runId));
+      .finally(() => {
+        this.#activeRuns.delete(runId);
+        if (this.#rerunRequested.delete(runId)) this.queueRun(runId);
+      });
     this.#activeRuns.set(runId, task);
   }
 
@@ -155,6 +164,30 @@ export class WorkflowExecutor {
     return run;
   }
 
+  async decideGate(
+    runId: string,
+    gateId: string,
+    input: WorkflowGateDecision,
+  ): Promise<WorkflowRunDetail | null> {
+    const result = await this.repository.workflowRuns.decideGate(
+      LOCAL_USER_ID,
+      runId,
+      gateId,
+      input,
+    );
+    if (result) this.queueRun(runId);
+    return result?.run ?? null;
+  }
+
+  async expireGates(now = new Date()): Promise<number> {
+    const runIds = await this.repository.workflowRuns.expirePendingGates(
+      LOCAL_USER_ID,
+      now,
+    );
+    for (const runId of runIds) this.queueRun(runId);
+    return runIds.length;
+  }
+
   stop(): void {
     this.#stopping = true;
   }
@@ -219,6 +252,13 @@ export class WorkflowExecutor {
   private async executeRun(runId: string): Promise<void> {
     const active = new Set<Promise<void>>();
     while (!this.#stopping) {
+      const controlAdvanced =
+        await this.repository.workflowRuns.advanceReadyControlNode(
+          LOCAL_USER_ID,
+          runId,
+        );
+      if (controlAdvanced === null) break;
+      if (controlAdvanced) continue;
       const candidates =
         await this.repository.workflowRuns.getReadyAgentCandidates(
           LOCAL_USER_ID,
