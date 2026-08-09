@@ -545,6 +545,25 @@ export const systemHealthSchema = z.object({
   workers: z.object({
     connected: z.number().int().nonnegative(),
   }),
+  live: z.object({
+    acceptedConnectionCount: z.number().int().nonnegative(),
+    connectionCount: z.number().int().nonnegative(),
+    currentCursor: z.number().int().nonnegative(),
+    deliveredEventCount: z.number().int().nonnegative(),
+    disconnectedConnectionCount: z.number().int().nonnegative(),
+    heartbeatPongCount: z.number().int().nonnegative(),
+    heartbeatTimeoutCount: z.number().int().nonnegative(),
+    protocolViolationCount: z.number().int().nonnegative(),
+    publicationCount: z.number().int().nonnegative(),
+    queuePressureCount: z.number().int().nonnegative(),
+    replayEventCount: z.number().int().nonnegative(),
+    replaySessionCount: z.number().int().nonnegative(),
+    replayedEventCount: z.number().int().nonnegative(),
+    resyncRequiredCount: z.number().int().nonnegative(),
+    resumeAttemptCount: z.number().int().nonnegative(),
+    serverEpoch: z.string().uuid(),
+    slowConsumerClosureCount: z.number().int().nonnegative(),
+  }),
   timestamp: z.string().datetime(),
 });
 

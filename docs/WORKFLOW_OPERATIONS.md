@@ -64,7 +64,9 @@ again.
 
 The app keeps no authoritative workflow state. Reopening or reconnecting it
 reloads definitions, runs, gates, triggers, and event pages from the server and
-polls active runs. Closing the app does not cancel server-owned work.
+then follows active runs through the application live channel. If that channel
+is unavailable, bounded 1.5–2 second active-run snapshots preserve convergence.
+Closing the app does not cancel server-owned work.
 
 ## Write-capable workflows
 

@@ -3,6 +3,14 @@
 - Status: Accepted
 - Date: 2026-08-09
 
+## Implementation status
+
+Implemented on 2026-08-09 for project resources, worktree observations, active
+chat state, workflow execution and catalogs, and customization operations. The
+[application live transport audit](../LIVE_TRANSPORT_AUDIT.md) records the
+measured request reduction, browser trace, recovery evidence, remaining timers,
+operational counters, and deployment limits.
+
 ## Context
 
 Cantrip's app loads authoritative server state through HTTP, but currently

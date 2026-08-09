@@ -110,6 +110,12 @@ Standalone server and worker packages establish the deployable boundary for a fu
 
 Conversation history and configuration live on the server, so they remain readable when a worker is unavailable. Project files and live runtime state remain on the worker. Moving a conversation to another worker will therefore require a compatible checkout and an explicit handoff rather than pretending that uncommitted files moved automatically.
 
+The app keeps one versioned application-control WebSocket per selected server
+profile for committed state notifications and cache synchronization. HTTP
+remains authoritative for snapshots and mutations, with bounded disconnected
+recovery polling. See the [live transport contract](docs/LIVE_TRANSPORT.md) and
+[measured audit](docs/LIVE_TRANSPORT_AUDIT.md).
+
 ## Codex-native customization and workflows
 
 Cantrip extends one agent runtime instead of maintaining Claude CLI and Codex

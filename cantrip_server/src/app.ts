@@ -340,31 +340,44 @@ function mutationLiveResources(route: string): AppLiveResource[] {
     return ["project"];
   }
   if (route.startsWith("/api/projects/:projectId/tab-groups")) {
-    return ["project"];
+    return ["project", "project-tab-layout"];
   }
   if (route.includes("/worktrees")) return ["worktree"];
-  if (route === "/api/chats/:chatId/console") return ["chat", "terminal"];
+  if (route === "/api/chats/:chatId/console") {
+    return ["chat", "terminal", "project-tab-layout"];
+  }
   if (
     route === "/api/projects/:projectId/chats" ||
-    route.startsWith("/api/chats/")
+    route === "/api/chats/:chatId"
   ) {
+    return ["chat", "project-tab-layout"];
+  }
+  if (route.startsWith("/api/chats/")) {
     return ["chat"];
   }
-  if (route.includes("/terminals")) return ["terminal"];
-  if (route.includes("/explorers")) return ["explorer"];
-  if (route.includes("/browsers")) return ["browser"];
-  if (route.includes("/code-tabs")) return ["code-tab"];
+  if (route.includes("/terminals")) {
+    return ["terminal", "project-tab-layout"];
+  }
+  if (route.includes("/explorers")) {
+    return ["explorer", "project-tab-layout"];
+  }
+  if (route.includes("/browsers")) {
+    return ["browser", "project-tab-layout"];
+  }
+  if (route.includes("/code-tabs")) {
+    return ["code-tab", "project-tab-layout"];
+  }
   if (
     route.includes("/remote-desktops") ||
     route.includes("/remote-surfaces")
   ) {
-    return ["browser", "remote-desktop", "project-view"];
+    return ["browser", "remote-desktop", "project-view", "project-tab-layout"];
   }
   if (
     route === "/api/projects/:projectId/views" ||
     route.startsWith("/api/project-views/")
   ) {
-    return ["project-view"];
+    return ["project-view", "project-tab-layout"];
   }
   return [];
 }
@@ -2854,6 +2867,7 @@ export async function buildApp({
         workers: {
           connected: await repository.onlineWorkerCount(LOCAL_USER_ID),
         },
+        live: liveHub.stats(),
         timestamp: new Date().toISOString(),
       }),
     );
@@ -9125,6 +9139,10 @@ export async function buildApp({
     for (const timer of workerOfflineTimers.values()) clearTimeout(timer);
     workerOfflineTimers.clear();
     workflowExecutor.stop();
+    app.log.info(
+      { live: liveHub.stats() },
+      "Application live transport stopped",
+    );
     liveHub.close();
     codeTunnel.close();
     bridge.close();

@@ -258,6 +258,17 @@ describe.sequential("application live WebSocket", () => {
           ),
       ).toBe(true),
     );
+    expect(
+      messages
+        .slice(eventStart)
+        .some(
+          (message) =>
+            message.type === "event" &&
+            message.resource === "project-tab-layout" &&
+            message.scope.kind === "project" &&
+            message.scope.projectId === projectId,
+        ),
+    ).toBe(true);
 
     const workerEventStart = messages.length;
     expect(
@@ -447,6 +458,19 @@ describe.sequential("application live WebSocket", () => {
       { timeout: 2_500 },
     );
     expect(oauthStatusReads).toBe(1);
+
+    const health = (
+      await app.inject({ method: "GET", url: "/api/health" })
+    ).json();
+    expect(health.live).toMatchObject({
+      acceptedConnectionCount: 1,
+      connectionCount: 1,
+      protocolViolationCount: 0,
+      queuePressureCount: 0,
+      slowConsumerClosureCount: 0,
+    });
+    expect(health.live.publicationCount).toBeGreaterThan(0);
+    expect(health.live.deliveredEventCount).toBeGreaterThan(0);
 
     socket.terminate();
   });

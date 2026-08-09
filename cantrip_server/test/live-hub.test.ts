@@ -190,6 +190,14 @@ describe("AppLiveHub", () => {
       requestId: "subscribe-denied",
       code: "unauthorized-scope",
     });
+    expect(hub.stats()).toMatchObject({
+      acceptedConnectionCount: 1,
+      connectionCount: 1,
+      deliveredEventCount: 1,
+      heartbeatPongCount: 1,
+      protocolViolationCount: 1,
+      publicationCount: 2,
+    });
     hub.close();
   });
 
@@ -246,6 +254,12 @@ describe("AppLiveHub", () => {
       type: "caught-up",
       cursor: 3,
       replayedCount: 2,
+    });
+    expect(hub.stats()).toMatchObject({
+      deliveredEventCount: 2,
+      replaySessionCount: 1,
+      replayedEventCount: 2,
+      resumeAttemptCount: 1,
     });
     hub.close();
   });
@@ -310,6 +324,12 @@ describe("AppLiveHub", () => {
       payload: null,
     });
     expect(socket.sent.at(-1)).toMatchObject({ type: "event", cursor: 4 });
+    expect(hub.stats()).toMatchObject({
+      deliveredEventCount: 1,
+      replaySessionCount: 1,
+      resyncRequiredCount: 1,
+      resumeAttemptCount: 1,
+    });
     hub.close();
   });
 
@@ -366,6 +386,7 @@ describe("AppLiveHub", () => {
     malformedSocket.receive("again-not-json");
     await settle();
     expect(malformedSocket.closeCode).toBe(1008);
+    expect(hub.stats().protocolViolationCount).toBe(5);
 
     const oversizedSocket = new FakeSocket();
     hub.attach(oversizedSocket, {
@@ -408,7 +429,62 @@ describe("AppLiveHub", () => {
     });
     expect(socket.closeCode).toBe(1013);
     expect(socket.closeReason).toContain("resync");
-    expect(hub.stats().connectionCount).toBe(0);
+    expect(hub.stats()).toMatchObject({
+      connectionCount: 0,
+      queuePressureCount: 1,
+      slowConsumerClosureCount: 1,
+    });
+    hub.close();
+  });
+
+  it("isolates simultaneous clients by authorized subscription scope", async () => {
+    const hub = new AppLiveHub({ epoch: "multi-client" });
+    const first = new FakeSocket();
+    const second = new FakeSocket();
+    for (const [socket, projectId] of [
+      [first, "project-one"],
+      [second, "project-two"],
+    ] as const) {
+      hub.attach(socket, {
+        ownerId: projectId,
+        authorizeScope: (scope) =>
+          scope.kind === "project" && scope.projectId === projectId,
+      });
+      socket.receive(initialize());
+      socket.receive({
+        type: "subscribe",
+        requestId: `subscribe-${projectId}`,
+        scopes: [{ kind: "project", projectId }],
+      });
+    }
+    await settle();
+
+    for (const projectId of ["project-one", "project-two"]) {
+      hub.publish({
+        scope: { kind: "project", projectId },
+        resource: "project",
+        action: "updated",
+        entityId: projectId,
+        revision: null,
+        payload: null,
+      });
+    }
+
+    expect(first.sent.filter(({ type }) => type === "event")).toEqual([
+      expect.objectContaining({
+        scope: { kind: "project", projectId: "project-one" },
+      }),
+    ]);
+    expect(second.sent.filter(({ type }) => type === "event")).toEqual([
+      expect.objectContaining({
+        scope: { kind: "project", projectId: "project-two" },
+      }),
+    ]);
+    expect(hub.stats()).toMatchObject({
+      acceptedConnectionCount: 2,
+      connectionCount: 2,
+      deliveredEventCount: 2,
+    });
     hub.close();
   });
 
@@ -428,6 +504,7 @@ describe("AppLiveHub", () => {
     await vi.advanceTimersByTimeAsync(5_000);
     expect(staleSocket.closeCode).toBe(1001);
     expect(staleSocket.closeReason).toContain("heartbeat");
+    expect(hub.stats().heartbeatTimeoutCount).toBe(1);
 
     const shutdownSocket = new FakeSocket();
     hub.attach(shutdownSocket, {

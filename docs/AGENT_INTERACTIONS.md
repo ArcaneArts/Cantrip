@@ -67,12 +67,14 @@ record, so Plan Mode does not create a parallel approval channel.
 
 ## Waiting controls
 
-The chat composer polls pending requests while a turn is running or waiting.
-It renders request-specific controls for command and network decisions, file
-changes, scoped permission grants, structured user input, and MCP forms or URL
-confirmations. Only decisions advertised by Codex are shown. Permission denial
-is represented by an empty turn-scoped grant, matching the worker's fail-closed
-response.
+The chat composer receives pending-request changes through the application live
+channel while it is healthy. A disconnected app falls back to the same bounded
+three-second active-chat and ten-second idle-chat snapshots used for the rest
+of the transcript. It renders request-specific controls for command and network
+decisions, file changes, scoped permission grants, structured user input, and
+MCP forms or URL confirmations. Only decisions advertised by Codex are shown.
+Permission denial is represented by an empty turn-scoped grant, matching the
+worker's fail-closed response.
 
 Plan Mode questions reuse their existing plan panel and are omitted from the
 generic request list when both views refer to the same `requestKey`. Secret
