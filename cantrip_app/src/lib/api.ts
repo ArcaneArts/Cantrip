@@ -114,6 +114,28 @@ import type {
   UserSettingsUpdate,
   WorktreePolicy,
 } from "@cantrip/protocol";
+import {
+  workflowDefinitionDetailSchema,
+  workflowDefinitionListSchema,
+  workflowGateDecisionSchema,
+  workflowNodeRetrySchema,
+  workflowRunCancelSchema,
+  workflowRunCreateSchema,
+  workflowRunDetailSchema,
+  workflowRunListSchema,
+  workflowRunPauseSchema,
+  workflowRunResumeSchema,
+  workflowWorktreeOutcomeRequestSchema,
+  type WorkflowDefinitionQuery,
+  type WorkflowGateDecision,
+  type WorkflowNodeRetry,
+  type WorkflowRunCancel,
+  type WorkflowRunCreate,
+  type WorkflowRunPause,
+  type WorkflowRunQuery,
+  type WorkflowRunResume,
+  type WorkflowWorktreeOutcomeRequest,
+} from "@cantrip/protocol/workflows";
 import { getActiveServerUrl } from "@/lib/server-connections";
 
 export class CantripApiError extends Error {
@@ -150,6 +172,137 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
 
 function post(path: string, body: unknown) {
   return request(path, { method: "POST", body: JSON.stringify(body) });
+}
+
+function withQuery(
+  path: string,
+  input: Record<string, boolean | number | string | undefined>,
+) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined) query.set(key, String(value));
+  }
+  const suffix = query.toString();
+  return suffix ? `${path}?${suffix}` : path;
+}
+
+export async function getWorkflows(
+  input: Partial<WorkflowDefinitionQuery> = {},
+) {
+  return workflowDefinitionListSchema.parse(
+    await request(
+      withQuery("/api/workflows", {
+        scope: input.scope,
+        projectId: input.projectId,
+        includeArchived: input.includeArchived,
+        limit: input.limit,
+      }),
+    ),
+  );
+}
+
+export async function getWorkflow(workflowId: string) {
+  return workflowDefinitionDetailSchema.parse(
+    await request(`/api/workflows/${encodeURIComponent(workflowId)}`),
+  );
+}
+
+export async function getWorkflowRuns(input: Partial<WorkflowRunQuery> = {}) {
+  return workflowRunListSchema.parse(
+    await request(
+      withQuery("/api/workflow-runs", {
+        workflowId: input.workflowId,
+        projectId: input.projectId,
+        status: input.status,
+        recoveryState: input.recoveryState,
+        limit: input.limit,
+      }),
+    ),
+  );
+}
+
+export async function getWorkflowRun(runId: string) {
+  return workflowRunDetailSchema.parse(
+    await request(`/api/workflow-runs/${encodeURIComponent(runId)}`),
+  );
+}
+
+export async function createWorkflowRun(input: WorkflowRunCreate) {
+  return workflowRunDetailSchema.parse(
+    await post("/api/workflow-runs", workflowRunCreateSchema.parse(input)),
+  );
+}
+
+export async function pauseWorkflowRun(runId: string, input: WorkflowRunPause) {
+  return workflowRunDetailSchema.parse(
+    await post(
+      `/api/workflow-runs/${encodeURIComponent(runId)}/pause`,
+      workflowRunPauseSchema.parse(input),
+    ),
+  );
+}
+
+export async function resumeWorkflowRun(
+  runId: string,
+  input: WorkflowRunResume,
+) {
+  return workflowRunDetailSchema.parse(
+    await post(
+      `/api/workflow-runs/${encodeURIComponent(runId)}/resume`,
+      workflowRunResumeSchema.parse(input),
+    ),
+  );
+}
+
+export async function cancelWorkflowRun(
+  runId: string,
+  input: WorkflowRunCancel,
+) {
+  return workflowRunDetailSchema.parse(
+    await post(
+      `/api/workflow-runs/${encodeURIComponent(runId)}/cancel`,
+      workflowRunCancelSchema.parse(input),
+    ),
+  );
+}
+
+export async function decideWorkflowGate(
+  runId: string,
+  gateId: string,
+  input: WorkflowGateDecision,
+) {
+  return workflowRunDetailSchema.parse(
+    await post(
+      `/api/workflow-runs/${encodeURIComponent(runId)}/gates/${encodeURIComponent(gateId)}/decision`,
+      workflowGateDecisionSchema.parse(input),
+    ),
+  );
+}
+
+export async function retryWorkflowNode(
+  runId: string,
+  runNodeId: string,
+  input: WorkflowNodeRetry,
+) {
+  return workflowRunDetailSchema.parse(
+    await post(
+      `/api/workflow-runs/${encodeURIComponent(runId)}/nodes/${encodeURIComponent(runNodeId)}/retry`,
+      workflowNodeRetrySchema.parse(input),
+    ),
+  );
+}
+
+export async function resolveWorkflowWorktree(
+  runId: string,
+  leaseId: string,
+  input: WorkflowWorktreeOutcomeRequest,
+) {
+  return workflowRunDetailSchema.parse(
+    await post(
+      `/api/workflow-runs/${encodeURIComponent(runId)}/worktree-leases/${encodeURIComponent(leaseId)}/outcome`,
+      workflowWorktreeOutcomeRequestSchema.parse(input),
+    ),
+  );
 }
 
 export async function getSystemHealth() {

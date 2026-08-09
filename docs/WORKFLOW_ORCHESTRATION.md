@@ -270,3 +270,21 @@ a pending terminal outcome is replayed through the same checkpoint validation
 and worker-owned Git commands as the original request. Offline or unsafe lanes
 remain visibly recovering and continue blocking cleanup instead of being
 silently released.
+
+## Operator surface
+
+Project Settings contains a browser-portable workflow center. It lists the
+current project's workflows together with personal workflows, shows immutable
+revision, provenance, trust, stage, permission, and dependency metadata, and
+reviews structured JSON input plus the snapshotted permission and budget
+envelopes before launch. The app communicates only with the Cantrip Server API;
+it does not access worker files or Codex App Server directly.
+
+Project runs poll while active and expose durable run and recovery states,
+node duration and usage, worker/worktree/model/Codex attribution, pending
+approval gates, and checkpointed execution lanes. Operators can pause, resume,
+cancel, approve, deny, retry eligible failed nodes, open a lane in the Git
+view, or select an explicit lane outcome. Controls use a fresh idempotency key
+and replace the local run snapshot only after the server returns the validated
+durable state. An offline or recovering lane therefore stays visible instead
+of being optimistically treated as complete.
