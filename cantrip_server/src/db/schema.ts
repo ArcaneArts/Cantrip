@@ -1235,6 +1235,80 @@ export const workflowRunNodeDependencies = pgTable(
   ],
 );
 
+export const workflowRunNodeItems = pgTable(
+  "workflow_run_node_items",
+  {
+    id: text("id").primaryKey(),
+    runNodeId: text("run_node_id")
+      .notNull()
+      .references(() => workflowRunNodes.id, { onDelete: "cascade" }),
+    itemKey: text("item_key").notNull(),
+    position: integer("position").notNull(),
+    status: text("status").notNull().default("ready"),
+    structuredInput: jsonb("structured_input").$type<unknown>().notNull(),
+    structuredResult: jsonb("structured_result").$type<unknown>(),
+    measuredUsage: jsonb("measured_usage")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    workerId: text("worker_id").references(() => workers.id, {
+      onDelete: "set null",
+    }),
+    worktreeId: text("worktree_id").references(() => projectWorktrees.id, {
+      onDelete: "set null",
+    }),
+    modelRouteId: text("model_route_id").references(() => modelRoutes.id, {
+      onDelete: "set null",
+    }),
+    permissionProfileId: text("permission_profile_id"),
+    codexThreadId: text("codex_thread_id"),
+    codexTurnId: text("codex_turn_id"),
+    executionLeaseKey: text("execution_lease_key"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    notBefore: timestamp("not_before", { withTimezone: true }),
+    timeoutAt: timestamp("timeout_at", { withTimezone: true }),
+    readyAt: timestamp("ready_at", { withTimezone: true }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    waitingAt: timestamp("waiting_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("workflow_run_node_items_key_unique").on(
+      table.runNodeId,
+      table.itemKey,
+    ),
+    uniqueIndex("workflow_run_node_items_position_unique").on(
+      table.runNodeId,
+      table.position,
+    ),
+    index("workflow_run_node_items_status_index").on(
+      table.runNodeId,
+      table.status,
+      table.position,
+    ),
+    check(
+      "workflow_run_node_items_position_check",
+      sql`${table.position} >= 0`,
+    ),
+    check(
+      "workflow_run_node_items_attempt_count_check",
+      sql`${table.attemptCount} >= 0`,
+    ),
+    check(
+      "workflow_run_node_items_status_check",
+      sql`${table.status} IN ('ready', 'running', 'waiting-for-approval', 'cancelled', 'failed', 'completed', 'recovering', 'skipped')`,
+    ),
+  ],
+);
+
 export const workflowNodeAttempts = pgTable(
   "workflow_node_attempts",
   {
@@ -1242,6 +1316,10 @@ export const workflowNodeAttempts = pgTable(
     runNodeId: text("run_node_id")
       .notNull()
       .references(() => workflowRunNodes.id, { onDelete: "cascade" }),
+    runNodeItemId: text("run_node_item_id").references(
+      () => workflowRunNodeItems.id,
+      { onDelete: "cascade" },
+    ),
     attempt: integer("attempt").notNull(),
     status: text("status").notNull().default("queued"),
     idempotencyKey: text("idempotency_key").notNull(),
@@ -1283,10 +1361,12 @@ export const workflowNodeAttempts = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("workflow_node_attempts_number_unique").on(
-      table.runNodeId,
-      table.attempt,
-    ),
+    uniqueIndex("workflow_node_attempts_node_number_unique")
+      .on(table.runNodeId, table.attempt)
+      .where(sql`${table.runNodeItemId} IS NULL`),
+    uniqueIndex("workflow_node_attempts_item_number_unique")
+      .on(table.runNodeItemId, table.attempt)
+      .where(sql`${table.runNodeItemId} IS NOT NULL`),
     uniqueIndex("workflow_node_attempts_idempotency_unique").on(
       table.runNodeId,
       table.idempotencyKey,

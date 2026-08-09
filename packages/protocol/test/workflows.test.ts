@@ -726,11 +726,40 @@ describe("workflow protocol", () => {
       createdAt: timestamp,
       updatedAt: timestamp,
     };
+    const item = {
+      id: "run-node-item-1",
+      runNodeId: "run-node-1",
+      itemKey: "alpha",
+      position: 0,
+      status: "ready" as const,
+      structuredInput: { item: 42 },
+      structuredResult: null,
+      measuredUsage: measuredUsage(),
+      errorCode: null,
+      errorMessage: null,
+      workerId: null,
+      worktreeId: null,
+      modelRouteId: "route-1",
+      permissionProfileId: "profile-1",
+      codexThreadId: null,
+      codexTurnId: null,
+      executionLeaseKey: null,
+      attemptCount: 0,
+      notBefore: null,
+      timeoutAt: null,
+      readyAt: timestamp,
+      startedAt: null,
+      waitingAt: null,
+      completedAt: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
 
     expect(
       workflowRunDetailSchema.parse({
         run,
         nodes: [node],
+        items: [item],
         dependencies: [],
         attempts: [],
         gates: [],
@@ -738,6 +767,7 @@ describe("workflow protocol", () => {
     ).toMatchObject({
       run: { status: "queued", recoveryState: "stable" },
       nodes: [{ status: "ready", writeCapable: false }],
+      items: [{ itemKey: "alpha", position: 0, status: "ready" }],
     });
   });
 });
