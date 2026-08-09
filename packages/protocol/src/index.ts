@@ -2998,6 +2998,16 @@ export const workerAttachmentReadResultSchema = z.object({
   sizeBytes: chatAttachmentSummarySchema.shape.sizeBytes,
 });
 
+export const workerProjectShareOpenResultSchema = z.object({
+  shareId: z.string().min(1).max(200),
+  protocol: z.literal("webdav"),
+  loopbackHost: z.literal("127.0.0.1"),
+  loopbackPort: z.number().int().min(1).max(65_535),
+  username: z.string().min(1).max(128),
+  password: z.string().min(24).max(256),
+  realm: z.string().min(1).max(200),
+});
+
 export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("codex.auth.status"),
@@ -3051,6 +3061,15 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("project.files.delete"),
     path: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("project.share.open"),
+    shareId: z.string().min(1).max(200),
+    root: z.string().min(1).max(8_192),
+  }),
+  z.object({
+    type: z.literal("project.share.close"),
+    shareId: z.string().min(1).max(200),
   }),
   z.object({
     type: z.literal("git.history"),
@@ -4036,6 +4055,9 @@ export type WorkerAttachmentUploadResult = z.infer<
 >;
 export type WorkerAttachmentReadResult = z.infer<
   typeof workerAttachmentReadResultSchema
+>;
+export type WorkerProjectShareOpenResult = z.infer<
+  typeof workerProjectShareOpenResultSchema
 >;
 export type WorkerCommand = z.infer<typeof workerCommandSchema>;
 export type WorkerEvent = z.infer<typeof workerEventSchema>;

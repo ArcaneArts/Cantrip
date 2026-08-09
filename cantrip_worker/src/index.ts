@@ -26,6 +26,7 @@ import {
   runGitAction,
 } from "./git.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
+import { ProjectShareManager } from "./project-share-manager.js";
 import { TerminalManager } from "./terminal-manager.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
 import { WorkerConnection } from "./transport.js";
@@ -87,6 +88,7 @@ async function start(): Promise<void> {
   const codexAuthClients = new Map<string, CodexAuthClient>();
   const codexRuntimes = new Map<string, CodexRuntime>();
   const pausedChats = new Set<string>();
+  const projectShares = new ProjectShareManager();
   const terminals = new TerminalManager();
   const remoteSurfaces = new RemoteSurfaceManager({
     browser: browserAdapter,
@@ -181,6 +183,11 @@ async function start(): Promise<void> {
         return github.cloneRepository(command.repository.nameWithOwner);
       case "project.files.delete":
         return github.deleteRepository(command.path);
+      case "project.share.open":
+        return projectShares.open(command);
+      case "project.share.close":
+        await projectShares.close(command.shareId);
+        return { accepted: true };
       case "git.history":
         return readGitHistory(
           command.cwd,
@@ -792,6 +799,7 @@ async function start(): Promise<void> {
       commandConnection.close();
       for (const client of codexAuthClients.values()) client.close();
       terminals.closeAll();
+      await projectShares.closeAll();
       codeTunnel.close();
       await code.close();
       await remoteSurfaces.closeAll();

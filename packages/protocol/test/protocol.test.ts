@@ -60,6 +60,7 @@ import {
   userSettingsSchema,
   workerCommandSchema,
   workerEventSchema,
+  workerProjectShareOpenResultSchema,
   worktreeInventorySchema,
   workerEventEnvelopeSchema,
   workerHeartbeatSchema,
@@ -91,6 +92,48 @@ describe("Cantrip protocol", () => {
         limit: 101,
       }),
     ).toThrow();
+  });
+
+  it("validates worker-owned authenticated project share lifecycles", () => {
+    expect(
+      workerCommandSchema.parse({
+        type: "project.share.open",
+        shareId: "share-1",
+        root: "/worker/projects/cantrip",
+      }),
+    ).toEqual({
+      type: "project.share.open",
+      shareId: "share-1",
+      root: "/worker/projects/cantrip",
+    });
+    expect(
+      workerCommandSchema.parse({
+        type: "project.share.close",
+        shareId: "share-1",
+      }),
+    ).toEqual({ type: "project.share.close", shareId: "share-1" });
+    expect(
+      workerProjectShareOpenResultSchema.parse({
+        shareId: "share-1",
+        protocol: "webdav",
+        loopbackHost: "127.0.0.1",
+        loopbackPort: 43_210,
+        username: "cantrip-user",
+        password: "a-secure-random-password-value",
+        realm: "Cantrip Project Share",
+      }),
+    ).toMatchObject({ protocol: "webdav", loopbackPort: 43_210 });
+    expect(
+      workerProjectShareOpenResultSchema.safeParse({
+        shareId: "share-1",
+        protocol: "webdav",
+        loopbackHost: "0.0.0.0",
+        loopbackPort: 43_210,
+        username: "cantrip-user",
+        password: "a-secure-random-password-value",
+        realm: "Cantrip Project Share",
+      }).success,
+    ).toBe(false);
   });
 
   it("validates native customization worker commands and bounded MCP reads", () => {
