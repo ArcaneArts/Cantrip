@@ -19,7 +19,7 @@ test("normalizes documented target aliases", () => {
   assert.equal(normalizeTarget("windows-x64").id, "win32-x64");
   assert.equal(normalizeTarget("linux-armhf").id, "linux-armhf");
   assert.throws(() => normalizeTarget("darwin-armhf"));
-  assert.equal(CODE_BUILD_SCHEMA_VERSION, 1);
+  assert.equal(CODE_BUILD_SCHEMA_VERSION, 2);
 });
 
 test("chooses the packaged server entrypoint for each operating system", () => {

@@ -51,6 +51,8 @@ async function start(): Promise<void> {
     capabilities: codeDiscovery.capabilities,
     dataDirectory: config.dataDirectory,
     installation: codeDiscovery.installation,
+    workerId: config.workerId,
+    workerName: config.name,
   });
   await code.start();
   const codeTunnel = new CodeTunnelProxy(code);
@@ -230,6 +232,10 @@ async function start(): Promise<void> {
           command.themeMode,
           command.appearance,
         );
+      case "code.prepareAgentTurn":
+        return code.prepareAgentTurn(command.cwd);
+      case "code.agentTurnState":
+        return code.agentTurnState(command.cwd, command.phase, command.paths);
       case "skills.list":
         return runtimeFor(command).listSkills({
           cwd: command.cwd,

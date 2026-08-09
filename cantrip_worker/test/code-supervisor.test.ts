@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
+import WebSocket from "ws";
 
 import { verifyCantripCodeInstallation } from "../src/code/installation.js";
 import { CodeSupervisor } from "../src/code/supervisor.js";
@@ -37,6 +38,9 @@ async function fixture() {
   const dataDirectory = path.join(root, "worker-data");
   await Promise.all([
     mkdir(path.join(bundle, "bin"), { recursive: true }),
+    mkdir(path.join(bundle, "extensions", "cantrip-workbench"), {
+      recursive: true,
+    }),
     mkdir(repository),
   ]);
   const source = `#!/usr/bin/env node
@@ -52,10 +56,16 @@ process.on("SIGTERM", stop);
   await writeFile(entrypoint, source);
   await chmod(entrypoint, 0o755);
   const bytes = Buffer.from(source);
+  const workbenchContents = `${JSON.stringify({ name: "cantrip-workbench", version: "0.1.0" })}\n`;
+  const workbenchBytes = Buffer.from(workbenchContents);
+  await writeFile(
+    path.join(bundle, "extensions", "cantrip-workbench", "package.json"),
+    workbenchContents,
+  );
   await writeFile(
     path.join(bundle, "cantrip-code.manifest.json"),
     JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       component: "cantrip-code",
       version: "1.109.5-cantrip.1",
       target: `${process.platform}-${process.arch}`,
@@ -65,6 +75,7 @@ process.on("SIGTERM", stop);
       openvscodeServerCommit: "b".repeat(40),
       vscodeCommit: "c".repeat(40),
       patchset: 1,
+      cantripWorkbenchVersion: "0.1.0",
       entrypoint: "bin/cantrip-code.cjs",
       files: [
         {
@@ -73,6 +84,13 @@ process.on("SIGTERM", stop);
           size: bytes.length,
           sha256: createHash("sha256").update(bytes).digest("hex"),
           executable: true,
+        },
+        {
+          path: "extensions/cantrip-workbench/package.json",
+          type: "file",
+          size: workbenchBytes.length,
+          sha256: createHash("sha256").update(workbenchBytes).digest("hex"),
+          executable: false,
         },
       ],
     }),
@@ -117,6 +135,14 @@ function openCommand(
   };
 }
 
+function openSocket(url: string): Promise<WebSocket> {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(url);
+    socket.once("open", () => resolve(socket));
+    socket.once("error", reject);
+  });
+}
+
 describe("Cantrip Code supervisor", () => {
   it("shares a persistent profile process while isolating tab workspaces", async () => {
     const { dataDirectory, repository, supervisor } = await fixture();
@@ -144,7 +170,7 @@ describe("Cantrip Code supervisor", () => {
     expect(workspace.settings).toMatchObject({
       "cantrip.sessionId": "one",
       "cantrip.worktreeId": "primary",
-      "workbench.colorTheme": "Default Dark Modern",
+      "workbench.colorTheme": "Cantrip Dark",
     });
     expect(firstTarget.workspaceUri).toContain(
       path.basename(path.join(dataDirectory, "code")),
@@ -160,5 +186,67 @@ describe("Cantrip Code supervisor", () => {
     );
     expect(state).not.toContain(firstTarget.connectionToken);
     expect(state).not.toContain("cantrip.bridgeToken");
+  });
+
+  it("prepares dirty editors and reports bounded agent file changes", async () => {
+    const { repository, supervisor } = await fixture();
+    await supervisor.open(openCommand("safe-turn", repository, "primary"));
+    const target = supervisor.proxyTarget("safe-turn");
+    const workspace = JSON.parse(
+      await readFile(new URL(target.workspaceUri), "utf8"),
+    ) as { settings: Record<string, string> };
+    const socket = await openSocket(workspace.settings["cantrip.bridgeUrl"]!);
+    socket.on("message", (data) => {
+      const request = JSON.parse(data.toString()) as {
+        id: string;
+        method: string;
+        params: { paths?: string[] };
+      };
+      if (request.method === "prepareAgentTurn") {
+        socket.send(
+          JSON.stringify({
+            type: "response",
+            id: request.id,
+            ok: true,
+            result: {
+              allowed: true,
+              policy: "always",
+              dirtyEditors: [],
+              saved: ["file:///repository/src/index.ts"],
+              failed: [],
+              reason: null,
+            },
+          }),
+        );
+      } else if (request.method === "agentTurnState") {
+        expect(request.params.paths).toEqual(["src/index.ts"]);
+        socket.send(
+          JSON.stringify({
+            type: "response",
+            id: request.id,
+            ok: true,
+            result: { refreshed: ["src/index.ts"], conflicts: [] },
+          }),
+        );
+      }
+    });
+
+    await expect(
+      supervisor.prepareAgentTurn(repository),
+    ).resolves.toMatchObject({
+      prepared: true,
+      sessions: [{ sessionId: "safe-turn", allowed: true }],
+    });
+    await expect(
+      supervisor.agentTurnState(repository, "completed", [
+        "src/index.ts",
+        "../outside.ts",
+      ]),
+    ).resolves.toEqual({
+      notifiedSessions: 1,
+      refreshed: ["src/index.ts"],
+      conflicts: [],
+    });
+    socket.close();
   });
 });

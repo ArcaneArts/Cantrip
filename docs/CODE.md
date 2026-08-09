@@ -1,6 +1,6 @@
 # Cantrip Code Integration Plan
 
-- Status: implementation in progress
+- Status: end-to-end implementation complete; platform QA and hardening remain
 - Scope: browser-native Code OSS workbench hosted by `cantrip_worker`
 - Source location: `cantrip_code/` in the Cantrip monorepo
 - Immediate upstream: OpenVSCode Server
@@ -371,6 +371,12 @@ The worktree identity and rules follow [`WORKTREES.md`](WORKTREES.md) and
 communicates with the worker over an authenticated local socket and is the
 preferred location for Cantrip-specific behavior.
 
+The worker compatibility manifest records the bundled extension version and
+the complete editor inventory. Worker startup verifies that the matching
+`extensions/cantrip-workbench/package.json` is present before an editor may
+launch. The extension bridge accepts only its per-session token on a random
+loopback listener and bounds incoming messages.
+
 Initial responsibilities:
 
 - report dirty and unsaved editors;
@@ -407,6 +413,14 @@ The initial default is `save before agent turn`:
 Direct access to unsaved in-memory editor contents may be designed later. It is
 not required for the first implementation.
 
+The implemented turn boundary asks every open Code session for the selected
+worktree to prepare before the server acquires the chat execution lane. The
+extension's `always`, `ask`, and `never` policies either save, block with the
+affected editors, or explicitly permit the turn. Agent file-change activity is
+collected during the turn and returned to each matching editor at completion;
+clean buffers use the workbench file watcher and Explorer/Git refresh, while
+dirty overlaps remain untouched and are surfaced as conflicts.
+
 ## 15. Theme behavior
 
 Code tabs expose an editor theme preference:
@@ -421,6 +435,10 @@ Follow mode maps Cantrip Light, Dark, High Contrast Light, and High Contrast
 Dark to matching bundled editor themes. The bridge applies this choice to the
 generated workspace or session without overwriting the user's global editor
 preference. Independent mode leaves all editor theme decisions to the user.
+
+The four matching themes ship in `cantrip-workbench`. Follow mode writes only
+the generated workspace's theme override, and Independent mode removes that
+override so the persistent profile's own preference applies.
 
 ## 16. Protocol and persistence additions
 
@@ -444,6 +462,8 @@ code.stop
 code.saveAll
 code.getDirtyEditors
 code.setTheme
+code.prepareAgentTurn
+code.agentTurnState
 ```
 
 The server stores durable Code-tab metadata and attachment state, while the
@@ -464,6 +484,11 @@ status, last attachment, and last error without storing editor credentials.
   migrations before accepting Code sessions.
 - Multiple attached clients initially use a single control lease for operations
   where simultaneous input would be unsafe.
+
+The current server tunnel revokes an older attachment when another controller
+attaches to the same Code session. Main and desktop pop-out windows additionally
+coordinate ownership in the client, so the first release intentionally favors a
+single writable workbench over concurrent unsynchronized input.
 
 ## 18. Implementation phases
 

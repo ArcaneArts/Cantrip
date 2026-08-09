@@ -6,6 +6,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import type {
+  CodeAgentTurnNotificationResult,
+  CodeAgentTurnPreparationResult,
   CodeAppearance,
   CodeCapabilities,
   CodeProbeResult,
@@ -13,6 +15,10 @@ import type {
   CodeSaveAllResult,
   CodeThemeMode,
   WorkerCommand,
+} from "@cantrip/protocol";
+import {
+  codeAgentTurnNotificationResultSchema,
+  codeAgentTurnPreparationResultSchema,
 } from "@cantrip/protocol";
 
 import type { CantripCodeInstallation } from "./installation.js";
@@ -30,6 +36,7 @@ interface CodeSession {
   lastError: string | null;
   profileKey: string;
   projectId: string;
+  projectName: string;
   sessionId: string;
   startedAt: string | null;
   status: CodeRuntimeStatus["status"];
@@ -37,6 +44,7 @@ interface CodeSession {
   workspacePath: string;
   workspaceUri: string;
   worktreeId: string;
+  worktreeName: string;
 }
 
 interface ProfileProcess {
@@ -67,6 +75,8 @@ export interface CodeSupervisorOptions {
   installation: CantripCodeInstallation | null;
   bridge?: CodeWorkbenchBridge;
   readinessTimeoutMs?: number;
+  workerId?: string;
+  workerName?: string;
 }
 
 const MAX_CRASHES_PER_WINDOW = 5;
@@ -74,10 +84,10 @@ const CRASH_WINDOW_MS = 5 * 60_000;
 const PROCESS_STOP_TIMEOUT_MS = 2_000;
 
 const THEME_NAMES: Record<CodeAppearance, string> = {
-  light: "Default Light Modern",
-  dark: "Default Dark Modern",
-  "high-contrast-light": "Default High Contrast Light",
-  "high-contrast-dark": "Default High Contrast",
+  light: "Cantrip Light",
+  dark: "Cantrip Dark",
+  "high-contrast-light": "Cantrip High Contrast Light",
+  "high-contrast-dark": "Cantrip High Contrast Dark",
 };
 
 function stableKey(value: string): string {
@@ -154,6 +164,8 @@ export class CodeSupervisor {
   readonly #profiles = new Map<string, ProfileProcess>();
   readonly #readinessTimeoutMs: number;
   readonly #sessions = new Map<string, CodeSession>();
+  readonly #workerId: string;
+  readonly #workerName: string;
   #closed = false;
 
   constructor(options: CodeSupervisorOptions) {
@@ -162,6 +174,8 @@ export class CodeSupervisor {
     this.#codeRoot = path.join(options.dataDirectory, "code");
     this.#installation = options.installation;
     this.#readinessTimeoutMs = options.readinessTimeoutMs ?? 15_000;
+    this.#workerId = options.workerId ?? "unknown-worker";
+    this.#workerName = options.workerName ?? "Cantrip Worker";
   }
 
   async start(): Promise<void> {
@@ -230,6 +244,7 @@ export class CodeSupervisor {
         lastError: null,
         profileKey,
         projectId: command.projectId,
+        projectName: command.projectName ?? path.basename(cwd),
         sessionId: command.sessionId,
         startedAt: null,
         status: "starting",
@@ -237,6 +252,7 @@ export class CodeSupervisor {
         workspacePath,
         workspaceUri: pathToFileURL(workspacePath).href,
         worktreeId: command.worktreeId,
+        worktreeName: command.worktreeName ?? command.worktreeId,
       };
       this.#sessions.set(command.sessionId, session);
       const profile = await this.#profile(command.profileId, profileKey);
@@ -247,6 +263,8 @@ export class CodeSupervisor {
     const session = this.#sessions.get(command.sessionId)!;
     session.appearance = command.appearance;
     session.themeMode = command.themeMode;
+    session.projectName = command.projectName ?? session.projectName;
+    session.worktreeName = command.worktreeName ?? session.worktreeName;
     session.lastActivityAt = isoNow();
     session.lastError = null;
     session.status = "starting";
@@ -301,6 +319,40 @@ export class CodeSupervisor {
     await this.#bridge.setTheme(sessionId, themeMode, appearance);
     await this.#persistState();
     return this.#status(session);
+  }
+
+  async prepareAgentTurn(cwd: string): Promise<CodeAgentTurnPreparationResult> {
+    const sessions = this.#sessionsForCwd(cwd);
+    const prepared = await Promise.all(
+      sessions.map((session) =>
+        this.#bridge.prepareAgentTurn(session.sessionId),
+      ),
+    );
+    return codeAgentTurnPreparationResultSchema.parse({
+      prepared: prepared.every((session) => session.allowed),
+      sessions: prepared,
+    });
+  }
+
+  async agentTurnState(
+    cwd: string,
+    phase: "started" | "completed" | "failed",
+    paths: string[],
+  ): Promise<CodeAgentTurnNotificationResult> {
+    const normalizedPaths = this.#safeRelativePaths(cwd, paths);
+    const results = await Promise.all(
+      this.#sessionsForCwd(cwd).map((session) =>
+        this.#bridge.notifyAgentTurn(session.sessionId, phase, normalizedPaths),
+      ),
+    );
+    return codeAgentTurnNotificationResultSchema.parse({
+      notifiedSessions: results.reduce(
+        (total, result) => total + result.notifiedSessions,
+        0,
+      ),
+      refreshed: [...new Set(results.flatMap((result) => result.refreshed))],
+      conflicts: results.flatMap((result) => result.conflicts),
+    });
   }
 
   async stop(sessionId: string): Promise<CodeRuntimeStatus> {
@@ -601,8 +653,12 @@ export class CodeSupervisor {
       "cantrip.bridgeToken": session.bridgeToken,
       "cantrip.bridgeUrl": session.bridgeUrl,
       "cantrip.projectId": session.projectId,
+      "cantrip.projectName": session.projectName,
       "cantrip.sessionId": session.sessionId,
+      "cantrip.workerId": this.#workerId,
+      "cantrip.workerName": this.#workerName,
       "cantrip.worktreeId": session.worktreeId,
+      "cantrip.worktreeName": session.worktreeName,
       "extensions.autoCheckUpdates": false,
       "extensions.autoUpdate": false,
       "security.workspace.trust.enabled": true,
@@ -632,6 +688,7 @@ export class CodeSupervisor {
       processInstanceId: profile?.instanceId ?? null,
       bridgeConnected: this.#bridge.connected(session.sessionId),
       dirtyEditors: this.#bridge.dirtyEditors(session.sessionId),
+      workbench: this.#bridge.state(session.sessionId),
       startedAt: session.startedAt,
       lastActivityAt: session.lastActivityAt,
       lastError: session.lastError,
@@ -643,6 +700,26 @@ export class CodeSupervisor {
     if (!session)
       throw new Error(`Cantrip Code session ${sessionId} is not open.`);
     return session;
+  }
+
+  #sessionsForCwd(cwd: string): CodeSession[] {
+    const resolved = path.resolve(cwd);
+    return [...this.#sessions.values()].filter(
+      (session) => session.cwd === resolved,
+    );
+  }
+
+  #safeRelativePaths(cwd: string, paths: string[]): string[] {
+    const root = path.resolve(cwd);
+    const prefix = `${root}${path.sep}`;
+    const result = new Set<string>();
+    for (const candidate of paths.slice(0, 5_000)) {
+      const absolute = path.resolve(root, candidate);
+      if (absolute !== root && !absolute.startsWith(prefix)) continue;
+      const relative = path.relative(root, absolute).split(path.sep).join("/");
+      if (relative) result.add(relative);
+    }
+    return [...result];
   }
 
   #assertAvailable(): void {
@@ -700,12 +777,14 @@ export class CodeSupervisor {
       lastError: session.lastError,
       profileKey: session.profileKey,
       projectId: session.projectId,
+      projectName: session.projectName,
       sessionId: session.sessionId,
       startedAt: session.startedAt,
       status: session.status,
       themeMode: session.themeMode,
       workspacePath: session.workspacePath,
       worktreeId: session.worktreeId,
+      worktreeName: session.worktreeName,
     }));
     await writeFile(
       temporary,

@@ -2,10 +2,18 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import { createServer, type Server } from "node:http";
 
 import type {
+  CodeAgentTurnNotificationResult,
+  CodeAgentTurnPreparationResult,
   CodeAppearance,
   CodeDirtyEditor,
   CodeSaveAllResult,
   CodeThemeMode,
+  CodeWorkbenchState,
+} from "@cantrip/protocol";
+import {
+  codeAgentTurnNotificationResultSchema,
+  codeAgentTurnPreparationSessionSchema,
+  codeWorkbenchStateSchema,
 } from "@cantrip/protocol";
 import WebSocket, { WebSocketServer } from "ws";
 
@@ -21,6 +29,7 @@ interface BridgeSession {
   >;
   socket: WebSocket | null;
   token: string;
+  workbench: CodeWorkbenchState;
 }
 
 interface BridgeRequest {
@@ -41,7 +50,21 @@ interface BridgeResponse {
 interface BridgeState {
   type: "state";
   dirtyEditors: CodeDirtyEditor[];
+  activeEditor?: unknown;
+  git?: unknown;
+  conflicts?: unknown;
+  savePolicy?: unknown;
+  agentStatus?: unknown;
 }
+
+const DEFAULT_WORKBENCH_STATE: CodeWorkbenchState = {
+  activeEditor: null,
+  git: null,
+  conflicts: [],
+  savePolicy: "always",
+  agentStatus: "idle",
+};
+const MAX_BRIDGE_PAYLOAD_BYTES = 1024 * 1024;
 
 function secureTokenEqual(left: string, right: string): boolean {
   const a = Buffer.from(left);
@@ -76,7 +99,10 @@ export class CodeWorkbenchBridge {
     const server = createServer((_request, response) => {
       response.writeHead(404).end();
     });
-    const webSockets = new WebSocketServer({ noServer: true });
+    const webSockets = new WebSocketServer({
+      noServer: true,
+      maxPayload: MAX_BRIDGE_PAYLOAD_BYTES,
+    });
     server.on("upgrade", (request, socket, head) => {
       let url: URL;
       try {
@@ -127,6 +153,7 @@ export class CodeWorkbenchBridge {
         pending: new Map(),
         socket: null,
         token,
+        workbench: { ...DEFAULT_WORKBENCH_STATE },
       });
     }
     const url = new URL(
@@ -151,6 +178,36 @@ export class CodeWorkbenchBridge {
 
   dirtyEditors(sessionId: string): CodeDirtyEditor[] {
     return [...(this.#sessions.get(sessionId)?.dirtyEditors ?? [])];
+  }
+
+  state(sessionId: string): CodeWorkbenchState {
+    const state = this.#sessions.get(sessionId)?.workbench;
+    return state
+      ? {
+          ...state,
+          conflicts: [...state.conflicts],
+          activeEditor: state.activeEditor
+            ? {
+                ...state.activeEditor,
+                selection: { ...state.activeEditor.selection },
+              }
+            : null,
+          git: state.git ? { ...state.git } : null,
+        }
+      : { ...DEFAULT_WORKBENCH_STATE };
+  }
+
+  async waitUntilConnected(
+    sessionId: string,
+    timeoutMs = 3_000,
+  ): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (this.connected(sessionId)) return true;
+      if (!this.#sessions.has(sessionId)) return false;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return this.connected(sessionId);
   }
 
   async saveAll(sessionId: string): Promise<CodeSaveAllResult> {
@@ -186,6 +243,43 @@ export class CodeWorkbenchBridge {
     };
   }
 
+  async prepareAgentTurn(
+    sessionId: string,
+  ): Promise<CodeAgentTurnPreparationResult["sessions"][number]> {
+    const session = this.#sessions.get(sessionId);
+    if (!session) throw new Error("Cantrip Code session is not registered.");
+    const connected =
+      this.connected(sessionId) || (await this.waitUntilConnected(sessionId));
+    if (!connected) {
+      return codeAgentTurnPreparationSessionSchema.parse({
+        sessionId,
+        bridgeConnected: false,
+        allowed: false,
+        policy: null,
+        dirtyEditors: session.dirtyEditors,
+        saved: [],
+        failed: [],
+        reason:
+          "Cantrip Code is open for this worktree, but its workbench bridge is not connected yet.",
+      });
+    }
+    const result = (await this.#request(
+      session,
+      "prepareAgentTurn",
+      {},
+    )) as Record<string, unknown>;
+    return codeAgentTurnPreparationSessionSchema.parse({
+      sessionId,
+      bridgeConnected: true,
+      allowed: result.allowed,
+      policy: result.policy,
+      dirtyEditors: result.dirtyEditors,
+      saved: result.saved,
+      failed: result.failed,
+      reason: result.reason,
+    });
+  }
+
   async setTheme(
     sessionId: string,
     themeMode: CodeThemeMode,
@@ -196,11 +290,49 @@ export class CodeWorkbenchBridge {
     await this.#request(session, "setTheme", { themeMode, appearance });
   }
 
-  async notifyExternalFiles(sessionId: string, paths: string[]): Promise<void> {
+  async notifyExternalFiles(
+    sessionId: string,
+    paths: string[],
+  ): Promise<CodeAgentTurnNotificationResult> {
     const session = this.#sessions.get(sessionId);
-    if (!session || !this.connected(sessionId) || paths.length === 0) return;
-    await this.#request(session, "externalFilesChanged", {
+    if (!session || !this.connected(sessionId) || paths.length === 0) {
+      return codeAgentTurnNotificationResultSchema.parse({
+        notifiedSessions: 0,
+        refreshed: [],
+        conflicts: [],
+      });
+    }
+    const result = (await this.#request(session, "externalFilesChanged", {
       paths: paths.slice(0, 5_000),
+    })) as Record<string, unknown>;
+    return codeAgentTurnNotificationResultSchema.parse({
+      notifiedSessions: 1,
+      refreshed: result.refreshed,
+      conflicts: result.conflicts,
+    });
+  }
+
+  async notifyAgentTurn(
+    sessionId: string,
+    phase: "started" | "completed" | "failed",
+    paths: string[],
+  ): Promise<CodeAgentTurnNotificationResult> {
+    const session = this.#sessions.get(sessionId);
+    if (!session || !this.connected(sessionId)) {
+      return codeAgentTurnNotificationResultSchema.parse({
+        notifiedSessions: 0,
+        refreshed: [],
+        conflicts: [],
+      });
+    }
+    const result = (await this.#request(session, "agentTurnState", {
+      phase,
+      paths: paths.slice(0, 5_000),
+    })) as Record<string, unknown>;
+    return codeAgentTurnNotificationResultSchema.parse({
+      notifiedSessions: 1,
+      refreshed: result.refreshed,
+      conflicts: result.conflicts,
     });
   }
 
@@ -243,6 +375,14 @@ export class CodeWorkbenchBridge {
     }
     if (message.type === "state") {
       session.dirtyEditors = parseDirtyEditors(message.dirtyEditors);
+      const workbench = codeWorkbenchStateSchema.safeParse({
+        activeEditor: message.activeEditor ?? null,
+        git: message.git ?? null,
+        conflicts: message.conflicts ?? [],
+        savePolicy: message.savePolicy ?? "always",
+        agentStatus: message.agentStatus ?? "idle",
+      });
+      if (workbench.success) session.workbench = workbench.data;
       return;
     }
     if (message.type !== "response" || typeof message.id !== "string") return;

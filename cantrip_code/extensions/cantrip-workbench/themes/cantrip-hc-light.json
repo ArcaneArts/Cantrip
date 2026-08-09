@@ -1,0 +1,44 @@
+{
+  "$schema": "vscode://schemas/color-theme",
+  "name": "Cantrip High Contrast Light",
+  "type": "light",
+  "colors": {
+    "foreground": "#000000",
+    "descriptionForeground": "#303030",
+    "focusBorder": "#000000",
+    "contrastActiveBorder": "#000000",
+    "contrastBorder": "#707070",
+    "editor.background": "#FFFFFF",
+    "editor.foreground": "#000000",
+    "editorCursor.foreground": "#000000",
+    "editor.selectionBackground": "#B7D7FF",
+    "sideBar.background": "#FFFFFF",
+    "sideBar.foreground": "#000000",
+    "activityBar.background": "#FFFFFF",
+    "activityBar.foreground": "#000000",
+    "titleBar.activeBackground": "#FFFFFF",
+    "titleBar.activeForeground": "#000000",
+    "statusBar.background": "#FFFFFF",
+    "statusBar.foreground": "#000000",
+    "panel.background": "#FFFFFF",
+    "input.background": "#FFFFFF",
+    "input.foreground": "#000000",
+    "dropdown.background": "#FFFFFF",
+    "dropdown.foreground": "#000000",
+    "list.activeSelectionBackground": "#B7D7FF",
+    "button.background": "#000000",
+    "button.foreground": "#FFFFFF"
+  },
+  "tokenColors": [
+    { "scope": ["comment"], "settings": { "foreground": "#3F3F3F" } },
+    {
+      "scope": ["keyword", "storage"],
+      "settings": { "foreground": "#6B006B" }
+    },
+    { "scope": ["string"], "settings": { "foreground": "#075F07" } },
+    {
+      "scope": ["constant", "entity.name.function", "entity.name.type"],
+      "settings": { "foreground": "#005A70" }
+    }
+  ]
+}

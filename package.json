@@ -17,6 +17,7 @@
     "code:clean": "node scripts/cantrip-code/clean.mjs",
     "code:ready": "node scripts/cantrip-code/ready.mjs",
     "code:verify": "node scripts/cantrip-code/verify.mjs",
+    "code:extension:test": "node --test cantrip_code/extensions/cantrip-workbench/test/*.test.cjs",
     "codex:sync": "node scripts/cantrip-codex/sync-upstream.mjs",
     "codex:verify": "node scripts/cantrip-codex/verify-upstream.mjs",
     "codex:build": "node scripts/cantrip-codex/build.mjs",
@@ -35,7 +36,7 @@
     "package:all": "pnpm package:services && pnpm package:app",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "test": "node --test scripts/cantrip-code/*.test.mjs && pnpm -r --if-present test",
+    "test": "node --test scripts/cantrip-code/*.test.mjs && pnpm code:extension:test && pnpm -r --if-present test",
     "check": "pnpm check:large-files && pnpm code:source:verify && pnpm codex:verify && pnpm typecheck && pnpm test && pnpm format:check",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

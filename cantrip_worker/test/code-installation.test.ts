@@ -23,16 +23,27 @@ afterEach(async () => {
 async function createInstallation(contents = "#!/bin/sh\nexit 0\n") {
   const root = await mkdtemp(path.join(tmpdir(), "cantrip-code-installation-"));
   directories.push(root);
-  await mkdir(path.join(root, "bin"));
+  await Promise.all([
+    mkdir(path.join(root, "bin")),
+    mkdir(path.join(root, "extensions", "cantrip-workbench"), {
+      recursive: true,
+    }),
+  ]);
   const entrypoint = path.join(root, "bin", "cantrip-code");
   await writeFile(entrypoint, contents);
   await chmod(entrypoint, 0o755);
   const bytes = Buffer.from(contents);
+  const workbenchContents = `${JSON.stringify({ name: "cantrip-workbench", version: "0.1.0" })}\n`;
+  const workbenchBytes = Buffer.from(workbenchContents);
+  await writeFile(
+    path.join(root, "extensions", "cantrip-workbench", "package.json"),
+    workbenchContents,
+  );
   await writeFile(
     path.join(root, "cantrip-code.manifest.json"),
     `${JSON.stringify(
       {
-        schemaVersion: 1,
+        schemaVersion: 2,
         component: "cantrip-code",
         version: "1.109.5-cantrip.1",
         target: `${process.platform}-${process.arch}`,
@@ -42,6 +53,7 @@ async function createInstallation(contents = "#!/bin/sh\nexit 0\n") {
         openvscodeServerCommit: "2".repeat(40),
         vscodeCommit: "3".repeat(40),
         patchset: 1,
+        cantripWorkbenchVersion: "0.1.0",
         entrypoint: "bin/cantrip-code",
         files: [
           {
@@ -50,6 +62,13 @@ async function createInstallation(contents = "#!/bin/sh\nexit 0\n") {
             size: bytes.length,
             sha256: createHash("sha256").update(bytes).digest("hex"),
             executable: true,
+          },
+          {
+            path: "extensions/cantrip-workbench/package.json",
+            type: "file",
+            size: workbenchBytes.length,
+            sha256: createHash("sha256").update(workbenchBytes).digest("hex"),
+            executable: false,
           },
         ],
       },
