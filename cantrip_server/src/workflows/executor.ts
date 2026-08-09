@@ -39,6 +39,13 @@ interface WorkflowExecutorLogger {
   warn(context: Record<string, unknown>, message: string): void;
 }
 
+export interface WorkflowRunLiveChange {
+  projectId: string | null;
+  resource: "workflow-gate" | "workflow-node" | "workflow-run";
+  revision: number | null;
+  runId: string;
+}
+
 const MAX_WORKFLOW_PROMPT_LENGTH = 100_000;
 
 class WorkflowProgressPersistenceError extends Error {}
@@ -70,7 +77,19 @@ export class WorkflowExecutor {
     private readonly bridge: WorkerCommandBus,
     private readonly worktreeCoordinator: ProjectWorktreeCoordinator,
     private readonly logger: WorkflowExecutorLogger,
+    private readonly onRunChanged: (
+      change: WorkflowRunLiveChange,
+    ) => void = () => undefined,
   ) {}
+
+  private notifyRunChanged(
+    runId: string,
+    projectId: string | null,
+    resource: WorkflowRunLiveChange["resource"] = "workflow-run",
+    revision: number | null = null,
+  ): void {
+    this.onRunChanged({ projectId, resource, revision, runId });
+  }
 
   async recoverAfterRestart(): Promise<number> {
     const interruptedAttempts =
@@ -106,7 +125,14 @@ export class WorkflowExecutor {
               candidate.leaseId,
               candidate.pendingOutcomeRequest,
             );
-            if (resolved) resumed += 1;
+            if (resolved) {
+              resumed += 1;
+              this.notifyRunChanged(
+                candidate.runId,
+                candidate.projectId,
+                "workflow-node",
+              );
+            }
             return;
           }
           this.queueRun(candidate.runId);
@@ -163,6 +189,9 @@ export class WorkflowExecutor {
       runId,
       input,
     );
+    if (requested) {
+      this.notifyRunChanged(runId, requested.run.run.projectId, "workflow-run");
+    }
     if (!requested?.executions.length || requested.replayed) {
       return requested?.run ?? null;
     }
@@ -180,7 +209,13 @@ export class WorkflowExecutor {
     runId: string,
     input: WorkflowRunPause,
   ): Promise<WorkflowRunDetail | null> {
-    return this.repository.workflowRuns.pauseRun(LOCAL_USER_ID, runId, input);
+    const run = await this.repository.workflowRuns.pauseRun(
+      LOCAL_USER_ID,
+      runId,
+      input,
+    );
+    if (run) this.notifyRunChanged(runId, run.run.projectId, "workflow-run");
+    return run;
   }
 
   async resumeRun(
@@ -195,6 +230,7 @@ export class WorkflowExecutor {
     if (run && !["completed", "failed"].includes(run.run.status)) {
       this.queueRun(runId);
     }
+    if (run) this.notifyRunChanged(runId, run.run.projectId, "workflow-run");
     return run;
   }
 
@@ -248,7 +284,10 @@ export class WorkflowExecutor {
       runNodeId,
       input,
     );
-    if (run) this.queueRun(runId);
+    if (run) {
+      this.notifyRunChanged(runId, run.run.projectId, "workflow-node");
+      this.queueRun(runId);
+    }
     return run;
   }
 
@@ -263,7 +302,10 @@ export class WorkflowExecutor {
       gateId,
       input,
     );
-    if (result) this.queueRun(runId);
+    if (result) {
+      this.notifyRunChanged(runId, result.run.run.projectId, "workflow-gate");
+      this.queueRun(runId);
+    }
     return result?.run ?? null;
   }
 
@@ -272,7 +314,16 @@ export class WorkflowExecutor {
       LOCAL_USER_ID,
       now,
     );
-    for (const runId of runIds) this.queueRun(runId);
+    for (const runId of runIds) {
+      const run = await this.repository.workflowRuns.getRun(
+        LOCAL_USER_ID,
+        runId,
+      );
+      if (run) {
+        this.notifyRunChanged(runId, run.run.projectId, "workflow-gate");
+      }
+      this.queueRun(runId);
+    }
     return runIds.length;
   }
 
@@ -343,6 +394,13 @@ export class WorkflowExecutor {
   }
 
   private async executeRun(runId: string): Promise<void> {
+    const initial = await this.repository.workflowRuns.getRun(
+      LOCAL_USER_ID,
+      runId,
+    );
+    if (!initial) return;
+    const projectId = initial.run.projectId;
+    this.notifyRunChanged(runId, projectId);
     const active = new Set<Promise<void>>();
     while (!this.#stopping) {
       const budget = await this.repository.workflowRuns.enforceRunBudget(
@@ -351,6 +409,7 @@ export class WorkflowExecutor {
       );
       if (!budget) break;
       if (budget.violation) {
+        this.notifyRunChanged(runId, projectId);
         await this.interruptExecutions(
           budget.interruptions,
           "Workflow budget failure was persisted but runtime interruption failed",
@@ -363,21 +422,30 @@ export class WorkflowExecutor {
           runId,
         );
       if (collectionAdvanced === null) break;
-      if (collectionAdvanced) continue;
+      if (collectionAdvanced) {
+        this.notifyRunChanged(runId, projectId, "workflow-node");
+        continue;
+      }
       const repeatUntilAdvanced =
         await this.repository.workflowRuns.advanceReadyRepeatUntilNode(
           LOCAL_USER_ID,
           runId,
         );
       if (repeatUntilAdvanced === null) break;
-      if (repeatUntilAdvanced) continue;
+      if (repeatUntilAdvanced) {
+        this.notifyRunChanged(runId, projectId, "workflow-node");
+        continue;
+      }
       const controlAdvanced =
         await this.repository.workflowRuns.advanceReadyControlNode(
           LOCAL_USER_ID,
           runId,
         );
       if (controlAdvanced === null) break;
-      if (controlAdvanced) continue;
+      if (controlAdvanced) {
+        this.notifyRunChanged(runId, projectId, "workflow-node");
+        continue;
+      }
       const candidates =
         await this.repository.workflowRuns.getReadyAgentCandidates(
           LOCAL_USER_ID,
@@ -395,6 +463,7 @@ export class WorkflowExecutor {
           unsupported.unsupportedReason ??
             "The workflow node configuration is unavailable.",
         );
+        this.notifyRunChanged(runId, projectId, "workflow-node");
         break;
       }
       const candidate = candidates[0];
@@ -412,6 +481,7 @@ export class WorkflowExecutor {
           runId,
           "The workflow project source is unavailable.",
         );
+        this.notifyRunChanged(runId, projectId, "workflow-node");
         break;
       }
       let allocationBlocked = false;
@@ -423,6 +493,7 @@ export class WorkflowExecutor {
             runId,
             "The workflow has no available model route.",
           );
+          this.notifyRunChanged(runId, projectId, "workflow-node");
           break;
         }
         let target = source!;
@@ -438,6 +509,7 @@ export class WorkflowExecutor {
                   runNodeItemId: ready.item?.id ?? null,
                 },
               );
+            this.notifyRunChanged(runId, projectId, "workflow-node");
             if (!allocation) {
               allocationBlocked = true;
               break;
@@ -449,6 +521,7 @@ export class WorkflowExecutor {
             };
           } catch (error) {
             allocationBlocked = true;
+            this.notifyRunChanged(runId, projectId, "workflow-node");
             this.logger.warn(
               {
                 err: error,
@@ -472,6 +545,7 @@ export class WorkflowExecutor {
           },
         );
         if (!lease) continue;
+        this.notifyRunChanged(runId, projectId, "workflow-node");
         let task!: Promise<void>;
         task = this.executeAttempt(lease, runtime).finally(() =>
           active.delete(task),
@@ -554,11 +628,21 @@ export class WorkflowExecutor {
         result,
         await this.captureWorktreeCheckpoint(lease),
       );
+      this.notifyRunChanged(
+        lease.candidate.run.id,
+        lease.candidate.projectId,
+        "workflow-node",
+      );
     } catch (error) {
       const failure = await this.repository.workflowRuns.failAgentAttempt(
         LOCAL_USER_ID,
         lease,
         this.failureFrom(error),
+      );
+      this.notifyRunChanged(
+        lease.candidate.run.id,
+        lease.candidate.projectId,
+        "workflow-node",
       );
       await this.interruptExecutions(
         failure.interruptions,
@@ -684,10 +768,21 @@ export class WorkflowExecutor {
       }
     }
     try {
-      await this.repository.workflowRuns.recordAttemptWorkerEvent(
-        LOCAL_USER_ID,
-        lease,
-        event,
+      const revision =
+        await this.repository.workflowRuns.recordAttemptWorkerEvent(
+          LOCAL_USER_ID,
+          lease,
+          event,
+        );
+      this.notifyRunChanged(
+        lease.candidate.run.id,
+        lease.candidate.projectId,
+        event.type === "workflow.node.interaction.requested" ||
+          event.type === "workflow.node.interaction.cleared" ||
+          event.type === "workflow.node.interaction.expired"
+          ? "workflow-gate"
+          : "workflow-node",
+        revision,
       );
       if (
         event.type === "workflow.node.activity" &&
@@ -698,6 +793,11 @@ export class WorkflowExecutor {
           lease.candidate.run.id,
         );
         if (budget?.violation) {
+          this.notifyRunChanged(
+            lease.candidate.run.id,
+            lease.candidate.projectId,
+            "workflow-run",
+          );
           await this.interruptExecutions(
             budget.interruptions,
             "Workflow budget failure was persisted but runtime interruption failed",

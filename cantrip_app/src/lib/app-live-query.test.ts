@@ -247,4 +247,85 @@ describe("application live query bridge", () => {
       queryKey: ["chat-customizations", "chat-one"],
     });
   });
+
+  it("coalesces workflow progress and rejects duplicate durable sequences", async () => {
+    vi.useFakeTimers();
+    try {
+      const queryClient = new QueryClient();
+      const invalidate = vi
+        .spyOn(queryClient, "invalidateQueries")
+        .mockResolvedValue();
+      const bridge = new AppLiveQueryBridge(queryClient);
+      const runEvent = {
+        ...event({
+          entityId: "run-one",
+          resource: "workflow-node",
+          scope: { kind: "workflow-run", runId: "run-one" },
+        }),
+        revision: 7,
+      } satisfies AppLiveEvent;
+      const projectEvent = {
+        ...runEvent,
+        cursor: 2,
+        scope: { kind: "project", projectId: "project-one" },
+      } satisfies AppLiveEvent;
+
+      bridge.handleEvent(runEvent);
+      bridge.handleEvent({ ...runEvent, cursor: 3 });
+      bridge.handleEvent({ ...runEvent, cursor: 4, revision: 6 });
+      bridge.handleEvent(projectEvent);
+      expect(invalidate).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(invalidate).toHaveBeenCalledTimes(2);
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ["workflow-run", "run-one"],
+      });
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ["workflow-runs", "project-one"],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("accepts a restarted workflow sequence after scope recovery", async () => {
+    vi.useFakeTimers();
+    try {
+      const queryClient = new QueryClient();
+      const invalidate = vi
+        .spyOn(queryClient, "invalidateQueries")
+        .mockResolvedValue();
+      const bridge = new AppLiveQueryBridge(queryClient);
+      const workflowEvent = (
+        cursor: number,
+        revision: number,
+      ): AppLiveEvent => ({
+        ...event({
+          entityId: "run-one",
+          resource: "workflow-run",
+          scope: { kind: "workflow-run", runId: "run-one" },
+        }),
+        cursor,
+        revision,
+      });
+
+      bridge.handleEvent(workflowEvent(20, 20));
+      await vi.advanceTimersByTimeAsync(100);
+      await bridge.recoverScopes(
+        [{ kind: "workflow-run", runId: "run-one" }],
+        "server-epoch-changed",
+      );
+      invalidate.mockClear();
+      bridge.handleEvent(workflowEvent(1, 1));
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ["workflow-run", "run-one"],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
