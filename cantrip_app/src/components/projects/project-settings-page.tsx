@@ -158,6 +158,7 @@ export function ProjectSettingsPage({
   chats,
   codeTabs,
   explorers,
+  initialWorkflowId,
   onCreateChat,
   onCreateCode,
   onCreateExplorer,
@@ -173,6 +174,7 @@ export function ProjectSettingsPage({
   chats: ChatSummary[];
   codeTabs: CodeTabSummary[];
   explorers: ExplorerSummary[];
+  initialWorkflowId?: string | null;
   onCreateChat(worktreeId: string): void;
   onCreateCode(worktreeId: string): void;
   onCreateExplorer(worktreeId: string): void;
@@ -400,6 +402,7 @@ export function ProjectSettingsPage({
         </section>
 
         <WorkflowCenter
+          initialWorkflowId={initialWorkflowId}
           projectId={project.id}
           onOpenHistory={onCreateHistory}
         />

@@ -10,6 +10,7 @@ describe("slash commands", () => {
   it("opens only for a command token at the start of an otherwise empty draft", () => {
     expect(slashCommandQuery("/")).toBe("");
     expect(slashCommandQuery("/comp")).toBe("comp");
+    expect(slashCommandQuery("/project/release")).toBe("project/release");
     expect(slashCommandQuery("hello /comp")).toBeNull();
     expect(slashCommandQuery("/compact now")).toBeNull();
   });

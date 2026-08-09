@@ -88,6 +88,10 @@ import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
 import { PlanPanel } from "@/components/chat/plan-panel";
 import { Markdown } from "@/components/chat/markdown";
+import {
+  filterCommandPalette,
+  type CommandPaletteSuggestion,
+} from "@/components/chat/command-palette";
 import { PromptQueue } from "@/components/chat/prompt-queue";
 import type { CodeHeaderState } from "@/components/code/code-view";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
@@ -99,7 +103,6 @@ import {
 } from "@/components/chat/skill-mentions";
 import { buildChatTimeline } from "@/components/chat/timeline";
 import {
-  filterSlashCommands,
   slashCommandQuery,
   type SlashCommandSuggestion,
 } from "@/components/chat/slash-commands";
@@ -180,6 +183,7 @@ import {
   getSkills,
   getTerminals,
   getWorkers,
+  getWorkflows,
   renameChat,
   renameExplorer,
   renameProjectView,
@@ -776,6 +780,7 @@ function ChatTranscript({
   onCreateChat,
   onDelete,
   onForked,
+  onOpenWorkflow,
   onRename,
   settings,
   syncEnabled,
@@ -784,6 +789,7 @@ function ChatTranscript({
   onCreateChat(): void;
   onDelete(): void;
   onForked(chat: ChatSummary): void;
+  onOpenWorkflow(workflowId: string): void;
   onRename(title: string): void;
   settings: SettingsBundle | undefined;
   syncEnabled: boolean;
@@ -888,9 +894,19 @@ function ChatTranscript({
     staleTime: 30_000,
   });
   const skills = useQuery({
-    enabled: Boolean(selectedModelId && draft.includes("$")),
+    enabled: Boolean(
+      selectedModelId &&
+      (draft.includes("$") || slashCommandQuery(draft) !== null),
+    ),
     queryFn: () => getSkills(chat.id),
     queryKey: ["skills", chat.id, selectedModelId],
+    retry: false,
+    staleTime: 30_000,
+  });
+  const commandWorkflows = useQuery({
+    enabled: slashCommandQuery(draft) !== null,
+    queryFn: () => getWorkflows({ limit: 500 }),
+    queryKey: ["workflows"],
     retry: false,
     staleTime: 30_000,
   });
@@ -900,8 +916,16 @@ function ChatTranscript({
   );
   const slashQuery = slashCommandQuery(draft);
   const slashSuggestions = useMemo(
-    () => (slashQuery === null ? [] : filterSlashCommands(slashQuery)),
-    [slashQuery],
+    () =>
+      slashQuery === null
+        ? []
+        : filterCommandPalette(
+            slashQuery,
+            skills.data ?? [],
+            commandWorkflows.data ?? [],
+            chat.projectId,
+          ),
+    [chat.projectId, commandWorkflows.data, skills.data, slashQuery],
   );
   const slashMenuOpen =
     !slashMenuDismissed && slashQuery !== null && slashSuggestions.length > 0;
@@ -1350,6 +1374,29 @@ function ChatTranscript({
     });
   };
 
+  const executeCommandPalette = async (
+    suggestion: CommandPaletteSuggestion,
+  ) => {
+    if (suggestion.kind === "builtin") {
+      await executeSlashCommand(suggestion.command);
+      return;
+    }
+    setSlashMenuDismissed(true);
+    setCommandNotice(null);
+    if (suggestion.kind === "workflow") {
+      setDraft("");
+      onOpenWorkflow(suggestion.workflow.id);
+      return;
+    }
+    const text = `$${suggestion.skill.name} `;
+    setDraft(text);
+    setComposerCaret(text.length);
+    window.requestAnimationFrame(() => {
+      composerRef.current?.focus();
+      composerRef.current?.setSelectionRange(text.length, text.length);
+    });
+  };
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex-1 overflow-y-auto px-4 pb-72 pt-6 sm:px-8">
@@ -1521,7 +1568,7 @@ function ChatTranscript({
               id="slash-command-menu"
               ref={commandListRef}
               role="listbox"
-              aria-label="Slash commands"
+              aria-label="Commands, workflows, and skills"
               className="chat-composer-surface absolute inset-x-0 bottom-[calc(100%+0.5rem)] max-h-72 overflow-y-auto rounded-xl border p-1.5 shadow-2xl"
             >
               {slashSuggestions.map((suggestion, index) => (
@@ -1540,14 +1587,23 @@ function ChatTranscript({
                   )}
                   onMouseDown={(event) => event.preventDefault()}
                   onMouseEnter={() => setSelectedCommandIndex(index)}
-                  onClick={() => void executeSlashCommand(suggestion)}
+                  onClick={() => void executeCommandPalette(suggestion)}
                 >
-                  <span className="w-36 shrink-0 font-mono text-sm font-medium">
+                  <span
+                    className="w-36 shrink-0 truncate font-mono text-sm font-medium"
+                    title={suggestion.invocation}
+                  >
                     {suggestion.invocation}
                   </span>
                   <span className="min-w-0 truncate text-xs text-muted-foreground">
-                    {suggestion.command.description}
+                    {suggestion.description}
                   </span>
+                  <Badge
+                    variant="outline"
+                    className="ml-auto hidden capitalize sm:inline-flex"
+                  >
+                    {suggestion.kind}
+                  </Badge>
                 </button>
               ))}
             </div>
@@ -1912,7 +1968,7 @@ function ChatTranscript({
                     ) {
                       event.preventDefault();
                       const suggestion = slashSuggestions[selectedCommandIndex];
-                      if (suggestion) void executeSlashCommand(suggestion);
+                      if (suggestion) void executeCommandPalette(suggestion);
                       return;
                     }
                     if (event.key === "Enter" && !event.shiftKey) {
@@ -2163,6 +2219,9 @@ export function App() {
   const [showImporter, setShowImporter] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showProjectSettings, setShowProjectSettings] = useState(false);
+  const [selectedWorkflowIntentId, setSelectedWorkflowIntentId] = useState<
+    string | null
+  >(null);
   const [showCustomizations, setShowCustomizations] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -2199,10 +2258,14 @@ export function App() {
     setShowImporter(false);
     setShowSettings(false);
     setShowProjectSettings(false);
+    setSelectedWorkflowIntentId(null);
     setMobileNavigationOpen(false);
   };
 
-  const openProjectSettings = (projectId: string) => {
+  const openProjectSettings = (
+    projectId: string,
+    workflowId: string | null = null,
+  ) => {
     setSelectedProjectId(projectId);
     setSelectedChatId(null);
     setSelectedTerminalId(null);
@@ -2213,6 +2276,7 @@ export function App() {
     setShowImporter(false);
     setShowSettings(false);
     setShowProjectSettings(true);
+    setSelectedWorkflowIntentId(workflowId);
     setMobileNavigationOpen(false);
   };
 
@@ -4111,6 +4175,7 @@ export function App() {
           <SettingsPage />
         ) : showProjectSettings && selectedProject ? (
           <ProjectSettingsPage
+            initialWorkflowId={selectedWorkflowIntentId}
             project={selectedProject}
             chats={chats.data ?? []}
             codeTabs={codeTabs.data ?? []}
@@ -4341,6 +4406,9 @@ export function App() {
               setSelectedProjectViewId(null);
               setSelectedChatId(forked.id);
             }}
+            onOpenWorkflow={(workflowId) =>
+              openProjectSettings(selectedChat.projectId, workflowId)
+            }
             onRename={(title) =>
               renameChatMutation.mutate({ chatId: selectedChat.id, title })
             }

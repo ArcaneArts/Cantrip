@@ -36,7 +36,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
 ] as const;
 
 export function slashCommandQuery(draft: string): string | null {
-  const match = /^\/([^\s/]*)$/.exec(draft);
+  const match = /^\/([^\s]*)$/.exec(draft);
   return match ? (match[1] ?? "").toLowerCase() : null;
 }
 
