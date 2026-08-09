@@ -48,7 +48,12 @@ import {
   SquareTerminal,
   Trash2,
 } from "lucide-react";
-import { useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 
 import {
   ChatContextMenu,
@@ -80,6 +85,15 @@ const explorerId = (id: string) => `explorer:${id}`;
 const browserId = (id: string) => `browser:${id}`;
 const codeId = (id: string) => `code:${id}`;
 const viewId = (id: string) => `view:${id}`;
+
+function openActionsMenu(event: ReactMouseEvent<HTMLElement>) {
+  const trigger = event.currentTarget.querySelector<HTMLButtonElement>(
+    "[data-actions-trigger]",
+  );
+  if (!trigger) return;
+  event.preventDefault();
+  trigger.click();
+}
 const menuContentClass =
   "z-50 min-w-36 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
 const menuItemClass =
@@ -257,6 +271,7 @@ function TerminalTab({
     <div
       ref={sortable.setNodeRef}
       style={style}
+      onContextMenu={openActionsMenu}
       className={cn(
         "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
         active && "bg-muted text-foreground",
@@ -311,6 +326,7 @@ function TerminalTab({
         <DropdownMenuPrimitive.Root>
           <DropdownMenuPrimitive.Trigger asChild>
             <Button
+              data-actions-trigger
               size="icon"
               variant="ghost"
               className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
@@ -386,6 +402,7 @@ function ExplorerTab({
     <div
       ref={sortable.setNodeRef}
       style={style}
+      onContextMenu={openActionsMenu}
       className={cn(
         "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
         active && "bg-muted text-foreground",
@@ -433,6 +450,7 @@ function ExplorerTab({
         <DropdownMenuPrimitive.Root>
           <DropdownMenuPrimitive.Trigger asChild>
             <Button
+              data-actions-trigger
               size="icon"
               variant="ghost"
               className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
@@ -508,6 +526,7 @@ function CodeTab({
     <div
       ref={sortable.setNodeRef}
       style={style}
+      onContextMenu={openActionsMenu}
       className={cn(
         "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
         active && "bg-muted text-foreground",
@@ -564,6 +583,7 @@ function CodeTab({
         <DropdownMenuPrimitive.Root>
           <DropdownMenuPrimitive.Trigger asChild>
             <Button
+              data-actions-trigger
               size="icon"
               variant="ghost"
               className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
@@ -633,6 +653,7 @@ function BrowserTab({
     <div
       ref={sortable.setNodeRef}
       style={style}
+      onContextMenu={openActionsMenu}
       className={cn(
         "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
         active && "bg-muted text-foreground",
@@ -673,6 +694,7 @@ function BrowserTab({
         <DropdownMenuPrimitive.Root>
           <DropdownMenuPrimitive.Trigger asChild>
             <Button
+              data-actions-trigger
               size="icon"
               variant="ghost"
               className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
@@ -749,6 +771,7 @@ function ProjectViewTab({
     <div
       ref={sortable.setNodeRef}
       style={style}
+      onContextMenu={openActionsMenu}
       className={cn(
         "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
         active && "bg-muted text-foreground",
@@ -796,6 +819,7 @@ function ProjectViewTab({
         <DropdownMenuPrimitive.Root>
           <DropdownMenuPrimitive.Trigger asChild>
             <Button
+              data-actions-trigger
               size="icon"
               variant="ghost"
               className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
@@ -942,6 +966,7 @@ function SortableProject({
     <div ref={sortable.setNodeRef} style={style} className="group mb-1">
       <div
         title={failed ? (project.setupError ?? undefined) : undefined}
+        onContextMenu={openActionsMenu}
         className={cn(
           "flex items-center rounded-md hover:bg-muted",
           active && "bg-muted font-medium",
@@ -1051,6 +1076,7 @@ function SortableProject({
           <DropdownMenuPrimitive.Root>
             <DropdownMenuPrimitive.Trigger asChild>
               <button
+                data-actions-trigger
                 type="button"
                 title={`Project actions for ${project.name}`}
                 onClick={(event) => event.stopPropagation()}
