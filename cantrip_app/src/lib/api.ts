@@ -131,6 +131,10 @@ import {
   workflowRunPauseSchema,
   workflowRunResumeSchema,
   workflowRunSaveRevisionSchema,
+  workflowRepositoryExportSchema,
+  workflowRepositoryImportSchema,
+  workflowRepositoryInventorySchema,
+  workflowRepositoryWriteResultSchema,
   workflowRevisionCreateSchema,
   workflowRevisionSchema,
   workflowWorktreeOutcomeRequestSchema,
@@ -146,6 +150,8 @@ import {
   type WorkflowRunQuery,
   type WorkflowRunResume,
   type WorkflowRunSaveRevision,
+  type WorkflowRepositoryExport,
+  type WorkflowRepositoryImport,
   type WorkflowRevisionCreate,
   type WorkflowWorktreeOutcomeRequest,
 } from "@cantrip/protocol/workflows";
@@ -258,6 +264,38 @@ export async function appendWorkflowRevision(
     await post(
       `/api/workflows/${encodeURIComponent(workflowId)}/revisions`,
       workflowRevisionCreateSchema.parse(input),
+    ),
+  );
+}
+
+export async function getWorkflowRepository(projectId: string) {
+  return workflowRepositoryInventorySchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/workflow-repository`,
+    ),
+  );
+}
+
+export async function importWorkflowRepositoryItem(
+  projectId: string,
+  input: WorkflowRepositoryImport,
+) {
+  return workflowDefinitionDetailSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/workflow-repository/import`,
+      workflowRepositoryImportSchema.parse(input),
+    ),
+  );
+}
+
+export async function exportWorkflowToRepository(
+  workflowId: string,
+  input: WorkflowRepositoryExport,
+) {
+  return workflowRepositoryWriteResultSchema.parse(
+    await post(
+      `/api/workflows/${encodeURIComponent(workflowId)}/repository-export`,
+      workflowRepositoryExportSchema.parse(input),
     ),
   );
 }

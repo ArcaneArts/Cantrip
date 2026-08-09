@@ -4,6 +4,7 @@ import {
   workflowJsonObjectSchema,
   workflowNodeExecutionRequestSchema,
   workflowNodeExecutionResultSchema,
+  workflowRepositoryDocumentSchema,
 } from "./workflows.js";
 
 export const protocolVersionSchema = z.literal(1);
@@ -3287,6 +3288,16 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       .max(15 * 60 * 1_000),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
+    type: z.literal("workflow.repository.scan"),
+    cwd: z.string().trim().min(1).max(8_192),
+  }),
+  z.object({
+    type: z.literal("workflow.repository.write"),
+    cwd: z.string().trim().min(1).max(8_192),
+    document: workflowRepositoryDocumentSchema,
+    overwrite: z.boolean().default(false),
   }),
   z.object({
     type: z.literal("workflow.node.interrupt"),

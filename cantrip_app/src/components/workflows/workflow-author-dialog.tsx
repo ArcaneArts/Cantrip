@@ -238,6 +238,7 @@ function JsonField({
 
 export function WorkflowAuthorDialog({
   chats,
+  generationSeed,
   onOpenChange,
   onSaved,
   open,
@@ -245,6 +246,7 @@ export function WorkflowAuthorDialog({
   workflow,
 }: {
   chats: ChatSummary[];
+  generationSeed?: { label: string; prompt: string } | null;
   onOpenChange(open: boolean): void;
   onSaved(workflow: WorkflowDefinitionDetail): void;
   open: boolean;
@@ -268,9 +270,10 @@ export function WorkflowAuthorDialog({
     setGenerationChatId((current) =>
       chats.some(({ id }) => id === current) ? current : (chats[0]?.id ?? ""),
     );
-    setGenerationPrompt("");
+    setGenerationPrompt(generationSeed?.prompt ?? "");
+    setGenerationSource(generationSeed ? "runbook" : "task");
     setGenerationResult(null);
-  }, [chats, open, workflow]);
+  }, [chats, generationSeed, open, workflow]);
 
   const generate = useMutation({
     mutationFn: () =>
@@ -397,6 +400,12 @@ export function WorkflowAuthorDialog({
                 Codex works in a new read-only thread and returns a validated,
                 untrusted preview. Review the populated JSON before saving.
               </p>
+              {generationSeed ? (
+                <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+                  Conversion source: {generationSeed.label}. Source is treated
+                  as inert text and is never executed.
+                </p>
+              ) : null}
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="grid gap-1.5 text-sm">
