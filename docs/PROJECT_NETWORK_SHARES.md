@@ -31,10 +31,23 @@ username and password using HTTP Digest authentication. The server never
 returns that worker-loopback address as a client endpoint and never attempts an
 inbound connection to the worker.
 
-The server will expose an authorized share endpoint backed by a dedicated
-multiplexed worker tunnel. WebDAV request and response bytes belong on that data
-plane, not in ordinary JSON worker command messages. This follows the same
-outbound-only worker rule as Cantrip Code and Remote Surfaces.
+The server exposes an authorized share attachment on its isolated tunnel
+surface. `POST /api/projects/:projectId/network-shares` resolves the owned
+project's Primary checkout, asks its assigned worker to open the share, and
+returns the public WebDAV URL plus its in-memory credentials. Repeated requests
+for the same project reuse the live attachment. `DELETE
+/api/project-shares/:attachmentId` revokes it and closes the worker listener.
+
+The attachment URL contains a random 256-bit path token. The worker mounts the
+physical project at that exact public path so HTTP Digest's signed URI and
+WebDAV `Destination` headers remain unchanged through the proxy. The server
+never substitutes or returns the worker's loopback address.
+
+WebDAV request and response bytes use dedicated bounded binary frames on the
+authenticated outbound worker WebSocket. They do not travel in ordinary JSON
+worker command messages, and the server never makes an inbound connection to a
+worker. Request bodies and file responses stream with explicit congestion and
+client backpressure handling.
 
 ## Native client boundary
 
@@ -65,12 +78,17 @@ share expires or the desktop runtime shuts down.
   the Primary checkout and its assigned worker before opening a share.
 - Server attachment credentials are short-lived and map to exactly one worker
   share. Apps never choose a worker host, port, or filesystem path.
+- Hop-by-hop headers, cookies, proxy credentials, and worker-local absolute
+  response locations are stripped before crossing trust boundaries. Digest,
+  DAV, lock, range, and destination headers remain available to native clients.
 - Local worker and local Tauri deployments still use the authenticated server
   endpoint and worker tunnel.
 
 ## Delivery milestones
 
-1. Worker-owned authenticated loopback WebDAV lifecycle and shared protocol.
-2. Server-authorized project share sessions and multiplexed worker tunnel.
+1. Completed: worker-owned authenticated loopback WebDAV lifecycle and shared
+   protocol.
+2. Completed: server-authorized project share sessions and multiplexed worker
+   tunnel.
 3. Desktop-only project menu action and native macOS/Windows mount commands.
 4. Expiration, reconnect, unmount cleanup, and end-to-end local/remote QA.

@@ -1199,6 +1199,29 @@ export const codeAttachmentSchema = z.object({
   runtime: codeRuntimeStatusSchema,
 });
 
+export const projectShareAttachmentSchema = z.object({
+  attachmentId: z.string().min(1).max(200),
+  projectId: z.string().min(1).max(200),
+  protocol: z.literal("webdav"),
+  url: z.url(),
+  username: z.string().min(1).max(128),
+  password: z.string().min(24).max(256),
+  realm: z.string().min(1).max(200),
+  expiresAt: z.string().datetime(),
+});
+
+export const projectSharePublicBasePathSchema = z
+  .string()
+  .regex(/^\/project-shares\/[A-Za-z0-9_-]{43}$/u);
+
+export const projectSharePublicOriginSchema = z.url().refine((value) => {
+  const url = new URL(value);
+  return (
+    (url.protocol === "http:" || url.protocol === "https:") &&
+    url.origin === value
+  );
+});
+
 export const codeAttachmentCreateSchema = z.object({
   appearance: codeAppearanceSchema.default("dark"),
 });
@@ -1351,6 +1374,141 @@ export function decodeCodeTunnelFrame(frame: Uint8Array): {
   }
   return {
     header: codeTunnelFrameHeaderSchema.parse(rawHeader),
+    payload: frame.subarray(payloadOffset),
+  };
+}
+
+const projectShareTunnelFrameBaseSchema = z.object({
+  protocolVersion: z.literal(1),
+  shareId: z.string().min(1).max(200),
+  streamId: z.string().min(1).max(200),
+});
+
+export const projectShareTunnelFrameHeaderSchema = z.discriminatedUnion(
+  "kind",
+  [
+    projectShareTunnelFrameBaseSchema.extend({
+      kind: z.literal("http-request-start"),
+      method: z
+        .string()
+        .regex(/^[A-Z]+$/u)
+        .max(32),
+      path: z
+        .string()
+        .min(1)
+        .max(32 * 1_024)
+        .refine((value) => value.startsWith("/") && !value.startsWith("//")),
+      headers: codeTunnelHeaderListSchema,
+    }),
+    projectShareTunnelFrameBaseSchema.extend({
+      kind: z.literal("http-request-data"),
+    }),
+    projectShareTunnelFrameBaseSchema.extend({
+      kind: z.literal("http-request-end"),
+    }),
+    projectShareTunnelFrameBaseSchema.extend({
+      kind: z.literal("http-response-start"),
+      statusCode: z.number().int().min(100).max(599),
+      headers: codeTunnelHeaderListSchema,
+    }),
+    projectShareTunnelFrameBaseSchema.extend({
+      kind: z.literal("http-response-data"),
+    }),
+    projectShareTunnelFrameBaseSchema.extend({
+      kind: z.literal("http-response-end"),
+    }),
+    projectShareTunnelFrameBaseSchema.extend({
+      kind: z.literal("http-response-pause"),
+    }),
+    projectShareTunnelFrameBaseSchema.extend({
+      kind: z.literal("http-response-resume"),
+    }),
+    projectShareTunnelFrameBaseSchema.extend({
+      kind: z.literal("cancel"),
+      reason: z.string().max(1_024),
+    }),
+    projectShareTunnelFrameBaseSchema.extend({
+      kind: z.literal("error"),
+      message: z.string().min(1).max(4_000),
+    }),
+  ],
+);
+
+export const PROJECT_SHARE_TUNNEL_MAX_HEADER_BYTES = 64 * 1_024;
+export const PROJECT_SHARE_TUNNEL_MAX_PAYLOAD_BYTES = 4 * 1_024 * 1_024;
+const PROJECT_SHARE_TUNNEL_FRAME_MAGIC = new Uint8Array([
+  0x43, 0x54, 0x50, 0x53,
+]);
+
+export function isProjectShareTunnelFrame(frame: Uint8Array): boolean {
+  return (
+    frame.byteLength >= PROJECT_SHARE_TUNNEL_FRAME_MAGIC.byteLength &&
+    PROJECT_SHARE_TUNNEL_FRAME_MAGIC.every(
+      (value, index) => frame[index] === value,
+    )
+  );
+}
+
+export function encodeProjectShareTunnelFrame(
+  header: ProjectShareTunnelFrameHeader,
+  payload: Uint8Array,
+): Uint8Array {
+  const parsedHeader = projectShareTunnelFrameHeaderSchema.parse(header);
+  if (payload.byteLength > PROJECT_SHARE_TUNNEL_MAX_PAYLOAD_BYTES) {
+    throw new Error("Project share tunnel payload exceeds the protocol limit.");
+  }
+  const encodedHeader = new TextEncoder().encode(JSON.stringify(parsedHeader));
+  if (encodedHeader.byteLength > PROJECT_SHARE_TUNNEL_MAX_HEADER_BYTES) {
+    throw new Error("Project share tunnel header exceeds the protocol limit.");
+  }
+  const frame = new Uint8Array(
+    8 + encodedHeader.byteLength + payload.byteLength,
+  );
+  frame.set(PROJECT_SHARE_TUNNEL_FRAME_MAGIC, 0);
+  new DataView(frame.buffer).setUint32(4, encodedHeader.byteLength, false);
+  frame.set(encodedHeader, 8);
+  frame.set(payload, 8 + encodedHeader.byteLength);
+  return frame;
+}
+
+export function decodeProjectShareTunnelFrame(frame: Uint8Array): {
+  header: ProjectShareTunnelFrameHeader;
+  payload: Uint8Array;
+} {
+  if (frame.byteLength < 8 || !isProjectShareTunnelFrame(frame)) {
+    throw new Error("Project share tunnel frame has an invalid magic value.");
+  }
+  const headerLength = new DataView(
+    frame.buffer,
+    frame.byteOffset,
+    frame.byteLength,
+  ).getUint32(4, false);
+  if (
+    headerLength < 1 ||
+    headerLength > PROJECT_SHARE_TUNNEL_MAX_HEADER_BYTES
+  ) {
+    throw new Error("Project share tunnel frame header length is invalid.");
+  }
+  const payloadOffset = 8 + headerLength;
+  if (payloadOffset > frame.byteLength) {
+    throw new Error("Project share tunnel frame header is truncated.");
+  }
+  if (
+    frame.byteLength - payloadOffset >
+    PROJECT_SHARE_TUNNEL_MAX_PAYLOAD_BYTES
+  ) {
+    throw new Error("Project share tunnel payload exceeds the protocol limit.");
+  }
+  let rawHeader: unknown;
+  try {
+    rawHeader = JSON.parse(
+      new TextDecoder().decode(frame.subarray(8, payloadOffset)),
+    );
+  } catch {
+    throw new Error("Project share tunnel frame header is not valid JSON.");
+  }
+  return {
+    header: projectShareTunnelFrameHeaderSchema.parse(rawHeader),
     payload: frame.subarray(payloadOffset),
   };
 }
@@ -3072,6 +3230,8 @@ export const workerAttachmentReadResultSchema = z.object({
 export const workerProjectShareOpenResultSchema = z.object({
   shareId: z.string().min(1).max(200),
   protocol: z.literal("webdav"),
+  publicBasePath: projectSharePublicBasePathSchema,
+  publicOrigin: projectSharePublicOriginSchema,
   loopbackHost: z.literal("127.0.0.1"),
   loopbackPort: z.number().int().min(1).max(65_535),
   username: z.string().min(1).max(128),
@@ -3137,6 +3297,8 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("project.share.open"),
     shareId: z.string().min(1).max(200),
     root: z.string().min(1).max(8_192),
+    publicBasePath: projectSharePublicBasePathSchema,
+    publicOrigin: projectSharePublicOriginSchema,
   }),
   z.object({
     type: z.literal("project.share.close"),
@@ -3931,6 +4093,12 @@ export type CodeAttachment = z.infer<typeof codeAttachmentSchema>;
 export type CodeAttachmentCreate = z.infer<typeof codeAttachmentCreateSchema>;
 export type CodeThemeUpdate = z.infer<typeof codeThemeUpdateSchema>;
 export type CodeTunnelFrameHeader = z.infer<typeof codeTunnelFrameHeaderSchema>;
+export type ProjectShareAttachment = z.infer<
+  typeof projectShareAttachmentSchema
+>;
+export type ProjectShareTunnelFrameHeader = z.infer<
+  typeof projectShareTunnelFrameHeaderSchema
+>;
 export type BrowserCreate = z.infer<typeof browserCreateSchema>;
 export type BrowserUpdate = z.infer<typeof browserUpdateSchema>;
 export type BrowserSummary = z.infer<typeof browserSummarySchema>;

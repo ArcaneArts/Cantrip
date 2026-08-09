@@ -46,6 +46,7 @@ import {
   modelProfileSummarySchema,
   modelProviderSummarySchema,
   projectListSchema,
+  projectShareAttachmentSchema,
   projectSummarySchema,
   projectTabLayoutSummarySchema,
   projectWorkspaceListSchema,
@@ -113,6 +114,10 @@ const turnAttachmentIds: string[][] = [];
 const turnPlanModes: PlanMode[] = [];
 const turnTimeouts: Array<number | null | undefined> = [];
 const deletedProjectPaths: string[] = [];
+const openedProjectShares: Array<
+  Extract<WorkerCommand, { type: "project.share.open" }>
+> = [];
+const closedProjectShareIds: string[] = [];
 const authProviderIds: string[] = [];
 const exhaustedProviderIds = new Set<string>();
 const steeredPrompts: string[] = [];
@@ -350,6 +355,22 @@ const workerBridge = {
       case "project.files.delete":
         deletedProjectPaths.push(command.path);
         return { deleted: true };
+      case "project.share.open":
+        openedProjectShares.push(command);
+        return {
+          shareId: command.shareId,
+          protocol: "webdav",
+          publicBasePath: command.publicBasePath,
+          publicOrigin: command.publicOrigin,
+          loopbackHost: "127.0.0.1",
+          loopbackPort: 43_210,
+          username: "cantrip-test-user",
+          password: "a-strong-random-test-password",
+          realm: "Cantrip Project Share",
+        };
+      case "project.share.close":
+        closedProjectShareIds.push(command.shareId);
+        return { accepted: true };
       case "git.history":
         return {
           branch: "main",
@@ -1519,6 +1540,46 @@ describe("local server foundation", () => {
         url: `/api/workspaces/${personalWorkspace.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
+    const projectShareResponse = await firstApp.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/network-shares`,
+    });
+    expect(projectShareResponse.statusCode).toBe(201);
+    const projectShare = projectShareAttachmentSchema.parse(
+      projectShareResponse.json(),
+    );
+    expect(projectShare).toMatchObject({
+      projectId: project.id,
+      protocol: "webdav",
+      url: expect.stringMatching(
+        /^http:\/\/127\.0\.0\.1:4311\/project-shares\/[A-Za-z0-9_-]{43}\/$/u,
+      ),
+      username: "cantrip-test-user",
+      password: "a-strong-random-test-password",
+    });
+    const reusedProjectShare = projectShareAttachmentSchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/network-shares`,
+        })
+      ).json(),
+    );
+    expect(reusedProjectShare.attachmentId).toBe(projectShare.attachmentId);
+    expect(openedProjectShares).toHaveLength(1);
+    expect(openedProjectShares[0]).toMatchObject({
+      root: project.source?.path,
+      shareId: projectShare.attachmentId,
+      publicBasePath: new URL(projectShare.url).pathname.replace(/\/$/u, ""),
+      publicOrigin: "http://127.0.0.1:4311",
+    });
+    expect(
+      await firstApp.inject({
+        method: "DELETE",
+        url: `/api/project-shares/${projectShare.attachmentId}`,
+      }),
+    ).toMatchObject({ statusCode: 204 });
+    expect(closedProjectShareIds).toEqual([projectShare.attachmentId]);
     const codeTab = codeTabSummarySchema.parse(
       (
         await firstApp.inject({

@@ -1,10 +1,13 @@
 import {
   decodeCodeTunnelFrame,
+  decodeProjectShareTunnelFrame,
   decodeRemoteSurfaceFrame,
   encodeCodeTunnelFrame,
+  encodeProjectShareTunnelFrame,
   encodeRemoteSurfaceFrame,
   workerNotificationEnvelopeSchema,
   type CodeTunnelFrameHeader,
+  type ProjectShareTunnelFrameHeader,
   type RemoteSurfaceFrameHeader,
 } from "@cantrip/protocol";
 import { describe, expect, it, vi } from "vitest";
@@ -85,7 +88,7 @@ describe("WorkerBridge Remote Surface transport", () => {
     bridge.close();
   });
 
-  it("keeps Code tunnel streams distinct on the shared worker socket", () => {
+  it("keeps Code and project-share tunnels distinct on the shared worker socket", () => {
     const bridge = new WorkerBridge();
     const socket = new TestWorkerSocket();
     bridge.attach("worker-1", socket);
@@ -114,6 +117,36 @@ describe("WorkerBridge Remote Surface transport", () => {
     ).toBe(true);
     expect(
       decodeCodeTunnelFrame(socket.sent.at(-1) as Uint8Array).header.kind,
+    ).toBe("http-request-end");
+
+    const shareListener = vi.fn();
+    bridge.subscribeProjectShareTunnelFrames("worker-1", shareListener);
+    const shareHeader: ProjectShareTunnelFrameHeader = {
+      protocolVersion: 1,
+      shareId: "share-1",
+      streamId: "stream-1",
+      kind: "http-response-data",
+    };
+    socket.emit(
+      "message",
+      encodeProjectShareTunnelFrame(shareHeader, new Uint8Array([9, 10])),
+      true,
+    );
+    expect(shareListener).toHaveBeenCalledWith(
+      shareHeader,
+      new Uint8Array([9, 10]),
+    );
+    expect(listener).toHaveBeenCalledOnce();
+    expect(
+      bridge.sendProjectShareTunnelFrame(
+        "worker-1",
+        { ...shareHeader, kind: "http-request-end" },
+        new Uint8Array(),
+      ),
+    ).toBe(true);
+    expect(
+      decodeProjectShareTunnelFrame(socket.sent.at(-1) as Uint8Array).header
+        .kind,
     ).toBe("http-request-end");
     bridge.close();
   });

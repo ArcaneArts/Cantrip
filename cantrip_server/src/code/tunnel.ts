@@ -15,6 +15,10 @@ import {
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 
 import type { WorkerCommandBus } from "../workers/bridge.js";
+import {
+  type ProjectShareTunnelBroker,
+  projectShareTokenFromRequest,
+} from "../project-shares/tunnel.js";
 
 export interface CodeAttachmentBinding {
   attachmentId: string;
@@ -776,6 +780,7 @@ function tokenFromRequest(request: IncomingMessage): string | null {
 export function createCodeSurfaceServer(
   broker: CodeTunnelBroker,
   surfaceOrigin: string,
+  projectShares?: ProjectShareTunnelBroker,
 ): Server {
   const expectedOrigin = new URL(surfaceOrigin).origin;
   const webSockets = new WebSocketServer({
@@ -789,6 +794,11 @@ export function createCodeSurfaceServer(
         "content-type": "application/json",
       });
       response.end('{"status":"ok"}');
+      return;
+    }
+    const projectShareToken = projectShareTokenFromRequest(request);
+    if (projectShareToken && projectShares) {
+      projectShares.proxyHttp(projectShareToken, request, response);
       return;
     }
     const token = tokenFromRequest(request);

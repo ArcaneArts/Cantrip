@@ -6,6 +6,7 @@ import {
   createCodeSurfaceServer,
 } from "./code/tunnel.js";
 import { connectDatabase } from "./db/index.js";
+import { ProjectShareTunnelBroker } from "./project-shares/tunnel.js";
 import { WorkerBridge } from "./workers/bridge.js";
 
 async function listenCodeSurface(
@@ -37,13 +38,21 @@ async function start(): Promise<void> {
     allowedFrameAncestors: config.appOrigins,
     surfaceOrigin: surfaceConfig.origin,
   });
+  const projectShareTunnel = new ProjectShareTunnelBroker(workerBridge, {
+    surfaceOrigin: surfaceConfig.origin,
+  });
   const app = await buildApp({
     codeTunnel,
     config,
     database,
+    projectShareTunnel,
     workerBridge,
   });
-  const codeSurface = createCodeSurfaceServer(codeTunnel, surfaceConfig.origin);
+  const codeSurface = createCodeSurfaceServer(
+    codeTunnel,
+    surfaceConfig.origin,
+    projectShareTunnel,
+  );
   let closing = false;
   let codeSurfaceListening = false;
 
