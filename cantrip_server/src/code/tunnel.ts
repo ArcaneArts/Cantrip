@@ -134,6 +134,19 @@ export class CodeTunnelBroker {
 
   createAttachment(input: CreateCodeAttachmentInput): CodeAttachment {
     this.#prune();
+    let workspacePath: string | null = null;
+    if (input.runtime.workspaceUri) {
+      const workspace = new URL(input.runtime.workspaceUri);
+      if (
+        workspace.protocol !== "file:" ||
+        workspace.host !== "" ||
+        workspace.search !== "" ||
+        workspace.hash !== ""
+      ) {
+        throw new Error("Cantrip Code supplied an invalid workspace URI.");
+      }
+      workspacePath = decodeURIComponent(workspace.pathname);
+    }
     // The initial multi-client policy grants one controlling attachment per
     // editor session. A newly authorized client takes the lease and revokes
     // the prior surface instead of allowing concurrent keyboard input.
@@ -156,11 +169,17 @@ export class CodeTunnelBroker {
       token,
       workerId: input.workerId,
     };
+    const attachmentUrl = new URL(
+      `${this.basePath(token)}/`,
+      this.#surfaceOrigin,
+    );
+    if (workspacePath)
+      attachmentUrl.searchParams.set("workspace", workspacePath);
     this.#attachments.set(token, binding);
     return {
       attachmentId: binding.attachmentId,
       sessionId: binding.sessionId,
-      url: new URL(`${this.basePath(token)}/`, this.#surfaceOrigin).toString(),
+      url: attachmentUrl.toString(),
       expiresAt: new Date(binding.expiresAt).toISOString(),
       runtime: input.runtime,
     };
@@ -223,11 +242,36 @@ export class CodeTunnelBroker {
     const basePath = this.basePath(token);
     let started = false;
     let completed = false;
+    let workerPaused = false;
     let unregisterActive: () => void = () => undefined;
+    const sendResponseFlow = (
+      kind: "http-response-pause" | "http-response-resume",
+    ) =>
+      sendFrame.call(
+        this.bridge,
+        binding.workerId,
+        {
+          protocolVersion: 1,
+          attachmentId: binding.attachmentId,
+          sessionId: binding.sessionId,
+          streamId,
+          kind,
+        },
+        EMPTY_PAYLOAD,
+      );
+    const resumeWorker = () => {
+      if (completed || !workerPaused) return;
+      workerPaused = false;
+      if (!sendResponseFlow("http-response-resume")) {
+        this.#sendCancel(binding, streamId, "Client response resume failed.");
+        fail(503, "Cantrip Code worker is unavailable or congested.");
+      }
+    };
     const finish = () => {
       if (completed) return;
       completed = true;
       clearTimeout(startTimer);
+      response.off("drain", resumeWorker);
       unsubscribe();
       unsubscribeDisconnect();
       unregisterActive();
@@ -276,7 +320,17 @@ export class CodeTunnelBroker {
               fail(502, "Cantrip Code client is too slow.");
               return;
             }
-            response.write(payload);
+            if (!response.write(payload) && !workerPaused) {
+              workerPaused = true;
+              if (!sendResponseFlow("http-response-pause")) {
+                this.#sendCancel(
+                  binding,
+                  streamId,
+                  "Client response pause failed.",
+                );
+                fail(503, "Cantrip Code worker is unavailable or congested.");
+              }
+            }
             return;
           case "http-response-end":
             if (!started) this.#writeResponseHeaders(response, 200, []);
@@ -303,6 +357,7 @@ export class CodeTunnelBroker {
       this.#sendCancel(binding, streamId, "Attachment was revoked.");
       fail(401, "Cantrip Code attachment expired or was revoked.");
     });
+    response.on("drain", resumeWorker);
 
     const requestHeader: CodeTunnelFrameHeader = {
       protocolVersion: 1,
@@ -703,7 +758,10 @@ export function createCodeSurfaceServer(
   surfaceOrigin: string,
 ): Server {
   const expectedOrigin = new URL(surfaceOrigin).origin;
-  const webSockets = new WebSocketServer({ noServer: true });
+  const webSockets = new WebSocketServer({
+    noServer: true,
+    maxPayload: CODE_TUNNEL_MAX_PAYLOAD_BYTES,
+  });
   const server = createServer((request, response) => {
     if (request.url === "/health") {
       response.writeHead(200, {

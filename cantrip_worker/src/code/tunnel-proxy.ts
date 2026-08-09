@@ -4,7 +4,10 @@ import {
   type IncomingMessage,
 } from "node:http";
 
-import type { CodeTunnelFrameHeader } from "@cantrip/protocol";
+import {
+  CODE_TUNNEL_MAX_PAYLOAD_BYTES,
+  type CodeTunnelFrameHeader,
+} from "@cantrip/protocol";
 import WebSocket, { type RawData } from "ws";
 
 import type { CodeSupervisor } from "./supervisor.js";
@@ -13,14 +16,21 @@ type FrameEmitter = (
   header: CodeTunnelFrameHeader,
   payload: Uint8Array,
 ) => boolean;
+type CapacityWaiter = () => Promise<boolean>;
 
 interface HttpStream {
   kind: "http";
   request: ClientRequest;
+  response: IncomingMessage | null;
+  responsePaused: boolean;
+  resumeWaiters: Set<() => void>;
+  sessionId: string;
 }
 
 interface WebSocketStream {
+  authenticationForwarded: boolean;
   kind: "websocket";
+  sessionId: string;
   socket: WebSocket;
 }
 
@@ -61,6 +71,75 @@ function rawDataBytes(data: RawData): Uint8Array {
   if (Array.isArray(data)) return Buffer.concat(data);
   if (data instanceof ArrayBuffer) return new Uint8Array(data);
   return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+}
+
+function editorAuthenticatedPayload(
+  payload: Uint8Array,
+  connectionToken: string,
+): Uint8Array {
+  const headerLength = 13;
+  const controlMessageType = 2;
+  if (payload.byteLength < headerLength || payload[0] !== controlMessageType) {
+    throw new Error(
+      "Cantrip Code client sent an invalid authentication frame.",
+    );
+  }
+  const source = Buffer.from(
+    payload.buffer,
+    payload.byteOffset,
+    payload.byteLength,
+  );
+  const bodyLength = source.readUInt32BE(9);
+  if (bodyLength > source.byteLength - headerLength) {
+    throw new Error(
+      "Cantrip Code client sent a truncated authentication frame.",
+    );
+  }
+  let message: unknown;
+  try {
+    message = JSON.parse(
+      source.subarray(headerLength, headerLength + bodyLength).toString("utf8"),
+    );
+  } catch {
+    throw new Error("Cantrip Code client sent malformed authentication data.");
+  }
+  if (
+    !message ||
+    typeof message !== "object" ||
+    !("type" in message) ||
+    message.type !== "auth"
+  ) {
+    throw new Error("Cantrip Code client omitted its authentication message.");
+  }
+  const body = Buffer.from(
+    JSON.stringify({
+      ...message,
+      auth: connectionToken,
+    }),
+  );
+  const trailing = source.subarray(headerLength + bodyLength);
+  const translated = Buffer.allocUnsafe(
+    headerLength + body.length + trailing.length,
+  );
+  source.copy(translated, 0, 0, 9);
+  translated.writeUInt32BE(body.length, 9);
+  body.copy(translated, headerLength);
+  trailing.copy(translated, headerLength + body.length);
+  return translated;
+}
+
+function payloadParts(payload: Uint8Array): Uint8Array[] {
+  const parts: Uint8Array[] = [];
+  for (
+    let offset = 0;
+    offset < payload.byteLength;
+    offset += CODE_TUNNEL_MAX_PAYLOAD_BYTES
+  ) {
+    parts.push(
+      payload.subarray(offset, offset + CODE_TUNNEL_MAX_PAYLOAD_BYTES),
+    );
+  }
+  return parts;
 }
 
 function requestHeaders(
@@ -142,11 +221,16 @@ function headerValue(
 export class CodeTunnelProxy {
   readonly #streams = new Map<string, TunnelStream>();
   #emit: FrameEmitter = () => false;
+  #waitForCapacity: CapacityWaiter = async () => true;
 
   constructor(private readonly supervisor: CodeSupervisor) {}
 
-  setFrameEmitter(emit: FrameEmitter): void {
+  setFrameEmitter(
+    emit: FrameEmitter,
+    waitForCapacity: CapacityWaiter = async () => true,
+  ): void {
     this.#emit = emit;
+    this.#waitForCapacity = waitForCapacity;
   }
 
   async handleFrame(
@@ -177,6 +261,24 @@ export class CodeTunnelProxy {
         if (stream?.kind === "http") stream.request.end();
         return;
       }
+      case "http-response-pause": {
+        const stream = this.#streams.get(key(header));
+        if (stream?.kind === "http") {
+          stream.responsePaused = true;
+          stream.response?.pause();
+        }
+        return;
+      }
+      case "http-response-resume": {
+        const stream = this.#streams.get(key(header));
+        if (stream?.kind === "http") {
+          stream.responsePaused = false;
+          stream.response?.resume();
+          for (const resume of stream.resumeWaiters) resume();
+          stream.resumeWaiters.clear();
+        }
+        return;
+      }
       case "websocket-open":
         this.#openWebSocket(header);
         return;
@@ -188,14 +290,30 @@ export class CodeTunnelProxy {
         ) {
           return;
         }
+        let forwardedPayload = payload;
+        if (!stream.authenticationForwarded) {
+          try {
+            forwardedPayload = editorAuthenticatedPayload(
+              payload,
+              this.supervisor.proxyTarget(header.sessionId).connectionToken,
+            );
+            stream.authenticationForwarded = true;
+          } catch (error) {
+            stream.socket.close(
+              1008,
+              error instanceof Error ? error.message : "Authentication failed",
+            );
+            return;
+          }
+        }
         if (
-          stream.socket.bufferedAmount + payload.byteLength >
+          stream.socket.bufferedAmount + forwardedPayload.byteLength >
           MAX_LOCAL_BUFFER_BYTES
         ) {
           stream.socket.close(1013, "Cantrip Code tunnel is congested");
           return;
         }
-        stream.socket.send(payload, { binary: header.binary });
+        stream.socket.send(forwardedPayload, { binary: header.binary });
         return;
       }
       case "websocket-close": {
@@ -247,11 +365,18 @@ export class CodeTunnelProxy {
             proxy.connectionToken,
           ),
         },
-        (response) => this.#pipeHttpResponse(header, response),
+        (response) => void this.#pipeHttpResponse(header, response),
       );
-      this.#streams.set(streamKey, { kind: "http", request });
+      this.#trackStream(streamKey, header.sessionId, {
+        kind: "http",
+        request,
+        response: null,
+        responsePaused: false,
+        resumeWaiters: new Set(),
+        sessionId: header.sessionId,
+      });
       request.once("error", (error) => {
-        if (this.#streams.delete(streamKey)) this.#error(header, error.message);
+        if (this.#removeStream(streamKey)) this.#error(header, error.message);
       });
     } catch (error) {
       this.#error(
@@ -261,18 +386,20 @@ export class CodeTunnelProxy {
     }
   }
 
-  #pipeHttpResponse(
+  async #pipeHttpResponse(
     requestHeader: Extract<
       CodeTunnelFrameHeader,
       { kind: "http-request-start" }
     >,
     response: IncomingMessage,
-  ): void {
+  ): Promise<void> {
     const streamKey = key(requestHeader);
-    if (!this.#streams.has(streamKey)) {
+    const stream = this.#streams.get(streamKey);
+    if (stream?.kind !== "http") {
       response.destroy();
       return;
     }
+    stream.response = response;
     if (
       !this.#emit(
         {
@@ -288,27 +415,45 @@ export class CodeTunnelProxy {
       )
     ) {
       response.destroy();
-      this.#streams.delete(streamKey);
+      this.#removeStream(streamKey);
       return;
     }
-    response.on("data", (chunk: Buffer) => {
-      if (
-        !this.#emit(
-          {
-            protocolVersion: 1,
-            attachmentId: requestHeader.attachmentId,
-            sessionId: requestHeader.sessionId,
-            streamId: requestHeader.streamId,
-            kind: "http-response-data",
-          },
-          chunk,
-        )
-      ) {
-        response.destroy(new Error("Cantrip Code tunnel is congested."));
+    try {
+      for await (const rawChunk of response) {
+        const chunk = Buffer.isBuffer(rawChunk)
+          ? rawChunk
+          : Buffer.from(rawChunk as Uint8Array);
+        for (const part of payloadParts(chunk)) {
+          if (!(await this.#awaitHttpFlow(streamKey, stream))) {
+            response.destroy(
+              new Error("Cantrip Code command tunnel disconnected."),
+            );
+            if (this.#removeStream(streamKey)) {
+              this.#error(
+                requestHeader,
+                "Cantrip Code command tunnel disconnected.",
+              );
+            }
+            return;
+          }
+          if (
+            !this.#emit(
+              {
+                protocolVersion: 1,
+                attachmentId: requestHeader.attachmentId,
+                sessionId: requestHeader.sessionId,
+                streamId: requestHeader.streamId,
+                kind: "http-response-data",
+              },
+              part,
+            )
+          ) {
+            response.destroy(new Error("Cantrip Code tunnel is congested."));
+            return;
+          }
+        }
       }
-    });
-    response.once("end", () => {
-      if (!this.#streams.delete(streamKey)) return;
+      if (!this.#removeStream(streamKey)) return;
       this.#emit(
         {
           protocolVersion: 1,
@@ -319,11 +464,26 @@ export class CodeTunnelProxy {
         },
         EMPTY_PAYLOAD,
       );
-    });
-    response.once("error", (error) => {
-      if (this.#streams.delete(streamKey))
-        this.#error(requestHeader, error.message);
-    });
+    } catch (error) {
+      if (this.#removeStream(streamKey)) {
+        this.#error(
+          requestHeader,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+  }
+
+  async #awaitHttpFlow(
+    streamKey: string,
+    stream: HttpStream,
+  ): Promise<boolean> {
+    while (stream.responsePaused) {
+      await new Promise<void>((resolve) => stream.resumeWaiters.add(resolve));
+      if (this.#streams.get(streamKey) !== stream) return false;
+    }
+    if (!(await this.#waitForCapacity())) return false;
+    return this.#streams.get(streamKey) === stream && !stream.responsePaused;
   }
 
   #openWebSocket(
@@ -359,8 +519,14 @@ export class CodeTunnelProxy {
       );
       const socket = new WebSocket(target, protocols, {
         headers,
+        maxPayload: CODE_TUNNEL_MAX_PAYLOAD_BYTES,
       });
-      this.#streams.set(streamKey, { kind: "websocket", socket });
+      this.#trackStream(streamKey, header.sessionId, {
+        authenticationForwarded: false,
+        kind: "websocket",
+        sessionId: header.sessionId,
+        socket,
+      });
       socket.once("open", () => {
         this.#emit(
           {
@@ -375,6 +541,11 @@ export class CodeTunnelProxy {
         );
       });
       socket.on("message", (data, isBinary) => {
+        const payload = rawDataBytes(data);
+        if (payload.byteLength > CODE_TUNNEL_MAX_PAYLOAD_BYTES) {
+          socket.close(1009, "Cantrip Code message exceeds the tunnel limit");
+          return;
+        }
         if (
           !this.#emit(
             {
@@ -385,14 +556,14 @@ export class CodeTunnelProxy {
               kind: "websocket-data",
               binary: isBinary,
             },
-            rawDataBytes(data),
+            payload,
           )
         ) {
           socket.close(1013, "Cantrip Code tunnel is congested");
         }
       });
       socket.once("close", (code, reason) => {
-        if (!this.#streams.delete(streamKey)) return;
+        if (!this.#removeStream(streamKey)) return;
         this.#emit(
           {
             protocolVersion: 1,
@@ -407,7 +578,7 @@ export class CodeTunnelProxy {
         );
       });
       socket.once("error", (error) => {
-        if (this.#streams.delete(streamKey)) this.#error(header, error.message);
+        if (this.#removeStream(streamKey)) this.#error(header, error.message);
       });
     } catch (error) {
       this.#error(
@@ -418,11 +589,34 @@ export class CodeTunnelProxy {
   }
 
   #cancel(streamKey: string, reason: string): void {
-    const stream = this.#streams.get(streamKey);
+    const stream = this.#removeStream(streamKey);
     if (!stream) return;
+    if (stream.kind === "http") {
+      const error = new Error(reason);
+      stream.response?.destroy(error);
+      stream.request.destroy(error);
+    } else stream.socket.close(1_000, reason.slice(0, 1_024));
+  }
+
+  #trackStream(
+    streamKey: string,
+    sessionId: string,
+    stream: TunnelStream,
+  ): void {
+    this.#streams.set(streamKey, stream);
+    this.supervisor.beginTunnelStream(sessionId, streamKey);
+  }
+
+  #removeStream(streamKey: string): TunnelStream | null {
+    const stream = this.#streams.get(streamKey);
+    if (!stream) return null;
     this.#streams.delete(streamKey);
-    if (stream.kind === "http") stream.request.destroy(new Error(reason));
-    else stream.socket.close(1_000, reason.slice(0, 1_024));
+    if (stream.kind === "http") {
+      for (const resume of stream.resumeWaiters) resume();
+      stream.resumeWaiters.clear();
+    }
+    this.supervisor.endTunnelStream(stream.sessionId, streamKey);
+    return stream;
   }
 
   #error(header: CodeTunnelFrameHeader, message: string): void {

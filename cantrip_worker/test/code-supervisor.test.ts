@@ -14,7 +14,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 
 import { verifyCantripCodeInstallation } from "../src/code/installation.js";
-import { CodeSupervisor } from "../src/code/supervisor.js";
+import {
+  CodeSupervisor,
+  type CodeSupervisorOptions,
+} from "../src/code/supervisor.js";
 
 const directories: string[] = [];
 const supervisors: CodeSupervisor[] = [];
@@ -30,7 +33,12 @@ afterEach(async () => {
   );
 });
 
-async function fixture() {
+async function fixture(
+  options: Pick<
+    CodeSupervisorOptions,
+    "idleSweepIntervalMs" | "idleTimeoutMs"
+  > = {},
+) {
   const root = await mkdtemp(path.join(tmpdir(), "cantrip-code-supervisor-"));
   directories.push(root);
   const bundle = path.join(root, "bundle");
@@ -98,23 +106,31 @@ process.on("SIGTERM", stop);
   const installation = await verifyCantripCodeInstallation(bundle, {
     full: true,
   });
+  const capabilities = {
+    available: true as const,
+    version: installation.editorBuild.version,
+    upstreamRevision: installation.editorBuild.upstreamRevision,
+    patchset: installation.editorBuild.patchset,
+    transport: "web-proxy" as const,
+    maxSessions: 4,
+    reason: null,
+  };
   const supervisor = new CodeSupervisor({
-    capabilities: {
-      available: true,
-      version: installation.editorBuild.version,
-      upstreamRevision: installation.editorBuild.upstreamRevision,
-      patchset: installation.editorBuild.patchset,
-      transport: "web-proxy",
-      maxSessions: 4,
-      reason: null,
-    },
+    capabilities,
     dataDirectory,
     installation,
     readinessTimeoutMs: 3_000,
+    ...options,
   });
   supervisors.push(supervisor);
   await supervisor.start();
-  return { dataDirectory, repository, supervisor };
+  return {
+    capabilities,
+    dataDirectory,
+    installation,
+    repository,
+    supervisor,
+  };
 }
 
 function openCommand(
@@ -248,5 +264,51 @@ describe("Cantrip Code supervisor", () => {
       conflicts: [],
     });
     socket.close();
+  });
+
+  it("restores compatible session identity and lazily relaunches its profile", async () => {
+    const {
+      capabilities,
+      dataDirectory,
+      installation,
+      repository,
+      supervisor,
+    } = await fixture();
+    const command = openCommand("restored", repository, "primary");
+    const first = await supervisor.open(command);
+    await supervisor.close();
+
+    const restored = new CodeSupervisor({
+      capabilities,
+      dataDirectory,
+      installation,
+      readinessTimeoutMs: 3_000,
+    });
+    supervisors.push(restored);
+    await restored.start();
+    expect(restored.status("restored")).toMatchObject({
+      status: "offline",
+      processInstanceId: null,
+    });
+    const reopened = await restored.open(command);
+    expect(reopened.status).toBe("running");
+    expect(reopened.processInstanceId).not.toBe(first.processInstanceId);
+  });
+
+  it("evicts unattached idle sessions but preserves active tunnel streams", async () => {
+    const { repository, supervisor } = await fixture({
+      idleSweepIntervalMs: 60_000,
+      idleTimeoutMs: 1_000,
+    });
+    await supervisor.open(openCommand("idle", repository, "primary"));
+    supervisor.beginTunnelStream("idle", "attachment\0stream");
+    await expect(
+      supervisor.evictIdleSessions(Date.now() + 2_000),
+    ).resolves.toEqual([]);
+    supervisor.endTunnelStream("idle", "attachment\0stream");
+    await expect(
+      supervisor.evictIdleSessions(Date.now() + 2_000),
+    ).resolves.toEqual(["idle"]);
+    expect(() => supervisor.status("idle")).toThrow("is not open");
   });
 });

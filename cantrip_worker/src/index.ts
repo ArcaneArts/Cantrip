@@ -50,6 +50,7 @@ async function start(): Promise<void> {
   const code = new CodeSupervisor({
     capabilities: codeDiscovery.capabilities,
     dataDirectory: config.dataDirectory,
+    idleTimeoutMs: config.codeIdleTimeoutMs,
     installation: codeDiscovery.installation,
     workerId: config.workerId,
     workerName: config.name,
@@ -703,8 +704,9 @@ async function start(): Promise<void> {
   remoteSurfaces.setFrameEmitter((header, payload) =>
     commandConnection.sendSurfaceFrame(header, payload),
   );
-  codeTunnel.setFrameEmitter((header, payload) =>
-    commandConnection.sendCodeTunnelFrame(header, payload),
+  codeTunnel.setFrameEmitter(
+    (header, payload) => commandConnection.sendCodeTunnelFrame(header, payload),
+    () => commandConnection.waitForCodeTunnelCapacity(),
   );
 
   console.log(

@@ -32,6 +32,7 @@ type CodeTunnelFrameHandler = (
 ) => Promise<void> | void;
 
 const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
+const CODE_TUNNEL_LOW_WATER_BYTES = 256 * 1_024;
 
 function rawDataBytes(data: RawData): Uint8Array {
   if (Array.isArray(data)) return Buffer.concat(data);
@@ -140,6 +141,16 @@ export class WorkerConnection {
     } catch {
       return false;
     }
+  }
+
+  async waitForCodeTunnelCapacity(): Promise<boolean> {
+    while (!this.#closed) {
+      const socket = this.#socket;
+      if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+      if (socket.bufferedAmount <= CODE_TUNNEL_LOW_WATER_BYTES) return true;
+      await new Promise<void>((resolve) => setTimeout(resolve, 5));
+    }
+    return false;
   }
 
   private async onMessage(

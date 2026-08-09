@@ -82,6 +82,14 @@ exact Codex CLI compiled from `cantrip_codex/` for its operating system and
 architecture. GitHub CLI, repository files, credentials, terminals, browsers,
 and worktrees remain on the worker machine.
 
+`CANTRIP_CODE_IDLE_TIMEOUT_MS` controls how long an unattached Code session
+keeps its editor process warm (30 minutes by default). Active tunnel streams,
+agent/editor coordination, and explicit Code operations refresh activity. A
+restarted worker restores compatible session identities from its data directory
+without launching them until the server authorizes a new attachment. A packaged
+worker also guards every editor process group, so an abruptly terminated worker
+cannot leave editor, extension-host, watcher, or terminal processes behind.
+
 ## Packaged desktop lifecycle
 
 Release builds reserve a free loopback port, start the bundled Server, wait for
