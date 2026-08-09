@@ -1047,12 +1047,64 @@ export const workflowRunNodeItemStatusSchema = z.enum([
   "recovering",
   "skipped",
 ]);
+export const workflowPipelineCompletedStepSchema = z.object({
+  key: workflowKeySchema,
+  name: z.string().trim().min(1).max(200),
+  position: z.number().int().nonnegative(),
+  structuredResult: workflowJsonValueSchema,
+  measuredUsage: workflowMeasuredUsageSchema,
+  codexThreadId: idSchema,
+  codexTurnId: idSchema,
+  completedAt: z.string().datetime(),
+});
+export const workflowRunNodeItemExecutionStateSchema = z
+  .discriminatedUnion("kind", [
+    z.object({ kind: z.literal("map") }).strict(),
+    z
+      .object({
+        kind: z.literal("pipeline"),
+        currentStepPosition: z.number().int().nonnegative(),
+        currentStepAttemptCount: z.number().int().nonnegative(),
+        completedSteps: z.array(workflowPipelineCompletedStepSchema).max(32),
+      })
+      .strict(),
+  ])
+  .superRefine((state, context) => {
+    if (state.kind !== "pipeline") return;
+    if (state.currentStepPosition !== state.completedSteps.length) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "The pipeline cursor must immediately follow its completed-step ledger.",
+        path: ["currentStepPosition"],
+      });
+    }
+    const completedKeys = new Set<string>();
+    state.completedSteps.forEach((step, index) => {
+      if (step.position !== index) {
+        context.addIssue({
+          code: "custom",
+          message: "Pipeline completed-step positions must be contiguous.",
+          path: ["completedSteps", index, "position"],
+        });
+      }
+      if (completedKeys.has(step.key)) {
+        context.addIssue({
+          code: "custom",
+          message: "Pipeline completed-step keys must be unique.",
+          path: ["completedSteps", index, "key"],
+        });
+      }
+      completedKeys.add(step.key);
+    });
+  });
 export const workflowRunNodeItemSchema = z.object({
   id: idSchema,
   runNodeId: idSchema,
   itemKey: z.string().max(10_000),
   position: z.number().int().nonnegative(),
   status: workflowRunNodeItemStatusSchema,
+  executionState: workflowRunNodeItemExecutionStateSchema,
   structuredInput: workflowJsonValueSchema,
   structuredResult: workflowJsonValueSchema.nullable(),
   measuredUsage: workflowMeasuredUsageSchema,
@@ -1079,6 +1131,7 @@ export const workflowNodeAttemptSchema = z.object({
   id: idSchema,
   runNodeId: idSchema,
   runNodeItemId: idSchema.nullable().default(null),
+  executionUnitKey: workflowKeySchema.nullable().default(null),
   attempt: z.number().int().positive(),
   status: workflowNodeAttemptStatusSchema,
   idempotencyKey: z.string().min(1).max(200),
@@ -1355,6 +1408,12 @@ export type WorkflowRunNodeDependency = z.infer<
 >;
 export type WorkflowRunNodeItemStatus = z.infer<
   typeof workflowRunNodeItemStatusSchema
+>;
+export type WorkflowPipelineCompletedStep = z.infer<
+  typeof workflowPipelineCompletedStepSchema
+>;
+export type WorkflowRunNodeItemExecutionState = z.infer<
+  typeof workflowRunNodeItemExecutionStateSchema
 >;
 export type WorkflowRunNodeItem = z.infer<typeof workflowRunNodeItemSchema>;
 export type WorkflowNodeAttemptStatus = z.infer<

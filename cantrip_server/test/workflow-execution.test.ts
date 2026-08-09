@@ -52,6 +52,7 @@ type ExecutionMode =
   | "map-terminal-failure"
   | "parallel"
   | "parallel-hold"
+  | "pipeline-terminal-failure"
   | "sibling-failure"
   | "success"
   | "terminal-failure";
@@ -89,25 +90,29 @@ function resultFor(
         ) as Record<string, unknown>);
   const structuredResult = command.prompt.includes("Map collection item")
     ? { mapped: structuredInput?.item }
-    : command.prompt.includes("Reduce mapped collection")
-      ? { summary: "mapped" }
-      : command.prompt.includes("Alpha branch")
-        ? { finding: "alpha" }
-        : command.prompt.includes("Beta branch")
-          ? { finding: "beta" }
-          : command.prompt.includes("Gamma branch")
-            ? { finding: "gamma" }
-            : command.prompt.includes("Synthesize branches")
-              ? { summary: "combined" }
-              : command.prompt.includes("Collect nested findings")
-                ? { payload: { findings: [{ finding: "nested" }] } }
-                : command.prompt.includes("Synthesize selected findings")
-                  ? { summary: "selected" }
-                  : command.prompt.includes("Verify failing")
-                    ? { passed: false }
-                    : command.prompt.includes("Verify passing")
-                      ? { passed: true }
-                      : { approved: true };
+    : command.prompt.includes("Pipeline inspect step")
+      ? { inspected: structuredInput?.item }
+      : command.prompt.includes("Pipeline summarize step")
+        ? { summary: structuredInput?.inspected }
+        : command.prompt.includes("Reduce mapped collection")
+          ? { summary: "mapped" }
+          : command.prompt.includes("Alpha branch")
+            ? { finding: "alpha" }
+            : command.prompt.includes("Beta branch")
+              ? { finding: "beta" }
+              : command.prompt.includes("Gamma branch")
+                ? { finding: "gamma" }
+                : command.prompt.includes("Synthesize branches")
+                  ? { summary: "combined" }
+                  : command.prompt.includes("Collect nested findings")
+                    ? { payload: { findings: [{ finding: "nested" }] } }
+                    : command.prompt.includes("Synthesize selected findings")
+                      ? { summary: "selected" }
+                      : command.prompt.includes("Verify failing")
+                        ? { passed: false }
+                        : command.prompt.includes("Verify passing")
+                          ? { passed: true }
+                          : { approved: true };
   return {
     threadId: `thread-${command.attemptId}`,
     turnId: `turn-${command.attemptId}`,
@@ -192,6 +197,40 @@ const workerBridge: WorkerCommandBus = {
         throw new WorkerUnavailableError("Worker disconnected.");
       }
       if (mode === "failure") {
+        await options?.onEvent?.({
+          type: "workflow.node.activity",
+          attemptId: command.attemptId,
+          activity: {
+            type: "usage",
+            id: `failed-usage-${command.attemptId}`,
+            status: "completed",
+            total: {
+              totalTokens: 8,
+              inputTokens: 6,
+              cachedInputTokens: 1,
+              cacheWriteInputTokens: 0,
+              outputTokens: 2,
+              reasoningOutputTokens: 0,
+            },
+            last: {
+              totalTokens: 8,
+              inputTokens: 6,
+              cachedInputTokens: 1,
+              cacheWriteInputTokens: 0,
+              outputTokens: 2,
+              reasoningOutputTokens: 0,
+            },
+            modelContextWindow: 10_000,
+            contextUsedPercent: 0.1,
+            correlation: {
+              sourceMethod: "thread/tokenUsage/updated",
+              diagnosticId: null,
+              threadId: `thread-${command.attemptId}`,
+              turnId: `turn-${command.attemptId}`,
+              itemId: null,
+            },
+          },
+        });
         mode = "success";
         throw new Error("Codex turn failed at a durable boundary.");
       }
@@ -204,6 +243,13 @@ const workerBridge: WorkerCommandBus = {
         command.prompt.includes('"item":"bad"')
       ) {
         throw new Error("The selected map item failed.");
+      }
+      if (
+        mode === "pipeline-terminal-failure" &&
+        command.prompt.includes("Pipeline summarize step") &&
+        command.prompt.includes('"inspected":"bad"')
+      ) {
+        throw new Error("The selected pipeline step failed.");
       }
       if (
         (mode === "sibling-failure" &&
@@ -299,7 +345,8 @@ const workerBridge: WorkerCommandBus = {
         (command.prompt.includes("Alpha branch") ||
           command.prompt.includes("Beta branch") ||
           command.prompt.includes("Gamma branch") ||
-          command.prompt.includes("Map collection item"))
+          command.prompt.includes("Map collection item") ||
+          command.prompt.includes("Pipeline inspect step"))
       ) {
         parallelInFlight += 1;
         parallelPeak = Math.max(parallelPeak, parallelInFlight);
@@ -1874,6 +1921,504 @@ describe.sequential("single-agent workflow execution", () => {
       { attemptCount: 1, status: "completed" },
     ]);
     expect([...attemptsByItem.values()]).toEqual([[1, 2], [1]]);
+  });
+
+  it("executes ordered pipeline steps per item with bounded collection concurrency", async () => {
+    const revision = await createWorkflowRevision("pipeline-ordered", [
+      {
+        key: "pipeline_items",
+        type: "pipeline",
+        name: "Pipeline items",
+        configuration: {
+          collectionPath: "/values",
+          itemInputKey: "item",
+          maxConcurrency: 2,
+          failurePolicy: "fail-fast",
+          steps: [
+            {
+              key: "inspect",
+              name: "Inspect",
+              prompt: "Pipeline inspect step.",
+              outputSchema: { type: "object" },
+            },
+            {
+              key: "summarize",
+              name: "Summarize",
+              prompt: "Pipeline summarize step.",
+              outputSchema: { type: "object" },
+            },
+          ],
+        },
+      },
+    ]);
+    mode = "parallel";
+    parallelInFlight = 0;
+    parallelPeak = 0;
+    parallelWaiters = [];
+    parallelBarrierReleased = false;
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-pipeline-ordered",
+      { maxParallelism: 2, maxNodes: 20 },
+      { values: ["one", "two", "three"] },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    mode = "success";
+    const detail = await runDetail(runId);
+    const commands = executionCommands.slice(before);
+    expect(commands).toHaveLength(6);
+    expect(parallelPeak).toBe(2);
+    expect(
+      commands
+        .filter(({ prompt }) => prompt.includes("Pipeline summarize step"))
+        .map(({ prompt }) => prompt.match(/"inspected":"([^"]+)"/u)?.[1])
+        .sort(),
+    ).toEqual(["one", "three", "two"]);
+    expect(detail.run.structuredResult).toEqual([
+      { summary: "one" },
+      { summary: "two" },
+      { summary: "three" },
+    ]);
+    expect(
+      detail.items.map(({ attemptCount, executionState, status }) => ({
+        attemptCount,
+        completedSteps:
+          executionState.kind === "pipeline"
+            ? executionState.completedSteps.map(({ key }) => key)
+            : [],
+        currentStepPosition:
+          executionState.kind === "pipeline"
+            ? executionState.currentStepPosition
+            : -1,
+        status,
+      })),
+    ).toEqual([
+      {
+        attemptCount: 2,
+        completedSteps: ["inspect", "summarize"],
+        currentStepPosition: 2,
+        status: "completed",
+      },
+      {
+        attemptCount: 2,
+        completedSteps: ["inspect", "summarize"],
+        currentStepPosition: 2,
+        status: "completed",
+      },
+      {
+        attemptCount: 2,
+        completedSteps: ["inspect", "summarize"],
+        currentStepPosition: 2,
+        status: "completed",
+      },
+    ]);
+    expect(
+      detail.attempts.map(({ executionUnitKey }) => executionUnitKey).sort(),
+    ).toEqual([
+      "inspect",
+      "inspect",
+      "inspect",
+      "summarize",
+      "summarize",
+      "summarize",
+    ]);
+
+    const emptyBefore = executionCommands.length;
+    const emptyResponse = await createRunForRevision(
+      revision,
+      "execute-pipeline-empty",
+      { maxNodes: 20 },
+      { values: [] },
+    );
+    const emptyRunId = workflowRunDetailSchema.parse(emptyResponse.json()).run
+      .id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(emptyRunId)).run.status).toBe("completed");
+    });
+    expect(await runDetail(emptyRunId)).toMatchObject({
+      run: { structuredResult: [] },
+      items: [],
+      attempts: [],
+    });
+    expect(executionCommands).toHaveLength(emptyBefore);
+
+    const boundedResponse = await createRunForRevision(
+      revision,
+      "execute-pipeline-node-budget",
+      { maxNodes: 4 },
+      { values: ["one", "two"] },
+    );
+    const boundedRunId = workflowRunDetailSchema.parse(boundedResponse.json())
+      .run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(boundedRunId)).run.status).toBe("failed");
+    });
+    expect((await runDetail(boundedRunId)).run).toMatchObject({
+      errorCode: "unsupported-workflow-shape",
+      errorMessage: expect.stringContaining("node budget"),
+    });
+    expect(executionCommands).toHaveLength(emptyBefore);
+  });
+
+  it("continues other pipeline items with a durable failed-step envelope", async () => {
+    const revision = await createWorkflowRevision("pipeline-continue", [
+      {
+        key: "pipeline_items",
+        type: "pipeline",
+        name: "Pipeline items",
+        configuration: {
+          collectionPath: "/values",
+          itemInputKey: "item",
+          maxConcurrency: 1,
+          failurePolicy: "continue",
+          steps: [
+            {
+              key: "inspect",
+              name: "Inspect",
+              prompt: "Pipeline inspect step.",
+              outputSchema: { type: "object" },
+            },
+            {
+              key: "summarize",
+              name: "Summarize",
+              prompt: "Pipeline summarize step.",
+              automaticRetries: 0,
+              outputSchema: { type: "object" },
+            },
+          ],
+        },
+      },
+    ]);
+    mode = "pipeline-terminal-failure";
+    const response = await createRunForRevision(
+      revision,
+      "execute-pipeline-continue",
+      { maxNodes: 20 },
+      { values: ["ok", "bad", "after"] },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    mode = "success";
+    const detail = await runDetail(runId);
+    expect(detail.items.map(({ status }) => status)).toEqual([
+      "completed",
+      "failed",
+      "completed",
+    ]);
+    expect(detail.run.structuredResult).toEqual([
+      { status: "completed", result: { summary: "ok" } },
+      {
+        status: "failed",
+        error: {
+          code: "node-execution-failed",
+          message: "The selected pipeline step failed.",
+        },
+      },
+      { status: "completed", result: { summary: "after" } },
+    ]);
+    const failedState = detail.items[1]!.executionState;
+    expect(failedState).toMatchObject({
+      kind: "pipeline",
+      currentStepPosition: 1,
+      currentStepAttemptCount: 1,
+      completedSteps: [
+        { key: "inspect", structuredResult: { inspected: "bad" } },
+      ],
+    });
+  });
+
+  it("fails a pipeline fast and resumes from the failed step on operator retry", async () => {
+    const revision = await createWorkflowRevision("pipeline-fail-fast", [
+      {
+        key: "pipeline_items",
+        type: "pipeline",
+        name: "Pipeline items",
+        configuration: {
+          collectionPath: "/values",
+          itemInputKey: "item",
+          maxConcurrency: 1,
+          failurePolicy: "fail-fast",
+          steps: [
+            {
+              key: "inspect",
+              name: "Inspect",
+              prompt: "Pipeline inspect step.",
+              outputSchema: { type: "object" },
+            },
+            {
+              key: "summarize",
+              name: "Summarize",
+              prompt: "Pipeline summarize step.",
+              automaticRetries: 0,
+              outputSchema: { type: "object" },
+            },
+          ],
+        },
+      },
+    ]);
+    mode = "pipeline-terminal-failure";
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-pipeline-fail-fast",
+      { maxAttemptsPerNode: 2, maxNodes: 10 },
+      { values: ["bad", "later"] },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("failed");
+    });
+    const failed = await runDetail(runId);
+    expect(executionCommands).toHaveLength(before + 2);
+    expect(failed.items.map(({ status }) => status)).toEqual([
+      "failed",
+      "skipped",
+    ]);
+    expect(failed.items[0]!.executionState).toMatchObject({
+      kind: "pipeline",
+      currentStepPosition: 1,
+      completedSteps: [{ key: "inspect" }],
+    });
+
+    mode = "success";
+    const retry = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/nodes/${failed.nodes[0]!.id}/retry`,
+      payload: {
+        reason: "Resume the failed pipeline step.",
+        idempotencyKey: "retry-pipeline-fail-fast",
+      },
+    });
+    expect(retry.statusCode).toBe(200);
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    const completed = await runDetail(runId);
+    expect(completed.run.structuredResult).toEqual([
+      { summary: "bad" },
+      { summary: "later" },
+    ]);
+    expect(
+      completed.attempts.map(({ executionUnitKey, status }) => ({
+        executionUnitKey,
+        status,
+      })),
+    ).toEqual([
+      { executionUnitKey: "inspect", status: "completed" },
+      { executionUnitKey: "summarize", status: "failed" },
+      { executionUnitKey: "summarize", status: "completed" },
+      { executionUnitKey: "inspect", status: "completed" },
+      { executionUnitKey: "summarize", status: "completed" },
+    ]);
+  });
+
+  it("retries a failed pipeline step without replaying completed steps", async () => {
+    const revision = await createWorkflowRevision("pipeline-step-retry", [
+      {
+        key: "pipeline_items",
+        type: "pipeline",
+        name: "Pipeline items",
+        configuration: {
+          collectionPath: "/values",
+          itemInputKey: "item",
+          maxConcurrency: 1,
+          failurePolicy: "fail-fast",
+          steps: [
+            {
+              key: "inspect",
+              name: "Inspect",
+              prompt: "Pipeline inspect step.",
+              automaticRetries: 1,
+              outputSchema: { type: "object" },
+            },
+            {
+              key: "summarize",
+              name: "Summarize",
+              prompt: "Pipeline summarize step.",
+              outputSchema: { type: "object" },
+            },
+          ],
+        },
+      },
+    ]);
+    mode = "failure";
+    const response = await createRunForRevision(
+      revision,
+      "execute-pipeline-step-retry",
+      { maxAttemptsPerNode: 2, maxNodes: 10 },
+      { values: ["retry"] },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    const detail = await runDetail(runId);
+    expect(
+      detail.attempts.map(({ executionUnitKey, status }) => ({
+        executionUnitKey,
+        status,
+      })),
+    ).toEqual([
+      { executionUnitKey: "inspect", status: "failed" },
+      { executionUnitKey: "inspect", status: "completed" },
+      { executionUnitKey: "summarize", status: "completed" },
+    ]);
+    expect(detail.items[0]).toMatchObject({
+      attemptCount: 3,
+      measuredUsage: { totalTokens: 36 },
+      status: "completed",
+      structuredResult: { summary: "retry" },
+      executionState: {
+        kind: "pipeline",
+        currentStepPosition: 2,
+        completedSteps: [{ key: "inspect" }, { key: "summarize" }],
+      },
+    });
+  });
+
+  it("recovers at a persisted pipeline step boundary after restart", async () => {
+    const revision = await createWorkflowRevision("pipeline-restart", [
+      {
+        key: "pipeline_items",
+        type: "pipeline",
+        name: "Pipeline items",
+        configuration: {
+          collectionPath: "/values",
+          itemInputKey: "item",
+          maxConcurrency: 1,
+          failurePolicy: "fail-fast",
+          steps: [
+            {
+              key: "inspect",
+              name: "Inspect",
+              prompt: "Pipeline inspect step.",
+              outputSchema: { type: "object" },
+            },
+            {
+              key: "summarize",
+              name: "Summarize",
+              prompt: "Pipeline summarize step.",
+              automaticRetries: 0,
+              outputSchema: { type: "object" },
+            },
+          ],
+        },
+      },
+    ]);
+    connected = false;
+    mode = "success";
+    const response = await createRunForRevision(
+      revision,
+      "execute-pipeline-restart",
+      { maxAttemptsPerNode: 2, maxNodes: 10 },
+      { values: ["survive"] },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).items).toHaveLength(1);
+    });
+    const source = await database.repository.getProjectSource(
+      LOCAL_USER_ID,
+      projectId,
+    );
+    const firstCandidate =
+      (await database.repository.workflowRuns.getReadyAgentCandidates(
+        LOCAL_USER_ID,
+        runId,
+      ))![0]!;
+    const firstLease = await database.repository.workflowRuns.claimAgentAttempt(
+      LOCAL_USER_ID,
+      firstCandidate,
+      {
+        cwd: source!.cwd,
+        modelRouteId: DEFAULT_MODEL_ROUTE_ID,
+        permissionProfileId: null,
+        workerId: source!.workerId,
+        worktreeId: source!.worktreeId,
+      },
+    );
+    await database.repository.workflowRuns.completeAgentAttempt(
+      LOCAL_USER_ID,
+      firstLease!,
+      {
+        measuredUsage: {
+          inputTokens: 10,
+          outputTokens: 4,
+          cachedInputTokens: 2,
+          totalTokens: 14,
+          durationMs: 250,
+          estimatedCostUsd: null,
+          costAvailable: false,
+        },
+        structuredResult: { inspected: "survive" },
+        text: "inspected",
+        threadId: `thread-${firstLease!.attemptId}`,
+        turnId: `turn-${firstLease!.attemptId}`,
+      },
+    );
+    const secondCandidate =
+      (await database.repository.workflowRuns.getReadyAgentCandidates(
+        LOCAL_USER_ID,
+        runId,
+      ))![0]!;
+    expect(secondCandidate.pipeline?.step.key).toBe("summarize");
+    await database.repository.workflowRuns.claimAgentAttempt(
+      LOCAL_USER_ID,
+      secondCandidate,
+      {
+        cwd: source!.cwd,
+        modelRouteId: DEFAULT_MODEL_ROUTE_ID,
+        permissionProfileId: null,
+        workerId: source!.workerId,
+        worktreeId: source!.worktreeId,
+      },
+    );
+
+    await app.close();
+    database = await connectDatabase(config);
+    app = await buildApp({ config, database, logger: false, workerBridge });
+    const recovering = await runDetail(runId);
+    expect(recovering).toMatchObject({
+      run: { status: "recovering", recoveryState: "blocked" },
+      nodes: [{ status: "recovering" }],
+      items: [
+        {
+          status: "recovering",
+          executionState: {
+            kind: "pipeline",
+            currentStepPosition: 1,
+            currentStepAttemptCount: 1,
+            completedSteps: [{ key: "inspect" }],
+          },
+        },
+      ],
+      attempts: [
+        { executionUnitKey: "inspect", status: "completed" },
+        { executionUnitKey: "summarize", status: "orphaned" },
+      ],
+    });
+    connected = true;
+    const retry = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/nodes/${recovering.nodes[0]!.id}/retry`,
+      payload: {
+        reason: "Resume the persisted pipeline step.",
+        idempotencyKey: "retry-pipeline-after-restart",
+      },
+    });
+    expect(retry.statusCode).toBe(200);
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    expect((await runDetail(runId)).run.structuredResult).toEqual([
+      { summary: "survive" },
+    ]);
   });
 
   it("cancels every active and pending map item and interrupts each live turn", async () => {

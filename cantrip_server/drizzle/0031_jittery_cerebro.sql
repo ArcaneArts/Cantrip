@@ -1,0 +1,2 @@
+ALTER TABLE "workflow_node_attempts" ADD COLUMN "execution_unit_key" text;--> statement-breakpoint
+ALTER TABLE "workflow_run_node_items" ADD COLUMN "execution_state" jsonb DEFAULT '{"kind":"map"}'::jsonb NOT NULL;

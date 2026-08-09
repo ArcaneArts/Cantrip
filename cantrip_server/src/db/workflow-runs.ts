@@ -12,12 +12,14 @@ import {
   workflowMeasuredUsageSchema,
   workflowNodeAttemptSchema,
   workflowPermissionRequirementsSchema,
+  workflowPipelineNodeConfigurationSchema,
   workflowPredicateSchema,
   workflowReduceNodeConfigurationSchema,
   workflowRunDetailSchema,
   workflowRunEventPageSchema,
   workflowRunEventSchema,
   workflowRunNodeDependencySchema,
+  workflowRunNodeItemExecutionStateSchema,
   workflowRunNodeItemSchema,
   workflowRunNodeSchema,
   workflowRunSchema,
@@ -32,6 +34,8 @@ import {
   type WorkflowMeasuredUsage,
   type WorkflowMapNodeConfiguration,
   type WorkflowNodeRetry,
+  type WorkflowPipelineNodeConfiguration,
+  type WorkflowPipelineStep,
   type WorkflowRun,
   type WorkflowRunCancel,
   type WorkflowRunCreate,
@@ -41,6 +45,7 @@ import {
   type WorkflowRunQuery,
   type WorkflowRunNode,
   type WorkflowRunNodeItem,
+  type WorkflowRunNodeItemExecutionState,
   type WorkflowVerifyNodeConfiguration,
 } from "@cantrip/protocol/workflows";
 import { and, asc, desc, eq, gt, inArray, lte, sql } from "drizzle-orm";
@@ -178,6 +183,11 @@ export interface WorkflowAgentCandidate {
   item: WorkflowRunNodeItem | null;
   node: WorkflowRunNode;
   outputSchema: WorkflowJsonObject;
+  pipeline: {
+    configuration: WorkflowPipelineNodeConfiguration;
+    step: WorkflowPipelineStep;
+    stepPosition: number;
+  } | null;
   projectId: string | null;
   run: WorkflowRun;
   structuredInput: WorkflowJsonValue;
@@ -200,6 +210,7 @@ export interface WorkflowAttemptLease {
   budget: WorkflowBudget;
   candidate: WorkflowAgentCandidate;
   idempotencyKey: string;
+  unitAttempt: number;
 }
 
 export interface WorkflowInteractionExecutionContext {
@@ -241,7 +252,7 @@ function jsonObject(value: unknown): Record<string, unknown> {
   );
 }
 
-function mapCollectionState(value: unknown): {
+function collectionState(value: unknown): {
   failurePolicy: "continue" | "fail-fast";
   kind: "array" | "object";
 } {
@@ -254,7 +265,7 @@ function mapCollectionState(value: unknown): {
     (collection.failurePolicy !== "continue" &&
       collection.failurePolicy !== "fail-fast")
   ) {
-    throw new Error("The map node collection state is invalid.");
+    throw new Error("The collection node state is invalid.");
   }
   return {
     failurePolicy: collection.failurePolicy,
@@ -262,9 +273,19 @@ function mapCollectionState(value: unknown): {
   };
 }
 
-function aggregateMapItems(
+function pipelineExecutionState(
+  value: unknown,
+): Extract<WorkflowRunNodeItemExecutionState, { kind: "pipeline" }> {
+  const state = workflowRunNodeItemExecutionStateSchema.parse(value);
+  if (state.kind !== "pipeline") {
+    throw new Error("The pipeline item execution state is invalid.");
+  }
+  return state;
+}
+
+function aggregateCollectionItems(
   items: WorkflowRunNodeItem[],
-  state: ReturnType<typeof mapCollectionState>,
+  state: ReturnType<typeof collectionState>,
 ): WorkflowJsonValue {
   const values = items.map((item) => {
     if (state.failurePolicy === "continue") {
@@ -274,8 +295,8 @@ function aggregateMapItems(
           : {
               status: "failed",
               error: {
-                code: item.errorCode ?? "map-item-failed",
-                message: item.errorMessage ?? "The map item failed.",
+                code: item.errorCode ?? "collection-item-failed",
+                message: item.errorMessage ?? "The collection item failed.",
               },
             },
       );
@@ -289,6 +310,27 @@ function aggregateMapItems(
           items.map((item, index) => [item.itemKey, values[index]!]),
         ),
       );
+}
+
+function expandedWorkflowNodeCount(detail: WorkflowRunDetail): number {
+  return detail.nodes.reduce((total, node) => {
+    const state = workflowJsonObjectSchema.parse(node.dependencyState);
+    const collection = state.collection;
+    if (
+      collection !== null &&
+      typeof collection === "object" &&
+      !Array.isArray(collection) &&
+      typeof collection.logicalNodeCount === "number" &&
+      Number.isSafeInteger(collection.logicalNodeCount) &&
+      collection.logicalNodeCount >= 0
+    ) {
+      return total + collection.logicalNodeCount;
+    }
+    return (
+      total +
+      detail.items.filter(({ runNodeId }) => runNodeId === node.id).length
+    );
+  }, detail.nodes.length);
 }
 
 function workerEventIdentity(event: WorkerEvent): string {
@@ -773,6 +815,7 @@ export class WorkflowRunRepository {
       detail.nodes.filter(
         ({ nodeType, status }) =>
           nodeType !== "map" &&
+          nodeType !== "pipeline" &&
           (status === "running" ||
             (status === "waiting-for-approval" && nodeType !== "gate")),
       ).length +
@@ -807,17 +850,22 @@ export class WorkflowRunRepository {
           status === "ready" &&
           nodeType !== "condition" &&
           nodeType !== "gate" &&
-          nodeType !== "map",
+          nodeType !== "map" &&
+          nodeType !== "pipeline",
       )
       .map((node) => ({ item: null, node }));
     for (const node of detail.nodes.filter(
       ({ nodeType, status }) =>
-        nodeType === "map" &&
+        (nodeType === "map" || nodeType === "pipeline") &&
         (status === "running" || status === "waiting-for-approval"),
     )) {
-      const configuration = workflowMapNodeConfigurationSchema.safeParse(
-        revisionById.get(node.revisionNodeId)?.configuration,
-      );
+      const rawConfiguration = revisionById.get(
+        node.revisionNodeId,
+      )?.configuration;
+      const configuration =
+        node.nodeType === "map"
+          ? workflowMapNodeConfigurationSchema.safeParse(rawConfiguration)
+          : workflowPipelineNodeConfigurationSchema.safeParse(rawConfiguration);
       const nodeItems = detail.items.filter(
         ({ runNodeId }) => runNodeId === node.id,
       );
@@ -847,6 +895,10 @@ export class WorkflowRunRepository {
         item?.structuredInput ?? node.structuredInput,
       );
       let configuration: WorkflowAgentNodeConfiguration | null = null;
+      let outputSchema = workflowJsonObjectSchema.parse(
+        revisionNode?.outputSchema ?? {},
+      );
+      let pipeline: WorkflowAgentCandidate["pipeline"] = null;
       let structuredInput = nodeInput;
       let verification: WorkflowVerifyNodeConfiguration | null = null;
       let unsupportedReason: string | null = null;
@@ -897,6 +949,33 @@ export class WorkflowRunRepository {
           revisionNode.configuration,
         );
         configuration = parsed.success ? parsed.data : null;
+      } else if (node.nodeType === "pipeline" && item) {
+        const parsed = workflowPipelineNodeConfigurationSchema.safeParse(
+          revisionNode.configuration,
+        );
+        const state = workflowRunNodeItemExecutionStateSchema.safeParse(
+          item.executionState,
+        );
+        if (
+          !parsed.success ||
+          !state.success ||
+          state.data.kind !== "pipeline"
+        ) {
+          unsupportedReason = "The pipeline item state is invalid.";
+        } else {
+          const step = parsed.data.steps[state.data.currentStepPosition];
+          if (!step) {
+            unsupportedReason = "The pipeline item has no executable step.";
+          } else {
+            configuration = step;
+            outputSchema = step.outputSchema;
+            pipeline = {
+              configuration: parsed.data,
+              step,
+              stepPosition: state.data.currentStepPosition,
+            };
+          }
+        }
       } else {
         unsupportedReason = `The ${node.nodeType} workflow primitive is not available in the static DAG runtime.`;
       }
@@ -915,9 +994,8 @@ export class WorkflowRunRepository {
         configuration,
         item,
         node,
-        outputSchema: workflowJsonObjectSchema.parse(
-          revisionNode?.outputSchema ?? {},
-        ),
+        outputSchema,
+        pipeline,
         projectId: detail.run.projectId,
         run: detail.run,
         structuredInput,
@@ -939,24 +1017,25 @@ export class WorkflowRunRepository {
     ) {
       return null;
     }
-    const readyMaps = detail.nodes.filter(
-      ({ nodeType, status }) => nodeType === "map" && status === "ready",
+    const readyCollections = detail.nodes.filter(
+      ({ nodeType, status }) =>
+        (nodeType === "map" || nodeType === "pipeline") && status === "ready",
     );
-    if (readyMaps.length === 0) return false;
+    if (readyCollections.length === 0) return false;
     const revisionRows = await this.database
       .select()
       .from(schema.workflowRevisionNodes)
       .where(
         inArray(
           schema.workflowRevisionNodes.id,
-          readyMaps.map(({ revisionNodeId }) => revisionNodeId),
+          readyCollections.map(({ revisionNodeId }) => revisionNodeId),
         ),
       )
       .orderBy(asc(schema.workflowRevisionNodes.position))
       .limit(1);
     const revisionNode = revisionRows[0];
     const node = revisionNode
-      ? readyMaps.find(
+      ? readyCollections.find(
           ({ revisionNodeId }) => revisionNodeId === revisionNode.id,
         )
       : null;
@@ -964,7 +1043,7 @@ export class WorkflowRunRepository {
       await this.failUnsupportedRun(
         ownerId,
         runId,
-        "The ready map node is unavailable.",
+        "The ready collection node is unavailable.",
       );
       return true;
     }
@@ -972,22 +1051,41 @@ export class WorkflowRunRepository {
       await this.failUnsupportedRun(
         ownerId,
         runId,
-        "Write-capable map nodes require isolated workflow worktrees.",
+        "Write-capable collection nodes require isolated workflow worktrees.",
       );
       return true;
     }
-    const configuration = workflowMapNodeConfigurationSchema.safeParse(
+    if (node.nodeType === "map") {
+      const configuration = workflowMapNodeConfigurationSchema.safeParse(
+        revisionNode.configuration,
+      );
+      if (!configuration.success) {
+        await this.failUnsupportedRun(
+          ownerId,
+          runId,
+          "The map node configuration is invalid.",
+        );
+        return true;
+      }
+      return this.initializeMapNode(ownerId, detail, node, configuration.data);
+    }
+    const configuration = workflowPipelineNodeConfigurationSchema.safeParse(
       revisionNode.configuration,
     );
     if (!configuration.success) {
       await this.failUnsupportedRun(
         ownerId,
         runId,
-        "The map node configuration is invalid.",
+        "The pipeline node configuration is invalid.",
       );
       return true;
     }
-    return this.initializeMapNode(ownerId, detail, node, configuration.data);
+    return this.initializePipelineNode(
+      ownerId,
+      detail,
+      node,
+      configuration.data,
+    );
   }
 
   async advanceReadyControlNode(
@@ -1130,9 +1228,17 @@ export class WorkflowRunRepository {
     const attemptId = randomUUID();
     const attemptNumber =
       (candidate.item?.attemptCount ?? candidate.node.attemptCount) + 1;
-    if (attemptNumber > candidate.node.budget.maxAttemptsPerNode) return null;
+    const currentPipelineState = candidate.pipeline
+      ? pipelineExecutionState(candidate.item?.executionState)
+      : null;
+    const unitAttempt = currentPipelineState
+      ? currentPipelineState.currentStepAttemptCount + 1
+      : attemptNumber;
+    if (unitAttempt > candidate.node.budget.maxAttemptsPerNode) return null;
     const idempotencyKey = candidate.item
-      ? `${candidate.node.id}:item:${candidate.item.id}:attempt:${attemptNumber}`
+      ? candidate.pipeline
+        ? `${candidate.node.id}:item:${candidate.item.id}:step:${candidate.pipeline.step.key}:attempt:${unitAttempt}`
+        : `${candidate.node.id}:item:${candidate.item.id}:attempt:${attemptNumber}`
       : `${candidate.node.id}:attempt:${attemptNumber}`;
     const timeoutAt = new Date(
       now.getTime() + candidate.node.budget.maxNodeDurationMs,
@@ -1169,6 +1275,14 @@ export class WorkflowRunRepository {
               permissionProfileId: assignment.permissionProfileId,
               executionLeaseKey: idempotencyKey,
               attemptCount: attemptNumber,
+              ...(currentPipelineState
+                ? {
+                    executionState: {
+                      ...currentPipelineState,
+                      currentStepAttemptCount: unitAttempt,
+                    },
+                  }
+                : {}),
               timeoutAt,
               startedAt: candidate.item.startedAt
                 ? new Date(candidate.item.startedAt)
@@ -1252,6 +1366,7 @@ export class WorkflowRunRepository {
           id: attemptId,
           runNodeId: candidate.node.id,
           runNodeItemId: candidate.item?.id ?? null,
+          executionUnitKey: candidate.pipeline?.step.key ?? null,
           attempt: attemptNumber,
           status: "running",
           idempotencyKey,
@@ -1325,6 +1440,9 @@ export class WorkflowRunRepository {
         mapItemId: candidate.item?.id ?? null,
         mapItemKey: candidate.item?.itemKey ?? null,
         mapItemPosition: candidate.item?.position ?? null,
+        pipelineStepKey: candidate.pipeline?.step.key ?? null,
+        pipelineStepPosition: candidate.pipeline?.stepPosition ?? null,
+        unitAttempt,
       },
       actorType: "server",
       actorId: null,
@@ -1336,6 +1454,7 @@ export class WorkflowRunRepository {
       budget: candidate.node.budget,
       candidate,
       idempotencyKey,
+      unitAttempt,
     };
   }
 
@@ -1397,6 +1516,25 @@ export class WorkflowRunRepository {
         throw new Error("Workflow attempt is no longer active.");
       }
       if (lease.candidate.item) {
+        const itemMeasuredUsage = measuredUsage
+          ? lease.candidate.pipeline
+            ? aggregateWorkflowUsage(
+                (
+                  await transaction
+                    .select({
+                      measuredUsage: schema.workflowNodeAttempts.measuredUsage,
+                    })
+                    .from(schema.workflowNodeAttempts)
+                    .where(
+                      eq(
+                        schema.workflowNodeAttempts.runNodeItemId,
+                        lease.candidate.item.id,
+                      ),
+                    )
+                ).map(({ measuredUsage: usage }) => usage),
+              )
+            : measuredUsage
+          : null;
         await transaction
           .update(schema.workflowRunNodeItems)
           .set({
@@ -1411,7 +1549,7 @@ export class WorkflowRunRepository {
               ? { codexThreadId: attribution.threadId }
               : {}),
             ...(attribution.turnId ? { codexTurnId: attribution.turnId } : {}),
-            ...(measuredUsage ? { measuredUsage } : {}),
+            ...(itemMeasuredUsage ? { measuredUsage: itemMeasuredUsage } : {}),
             updatedAt: now,
           })
           .where(eq(schema.workflowRunNodeItems.id, lease.candidate.item.id));
@@ -1541,6 +1679,9 @@ export class WorkflowRunRepository {
       turnId: string;
     },
   ): Promise<boolean> {
+    if (lease.candidate.pipeline) {
+      return this.completePipelineStepAttempt(ownerId, lease, result);
+    }
     if (lease.candidate.item) {
       return this.completeMapItemAttempt(ownerId, lease, result);
     }
@@ -1648,6 +1789,306 @@ export class WorkflowRunRepository {
     return outcome.completed;
   }
 
+  private async completePipelineStepAttempt(
+    ownerId: string,
+    lease: WorkflowAttemptLease,
+    result: {
+      measuredUsage: WorkflowMeasuredUsage;
+      structuredResult: unknown;
+      text: string;
+      threadId: string;
+      turnId: string;
+    },
+  ): Promise<boolean> {
+    const item = lease.candidate.item!;
+    const pipeline = lease.candidate.pipeline!;
+    const now = new Date();
+    const measuredUsage = workflowMeasuredUsageSchema.parse(
+      result.measuredUsage,
+    );
+    const structuredResult = workflowJsonValueSchema.parse(
+      result.structuredResult,
+    );
+    const outcome = await this.database.transaction(async (transaction) => {
+      const attempts = await transaction
+        .update(schema.workflowNodeAttempts)
+        .set({
+          status: "completed",
+          structuredResult,
+          measuredUsage,
+          errorCode: null,
+          errorMessage: null,
+          codexThreadId: result.threadId,
+          codexTurnId: result.turnId,
+          heartbeatAt: now,
+          completedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.workflowNodeAttempts.id, lease.attemptId),
+            eq(schema.workflowNodeAttempts.runNodeItemId, item.id),
+            eq(schema.workflowNodeAttempts.executionUnitKey, pipeline.step.key),
+            inArray(schema.workflowNodeAttempts.status, [
+              "running",
+              "waiting-for-approval",
+            ]),
+          ),
+        )
+        .returning({ id: schema.workflowNodeAttempts.id });
+      if (!attempts[0]) {
+        return {
+          completed: false,
+          readyNodeIds: [] as string[],
+          runStateUpdated: false,
+          runStatus: null,
+        };
+      }
+      const itemRows = await transaction
+        .select()
+        .from(schema.workflowRunNodeItems)
+        .where(eq(schema.workflowRunNodeItems.id, item.id))
+        .for("update")
+        .limit(1);
+      const lockedItem = itemRows[0];
+      if (!lockedItem) throw new Error("The pipeline item is unavailable.");
+      const state = pipelineExecutionState(lockedItem.executionState);
+      if (
+        state.currentStepPosition !== pipeline.stepPosition ||
+        !["running", "waiting-for-approval"].includes(lockedItem.status)
+      ) {
+        throw new Error("The pipeline item changed step during completion.");
+      }
+      const nodeRows = await transaction
+        .select()
+        .from(schema.workflowRunNodes)
+        .where(eq(schema.workflowRunNodes.id, lease.candidate.node.id))
+        .for("update")
+        .limit(1);
+      const lockedNode = nodeRows[0];
+      if (!lockedNode) throw new Error("The pipeline node is unavailable.");
+      const completedSteps = [
+        ...state.completedSteps,
+        {
+          key: pipeline.step.key,
+          name: pipeline.step.name,
+          position: pipeline.stepPosition,
+          structuredResult,
+          measuredUsage,
+          codexThreadId: result.threadId,
+          codexTurnId: result.turnId,
+          completedAt: now.toISOString(),
+        },
+      ];
+      const attemptUsageRows = await transaction
+        .select({ measuredUsage: schema.workflowNodeAttempts.measuredUsage })
+        .from(schema.workflowNodeAttempts)
+        .where(eq(schema.workflowNodeAttempts.runNodeItemId, item.id));
+      const itemUsage = aggregateWorkflowUsage(
+        attemptUsageRows.map(({ measuredUsage: usage }) => usage),
+      );
+      const nextStep =
+        pipeline.configuration.steps[pipeline.stepPosition + 1] ?? null;
+      const nextState = {
+        kind: "pipeline" as const,
+        currentStepPosition: pipeline.stepPosition + 1,
+        currentStepAttemptCount: 0,
+        completedSteps,
+      };
+      if (!["running", "waiting-for-approval"].includes(lockedNode.status)) {
+        await transaction
+          .update(schema.workflowRunNodeItems)
+          .set({
+            status: nextStep ? "cancelled" : "completed",
+            executionState: nextState,
+            structuredInput: nextStep
+              ? structuredResult
+              : lockedItem.structuredInput,
+            structuredResult,
+            measuredUsage: itemUsage,
+            codexThreadId: nextStep ? null : result.threadId,
+            codexTurnId: nextStep ? null : result.turnId,
+            executionLeaseKey: null,
+            timeoutAt: null,
+            waitingAt: null,
+            completedAt: now,
+            updatedAt: now,
+          })
+          .where(eq(schema.workflowRunNodeItems.id, item.id));
+        const terminalItemUsageRows = await transaction
+          .select({ measuredUsage: schema.workflowRunNodeItems.measuredUsage })
+          .from(schema.workflowRunNodeItems)
+          .where(eq(schema.workflowRunNodeItems.runNodeId, lockedNode.id));
+        await transaction
+          .update(schema.workflowRunNodes)
+          .set({
+            measuredUsage: aggregateWorkflowUsage(
+              terminalItemUsageRows.map(({ measuredUsage: usage }) => usage),
+            ),
+            updatedAt: now,
+          })
+          .where(eq(schema.workflowRunNodes.id, lockedNode.id));
+        const terminalNodeUsageRows = await transaction
+          .select({ measuredUsage: schema.workflowRunNodes.measuredUsage })
+          .from(schema.workflowRunNodes)
+          .where(eq(schema.workflowRunNodes.runId, lease.candidate.run.id));
+        await transaction
+          .update(schema.workflowRuns)
+          .set({
+            measuredUsage: aggregateWorkflowUsage(
+              terminalNodeUsageRows.map(({ measuredUsage: usage }) => usage),
+            ),
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.workflowRuns.id, lease.candidate.run.id),
+              eq(schema.workflowRuns.ownerId, ownerId),
+            ),
+          );
+        return {
+          completed: true,
+          readyNodeIds: [] as string[],
+          runStateUpdated: false,
+          runStatus: null,
+        };
+      }
+      await transaction
+        .update(schema.workflowRunNodeItems)
+        .set({
+          status: nextStep ? "ready" : "completed",
+          executionState: nextState,
+          structuredInput: nextStep
+            ? structuredResult
+            : lockedItem.structuredInput,
+          structuredResult,
+          measuredUsage: itemUsage,
+          errorCode: null,
+          errorMessage: null,
+          codexThreadId: nextStep ? null : result.threadId,
+          codexTurnId: nextStep ? null : result.turnId,
+          executionLeaseKey: null,
+          timeoutAt: null,
+          readyAt: nextStep ? now : null,
+          waitingAt: null,
+          completedAt: nextStep ? null : now,
+          updatedAt: now,
+        })
+        .where(eq(schema.workflowRunNodeItems.id, item.id));
+      const collectionItems = await transaction
+        .select()
+        .from(schema.workflowRunNodeItems)
+        .where(eq(schema.workflowRunNodeItems.runNodeId, lockedNode.id))
+        .orderBy(asc(schema.workflowRunNodeItems.position));
+      const nodeUsage = aggregateWorkflowUsage(
+        collectionItems.map(({ measuredUsage: usage }) => usage),
+      );
+      const collection = collectionState(lockedNode.dependencyState);
+      const terminal = collectionItems.every(
+        ({ status }) =>
+          status === "completed" ||
+          (collection.failurePolicy === "continue" && status === "failed"),
+      );
+      const parentStatus = terminal
+        ? "completed"
+        : collectionItems.some(({ status }) =>
+              ["ready", "running"].includes(status),
+            )
+          ? "running"
+          : collectionItems.some(
+                ({ status }) => status === "waiting-for-approval",
+              )
+            ? "waiting-for-approval"
+            : collectionItems.some(({ status }) => status === "recovering")
+              ? "recovering"
+              : "running";
+      const collectionResult = terminal
+        ? aggregateCollectionItems(
+            collectionItems.map((row) =>
+              workflowRunNodeItemSchema.parse({
+                ...row,
+                notBefore: nullableISOString(row.notBefore),
+                timeoutAt: nullableISOString(row.timeoutAt),
+                readyAt: nullableISOString(row.readyAt),
+                startedAt: nullableISOString(row.startedAt),
+                waitingAt: nullableISOString(row.waitingAt),
+                completedAt: nullableISOString(row.completedAt),
+                createdAt: toISOString(row.createdAt),
+                updatedAt: toISOString(row.updatedAt),
+              }),
+            ),
+            collection,
+          )
+        : null;
+      await transaction
+        .update(schema.workflowRunNodes)
+        .set({
+          status: parentStatus,
+          structuredResult: collectionResult,
+          measuredUsage: nodeUsage,
+          waitingAt: parentStatus === "waiting-for-approval" ? now : null,
+          completedAt: terminal ? now : null,
+          updatedAt: now,
+        })
+        .where(eq(schema.workflowRunNodes.id, lockedNode.id));
+      const lockedRun = await lockWorkflowRun(
+        transaction,
+        ownerId,
+        lease.candidate.run.id,
+      );
+      if (!lockedRun) throw new Error("Workflow run is unavailable.");
+      let readyNodeIds: string[] = [];
+      if (terminal) {
+        readyNodeIds = (
+          await settleWorkflowDependencies(transaction, {
+            now,
+            runId: lease.candidate.run.id,
+            selectedDependencyIds: null,
+            sourceNodeId: lockedNode.id,
+          })
+        ).readyNodeIds;
+      }
+      const runTransition = await recomputeWorkflowRun(transaction, {
+        codexThreadId: null,
+        lockedRun,
+        now,
+      });
+      return {
+        completed: true,
+        readyNodeIds,
+        runStateUpdated: runTransition.updated,
+        runStatus: runTransition.status,
+      };
+    });
+    if (outcome.completed) {
+      await this.appendEvent({
+        runId: lease.candidate.run.id,
+        runNodeId: lease.candidate.node.id,
+        attemptId: lease.attemptId,
+        eventKey: `attempt-completed:${lease.attemptId}`,
+        type: "node.attempt.completed",
+        payload: {
+          textPreview: result.text.slice(0, 4_000),
+          textTruncated: result.text.length > 4_000,
+          structuredResultAvailable: true,
+          measuredUsage,
+          threadId: result.threadId,
+          turnId: result.turnId,
+          collectionItemId: item.id,
+          collectionItemKey: item.itemKey,
+          collectionItemPosition: item.position,
+          pipelineStepKey: pipeline.step.key,
+          pipelineStepPosition: pipeline.stepPosition,
+          readyNodeIds: outcome.readyNodeIds,
+          runStatus: outcome.runStateUpdated ? outcome.runStatus : null,
+        },
+        actorType: "server",
+        actorId: null,
+      });
+    }
+    return outcome.completed;
+  }
+
   private async completeMapItemAttempt(
     ownerId: string,
     lease: WorkflowAttemptLease,
@@ -1744,7 +2185,7 @@ export class WorkflowRunRepository {
       const itemUsage = aggregateWorkflowUsage(
         itemRows.map(({ measuredUsage: usage }) => usage),
       );
-      const state = mapCollectionState(lockedNode.dependencyState);
+      const state = collectionState(lockedNode.dependencyState);
       const terminal = itemRows.every(
         ({ status }) =>
           status === "completed" ||
@@ -1760,7 +2201,7 @@ export class WorkflowRunRepository {
               ? "recovering"
               : "running";
       const mapResult = terminal
-        ? aggregateMapItems(
+        ? aggregateCollectionItems(
             itemRows.map((row) =>
               workflowRunNodeItemSchema.parse({
                 ...row,
@@ -1853,6 +2294,9 @@ export class WorkflowRunRepository {
       status: "failed" | "interrupted" | "orphaned" | "timed-out";
     },
   ): Promise<WorkflowAttemptFailureResult> {
+    if (lease.candidate.pipeline) {
+      return this.failPipelineStepAttempt(ownerId, lease, input);
+    }
     if (lease.candidate.item) {
       return this.failMapItemAttempt(ownerId, lease, input);
     }
@@ -1869,7 +2313,7 @@ export class WorkflowRunRepository {
     const retryEligible =
       input.status !== "orphaned" &&
       input.status !== "interrupted" &&
-      lease.attempt < automaticAttemptLimit;
+      lease.unitAttempt < automaticAttemptLimit;
     const outcome = await this.database.transaction(async (transaction) => {
       const attempts = await transaction
         .update(schema.workflowNodeAttempts)
@@ -2037,6 +2481,402 @@ export class WorkflowRunRepository {
     };
   }
 
+  private async failPipelineStepAttempt(
+    ownerId: string,
+    lease: WorkflowAttemptLease,
+    input: {
+      code: string;
+      message: string;
+      status: "failed" | "interrupted" | "orphaned" | "timed-out";
+    },
+  ): Promise<WorkflowAttemptFailureResult> {
+    const item = lease.candidate.item!;
+    const pipeline = lease.candidate.pipeline!;
+    const now = new Date();
+    const message = input.message.trim().slice(0, 5_000) || input.code;
+    const automaticAttemptLimit =
+      pipeline.step.automaticRetries === null
+        ? lease.budget.maxAttemptsPerNode
+        : Math.min(
+            lease.budget.maxAttemptsPerNode,
+            pipeline.step.automaticRetries + 1,
+          );
+    const retryEligible =
+      input.status !== "orphaned" &&
+      input.status !== "interrupted" &&
+      lease.unitAttempt < automaticAttemptLimit;
+    const outcome = await this.database.transaction(async (transaction) => {
+      const attempts = await transaction
+        .update(schema.workflowNodeAttempts)
+        .set({
+          status: input.status,
+          errorCode: input.code.slice(0, 200),
+          errorMessage: message,
+          heartbeatAt: now,
+          completedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.workflowNodeAttempts.id, lease.attemptId),
+            eq(schema.workflowNodeAttempts.runNodeItemId, item.id),
+            eq(schema.workflowNodeAttempts.executionUnitKey, pipeline.step.key),
+            inArray(schema.workflowNodeAttempts.status, [
+              "queued",
+              "running",
+              "waiting-for-approval",
+            ]),
+          ),
+        )
+        .returning({ id: schema.workflowNodeAttempts.id });
+      if (!attempts[0]) {
+        return {
+          retryScheduled: false,
+          terminalizedPipeline: false,
+          updated: false,
+        };
+      }
+      const runRows = await transaction
+        .select({ status: schema.workflowRuns.status })
+        .from(schema.workflowRuns)
+        .where(
+          and(
+            eq(schema.workflowRuns.id, lease.candidate.run.id),
+            eq(schema.workflowRuns.ownerId, ownerId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const runIsActive =
+        runRows[0] !== undefined &&
+        ["queued", "running", "waiting"].includes(runRows[0].status);
+      const retryScheduled = retryEligible && runIsActive;
+      const itemRows = await transaction
+        .select()
+        .from(schema.workflowRunNodeItems)
+        .where(eq(schema.workflowRunNodeItems.id, item.id))
+        .for("update")
+        .limit(1);
+      const lockedItem = itemRows[0];
+      if (!lockedItem) throw new Error("The pipeline item is unavailable.");
+      const state = pipelineExecutionState(lockedItem.executionState);
+      if (state.currentStepPosition !== pipeline.stepPosition) {
+        throw new Error("The pipeline item changed step during failure.");
+      }
+      const attemptUsageRows = await transaction
+        .select({ measuredUsage: schema.workflowNodeAttempts.measuredUsage })
+        .from(schema.workflowNodeAttempts)
+        .where(eq(schema.workflowNodeAttempts.runNodeItemId, item.id));
+      const itemUsage = aggregateWorkflowUsage(
+        attemptUsageRows.map(({ measuredUsage: usage }) => usage),
+      );
+      await transaction
+        .update(schema.workflowRunNodeItems)
+        .set({
+          status:
+            !runIsActive && runRows[0]?.status !== "recovering"
+              ? "cancelled"
+              : input.status === "orphaned"
+                ? "recovering"
+                : retryScheduled
+                  ? "ready"
+                  : input.status === "interrupted"
+                    ? "cancelled"
+                    : "failed",
+          measuredUsage: itemUsage,
+          errorCode: input.code.slice(0, 200),
+          errorMessage: message,
+          executionLeaseKey: null,
+          timeoutAt: null,
+          waitingAt: null,
+          readyAt: retryScheduled ? now : null,
+          completedAt:
+            retryScheduled ||
+            (input.status === "orphaned" &&
+              (runIsActive || runRows[0]?.status === "recovering"))
+              ? null
+              : now,
+          updatedAt: now,
+        })
+        .where(eq(schema.workflowRunNodeItems.id, item.id));
+      const nodeRows = await transaction
+        .select()
+        .from(schema.workflowRunNodes)
+        .where(eq(schema.workflowRunNodes.id, lease.candidate.node.id))
+        .for("update")
+        .limit(1);
+      const lockedNode = nodeRows[0];
+      if (!lockedNode) throw new Error("The pipeline node is unavailable.");
+      const collectionItems = await transaction
+        .select()
+        .from(schema.workflowRunNodeItems)
+        .where(eq(schema.workflowRunNodeItems.runNodeId, lockedNode.id))
+        .orderBy(asc(schema.workflowRunNodeItems.position));
+      const nodeUsage = aggregateWorkflowUsage(
+        collectionItems.map(({ measuredUsage: usage }) => usage),
+      );
+      if (!runIsActive) {
+        await transaction
+          .update(schema.workflowRunNodes)
+          .set({ measuredUsage: nodeUsage, updatedAt: now })
+          .where(eq(schema.workflowRunNodes.id, lockedNode.id));
+        const runNodeUsageRows = await transaction
+          .select({ measuredUsage: schema.workflowRunNodes.measuredUsage })
+          .from(schema.workflowRunNodes)
+          .where(eq(schema.workflowRunNodes.runId, lease.candidate.run.id));
+        await transaction
+          .update(schema.workflowRuns)
+          .set({
+            measuredUsage: aggregateWorkflowUsage(
+              runNodeUsageRows.map(({ measuredUsage: usage }) => usage),
+            ),
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.workflowRuns.id, lease.candidate.run.id),
+              eq(schema.workflowRuns.ownerId, ownerId),
+            ),
+          );
+        return {
+          retryScheduled: false,
+          terminalizedPipeline: false,
+          updated: true,
+        };
+      }
+      if (input.status === "orphaned") {
+        await transaction
+          .update(schema.workflowRunNodes)
+          .set({
+            status: "recovering",
+            measuredUsage: nodeUsage,
+            updatedAt: now,
+          })
+          .where(eq(schema.workflowRunNodes.id, lockedNode.id));
+        await transaction
+          .update(schema.workflowRuns)
+          .set({
+            status: "recovering",
+            errorCode: input.code.slice(0, 200),
+            errorMessage: message,
+            recoveryState: "blocked",
+            updatedAt: now,
+          })
+          .where(eq(schema.workflowRuns.id, lease.candidate.run.id));
+        return {
+          retryScheduled: false,
+          terminalizedPipeline: false,
+          updated: true,
+        };
+      }
+      if (retryScheduled) {
+        await transaction
+          .update(schema.workflowRunNodes)
+          .set({ status: "running", measuredUsage: nodeUsage, updatedAt: now })
+          .where(eq(schema.workflowRunNodes.id, lockedNode.id));
+        await transaction
+          .update(schema.workflowRuns)
+          .set({
+            status: "running",
+            errorCode: null,
+            errorMessage: null,
+            recoveryState: "stable",
+            updatedAt: now,
+          })
+          .where(eq(schema.workflowRuns.id, lease.candidate.run.id));
+        return {
+          retryScheduled: true,
+          terminalizedPipeline: false,
+          updated: true,
+        };
+      }
+      if (
+        pipeline.configuration.failurePolicy === "continue" &&
+        input.status !== "interrupted"
+      ) {
+        const terminal = collectionItems.every(({ status }) =>
+          ["completed", "failed"].includes(status),
+        );
+        const parentStatus = terminal
+          ? "completed"
+          : collectionItems.some(({ status }) =>
+                ["ready", "running"].includes(status),
+              )
+            ? "running"
+            : collectionItems.some(
+                  ({ status }) => status === "waiting-for-approval",
+                )
+              ? "waiting-for-approval"
+              : "running";
+        const collectionResult = terminal
+          ? aggregateCollectionItems(
+              collectionItems.map((row) =>
+                workflowRunNodeItemSchema.parse({
+                  ...row,
+                  notBefore: nullableISOString(row.notBefore),
+                  timeoutAt: nullableISOString(row.timeoutAt),
+                  readyAt: nullableISOString(row.readyAt),
+                  startedAt: nullableISOString(row.startedAt),
+                  waitingAt: nullableISOString(row.waitingAt),
+                  completedAt: nullableISOString(row.completedAt),
+                  createdAt: toISOString(row.createdAt),
+                  updatedAt: toISOString(row.updatedAt),
+                }),
+              ),
+              collectionState(lockedNode.dependencyState),
+            )
+          : null;
+        await transaction
+          .update(schema.workflowRunNodes)
+          .set({
+            status: parentStatus,
+            structuredResult: collectionResult,
+            measuredUsage: nodeUsage,
+            waitingAt: parentStatus === "waiting-for-approval" ? now : null,
+            completedAt: terminal ? now : null,
+            updatedAt: now,
+          })
+          .where(eq(schema.workflowRunNodes.id, lockedNode.id));
+        const lockedRun = await lockWorkflowRun(
+          transaction,
+          ownerId,
+          lease.candidate.run.id,
+        );
+        if (!lockedRun) throw new Error("Workflow run is unavailable.");
+        if (terminal) {
+          await settleWorkflowDependencies(transaction, {
+            now,
+            runId: lease.candidate.run.id,
+            selectedDependencyIds: null,
+            sourceNodeId: lockedNode.id,
+          });
+        }
+        await recomputeWorkflowRun(transaction, {
+          codexThreadId: null,
+          lockedRun,
+          now,
+        });
+        return {
+          retryScheduled: false,
+          terminalizedPipeline: false,
+          updated: true,
+        };
+      }
+      await transaction
+        .update(schema.workflowRunNodeItems)
+        .set({ status: "skipped", completedAt: now, updatedAt: now })
+        .where(
+          and(
+            eq(schema.workflowRunNodeItems.runNodeId, lockedNode.id),
+            eq(schema.workflowRunNodeItems.status, "ready"),
+          ),
+        );
+      await transaction
+        .update(schema.workflowRunNodes)
+        .set({
+          status: input.status === "interrupted" ? "cancelled" : "failed",
+          measuredUsage: nodeUsage,
+          completedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(schema.workflowRunNodes.id, lockedNode.id));
+      await transaction
+        .update(schema.workflowRunNodes)
+        .set({ status: "skipped", completedAt: now, updatedAt: now })
+        .where(
+          and(
+            eq(schema.workflowRunNodes.runId, lease.candidate.run.id),
+            inArray(schema.workflowRunNodes.status, ["blocked", "ready"]),
+          ),
+        );
+      await transaction
+        .update(schema.workflowRunNodeDependencies)
+        .set({ status: "failed" })
+        .where(
+          and(
+            eq(
+              schema.workflowRunNodeDependencies.runId,
+              lease.candidate.run.id,
+            ),
+            eq(schema.workflowRunNodeDependencies.status, "blocked"),
+          ),
+        );
+      await transaction
+        .update(schema.workflowRuns)
+        .set({
+          status: input.status === "interrupted" ? "cancelled" : "failed",
+          errorCode: input.code.slice(0, 200),
+          errorMessage: message,
+          recoveryState: "stable",
+          completedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(schema.workflowRuns.id, lease.candidate.run.id));
+      return {
+        retryScheduled: false,
+        terminalizedPipeline: true,
+        updated: true,
+      };
+    });
+    let interruptions: WorkflowCancellationExecutionContext[] = [];
+    if (outcome.updated) {
+      if (outcome.terminalizedPipeline) {
+        const detail = await this.getRun(ownerId, lease.candidate.run.id);
+        interruptions = detail
+          ? this.cancellationContexts(detail).filter(
+              ({ attemptId, runNodeId }) =>
+                runNodeId === lease.candidate.node.id &&
+                attemptId !== lease.attemptId,
+            )
+          : [];
+        await this.terminalizeWorkflowInteractions(
+          lease.candidate.run.id,
+          lease.candidate.node.id,
+          "interrupted",
+        );
+      } else {
+        const attemptRows = await this.database
+          .select({ threadId: schema.workflowNodeAttempts.codexThreadId })
+          .from(schema.workflowNodeAttempts)
+          .where(eq(schema.workflowNodeAttempts.id, lease.attemptId))
+          .limit(1);
+        if (attemptRows[0]?.threadId) {
+          await this.terminalizeWorkflowInteractions(
+            lease.candidate.run.id,
+            lease.candidate.node.id,
+            "interrupted",
+            attemptRows[0].threadId,
+          );
+        }
+      }
+      await this.appendEvent({
+        runId: lease.candidate.run.id,
+        runNodeId: lease.candidate.node.id,
+        attemptId: lease.attemptId,
+        eventKey: `attempt-${input.status}:${lease.attemptId}`,
+        type: `node.attempt.${input.status}`,
+        payload: {
+          code: input.code,
+          message,
+          retryScheduled: outcome.retryScheduled,
+          nextAttempt: outcome.retryScheduled ? lease.attempt + 1 : null,
+          collectionItemId: item.id,
+          collectionItemKey: item.itemKey,
+          collectionItemPosition: item.position,
+          pipelineStepKey: pipeline.step.key,
+          pipelineStepPosition: pipeline.stepPosition,
+          unitAttempt: lease.unitAttempt,
+        },
+        actorType: "server",
+        actorId: null,
+      });
+    }
+    return {
+      interruptions,
+      retryScheduled: outcome.updated && outcome.retryScheduled,
+    };
+  }
+
   private async failMapItemAttempt(
     ownerId: string,
     lease: WorkflowAttemptLease,
@@ -2062,7 +2902,7 @@ export class WorkflowRunRepository {
     const retryEligible =
       input.status !== "orphaned" &&
       input.status !== "interrupted" &&
-      lease.attempt < automaticAttemptLimit;
+      lease.unitAttempt < automaticAttemptLimit;
     const outcome = await this.database.transaction(async (transaction) => {
       const attempts = await transaction
         .update(schema.workflowNodeAttempts)
@@ -2224,7 +3064,7 @@ export class WorkflowRunRepository {
               ? "waiting-for-approval"
               : "running";
         const mapResult = terminal
-          ? aggregateMapItems(
+          ? aggregateCollectionItems(
               itemRows.map((row) =>
                 workflowRunNodeItemSchema.parse({
                   ...row,
@@ -2238,7 +3078,7 @@ export class WorkflowRunRepository {
                   updatedAt: toISOString(row.updatedAt),
                 }),
               ),
-              mapCollectionState(lockedNode.dependencyState),
+              collectionState(lockedNode.dependencyState),
             )
           : null;
         await transaction
@@ -2428,20 +3268,42 @@ export class WorkflowRunRepository {
         .from(schema.workflowRevisionNodes)
         .where(eq(schema.workflowRevisionNodes.id, node.revisionNodeId))
         .limit(1);
+      const pipelineConfiguration =
+        node.nodeType === "pipeline"
+          ? workflowPipelineNodeConfigurationSchema.parse(
+              revisionRows[0]?.configuration,
+            )
+          : null;
+      const itemState = item?.executionState
+        ? workflowRunNodeItemExecutionStateSchema.parse(item.executionState)
+        : null;
+      const pipelineStep =
+        pipelineConfiguration && itemState?.kind === "pipeline"
+          ? pipelineConfiguration.steps[itemState.currentStepPosition]
+          : null;
       const configuration =
         node.nodeType === "map"
           ? workflowMapNodeConfigurationSchema.parse(
               revisionRows[0]?.configuration,
             )
+          : (pipelineStep ?? null);
+      const pipeline =
+        pipelineConfiguration && pipelineStep && itemState?.kind === "pipeline"
+          ? {
+              configuration: pipelineConfiguration,
+              step: pipelineStep,
+              stepPosition: itemState.currentStepPosition,
+            }
           : null;
       const candidate: WorkflowAgentCandidate = {
         configuration,
         item,
         node,
-        outputSchema: {},
+        outputSchema: pipelineStep?.outputSchema ?? {},
+        pipeline,
         projectId: detail.run.projectId,
         run: detail.run,
-        structuredInput: node.structuredInput,
+        structuredInput: item?.structuredInput ?? node.structuredInput,
         unsupportedReason: null,
         verification: null,
       };
@@ -2460,6 +3322,10 @@ export class WorkflowRunRepository {
           budget: node.budget,
           candidate,
           idempotencyKey: row.attempt.idempotencyKey,
+          unitAttempt:
+            itemState?.kind === "pipeline"
+              ? itemState.currentStepAttemptCount
+              : row.attempt.attempt,
         },
         {
           code: "server-restarted",
@@ -2779,32 +3645,38 @@ export class WorkflowRunRepository {
         `A ${node.status} workflow node cannot be retried.`,
       );
     }
-    const mapItems = detail.items.filter(
+    const collectionItems = detail.items.filter(
       ({ runNodeId: itemNodeId }) => itemNodeId === runNodeId,
     );
-    const retryableMapItems = mapItems.filter(
-      ({ attemptCount, status }) =>
-        status === "skipped" ||
-        (["failed", "cancelled", "recovering"].includes(status) &&
-          attemptCount < node.budget.maxAttemptsPerNode),
+    const itemAttemptCount = (item: WorkflowRunNodeItem) =>
+      node.nodeType === "pipeline"
+        ? pipelineExecutionState(item.executionState).currentStepAttemptCount
+        : item.attemptCount;
+    const retryableCollectionItems = collectionItems.filter(
+      (item) =>
+        item.status === "skipped" ||
+        (["failed", "cancelled", "recovering"].includes(item.status) &&
+          itemAttemptCount(item) < node.budget.maxAttemptsPerNode),
     );
-    const exhaustedMapItems = mapItems.filter(
-      ({ attemptCount, status }) =>
-        ["failed", "cancelled", "recovering"].includes(status) &&
-        attemptCount >= node.budget.maxAttemptsPerNode,
+    const exhaustedCollectionItems = collectionItems.filter(
+      (item) =>
+        ["failed", "cancelled", "recovering"].includes(item.status) &&
+        itemAttemptCount(item) >= node.budget.maxAttemptsPerNode,
     );
-    if (node.nodeType === "map" && exhaustedMapItems.length > 0) {
+    const collectionNode =
+      node.nodeType === "map" || node.nodeType === "pipeline";
+    if (collectionNode && exhaustedCollectionItems.length > 0) {
       throw new WorkflowControlConflictError(
-        "At least one map item exhausted its attempt budget.",
+        "At least one collection item exhausted its current execution-unit attempt budget.",
       );
     }
-    if (node.nodeType === "map" && retryableMapItems.length === 0) {
+    if (collectionNode && retryableCollectionItems.length === 0) {
       throw new WorkflowControlConflictError(
-        "The map node has no retryable collection items within its attempt budget.",
+        "The collection node has no retryable items within its attempt budget.",
       );
     }
     if (
-      node.nodeType !== "map" &&
+      !collectionNode &&
       node.attemptCount >= node.budget.maxAttemptsPerNode
     ) {
       throw new WorkflowControlConflictError(
@@ -2816,12 +3688,12 @@ export class WorkflowRunRepository {
       const nodes = await transaction
         .update(schema.workflowRunNodes)
         .set({
-          status: node.nodeType === "map" ? "running" : "ready",
+          status: collectionNode ? "running" : "ready",
           structuredResult: null,
           executionLeaseKey: null,
           notBefore: null,
           timeoutAt: null,
-          readyAt: node.nodeType === "map" ? null : now,
+          readyAt: collectionNode ? null : now,
           waitingAt: null,
           completedAt: null,
           updatedAt: now,
@@ -2843,12 +3715,12 @@ export class WorkflowRunRepository {
           "The workflow node changed state before the retry could be persisted.",
         );
       }
-      if (node.nodeType === "map") {
+      if (collectionNode) {
         await transaction
           .update(schema.workflowRunNodeItems)
           .set({
             status: "ready",
-            structuredResult: null,
+            ...(node.nodeType === "map" ? { structuredResult: null } : {}),
             errorCode: null,
             errorMessage: null,
             executionLeaseKey: null,
@@ -2862,7 +3734,7 @@ export class WorkflowRunRepository {
           .where(
             inArray(
               schema.workflowRunNodeItems.id,
-              retryableMapItems.map(({ id }) => id),
+              retryableCollectionItems.map(({ id }) => id),
             ),
           );
       }
@@ -3168,6 +4040,198 @@ export class WorkflowRunRepository {
     return Boolean(rows[0]);
   }
 
+  private async initializePipelineNode(
+    ownerId: string,
+    detail: WorkflowRunDetail,
+    node: WorkflowRunNode,
+    configuration: WorkflowPipelineNodeConfiguration,
+  ): Promise<boolean> {
+    const selected = workflowValueAtPointer(
+      workflowJsonValueSchema.parse(node.structuredInput),
+      configuration.collectionPath,
+    );
+    if (
+      !selected.found ||
+      selected.value === null ||
+      typeof selected.value !== "object"
+    ) {
+      await this.failUnsupportedRun(
+        ownerId,
+        detail.run.id,
+        `The pipeline collection path ${configuration.collectionPath || "<root>"} must select a JSON array or object.`,
+      );
+      return true;
+    }
+    const collection = workflowJsonValueSchema.parse(selected.value);
+    const collectionKind = Array.isArray(collection) ? "array" : "object";
+    const objectCollection = Array.isArray(collection)
+      ? null
+      : workflowJsonObjectSchema.parse(collection);
+    const entries: Array<[string, WorkflowJsonValue]> = Array.isArray(
+      collection,
+    )
+      ? collection.map((value, index) => [String(index), value])
+      : Object.keys(objectCollection!)
+          .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))
+          .map((key) => [key, objectCollection![key]!]);
+    if (entries.some(([key]) => key.length > 10_000)) {
+      await this.failUnsupportedRun(
+        ownerId,
+        detail.run.id,
+        "Pipeline collection keys cannot exceed 10,000 characters.",
+      );
+      return true;
+    }
+    const logicalNodeCount = entries.length * configuration.steps.length;
+    if (
+      expandedWorkflowNodeCount(detail) + logicalNodeCount >
+      detail.run.budget.maxNodes
+    ) {
+      await this.failUnsupportedRun(
+        ownerId,
+        detail.run.id,
+        "Expanding the pipeline collection would exceed the workflow node budget.",
+      );
+      return true;
+    }
+    const now = new Date();
+    const itemRows = entries.map(([itemKey, value], position) => ({
+      id: randomUUID(),
+      runNodeId: node.id,
+      itemKey,
+      position,
+      status: "ready" as const,
+      executionState: {
+        kind: "pipeline" as const,
+        currentStepPosition: 0,
+        currentStepAttemptCount: 0,
+        completedSteps: [],
+      },
+      structuredInput: workflowJsonObjectSchema.parse({
+        [configuration.itemInputKey]: value,
+      }),
+      measuredUsage: workflowMeasuredUsageSchema.parse({}),
+      attemptCount: 0,
+      readyAt: now,
+      createdAt: now,
+      updatedAt: now,
+    }));
+    for (let retry = 0; retry < 20; retry += 1) {
+      try {
+        return await this.database.transaction(async (transaction) => {
+          const nodes = await transaction
+            .update(schema.workflowRunNodes)
+            .set({
+              status: itemRows.length === 0 ? "completed" : "running",
+              dependencyState: {
+                ...workflowJsonObjectSchema.parse(node.dependencyState),
+                collection: {
+                  kind: collectionKind,
+                  primitive: "pipeline",
+                  totalItems: itemRows.length,
+                  logicalNodeCount,
+                  itemInputKey: configuration.itemInputKey,
+                  maxConcurrency: configuration.maxConcurrency,
+                  failurePolicy: configuration.failurePolicy,
+                  stepCount: configuration.steps.length,
+                },
+              },
+              structuredResult:
+                itemRows.length === 0
+                  ? collectionKind === "array"
+                    ? []
+                    : {}
+                  : null,
+              startedAt: node.startedAt ? new Date(node.startedAt) : now,
+              readyAt: null,
+              completedAt: itemRows.length === 0 ? now : null,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(schema.workflowRunNodes.id, node.id),
+                eq(schema.workflowRunNodes.runId, detail.run.id),
+                eq(schema.workflowRunNodes.status, "ready"),
+              ),
+            )
+            .returning({ id: schema.workflowRunNodes.id });
+          if (!nodes[0]) return false;
+          if (itemRows.length > 0) {
+            await transaction
+              .insert(schema.workflowRunNodeItems)
+              .values(itemRows);
+          }
+          const lockedRun = await lockWorkflowRun(
+            transaction,
+            ownerId,
+            detail.run.id,
+          );
+          if (
+            !lockedRun ||
+            !["queued", "running", "waiting"].includes(lockedRun.status)
+          ) {
+            throw new Error(
+              "The workflow run changed state while initializing its pipeline node.",
+            );
+          }
+          let readyNodeIds: string[] = [];
+          let runStatus = "running";
+          if (itemRows.length === 0) {
+            readyNodeIds = (
+              await settleWorkflowDependencies(transaction, {
+                now,
+                runId: detail.run.id,
+                selectedDependencyIds: null,
+                sourceNodeId: node.id,
+              })
+            ).readyNodeIds;
+            runStatus = (
+              await recomputeWorkflowRun(transaction, {
+                codexThreadId: null,
+                lockedRun,
+                now,
+              })
+            ).status;
+          } else {
+            await transaction
+              .update(schema.workflowRuns)
+              .set({
+                status: "running",
+                startedAt: lockedRun.startedAt ?? now,
+                updatedAt: now,
+              })
+              .where(eq(schema.workflowRuns.id, detail.run.id));
+          }
+          await insertWorkflowRunEvent(transaction, {
+            runId: detail.run.id,
+            runNodeId: node.id,
+            attemptId: null,
+            eventKey: `pipeline-initialized:${node.id}`,
+            type: "node.pipeline.initialized",
+            payload: {
+              collectionKind,
+              itemCount: itemRows.length,
+              collectionPath: configuration.collectionPath,
+              maxConcurrency: configuration.maxConcurrency,
+              failurePolicy: configuration.failurePolicy,
+              stepKeys: configuration.steps.map(({ key }) => key),
+              readyNodeIds,
+              runStatus,
+            },
+            actorType: "server",
+            actorId: null,
+          });
+          return true;
+        });
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+      }
+    }
+    throw new Error(
+      "Pipeline initialization event contention exceeded its limit.",
+    );
+  }
+
   private async initializeMapNode(
     ownerId: string,
     detail: WorkflowRunDetail,
@@ -3211,7 +4275,7 @@ export class WorkflowRunRepository {
       return true;
     }
     if (
-      detail.nodes.length + detail.items.length + entries.length >
+      expandedWorkflowNodeCount(detail) + entries.length >
       detail.run.budget.maxNodes
     ) {
       await this.failUnsupportedRun(
@@ -3248,7 +4312,9 @@ export class WorkflowRunRepository {
                 ...workflowJsonObjectSchema.parse(node.dependencyState),
                 collection: {
                   kind: collectionKind,
+                  primitive: "map",
                   totalItems: itemRows.length,
+                  logicalNodeCount: itemRows.length,
                   itemInputKey: configuration.itemInputKey,
                   maxConcurrency: configuration.maxConcurrency,
                   failurePolicy: configuration.failurePolicy,

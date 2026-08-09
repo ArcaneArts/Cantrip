@@ -218,6 +218,13 @@
       "when": 1786234313685,
       "tag": "0030_unique_thunderbird",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1786236304767,
+      "tag": "0031_jittery_cerebro",
+      "breakpoints": true
     }
   ]
 }
