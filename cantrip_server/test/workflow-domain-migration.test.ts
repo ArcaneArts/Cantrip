@@ -2,7 +2,11 @@ import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it } from "vitest";
+
+import { ServerRepository } from "../src/db/repository.js";
+import * as schema from "../src/db/schema.js";
 
 const migrationsDirectory = fileURLToPath(
   new URL("../drizzle", import.meta.url),
@@ -84,13 +88,13 @@ describe("workflow domain migration", () => {
 
         INSERT INTO workflow_runs (
           id, workflow_id, workflow_revision_id, owner_id, project_id, status,
-          trigger_type, idempotency_key, structured_input, budget,
+          trigger_type, trigger_provenance, idempotency_key, structured_input, budget,
           permission_manifest, worker_id, worktree_id, recovery_state
         ) VALUES (
           'run-1', 'workflow-1', 'revision-1', 'user-1', 'project-1', 'running',
-          'manual', 'launch-1', '{"target":"src"}'::jsonb,
-          '{"maxTokens":20000,"maxSeconds":600}'::jsonb,
-          '{"filesystem":"read"}'::jsonb, 'worker-1', 'worktree-1', 'stable'
+          'manual', '{"actorType":"user","actorId":"user-1","deliveredAt":"2026-08-08T17:00:00.000Z","metadata":{}}'::jsonb,
+          'launch-1', '{"target":"src"}'::jsonb, '{}'::jsonb,
+          '{"filesystem":"read-only"}'::jsonb, 'worker-1', 'worktree-1', 'stable'
         );
 
         INSERT INTO workflow_run_nodes (
@@ -146,6 +150,16 @@ describe("workflow domain migration", () => {
           'worktree-1', 'inspect'
         );
 
+        INSERT INTO workflow_worktree_leases (
+          id, run_id, run_node_id, project_source_id, worker_id,
+          requested_worktree_id, worktree_id, lease_key, state, branch_name,
+          base_revision, starting_revision, activated_at
+        ) VALUES (
+          'workflow-lease-1', 'run-1', 'run-node-1', 'source-1', 'worker-1',
+          'requested-worktree-1', 'worktree-1', 'lease-1', 'active',
+          'cantrip/workflow/run-1/inspect', 'main', 'abc123', now()
+        );
+
         INSERT INTO workflow_run_events (
           run_id, run_node_id, attempt_id, sequence, event_key, type, payload,
           actor_type, actor_id
@@ -160,7 +174,7 @@ describe("workflow domain migration", () => {
         ) VALUES (
           'gate-1', 'run-1', 'run-node-2', 'verify-release',
           'Approve the verification stage?', 'workflow-node', 'run-node-2',
-          '{"filesystem":"read"}'::jsonb
+          '{"filesystem":"read-only"}'::jsonb
         );
       `);
 
@@ -176,6 +190,7 @@ describe("workflow domain migration", () => {
         revisions: number;
         run_worktree_id: string | null;
         unit_key: string;
+        worktree_leases: number;
       }>(`
         SELECT
           (SELECT count(*)::int FROM workflow_revisions WHERE workflow_id = 'workflow-1') AS revisions,
@@ -187,6 +202,7 @@ describe("workflow domain migration", () => {
           (SELECT execution_unit_key FROM workflow_node_attempts WHERE id = 'attempt-item-1') AS unit_key,
           (SELECT count(*)::int FROM workflow_run_events WHERE run_id = 'run-1') AS events,
           (SELECT count(*)::int FROM workflow_approval_gates WHERE run_id = 'run-1') AS gates,
+          (SELECT count(*)::int FROM workflow_worktree_leases WHERE run_id = 'run-1') AS worktree_leases,
           (SELECT recovery_state FROM workflow_runs WHERE id = 'run-1') AS recovery_state,
           (SELECT worktree_id FROM workflow_runs WHERE id = 'run-1') AS run_worktree_id
       `);
@@ -203,8 +219,42 @@ describe("workflow domain migration", () => {
           revisions: 1,
           run_worktree_id: "worktree-1",
           unit_key: "inspect",
+          worktree_leases: 1,
         },
       ]);
+
+      const repository = new ServerRepository(drizzle(database, { schema }));
+      expect(
+        (await repository.workflowRuns.getRun("user-1", "run-1"))
+          ?.worktreeLeases,
+      ).toEqual([
+        expect.objectContaining({
+          id: "workflow-lease-1",
+          requestedWorktreeId: "requested-worktree-1",
+          startingRevision: "abc123",
+          state: "active",
+          worktreeId: "worktree-1",
+        }),
+      ]);
+      expect(
+        await repository.getWorktreeRemovalBlockers(
+          "user-1",
+          "project-1",
+          "worktree-1",
+        ),
+      ).toMatchObject({ workflowLeaseIds: ["workflow-lease-1"] });
+      await database.exec(`
+        UPDATE workflow_worktree_leases
+        SET state = 'released', released_at = now()
+        WHERE id = 'workflow-lease-1';
+      `);
+      expect(
+        await repository.getWorktreeRemovalBlockers(
+          "user-1",
+          "project-1",
+          "worktree-1",
+        ),
+      ).toMatchObject({ workflowLeaseIds: [] });
     } finally {
       await database.close();
     }
@@ -271,6 +321,34 @@ describe("workflow domain migration", () => {
             'invalid-personal', 'user-guard', 'project-guard', 'personal',
             'invalid', 'Invalid personal workflow'
           );
+        `),
+      ).rejects.toThrow();
+
+      await database.exec(`
+        INSERT INTO workflow_worktree_leases (
+          id, run_id, run_node_id, requested_worktree_id, lease_key, state
+        ) VALUES (
+          'lease-guard', 'run-guard', 'run-node-guard',
+          'requested-worktree-guard', 'lease-guard', 'allocating'
+        );
+      `);
+
+      await expect(
+        database.exec(`
+          INSERT INTO workflow_worktree_leases (
+            id, run_id, run_node_id, requested_worktree_id, lease_key, state
+          ) VALUES (
+            'duplicate-active-node-lease', 'run-guard', 'run-node-guard',
+            'requested-worktree-duplicate', 'lease-duplicate', 'active'
+          );
+        `),
+      ).rejects.toThrow();
+
+      await expect(
+        database.exec(`
+          UPDATE workflow_worktree_leases
+          SET state = 'invented'
+          WHERE id = 'lease-guard';
         `),
       ).rejects.toThrow();
 

@@ -26,6 +26,7 @@ import {
   workflowRunNodeSchema,
   workflowRunSchema,
   workflowVerifyNodeConfigurationSchema,
+  workflowWorktreeLeaseSchema,
   type WorkflowPermissionRequirements,
   type WorkflowAgentNodeConfiguration,
   type WorkflowBudget,
@@ -737,68 +738,74 @@ export class WorkflowRunRepository {
   ): Promise<WorkflowRunDetail | null> {
     const run = await this.runRow(ownerId, runId);
     if (!run) return null;
-    const [nodes, items, dependencies, attempts, gates] = await Promise.all([
-      this.database
-        .select({ node: schema.workflowRunNodes })
-        .from(schema.workflowRunNodes)
-        .innerJoin(
-          schema.workflowRevisionNodes,
-          eq(
-            schema.workflowRevisionNodes.id,
-            schema.workflowRunNodes.revisionNodeId,
-          ),
-        )
-        .where(eq(schema.workflowRunNodes.runId, runId))
-        .orderBy(asc(schema.workflowRevisionNodes.position)),
-      this.database
-        .select({ item: schema.workflowRunNodeItems })
-        .from(schema.workflowRunNodeItems)
-        .innerJoin(
-          schema.workflowRunNodes,
-          and(
+    const [nodes, items, dependencies, attempts, worktreeLeases, gates] =
+      await Promise.all([
+        this.database
+          .select({ node: schema.workflowRunNodes })
+          .from(schema.workflowRunNodes)
+          .innerJoin(
+            schema.workflowRevisionNodes,
             eq(
-              schema.workflowRunNodes.id,
-              schema.workflowRunNodeItems.runNodeId,
+              schema.workflowRevisionNodes.id,
+              schema.workflowRunNodes.revisionNodeId,
             ),
-            eq(schema.workflowRunNodes.runId, runId),
-          ),
-        )
-        .innerJoin(
-          schema.workflowRevisionNodes,
-          eq(
-            schema.workflowRevisionNodes.id,
-            schema.workflowRunNodes.revisionNodeId,
-          ),
-        )
-        .orderBy(
-          asc(schema.workflowRevisionNodes.position),
-          asc(schema.workflowRunNodeItems.position),
-        ),
-      this.database
-        .select()
-        .from(schema.workflowRunNodeDependencies)
-        .where(eq(schema.workflowRunNodeDependencies.runId, runId))
-        .orderBy(asc(schema.workflowRunNodeDependencies.createdAt)),
-      this.database
-        .select({ attempt: schema.workflowNodeAttempts })
-        .from(schema.workflowNodeAttempts)
-        .innerJoin(
-          schema.workflowRunNodes,
-          and(
+          )
+          .where(eq(schema.workflowRunNodes.runId, runId))
+          .orderBy(asc(schema.workflowRevisionNodes.position)),
+        this.database
+          .select({ item: schema.workflowRunNodeItems })
+          .from(schema.workflowRunNodeItems)
+          .innerJoin(
+            schema.workflowRunNodes,
+            and(
+              eq(
+                schema.workflowRunNodes.id,
+                schema.workflowRunNodeItems.runNodeId,
+              ),
+              eq(schema.workflowRunNodes.runId, runId),
+            ),
+          )
+          .innerJoin(
+            schema.workflowRevisionNodes,
             eq(
-              schema.workflowRunNodes.id,
-              schema.workflowNodeAttempts.runNodeId,
+              schema.workflowRevisionNodes.id,
+              schema.workflowRunNodes.revisionNodeId,
             ),
-            eq(schema.workflowRunNodes.runId, runId),
+          )
+          .orderBy(
+            asc(schema.workflowRevisionNodes.position),
+            asc(schema.workflowRunNodeItems.position),
           ),
-        )
-        .orderBy(asc(schema.workflowNodeAttempts.createdAt)),
-      this.database
-        .select()
-        .from(schema.workflowApprovalGates)
-        .where(eq(schema.workflowApprovalGates.runId, runId))
-        .orderBy(asc(schema.workflowApprovalGates.createdAt)),
-    ]);
+        this.database
+          .select()
+          .from(schema.workflowRunNodeDependencies)
+          .where(eq(schema.workflowRunNodeDependencies.runId, runId))
+          .orderBy(asc(schema.workflowRunNodeDependencies.createdAt)),
+        this.database
+          .select({ attempt: schema.workflowNodeAttempts })
+          .from(schema.workflowNodeAttempts)
+          .innerJoin(
+            schema.workflowRunNodes,
+            and(
+              eq(
+                schema.workflowRunNodes.id,
+                schema.workflowNodeAttempts.runNodeId,
+              ),
+              eq(schema.workflowRunNodes.runId, runId),
+            ),
+          )
+          .orderBy(asc(schema.workflowNodeAttempts.createdAt)),
+        this.database
+          .select()
+          .from(schema.workflowWorktreeLeases)
+          .where(eq(schema.workflowWorktreeLeases.runId, runId))
+          .orderBy(asc(schema.workflowWorktreeLeases.createdAt)),
+        this.database
+          .select()
+          .from(schema.workflowApprovalGates)
+          .where(eq(schema.workflowApprovalGates.runId, runId))
+          .orderBy(asc(schema.workflowApprovalGates.createdAt)),
+      ]);
     return workflowRunDetailSchema.parse({
       run: toRun(run),
       nodes: nodes.map(({ node }) =>
@@ -862,6 +869,16 @@ export class WorkflowRunRepository {
           completedAt: nullableISOString(attempt.completedAt),
           createdAt: toISOString(attempt.createdAt),
           updatedAt: toISOString(attempt.updatedAt),
+        }),
+      ),
+      worktreeLeases: worktreeLeases.map((lease) =>
+        workflowWorktreeLeaseSchema.parse({
+          ...lease,
+          activatedAt: nullableISOString(lease.activatedAt),
+          checkpointedAt: nullableISOString(lease.checkpointedAt),
+          releasedAt: nullableISOString(lease.releasedAt),
+          createdAt: toISOString(lease.createdAt),
+          updatedAt: toISOString(lease.updatedAt),
         }),
       ),
       gates: gates.map((gate) =>

@@ -31,6 +31,7 @@ import {
   workflowRunNodeItemExecutionStateSchema,
   workflowRunStatusUpdateSchema,
   workflowVerifyNodeConfigurationSchema,
+  workflowWorktreeLeaseSchema,
 } from "../src/workflows.js";
 
 const timestamp = "2026-08-08T17:00:00.000Z";
@@ -839,6 +840,31 @@ describe("workflow protocol", () => {
       createdAt: timestamp,
       updatedAt: timestamp,
     };
+    const worktreeLease = workflowWorktreeLeaseSchema.parse({
+      id: "workflow-lease-1",
+      runId: "run-1",
+      runNodeId: "run-node-1",
+      runNodeItemId: null,
+      projectSourceId: "source-1",
+      workerId: "worker-1",
+      requestedWorktreeId: "worktree-request-1",
+      worktreeId: null,
+      leaseKey: "workflow-lease-key-1",
+      state: "allocating",
+      branchName: "cantrip/workflow/run-1/inspect",
+      baseRevision: "main",
+      startingRevision: null,
+      endingRevision: null,
+      worktreeDirty: null,
+      producedChanges: {},
+      errorCode: null,
+      errorMessage: null,
+      activatedAt: null,
+      checkpointedAt: null,
+      releasedAt: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
 
     expect(
       workflowRunDetailSchema.parse({
@@ -847,12 +873,16 @@ describe("workflow protocol", () => {
         items: [item],
         dependencies: [],
         attempts: [],
+        worktreeLeases: [worktreeLease],
         gates: [],
       }),
     ).toMatchObject({
       run: { status: "queued", recoveryState: "stable" },
       nodes: [{ status: "ready", writeCapable: false }],
       items: [{ itemKey: "alpha", position: 0, status: "ready" }],
+      worktreeLeases: [
+        { requestedWorktreeId: "worktree-request-1", state: "allocating" },
+      ],
     });
   });
 });
