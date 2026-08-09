@@ -221,6 +221,7 @@ import {
   type DesktopPopoutTarget,
 } from "@/lib/desktop-popout";
 import { browserUpdateForPageState } from "@/lib/browser-page-state";
+import { selectDefaultProjectTab } from "@/lib/default-project-tab";
 import { cn } from "@/lib/utils";
 
 function modelDisplayName(model: ModelProfileSummary): string {
@@ -3378,44 +3379,14 @@ export function App() {
       return;
     if (projectViews.data.some((view) => view.id === selectedProjectViewId))
       return;
-    const first = [
-      ...chats.data.map((chat) => ({
-        id: chat.id,
-        kind: "chat",
-        position: chat.position,
-      })),
-      ...terminals.data.flatMap((terminal) =>
-        terminal.linkedChatId
-          ? []
-          : [
-              {
-                id: terminal.id,
-                kind: "terminal",
-                position: terminal.position,
-              },
-            ],
-      ),
-      ...explorers.data.map((explorer) => ({
-        id: explorer.id,
-        kind: "explorer",
-        position: explorer.position,
-      })),
-      ...browsers.data.map((browser) => ({
-        id: browser.id,
-        kind: "browser",
-        position: browser.position,
-      })),
-      ...codeTabs.data.map((codeTab) => ({
-        id: codeTab.id,
-        kind: "code",
-        position: codeTab.position,
-      })),
-      ...projectViews.data.map((view) => ({
-        id: view.id,
-        kind: "view",
-        position: view.position,
-      })),
-    ].sort((left, right) => left.position - right.position)[0];
+    const first = selectDefaultProjectTab({
+      browsers: browsers.data,
+      chats: chats.data,
+      codeTabs: codeTabs.data,
+      explorers: explorers.data,
+      projectViews: projectViews.data,
+      terminals: terminals.data,
+    });
     setSelectedChatId(first?.kind === "chat" ? first.id : null);
     setSelectedTerminalId(first?.kind === "terminal" ? first.id : null);
     setSelectedExplorerId(first?.kind === "explorer" ? first.id : null);
