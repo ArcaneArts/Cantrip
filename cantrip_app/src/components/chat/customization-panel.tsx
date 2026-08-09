@@ -55,6 +55,7 @@ import {
   setChatSkillRoots,
   startChatMcpOauth,
 } from "@/lib/api";
+import { useAppLiveStatus } from "@/lib/app-live-react";
 import { cn } from "@/lib/utils";
 
 const RESOURCE_PREVIEW_LIMIT = 20_000;
@@ -890,7 +891,9 @@ export function CustomizationPanel({
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
-  const inventoryKey = ["chat-customizations", chatId] as const;
+  const liveStatus = useAppLiveStatus();
+  const customizationResourcesLive = liveStatus === "live";
+  const inventoryKey = ["chat-customizations", chatId, "inventory"] as const;
   const [oauthServer, setOauthServer] = useState<string | null>(null);
   const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
   const [importId, setImportId] = useState<string | null>(null);
@@ -941,6 +944,10 @@ export function CustomizationPanel({
       applyChatExternalImport(chatId, { itemIds }),
     onSuccess: (status) => {
       setSelectedImportIds(new Set());
+      queryClient.setQueryData<CodexExternalImportStatus>(
+        ["chat-customizations", chatId, "external-import", status.importId],
+        status,
+      );
       setImportId(status.importId);
     },
   });
@@ -963,6 +970,10 @@ export function CustomizationPanel({
         queryKey: ["chat-customizations", chatId, "mcp-oauth", result.server],
         exact: true,
       });
+      queryClient.setQueryData<CodexMcpOauthStatus>(
+        ["chat-customizations", chatId, "mcp-oauth", result.server],
+        { server: result.server, status: "pending", error: null },
+      );
       setOauthServer(result.server);
       setAuthorizationUrl(result.authorizationUrl);
       await openAuthorizationUrl(result.authorizationUrl);
@@ -973,17 +984,21 @@ export function CustomizationPanel({
     queryKey: ["chat-customizations", chatId, "mcp-oauth", oauthServer],
     queryFn: () => getChatMcpOauthStatus(chatId, oauthServer!),
     enabled: open && oauthServer !== null,
-    refetchInterval: (query) =>
-      query.state.data?.status === "pending" ? 1_000 : false,
+    refetchInterval: customizationResourcesLive
+      ? false
+      : (query) => (query.state.data?.status === "pending" ? 1_000 : false),
     refetchOnWindowFocus: false,
+    staleTime: customizationResourcesLive ? Infinity : 0,
   });
   const externalImportStatus = useQuery({
     queryKey: ["chat-customizations", chatId, "external-import", importId],
     queryFn: () => getChatExternalImportStatus(chatId, importId!),
     enabled: open && importId !== null,
-    refetchInterval: (query) =>
-      query.state.data?.status === "pending" ? 1_000 : false,
+    refetchInterval: customizationResourcesLive
+      ? false
+      : (query) => (query.state.data?.status === "pending" ? 1_000 : false),
     refetchOnWindowFocus: false,
+    staleTime: customizationResourcesLive ? Infinity : 0,
   });
   const oauthInProgress =
     mcpOauth.isPending ||

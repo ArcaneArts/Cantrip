@@ -174,6 +174,8 @@ import type {
   ChatMessage,
   ChatTurnCreate,
   CodeRuntimeStatus,
+  CodexExternalImportStatus,
+  CodexMcpOauthStatus,
   WorkerSummary,
 } from "@cantrip/protocol";
 import type {
@@ -303,6 +305,10 @@ const GOAL_RESUME_PROMPT =
   "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
 const WORKFLOW_GENERATION_TIMEOUT_MS = 2 * 60 * 1_000;
 const WORKFLOW_SCHEDULE_POLL_MS = 1_000;
+const CUSTOMIZATION_STATUS_OBSERVE_INTERVAL_MS = 1_000;
+const CUSTOMIZATION_STATUS_OBSERVE_RETRY_MAX_MS = 10_000;
+const CUSTOMIZATION_STATUS_OBSERVER_LIMIT = 128;
+const CUSTOMIZATION_STATUS_OBSERVE_TIMEOUT_MS = 15 * 60 * 1_000;
 type ChatLiveResource = Extract<
   AppLiveResource,
   | "agent-interaction"
@@ -311,6 +317,7 @@ type ChatLiveResource = Extract<
   | "chat-message"
   | "chat-plan"
   | "chat-queue"
+  | "customization"
 >;
 
 function mutationLiveResources(route: string): AppLiveResource[] {
@@ -428,6 +435,13 @@ export async function buildApp({
   const repository = database.repository;
   const liveHub = new AppLiveHub();
   let livePublishingEnabled = true;
+  const customizationStatusObservers = new Map<
+    string,
+    {
+      cancelled: boolean;
+      timer: ReturnType<typeof setTimeout> | null;
+    }
+  >();
   const publishLiveInvalidation = (
     resource: AppLiveResource,
     input: {
@@ -454,6 +468,18 @@ export async function buildApp({
       );
     }
   };
+  const publishWorkflowDefinitionChange = (workflowId: string): void => {
+    publishLiveInvalidation("workflow-definition", { entityId: workflowId });
+  };
+  const publishWorkflowTriggerChange = (
+    triggerId: string,
+    projectId: string,
+  ): void => {
+    publishLiveInvalidation("workflow-trigger", {
+      entityId: triggerId,
+      projectId,
+    });
+  };
   const publishChatInvalidation = (
     chatId: string,
     resource: ChatLiveResource,
@@ -475,6 +501,209 @@ export async function buildApp({
         "Could not publish chat live invalidation",
       );
     }
+  };
+  const publishCustomizationStatus = (
+    chatId: string,
+    entityId: "external-import" | "mcp-oauth",
+    status: CodexExternalImportStatus | CodexMcpOauthStatus,
+  ): void => {
+    if (!livePublishingEnabled) return;
+    try {
+      liveHub.publish({
+        scope: { kind: "chat", chatId },
+        resource: "customization",
+        action: "updated",
+        entityId,
+        revision: null,
+        payload: appLiveEventPayloadSchema.parse(status),
+      });
+    } catch (error) {
+      app.log.error(
+        { chatId, entityId, err: error },
+        "Could not publish customization status",
+      );
+    }
+  };
+  const observeCustomizationStatus = <
+    Status extends CodexExternalImportStatus | CodexMcpOauthStatus,
+  >(input: {
+    chatId: string;
+    entityId: "external-import" | "mcp-oauth";
+    expired(status: Status): Status;
+    initial: Status;
+    key: string;
+    pending(status: Status): boolean;
+    read(): Promise<Status>;
+  }): void => {
+    const existing = customizationStatusObservers.get(input.key);
+    if (existing) {
+      existing.cancelled = true;
+      if (existing.timer) clearTimeout(existing.timer);
+      customizationStatusObservers.delete(input.key);
+    }
+    let current = input.initial;
+    let fingerprint = JSON.stringify(current);
+    publishCustomizationStatus(input.chatId, input.entityId, input.initial);
+    if (!input.pending(input.initial)) {
+      publishChatInvalidation(input.chatId, "customization");
+      return;
+    }
+    if (
+      customizationStatusObservers.size >= CUSTOMIZATION_STATUS_OBSERVER_LIMIT
+    ) {
+      const oldestKey = customizationStatusObservers.keys().next().value;
+      if (oldestKey !== undefined) {
+        const oldest = customizationStatusObservers.get(oldestKey);
+        if (oldest) {
+          oldest.cancelled = true;
+          if (oldest.timer) clearTimeout(oldest.timer);
+        }
+        customizationStatusObservers.delete(oldestKey);
+      }
+    }
+    const observer: {
+      cancelled: boolean;
+      timer: ReturnType<typeof setTimeout> | null;
+    } = { cancelled: false, timer: null };
+    customizationStatusObservers.set(input.key, observer);
+    const deadline = Date.now() + CUSTOMIZATION_STATUS_OBSERVE_TIMEOUT_MS;
+    let retryDelay = CUSTOMIZATION_STATUS_OBSERVE_INTERVAL_MS;
+    const schedule = (
+      delay = CUSTOMIZATION_STATUS_OBSERVE_INTERVAL_MS,
+    ): void => {
+      observer.timer = setTimeout(() => {
+        observer.timer = null;
+        if (
+          observer.cancelled ||
+          !livePublishingEnabled ||
+          customizationStatusObservers.get(input.key) !== observer
+        ) {
+          return;
+        }
+        void input
+          .read()
+          .then((status) => {
+            if (
+              observer.cancelled ||
+              !livePublishingEnabled ||
+              customizationStatusObservers.get(input.key) !== observer
+            ) {
+              return;
+            }
+            current = status;
+            const nextFingerprint = JSON.stringify(status);
+            retryDelay = CUSTOMIZATION_STATUS_OBSERVE_INTERVAL_MS;
+            if (nextFingerprint !== fingerprint) {
+              fingerprint = nextFingerprint;
+              publishCustomizationStatus(input.chatId, input.entityId, status);
+            }
+            if (input.pending(status) && Date.now() < deadline) {
+              schedule();
+            } else {
+              customizationStatusObservers.delete(input.key);
+              if (input.pending(status)) {
+                publishCustomizationStatus(
+                  input.chatId,
+                  input.entityId,
+                  input.expired(status),
+                );
+              }
+              publishChatInvalidation(input.chatId, "customization");
+            }
+          })
+          .catch((error) => {
+            if (
+              observer.cancelled ||
+              !livePublishingEnabled ||
+              customizationStatusObservers.get(input.key) !== observer
+            ) {
+              return;
+            }
+            if (Date.now() < deadline) {
+              retryDelay = Math.min(
+                retryDelay * 2,
+                CUSTOMIZATION_STATUS_OBSERVE_RETRY_MAX_MS,
+              );
+              schedule(retryDelay);
+              return;
+            }
+            customizationStatusObservers.delete(input.key);
+            publishCustomizationStatus(
+              input.chatId,
+              input.entityId,
+              input.expired(current),
+            );
+            app.log.warn(
+              { chatId: input.chatId, err: error },
+              "Customization status observation expired",
+            );
+          });
+      }, delay);
+      observer.timer.unref();
+    };
+    schedule();
+  };
+  const readMcpOauthStatus = async (
+    context: ChatExecutionContext,
+    runtime: ModelRuntime,
+    server: string,
+  ): Promise<CodexMcpOauthStatus> =>
+    codexMcpOauthStatusSchema.parse(
+      await bridge.request(context.workerId, {
+        type: "customization.mcp.oauth.status",
+        cwd: context.cwd,
+        server,
+        model: runtime.model,
+        provider: runtime.provider,
+      }),
+    );
+  const observeMcpOauthStatus = (
+    context: ChatExecutionContext,
+    runtime: ModelRuntime,
+    initial: CodexMcpOauthStatus,
+  ): void => {
+    observeCustomizationStatus({
+      chatId: context.chatId,
+      entityId: "mcp-oauth",
+      expired: (status) => ({
+        ...status,
+        status: "unknown",
+        error: "Cantrip stopped observing this authorization after 15 minutes.",
+      }),
+      initial,
+      key: `${context.chatId}:mcp-oauth:${initial.server}`,
+      pending: (status) => status.status === "pending",
+      read: () => readMcpOauthStatus(context, runtime, initial.server),
+    });
+  };
+  const readExternalImportStatus = async (
+    context: ChatExecutionContext,
+    runtime: ModelRuntime,
+    importId: string,
+  ): Promise<CodexExternalImportStatus> =>
+    codexExternalImportStatusSchema.parse(
+      await bridge.request(context.workerId, {
+        type: "customization.external.status",
+        cwd: context.cwd,
+        importId,
+        model: runtime.model,
+        provider: runtime.provider,
+      }),
+    );
+  const observeExternalImportStatus = (
+    context: ChatExecutionContext,
+    runtime: ModelRuntime,
+    initial: CodexExternalImportStatus,
+  ): void => {
+    observeCustomizationStatus({
+      chatId: context.chatId,
+      entityId: "external-import",
+      expired: (status) => ({ ...status, status: "unknown" }),
+      initial,
+      key: `${context.chatId}:external-import:${initial.importId}`,
+      pending: (status) => status.status === "pending",
+      read: () => readExternalImportStatus(context, runtime, initial.importId),
+    });
   };
   const publishChatMessage = (message: ChatMessage): void => {
     if (!livePublishingEnabled) return;
@@ -868,6 +1097,22 @@ export async function buildApp({
     publishLiveInvalidation("code-tab");
     return result;
   };
+  const advanceLiveWorkflowSchedule = async (
+    triggerId: string,
+    projectId: string,
+    expected: Date,
+    next: Date,
+    lastError: string | null = null,
+  ): Promise<boolean> => {
+    const advanced = await repository.workflowTriggers.advanceSchedule(
+      triggerId,
+      expected,
+      next,
+      lastError,
+    );
+    if (advanced) publishWorkflowTriggerChange(triggerId, projectId);
+    return advanced;
+  };
 
   const deliverWorkflowTrigger = async ({
     actorId,
@@ -987,6 +1232,7 @@ export async function buildApp({
         triggerId,
         runResult.run.run.id,
       );
+      publishWorkflowTriggerChange(triggerId, context.trigger.projectId);
       publishWorkflowRunChange({
         projectId: runResult.run.run.projectId,
         resource: "workflow-run",
@@ -1006,6 +1252,7 @@ export async function buildApp({
         "workflow-trigger-delivery-failed",
         errorMessage(error),
       );
+      publishWorkflowTriggerChange(triggerId, context.trigger.projectId);
       throw error;
     }
   };
@@ -1029,8 +1276,9 @@ export async function buildApp({
           candidate.trigger.configuration.catchUpPolicy === "skip" &&
           now.getTime() - expected.getTime() > intervalMs
         ) {
-          await repository.workflowTriggers.advanceSchedule(
+          await advanceLiveWorkflowSchedule(
             candidate.trigger.id,
+            candidate.trigger.projectId,
             expected,
             new Date(now.getTime() + intervalMs),
             "Skipped an overdue scheduled delivery by policy.",
@@ -1045,8 +1293,9 @@ export async function buildApp({
           candidate.trigger.configuration.offlinePolicy === "pause" &&
           (!source || !bridge.isConnected(source.workerId))
         ) {
-          await repository.workflowTriggers.advanceSchedule(
+          await advanceLiveWorkflowSchedule(
             candidate.trigger.id,
+            candidate.trigger.projectId,
             expected,
             new Date(now.getTime() + Math.min(intervalMs, 30_000)),
             "Project worker is offline; scheduled delivery is paused.",
@@ -1065,8 +1314,9 @@ export async function buildApp({
             structuredInput: {},
             triggerId: candidate.trigger.id,
           });
-          await repository.workflowTriggers.advanceSchedule(
+          await advanceLiveWorkflowSchedule(
             candidate.trigger.id,
+            candidate.trigger.projectId,
             expected,
             new Date(Date.now() + intervalMs),
           );
@@ -1075,8 +1325,9 @@ export async function buildApp({
             { err: error, workflowTriggerId: candidate.trigger.id },
             "Scheduled workflow delivery failed",
           );
-          await repository.workflowTriggers.advanceSchedule(
+          await advanceLiveWorkflowSchedule(
             candidate.trigger.id,
+            candidate.trigger.projectId,
             expected,
             new Date(Date.now() + Math.min(intervalMs, 30_000)),
             errorMessage(error),
@@ -2940,6 +3191,9 @@ export async function buildApp({
         LOCAL_USER_ID,
         input.data,
       );
+      if (trigger) {
+        publishWorkflowTriggerChange(trigger.id, trigger.projectId);
+      }
       return trigger
         ? reply.code(201).send(workflowAutomationTriggerSchema.parse(trigger))
         : reply
@@ -2968,6 +3222,9 @@ export async function buildApp({
           request.params.triggerId,
           input.data,
         );
+        if (trigger) {
+          publishWorkflowTriggerChange(trigger.id, trigger.projectId);
+        }
         return trigger
           ? reply.send(workflowAutomationTriggerSchema.parse(trigger))
           : reply.code(404).send({ error: "Workflow trigger not found." });
@@ -3427,6 +3684,9 @@ export async function buildApp({
           LOCAL_USER_ID,
           definition,
         );
+        if (created) {
+          publishWorkflowDefinitionChange(created.workflow.id);
+        }
         return created
           ? reply.code(201).send(workflowDefinitionDetailSchema.parse(created))
           : reply.code(404).send({ error: "Project not found." });
@@ -3450,6 +3710,9 @@ export async function buildApp({
         LOCAL_USER_ID,
         input.data,
       );
+      if (workflow) {
+        publishWorkflowDefinitionChange(workflow.workflow.id);
+      }
       return workflow
         ? reply.code(201).send(workflowDefinitionDetailSchema.parse(workflow))
         : reply.code(404).send({ error: "Project not found." });
@@ -3528,16 +3791,19 @@ export async function buildApp({
         sourceRevision: workflow.revision.contentHash,
       });
       try {
-        return reply.send(
-          workflowRepositoryWriteResultSchema.parse(
-            await bridge.request(source.workerId, {
-              type: "workflow.repository.write",
-              cwd: source.cwd,
-              document,
-              overwrite: input.data.overwrite,
-            }),
-          ),
+        const result = workflowRepositoryWriteResultSchema.parse(
+          await bridge.request(source.workerId, {
+            type: "workflow.repository.write",
+            cwd: source.cwd,
+            document,
+            overwrite: input.data.overwrite,
+          }),
         );
+        publishLiveInvalidation("workflow-definition", {
+          entityId: workflow.workflow.id,
+          projectId: workflow.workflow.projectId,
+        });
+        return reply.send(result);
       } catch (error) {
         const message = errorMessage(error);
         const status =
@@ -3563,6 +3829,9 @@ export async function buildApp({
         request.params.workflowId,
         input.data,
       );
+      if (workflow) {
+        publishWorkflowDefinitionChange(workflow.id);
+      }
       return workflow
         ? reply.send(workflowDefinitionSummarySchema.parse(workflow))
         : reply.code(404).send({ error: "Workflow not found." });
@@ -3595,6 +3864,9 @@ export async function buildApp({
           request.params.workflowId,
           input.data,
         );
+        if (revision) {
+          publishWorkflowDefinitionChange(revision.workflowId);
+        }
         return revision
           ? reply.send(workflowRevisionSchema.parse(revision))
           : reply.code(404).send({ error: "Workflow not found." });
@@ -3773,6 +4045,9 @@ export async function buildApp({
         run.run.workflowId,
         { trustState: input.data.trustState },
       );
+      if (savedWorkflow && savedRevision) {
+        publishWorkflowDefinitionChange(savedWorkflow.id);
+      }
       return savedWorkflow && savedRevision
         ? reply.send(
             workflowDefinitionDetailSchema.parse({
@@ -7525,7 +7800,9 @@ export async function buildApp({
           model: runtime.model,
           provider: runtime.provider,
         });
-        return reply.send(codexSkillConfigResultSchema.parse(result));
+        const configured = codexSkillConfigResultSchema.parse(result);
+        publishChatInvalidation(context.chatId, "customization");
+        return reply.send(configured);
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
         return reply.code(status).send({ error: errorMessage(error) });
@@ -7562,7 +7839,9 @@ export async function buildApp({
           model: runtime.model,
           provider: runtime.provider,
         });
-        return reply.send(codexSkillRootsResultSchema.parse(result));
+        const roots = codexSkillRootsResultSchema.parse(result);
+        publishChatInvalidation(context.chatId, "customization");
+        return reply.send(roots);
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
         return reply.code(status).send({ error: errorMessage(error) });
@@ -7592,14 +7871,22 @@ export async function buildApp({
             .code(409)
             .send({ error: "Choose a model before authorizing MCP servers." });
         }
-        const result = await bridge.request(context.workerId, {
-          type: "customization.mcp.oauth.start",
-          cwd: context.cwd,
-          server: input.data.server,
-          model: runtime.model,
-          provider: runtime.provider,
+        const result = codexMcpOauthStartResultSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "customization.mcp.oauth.start",
+            cwd: context.cwd,
+            server: input.data.server,
+            model: runtime.model,
+            provider: runtime.provider,
+          }),
+        );
+        const initial = codexMcpOauthStatusSchema.parse({
+          server: result.server,
+          status: result.status,
+          error: null,
         });
-        return reply.send(codexMcpOauthStartResultSchema.parse(result));
+        observeMcpOauthStatus(context, runtime, initial);
+        return reply.send(result);
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
         return reply.code(status).send({ error: errorMessage(error) });
@@ -7632,14 +7919,13 @@ export async function buildApp({
             .code(409)
             .send({ error: "Choose a model before checking MCP OAuth." });
         }
-        const result = await bridge.request(context.workerId, {
-          type: "customization.mcp.oauth.status",
-          cwd: context.cwd,
-          server: input.data.server,
-          model: runtime.model,
-          provider: runtime.provider,
-        });
-        return reply.send(codexMcpOauthStatusSchema.parse(result));
+        const status = await readMcpOauthStatus(
+          context,
+          runtime,
+          input.data.server,
+        );
+        observeMcpOauthStatus(context, runtime, status);
+        return reply.send(status);
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
         return reply.code(status).send({ error: errorMessage(error) });
@@ -7671,7 +7957,9 @@ export async function buildApp({
           model: runtime.model,
           provider: runtime.provider,
         });
-        return reply.send(codexMcpReloadResultSchema.parse(result));
+        const reloaded = codexMcpReloadResultSchema.parse(result);
+        publishChatInvalidation(context.chatId, "customization");
+        return reply.send(reloaded);
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
         return reply.code(status).send({ error: errorMessage(error) });
@@ -7701,16 +7989,17 @@ export async function buildApp({
             error: "Choose a model before importing external configuration.",
           });
         }
-        const result = await bridge.request(context.workerId, {
-          type: "customization.external.apply",
-          cwd: context.cwd,
-          itemIds: input.data.itemIds,
-          model: runtime.model,
-          provider: runtime.provider,
-        });
-        return reply
-          .code(202)
-          .send(codexExternalImportStatusSchema.parse(result));
+        const status = codexExternalImportStatusSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "customization.external.apply",
+            cwd: context.cwd,
+            itemIds: input.data.itemIds,
+            model: runtime.model,
+            provider: runtime.provider,
+          }),
+        );
+        observeExternalImportStatus(context, runtime, status);
+        return reply.code(202).send(status);
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
         return reply.code(status).send({ error: errorMessage(error) });
@@ -7745,14 +8034,13 @@ export async function buildApp({
             error: "Choose a model before checking an external import.",
           });
         }
-        const result = await bridge.request(context.workerId, {
-          type: "customization.external.status",
-          cwd: context.cwd,
-          importId: importId.data,
-          model: runtime.model,
-          provider: runtime.provider,
-        });
-        return reply.send(codexExternalImportStatusSchema.parse(result));
+        const status = await readExternalImportStatus(
+          context,
+          runtime,
+          importId.data,
+        );
+        observeExternalImportStatus(context, runtime, status);
+        return reply.send(status);
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
         return reply.code(status).send({ error: errorMessage(error) });
@@ -8565,6 +8853,11 @@ export async function buildApp({
     clearInterval(agentInteractionExpiryTimer);
     clearInterval(workflowGateExpiryTimer);
     clearInterval(workflowScheduleTimer);
+    for (const observer of customizationStatusObservers.values()) {
+      observer.cancelled = true;
+      if (observer.timer) clearTimeout(observer.timer);
+    }
+    customizationStatusObservers.clear();
     for (const timer of workerOfflineTimers.values()) clearTimeout(timer);
     workerOfflineTimers.clear();
     workflowExecutor.stop();

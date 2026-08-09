@@ -1,9 +1,15 @@
-import { chatMessageSchema } from "@cantrip/protocol";
+import {
+  chatMessageSchema,
+  codexExternalImportStatusSchema,
+  codexMcpOauthStatusSchema,
+} from "@cantrip/protocol";
 import type {
   AppLiveResyncReason,
   AppLiveScope,
   AppLiveServerMessage,
   ChatMessage,
+  CodexExternalImportStatus,
+  CodexMcpOauthStatus,
 } from "@cantrip/protocol";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 
@@ -102,9 +108,12 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
             : []),
       ];
     case "workflow-definition":
-      return event.entityId
-        ? [["workflows"], ["workflow", event.entityId]]
-        : [["workflows"]];
+      return projectId
+        ? [["workflow-repository", projectId]]
+        : [
+            ["workflows"],
+            ...(event.entityId ? [["workflow", event.entityId]] : []),
+          ];
     case "workflow-run":
     case "workflow-node":
     case "workflow-gate":
@@ -116,7 +125,10 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
       return projectId ? [["workflow-triggers", projectId]] : [];
     case "customization":
       return event.scope.kind === "chat"
-        ? [["chat-customizations", event.scope.chatId]]
+        ? [
+            ["chat-customizations", event.scope.chatId, "inventory"],
+            ["skills", event.scope.chatId],
+          ]
         : [["settings"]];
   }
 }
@@ -155,7 +167,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["agent-requests", scope.chatId],
         ["permission-profiles", scope.chatId],
         ["skills", scope.chatId],
-        ["chat-customizations", scope.chatId],
+        ["chat-customizations", scope.chatId, "inventory"],
       ];
     case "workflow-run":
       return [["workflow-run", scope.runId]];
@@ -173,8 +185,8 @@ export class AppLiveQueryBridge {
   readonly #pendingKeys = new Map<string, QueryKey>();
   readonly #queryClient: QueryClient;
   readonly #workflowRunSequences = new Map<string, number>();
+  #coalescedFlushTimer: ReturnType<typeof setTimeout> | null = null;
   #flushScheduled = false;
-  #workflowFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(queryClient: QueryClient) {
     this.#queryClient = queryClient;
@@ -183,18 +195,24 @@ export class AppLiveQueryBridge {
   handleEvent(event: AppLiveEvent): void {
     if (!this.#acceptWorkflowEvent(event)) return;
     if (this.#applyChatMessageEvent(event)) return;
+    if (this.#applyCustomizationStatusEvent(event)) return;
     for (const key of appLiveEventQueryKeys(event)) {
       this.#pendingKeys.set(JSON.stringify(key), key);
     }
     if (this.#pendingKeys.size === 0) return;
     if (
-      ["workflow-gate", "workflow-node", "workflow-run"].includes(
-        event.resource,
-      )
+      [
+        "customization",
+        "workflow-definition",
+        "workflow-gate",
+        "workflow-node",
+        "workflow-run",
+        "workflow-trigger",
+      ].includes(event.resource)
     ) {
-      if (this.#flushScheduled || this.#workflowFlushTimer) return;
-      this.#workflowFlushTimer = setTimeout(() => {
-        this.#workflowFlushTimer = null;
+      if (this.#flushScheduled || this.#coalescedFlushTimer) return;
+      this.#coalescedFlushTimer = setTimeout(() => {
+        this.#coalescedFlushTimer = null;
         void this.#flush();
       }, 100);
       return;
@@ -203,8 +221,8 @@ export class AppLiveQueryBridge {
     this.#flushScheduled = true;
     queueMicrotask(() => {
       this.#flushScheduled = false;
-      if (this.#workflowFlushTimer) clearTimeout(this.#workflowFlushTimer);
-      this.#workflowFlushTimer = null;
+      if (this.#coalescedFlushTimer) clearTimeout(this.#coalescedFlushTimer);
+      this.#coalescedFlushTimer = null;
       void this.#flush();
     });
   }
@@ -281,12 +299,52 @@ export class AppLiveQueryBridge {
     return true;
   }
 
+  #applyCustomizationStatusEvent(event: AppLiveEvent): boolean {
+    if (
+      event.resource !== "customization" ||
+      event.action !== "updated" ||
+      event.scope.kind !== "chat" ||
+      !event.payload
+    ) {
+      return false;
+    }
+    if (event.entityId === "mcp-oauth") {
+      const parsed = codexMcpOauthStatusSchema.safeParse(event.payload);
+      if (!parsed.success) return false;
+      this.#queryClient.setQueryData<CodexMcpOauthStatus>(
+        [
+          "chat-customizations",
+          event.scope.chatId,
+          "mcp-oauth",
+          parsed.data.server,
+        ],
+        parsed.data,
+      );
+      return true;
+    }
+    if (event.entityId === "external-import") {
+      const parsed = codexExternalImportStatusSchema.safeParse(event.payload);
+      if (!parsed.success) return false;
+      this.#queryClient.setQueryData<CodexExternalImportStatus>(
+        [
+          "chat-customizations",
+          event.scope.chatId,
+          "external-import",
+          parsed.data.importId,
+        ],
+        parsed.data,
+      );
+      return true;
+    }
+    return false;
+  }
+
   async recoverScopes(
     scopes: AppLiveScope[],
     _reason: AppLiveResyncReason,
   ): Promise<void> {
-    if (this.#workflowFlushTimer) clearTimeout(this.#workflowFlushTimer);
-    this.#workflowFlushTimer = null;
+    if (this.#coalescedFlushTimer) clearTimeout(this.#coalescedFlushTimer);
+    this.#coalescedFlushTimer = null;
     await this.#flush();
     for (const scope of scopes) {
       if (scope.kind !== "chat") continue;
