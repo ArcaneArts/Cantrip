@@ -4,7 +4,6 @@ import type {
   CodeRuntimeStatus,
   CodeTabStatus,
   CodeTabSummary,
-  CodeThemeMode,
 } from "@cantrip/protocol";
 import { AlertTriangle, Code2, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -28,11 +27,9 @@ export interface CodeHeaderState {
   isBusy: boolean;
   runtime: CodeRuntimeStatus | null;
   status: CodeTabStatus | CodeRuntimeStatus["status"];
-  themeMode: CodeThemeMode;
   reload(): void;
   restart(): Promise<void>;
   saveAll(): Promise<void>;
-  setThemeMode(themeMode: CodeThemeMode): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -170,9 +167,8 @@ export function CodeView({
   }, [attachment, reload]);
 
   useEffect(() => {
-    if (codeTab.themeMode !== "follow-cantrip") return;
     let cancelled = false;
-    void setCodeTabTheme(codeTab.id, codeTab.themeMode, appearance)
+    void setCodeTabTheme(codeTab.id, "follow-cantrip", appearance)
       .then(() => {
         if (!cancelled) onChangedRef.current?.();
       })
@@ -182,7 +178,7 @@ export function CodeView({
     return () => {
       cancelled = true;
     };
-  }, [appearance, codeTab.id, codeTab.themeMode]);
+  }, [appearance, codeTab.id]);
 
   const runAction = useCallback(
     async (name: string, action: () => Promise<void>) => {
@@ -245,14 +241,6 @@ export function CodeView({
     [codeTab.id, runAction],
   );
 
-  const setThemeMode = useCallback(
-    (themeMode: CodeThemeMode) =>
-      runAction("theme", async () => {
-        await setCodeTabTheme(codeTab.id, themeMode, appearanceRef.current);
-      }),
-    [codeTab.id, runAction],
-  );
-
   const header = useMemo<CodeHeaderState>(
     () => ({
       attachmentExpiresAt: attachment?.expiresAt ?? null,
@@ -265,11 +253,9 @@ export function CodeView({
       status:
         attachment?.runtime.status ??
         (stopped.current ? "stopped" : codeTab.status),
-      themeMode: codeTab.themeMode,
       reload,
       restart,
       saveAll,
-      setThemeMode,
       stop,
     }),
     [
@@ -277,14 +263,12 @@ export function CodeView({
       attachment,
       busyAction,
       codeTab.status,
-      codeTab.themeMode,
       connectError,
       connecting,
       reload,
       restart,
       retrying,
       saveAll,
-      setThemeMode,
       stop,
     ],
   );

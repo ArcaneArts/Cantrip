@@ -1028,7 +1028,7 @@ describe.sequential("server worktree control plane", () => {
     );
     expect(renamedCodeTab).toMatchObject({
       title: "Review Code",
-      themeMode: "independent",
+      themeMode: "follow-cantrip",
     });
     const session = await database.repository.getOrCreateCodeSession(
       LOCAL_USER_ID,

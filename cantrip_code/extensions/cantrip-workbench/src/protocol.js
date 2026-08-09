@@ -1,6 +1,18 @@
 "use strict";
 
 const MAX_EXTERNAL_PATHS = 5_000;
+const THEME_NAMES = {
+  light: "Cantrip Light",
+  dark: "Cantrip Dark",
+  "high-contrast-light": "Cantrip High Contrast Light",
+  "high-contrast-dark": "Cantrip High Contrast Dark",
+};
+
+function themeNameForAppearance(appearance) {
+  return typeof appearance === "string"
+    ? (THEME_NAMES[appearance] ?? null)
+    : null;
+}
 
 function reconnectDelayMs(attempt) {
   return Math.min(15_000, 500 * 2 ** Math.max(0, attempt));
@@ -55,4 +67,9 @@ function safeRelativePaths(value) {
   return paths;
 }
 
-module.exports = { parseRequest, reconnectDelayMs, safeRelativePaths };
+module.exports = {
+  parseRequest,
+  reconnectDelayMs,
+  safeRelativePaths,
+  themeNameForAppearance,
+};

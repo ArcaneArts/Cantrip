@@ -27,7 +27,6 @@ import {
   codeAgentTurnNotificationResultSchema,
   codeAgentTurnPreparationResultSchema,
   codeAppearanceSchema,
-  codeThemeModeSchema,
 } from "@cantrip/protocol";
 
 import type { CantripCodeInstallation } from "./installation.js";
@@ -277,7 +276,11 @@ export class CodeSupervisor {
         }),
       ]);
       const bridgeToken = randomBytes(32).toString("hex");
-      const bridgeUrl = this.#bridge.register(command.sessionId, bridgeToken);
+      const bridgeUrl = this.#bridge.register(
+        command.sessionId,
+        bridgeToken,
+        command.appearance,
+      );
       const workspacePath = path.join(
         workspaceDirectory,
         `${stableKey(command.worktreeId)}-${sessionKey}.code-workspace`,
@@ -298,7 +301,7 @@ export class CodeSupervisor {
         sessionId: command.sessionId,
         startedAt: null,
         status: "starting",
-        themeMode: command.themeMode,
+        themeMode: "follow-cantrip",
         workspacePath,
         workspaceUri: pathToFileURL(workspacePath).href,
         worktreeId: command.worktreeId,
@@ -312,7 +315,7 @@ export class CodeSupervisor {
 
     const session = this.#sessions.get(command.sessionId)!;
     session.appearance = command.appearance;
-    session.themeMode = command.themeMode;
+    session.themeMode = "follow-cantrip";
     session.profileId = command.profileId;
     session.projectName = command.projectName ?? session.projectName;
     session.worktreeName = command.worktreeName ?? session.worktreeName;
@@ -320,6 +323,7 @@ export class CodeSupervisor {
     session.lastError = null;
     session.status = "starting";
     await this.#writeWorkspace(session);
+    await this.#bridge.setTheme(session.sessionId, session.appearance);
     try {
       const profile = this.#profiles.get(session.profileKey)!;
       await this.#ensureProfile(profile);
@@ -359,15 +363,15 @@ export class CodeSupervisor {
 
   async setTheme(
     sessionId: string,
-    themeMode: CodeThemeMode,
+    _themeMode: CodeThemeMode,
     appearance: CodeAppearance,
   ): Promise<CodeRuntimeStatus> {
     const session = this.#requireSession(sessionId);
-    session.themeMode = themeMode;
+    session.themeMode = "follow-cantrip";
     session.appearance = appearance;
     session.lastActivityAt = isoNow();
     await this.#writeWorkspace(session);
-    await this.#bridge.setTheme(sessionId, themeMode, appearance);
+    await this.#bridge.setTheme(sessionId, appearance);
     await this.#persistState();
     return this.#status(session);
   }
@@ -762,9 +766,7 @@ export class CodeSupervisor {
       "telemetry.telemetryLevel": "off",
       "update.mode": "none",
     };
-    if (session.themeMode === "follow-cantrip") {
-      settings["workbench.colorTheme"] = THEME_NAMES[session.appearance];
-    }
+    settings["workbench.colorTheme"] = THEME_NAMES[session.appearance];
     const workspace = {
       folders: [{ name: path.basename(session.cwd), path: session.cwd }],
       settings,
@@ -846,7 +848,6 @@ export class CodeSupervisor {
       if (typeof record !== "object" || record === null) continue;
       const candidate = record as Record<string, unknown>;
       const appearance = codeAppearanceSchema.safeParse(candidate.appearance);
-      const themeMode = codeThemeModeSchema.safeParse(candidate.themeMode);
       const requiredStrings = [
         "codeTabId",
         "cwd",
@@ -860,7 +861,6 @@ export class CodeSupervisor {
       ] as const;
       if (
         !appearance.success ||
-        !themeMode.success ||
         requiredStrings.some(
           (field) =>
             typeof candidate[field] !== "string" ||
@@ -901,7 +901,11 @@ export class CodeSupervisor {
         activeTunnelStreams: new Set(),
         appearance: appearance.data,
         bridgeToken,
-        bridgeUrl: this.#bridge.register(sessionId, bridgeToken),
+        bridgeUrl: this.#bridge.register(
+          sessionId,
+          bridgeToken,
+          appearance.data,
+        ),
         codeTabId: candidate.codeTabId as string,
         cwd,
         lastActivityAt: isoNow(),
@@ -917,7 +921,7 @@ export class CodeSupervisor {
             ? candidate.startedAt
             : null,
         status: "offline",
-        themeMode: themeMode.data,
+        themeMode: "follow-cantrip",
         workspacePath: path.join(
           workspaceDirectory,
           `${stableKey(worktreeId)}-${sessionKey}.code-workspace`,

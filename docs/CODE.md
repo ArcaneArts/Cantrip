@@ -431,22 +431,17 @@ dirty overlaps remain untouched and are surfaced as conflicts.
 
 ## 15. Theme behavior
 
-Code tabs expose an editor theme preference:
+Cantrip Code always follows the active Cantrip appearance. Light, Dark, High
+Contrast Light, and High Contrast Dark map to matching themes bundled with
+`cantrip-workbench`; there is no independent per-tab editor theme mode.
 
-```text
-Editor theme
-  Follow Cantrip (default)
-  Independent
-```
-
-Follow mode maps Cantrip Light, Dark, High Contrast Light, and High Contrast
-Dark to matching bundled editor themes. The bridge applies this choice to the
-generated workspace or session without overwriting the user's global editor
-preference. Independent mode leaves all editor theme decisions to the user.
-
-The four matching themes ship in `cantrip-workbench`. Follow mode writes only
-the generated workspace's theme override, and Independent mode removes that
-override so the persistent profile's own preference applies.
+The worker writes the matching theme into the generated workspace without
+overwriting the user's global editor preference. It also retains the current
+appearance in the authenticated workbench bridge, broadcasts changes to every
+main-window or pop-out surface for the session, and reapplies it whenever a
+surface reconnects. This makes a late extension startup or transient bridge
+disconnect converge on the current Cantrip theme instead of retaining a stale
+editor appearance.
 
 ## 16. Protocol and persistence additions
 
@@ -531,7 +526,7 @@ parent disappears, including abrupt supervisor or desktop-shell termination.
 - Persist worker-owned settings and extensions.
 - Add Open VSX and explicit VSIX installation.
 - Add optional settings/extension-list import.
-- Bundle Cantrip themes and implement follow/independent behavior.
+- Bundle Cantrip themes and keep every Code surface synchronized with Cantrip.
 
 ### Phase 3: agent/editor bridge
 
