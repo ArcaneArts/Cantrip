@@ -17,6 +17,7 @@ import {
   Cpu,
   Gauge,
   KeyRound,
+  Layers3,
   Loader2,
   LogOut,
   Monitor,
@@ -26,6 +27,7 @@ import {
   Route,
   Search,
   Server,
+  SlidersHorizontal,
   Sun,
   Trash2,
   X,
@@ -57,6 +59,7 @@ import {
   updateModelProvider,
   updateSettings,
 } from "@/lib/api";
+import { WorkspaceSettings } from "./workspace-settings";
 
 const reasoningOptions: Array<ReasoningEffort | ""> = [
   "",
@@ -238,7 +241,14 @@ function ProviderRow({
   );
 }
 
-export function SettingsPage() {
+export function SettingsPage({
+  initialSection = "general",
+}: {
+  initialSection?: "general" | "workspaces";
+}) {
+  const [section, setSection] = useState<"general" | "workspaces">(
+    initialSection,
+  );
   const queryClient = useQueryClient();
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
   const [searchQuery, setSearchQuery] = useState("");
@@ -467,10 +477,38 @@ export function SettingsPage() {
     providersMatch ||
     modelsMatch;
 
+  useEffect(() => {
+    setSection(initialSection);
+  }, [initialSection]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b px-4 sm:px-6">
+        <Button
+          type="button"
+          size="sm"
+          variant={section === "general" ? "outline" : "ghost"}
+          className="h-7 px-2.5 text-xs"
+          onClick={() => setSection("general")}
+        >
+          <SlidersHorizontal className="size-3.5" />
+          General
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={section === "workspaces" ? "outline" : "ghost"}
+          className="h-7 px-2.5 text-xs"
+          onClick={() => setSection("workspaces")}
+        >
+          <Layers3 className="size-3.5" />
+          Workspaces
+        </Button>
+      </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
-        <div className="mx-auto grid max-w-6xl gap-5">
+        <div
+          className={`${section === "general" ? "grid" : "hidden"} mx-auto max-w-6xl gap-5`}
+        >
           <div className="relative max-w-xl">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -823,6 +861,11 @@ export function SettingsPage() {
             to its next message.
           </p>
         </div>
+        {section === "workspaces" ? (
+          <div className="mx-auto max-w-6xl">
+            <WorkspaceSettings />
+          </div>
+        ) : null}
       </div>
 
       <Dialog open={providerDialogOpen} onOpenChange={setProviderDialogOpen}>

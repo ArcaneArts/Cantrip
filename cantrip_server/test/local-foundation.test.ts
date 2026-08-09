@@ -48,6 +48,8 @@ import {
   projectListSchema,
   projectSummarySchema,
   projectTabLayoutSummarySchema,
+  projectWorkspaceListSchema,
+  projectWorkspaceSummarySchema,
   projectViewListSchema,
   projectViewSummarySchema,
   queuedPromptListSchema,
@@ -1461,6 +1463,62 @@ describe("local server foundation", () => {
       });
       return current!;
     });
+    const defaultWorkspace = projectWorkspaceListSchema.parse(
+      (await firstApp.inject({ method: "GET", url: "/api/workspaces" })).json(),
+    )[0]!;
+    expect(defaultWorkspace).toMatchObject({
+      name: "Default",
+      isDefault: true,
+      projectIds: [project.id],
+    });
+    const personalWorkspace = projectWorkspaceSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: "/api/workspaces",
+          payload: { name: "Personal" },
+        })
+      ).json(),
+    );
+    expect(personalWorkspace).toMatchObject({
+      name: "Personal",
+      isDefault: false,
+      projectIds: [],
+    });
+    const assignedWorkspace = projectWorkspaceSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/workspaces/${personalWorkspace.id}`,
+          payload: { name: "Personal Projects", projectIds: [project.id] },
+        })
+      ).json(),
+    );
+    expect(assignedWorkspace).toMatchObject({
+      name: "Personal Projects",
+      projectIds: [project.id],
+    });
+    expect(
+      projectWorkspaceListSchema
+        .parse(
+          (
+            await firstApp.inject({ method: "GET", url: "/api/workspaces" })
+          ).json(),
+        )
+        .filter(({ projectIds }) => projectIds.includes(project.id)),
+    ).toHaveLength(2);
+    expect(
+      await firstApp.inject({
+        method: "DELETE",
+        url: `/api/workspaces/${defaultWorkspace.id}`,
+      }),
+    ).toMatchObject({ statusCode: 409 });
+    expect(
+      await firstApp.inject({
+        method: "DELETE",
+        url: `/api/workspaces/${personalWorkspace.id}`,
+      }),
+    ).toMatchObject({ statusCode: 204 });
     const codeTab = codeTabSummarySchema.parse(
       (
         await firstApp.inject({
