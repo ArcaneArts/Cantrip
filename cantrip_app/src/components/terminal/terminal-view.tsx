@@ -6,8 +6,11 @@ import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { terminalWebSocketUrl } from "@/lib/api";
+import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
 
 import "@xterm/xterm/css/xterm.css";
+
+const loadedTerminalIds = new Set<string>();
 
 function terminalTheme() {
   const styles = getComputedStyle(document.documentElement);
@@ -35,6 +38,11 @@ export function TerminalView({
     "connecting",
   );
   const [error, setError] = useState<string | null>(null);
+  const [loadedTerminalId, setLoadedTerminalId] = useState<string | null>(() =>
+    loadedTerminalIds.has(terminal.id) ? terminal.id : null,
+  );
+  const hasLoaded =
+    loadedTerminalId === terminal.id || loadedTerminalIds.has(terminal.id);
   onExitRef.current = onExit;
 
   useEffect(() => {
@@ -115,6 +123,8 @@ export function TerminalView({
       if (message.type === "ready") {
         ready = true;
         reconnectAttemptRef.current = 0;
+        loadedTerminalIds.add(terminal.id);
+        setLoadedTerminalId(terminal.id);
         setState("ready");
         requestAnimationFrame(() => {
           resize();
@@ -167,7 +177,17 @@ export function TerminalView({
   return (
     <div className="relative flex min-h-0 flex-1 bg-background">
       <div ref={containerRef} className="min-h-0 min-w-0 flex-1 p-3" />
-      {state !== "ready" ? (
+      <SurfaceLoadingVeil
+        label={
+          terminal.linkedChatId
+            ? "Starting Codex console…"
+            : error
+              ? `${error} Retrying…`
+              : "Starting terminal…"
+        }
+        visible={!hasLoaded}
+      />
+      {hasLoaded && state !== "ready" ? (
         <div className="pointer-events-none absolute right-4 top-3 flex items-center gap-2 rounded-md bg-muted/90 px-2 py-1 text-xs text-muted-foreground">
           <Loader2 className="size-3 animate-spin" />
           {state === "connecting"

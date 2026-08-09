@@ -9,6 +9,7 @@ import { AlertTriangle, Code2, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
 import {
   CantripApiError,
   createCodeAttachment,
@@ -330,14 +331,10 @@ export function CodeView({
             src={attachment.url}
             title={`${codeTab.title} — Cantrip Code`}
           />
-          {!frameLoaded ? (
-            <div className="absolute inset-0 grid place-items-center bg-background">
-              <div className="text-center text-sm text-muted-foreground">
-                <Loader2 className="mx-auto mb-3 size-5 animate-spin" />
-                Loading the browser-native workbench…
-              </div>
-            </div>
-          ) : null}
+          <SurfaceLoadingVeil
+            label="Loading the browser-native workbench…"
+            visible={!frameLoaded}
+          />
         </>
       ) : (
         <div className="grid flex-1 place-items-center p-6 text-center">
