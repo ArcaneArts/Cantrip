@@ -1585,13 +1585,14 @@ describe("local server foundation", () => {
       ).json(),
     );
     expect(reusedProjectShare.attachmentId).toBe(projectShare.attachmentId);
-    expect(openedProjectShares).toHaveLength(1);
+    expect(openedProjectShares).toHaveLength(2);
     expect(openedProjectShares[0]).toMatchObject({
       root: project.source?.path,
       shareId: projectShare.attachmentId,
       publicBasePath: new URL(projectShare.url).pathname.replace(/\/$/u, ""),
       publicOrigin: "http://127.0.0.1:4311",
     });
+    expect(openedProjectShares[1]).toEqual(openedProjectShares[0]);
     expect(
       await firstApp.inject({
         method: "DELETE",

@@ -110,8 +110,10 @@ export class ProjectShareTunnelBroker {
   readonly #maxAttachments: number;
   readonly #maxLifetimeMs: number;
   readonly #opening = new Map<string, Promise<ProjectShareAttachment>>();
+  readonly #orphanedShareIds = new Map<string, Set<string>>();
   readonly #surfaceOrigin: URL;
   readonly #sweepTimer: ReturnType<typeof setInterval>;
+  readonly #workerDisconnectSubscriptions = new Map<string, () => void>();
 
   constructor(
     private readonly bridge: WorkerCommandBus,
@@ -142,29 +144,17 @@ export class ProjectShareTunnelBroker {
   async open(input: OpenProjectShareInput): Promise<ProjectShareAttachment> {
     this.#prune();
     const key = projectKey(input);
-    const existing = this.#attachmentsByProject.get(key);
-    if (
-      existing &&
-      existing.root === input.root &&
-      existing.workerId === input.workerId
-    ) {
-      if (!this.bridge.isConnected(existing.workerId)) {
-        throw new Error(`Worker ${existing.workerId} is offline.`);
-      }
-      this.#touch(existing);
-      return projectShareAttachmentSchema.parse({
-        ...existing.attachment,
-        expiresAt: new Date(existing.expiresAt).toISOString(),
-      });
-    }
-    if (existing) await this.#revoke(existing);
-
     const opening = this.#opening.get(key);
     if (opening) return opening;
-    if (this.#attachments.size + this.#opening.size >= this.#maxAttachments) {
+
+    const existing = this.#attachmentsByProject.get(key);
+    if (
+      !existing &&
+      this.#attachments.size + this.#opening.size >= this.#maxAttachments
+    ) {
       throw new Error("This server has reached its project share limit.");
     }
-    const pending = this.#open(input);
+    const pending = this.#openOrReuse(input, existing);
     this.#opening.set(key, pending);
     try {
       return await pending;
@@ -208,6 +198,16 @@ export class ProjectShareTunnelBroker {
     await Promise.allSettled(
       [...this.#attachments.values()].map((binding) => this.#revoke(binding)),
     );
+    await Promise.allSettled(
+      [...this.#orphanedShareIds.keys()].map((workerId) =>
+        this.#flushOrphanedWorkerShares(workerId),
+      ),
+    );
+    for (const unsubscribe of this.#workerDisconnectSubscriptions.values()) {
+      unsubscribe();
+    }
+    this.#workerDisconnectSubscriptions.clear();
+    this.#orphanedShareIds.clear();
   }
 
   proxyHttp(
@@ -426,6 +426,72 @@ export class ProjectShareTunnelBroker {
     });
   }
 
+  async #openOrReuse(
+    input: OpenProjectShareInput,
+    existing: ProjectShareAttachmentBinding | undefined,
+  ): Promise<ProjectShareAttachment> {
+    if (!this.bridge.isConnected(input.workerId)) {
+      throw new Error(`Worker ${input.workerId} is offline.`);
+    }
+    await this.#flushOrphanedWorkerShares(input.workerId);
+
+    if (
+      existing &&
+      existing.root === input.root &&
+      existing.workerId === input.workerId
+    ) {
+      const descriptor = await this.#openWorkerShare({
+        publicBasePath: existing.publicBasePath,
+        root: existing.root,
+        shareId: existing.attachment.attachmentId,
+        workerId: existing.workerId,
+      });
+      if (
+        descriptor.protocol === existing.attachment.protocol &&
+        descriptor.username === existing.attachment.username &&
+        descriptor.password === existing.attachment.password &&
+        descriptor.realm === existing.attachment.realm
+      ) {
+        this.#touch(existing);
+        return projectShareAttachmentSchema.parse({
+          ...existing.attachment,
+          expiresAt: new Date(existing.expiresAt).toISOString(),
+        });
+      }
+    }
+
+    if (existing) await this.#revoke(existing);
+    return this.#open(input);
+  }
+
+  async #openWorkerShare(input: {
+    publicBasePath: string;
+    root: string;
+    shareId: string;
+    workerId: string;
+  }) {
+    const rawDescriptor = await this.bridge.request(
+      input.workerId,
+      {
+        type: "project.share.open",
+        publicBasePath: input.publicBasePath,
+        publicOrigin: this.#surfaceOrigin.origin,
+        root: input.root,
+        shareId: input.shareId,
+      },
+      { timeoutMs: WORKER_SHARE_COMMAND_TIMEOUT_MS },
+    );
+    const descriptor = workerProjectShareOpenResultSchema.parse(rawDescriptor);
+    if (
+      descriptor.shareId !== input.shareId ||
+      descriptor.publicBasePath !== input.publicBasePath ||
+      descriptor.publicOrigin !== this.#surfaceOrigin.origin
+    ) {
+      throw new Error("Worker opened an unexpected project share.");
+    }
+    return descriptor;
+  }
+
   async #open(input: OpenProjectShareInput): Promise<ProjectShareAttachment> {
     if (!this.bridge.isConnected(input.workerId)) {
       throw new Error(`Worker ${input.workerId} is offline.`);
@@ -434,25 +500,14 @@ export class ProjectShareTunnelBroker {
     const publicBasePath = `/project-shares/${token}`;
     const shareId = randomUUID();
     try {
-      const rawDescriptor = await this.bridge.request(
-        input.workerId,
-        {
-          type: "project.share.open",
-          publicBasePath,
-          publicOrigin: this.#surfaceOrigin.origin,
-          root: input.root,
-          shareId,
-        },
-        { timeoutMs: WORKER_SHARE_COMMAND_TIMEOUT_MS },
-      );
-      const descriptor =
-        workerProjectShareOpenResultSchema.parse(rawDescriptor);
-      if (
-        descriptor.shareId !== shareId ||
-        descriptor.publicBasePath !== publicBasePath ||
-        descriptor.publicOrigin !== this.#surfaceOrigin.origin
-      ) {
-        throw new Error("Worker opened an unexpected project share.");
+      const descriptor = await this.#openWorkerShare({
+        publicBasePath,
+        root: input.root,
+        shareId,
+        workerId: input.workerId,
+      });
+      if (!this.bridge.isConnected(input.workerId)) {
+        throw new Error(`Worker ${input.workerId} disconnected.`);
       }
       const now = Date.now();
       const expiresAt = now + Math.min(this.#idleTtlMs, this.#maxLifetimeMs);
@@ -479,15 +534,18 @@ export class ProjectShareTunnelBroker {
       };
       this.#attachments.set(token, binding);
       this.#attachmentsByProject.set(projectKey(input), binding);
+      this.#trackWorkerDisconnect(input.workerId);
       return attachment;
     } catch (error) {
-      await this.bridge
+      const closed = await this.bridge
         .request(
           input.workerId,
           { type: "project.share.close", shareId },
           { timeoutMs: WORKER_SHARE_CLOSE_TIMEOUT_MS },
         )
-        .catch(() => undefined);
+        .then(() => true)
+        .catch(() => false);
+      if (!closed) this.#markOrphanedWorkerShare(input.workerId, shareId);
       throw error;
     }
   }
@@ -614,12 +672,13 @@ export class ProjectShareTunnelBroker {
     const streams = this.#activeStreams.get(attachmentId);
     this.#activeStreams.delete(attachmentId);
     for (const close of [...(streams ?? [])]) close();
+    this.#stopTrackingWorkerIfUnused(binding.workerId);
   }
 
   async #closeWorkerShare(
     binding: ProjectShareAttachmentBinding,
   ): Promise<void> {
-    await this.bridge
+    const closed = await this.bridge
       .request(
         binding.workerId,
         {
@@ -628,8 +687,69 @@ export class ProjectShareTunnelBroker {
         },
         { timeoutMs: WORKER_SHARE_CLOSE_TIMEOUT_MS },
       )
-      .then(() => undefined)
-      .catch(() => undefined);
+      .then(() => true)
+      .catch(() => false);
+    if (!closed) {
+      this.#markOrphanedWorkerShare(
+        binding.workerId,
+        binding.attachment.attachmentId,
+      );
+    }
+  }
+
+  #trackWorkerDisconnect(workerId: string): void {
+    if (this.#workerDisconnectSubscriptions.has(workerId)) return;
+    const unsubscribe = this.bridge.subscribeWorkerDisconnect(workerId, () => {
+      for (const binding of [...this.#attachments.values()]) {
+        if (binding.workerId !== workerId) continue;
+        this.#markOrphanedWorkerShare(
+          workerId,
+          binding.attachment.attachmentId,
+        );
+        this.#remove(binding);
+      }
+    });
+    this.#workerDisconnectSubscriptions.set(workerId, unsubscribe);
+  }
+
+  #stopTrackingWorkerIfUnused(workerId: string): void {
+    if (
+      [...this.#attachments.values()].some(
+        (binding) => binding.workerId === workerId,
+      )
+    ) {
+      return;
+    }
+    this.#workerDisconnectSubscriptions.get(workerId)?.();
+    this.#workerDisconnectSubscriptions.delete(workerId);
+  }
+
+  #markOrphanedWorkerShare(workerId: string, shareId: string): void {
+    let shares = this.#orphanedShareIds.get(workerId);
+    if (!shares) {
+      shares = new Set();
+      this.#orphanedShareIds.set(workerId, shares);
+    }
+    shares.add(shareId);
+  }
+
+  async #flushOrphanedWorkerShares(workerId: string): Promise<void> {
+    const shares = this.#orphanedShareIds.get(workerId);
+    if (!shares || shares.size === 0 || !this.bridge.isConnected(workerId)) {
+      return;
+    }
+    this.#orphanedShareIds.delete(workerId);
+    await Promise.all(
+      [...shares].map(async (shareId) => {
+        await this.bridge
+          .request(
+            workerId,
+            { type: "project.share.close", shareId },
+            { timeoutMs: WORKER_SHARE_CLOSE_TIMEOUT_MS },
+          )
+          .catch(() => this.#markOrphanedWorkerShare(workerId, shareId));
+      }),
+    );
   }
 
   #sendCancel(

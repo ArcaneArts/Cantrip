@@ -82,6 +82,12 @@ shuts down.
   lifetime.
 - Workers bound the number of simultaneous shares and close all listeners on
   shutdown.
+- A worker disconnect immediately invalidates its server attachments. The next
+  request after reconnect cleans any orphaned worker listeners before opening a
+  replacement attachment.
+- Reusing an attachment probes the current worker descriptor; a restarted
+  worker with rotated credentials receives a new attachment instead of stale
+  credentials being returned to the desktop client.
 - The server authorizes every project against the current owner and resolves
   the Primary checkout and its assigned worker before opening a share.
 - Server attachment credentials are short-lived and map to exactly one worker
