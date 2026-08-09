@@ -40,7 +40,11 @@ class LoopbackProjectShareWorker implements WorkerCommandBus {
   readonly closedShareIds: string[] = [];
   readonly observedRequests: ObservedRequest[] = [];
   readonly openedShareIds: string[] = [];
+  #connected = true;
+  #generation = 1;
+  readonly #disconnectListeners = new Set<() => void>();
   readonly #listeners = new Set<WorkerProjectShareTunnelFrameListener>();
+  readonly #shares = new Map<string, unknown>();
   readonly #requests = new Map<
     string,
     {
@@ -55,7 +59,7 @@ class LoopbackProjectShareWorker implements WorkerCommandBus {
   attach(): void {}
   close(): void {}
   isConnected(workerId: string): boolean {
-    return workerId === "worker-1";
+    return this.#connected && workerId === "worker-1";
   }
   sendSurfaceFrame(
     _workerId: string,
@@ -83,8 +87,12 @@ class LoopbackProjectShareWorker implements WorkerCommandBus {
   ): boolean {
     return false;
   }
-  subscribeWorkerDisconnect(): () => void {
-    return () => undefined;
+  subscribeWorkerDisconnect(
+    _workerId: string,
+    listener: () => void,
+  ): () => void {
+    this.#disconnectListeners.add(listener);
+    return () => this.#disconnectListeners.delete(listener);
   }
   subscribeProjectShareTunnelFrames(
     _workerId: string,
@@ -160,26 +168,51 @@ class LoopbackProjectShareWorker implements WorkerCommandBus {
     command: WorkerCommand,
     _options?: WorkerRequestOptions,
   ): Promise<unknown> {
-    if (workerId !== "worker-1") return Promise.reject(new Error("offline"));
+    if (!this.isConnected(workerId)) {
+      return Promise.reject(new Error("offline"));
+    }
     if (command.type === "project.share.open") {
+      const existing = this.#shares.get(command.shareId);
+      if (existing) return Promise.resolve(existing);
       this.openedShareIds.push(command.shareId);
-      return Promise.resolve({
+      const descriptor = {
         shareId: command.shareId,
         protocol: "webdav",
         publicBasePath: command.publicBasePath,
         publicOrigin: command.publicOrigin,
         loopbackHost: "127.0.0.1",
         loopbackPort: 43_210,
-        username: "cantrip-worker-user",
-        password: "a-strong-random-worker-password",
+        username: `cantrip-worker-user-${this.#generation}`,
+        password: `a-strong-random-worker-password-${this.#generation}`,
         realm: "Cantrip Project Share",
-      });
+      };
+      this.#shares.set(command.shareId, descriptor);
+      return Promise.resolve(descriptor);
     }
     if (command.type === "project.share.close") {
       this.closedShareIds.push(command.shareId);
+      this.#shares.delete(command.shareId);
       return Promise.resolve({ accepted: true });
     }
     return Promise.reject(new Error(`Unexpected command ${command.type}`));
+  }
+
+  disconnect(options: { restart?: boolean } = {}): void {
+    this.#connected = false;
+    if (options.restart) {
+      this.#generation += 1;
+      this.#shares.clear();
+    }
+    for (const listener of [...this.#disconnectListeners]) listener();
+  }
+
+  reconnect(): void {
+    this.#connected = true;
+  }
+
+  restartWithoutDisconnectNotification(): void {
+    this.#generation += 1;
+    this.#shares.clear();
   }
 
   #emit(header: ProjectShareTunnelFrameHeader, payload: Uint8Array): void {
@@ -209,7 +242,7 @@ describe("project share server tunnel", () => {
     expect(reused.attachmentId).toBe(attachment.attachmentId);
     expect(worker.openedShareIds).toEqual([attachment.attachmentId]);
     expect(attachment.url).not.toContain("127.0.0.1:43210");
-    expect(attachment.password).toBe("a-strong-random-worker-password");
+    expect(attachment.password).toBe("a-strong-random-worker-password-1");
 
     const surface = createCodeSurfaceServer(code, surfaceOrigin, shares);
     await new Promise<void>((resolve) =>
@@ -237,7 +270,7 @@ describe("project share server tunnel", () => {
       {
         method: "PROPFIND",
         headers: {
-          Authorization: 'Digest username="cantrip-worker-user"',
+          Authorization: 'Digest username="cantrip-worker-user-1"',
           Depth: "1",
           Destination: `${attachment.url}moved.md`,
         },
@@ -257,7 +290,7 @@ describe("project share server tunnel", () => {
         ?.header.headers.map(([name, value]) => [name.toLowerCase(), value]),
     ).toEqual(
       expect.arrayContaining([
-        ["authorization", 'Digest username="cantrip-worker-user"'],
+        ["authorization", 'Digest username="cantrip-worker-user-1"'],
         ["destination", `${attachment.url}moved.md`],
       ]),
     );
@@ -297,5 +330,61 @@ describe("project share server tunnel", () => {
     await expect
       .poll(() => worker.closedShareIds)
       .toEqual([attachment.attachmentId]);
+  });
+
+  it("invalidates attachments on disconnect and closes orphaned worker shares after reconnect", async () => {
+    const worker = new LoopbackProjectShareWorker();
+    const shares = new ProjectShareTunnelBroker(worker, {
+      surfaceOrigin: "https://surface.cantrip.example",
+    });
+    closers.push(() => shares.close());
+    const first = await shares.open({
+      ownerId: "user-1",
+      projectId: "project-1",
+      root: "/worker/projects/cantrip",
+      workerId: "worker-1",
+    });
+    const firstToken = new URL(first.url).pathname.split("/")[2]!;
+
+    worker.disconnect();
+    expect(shares.hasAttachment(firstToken)).toBe(false);
+
+    worker.reconnect();
+    const replacement = await shares.open({
+      ownerId: "user-1",
+      projectId: "project-1",
+      root: "/worker/projects/cantrip",
+      workerId: "worker-1",
+    });
+    expect(replacement.attachmentId).not.toBe(first.attachmentId);
+    expect(worker.closedShareIds).toContain(first.attachmentId);
+  });
+
+  it("replaces a silently restarted worker share when its credentials rotate", async () => {
+    const worker = new LoopbackProjectShareWorker();
+    const shares = new ProjectShareTunnelBroker(worker, {
+      surfaceOrigin: "https://surface.cantrip.example",
+    });
+    closers.push(() => shares.close());
+    const first = await shares.open({
+      ownerId: "user-1",
+      projectId: "project-1",
+      root: "/worker/projects/cantrip",
+      workerId: "worker-1",
+    });
+
+    worker.restartWithoutDisconnectNotification();
+    const replacement = await shares.open({
+      ownerId: "user-1",
+      projectId: "project-1",
+      root: "/worker/projects/cantrip",
+      workerId: "worker-1",
+    });
+    expect(replacement).toMatchObject({
+      projectId: first.projectId,
+      username: "cantrip-worker-user-2",
+    });
+    expect(replacement.attachmentId).not.toBe(first.attachmentId);
+    expect(worker.closedShareIds).toContain(first.attachmentId);
   });
 });
