@@ -81,6 +81,7 @@ import type {
   WorktreeInventory,
   WorktreePolicy,
   WorktreeSelection,
+  WorktreeStatusResult,
 } from "@cantrip/protocol";
 import {
   and,
@@ -180,6 +181,21 @@ export interface ProjectWorktreeExecutionContext {
   projectSourceId: string;
   sourcePath: string;
   workerId: string;
+  worktree: ProjectWorktreeSummary;
+}
+
+export interface ProjectWorktreeObservationContext {
+  projectId: string;
+  sourcePath: string;
+  workerId: string;
+  worktreeId: string;
+  worktreePath: string;
+}
+
+export interface ProjectWorktreeStatusRecord {
+  metadataChanged: boolean;
+  snapshotChanged: boolean;
+  status: WorktreeStatusResult;
   worktree: ProjectWorktreeSummary;
 }
 
@@ -1552,6 +1568,173 @@ export class ServerRepository {
     return rows.map(({ projectId: id, worktree }) =>
       toProjectWorktreeSummary(worktree, id),
     );
+  }
+
+  async listWorkerWorktreeObservationTargets(
+    ownerId: string,
+    workerId: string,
+    limit = 128,
+  ): Promise<ProjectWorktreeObservationContext[]> {
+    return this.database
+      .select({
+        projectId: schema.projects.id,
+        sourcePath: schema.projectSources.absolutePath,
+        workerId: schema.projectWorktrees.workerId,
+        worktreeId: schema.projectWorktrees.id,
+        worktreePath: schema.projectWorktrees.absolutePath,
+      })
+      .from(schema.projectWorktrees)
+      .innerJoin(
+        schema.projectSources,
+        eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.projectSources.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.projectWorktrees.workerId, workerId))
+      .orderBy(asc(schema.projectWorktrees.createdAt))
+      .limit(Math.min(128, Math.max(1, limit)));
+  }
+
+  async getProjectWorktreeObservationContext(
+    ownerId: string,
+    workerId: string,
+    sourcePath: string,
+    worktreePath: string,
+  ): Promise<ProjectWorktreeObservationContext | null> {
+    const rows = await this.database
+      .select({
+        projectId: schema.projects.id,
+        sourcePath: schema.projectSources.absolutePath,
+        workerId: schema.projectWorktrees.workerId,
+        worktreeId: schema.projectWorktrees.id,
+        worktreePath: schema.projectWorktrees.absolutePath,
+      })
+      .from(schema.projectWorktrees)
+      .innerJoin(
+        schema.projectSources,
+        eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.projectSources.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.projectWorktrees.workerId, workerId),
+          eq(schema.projectSources.absolutePath, sourcePath),
+          eq(schema.projectWorktrees.absolutePath, worktreePath),
+        ),
+      )
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  async getProjectWorktreeStatusSnapshot(
+    ownerId: string,
+    projectId: string,
+    worktreeId: string,
+  ): Promise<WorktreeStatusResult | null> {
+    const rows = await this.database
+      .select({ status: schema.projectWorktrees.statusSnapshot })
+      .from(schema.projectWorktrees)
+      .innerJoin(
+        schema.projectSources,
+        eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.projectSources.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projectWorktrees.id, worktreeId),
+        ),
+      )
+      .limit(1);
+    return rows[0]?.status ?? null;
+  }
+
+  async recordProjectWorktreeStatus(
+    ownerId: string,
+    projectId: string,
+    worktreeId: string,
+    status: WorktreeStatusResult,
+  ): Promise<ProjectWorktreeStatusRecord | null> {
+    const context = await this.getProjectWorktreeContext(
+      ownerId,
+      projectId,
+      worktreeId,
+    );
+    if (!context) return null;
+    if (context.worktree.path !== status.worktree.path) {
+      throw new Error("Worker status referred to a different worktree path.");
+    }
+    const currentRows = await this.database
+      .select()
+      .from(schema.projectWorktrees)
+      .where(eq(schema.projectWorktrees.id, worktreeId))
+      .limit(1);
+    const current = currentRows[0];
+    if (!current) return null;
+    const lifecycleState = status.worktree.missing
+      ? "missing"
+      : status.worktree.prunable
+        ? "prunable"
+        : "ready";
+    const metadataChanged =
+      current.branch !== status.worktree.branch ||
+      current.detached !== status.worktree.detached ||
+      current.head !== status.worktree.head ||
+      current.lifecycleState !== lifecycleState ||
+      current.locked !== status.worktree.locked ||
+      current.lockReason !== status.worktree.lockReason;
+    const snapshotChanged =
+      JSON.stringify(current.statusSnapshot) !== JSON.stringify(status);
+    if (!metadataChanged && !snapshotChanged) {
+      return {
+        metadataChanged,
+        snapshotChanged,
+        status,
+        worktree: context.worktree,
+      };
+    }
+    const now = new Date();
+    const rows = await this.database
+      .update(schema.projectWorktrees)
+      .set({
+        branch: status.worktree.branch,
+        detached: status.worktree.detached,
+        head: status.worktree.head,
+        lifecycleState,
+        locked: status.worktree.locked,
+        lockReason: status.worktree.lockReason,
+        lastScannedAt: now,
+        statusObservedAt: now,
+        statusSnapshot: status,
+        updatedAt: now,
+      })
+      .where(eq(schema.projectWorktrees.id, worktreeId))
+      .returning();
+    return rows[0]
+      ? {
+          metadataChanged,
+          snapshotChanged,
+          status,
+          worktree: toProjectWorktreeSummary(rows[0], projectId),
+        }
+      : null;
   }
 
   async reconcileProjectWorktrees(

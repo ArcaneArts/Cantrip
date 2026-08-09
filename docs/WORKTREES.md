@@ -108,6 +108,33 @@ Cantrip enforces these boundaries:
 - missing workers leave server metadata and chat history intact; and
 - cross-worker file replication is not implied or implemented.
 
+## Git status observation
+
+The worker, rather than each app client, owns external worktree observation.
+After its authenticated command socket connects, the server configures at most
+128 owned source/worktree path pairs. The worker validates those paths through
+the existing canonical worktree inventory and Git common-directory checks,
+uses recursive filesystem observation where the platform supports it, and
+debounces changes for 500 ms before reading Git status. Observation does not
+weaken symlink, ownership, managed-root, or cross-repository isolation rules.
+
+Filesystem watching is only the prompt path. A bounded worker sweep reconciles
+the configured sources and statuses every 30 seconds, so index-only Git
+changes, watcher loss, unsupported recursive watching, external worktree
+creation, and transient filesystem errors still converge. Source scans run two
+at a time and status reads four at a time. Repeating the same configuration is
+idempotent and unchanged snapshots are neither persisted nor republished.
+
+Known Cantrip Git actions persist and publish their returned status
+immediately. Unsolicited worker observations travel as validated notification
+envelopes on the existing worker WebSocket; they do not enter the application
+control socket until the server has verified worker ownership and committed
+the snapshot. Healthy apps update the exact TanStack Query cache entry from
+that payload and make no periodic per-worktree requests. If the app live socket
+is disconnected while the worker remains online, a 15-second HTTP fallback is
+used. If the worker is offline, the status endpoint returns the latest stored
+snapshot and does not poll an unavailable machine.
+
 ## Agent integration
 
 Codex app-server receives these dynamic tools from the worker:

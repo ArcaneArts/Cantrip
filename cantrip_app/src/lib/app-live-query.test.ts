@@ -38,6 +38,15 @@ describe("application live query bridge", () => {
     expect(
       appLiveEventQueryKeys(
         event({
+          entityId: "worktree-one",
+          resource: "worktree-status",
+          scope: { kind: "project", projectId: "project-one" },
+        }),
+      ),
+    ).toEqual([["worktree-status", "project-one", "worktree-one"]]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
           resource: "chat-message",
           scope: { kind: "chat", chatId: "chat-one" },
         }),
@@ -137,6 +146,41 @@ describe("application live query bridge", () => {
     expect(
       queryClient.getQueryData<ChatMessage[]>(["messages", "chat-one"]),
     ).toEqual([first, streamed]);
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it("upserts a worker-observed Git status without a follow-up GET", () => {
+    const queryClient = new QueryClient();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const bridge = new AppLiveQueryBridge(queryClient);
+    const status = {
+      branch: "main",
+      head: "a".repeat(40),
+      upstream: "origin/main",
+      ahead: 0,
+      behind: 0,
+      files: [],
+      branches: [],
+    };
+
+    bridge.handleEvent({
+      ...event({
+        entityId: "worktree-one",
+        resource: "worktree-status",
+        scope: { kind: "project", projectId: "project-one" },
+      }),
+      payload: status,
+    });
+
+    expect(
+      queryClient.getQueryData([
+        "worktree-status",
+        "project-one",
+        "worktree-one",
+      ]),
+    ).toEqual(status);
     expect(invalidate).not.toHaveBeenCalled();
   });
 

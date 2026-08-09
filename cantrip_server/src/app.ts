@@ -176,7 +176,11 @@ import type {
   CodeRuntimeStatus,
   CodexExternalImportStatus,
   CodexMcpOauthStatus,
+  GitStatus,
+  ProjectWorktreeSummary,
+  WorkerNotification,
   WorkerSummary,
+  WorktreeStatusResult,
 } from "@cantrip/protocol";
 import type {
   AgentWorktreeToolCall,
@@ -467,6 +471,177 @@ export async function buildApp({
         "Could not publish application live invalidation",
       );
     }
+  };
+  const worktreeObservationTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+  const workerNotificationSubscriptions = new Map<string, () => void>();
+  const publishWorktreeStatus = (
+    projectId: string,
+    worktreeId: string,
+    status: GitStatus,
+  ): void => {
+    if (!livePublishingEnabled) return;
+    try {
+      liveHub.publish({
+        scope: { kind: "project", projectId },
+        resource: "worktree-status",
+        action: "updated",
+        entityId: worktreeId,
+        revision: null,
+        payload: appLiveEventPayloadSchema.parse(gitStatusSchema.parse(status)),
+      });
+    } catch (error) {
+      app.log.error(
+        { err: error, projectId, worktreeId },
+        "Could not publish worktree status",
+      );
+    }
+  };
+  const recordLiveWorktreeStatus = async (
+    projectId: string,
+    worktreeId: string,
+    status: WorktreeStatusResult,
+  ): Promise<void> => {
+    const recorded = await repository.recordProjectWorktreeStatus(
+      LOCAL_USER_ID,
+      projectId,
+      worktreeId,
+      status,
+    );
+    if (!recorded) return;
+    if (recorded.snapshotChanged) {
+      publishWorktreeStatus(projectId, worktreeId, recorded.status.status);
+    }
+    if (recorded.metadataChanged) {
+      publishLiveInvalidation("worktree", { entityId: worktreeId, projectId });
+    }
+  };
+  const worktreeStatusFromGitStatus = (
+    worktree: ProjectWorktreeSummary,
+    status: GitStatus,
+  ): WorktreeStatusResult =>
+    worktreeStatusResultSchema.parse({
+      worktree: {
+        path: worktree.path,
+        head: status.head,
+        branch: status.branch || null,
+        detached: !status.branch,
+        isPrimary: worktree.isPrimary,
+        managed: !worktree.isPrimary && worktree.origin !== "external",
+        locked: worktree.locked,
+        lockReason: worktree.lockReason,
+        prunable: worktree.lifecycleState === "prunable",
+        pruneReason: null,
+        missing: worktree.lifecycleState === "missing",
+      },
+      status,
+    });
+  const configureWorkerWorktreeObservation = async (
+    workerId: string,
+  ): Promise<void> => {
+    if (!bridge.subscribeNotifications || !bridge.isConnected(workerId)) return;
+    const targets = await repository.listWorkerWorktreeObservationTargets(
+      LOCAL_USER_ID,
+      workerId,
+    );
+    await bridge.request(workerId, {
+      type: "worktree.observation.configure",
+      targets: targets.map(({ sourcePath, worktreePath }) => ({
+        sourcePath,
+        worktreePath,
+      })),
+    });
+  };
+  const scheduleWorkerWorktreeObservation = (workerId: string): void => {
+    if (!bridge.subscribeNotifications) return;
+    const existing = worktreeObservationTimers.get(workerId);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      worktreeObservationTimers.delete(workerId);
+      void configureWorkerWorktreeObservation(workerId).catch((error) => {
+        if (!(error instanceof WorkerUnavailableError)) {
+          app.log.warn(
+            { err: error, workerId },
+            "Could not configure worker worktree observation",
+          );
+        }
+      });
+    }, 100);
+    timer.unref();
+    worktreeObservationTimers.set(workerId, timer);
+  };
+  const scheduleProjectWorktreeObservation = async (
+    projectId: string,
+  ): Promise<void> => {
+    const source = await repository.getProjectSource(LOCAL_USER_ID, projectId);
+    if (source) scheduleWorkerWorktreeObservation(source.workerId);
+  };
+  const handleWorkerNotification = async (
+    workerId: string,
+    notification: WorkerNotification,
+  ): Promise<void> => {
+    if (notification.type === "worktree.inventory.observed") {
+      if (
+        notification.inventory.sourcePath !== notification.sourcePath ||
+        notification.inventory.primaryPath === ""
+      ) {
+        return;
+      }
+      const context = await repository.getProjectWorktreeObservationContext(
+        LOCAL_USER_ID,
+        workerId,
+        notification.sourcePath,
+        notification.inventory.primaryPath,
+      );
+      if (!context) return;
+      const worktrees = await repository.reconcileProjectWorktrees(
+        LOCAL_USER_ID,
+        context.projectId,
+        notification.inventory,
+      );
+      if (!worktrees) return;
+      publishLiveInvalidation("worktree", { projectId: context.projectId });
+      scheduleWorkerWorktreeObservation(workerId);
+      return;
+    }
+    const context = await repository.getProjectWorktreeObservationContext(
+      LOCAL_USER_ID,
+      workerId,
+      notification.sourcePath,
+      notification.worktreePath,
+    );
+    if (
+      !context ||
+      notification.result.worktree.path !== notification.worktreePath
+    ) {
+      return;
+    }
+    await recordLiveWorktreeStatus(
+      context.projectId,
+      context.worktreeId,
+      notification.result,
+    );
+  };
+  const ensureWorkerNotificationSubscription = (workerId: string): void => {
+    if (
+      !bridge.subscribeNotifications ||
+      workerNotificationSubscriptions.has(workerId)
+    ) {
+      return;
+    }
+    workerNotificationSubscriptions.set(
+      workerId,
+      bridge.subscribeNotifications(workerId, (notification) =>
+        handleWorkerNotification(workerId, notification).catch((error) => {
+          app.log.warn(
+            { err: error, notificationType: notification.type, workerId },
+            "Could not apply worker observation notification",
+          );
+        }),
+      ),
+    );
   };
   const publishWorkflowDefinitionChange = (workflowId: string): void => {
     publishLiveInvalidation("workflow-definition", { entityId: workflowId });
@@ -911,7 +1086,10 @@ export async function buildApp({
   const worktreeCoordinator = new ProjectWorktreeCoordinator(
     repository,
     bridge,
-    (projectId) => publishLiveInvalidation("worktree", { projectId }),
+    (projectId) => {
+      publishLiveInvalidation("worktree", { projectId });
+      void scheduleProjectWorktreeObservation(projectId);
+    },
   );
   const publishWorkflowRunChange = (change: WorkflowRunLiveChange): void => {
     if (!livePublishingEnabled) return;
@@ -1671,6 +1849,7 @@ export async function buildApp({
         );
         publishLiveInvalidation("project", { entityId: projectId });
         publishLiveInvalidation("worktree", { projectId });
+        scheduleWorkerWorktreeObservation(input.workerId);
       } catch (error) {
         const message =
           errorMessage(error).trim().slice(0, 4_000) ||
@@ -4559,14 +4738,22 @@ export async function buildApp({
             worktreePath: context.worktree.path,
           }),
         );
-        await repository.observeProjectWorktree(
-          LOCAL_USER_ID,
+        await recordLiveWorktreeStatus(
           request.params.projectId,
           request.params.worktreeId,
-          result.worktree,
+          result,
         );
         return reply.send(result);
       } catch (error) {
+        if (error instanceof WorkerUnavailableError) {
+          const snapshot = await repository.getProjectWorktreeStatusSnapshot(
+            LOCAL_USER_ID,
+            request.params.projectId,
+            request.params.worktreeId,
+          );
+          if (snapshot)
+            return reply.send(worktreeStatusResultSchema.parse(snapshot));
+        }
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
         return reply.code(status).send({ error: errorMessage(error) });
       }
@@ -4674,12 +4861,19 @@ export async function buildApp({
         return reply.code(404).send({ error: "Worktree not found." });
       }
       try {
-        const result = await bridge.request(context.workerId, {
-          type: "git.action",
-          cwd: context.worktree.path,
-          action: input.data,
-        });
-        return reply.send(gitActionResultSchema.parse(result));
+        const result = gitActionResultSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "git.action",
+            cwd: context.worktree.path,
+            action: input.data,
+          }),
+        );
+        await recordLiveWorktreeStatus(
+          request.params.projectId,
+          request.params.worktreeId,
+          worktreeStatusFromGitStatus(context.worktree, result.status),
+        );
+        return reply.send(result);
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 409;
         return reply.code(status).send({ error: errorMessage(error) });
@@ -4910,12 +5104,26 @@ export async function buildApp({
         return reply.code(404).send({ error: "Project source not found." });
       }
       try {
-        const result = await bridge.request(source.workerId, {
-          type: "git.action",
-          cwd: source.cwd,
-          action: input.data,
-        });
-        return reply.send(gitActionResultSchema.parse(result));
+        const result = gitActionResultSchema.parse(
+          await bridge.request(source.workerId, {
+            type: "git.action",
+            cwd: source.cwd,
+            action: input.data,
+          }),
+        );
+        const context = await repository.getProjectWorktreeContext(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          source.worktreeId,
+        );
+        if (context) {
+          await recordLiveWorktreeStatus(
+            request.params.projectId,
+            source.worktreeId,
+            worktreeStatusFromGitStatus(context.worktree, result.status),
+          );
+        }
+        return reply.send(result);
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
         return reply.code(status).send({ error: errorMessage(error) });
@@ -8833,6 +9041,8 @@ export async function buildApp({
         return;
       }
       bridge.attach(request.query.workerId, socket);
+      ensureWorkerNotificationSubscription(request.query.workerId);
+      scheduleWorkerWorktreeObservation(request.query.workerId);
       void resumePendingWorktreeTransitionsForWorker(request.query.workerId);
       void workflowExecutor
         .recoverWorktreeLeases(request.query.workerId)
@@ -8858,6 +9068,12 @@ export async function buildApp({
       if (observer.timer) clearTimeout(observer.timer);
     }
     customizationStatusObservers.clear();
+    for (const timer of worktreeObservationTimers.values()) clearTimeout(timer);
+    worktreeObservationTimers.clear();
+    for (const unsubscribe of workerNotificationSubscriptions.values()) {
+      unsubscribe();
+    }
+    workerNotificationSubscriptions.clear();
     for (const timer of workerOfflineTimers.values()) clearTimeout(timer);
     workerOfflineTimers.clear();
     workflowExecutor.stop();

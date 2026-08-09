@@ -11,7 +11,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { afterEach, describe, expect, it } from "vitest";
+import type { WorkerNotification } from "@cantrip/protocol";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   parseGitWorktreePorcelain,
@@ -355,5 +356,53 @@ describe("worker Git worktrees", () => {
     expect((await manager.prune(repository, true)).prunedPaths).toEqual([
       externalPath,
     ]);
+  });
+
+  it("debounces filesystem changes into bounded status notifications", async () => {
+    const { manager, repository } = await createRepository();
+    const notifications: WorkerNotification[] = [];
+    manager.setObservationEmitter((notification) => {
+      notifications.push(notification);
+      return true;
+    });
+    manager.configureObservation([
+      { sourcePath: repository, worktreePath: repository },
+    ]);
+
+    await vi.waitFor(() => {
+      expect(
+        notifications.some(
+          ({ type }) => type === "worktree.inventory.observed",
+        ),
+      ).toBe(true);
+      expect(
+        notifications.some(({ type }) => type === "worktree.status.observed"),
+      ).toBe(true);
+    });
+    const initialCount = notifications.length;
+    manager.configureObservation([
+      { sourcePath: repository, worktreePath: repository },
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(notifications).toHaveLength(initialCount);
+
+    await writeFile(path.join(repository, "observed.txt"), "external edit\n");
+    await vi.waitFor(
+      () => {
+        const latest = notifications.findLast(
+          (notification) => notification.type === "worktree.status.observed",
+        );
+        expect(latest).toMatchObject({
+          type: "worktree.status.observed",
+          result: {
+            status: {
+              files: [expect.objectContaining({ path: "observed.txt" })],
+            },
+          },
+        });
+      },
+      { timeout: 3_000 },
+    );
+    manager.close();
   });
 });

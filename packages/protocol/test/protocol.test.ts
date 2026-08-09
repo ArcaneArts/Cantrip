@@ -63,9 +63,62 @@ import {
   worktreeInventorySchema,
   workerEventEnvelopeSchema,
   workerHeartbeatSchema,
+  workerNotificationEnvelopeSchema,
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("bounds and validates worker-owned worktree observation", () => {
+    expect(
+      workerCommandSchema.parse({
+        type: "worktree.observation.configure",
+        targets: [{ sourcePath: "/repo", worktreePath: "/repo" }],
+      }),
+    ).toMatchObject({ type: "worktree.observation.configure" });
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "worktree.observation.configure",
+        targets: [
+          { sourcePath: "/repo", worktreePath: "/repo" },
+          { sourcePath: "/repo", worktreePath: "/repo" },
+        ],
+      }),
+    ).toThrow(/unique/u);
+    expect(
+      workerNotificationEnvelopeSchema.parse({
+        kind: "notification",
+        notification: {
+          type: "worktree.status.observed",
+          sourcePath: "/repo",
+          worktreePath: "/repo",
+          result: {
+            worktree: {
+              path: "/repo",
+              head: "a".repeat(40),
+              branch: "main",
+              detached: false,
+              isPrimary: true,
+              managed: false,
+              locked: false,
+              lockReason: null,
+              prunable: false,
+              pruneReason: null,
+              missing: false,
+            },
+            status: {
+              branch: "main",
+              head: "a".repeat(40),
+              upstream: null,
+              ahead: 0,
+              behind: 0,
+              files: [],
+              branches: [],
+            },
+          },
+        },
+      }).notification.type,
+    ).toBe("worktree.status.observed");
+  });
+
   it("bounds GitHub issue pagination to pages of at most 100", () => {
     expect(
       workerCommandSchema.parse({
