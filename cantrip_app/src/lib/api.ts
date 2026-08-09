@@ -128,6 +128,7 @@ import {
   workflowRunListSchema,
   workflowRunPauseSchema,
   workflowRunResumeSchema,
+  workflowRunSaveRevisionSchema,
   workflowRevisionCreateSchema,
   workflowRevisionSchema,
   workflowWorktreeOutcomeRequestSchema,
@@ -141,6 +142,7 @@ import {
   type WorkflowRunPause,
   type WorkflowRunQuery,
   type WorkflowRunResume,
+  type WorkflowRunSaveRevision,
   type WorkflowRevisionCreate,
   type WorkflowWorktreeOutcomeRequest,
 } from "@cantrip/protocol/workflows";
@@ -262,6 +264,18 @@ export async function getWorkflowRuns(input: Partial<WorkflowRunQuery> = {}) {
 export async function getWorkflowRun(runId: string) {
   return workflowRunDetailSchema.parse(
     await request(`/api/workflow-runs/${encodeURIComponent(runId)}`),
+  );
+}
+
+export async function saveWorkflowRunRevision(
+  runId: string,
+  input: WorkflowRunSaveRevision,
+) {
+  return workflowDefinitionDetailSchema.parse(
+    await post(
+      `/api/workflow-runs/${encodeURIComponent(runId)}/save-revision`,
+      workflowRunSaveRevisionSchema.parse(input),
+    ),
   );
 }
 

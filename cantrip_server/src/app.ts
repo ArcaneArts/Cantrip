@@ -193,6 +193,7 @@ import {
   workflowRunPauseSchema,
   workflowRunQuerySchema,
   workflowRunResumeSchema,
+  workflowRunSaveRevisionSchema,
   workflowWorktreeOutcomeRequestSchema,
 } from "@cantrip/protocol/workflows";
 
@@ -2402,6 +2403,92 @@ export async function buildApp({
       return run
         ? reply.send(workflowRunDetailSchema.parse(run))
         : reply.code(404).send({ error: "Workflow run not found." });
+    },
+  );
+
+  app.post<{ Params: { runId: string } }>(
+    "/api/workflow-runs/:runId/save-revision",
+    async (request, reply) => {
+      const input = workflowRunSaveRevisionSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const run = await repository.workflowRuns.getRun(
+        LOCAL_USER_ID,
+        request.params.runId,
+      );
+      if (!run) {
+        return reply.code(404).send({ error: "Workflow run not found." });
+      }
+      if (run.run.status !== "completed" || !run.run.completedAt) {
+        return reply
+          .code(409)
+          .send({ error: "Only a completed workflow run can be saved." });
+      }
+      const [definition, executedRevision] = await Promise.all([
+        repository.workflows.getDefinition(LOCAL_USER_ID, run.run.workflowId),
+        repository.workflows.getRevisionById(
+          LOCAL_USER_ID,
+          run.run.workflowId,
+          run.run.workflowRevisionId,
+        ),
+      ]);
+      if (!definition || !executedRevision) {
+        return reply
+          .code(409)
+          .send({ error: "The executed workflow revision is unavailable." });
+      }
+      if (definition.workflow.archivedAt) {
+        return reply
+          .code(409)
+          .send({ error: "Archived workflows cannot accept new revisions." });
+      }
+      const structuredInput = run.run.structuredInput;
+      const runDefaults =
+        structuredInput &&
+        typeof structuredInput === "object" &&
+        !Array.isArray(structuredInput)
+          ? structuredInput
+          : executedRevision.defaults;
+      const savedRevision = await repository.workflows.appendRevision(
+        LOCAL_USER_ID,
+        run.run.workflowId,
+        {
+          graph: executedRevision.graph,
+          declaredInputs: executedRevision.declaredInputs,
+          declaredOutputs: executedRevision.declaredOutputs,
+          defaults: input.data.useRunInputAsDefaults
+            ? runDefaults
+            : executedRevision.defaults,
+          permissionRequirements: executedRevision.permissionRequirements,
+          source: "saved-run",
+          provenance: {
+            origin: "workflow-run",
+            sourceId: run.run.id,
+            sourceRevision: run.run.workflowRevisionId,
+            reference: null,
+            importedAt: run.run.completedAt,
+            metadata: {
+              completedAt: run.run.completedAt,
+              useRunInputAsDefaults: input.data.useRunInputAsDefaults,
+            },
+          },
+          trustState: input.data.trustState,
+        },
+      );
+      const savedWorkflow = await repository.workflows.updateDefinition(
+        LOCAL_USER_ID,
+        run.run.workflowId,
+        { trustState: input.data.trustState },
+      );
+      return savedWorkflow && savedRevision
+        ? reply.send(
+            workflowDefinitionDetailSchema.parse({
+              workflow: savedWorkflow,
+              revision: savedRevision,
+            }),
+          )
+        : reply.code(404).send({ error: "Workflow not found." });
     },
   );
 

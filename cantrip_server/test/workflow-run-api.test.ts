@@ -320,6 +320,20 @@ describe.sequential("workflow run API", () => {
       }),
     ).toMatchObject({ statusCode: 404 });
     expect(
+      await app.inject({
+        method: "POST",
+        url: `/api/workflow-runs/${runId}/save-revision`,
+        payload: {},
+      }),
+    ).toMatchObject({ statusCode: 409 });
+    expect(
+      await app.inject({
+        method: "POST",
+        url: "/api/workflow-runs/missing-run/save-revision",
+        payload: {},
+      }),
+    ).toMatchObject({ statusCode: 404 });
+    expect(
       workflowRunEventPageSchema.parse(
         (
           await app.inject({

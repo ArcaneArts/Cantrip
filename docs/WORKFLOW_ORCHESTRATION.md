@@ -299,3 +299,12 @@ view, or select an explicit lane outcome. Controls use a fresh idempotency key
 and replace the local run snapshot only after the server returns the validated
 durable state. An offline or recovering lane therefore stays visible instead
 of being optimistically treated as complete.
+
+A completed run can be saved back to its owning workflow as an immutable
+`saved-run` revision. The snapshot reuses the exact executed graph and declared
+schemas, records the run and executed revision as provenance, and may promote
+the successful structured input to the next revision's defaults. The operator
+must review the resulting `modified` trust state before relying on it for
+unattended work. Repeating the same save is content-hash idempotent and returns
+the existing revision; active, failed, cancelled, or archived workflows fail
+closed.
