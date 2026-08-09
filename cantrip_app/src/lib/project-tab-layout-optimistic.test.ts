@@ -1,7 +1,12 @@
 import type { ProjectTabLayoutSummary } from "@cantrip/protocol";
+import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 
-import { applyOptimisticTabLayoutCommand } from "./project-tab-layout-optimistic";
+import {
+  applyOptimisticTabLayoutCommand,
+  applyOptimisticTabLayoutToCache,
+  restoreOptimisticTabLayoutCache,
+} from "./project-tab-layout-optimistic";
 
 const timestamp = "2026-08-09T12:00:00.000Z";
 const layout: ProjectTabLayoutSummary = {
@@ -78,5 +83,27 @@ describe("optimistic tab layouts", () => {
       "explorer:b",
       "terminal:a",
     ]);
+  });
+
+  it("restores the authoritative snapshot after a rejected mutation", () => {
+    const queryClient = new QueryClient();
+    const queryKey = ["project-tab-layout", layout.projectId] as const;
+    queryClient.setQueryData(queryKey, layout);
+    const snapshot = applyOptimisticTabLayoutToCache(
+      queryClient,
+      layout.projectId,
+      {
+        type: "move-member",
+        tabKey: "explorer:b",
+        targetGroupId: "group-a",
+        targetMemberPosition: 1,
+      },
+    );
+    expect(
+      queryClient.getQueryData<ProjectTabLayoutSummary>(queryKey)?.groups,
+    ).toHaveLength(1);
+
+    restoreOptimisticTabLayoutCache(queryClient, snapshot);
+    expect(queryClient.getQueryData(queryKey)).toEqual(layout);
   });
 });

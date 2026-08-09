@@ -339,15 +339,8 @@ function mutationLiveResources(route: string): AppLiveResource[] {
   ) {
     return ["project"];
   }
-  if (route === "/api/projects/:projectId/tabs/order") {
-    return [
-      "chat",
-      "terminal",
-      "explorer",
-      "browser",
-      "code-tab",
-      "project-view",
-    ];
+  if (route.startsWith("/api/projects/:projectId/tab-groups")) {
+    return ["project"];
   }
   if (route.includes("/worktrees")) return ["worktree"];
   if (route === "/api/chats/:chatId/console") return ["chat", "terminal"];
@@ -6878,23 +6871,6 @@ export async function buildApp({
           if (!closed) send({ type: "error", message: errorMessage(error) });
         }
       })();
-    },
-  );
-
-  app.patch<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/tabs/order",
-    async (request, reply) => {
-      const input = orderedIdsSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      return (await repository.reorderProjectTabs(
-        LOCAL_USER_ID,
-        request.params.projectId,
-        input.data,
-      ))
-        ? reply.code(204).send()
-        : reply.code(400).send({ error: "Tab order did not match." });
     },
   );
 

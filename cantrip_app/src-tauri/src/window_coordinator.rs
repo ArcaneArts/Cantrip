@@ -118,6 +118,40 @@ fn member_position(slots: &[PhysicalTabSlot], cursor_x: f64) -> usize {
         .unwrap_or(slots.len())
 }
 
+fn resolve_drop(
+    active_drag: &ActiveTabDrag,
+    registrations: &[TopBarRegistration],
+    cursor_x: f64,
+    cursor_y: f64,
+) -> NativeDropResolution {
+    let mut targets = registrations
+        .iter()
+        .filter(|registration| registration.rect.contains(cursor_x, cursor_y))
+        .collect::<Vec<_>>();
+    targets
+        .sort_by_key(|registration| registration.window_label == active_drag.source_window_label);
+    let Some(target) = targets.first() else {
+        return NativeDropResolution::Detach {
+            screen_x: cursor_x,
+            screen_y: cursor_y,
+        };
+    };
+    if target.project_id != active_drag.source_project_id {
+        return NativeDropResolution::Invalid {
+            reason: "Tab groups cannot span projects.".to_owned(),
+        };
+    }
+    if target.group_id == active_drag.source_group_id {
+        return NativeDropResolution::Noop;
+    }
+    NativeDropResolution::Dock {
+        target_group_id: target.group_id.clone(),
+        target_member_position: member_position(&target.tabs, cursor_x),
+        target_project_id: target.project_id.clone(),
+        target_window_label: target.window_label.clone(),
+    }
+}
+
 #[tauri::command]
 pub fn register_tab_top_bar(
     window: WebviewWindow,
@@ -251,43 +285,60 @@ pub fn finish_native_tab_drag(
         return Ok(NativeDropResolution::Cancelled);
     };
 
-    let mut targets = registrations
+    let targets = registrations
         .values()
         .filter(|registration| {
             window
                 .app_handle()
                 .get_webview_window(&registration.window_label)
                 .is_some()
-                && registration.rect.contains(cursor.x, cursor.y)
         })
+        .cloned()
         .collect::<Vec<_>>();
-    targets
-        .sort_by_key(|registration| registration.window_label == active_drag.source_window_label);
-    let Some(target) = targets.first() else {
-        return Ok(NativeDropResolution::Detach {
-            screen_x: cursor.x,
-            screen_y: cursor.y,
-        });
-    };
-    if target.project_id != active_drag.source_project_id {
-        return Ok(NativeDropResolution::Invalid {
-            reason: "Tab groups cannot span projects.".to_owned(),
-        });
-    }
-    if target.group_id == active_drag.source_group_id {
-        return Ok(NativeDropResolution::Noop);
-    }
-    Ok(NativeDropResolution::Dock {
-        target_group_id: target.group_id.clone(),
-        target_member_position: member_position(&target.tabs, cursor.x),
-        target_project_id: target.project_id.clone(),
-        target_window_label: target.window_label.clone(),
-    })
+    Ok(resolve_drop(&active_drag, &targets, cursor.x, cursor.y))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{member_position, physical_rect, LogicalRect, PhysicalTabSlot};
+    use super::{
+        member_position, physical_rect, resolve_drop, ActiveTabDrag, LogicalRect,
+        NativeDropResolution, PhysicalRect, PhysicalTabSlot, TopBarRegistration,
+    };
+
+    fn registration(
+        window_label: &str,
+        project_id: &str,
+        group_id: &str,
+        left: f64,
+        right: f64,
+    ) -> TopBarRegistration {
+        TopBarRegistration {
+            group_id: group_id.into(),
+            project_id: project_id.into(),
+            rect: PhysicalRect {
+                left,
+                top: 0.0,
+                right,
+                bottom: 40.0,
+            },
+            registration_id: "registration".into(),
+            tabs: vec![PhysicalTabSlot {
+                _tab_key: "terminal:target".into(),
+                left,
+                right,
+            }],
+            window_label: window_label.into(),
+        }
+    }
+
+    fn active_drag() -> ActiveTabDrag {
+        ActiveTabDrag {
+            source_group_id: "group-source".into(),
+            source_project_id: "project-1".into(),
+            _source_tab_key: "chat:source".into(),
+            source_window_label: "source-window".into(),
+        }
+    }
 
     #[test]
     fn converts_logical_rectangles_with_negative_monitor_origins() {
@@ -327,5 +378,52 @@ mod tests {
         assert_eq!(member_position(&slots, 180.0), 1);
         assert_eq!(member_position(&slots, 400.0), 2);
         assert_eq!(slots[0]._tab_key, "chat:a");
+    }
+
+    #[test]
+    fn docks_into_another_registered_window_and_ignores_the_overlapping_source() {
+        let resolution = resolve_drop(
+            &active_drag(),
+            &[
+                registration("source-window", "project-1", "group-source", 0.0, 300.0),
+                registration("target-window", "project-1", "group-target", 0.0, 300.0),
+            ],
+            200.0,
+            20.0,
+        );
+        assert!(matches!(
+            resolution,
+            NativeDropResolution::Dock {
+                target_group_id,
+                target_member_position: 1,
+                target_window_label,
+                ..
+            } if target_group_id == "group-target" && target_window_label == "target-window"
+        ));
+    }
+
+    #[test]
+    fn treats_the_source_bar_as_a_noop_and_empty_space_as_detach() {
+        let source = registration("source-window", "project-1", "group-source", 0.0, 300.0);
+        assert!(matches!(
+            resolve_drop(&active_drag(), std::slice::from_ref(&source), 100.0, 20.0),
+            NativeDropResolution::Noop
+        ));
+        assert!(matches!(
+            resolve_drop(&active_drag(), &[source], -1400.0, 900.0),
+            NativeDropResolution::Detach {
+                screen_x: -1400.0,
+                screen_y: 900.0
+            }
+        ));
+    }
+
+    #[test]
+    fn rejects_cross_project_window_docking() {
+        let target = registration("target-window", "project-2", "group-target", 0.0, 300.0);
+        assert!(matches!(
+            resolve_drop(&active_drag(), &[target], 100.0, 20.0),
+            NativeDropResolution::Invalid { .. }
+        ));
     }
 }

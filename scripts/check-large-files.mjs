@@ -16,7 +16,13 @@ if (result.status !== 0) process.exit(result.status ?? 1);
 const oversized = [];
 for (const raw of result.stdout.toString("utf8").split("\0")) {
   if (!raw) continue;
-  const size = (await stat(path.join(root, raw))).size;
+  const size = await stat(path.join(root, raw))
+    .then((entry) => entry.size)
+    .catch((error) => {
+      if (error?.code === "ENOENT") return null;
+      throw error;
+    });
+  if (size === null) continue;
   if (size >= limit) oversized.push({ path: raw, size });
 }
 if (oversized.length > 0) {

@@ -1,5 +1,4 @@
 import {
-  closestCenter,
   DndContext,
   DragOverlay,
   PointerSensor,
@@ -7,6 +6,7 @@ import {
   useSensor,
   useSensors,
   type CollisionDetection,
+  type Collision,
   type DragCancelEvent,
   type DragEndEvent,
   type DragMoveEvent,
@@ -41,8 +41,9 @@ import {
   type DesktopNativeTabDrag,
 } from "@/lib/desktop-window-coordinator";
 
-const workspaceCollisionDetection: CollisionDetection = (arguments_) => {
-  const pointerCollisions = pointerWithin(arguments_);
+export function filterWorkspacePointerCollisions(
+  pointerCollisions: Collision[],
+): Collision[] {
   if (pointerCollisions.length > 0) {
     const specific = pointerCollisions.filter((collision) => {
       const drop = (
@@ -53,7 +54,11 @@ const workspaceCollisionDetection: CollisionDetection = (arguments_) => {
     });
     return specific.length > 0 ? specific : pointerCollisions;
   }
-  return closestCenter(arguments_);
+  return [];
+}
+
+const workspaceCollisionDetection: CollisionDetection = (arguments_) => {
+  return filterWorkspacePointerCollisions(pointerWithin(arguments_));
 };
 
 function dragData(

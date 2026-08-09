@@ -1155,7 +1155,6 @@ export function ProjectChatList({
   onRenameProjectView,
   onRenameTerminal,
   onSelectGroup,
-  onSelectTab,
   onSelectProject,
   projects,
   selectedTabKey,
@@ -1210,7 +1209,6 @@ export function ProjectChatList({
   onRenameProjectView(viewId: string, title: string): void;
   onRenameTerminal(terminalId: string, title: string): void;
   onSelectGroup(groupId: string): void;
-  onSelectTab(tabKey: string): void;
   onSelectProject(projectId: string): void;
   projects: ProjectSummary[];
   selectedTabKey: string | null;
@@ -1252,119 +1250,84 @@ export function ProjectChatList({
     (terminal) => terminal.linkedChatId === null,
   );
   type SidebarTab =
-    | { id: string; kind: "chat"; chat: ChatSummary; position: number }
+    | { id: string; kind: "chat"; chat: ChatSummary }
     | {
         id: string;
         kind: "terminal";
         terminal: TerminalSummary;
-        position: number;
       }
     | {
         id: string;
         kind: "explorer";
         explorer: ExplorerSummary;
-        position: number;
       }
     | {
         id: string;
         kind: "browser";
         browser: BrowserSummary;
-        position: number;
       }
     | {
         id: string;
         kind: "code";
         codeTab: CodeTabSummary;
-        position: number;
       }
     | {
         id: string;
         kind: "view";
         view: ProjectViewSummary;
-        position: number;
       };
-  const legacyTabs: SidebarTab[] = [
+  const tabs: SidebarTab[] = [
     ...chats.map((chat) => ({
       id: chatId(chat.id),
       kind: "chat" as const,
       chat,
-      position: chat.position,
     })),
     ...standaloneTerminals.map((terminal) => ({
       id: terminalId(terminal.id),
       kind: "terminal" as const,
       terminal,
-      position: terminal.position,
     })),
     ...explorers.map((explorer) => ({
       id: explorerId(explorer.id),
       kind: "explorer" as const,
       explorer,
-      position: explorer.position,
     })),
     ...browsers.map((browser) => ({
       id: browserId(browser.id),
       kind: "browser" as const,
       browser,
-      position: browser.position,
     })),
     ...codeTabs.map((codeTab) => ({
       id: codeId(codeTab.id),
       kind: "code" as const,
       codeTab,
-      position: codeTab.position,
     })),
     ...projectViews.map((view) => ({
       id: viewId(view.id),
       kind: "view" as const,
       view,
-      position: view.position,
     })),
-  ].sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
-  const legacyTabByKey = new Map(legacyTabs.map((tab) => [tab.id, tab]));
-  const layoutTabKeys = new Set(
-    tabLayout?.groups.flatMap(({ members }) =>
-      members.map(({ tabKey }) => tabKey),
-    ) ?? [],
-  );
-  const sidebarGroups = tabLayout
-    ? [
-        ...tabLayout.groups.flatMap((group) => {
-          const members = group.members.flatMap(({ tabKey }) => {
-            const tab = legacyTabByKey.get(tabKey);
-            return tab ? [tab] : [];
-          });
-          const anchor =
-            members.find((tab) => tab.id === group.anchorTabKey) ?? members[0];
-          return anchor
-            ? [
-                {
-                  anchor,
-                  id: group.id,
-                  members,
-                  persisted: true as const,
-                  sortId: anchor.id,
-                },
-              ]
-            : [];
-        }),
-        ...legacyTabs
-          .filter(({ id }) => !layoutTabKeys.has(id))
-          .map((tab) => ({
-            anchor: tab,
-            id: `legacy:${tab.id}`,
-            members: [tab],
-            persisted: false as const,
-            sortId: tab.id,
-          })),
-      ]
-    : legacyTabs.map((tab) => ({
-        anchor: tab,
-        id: `legacy:${tab.id}`,
-        members: [tab],
-        persisted: false as const,
-        sortId: tab.id,
-      }));
+  ];
+  const tabByKey = new Map(tabs.map((tab) => [tab.id, tab]));
+  const sidebarGroups =
+    tabLayout?.groups.flatMap((group) => {
+      const members = group.members.flatMap(({ tabKey }) => {
+        const tab = tabByKey.get(tabKey);
+        return tab ? [tab] : [];
+      });
+      const anchor =
+        members.find((tab) => tab.id === group.anchorTabKey) ?? members[0];
+      return anchor
+        ? [
+            {
+              anchor,
+              id: group.id,
+              members,
+              sortId: anchor.id,
+            },
+          ]
+        : [];
+    }) ?? [];
   const tabVisualKind = (tab: SidebarTab): ProjectTabGroupVisualKind =>
     tab.kind === "view" ? tab.view.kind : tab.kind;
   const tabTitle = (tab: SidebarTab): string =>
@@ -1528,10 +1491,7 @@ export function ProjectChatList({
                     >
                       {sidebarGroups.map((group) => {
                         const tab = group.anchor;
-                        const selectGroup = () =>
-                          group.persisted
-                            ? onSelectGroup(group.id)
-                            : onSelectTab(tab.id);
+                        const selectGroup = () => onSelectGroup(group.id);
                         if (group.members.length > 1) {
                           const visualKinds = new Set(
                             group.members.map(tabVisualKind),

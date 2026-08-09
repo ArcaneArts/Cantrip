@@ -261,8 +261,12 @@ import {
   type DesktopNativeDropResolution,
   type DesktopNativeTabDrag,
 } from "@/lib/desktop-window-coordinator";
+import { planDesktopTabDrop } from "@/lib/desktop-tab-drop-plan";
 import { cn } from "@/lib/utils";
-import { applyOptimisticTabLayoutCommand } from "@/lib/project-tab-layout-optimistic";
+import {
+  applyOptimisticTabLayoutToCache,
+  restoreOptimisticTabLayoutCache,
+} from "@/lib/project-tab-layout-optimistic";
 import {
   projectsInWorkspace,
   resolveProjectWorkspace,
@@ -2504,7 +2508,7 @@ export function App() {
     enabled: Boolean(selectedProjectId),
     queryFn: () => getProjectTabLayout(selectedProjectId!),
     queryKey: ["project-tab-layout", selectedProjectId],
-    refetchInterval: 1_000,
+    refetchInterval: projectResourcesLive ? 15_000 : 1_000,
   });
   const worktrees = useQuery({
     enabled: Boolean(selectedProjectId),
@@ -3175,18 +3179,10 @@ export function App() {
       setWorkspaceDragError(null);
       const queryKey = ["project-tab-layout", projectId] as const;
       await queryClient.cancelQueries({ queryKey });
-      const previous =
-        queryClient.getQueryData<ProjectTabLayoutSummary>(queryKey);
-      if (previous) {
-        queryClient.setQueryData<ProjectTabLayoutSummary>(
-          queryKey,
-          applyOptimisticTabLayoutCommand(previous, command),
-        );
-      }
-      return { previous, queryKey };
+      return applyOptimisticTabLayoutToCache(queryClient, projectId, command);
     },
     onError: (error, _input, context) => {
-      queryClient.setQueryData(context?.queryKey ?? [], context?.previous);
+      restoreOptimisticTabLayoutCache(queryClient, context);
       setWorkspaceDragError(errorText(error));
     },
     onSuccess: (layout) =>
@@ -3707,7 +3703,7 @@ export function App() {
     }
     revealWorkspace();
   };
-  const selectTabFromSidebar = (tabKey: string) => {
+  const selectTopTab = (tabKey: string) => {
     const layout = tabLayout.data;
     if (layout) {
       setWorkspaceSelection((current) =>
@@ -3832,11 +3828,6 @@ export function App() {
     drag: DesktopNativeTabDrag,
     resolution: DesktopNativeDropResolution,
   ) => {
-    if (resolution.kind === "cancelled" || resolution.kind === "noop") return;
-    if (resolution.kind === "invalid") {
-      setWorkspaceDragError(resolution.reason);
-      return;
-    }
     const layout = queryClient.getQueryData<ProjectTabLayoutSummary>([
       "project-tab-layout",
       drag.projectId,
@@ -3845,38 +3836,32 @@ export function App() {
       setWorkspaceDragError("The project tab layout is unavailable.");
       return;
     }
+    const plan = planDesktopTabDrop(drag, resolution, layout);
+    if (plan.type === "noop") return;
+    if (plan.type === "invalid") {
+      setWorkspaceDragError(plan.reason);
+      return;
+    }
     if (tabLayoutMutation.isPending) {
       setWorkspaceDragError("Wait for the current tab move to finish.");
       return;
     }
     try {
-      if (resolution.kind === "dock") {
-        if (resolution.targetProjectId !== drag.projectId) {
-          setWorkspaceDragError("Tab groups cannot span projects.");
-          return;
-        }
+      if (plan.type === "dock") {
         await tabLayoutMutation.mutateAsync({
           projectId: drag.projectId,
-          command: {
-            type: "move-member",
-            tabKey: drag.surface.tabKey,
-            targetGroupId: resolution.targetGroupId,
-            targetMemberPosition: resolution.targetMemberPosition,
-          },
+          command: plan.command,
         });
-        await focusDesktopWindow(resolution.targetWindowLabel);
-        if (drag.sourceIsPopout && drag.sourceGroupSize === 1) {
+        await focusDesktopWindow(plan.targetWindowLabel);
+        if (plan.closeSourceWindow) {
           await closeCurrentDesktopWindow();
-        } else if (!drag.sourceIsPopout && drag.sourceGroupSize === 1) {
-          setDetachedGroupId(resolution.targetGroupId);
+        } else if (plan.markTargetDetached) {
+          setDetachedGroupId(plan.targetGroupId);
         }
         return;
       }
 
-      if (drag.sourceIsPopout && drag.sourceGroupSize === 1) {
-        return;
-      }
-      if (drag.sourceGroupSize === 1) {
+      if (plan.type === "open-existing") {
         await openDesktopPopoutGroup(
           {
             activeTabKey: drag.surface.tabKey,
@@ -3884,7 +3869,7 @@ export function App() {
             projectId: drag.projectId,
           },
           drag.surface.title,
-          { x: resolution.screenX, y: resolution.screenY },
+          plan.position,
         );
         setDetachedGroupId(drag.groupId);
         return;
@@ -3892,13 +3877,7 @@ export function App() {
 
       const nextLayout = await tabLayoutMutation.mutateAsync({
         projectId: drag.projectId,
-        command: {
-          type: "move-member",
-          tabKey: drag.surface.tabKey,
-          targetGroupId: null,
-          targetGroupPosition: layout.groups.length,
-          targetMemberPosition: 0,
-        },
+        command: plan.command,
       });
       const detachedGroup = nextLayout.groups.find(({ members }) =>
         members.some(({ tabKey }) => tabKey === drag.surface.tabKey),
@@ -3914,7 +3893,7 @@ export function App() {
           projectId: drag.projectId,
         },
         drag.surface.title,
-        { x: resolution.screenX, y: resolution.screenY },
+        plan.position,
       );
     } catch (error) {
       setWorkspaceDragError(errorText(error));
@@ -4134,7 +4113,6 @@ export function App() {
                 onOpenProjectSettings={openProjectSettings}
                 onSelectProject={selectProjectFromSidebar}
                 onSelectGroup={selectGroupFromSidebar}
-                onSelectTab={selectTabFromSidebar}
               />
             </nav>
 
@@ -4736,7 +4714,7 @@ export function App() {
               }
             }}
             onRename={renameSurface}
-            onSelect={selectTabFromSidebar}
+            onSelect={selectTopTab}
           />
         ) : null}
 
@@ -5375,7 +5353,6 @@ export function App() {
               onOpenProjectSettings={openProjectSettings}
               onSelectProject={selectProjectFromSidebar}
               onSelectGroup={selectGroupFromSidebar}
-              onSelectTab={selectTabFromSidebar}
             />
           </div>
         </DialogContent>

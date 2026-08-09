@@ -66,6 +66,17 @@ describe("application live query bridge", () => {
     expect(
       appLiveEventQueryKeys(
         event({
+          resource: "project",
+          scope: { kind: "project", projectId: "project-one" },
+        }),
+      ),
+    ).toEqual([["projects"], ["project-tab-layout", "project-one"]]);
+    expect(
+      appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
+    ).toContainEqual(["project-tab-layout", "project-one"]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
           resource: "terminal",
           scope: { kind: "current-user" },
         }),

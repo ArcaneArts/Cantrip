@@ -2,6 +2,7 @@ import type {
   ProjectTabLayoutSummary,
   TabGroupSummary,
 } from "@cantrip/protocol";
+import type { QueryClient } from "@tanstack/react-query";
 
 import type { TabLayoutCommand } from "./workspace-dnd-model";
 
@@ -20,6 +21,35 @@ function positionedGroups(groups: readonly TabGroupSummary[]) {
       position: memberPosition,
     })),
   }));
+}
+
+export interface OptimisticTabLayoutSnapshot {
+  previous: ProjectTabLayoutSummary | undefined;
+  queryKey: readonly ["project-tab-layout", string];
+}
+
+export function applyOptimisticTabLayoutToCache(
+  queryClient: QueryClient,
+  projectId: string,
+  command: TabLayoutCommand,
+): OptimisticTabLayoutSnapshot {
+  const queryKey = ["project-tab-layout", projectId] as const;
+  const previous = queryClient.getQueryData<ProjectTabLayoutSummary>(queryKey);
+  if (previous) {
+    queryClient.setQueryData<ProjectTabLayoutSummary>(
+      queryKey,
+      applyOptimisticTabLayoutCommand(previous, command),
+    );
+  }
+  return { previous, queryKey };
+}
+
+export function restoreOptimisticTabLayoutCache(
+  queryClient: QueryClient,
+  snapshot: OptimisticTabLayoutSnapshot | undefined,
+): void {
+  if (!snapshot) return;
+  queryClient.setQueryData(snapshot.queryKey, snapshot.previous);
 }
 
 export function applyOptimisticTabLayoutCommand(
