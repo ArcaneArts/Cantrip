@@ -54,8 +54,20 @@ import {
   type WorkflowRunNodeItem,
   type WorkflowRunNodeItemExecutionState,
   type WorkflowVerifyNodeConfiguration,
+  type WorkflowWorktreeLease,
 } from "@cantrip/protocol/workflows";
-import { and, asc, desc, eq, gt, inArray, lte, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  lte,
+  ne,
+  sql,
+} from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -180,6 +192,19 @@ function toRun(run: WorkflowRunRow): WorkflowRun {
   });
 }
 
+function toWorkflowWorktreeLease(
+  lease: typeof schema.workflowWorktreeLeases.$inferSelect,
+): WorkflowWorktreeLease {
+  return workflowWorktreeLeaseSchema.parse({
+    ...lease,
+    activatedAt: nullableISOString(lease.activatedAt),
+    checkpointedAt: nullableISOString(lease.checkpointedAt),
+    releasedAt: nullableISOString(lease.releasedAt),
+    createdAt: toISOString(lease.createdAt),
+    updatedAt: toISOString(lease.updatedAt),
+  });
+}
+
 export interface WorkflowRunCreateResult {
   created: boolean;
   run: WorkflowRunDetail;
@@ -212,6 +237,22 @@ export interface WorkflowAttemptAssignment {
   permissionProfileId: string | null;
   workerId: string;
   worktreeId: string;
+}
+
+export interface WorkflowWorktreeLeaseReservationInput {
+  baseRevision: string;
+  branchName: string;
+  projectSourceId: string;
+  requestedWorktreeId?: string;
+  runId: string;
+  runNodeId: string;
+  runNodeItemId: string | null;
+  workerId: string;
+}
+
+export interface WorkflowWorktreeLeaseReservationResult {
+  created: boolean;
+  lease: WorkflowWorktreeLease;
 }
 
 export interface WorkflowAttemptLease {
@@ -871,16 +912,7 @@ export class WorkflowRunRepository {
           updatedAt: toISOString(attempt.updatedAt),
         }),
       ),
-      worktreeLeases: worktreeLeases.map((lease) =>
-        workflowWorktreeLeaseSchema.parse({
-          ...lease,
-          activatedAt: nullableISOString(lease.activatedAt),
-          checkpointedAt: nullableISOString(lease.checkpointedAt),
-          releasedAt: nullableISOString(lease.releasedAt),
-          createdAt: toISOString(lease.createdAt),
-          updatedAt: toISOString(lease.updatedAt),
-        }),
-      ),
+      worktreeLeases: worktreeLeases.map(toWorkflowWorktreeLease),
       gates: gates.map((gate) =>
         workflowApprovalGateSchema.parse({
           ...gate,
@@ -891,6 +923,358 @@ export class WorkflowRunRepository {
         }),
       ),
     });
+  }
+
+  async reserveWorktreeLease(
+    ownerId: string,
+    input: WorkflowWorktreeLeaseReservationInput,
+  ): Promise<WorkflowWorktreeLeaseReservationResult | null> {
+    const branchName = input.branchName.trim();
+    const baseRevision = input.baseRevision.trim();
+    if (!branchName || branchName.length > 255) {
+      throw new WorkflowRunConflictError(
+        "Workflow worktree branch names must contain at most 255 characters.",
+      );
+    }
+    if (!baseRevision || baseRevision.length > 1_024) {
+      throw new WorkflowRunConflictError(
+        "Workflow worktree base revisions must contain at most 1,024 characters.",
+      );
+    }
+    const leaseId = randomUUID();
+    const requestedWorktreeId = input.requestedWorktreeId ?? randomUUID();
+    const leaseKey = `workflow-worktree:${randomUUID()}`;
+    let created = false;
+    try {
+      const lease = await this.database.transaction(async (transaction) => {
+        const contexts = await transaction
+          .select({ node: schema.workflowRunNodes, run: schema.workflowRuns })
+          .from(schema.workflowRunNodes)
+          .innerJoin(
+            schema.workflowRuns,
+            and(
+              eq(schema.workflowRuns.id, schema.workflowRunNodes.runId),
+              eq(schema.workflowRuns.ownerId, ownerId),
+            ),
+          )
+          .where(
+            and(
+              eq(schema.workflowRuns.id, input.runId),
+              eq(schema.workflowRunNodes.id, input.runNodeId),
+            ),
+          )
+          .limit(1);
+        const context = contexts[0];
+        if (!context) return null;
+        const existing = await transaction
+          .select()
+          .from(schema.workflowWorktreeLeases)
+          .where(
+            and(
+              eq(schema.workflowWorktreeLeases.runNodeId, input.runNodeId),
+              input.runNodeItemId
+                ? eq(
+                    schema.workflowWorktreeLeases.runNodeItemId,
+                    input.runNodeItemId,
+                  )
+                : isNull(schema.workflowWorktreeLeases.runNodeItemId),
+              ne(schema.workflowWorktreeLeases.state, "released"),
+            ),
+          )
+          .limit(1);
+        if (existing[0]) {
+          this.assertWorktreeLeaseReservation(existing[0], input);
+          return existing[0];
+        }
+        if (
+          !context.node.writeCapable ||
+          !["ready", "running", "retrying", "recovering"].includes(
+            context.node.status,
+          ) ||
+          !["queued", "running", "waiting"].includes(context.run.status) ||
+          context.run.recoveryState !== "stable" ||
+          !context.run.projectId
+        ) {
+          throw new WorkflowRunConflictError(
+            "The workflow execution unit is not eligible for worktree allocation.",
+          );
+        }
+        if (input.runNodeItemId) {
+          const items = await transaction
+            .select({ id: schema.workflowRunNodeItems.id })
+            .from(schema.workflowRunNodeItems)
+            .where(
+              and(
+                eq(schema.workflowRunNodeItems.id, input.runNodeItemId),
+                eq(schema.workflowRunNodeItems.runNodeId, input.runNodeId),
+                inArray(schema.workflowRunNodeItems.status, [
+                  "ready",
+                  "running",
+                  "recovering",
+                ]),
+              ),
+            )
+            .limit(1);
+          if (!items[0]) {
+            throw new WorkflowRunConflictError(
+              "The workflow collection item is not eligible for worktree allocation.",
+            );
+          }
+        }
+        const sources = await transaction
+          .select({ id: schema.projectSources.id })
+          .from(schema.projectSources)
+          .where(
+            and(
+              eq(schema.projectSources.id, input.projectSourceId),
+              eq(schema.projectSources.projectId, context.run.projectId),
+              eq(schema.projectSources.workerId, input.workerId),
+            ),
+          )
+          .limit(1);
+        if (!sources[0]) {
+          throw new WorkflowRunConflictError(
+            "The workflow project source does not match the requested worker.",
+          );
+        }
+        const rows = await transaction
+          .insert(schema.workflowWorktreeLeases)
+          .values({
+            id: leaseId,
+            runId: input.runId,
+            runNodeId: input.runNodeId,
+            runNodeItemId: input.runNodeItemId,
+            projectSourceId: input.projectSourceId,
+            workerId: input.workerId,
+            requestedWorktreeId,
+            leaseKey,
+            state: "allocating",
+            branchName,
+            baseRevision,
+          })
+          .returning();
+        created = true;
+        return rows[0] ?? null;
+      });
+      if (!lease) return null;
+      if (created) {
+        await this.appendEvent({
+          runId: lease.runId,
+          runNodeId: lease.runNodeId,
+          attemptId: null,
+          eventKey: `worktree-lease-reserved:${lease.id}`,
+          type: "worktree.lease.reserved",
+          payload: {
+            leaseId: lease.id,
+            runNodeItemId: lease.runNodeItemId,
+            requestedWorktreeId: lease.requestedWorktreeId,
+            workerId: lease.workerId,
+            branchName: lease.branchName,
+            baseRevision: lease.baseRevision,
+          },
+          actorType: "server",
+          actorId: null,
+        });
+      }
+      return { created, lease: toWorkflowWorktreeLease(lease) };
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      const existing = await this.unreleasedWorktreeLeaseRow(ownerId, input);
+      if (!existing) throw error;
+      this.assertWorktreeLeaseReservation(existing, input);
+      return { created: false, lease: toWorkflowWorktreeLease(existing) };
+    }
+  }
+
+  async activateWorktreeLease(
+    ownerId: string,
+    leaseId: string,
+    input: { startingRevision: string; worktreeId: string },
+  ): Promise<WorkflowWorktreeLease | null> {
+    const startingRevision = input.startingRevision.trim();
+    if (!startingRevision || startingRevision.length > 500) {
+      throw new WorkflowRunConflictError(
+        "Workflow starting revisions must contain at most 500 characters.",
+      );
+    }
+    let activated = false;
+    const lease = await this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select({ lease: schema.workflowWorktreeLeases })
+        .from(schema.workflowWorktreeLeases)
+        .innerJoin(
+          schema.workflowRuns,
+          and(
+            eq(schema.workflowRuns.id, schema.workflowWorktreeLeases.runId),
+            eq(schema.workflowRuns.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.workflowWorktreeLeases.id, leaseId))
+        .for("update")
+        .limit(1);
+      const current = rows[0]?.lease;
+      if (!current) return null;
+      if (current.state === "active") {
+        if (
+          current.worktreeId !== input.worktreeId ||
+          current.startingRevision !== startingRevision
+        ) {
+          throw new WorkflowRunConflictError(
+            "The workflow worktree lease is already active elsewhere.",
+          );
+        }
+        return current;
+      }
+      if (!["allocating", "recovering"].includes(current.state)) {
+        throw new WorkflowRunConflictError(
+          "The workflow worktree lease cannot be activated from its current state.",
+        );
+      }
+      if (current.requestedWorktreeId !== input.worktreeId) {
+        throw new WorkflowRunConflictError(
+          "The worker worktree identity does not match the reserved identity.",
+        );
+      }
+      const worktrees = await transaction
+        .select({
+          sourceId: schema.projectWorktrees.projectSourceId,
+          workerId: schema.projectWorktrees.workerId,
+          isPrimary: schema.projectWorktrees.isPrimary,
+          lifecycleState: schema.projectWorktrees.lifecycleState,
+          branch: schema.projectWorktrees.branch,
+          head: schema.projectWorktrees.head,
+        })
+        .from(schema.projectWorktrees)
+        .where(eq(schema.projectWorktrees.id, input.worktreeId))
+        .limit(1);
+      const worktree = worktrees[0];
+      if (
+        !worktree ||
+        worktree.sourceId !== current.projectSourceId ||
+        worktree.workerId !== current.workerId ||
+        worktree.isPrimary ||
+        worktree.lifecycleState !== "ready" ||
+        worktree.branch !== current.branchName ||
+        worktree.head !== startingRevision ||
+        current.baseRevision !== startingRevision
+      ) {
+        throw new WorkflowRunConflictError(
+          "The reconciled worktree does not match the reserved workflow lane.",
+        );
+      }
+      const now = new Date();
+      const updated = await transaction
+        .update(schema.workflowWorktreeLeases)
+        .set({
+          state: "active",
+          worktreeId: input.worktreeId,
+          startingRevision,
+          errorCode: null,
+          errorMessage: null,
+          activatedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.workflowWorktreeLeases.id, leaseId),
+            inArray(schema.workflowWorktreeLeases.state, [
+              "allocating",
+              "recovering",
+            ]),
+          ),
+        )
+        .returning();
+      if (!updated[0]) {
+        throw new WorkflowRunConflictError(
+          "The workflow worktree lease changed during activation.",
+        );
+      }
+      activated = true;
+      return updated[0];
+    });
+    if (!lease) return null;
+    if (activated) {
+      await this.appendEvent({
+        runId: lease.runId,
+        runNodeId: lease.runNodeId,
+        attemptId: null,
+        eventKey: `worktree-lease-activated:${lease.id}`,
+        type: "worktree.lease.activated",
+        payload: {
+          leaseId: lease.id,
+          runNodeItemId: lease.runNodeItemId,
+          worktreeId: lease.worktreeId,
+          workerId: lease.workerId,
+          startingRevision: lease.startingRevision,
+        },
+        actorType: "server",
+        actorId: null,
+      });
+    }
+    return toWorkflowWorktreeLease(lease);
+  }
+
+  async failWorktreeLeaseAllocation(
+    ownerId: string,
+    leaseId: string,
+    input: { code: string; message: string; recoverable: boolean },
+  ): Promise<WorkflowWorktreeLease | null> {
+    const state = input.recoverable ? "recovering" : "failed";
+    let failed = false;
+    const lease = await this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select({ lease: schema.workflowWorktreeLeases })
+        .from(schema.workflowWorktreeLeases)
+        .innerJoin(
+          schema.workflowRuns,
+          and(
+            eq(schema.workflowRuns.id, schema.workflowWorktreeLeases.runId),
+            eq(schema.workflowRuns.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.workflowWorktreeLeases.id, leaseId))
+        .for("update")
+        .limit(1);
+      const current = rows[0]?.lease;
+      if (!current) return null;
+      if (["active", "checkpointed", "released"].includes(current.state)) {
+        return current;
+      }
+      const now = new Date();
+      const updated = await transaction
+        .update(schema.workflowWorktreeLeases)
+        .set({
+          state,
+          errorCode: input.code.trim().slice(0, 200) || "allocation-failed",
+          errorMessage:
+            input.message.trim().slice(0, 5_000) ||
+            "Worktree allocation failed.",
+          updatedAt: now,
+        })
+        .where(eq(schema.workflowWorktreeLeases.id, leaseId))
+        .returning();
+      failed = true;
+      return updated[0] ?? null;
+    });
+    if (!lease) return null;
+    if (!failed) return toWorkflowWorktreeLease(lease);
+    await this.appendEvent({
+      runId: lease.runId,
+      runNodeId: lease.runNodeId,
+      attemptId: null,
+      eventKey: `worktree-lease-allocation-failed:${lease.id}:${state}`,
+      type: "worktree.lease.allocation-failed",
+      payload: {
+        leaseId: lease.id,
+        recoverable: input.recoverable,
+        state,
+        code: lease.errorCode,
+        message: lease.errorMessage,
+      },
+      actorType: "server",
+      actorId: null,
+    });
+    return toWorkflowWorktreeLease(lease);
   }
 
   async listEvents(
@@ -6501,6 +6885,56 @@ export class WorkflowRunRepository {
       };
     }
     return { threadId: null, turnId: null };
+  }
+
+  private assertWorktreeLeaseReservation(
+    lease: typeof schema.workflowWorktreeLeases.$inferSelect,
+    input: WorkflowWorktreeLeaseReservationInput,
+  ): void {
+    if (
+      lease.runId !== input.runId ||
+      lease.runNodeId !== input.runNodeId ||
+      lease.runNodeItemId !== input.runNodeItemId ||
+      lease.projectSourceId !== input.projectSourceId ||
+      lease.workerId !== input.workerId ||
+      lease.branchName !== input.branchName.trim() ||
+      lease.baseRevision !== input.baseRevision.trim()
+    ) {
+      throw new WorkflowRunConflictError(
+        "The workflow execution unit already has a different worktree reservation.",
+      );
+    }
+  }
+
+  private async unreleasedWorktreeLeaseRow(
+    ownerId: string,
+    input: WorkflowWorktreeLeaseReservationInput,
+  ): Promise<typeof schema.workflowWorktreeLeases.$inferSelect | null> {
+    const rows = await this.database
+      .select({ lease: schema.workflowWorktreeLeases })
+      .from(schema.workflowWorktreeLeases)
+      .innerJoin(
+        schema.workflowRuns,
+        and(
+          eq(schema.workflowRuns.id, schema.workflowWorktreeLeases.runId),
+          eq(schema.workflowRuns.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.workflowWorktreeLeases.runId, input.runId),
+          eq(schema.workflowWorktreeLeases.runNodeId, input.runNodeId),
+          input.runNodeItemId
+            ? eq(
+                schema.workflowWorktreeLeases.runNodeItemId,
+                input.runNodeItemId,
+              )
+            : isNull(schema.workflowWorktreeLeases.runNodeItemId),
+          ne(schema.workflowWorktreeLeases.state, "released"),
+        ),
+      )
+      .limit(1);
+    return rows[0]?.lease ?? null;
   }
 
   private async appendEvent(input: {
