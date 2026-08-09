@@ -68,6 +68,7 @@ import {
   saveWorkflowRunRevision,
   updateWorkflowAutomationTrigger,
 } from "@/lib/api";
+import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
 import { cn } from "@/lib/utils";
 import { WorkflowAuthorDialog } from "./workflow-author-dialog";
 import { WorkflowAutomationDialog } from "./workflow-automation-dialog";
@@ -248,6 +249,8 @@ export function WorkflowCenter({
   projectId: string;
 }) {
   const queryClient = useQueryClient();
+  const liveStatus = useAppLiveStatus();
+  const workflowResourcesLive = liveStatus === "live";
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(
     initialWorkflowId ?? null,
   );
@@ -269,6 +272,9 @@ export function WorkflowCenter({
   const [inputText, setInputText] = useState("{}");
   const [inputError, setInputError] = useState<string | null>(null);
   const [preparedInput, setPreparedInput] = useState<WorkflowJsonObject>({});
+  useAppLiveScope(
+    selectedRunId ? { kind: "workflow-run", runId: selectedRunId } : null,
+  );
 
   const workflows = useQuery({
     queryFn: () => getWorkflows({ limit: 500 }),
@@ -306,10 +312,12 @@ export function WorkflowCenter({
   const runs = useQuery({
     queryFn: () => getWorkflowRuns({ limit: 100, projectId }),
     queryKey: ["workflow-runs", projectId],
-    refetchInterval: (query) =>
-      query.state.data?.some(({ status }) => activeRunStatuses.has(status))
-        ? 2_000
-        : false,
+    refetchInterval: workflowResourcesLive
+      ? false
+      : (query) =>
+          query.state.data?.some(({ status }) => activeRunStatuses.has(status))
+            ? 2_000
+            : false,
   });
   const automations = useQuery({
     queryFn: () => getWorkflowAutomationTriggers({ projectId, limit: 500 }),
@@ -326,10 +334,12 @@ export function WorkflowCenter({
     enabled: Boolean(selectedRunId),
     queryFn: () => getWorkflowRun(selectedRunId!),
     queryKey: ["workflow-run", selectedRunId],
-    refetchInterval: (query) =>
-      query.state.data && activeRunStatuses.has(query.state.data.run.status)
-        ? 1_500
-        : false,
+    refetchInterval: workflowResourcesLive
+      ? false
+      : (query) =>
+          query.state.data && activeRunStatuses.has(query.state.data.run.status)
+            ? 1_500
+            : false,
   });
 
   const storeRun = (detail: WorkflowRunDetail) => {

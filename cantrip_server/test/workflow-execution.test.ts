@@ -4,6 +4,8 @@ import path from "node:path";
 
 import {
   agentInteractionRequestListSchema,
+  appLiveServerMessageSchema,
+  type AppLiveServerMessage,
   type WorkerCommand,
   type WorkerWorktreeSummary,
   unprobedCodexRuntimeReport,
@@ -14,6 +16,7 @@ import {
   workflowRunEventPageSchema,
 } from "@cantrip/protocol/workflows";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import type { WebSocket } from "ws";
 
 import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
@@ -854,6 +857,48 @@ afterAll(async () => {
 
 describe.sequential("single-agent workflow execution", () => {
   it("persists worker progress, attribution, structured result, and usage", async () => {
+    const liveEvents: AppLiveServerMessage[] = [];
+    let liveClient: WebSocket | null = null;
+    const liveSocket = await app.injectWS(
+      "/api/live",
+      { headers: { origin: config.appOrigins[0] } },
+      {
+        onInit(client) {
+          liveClient = client;
+          client.on("message", (data) => {
+            liveEvents.push(
+              appLiveServerMessageSchema.parse(JSON.parse(data.toString())),
+            );
+          });
+        },
+      },
+    );
+    if (!liveClient)
+      throw new Error("Workflow live socket did not initialize.");
+    liveClient.send(
+      JSON.stringify({
+        type: "initialize",
+        protocolVersion: 1,
+        client: { id: "workflow-live", name: "Workflow test", version: "1" },
+        resume: null,
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(liveEvents.at(-1)).toMatchObject({ type: "ready" }),
+    );
+    liveClient.send(
+      JSON.stringify({
+        type: "subscribe",
+        requestId: "workflow-project",
+        scopes: [{ kind: "project", projectId }],
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(liveEvents.at(-1)).toMatchObject({
+        type: "subscribed",
+        requestId: "workflow-project",
+      }),
+    );
     mode = "success";
     const before = executionCommands.length;
     const response = await createRun("execute-success");
@@ -907,6 +952,24 @@ describe.sequential("single-agent workflow execution", () => {
       "workflow.node.activity",
       "node.attempt.completed",
     ]);
+    await vi.waitFor(() => {
+      const runEvents = liveEvents.filter(
+        (event) =>
+          event.type === "event" &&
+          event.entityId === runId &&
+          ["workflow-node", "workflow-run"].includes(event.resource),
+      );
+      expect(runEvents.length).toBeGreaterThanOrEqual(4);
+      expect(
+        runEvents.some(
+          (event) =>
+            event.type === "event" &&
+            event.resource === "workflow-node" &&
+            event.revision === 2,
+        ),
+      ).toBe(true);
+    });
+    liveSocket.terminate();
 
     const savedResponse = await app.inject({
       method: "POST",

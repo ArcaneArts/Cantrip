@@ -72,3 +72,18 @@ authoritative scope-recovery barrier. When live is unavailable, active chats
 fall back to a 3 second snapshot interval and idle chats to 10 seconds. This
 fallback preserves convergence without making the WebSocket a second durable
 transcript.
+
+Active workflow runs publish run, node, gate, usage, recovery, and worktree
+lease changes after their repository operation completes. Worker progress
+notifications reuse the persisted workflow-event sequence as the live event
+revision, allowing duplicate and stale deliveries to be ignored. The app
+coalesces workflow invalidations into a 100 ms window and refreshes the run
+detail snapshot, rather than issuing one GET for every progress item. A live
+cursor gap, workflow sequence gap, scope change, or server restart converges
+through the authoritative run-detail snapshot. The durable workflow-event API
+remains available for sequence diagnostics and replay inspection.
+
+The 1.5–2 second active workflow polling remains only as a disconnected live
+fallback. Workflow definitions, automation triggers, repository inventory, and
+customization refresh state are migrated in the following focused rollout
+lane.

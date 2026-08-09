@@ -2909,7 +2909,7 @@ export class WorkflowRunRepository {
     ownerId: string,
     lease: WorkflowAttemptLease,
     event: WorkerEvent,
-  ): Promise<void> {
+  ): Promise<number> {
     if (
       !("attemptId" in event) ||
       event.attemptId !== lease.attemptId ||
@@ -3122,7 +3122,7 @@ export class WorkflowRunRepository {
           ),
         );
     });
-    await this.appendEvent({
+    return this.appendEvent({
       runId: lease.candidate.run.id,
       runNodeId: lease.candidate.node.id,
       attemptId: lease.attemptId,
@@ -7551,10 +7551,10 @@ export class WorkflowRunRepository {
     runId: string;
     runNodeId: string | null;
     type: string;
-  }): Promise<void> {
+  }): Promise<number> {
     for (let retry = 0; retry < 20; retry += 1) {
       const existing = await this.database
-        .select({ id: schema.workflowRunEvents.id })
+        .select({ sequence: schema.workflowRunEvents.sequence })
         .from(schema.workflowRunEvents)
         .where(
           and(
@@ -7563,7 +7563,7 @@ export class WorkflowRunRepository {
           ),
         )
         .limit(1);
-      if (existing[0]) return;
+      if (existing[0]) return existing[0].sequence;
       const latest = await this.database
         .select({ sequence: schema.workflowRunEvents.sequence })
         .from(schema.workflowRunEvents)
@@ -7571,18 +7571,19 @@ export class WorkflowRunRepository {
         .orderBy(desc(schema.workflowRunEvents.sequence))
         .limit(1);
       try {
+        const sequence = (latest[0]?.sequence ?? -1) + 1;
         await this.database.insert(schema.workflowRunEvents).values({
           runId: input.runId,
           runNodeId: input.runNodeId,
           attemptId: input.attemptId,
-          sequence: (latest[0]?.sequence ?? -1) + 1,
+          sequence,
           eventKey: input.eventKey.slice(0, 500),
           type: input.type.slice(0, 200),
           payload: jsonObject(input.payload),
           actorType: input.actorType.slice(0, 100),
           actorId: input.actorId?.slice(0, 500) ?? null,
         });
-        return;
+        return sequence;
       } catch (error) {
         if (!isUniqueViolation(error)) throw error;
       }

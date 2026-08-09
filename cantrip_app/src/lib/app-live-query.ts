@@ -9,6 +9,8 @@ import type { QueryClient, QueryKey } from "@tanstack/react-query";
 
 type AppLiveEvent = Extract<AppLiveServerMessage, { type: "event" }>;
 
+const MAX_TRACKED_WORKFLOW_SEQUENCES = 4_096;
+
 function projectScopeId(scope: AppLiveScope): string | null {
   return scope.kind === "project" ? scope.projectId : null;
 }
@@ -170,23 +172,69 @@ export class AppLiveQueryBridge {
   readonly #messageCursors = new Map<string, number>();
   readonly #pendingKeys = new Map<string, QueryKey>();
   readonly #queryClient: QueryClient;
+  readonly #workflowRunSequences = new Map<string, number>();
   #flushScheduled = false;
+  #workflowFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(queryClient: QueryClient) {
     this.#queryClient = queryClient;
   }
 
   handleEvent(event: AppLiveEvent): void {
+    if (!this.#acceptWorkflowEvent(event)) return;
     if (this.#applyChatMessageEvent(event)) return;
     for (const key of appLiveEventQueryKeys(event)) {
       this.#pendingKeys.set(JSON.stringify(key), key);
     }
-    if (this.#pendingKeys.size === 0 || this.#flushScheduled) return;
+    if (this.#pendingKeys.size === 0) return;
+    if (
+      ["workflow-gate", "workflow-node", "workflow-run"].includes(
+        event.resource,
+      )
+    ) {
+      if (this.#flushScheduled || this.#workflowFlushTimer) return;
+      this.#workflowFlushTimer = setTimeout(() => {
+        this.#workflowFlushTimer = null;
+        void this.#flush();
+      }, 100);
+      return;
+    }
+    if (this.#flushScheduled) return;
     this.#flushScheduled = true;
     queueMicrotask(() => {
       this.#flushScheduled = false;
+      if (this.#workflowFlushTimer) clearTimeout(this.#workflowFlushTimer);
+      this.#workflowFlushTimer = null;
       void this.#flush();
     });
+  }
+
+  #acceptWorkflowEvent(event: AppLiveEvent): boolean {
+    if (
+      !["workflow-gate", "workflow-node", "workflow-run"].includes(
+        event.resource,
+      ) ||
+      event.revision === null ||
+      !event.entityId
+    ) {
+      return true;
+    }
+    const scopeKey =
+      event.scope.kind === "workflow-run"
+        ? `workflow-run:${event.scope.runId}`
+        : event.scope.kind === "project"
+          ? `project:${event.scope.projectId}`
+          : null;
+    if (!scopeKey) return true;
+    const key = `${scopeKey}:${event.entityId}`;
+    const latest = this.#workflowRunSequences.get(key);
+    if (latest !== undefined && event.revision <= latest) return false;
+    this.#workflowRunSequences.set(key, event.revision);
+    if (this.#workflowRunSequences.size > MAX_TRACKED_WORKFLOW_SEQUENCES) {
+      const oldest = this.#workflowRunSequences.keys().next().value;
+      if (oldest !== undefined) this.#workflowRunSequences.delete(oldest);
+    }
+    return true;
   }
 
   #applyChatMessageEvent(event: AppLiveEvent): boolean {
@@ -237,12 +285,26 @@ export class AppLiveQueryBridge {
     scopes: AppLiveScope[],
     _reason: AppLiveResyncReason,
   ): Promise<void> {
+    if (this.#workflowFlushTimer) clearTimeout(this.#workflowFlushTimer);
+    this.#workflowFlushTimer = null;
     await this.#flush();
     for (const scope of scopes) {
       if (scope.kind !== "chat") continue;
       const prefix = `${scope.chatId}:`;
       for (const key of this.#messageCursors.keys()) {
         if (key.startsWith(prefix)) this.#messageCursors.delete(key);
+      }
+    }
+    for (const scope of scopes) {
+      const prefix =
+        scope.kind === "workflow-run"
+          ? `workflow-run:${scope.runId}:`
+          : scope.kind === "project"
+            ? `project:${scope.projectId}:`
+            : null;
+      if (!prefix) continue;
+      for (const key of this.#workflowRunSequences.keys()) {
+        if (key.startsWith(prefix)) this.#workflowRunSequences.delete(key);
       }
     }
     const keys = uniqueQueryKeys(scopes.flatMap(appLiveScopeQueryKeys));

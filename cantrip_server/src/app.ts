@@ -263,7 +263,10 @@ import {
 } from "./workers/bridge.js";
 import { RemoteSurfaceRelay } from "./remote-surfaces/relay.js";
 import { createRemoteSurfaceWebRtcConfiguration } from "./remote-surfaces/webrtc.js";
-import { WorkflowExecutor } from "./workflows/executor.js";
+import {
+  WorkflowExecutor,
+  type WorkflowRunLiveChange,
+} from "./workflows/executor.js";
 import {
   parseGeneratedJson,
   workflowGenerationTranscript,
@@ -553,6 +556,14 @@ export async function buildApp({
       );
       publishChatSummary(interaction.provenance.chatId, interaction.projectId);
     }
+    if (interaction?.provenance.workflowRunId) {
+      publishWorkflowRunChange({
+        projectId: interaction.projectId,
+        resource: "workflow-gate",
+        revision: null,
+        runId: interaction.provenance.workflowRunId,
+      });
+    }
     return interaction;
   };
   const terminalizeLiveAgentInteractionRequest = async (
@@ -593,14 +604,29 @@ export async function buildApp({
       ...input,
     );
     const chats = new Map<string, string>();
+    const workflowRuns = new Map<string, string>();
     for (const interaction of interactions) {
       if (interaction.provenance.chatId) {
         chats.set(interaction.provenance.chatId, interaction.projectId);
+      }
+      if (interaction.provenance.workflowRunId) {
+        workflowRuns.set(
+          interaction.provenance.workflowRunId,
+          interaction.projectId,
+        );
       }
     }
     for (const [chatId, projectId] of chats) {
       publishChatInvalidation(chatId, "agent-interaction");
       publishChatSummary(chatId, projectId);
+    }
+    for (const [runId, projectId] of workflowRuns) {
+      publishWorkflowRunChange({
+        projectId,
+        resource: "workflow-gate",
+        revision: null,
+        runId,
+      });
     }
     return interactions;
   };
@@ -658,11 +684,40 @@ export async function buildApp({
     bridge,
     (projectId) => publishLiveInvalidation("worktree", { projectId }),
   );
+  const publishWorkflowRunChange = (change: WorkflowRunLiveChange): void => {
+    if (!livePublishingEnabled) return;
+    try {
+      liveHub.publish({
+        scope: { kind: "workflow-run", runId: change.runId },
+        resource: change.resource,
+        action: "invalidated",
+        entityId: change.runId,
+        revision: change.revision,
+        payload: null,
+      });
+      if (change.projectId) {
+        liveHub.publish({
+          scope: { kind: "project", projectId: change.projectId },
+          resource: change.resource,
+          action: "invalidated",
+          entityId: change.runId,
+          revision: change.revision,
+          payload: null,
+        });
+      }
+    } catch (error) {
+      app.log.error(
+        { err: error, workflowRunId: change.runId },
+        "Could not publish workflow run live change",
+      );
+    }
+  };
   const workflowExecutor = new WorkflowExecutor(
     repository,
     bridge,
     worktreeCoordinator,
     app.log,
+    publishWorkflowRunChange,
   );
   const [serverId, currentUser] = await Promise.all([
     repository.getOrCreateServerId(),
@@ -932,6 +987,12 @@ export async function buildApp({
         triggerId,
         runResult.run.run.id,
       );
+      publishWorkflowRunChange({
+        projectId: runResult.run.run.projectId,
+        resource: "workflow-run",
+        revision: null,
+        runId: runResult.run.run.id,
+      });
       workflowExecutor.queueRun(runResult.run.run.id);
       return workflowTriggerDeliveryResultSchema.parse({
         delivery,
@@ -3600,7 +3661,15 @@ export async function buildApp({
         LOCAL_USER_ID,
         input.data,
       );
-      if (result) workflowExecutor.queueRun(result.run.run.id);
+      if (result) {
+        publishWorkflowRunChange({
+          projectId: result.run.run.projectId,
+          resource: "workflow-run",
+          revision: null,
+          runId: result.run.run.id,
+        });
+        workflowExecutor.queueRun(result.run.run.id);
+      }
       return result
         ? reply
             .code(result.created ? 201 : 200)
@@ -3731,6 +3800,14 @@ export async function buildApp({
           request.params.leaseId,
           input.data,
         );
+        if (run) {
+          publishWorkflowRunChange({
+            projectId: run.run.projectId,
+            resource: "workflow-node",
+            revision: null,
+            runId: run.run.id,
+          });
+        }
         return run
           ? reply.send(workflowRunDetailSchema.parse(run))
           : reply
