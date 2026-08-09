@@ -1,43 +1,38 @@
 import { isTauri } from "@tauri-apps/api/core";
 
-export type DesktopPopoutTarget = {
-  kind: "browser" | "chat" | "code" | "explorer" | "terminal" | "view";
+export type DesktopPopoutGroupTarget = {
+  activeTabKey: string;
+  groupId: string;
   projectId: string;
-  tabId: string;
 };
 
-const targetParameter = "cantrip-popout";
+const groupParameter = "cantrip-popout-group";
 
-export function parseDesktopPopoutTarget(
+export function parseDesktopPopoutGroupTarget(
   search: string,
-): DesktopPopoutTarget | null {
+): DesktopPopoutGroupTarget | null {
   const parameters = new URLSearchParams(search);
-  const kind = parameters.get(targetParameter);
+  const groupId = parameters.get(groupParameter);
   const projectId = parameters.get("project");
-  if (!projectId) return null;
-
-  if (
-    kind !== "browser" &&
-    kind !== "chat" &&
-    kind !== "code" &&
-    kind !== "explorer" &&
-    kind !== "terminal" &&
-    kind !== "view"
-  ) {
-    return null;
-  }
-
-  const tabId = parameters.get("tab");
-  return tabId ? { kind, projectId, tabId } : null;
+  const activeTabKey = parameters.get("active");
+  return groupId && projectId && activeTabKey
+    ? { activeTabKey, groupId, projectId }
+    : null;
 }
 
-export function desktopPopoutSearch(target: DesktopPopoutTarget): string {
+export function desktopPopoutGroupSearch(
+  target: DesktopPopoutGroupTarget,
+): string {
   const parameters = new URLSearchParams({
-    [targetParameter]: target.kind,
+    [groupParameter]: target.groupId,
+    active: target.activeTabKey,
     project: target.projectId,
   });
-  parameters.set("tab", target.tabId);
   return `?${parameters.toString()}`;
+}
+
+export function desktopPopoutGroupWindowLabel(groupId: string): string {
+  return `cantrip-group-${groupId.replace(/[^A-Za-z0-9-/:_]/g, "_")}`;
 }
 
 export function isDesktopRuntime(): boolean {
@@ -71,16 +66,42 @@ export async function updateDesktopWindowTheme(
   await getCurrentWebviewWindow().setTheme(theme);
 }
 
-export async function openDesktopPopout(
-  target: DesktopPopoutTarget,
+async function focusWindow(groupId: string): Promise<boolean> {
+  const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+  const existing = await WebviewWindow.getByLabel(
+    desktopPopoutGroupWindowLabel(groupId),
+  );
+  if (!existing) return false;
+  await existing.show();
+  await existing.unminimize();
+  await existing.setFocus();
+  return true;
+}
+
+export async function focusDesktopPopoutGroup(
+  groupId: string,
+): Promise<boolean> {
+  return isDesktopRuntime() ? focusWindow(groupId) : false;
+}
+
+export async function closeCurrentDesktopWindow(): Promise<void> {
+  if (!isDesktopRuntime()) return;
+  const { getCurrentWebviewWindow } =
+    await import("@tauri-apps/api/webviewWindow");
+  await getCurrentWebviewWindow().close();
+}
+
+export async function openDesktopPopoutGroup(
+  target: DesktopPopoutGroupTarget,
   title: string,
-): Promise<void> {
+): Promise<"created" | "focused"> {
   if (!isDesktopRuntime()) {
     throw new Error("Pop-out windows are only available in the desktop app.");
   }
+  if (await focusWindow(target.groupId)) return "focused";
 
   const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-  const label = `popout-${target.kind}-${crypto.randomUUID()}`;
+  const label = desktopPopoutGroupWindowLabel(target.groupId);
   const path = window.location.pathname || "/";
   const popout = new WebviewWindow(label, {
     center: true,
@@ -90,20 +111,29 @@ export async function openDesktopPopout(
     minWidth: 640,
     resizable: true,
     title: `${title} — Cantrip`,
-    url: `${path}${desktopPopoutSearch(target)}`,
+    url: `${path}${desktopPopoutGroupSearch(target)}`,
     width: 1100,
   });
 
-  await new Promise<void>((resolve, reject) => {
-    void popout.once("tauri://created", () => resolve());
-    void popout.once<unknown>("tauri://error", (event) => {
-      reject(
-        new Error(
-          typeof event.payload === "string"
-            ? event.payload
-            : "The desktop window could not be created.",
-        ),
-      );
+  try {
+    await new Promise<void>((resolve, reject) => {
+      void popout.once("tauri://created", () => resolve());
+      void popout.once<unknown>("tauri://error", (event) => {
+        reject(
+          new Error(
+            typeof event.payload === "string"
+              ? event.payload
+              : "The desktop window could not be created.",
+          ),
+        );
+      });
     });
-  });
+    return "created";
+  } catch (error) {
+    // Two callers may race after both observe no owner. The stable label lets
+    // the loser recover by focusing the window that won instead of surfacing a
+    // duplicate-window error.
+    if (await focusWindow(target.groupId)) return "focused";
+    throw error;
+  }
 }
