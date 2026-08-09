@@ -3581,310 +3581,330 @@ export function App() {
       className="flex h-svh overflow-hidden bg-background text-foreground"
       data-tauri-titlebar={overlayTitlebar ? "overlay" : undefined}
     >
-      {!isPopout && !sidebarCollapsed ? (
-        <aside
-          ref={sidebarRef}
-          data-slot="app-sidebar"
-          className="group/sidebar relative hidden shrink-0 flex-col bg-background md:flex"
-          style={{ width: sidebarWidth }}
+      {!isPopout ? (
+        <div
+          data-slot="app-sidebar-shell"
+          className={cn(
+            "relative hidden shrink-0 md:block",
+            sidebarResizing
+              ? "transition-none"
+              : "transition-[width] duration-150 ease-out motion-reduce:transition-none",
+          )}
+          style={{ width: sidebarCollapsed ? 0 : sidebarWidth }}
         >
-          <div
-            data-slot="sidebar-resize-handle"
-            role="separator"
-            aria-label="Resize sidebar"
-            aria-orientation="vertical"
-            aria-valuemin={MIN_SIDEBAR_WIDTH}
-            aria-valuemax={MAX_SIDEBAR_WIDTH}
-            aria-valuenow={sidebarWidth}
-            tabIndex={0}
-            title="Drag to resize sidebar"
+          <aside
+            ref={sidebarRef}
+            data-slot="app-sidebar"
+            data-state={sidebarCollapsed ? "collapsed" : "expanded"}
+            aria-hidden={sidebarCollapsed}
+            inert={sidebarCollapsed}
             className={cn(
-              "absolute inset-y-0 -right-1 z-50 w-2 cursor-col-resize touch-none outline-none",
-              "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-border after:opacity-0 after:transition-opacity after:duration-150",
-              "group-hover/sidebar:after:opacity-100 hover:after:opacity-100 focus-visible:after:opacity-100",
-              sidebarResizing && "after:opacity-100",
+              "group/sidebar absolute inset-y-0 left-0 flex flex-col bg-background transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none",
+              sidebarCollapsed
+                ? "pointer-events-none -translate-x-2 opacity-0"
+                : "translate-x-0 opacity-100",
             )}
-            onKeyDown={resizeSidebarWithKeyboard}
-            onPointerDown={beginSidebarResize}
-            onPointerMove={moveSidebarResize}
-            onPointerUp={(event) => finishSidebarResize(event, true)}
-            onPointerCancel={(event) => finishSidebarResize(event, false)}
-          />
-          <div
-            className={
-              overlayTitlebar
-                ? "flex h-12 items-center gap-2 pl-20 pr-3"
-                : "flex h-16 items-center gap-3 px-4"
-            }
-            data-slot="sidebar-titlebar"
-            data-tauri-drag-region={overlayTitlebar ? "" : undefined}
+            style={{ width: sidebarWidth }}
           >
+            <div
+              data-slot="sidebar-resize-handle"
+              role="separator"
+              aria-label="Resize sidebar"
+              aria-orientation="vertical"
+              aria-valuemin={MIN_SIDEBAR_WIDTH}
+              aria-valuemax={MAX_SIDEBAR_WIDTH}
+              aria-valuenow={sidebarWidth}
+              tabIndex={0}
+              title="Drag to resize sidebar"
+              className={cn(
+                "absolute inset-y-0 -right-1 z-50 w-2 cursor-col-resize touch-none outline-none",
+                "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-border after:opacity-0 after:transition-opacity after:duration-150",
+                "group-hover/sidebar:after:opacity-100 hover:after:opacity-100 focus-visible:after:opacity-100",
+                sidebarResizing && "after:opacity-100",
+              )}
+              onKeyDown={resizeSidebarWithKeyboard}
+              onPointerDown={beginSidebarResize}
+              onPointerMove={moveSidebarResize}
+              onPointerUp={(event) => finishSidebarResize(event, true)}
+              onPointerCancel={(event) => finishSidebarResize(event, false)}
+            />
             <div
               className={
                 overlayTitlebar
-                  ? "grid size-7 place-items-center"
-                  : "grid size-9 place-items-center"
+                  ? "flex h-12 items-center gap-2 pl-20 pr-3"
+                  : "flex h-16 items-center gap-3 px-4"
               }
+              data-slot="sidebar-titlebar"
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
-              <WandSparkles
-                className="size-4"
-                data-tauri-drag-region={overlayTitlebar ? "" : undefined}
-              />
-            </div>
-            <div
-              className="min-w-0 flex-1"
-              data-tauri-drag-region={overlayTitlebar ? "" : undefined}
-            >
-              <p
-                className={cn(
-                  "font-semibold tracking-tight",
-                  overlayTitlebar && "text-sm",
-                )}
+              <div
+                className={
+                  overlayTitlebar
+                    ? "grid size-7 place-items-center"
+                    : "grid size-9 place-items-center"
+                }
                 data-tauri-drag-region={overlayTitlebar ? "" : undefined}
               >
-                Cantrip
-              </p>
-            </div>
-            {!overlayTitlebar ? (
-              <StatusDot online={Boolean(onlineWorker)} />
-            ) : null}
-            <Button
-              size="icon"
-              variant="ghost"
-              className={overlayTitlebar ? "size-7" : "size-8"}
-              onClick={() => setSidebarCollapsed(true)}
-              title="Collapse sidebar"
-            >
-              <PanelLeftClose className="size-4" />
-              <span className="sr-only">Collapse sidebar</span>
-            </Button>
-          </div>
-
-          <div className="flex items-center justify-between px-4 pb-2 pt-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Projects
-            </p>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="size-7"
-              onClick={() => {
-                setShowImporter(true);
-                setShowSettings(false);
-                setShowProjectSettings(false);
-              }}
-            >
-              <Plus className="size-4" />
-              <span className="sr-only">Add project</span>
-            </Button>
-          </div>
-
-          <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-            <ProjectChatList
-              browsers={browsers.data ?? []}
-              projects={projects.data ?? []}
-              chats={chats.data ?? []}
-              codeTabs={codeTabs.data ?? []}
-              explorers={explorers.data ?? []}
-              projectViews={projectViews.data ?? []}
-              terminals={terminals.data ?? []}
-              workers={workers.data ?? []}
-              worktrees={worktrees.data ?? []}
-              worktreeStatuses={worktreeStatuses}
-              selectedProjectId={selectedProjectId}
-              selectedBrowserId={selectedBrowserId}
-              selectedChatId={selectedChatId}
-              selectedCodeTabId={selectedCodeTabId}
-              selectedExplorerId={selectedExplorerId}
-              selectedProjectViewId={selectedProjectViewId}
-              selectedTerminalId={selectedTerminalId}
-              creatingChat={newChat.isPending}
-              creatingCode={newCodeTab.isPending}
-              creatingBrowser={newBrowser.isPending}
-              creatingExplorer={newExplorer.isPending}
-              creatingRemoteDesktop={newRemoteDesktop.isPending}
-              creatingTerminal={newTerminal.isPending}
-              creatingView={newProjectView.isPending}
-              onCreateChat={(projectId) => newChat.mutate({ projectId })}
-              onCreateCode={(projectId) => newCodeTab.mutate({ projectId })}
-              onCreateBrowser={(projectId) => newBrowser.mutate(projectId)}
-              onCreateExplorer={(projectId) =>
-                newExplorer.mutate({ projectId })
-              }
-              onCreateGit={(projectId) =>
-                newProjectView.mutate({ projectId, kind: "history" })
-              }
-              onCreateRemoteDesktop={(projectId) => {
-                newRemoteDesktop.reset();
-                newRemoteDesktop.mutate(projectId);
-              }}
-              onCreateTerminal={(projectId) =>
-                newTerminal.mutate({ projectId })
-              }
-              onChangeChatWorktree={(chatId, worktreeId, mode) => {
-                const chat = chats.data?.find(({ id }) => id === chatId);
-                if (chat) bindChatWorktree(chat, worktreeId, mode);
-              }}
-              onRequestChatWorktreeCreate={(chat) =>
-                setWorktreeCreateTarget({
-                  kind: "chat",
-                  projectId: chat.projectId,
-                  tabId: chat.id,
-                  mode: chat.worktreeMode,
-                })
-              }
-              onOpenChatTerminal={openChatTerminalHere}
-              onOpenChatExplorer={openChatExplorerHere}
-              onOpenChatHistory={openChatHistoryHere}
-              onRenameChat={(chatId, title) =>
-                renameChatMutation.mutate({ chatId, title })
-              }
-              onDuplicateChat={(chatId) => forkChatMutation.mutate(chatId)}
-              onDeleteChat={(chatId) => deleteChatMutation.mutate(chatId)}
-              onRenameCode={(codeTabId, title) =>
-                updateCodeTabMutation.mutate({ codeTabId, title })
-              }
-              onDeleteCode={(codeTabId) =>
-                deleteCodeTabMutation.mutate(codeTabId)
-              }
-              onRenameBrowser={(browserId, title) =>
-                updateBrowserMutation.mutate({ browserId, input: { title } })
-              }
-              onDeleteBrowser={(browserId) =>
-                deleteBrowserMutation.mutate(browserId)
-              }
-              onRenameExplorer={(explorerId, title) =>
-                renameExplorerMutation.mutate({ explorerId, title })
-              }
-              onDeleteExplorer={(explorerId) =>
-                deleteExplorerMutation.mutate(explorerId)
-              }
-              onRenameProjectView={(viewId, title) =>
-                renameProjectViewMutation.mutate({ viewId, title })
-              }
-              onDeleteProjectView={(viewId) =>
-                deleteProjectViewMutation.mutate(viewId)
-              }
-              onRenameTerminal={(terminalId, title) =>
-                renameTerminalMutation.mutate({ terminalId, title })
-              }
-              onDeleteTerminal={(terminalId) =>
-                deleteTerminalMutation.mutate(terminalId)
-              }
-              onRemoveProject={(projectId, deleteLocalFiles) =>
-                removeProjectMutation.mutate({ projectId, deleteLocalFiles })
-              }
-              onOpenProjectSettings={openProjectSettings}
-              onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
-              onReorderTabs={(projectId, ids) =>
-                reorderTabsMutation.mutate({ projectId, ids })
-              }
-              onSelectProject={(projectId) => {
-                setSelectedProjectViewId(null);
-                setSelectedProjectId(projectId);
-                setSelectedChatId(null);
-                setSelectedTerminalId(null);
-                setSelectedExplorerId(null);
-                setSelectedBrowserId(null);
-                setSelectedCodeTabId(null);
-                setShowImporter(false);
-                setShowSettings(false);
-                setShowProjectSettings(false);
-              }}
-              onSelectChat={(chatId) => {
-                setSelectedProjectViewId(null);
-                setSelectedTerminalId(null);
-                setSelectedExplorerId(null);
-                setSelectedBrowserId(null);
-                setSelectedCodeTabId(null);
-                setSelectedChatId(chatId);
-                setShowImporter(false);
-                setShowSettings(false);
-                setShowProjectSettings(false);
-              }}
-              onSelectTerminal={(terminalId) => {
-                setSelectedProjectViewId(null);
-                setSelectedChatId(null);
-                setSelectedExplorerId(null);
-                setSelectedBrowserId(null);
-                setSelectedCodeTabId(null);
-                setSelectedTerminalId(terminalId);
-                setShowImporter(false);
-                setShowSettings(false);
-                setShowProjectSettings(false);
-              }}
-              onSelectExplorer={(explorerId) => {
-                setSelectedProjectViewId(null);
-                setSelectedChatId(null);
-                setSelectedTerminalId(null);
-                setSelectedBrowserId(null);
-                setSelectedCodeTabId(null);
-                setSelectedExplorerId(explorerId);
-                setShowImporter(false);
-                setShowSettings(false);
-                setShowProjectSettings(false);
-              }}
-              onSelectBrowser={(browserId) => {
-                setSelectedProjectViewId(null);
-                setSelectedChatId(null);
-                setSelectedTerminalId(null);
-                setSelectedExplorerId(null);
-                setSelectedCodeTabId(null);
-                setSelectedBrowserId(browserId);
-                setShowImporter(false);
-                setShowSettings(false);
-                setShowProjectSettings(false);
-              }}
-              onSelectProjectView={(viewId) => {
-                setSelectedChatId(null);
-                setSelectedTerminalId(null);
-                setSelectedExplorerId(null);
-                setSelectedBrowserId(null);
-                setSelectedCodeTabId(null);
-                setSelectedProjectViewId(viewId);
-                setShowImporter(false);
-                setShowSettings(false);
-                setShowProjectSettings(false);
-              }}
-              onSelectCode={(codeTabId) => {
-                setSelectedProjectViewId(null);
-                setSelectedChatId(null);
-                setSelectedTerminalId(null);
-                setSelectedExplorerId(null);
-                setSelectedBrowserId(null);
-                setSelectedCodeTabId(codeTabId);
-                setShowImporter(false);
-                setShowSettings(false);
-                setShowProjectSettings(false);
-              }}
-            />
-          </nav>
-
-          <div className="p-3">
-            <div className="flex items-center gap-1">
-              <ServerSwitcher
-                currentUserName={
-                  bootstrap.data?.auth.currentUser.displayName ?? "Cantrip User"
-                }
-                workerName={onlineWorker?.name ?? "Worker offline"}
-              />
+                <WandSparkles
+                  className="size-4"
+                  data-tauri-drag-region={overlayTitlebar ? "" : undefined}
+                />
+              </div>
+              <div
+                className="min-w-0 flex-1"
+                data-tauri-drag-region={overlayTitlebar ? "" : undefined}
+              >
+                <p
+                  className={cn(
+                    "font-semibold tracking-tight",
+                    overlayTitlebar && "text-sm",
+                  )}
+                  data-tauri-drag-region={overlayTitlebar ? "" : undefined}
+                >
+                  Cantrip
+                </p>
+              </div>
+              {!overlayTitlebar ? (
+                <StatusDot online={Boolean(onlineWorker)} />
+              ) : null}
               <Button
                 size="icon"
                 variant="ghost"
-                className="size-8"
+                className={overlayTitlebar ? "size-7" : "size-8"}
+                onClick={() => setSidebarCollapsed(true)}
+                title="Collapse sidebar"
+              >
+                <PanelLeftClose className="size-4" />
+                <span className="sr-only">Collapse sidebar</span>
+              </Button>
+            </div>
+
+            <div className="flex items-center justify-between px-4 pb-2 pt-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Projects
+              </p>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-7"
                 onClick={() => {
-                  setShowSettings(true);
-                  setShowImporter(false);
+                  setShowImporter(true);
+                  setShowSettings(false);
                   setShowProjectSettings(false);
                 }}
               >
-                <Settings className="size-4" />
-                <span className="sr-only">Open settings</span>
+                <Plus className="size-4" />
+                <span className="sr-only">Add project</span>
               </Button>
             </div>
-          </div>
-        </aside>
+
+            <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+              <ProjectChatList
+                browsers={browsers.data ?? []}
+                projects={projects.data ?? []}
+                chats={chats.data ?? []}
+                codeTabs={codeTabs.data ?? []}
+                explorers={explorers.data ?? []}
+                projectViews={projectViews.data ?? []}
+                terminals={terminals.data ?? []}
+                workers={workers.data ?? []}
+                worktrees={worktrees.data ?? []}
+                worktreeStatuses={worktreeStatuses}
+                selectedProjectId={selectedProjectId}
+                selectedBrowserId={selectedBrowserId}
+                selectedChatId={selectedChatId}
+                selectedCodeTabId={selectedCodeTabId}
+                selectedExplorerId={selectedExplorerId}
+                selectedProjectViewId={selectedProjectViewId}
+                selectedTerminalId={selectedTerminalId}
+                creatingChat={newChat.isPending}
+                creatingCode={newCodeTab.isPending}
+                creatingBrowser={newBrowser.isPending}
+                creatingExplorer={newExplorer.isPending}
+                creatingRemoteDesktop={newRemoteDesktop.isPending}
+                creatingTerminal={newTerminal.isPending}
+                creatingView={newProjectView.isPending}
+                onCreateChat={(projectId) => newChat.mutate({ projectId })}
+                onCreateCode={(projectId) => newCodeTab.mutate({ projectId })}
+                onCreateBrowser={(projectId) => newBrowser.mutate(projectId)}
+                onCreateExplorer={(projectId) =>
+                  newExplorer.mutate({ projectId })
+                }
+                onCreateGit={(projectId) =>
+                  newProjectView.mutate({ projectId, kind: "history" })
+                }
+                onCreateRemoteDesktop={(projectId) => {
+                  newRemoteDesktop.reset();
+                  newRemoteDesktop.mutate(projectId);
+                }}
+                onCreateTerminal={(projectId) =>
+                  newTerminal.mutate({ projectId })
+                }
+                onChangeChatWorktree={(chatId, worktreeId, mode) => {
+                  const chat = chats.data?.find(({ id }) => id === chatId);
+                  if (chat) bindChatWorktree(chat, worktreeId, mode);
+                }}
+                onRequestChatWorktreeCreate={(chat) =>
+                  setWorktreeCreateTarget({
+                    kind: "chat",
+                    projectId: chat.projectId,
+                    tabId: chat.id,
+                    mode: chat.worktreeMode,
+                  })
+                }
+                onOpenChatTerminal={openChatTerminalHere}
+                onOpenChatExplorer={openChatExplorerHere}
+                onOpenChatHistory={openChatHistoryHere}
+                onRenameChat={(chatId, title) =>
+                  renameChatMutation.mutate({ chatId, title })
+                }
+                onDuplicateChat={(chatId) => forkChatMutation.mutate(chatId)}
+                onDeleteChat={(chatId) => deleteChatMutation.mutate(chatId)}
+                onRenameCode={(codeTabId, title) =>
+                  updateCodeTabMutation.mutate({ codeTabId, title })
+                }
+                onDeleteCode={(codeTabId) =>
+                  deleteCodeTabMutation.mutate(codeTabId)
+                }
+                onRenameBrowser={(browserId, title) =>
+                  updateBrowserMutation.mutate({ browserId, input: { title } })
+                }
+                onDeleteBrowser={(browserId) =>
+                  deleteBrowserMutation.mutate(browserId)
+                }
+                onRenameExplorer={(explorerId, title) =>
+                  renameExplorerMutation.mutate({ explorerId, title })
+                }
+                onDeleteExplorer={(explorerId) =>
+                  deleteExplorerMutation.mutate(explorerId)
+                }
+                onRenameProjectView={(viewId, title) =>
+                  renameProjectViewMutation.mutate({ viewId, title })
+                }
+                onDeleteProjectView={(viewId) =>
+                  deleteProjectViewMutation.mutate(viewId)
+                }
+                onRenameTerminal={(terminalId, title) =>
+                  renameTerminalMutation.mutate({ terminalId, title })
+                }
+                onDeleteTerminal={(terminalId) =>
+                  deleteTerminalMutation.mutate(terminalId)
+                }
+                onRemoveProject={(projectId, deleteLocalFiles) =>
+                  removeProjectMutation.mutate({ projectId, deleteLocalFiles })
+                }
+                onOpenProjectSettings={openProjectSettings}
+                onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
+                onReorderTabs={(projectId, ids) =>
+                  reorderTabsMutation.mutate({ projectId, ids })
+                }
+                onSelectProject={(projectId) => {
+                  setSelectedProjectViewId(null);
+                  setSelectedProjectId(projectId);
+                  setSelectedChatId(null);
+                  setSelectedTerminalId(null);
+                  setSelectedExplorerId(null);
+                  setSelectedBrowserId(null);
+                  setSelectedCodeTabId(null);
+                  setShowImporter(false);
+                  setShowSettings(false);
+                  setShowProjectSettings(false);
+                }}
+                onSelectChat={(chatId) => {
+                  setSelectedProjectViewId(null);
+                  setSelectedTerminalId(null);
+                  setSelectedExplorerId(null);
+                  setSelectedBrowserId(null);
+                  setSelectedCodeTabId(null);
+                  setSelectedChatId(chatId);
+                  setShowImporter(false);
+                  setShowSettings(false);
+                  setShowProjectSettings(false);
+                }}
+                onSelectTerminal={(terminalId) => {
+                  setSelectedProjectViewId(null);
+                  setSelectedChatId(null);
+                  setSelectedExplorerId(null);
+                  setSelectedBrowserId(null);
+                  setSelectedCodeTabId(null);
+                  setSelectedTerminalId(terminalId);
+                  setShowImporter(false);
+                  setShowSettings(false);
+                  setShowProjectSettings(false);
+                }}
+                onSelectExplorer={(explorerId) => {
+                  setSelectedProjectViewId(null);
+                  setSelectedChatId(null);
+                  setSelectedTerminalId(null);
+                  setSelectedBrowserId(null);
+                  setSelectedCodeTabId(null);
+                  setSelectedExplorerId(explorerId);
+                  setShowImporter(false);
+                  setShowSettings(false);
+                  setShowProjectSettings(false);
+                }}
+                onSelectBrowser={(browserId) => {
+                  setSelectedProjectViewId(null);
+                  setSelectedChatId(null);
+                  setSelectedTerminalId(null);
+                  setSelectedExplorerId(null);
+                  setSelectedCodeTabId(null);
+                  setSelectedBrowserId(browserId);
+                  setShowImporter(false);
+                  setShowSettings(false);
+                  setShowProjectSettings(false);
+                }}
+                onSelectProjectView={(viewId) => {
+                  setSelectedChatId(null);
+                  setSelectedTerminalId(null);
+                  setSelectedExplorerId(null);
+                  setSelectedBrowserId(null);
+                  setSelectedCodeTabId(null);
+                  setSelectedProjectViewId(viewId);
+                  setShowImporter(false);
+                  setShowSettings(false);
+                  setShowProjectSettings(false);
+                }}
+                onSelectCode={(codeTabId) => {
+                  setSelectedProjectViewId(null);
+                  setSelectedChatId(null);
+                  setSelectedTerminalId(null);
+                  setSelectedExplorerId(null);
+                  setSelectedBrowserId(null);
+                  setSelectedCodeTabId(codeTabId);
+                  setShowImporter(false);
+                  setShowSettings(false);
+                  setShowProjectSettings(false);
+                }}
+              />
+            </nav>
+
+            <div className="p-3">
+              <div className="flex items-center gap-1">
+                <ServerSwitcher
+                  currentUserName={
+                    bootstrap.data?.auth.currentUser.displayName ??
+                    "Cantrip User"
+                  }
+                  workerName={onlineWorker?.name ?? "Worker offline"}
+                />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-8"
+                  onClick={() => {
+                    setShowSettings(true);
+                    setShowImporter(false);
+                    setShowProjectSettings(false);
+                  }}
+                >
+                  <Settings className="size-4" />
+                  <span className="sr-only">Open settings</span>
+                </Button>
+              </div>
+            </div>
+          </aside>
+        </div>
       ) : null}
 
       <section
