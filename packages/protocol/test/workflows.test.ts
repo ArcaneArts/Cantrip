@@ -25,6 +25,7 @@ import {
   workflowRunCreateSchema,
   workflowRunCancelSchema,
   workflowRunDetailSchema,
+  workflowRepeatUntilExecutionStateSchema,
   workflowRunNodeItemExecutionStateSchema,
   workflowRunStatusUpdateSchema,
   workflowVerifyNodeConfigurationSchema,
@@ -181,6 +182,32 @@ describe("workflow protocol", () => {
         ],
       }),
     ).toThrow();
+    expect(
+      workflowRepeatUntilExecutionStateSchema.parse({
+        kind: "repeatUntil",
+        currentIteration: 2,
+        currentIterationAttemptCount: 0,
+        startedAt: timestamp,
+        unchangedIterations: 0,
+        logicalNodeCount: 2,
+        lastProgress: { available: true, value: 1 },
+        completedIterations: [
+          {
+            iteration: 1,
+            structuredResult: { progress: 1 },
+            progressValue: 1,
+            measuredUsage: {},
+            codexThreadId: "thread-1",
+            codexTurnId: "turn-1",
+            completedAt: timestamp,
+          },
+        ],
+      }),
+    ).toMatchObject({
+      kind: "repeatUntil",
+      currentIteration: 2,
+      completedIterations: [{ iteration: 1 }],
+    });
     expect(
       workflowReduceNodeConfigurationSchema.parse({
         prompt: "Synthesize the findings.",

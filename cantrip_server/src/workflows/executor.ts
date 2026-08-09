@@ -275,6 +275,13 @@ export class WorkflowExecutor {
         );
       if (collectionAdvanced === null) break;
       if (collectionAdvanced) continue;
+      const repeatUntilAdvanced =
+        await this.repository.workflowRuns.advanceReadyRepeatUntilNode(
+          LOCAL_USER_ID,
+          runId,
+        );
+      if (repeatUntilAdvanced === null) break;
+      if (repeatUntilAdvanced) continue;
       const controlAdvanced =
         await this.repository.workflowRuns.advanceReadyControlNode(
           LOCAL_USER_ID,
@@ -389,7 +396,7 @@ export class WorkflowExecutor {
           networkAccess: lease.candidate.node.permissionManifest.network,
           approvalMode: lease.candidate.node.permissionManifest.approvalMode,
           permissionProfileId: lease.candidate.node.permissionProfileId,
-          timeoutMs: lease.budget.maxNodeDurationMs,
+          timeoutMs: lease.timeoutMs,
           model: runtime.model,
           provider: runtime.provider,
         },

@@ -1098,6 +1098,98 @@ export const workflowRunNodeItemExecutionStateSchema = z
       completedKeys.add(step.key);
     });
   });
+export const workflowRepeatUntilProgressSchema = z.discriminatedUnion(
+  "available",
+  [
+    z.object({ available: z.literal(false) }).strict(),
+    z
+      .object({
+        available: z.literal(true),
+        value: workflowJsonValueSchema,
+      })
+      .strict(),
+  ],
+);
+export const workflowRepeatUntilCompletedIterationSchema = z.object({
+  iteration: z.number().int().positive().max(100),
+  structuredResult: workflowJsonValueSchema,
+  progressValue: workflowJsonValueSchema,
+  measuredUsage: workflowMeasuredUsageSchema,
+  codexThreadId: idSchema,
+  codexTurnId: idSchema,
+  completedAt: z.string().datetime(),
+});
+export const workflowRepeatUntilExecutionStateSchema = z
+  .object({
+    kind: z.literal("repeatUntil"),
+    currentIteration: z.number().int().positive().max(101),
+    currentIterationAttemptCount: z.number().int().nonnegative().max(100),
+    startedAt: z.string().datetime(),
+    unchangedIterations: z.number().int().nonnegative().max(100),
+    logicalNodeCount: z.number().int().positive().max(100),
+    lastProgress: workflowRepeatUntilProgressSchema,
+    completedIterations: z
+      .array(workflowRepeatUntilCompletedIterationSchema)
+      .max(100),
+  })
+  .strict()
+  .superRefine((state, context) => {
+    if (state.currentIteration !== state.completedIterations.length + 1) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "The repeat-until cursor must immediately follow its completed-iteration ledger.",
+        path: ["currentIteration"],
+      });
+    }
+    if (
+      state.logicalNodeCount < state.completedIterations.length ||
+      state.logicalNodeCount > state.currentIteration
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "The repeat-until logical node count must cover its durable iterations.",
+        path: ["logicalNodeCount"],
+      });
+    }
+    if (
+      (state.completedIterations.length === 0 &&
+        state.lastProgress.available) ||
+      (state.completedIterations.length > 0 && !state.lastProgress.available)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Repeat-until progress attribution must match its completed-iteration ledger.",
+        path: ["lastProgress"],
+      });
+    }
+    const lastIteration = state.completedIterations.at(-1);
+    if (
+      state.lastProgress.available &&
+      lastIteration &&
+      canonicalJson(state.lastProgress.value) !==
+        canonicalJson(lastIteration.progressValue)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Repeat-until progress attribution must match the latest completed iteration.",
+        path: ["lastProgress", "value"],
+      });
+    }
+    state.completedIterations.forEach((iteration, index) => {
+      if (iteration.iteration !== index + 1) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Repeat-until completed iteration numbers must be contiguous.",
+          path: ["completedIterations", index, "iteration"],
+        });
+      }
+    });
+  });
 export const workflowRunNodeItemSchema = z.object({
   id: idSchema,
   runNodeId: idSchema,
@@ -1414,6 +1506,15 @@ export type WorkflowPipelineCompletedStep = z.infer<
 >;
 export type WorkflowRunNodeItemExecutionState = z.infer<
   typeof workflowRunNodeItemExecutionStateSchema
+>;
+export type WorkflowRepeatUntilProgress = z.infer<
+  typeof workflowRepeatUntilProgressSchema
+>;
+export type WorkflowRepeatUntilCompletedIteration = z.infer<
+  typeof workflowRepeatUntilCompletedIterationSchema
+>;
+export type WorkflowRepeatUntilExecutionState = z.infer<
+  typeof workflowRepeatUntilExecutionStateSchema
 >;
 export type WorkflowRunNodeItem = z.infer<typeof workflowRunNodeItemSchema>;
 export type WorkflowNodeAttemptStatus = z.infer<

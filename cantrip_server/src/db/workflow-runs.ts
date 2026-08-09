@@ -15,6 +15,8 @@ import {
   workflowPipelineNodeConfigurationSchema,
   workflowPredicateSchema,
   workflowReduceNodeConfigurationSchema,
+  workflowRepeatUntilExecutionStateSchema,
+  workflowRepeatUntilNodeConfigurationSchema,
   workflowRunDetailSchema,
   workflowRunEventPageSchema,
   workflowRunEventSchema,
@@ -36,6 +38,8 @@ import {
   type WorkflowNodeRetry,
   type WorkflowPipelineNodeConfiguration,
   type WorkflowPipelineStep,
+  type WorkflowRepeatUntilExecutionState,
+  type WorkflowRepeatUntilNodeConfiguration,
   type WorkflowRun,
   type WorkflowRunCancel,
   type WorkflowRunCreate,
@@ -188,6 +192,10 @@ export interface WorkflowAgentCandidate {
     step: WorkflowPipelineStep;
     stepPosition: number;
   } | null;
+  repeatUntil: {
+    configuration: WorkflowRepeatUntilNodeConfiguration;
+    state: WorkflowRepeatUntilExecutionState;
+  } | null;
   projectId: string | null;
   run: WorkflowRun;
   structuredInput: WorkflowJsonValue;
@@ -210,6 +218,7 @@ export interface WorkflowAttemptLease {
   budget: WorkflowBudget;
   candidate: WorkflowAgentCandidate;
   idempotencyKey: string;
+  timeoutMs: number;
   unitAttempt: number;
 }
 
@@ -283,6 +292,12 @@ function pipelineExecutionState(
   return state;
 }
 
+function repeatUntilExecutionState(
+  value: unknown,
+): WorkflowRepeatUntilExecutionState {
+  return workflowRepeatUntilExecutionStateSchema.parse(value);
+}
+
 function aggregateCollectionItems(
   items: WorkflowRunNodeItem[],
   state: ReturnType<typeof collectionState>,
@@ -312,8 +327,18 @@ function aggregateCollectionItems(
       );
 }
 
-function expandedWorkflowNodeCount(detail: WorkflowRunDetail): number {
-  return detail.nodes.reduce((total, node) => {
+function expandedWorkflowNodeCountFromRecords(
+  nodes: Array<{ dependencyState: unknown; id: string }>,
+  items: Array<{ runNodeId: string }>,
+): number {
+  const itemCountByNode = new Map<string, number>();
+  for (const item of items) {
+    itemCountByNode.set(
+      item.runNodeId,
+      (itemCountByNode.get(item.runNodeId) ?? 0) + 1,
+    );
+  }
+  return nodes.reduce((total, node) => {
     const state = workflowJsonObjectSchema.parse(node.dependencyState);
     const collection = state.collection;
     if (
@@ -326,11 +351,23 @@ function expandedWorkflowNodeCount(detail: WorkflowRunDetail): number {
     ) {
       return total + collection.logicalNodeCount;
     }
-    return (
-      total +
-      detail.items.filter(({ runNodeId }) => runNodeId === node.id).length
-    );
-  }, detail.nodes.length);
+    const repeatUntil = state.repeatUntil;
+    if (
+      repeatUntil !== null &&
+      typeof repeatUntil === "object" &&
+      !Array.isArray(repeatUntil) &&
+      typeof repeatUntil.logicalNodeCount === "number" &&
+      Number.isSafeInteger(repeatUntil.logicalNodeCount) &&
+      repeatUntil.logicalNodeCount >= 0
+    ) {
+      return total + repeatUntil.logicalNodeCount;
+    }
+    return total + (itemCountByNode.get(node.id) ?? 0);
+  }, nodes.length);
+}
+
+function expandedWorkflowNodeCount(detail: WorkflowRunDetail): number {
+  return expandedWorkflowNodeCountFromRecords(detail.nodes, detail.items);
 }
 
 function workerEventIdentity(event: WorkerEvent): string {
@@ -899,6 +936,7 @@ export class WorkflowRunRepository {
         revisionNode?.outputSchema ?? {},
       );
       let pipeline: WorkflowAgentCandidate["pipeline"] = null;
+      let repeatUntil: WorkflowAgentCandidate["repeatUntil"] = null;
       let structuredInput = nodeInput;
       let verification: WorkflowVerifyNodeConfiguration | null = null;
       let unsupportedReason: string | null = null;
@@ -976,6 +1014,25 @@ export class WorkflowRunRepository {
             };
           }
         }
+      } else if (node.nodeType === "repeatUntil") {
+        const parsed = workflowRepeatUntilNodeConfigurationSchema.safeParse(
+          revisionNode.configuration,
+        );
+        const dependencyState = workflowJsonObjectSchema.parse(
+          node.dependencyState,
+        );
+        const state = workflowRepeatUntilExecutionStateSchema.safeParse(
+          dependencyState.repeatUntil,
+        );
+        if (!parsed.success || !state.success) {
+          unsupportedReason = "The repeat-until execution state is invalid.";
+        } else {
+          configuration = parsed.data;
+          repeatUntil = {
+            configuration: parsed.data,
+            state: state.data,
+          };
+        }
       } else {
         unsupportedReason = `The ${node.nodeType} workflow primitive is not available in the static DAG runtime.`;
       }
@@ -997,6 +1054,7 @@ export class WorkflowRunRepository {
         outputSchema,
         pipeline,
         projectId: detail.run.projectId,
+        repeatUntil,
         run: detail.run,
         structuredInput,
         unsupportedReason,
@@ -1086,6 +1144,136 @@ export class WorkflowRunRepository {
       node,
       configuration.data,
     );
+  }
+
+  async advanceReadyRepeatUntilNode(
+    ownerId: string,
+    runId: string,
+  ): Promise<boolean | null> {
+    const detail = await this.getRun(ownerId, runId);
+    if (
+      !detail ||
+      !["queued", "running", "waiting"].includes(detail.run.status) ||
+      detail.run.recoveryState !== "stable"
+    ) {
+      return null;
+    }
+    const readyNodes = detail.nodes.filter(
+      ({ nodeType, status }) =>
+        nodeType === "repeatUntil" && status === "ready",
+    );
+    if (readyNodes.length === 0) return false;
+    const revisionRows = await this.database
+      .select()
+      .from(schema.workflowRevisionNodes)
+      .where(
+        inArray(
+          schema.workflowRevisionNodes.id,
+          readyNodes.map(({ revisionNodeId }) => revisionNodeId),
+        ),
+      )
+      .orderBy(asc(schema.workflowRevisionNodes.position));
+    if (revisionRows.length !== readyNodes.length) {
+      await this.failUnsupportedRun(
+        ownerId,
+        runId,
+        "The ready repeat-until node is unavailable.",
+      );
+      return true;
+    }
+    for (const revisionNode of revisionRows) {
+      const node = readyNodes.find(
+        ({ revisionNodeId }) => revisionNodeId === revisionNode.id,
+      )!;
+      if (node.writeCapable) {
+        await this.failUnsupportedRun(
+          ownerId,
+          runId,
+          "Write-capable repeat-until nodes require an isolated workflow worktree.",
+        );
+        return true;
+      }
+      const configuration =
+        workflowRepeatUntilNodeConfigurationSchema.safeParse(
+          revisionNode.configuration,
+        );
+      if (!configuration.success) {
+        await this.failUnsupportedRun(
+          ownerId,
+          runId,
+          "The repeat-until node configuration is invalid.",
+        );
+        return true;
+      }
+      const dependencyState = workflowJsonObjectSchema.parse(
+        node.dependencyState,
+      );
+      if (dependencyState.repeatUntil === undefined) {
+        if (
+          expandedWorkflowNodeCount(detail) + 1 >
+          detail.run.budget.maxNodes
+        ) {
+          await this.failReadyRepeatUntilNode(
+            ownerId,
+            detail,
+            node,
+            "workflow-node-budget-exceeded",
+            "Starting the repeat-until loop would exceed the workflow node budget.",
+          );
+          return true;
+        }
+        return this.initializeRepeatUntilNode(ownerId, detail, node);
+      }
+      const state = workflowRepeatUntilExecutionStateSchema.safeParse(
+        dependencyState.repeatUntil,
+      );
+      if (!state.success) {
+        await this.failUnsupportedRun(
+          ownerId,
+          runId,
+          "The repeat-until execution state is invalid.",
+        );
+        return true;
+      }
+      const elapsedMs = Date.now() - new Date(state.data.startedAt).getTime();
+      const hardFailure =
+        elapsedMs >= configuration.data.maxDurationMs
+          ? {
+              code: "repeat-duration-limit",
+              message: "The repeat-until node exceeded its duration limit.",
+            }
+          : state.data.currentIteration > configuration.data.maxIterations
+            ? {
+                code: "repeat-iteration-limit",
+                message: "The repeat-until node exhausted its iteration limit.",
+              }
+            : state.data.completedIterations.length > 0 &&
+                state.data.unchangedIterations >=
+                  configuration.data.maxUnchangedIterations
+              ? {
+                  code: "repeat-no-progress",
+                  message:
+                    "The repeat-until node exhausted its unchanged-progress limit.",
+                }
+              : expandedWorkflowNodeCount(detail) > detail.run.budget.maxNodes
+                ? {
+                    code: "workflow-node-budget-exceeded",
+                    message:
+                      "The repeat-until node exceeded the workflow node budget.",
+                  }
+                : null;
+      if (hardFailure) {
+        await this.failReadyRepeatUntilNode(
+          ownerId,
+          detail,
+          node,
+          hardFailure.code,
+          hardFailure.message,
+        );
+        return true;
+      }
+    }
+    return false;
   }
 
   async advanceReadyControlNode(
@@ -1231,18 +1419,33 @@ export class WorkflowRunRepository {
     const currentPipelineState = candidate.pipeline
       ? pipelineExecutionState(candidate.item?.executionState)
       : null;
+    const currentRepeatUntilState = candidate.repeatUntil?.state ?? null;
     const unitAttempt = currentPipelineState
       ? currentPipelineState.currentStepAttemptCount + 1
-      : attemptNumber;
+      : currentRepeatUntilState
+        ? currentRepeatUntilState.currentIterationAttemptCount + 1
+        : attemptNumber;
     if (unitAttempt > candidate.node.budget.maxAttemptsPerNode) return null;
     const idempotencyKey = candidate.item
       ? candidate.pipeline
         ? `${candidate.node.id}:item:${candidate.item.id}:step:${candidate.pipeline.step.key}:attempt:${unitAttempt}`
         : `${candidate.node.id}:item:${candidate.item.id}:attempt:${attemptNumber}`
-      : `${candidate.node.id}:attempt:${attemptNumber}`;
-    const timeoutAt = new Date(
-      now.getTime() + candidate.node.budget.maxNodeDurationMs,
+      : currentRepeatUntilState
+        ? `${candidate.node.id}:iteration:${currentRepeatUntilState.currentIteration}:attempt:${unitAttempt}`
+        : `${candidate.node.id}:attempt:${attemptNumber}`;
+    const repeatUntilRemainingMs = currentRepeatUntilState
+      ? Math.max(
+          1,
+          candidate.repeatUntil!.configuration.maxDurationMs -
+            (now.getTime() -
+              new Date(currentRepeatUntilState.startedAt).getTime()),
+        )
+      : candidate.node.budget.maxNodeDurationMs;
+    const timeoutMs = Math.min(
+      candidate.node.budget.maxNodeDurationMs,
+      repeatUntilRemainingMs,
     );
+    const timeoutAt = new Date(now.getTime() + timeoutMs);
 
     let claimed: boolean;
     try {
@@ -1341,6 +1544,19 @@ export class WorkflowRunRepository {
               permissionProfileId: assignment.permissionProfileId,
               executionLeaseKey: idempotencyKey,
               attemptCount: attemptNumber,
+              ...(currentRepeatUntilState
+                ? {
+                    dependencyState: {
+                      ...workflowJsonObjectSchema.parse(
+                        candidate.node.dependencyState,
+                      ),
+                      repeatUntil: {
+                        ...currentRepeatUntilState,
+                        currentIterationAttemptCount: unitAttempt,
+                      },
+                    },
+                  }
+                : {}),
               timeoutAt,
               startedAt: candidate.node.startedAt
                 ? new Date(candidate.node.startedAt)
@@ -1366,7 +1582,11 @@ export class WorkflowRunRepository {
           id: attemptId,
           runNodeId: candidate.node.id,
           runNodeItemId: candidate.item?.id ?? null,
-          executionUnitKey: candidate.pipeline?.step.key ?? null,
+          executionUnitKey:
+            candidate.pipeline?.step.key ??
+            (currentRepeatUntilState
+              ? `iteration-${currentRepeatUntilState.currentIteration}`
+              : null),
           attempt: attemptNumber,
           status: "running",
           idempotencyKey,
@@ -1442,6 +1662,7 @@ export class WorkflowRunRepository {
         mapItemPosition: candidate.item?.position ?? null,
         pipelineStepKey: candidate.pipeline?.step.key ?? null,
         pipelineStepPosition: candidate.pipeline?.stepPosition ?? null,
+        repeatUntilIteration: currentRepeatUntilState?.currentIteration ?? null,
         unitAttempt,
       },
       actorType: "server",
@@ -1454,6 +1675,7 @@ export class WorkflowRunRepository {
       budget: candidate.node.budget,
       candidate,
       idempotencyKey,
+      timeoutMs,
       unitAttempt,
     };
   }
@@ -1585,6 +1807,25 @@ export class WorkflowRunRepository {
             ),
           );
       } else {
+        const nodeMeasuredUsage = measuredUsage
+          ? lease.candidate.repeatUntil
+            ? aggregateWorkflowUsage(
+                (
+                  await transaction
+                    .select({
+                      measuredUsage: schema.workflowNodeAttempts.measuredUsage,
+                    })
+                    .from(schema.workflowNodeAttempts)
+                    .where(
+                      eq(
+                        schema.workflowNodeAttempts.runNodeId,
+                        lease.candidate.node.id,
+                      ),
+                    )
+                ).map(({ measuredUsage: usage }) => usage),
+              )
+            : measuredUsage
+          : null;
         await transaction
           .update(schema.workflowRunNodes)
           .set({
@@ -1602,7 +1843,7 @@ export class WorkflowRunRepository {
               ? { codexThreadId: attribution.threadId }
               : {}),
             ...(attribution.turnId ? { codexTurnId: attribution.turnId } : {}),
-            ...(measuredUsage ? { measuredUsage } : {}),
+            ...(nodeMeasuredUsage ? { measuredUsage: nodeMeasuredUsage } : {}),
             updatedAt: now,
           })
           .where(eq(schema.workflowRunNodes.id, lease.candidate.node.id));
@@ -1681,6 +1922,9 @@ export class WorkflowRunRepository {
   ): Promise<boolean> {
     if (lease.candidate.pipeline) {
       return this.completePipelineStepAttempt(ownerId, lease, result);
+    }
+    if (lease.candidate.repeatUntil) {
+      return this.completeRepeatUntilAttempt(ownerId, lease, result);
     }
     if (lease.candidate.item) {
       return this.completeMapItemAttempt(ownerId, lease, result);
@@ -1785,6 +2029,400 @@ export class WorkflowRunRepository {
         actorType: "server",
         actorId: null,
       });
+    }
+    return outcome.completed;
+  }
+
+  private async completeRepeatUntilAttempt(
+    ownerId: string,
+    lease: WorkflowAttemptLease,
+    result: {
+      measuredUsage: WorkflowMeasuredUsage;
+      structuredResult: unknown;
+      text: string;
+      threadId: string;
+      turnId: string;
+    },
+  ): Promise<boolean> {
+    const repeatUntil = lease.candidate.repeatUntil!;
+    const iteration = repeatUntil.state.currentIteration;
+    const executionUnitKey = `iteration-${iteration}`;
+    const now = new Date();
+    const measuredUsage = workflowMeasuredUsageSchema.parse(
+      result.measuredUsage,
+    );
+    const structuredResult = workflowJsonValueSchema.parse(
+      result.structuredResult,
+    );
+    const progress = workflowValueAtPointer(
+      structuredResult,
+      repeatUntil.configuration.progressPath,
+    );
+    const success = evaluateWorkflowPredicate(
+      structuredResult,
+      repeatUntil.configuration.successCondition,
+    );
+    const outcome = await this.database.transaction(async (transaction) => {
+      const attempts = await transaction
+        .update(schema.workflowNodeAttempts)
+        .set({
+          status: "completed",
+          structuredResult,
+          measuredUsage,
+          errorCode: null,
+          errorMessage: null,
+          codexThreadId: result.threadId,
+          codexTurnId: result.turnId,
+          heartbeatAt: now,
+          completedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.workflowNodeAttempts.id, lease.attemptId),
+            eq(schema.workflowNodeAttempts.runNodeId, lease.candidate.node.id),
+            eq(schema.workflowNodeAttempts.executionUnitKey, executionUnitKey),
+            inArray(schema.workflowNodeAttempts.status, [
+              "running",
+              "waiting-for-approval",
+            ]),
+          ),
+        )
+        .returning({ id: schema.workflowNodeAttempts.id });
+      if (!attempts[0]) {
+        return {
+          completed: false,
+          failed: null as { code: string; message: string } | null,
+          nextIteration: null as number | null,
+          progressChanged: null as boolean | null,
+          readyNodeIds: [] as string[],
+          runStateUpdated: false,
+          runStatus: null as string | null,
+          satisfied: false,
+          unchangedIterations: null as number | null,
+        };
+      }
+      const nodeRows = await transaction
+        .select()
+        .from(schema.workflowRunNodes)
+        .where(eq(schema.workflowRunNodes.id, lease.candidate.node.id))
+        .for("update")
+        .limit(1);
+      const lockedNode = nodeRows[0];
+      if (!lockedNode) {
+        throw new Error("The repeat-until node is unavailable.");
+      }
+      const lockedRun = await lockWorkflowRun(
+        transaction,
+        ownerId,
+        lease.candidate.run.id,
+      );
+      if (!lockedRun) throw new Error("Workflow run is unavailable.");
+      const dependencyState = workflowJsonObjectSchema.parse(
+        lockedNode.dependencyState,
+      );
+      const state = repeatUntilExecutionState(dependencyState.repeatUntil);
+      if (
+        state.currentIteration !== iteration ||
+        state.currentIterationAttemptCount !== lease.unitAttempt
+      ) {
+        throw new Error(
+          "The repeat-until node changed iteration during completion.",
+        );
+      }
+      const attemptUsageRows = await transaction
+        .select({ measuredUsage: schema.workflowNodeAttempts.measuredUsage })
+        .from(schema.workflowNodeAttempts)
+        .where(
+          eq(schema.workflowNodeAttempts.runNodeId, lease.candidate.node.id),
+        );
+      const nodeUsage = aggregateWorkflowUsage(
+        attemptUsageRows.map(({ measuredUsage: usage }) => usage),
+      );
+      const runIsActive = ["queued", "running", "waiting"].includes(
+        lockedRun.status,
+      );
+      const nodeIsActive = ["running", "waiting-for-approval"].includes(
+        lockedNode.status,
+      );
+      if (!runIsActive || !nodeIsActive) {
+        await transaction
+          .update(schema.workflowRunNodes)
+          .set({
+            ...(nodeIsActive
+              ? {
+                  status: "cancelled",
+                  codexThreadId: result.threadId,
+                  codexTurnId: result.turnId,
+                  executionLeaseKey: null,
+                  timeoutAt: null,
+                  waitingAt: null,
+                  completedAt: now,
+                }
+              : {}),
+            measuredUsage: nodeUsage,
+            updatedAt: now,
+          })
+          .where(eq(schema.workflowRunNodes.id, lockedNode.id));
+        const runNodeUsageRows = await transaction
+          .select({ measuredUsage: schema.workflowRunNodes.measuredUsage })
+          .from(schema.workflowRunNodes)
+          .where(eq(schema.workflowRunNodes.runId, lockedRun.id));
+        await transaction
+          .update(schema.workflowRuns)
+          .set({
+            measuredUsage: aggregateWorkflowUsage(
+              runNodeUsageRows.map(({ measuredUsage: usage }) => usage),
+            ),
+            updatedAt: now,
+          })
+          .where(eq(schema.workflowRuns.id, lockedRun.id));
+        return {
+          completed: true,
+          failed: null,
+          nextIteration: null,
+          progressChanged: null,
+          readyNodeIds: [] as string[],
+          runStateUpdated: false,
+          runStatus: null,
+          satisfied: false,
+          unchangedIterations: null,
+        };
+      }
+
+      let progressChanged: boolean | null = null;
+      let unchangedIterations = state.unchangedIterations;
+      let nextState = state;
+      if (progress.found) {
+        progressChanged =
+          !state.lastProgress.available ||
+          canonicalJson(state.lastProgress.value) !==
+            canonicalJson(progress.value);
+        unchangedIterations = progressChanged
+          ? 0
+          : state.unchangedIterations + 1;
+        nextState = workflowRepeatUntilExecutionStateSchema.parse({
+          ...state,
+          currentIteration: iteration + 1,
+          currentIterationAttemptCount: 0,
+          unchangedIterations,
+          lastProgress: { available: true, value: progress.value },
+          completedIterations: [
+            ...state.completedIterations,
+            {
+              iteration,
+              structuredResult,
+              progressValue: progress.value,
+              measuredUsage,
+              codexThreadId: result.threadId,
+              codexTurnId: result.turnId,
+              completedAt: now.toISOString(),
+            },
+          ],
+        });
+      }
+      const elapsedMs = now.getTime() - new Date(state.startedAt).getTime();
+      let failed: { code: string; message: string } | null = !progress.found
+        ? {
+            code: "repeat-progress-missing",
+            message: `The repeat-until progress path ${repeatUntil.configuration.progressPath || "<root>"} did not match the iteration result.`,
+          }
+        : elapsedMs >= repeatUntil.configuration.maxDurationMs
+          ? {
+              code: "repeat-duration-limit",
+              message: "The repeat-until node exceeded its duration limit.",
+            }
+          : !success &&
+              unchangedIterations >=
+                repeatUntil.configuration.maxUnchangedIterations
+            ? {
+                code: "repeat-no-progress",
+                message:
+                  "The repeat-until node exhausted its unchanged-progress limit.",
+              }
+            : !success && iteration >= repeatUntil.configuration.maxIterations
+              ? {
+                  code: "repeat-iteration-limit",
+                  message:
+                    "The repeat-until node exhausted its iteration limit.",
+                }
+              : null;
+      if (!failed && !success) {
+        const runNodeRows = await transaction
+          .select({
+            dependencyState: schema.workflowRunNodes.dependencyState,
+            id: schema.workflowRunNodes.id,
+          })
+          .from(schema.workflowRunNodes)
+          .where(eq(schema.workflowRunNodes.runId, lockedRun.id));
+        const runItemRows = await transaction
+          .select({ runNodeId: schema.workflowRunNodeItems.runNodeId })
+          .from(schema.workflowRunNodeItems)
+          .where(
+            inArray(
+              schema.workflowRunNodeItems.runNodeId,
+              runNodeRows.map(({ id }) => id),
+            ),
+          );
+        if (
+          expandedWorkflowNodeCountFromRecords(runNodeRows, runItemRows) + 1 >
+          lease.candidate.run.budget.maxNodes
+        ) {
+          failed = {
+            code: "workflow-node-budget-exceeded",
+            message:
+              "Continuing the repeat-until loop would exceed the workflow node budget.",
+          };
+        } else {
+          nextState = workflowRepeatUntilExecutionStateSchema.parse({
+            ...nextState,
+            logicalNodeCount: state.logicalNodeCount + 1,
+          });
+        }
+      }
+
+      await transaction
+        .update(schema.workflowRunNodes)
+        .set({
+          status: failed ? "failed" : success ? "completed" : "ready",
+          dependencyState: {
+            ...dependencyState,
+            repeatUntil: nextState,
+          },
+          structuredInput:
+            !failed && !success ? structuredResult : lockedNode.structuredInput,
+          structuredResult,
+          measuredUsage: nodeUsage,
+          codexThreadId: result.threadId,
+          codexTurnId: result.turnId,
+          executionLeaseKey: null,
+          timeoutAt: null,
+          readyAt: !failed && !success ? now : null,
+          waitingAt: null,
+          completedAt: failed || success ? now : null,
+          updatedAt: now,
+        })
+        .where(eq(schema.workflowRunNodes.id, lockedNode.id));
+
+      let readyNodeIds: string[] = [];
+      let runStateUpdated = false;
+      let runStatus: string | null = null;
+      if (failed) {
+        await transaction
+          .update(schema.workflowRunNodes)
+          .set({ status: "skipped", completedAt: now, updatedAt: now })
+          .where(
+            and(
+              eq(schema.workflowRunNodes.runId, lockedRun.id),
+              inArray(schema.workflowRunNodes.status, ["blocked", "ready"]),
+            ),
+          );
+        await transaction
+          .update(schema.workflowRunNodeDependencies)
+          .set({ status: "failed" })
+          .where(
+            and(
+              eq(schema.workflowRunNodeDependencies.runId, lockedRun.id),
+              eq(schema.workflowRunNodeDependencies.status, "blocked"),
+            ),
+          );
+        const runNodeUsageRows = await transaction
+          .select({ measuredUsage: schema.workflowRunNodes.measuredUsage })
+          .from(schema.workflowRunNodes)
+          .where(eq(schema.workflowRunNodes.runId, lockedRun.id));
+        await transaction
+          .update(schema.workflowRuns)
+          .set({
+            status: "failed",
+            measuredUsage: aggregateWorkflowUsage(
+              runNodeUsageRows.map(({ measuredUsage: usage }) => usage),
+            ),
+            errorCode: failed.code.slice(0, 200),
+            errorMessage: failed.message.slice(0, 5_000),
+            completedAt: now,
+            updatedAt: now,
+          })
+          .where(eq(schema.workflowRuns.id, lockedRun.id));
+        runStateUpdated = true;
+        runStatus = "failed";
+      } else {
+        if (success) {
+          readyNodeIds = (
+            await settleWorkflowDependencies(transaction, {
+              now,
+              runId: lockedRun.id,
+              selectedDependencyIds: null,
+              sourceNodeId: lockedNode.id,
+            })
+          ).readyNodeIds;
+        }
+        const runTransition = await recomputeWorkflowRun(transaction, {
+          codexThreadId: result.threadId,
+          lockedRun,
+          now,
+        });
+        runStateUpdated = runTransition.updated;
+        runStatus = runTransition.status;
+      }
+      return {
+        completed: true,
+        failed,
+        nextIteration: !failed && !success ? iteration + 1 : null,
+        progressChanged,
+        readyNodeIds,
+        runStateUpdated,
+        runStatus,
+        satisfied: !failed && success,
+        unchangedIterations: progress.found ? unchangedIterations : null,
+      };
+    });
+    if (outcome.completed) {
+      await this.appendEvent({
+        runId: lease.candidate.run.id,
+        runNodeId: lease.candidate.node.id,
+        attemptId: lease.attemptId,
+        eventKey: `attempt-completed:${lease.attemptId}`,
+        type: "node.attempt.completed",
+        payload: {
+          textPreview: result.text.slice(0, 4_000),
+          textTruncated: result.text.length > 4_000,
+          structuredResultAvailable: true,
+          measuredUsage,
+          threadId: result.threadId,
+          turnId: result.turnId,
+          repeatUntilIteration: iteration,
+          repeatUntilSatisfied: outcome.satisfied,
+          progressChanged: outcome.progressChanged,
+          unchangedIterations: outcome.unchangedIterations,
+          nextIteration: outcome.nextIteration,
+          readyNodeIds: outcome.readyNodeIds,
+          runStatus: outcome.runStateUpdated ? outcome.runStatus : null,
+        },
+        actorType: "server",
+        actorId: null,
+      });
+      if (outcome.failed) {
+        await this.appendEvent({
+          runId: lease.candidate.run.id,
+          runNodeId: lease.candidate.node.id,
+          attemptId: lease.attemptId,
+          eventKey: `repeat-until-failed:${lease.attemptId}`,
+          type: "node.repeat-until.failed",
+          payload: {
+            code: outcome.failed.code,
+            message: outcome.failed.message,
+            iteration,
+          },
+          actorType: "server",
+          actorId: null,
+        });
+        await this.database.transaction((transaction) =>
+          cancelPendingWorkflowGates(transaction, {
+            now,
+            runId: lease.candidate.run.id,
+          }),
+        );
+      }
     }
     return outcome.completed;
   }
@@ -2470,6 +3108,11 @@ export class WorkflowRunRepository {
           message,
           retryScheduled: outcome.retryScheduled,
           nextAttempt: outcome.retryScheduled ? lease.attempt + 1 : null,
+          nextUnitAttempt: outcome.retryScheduled
+            ? lease.unitAttempt + 1
+            : null,
+          repeatUntilIteration:
+            lease.candidate.repeatUntil?.state.currentIteration ?? null,
         },
         actorType: "server",
         actorId: null,
@@ -3264,7 +3907,10 @@ export class WorkflowRunRepository {
           null)
         : null;
       const revisionRows = await this.database
-        .select({ configuration: schema.workflowRevisionNodes.configuration })
+        .select({
+          configuration: schema.workflowRevisionNodes.configuration,
+          outputSchema: schema.workflowRevisionNodes.outputSchema,
+        })
         .from(schema.workflowRevisionNodes)
         .where(eq(schema.workflowRevisionNodes.id, node.revisionNodeId))
         .limit(1);
@@ -3274,6 +3920,18 @@ export class WorkflowRunRepository {
               revisionRows[0]?.configuration,
             )
           : null;
+      const repeatUntilConfiguration =
+        node.nodeType === "repeatUntil"
+          ? workflowRepeatUntilNodeConfigurationSchema.parse(
+              revisionRows[0]?.configuration,
+            )
+          : null;
+      const nodeDependencyState = workflowJsonObjectSchema.parse(
+        node.dependencyState,
+      );
+      const repeatUntilState = repeatUntilConfiguration
+        ? repeatUntilExecutionState(nodeDependencyState.repeatUntil)
+        : null;
       const itemState = item?.executionState
         ? workflowRunNodeItemExecutionStateSchema.parse(item.executionState)
         : null;
@@ -3286,7 +3944,7 @@ export class WorkflowRunRepository {
           ? workflowMapNodeConfigurationSchema.parse(
               revisionRows[0]?.configuration,
             )
-          : (pipelineStep ?? null);
+          : (repeatUntilConfiguration ?? pipelineStep ?? null);
       const pipeline =
         pipelineConfiguration && pipelineStep && itemState?.kind === "pipeline"
           ? {
@@ -3299,9 +3957,18 @@ export class WorkflowRunRepository {
         configuration,
         item,
         node,
-        outputSchema: pipelineStep?.outputSchema ?? {},
+        outputSchema:
+          pipelineStep?.outputSchema ??
+          workflowJsonObjectSchema.parse(revisionRows[0]?.outputSchema ?? {}),
         pipeline,
         projectId: detail.run.projectId,
+        repeatUntil:
+          repeatUntilConfiguration && repeatUntilState
+            ? {
+                configuration: repeatUntilConfiguration,
+                state: repeatUntilState,
+              }
+            : null,
         run: detail.run,
         structuredInput: item?.structuredInput ?? node.structuredInput,
         unsupportedReason: null,
@@ -3322,10 +3989,13 @@ export class WorkflowRunRepository {
           budget: node.budget,
           candidate,
           idempotencyKey: row.attempt.idempotencyKey,
+          timeoutMs: node.budget.maxNodeDurationMs,
           unitAttempt:
             itemState?.kind === "pipeline"
               ? itemState.currentStepAttemptCount
-              : row.attempt.attempt,
+              : repeatUntilState
+                ? repeatUntilState.currentIterationAttemptCount
+                : row.attempt.attempt,
         },
         {
           code: "server-restarted",
@@ -3640,6 +4310,20 @@ export class WorkflowRunRepository {
         `${node.nodeType} decisions are deterministic and final; start a new run instead of retrying this node.`,
       );
     }
+    if (
+      node.nodeType === "repeatUntil" &&
+      detail.run.errorCode !== null &&
+      [
+        "repeat-duration-limit",
+        "repeat-iteration-limit",
+        "repeat-no-progress",
+        "workflow-node-budget-exceeded",
+      ].includes(detail.run.errorCode)
+    ) {
+      throw new WorkflowControlConflictError(
+        "A repeat-until hard limit cannot be bypassed by retrying the node; start a new run with a revised limit.",
+      );
+    }
     if (!["failed", "cancelled", "recovering"].includes(node.status)) {
       throw new WorkflowControlConflictError(
         `A ${node.status} workflow node cannot be retried.`,
@@ -3665,6 +4349,12 @@ export class WorkflowRunRepository {
     );
     const collectionNode =
       node.nodeType === "map" || node.nodeType === "pipeline";
+    const repeatUntilAttemptCount =
+      node.nodeType === "repeatUntil"
+        ? repeatUntilExecutionState(
+            workflowJsonObjectSchema.parse(node.dependencyState).repeatUntil,
+          ).currentIterationAttemptCount
+        : null;
     if (collectionNode && exhaustedCollectionItems.length > 0) {
       throw new WorkflowControlConflictError(
         "At least one collection item exhausted its current execution-unit attempt budget.",
@@ -3677,7 +4367,8 @@ export class WorkflowRunRepository {
     }
     if (
       !collectionNode &&
-      node.attemptCount >= node.budget.maxAttemptsPerNode
+      (repeatUntilAttemptCount ?? node.attemptCount) >=
+        node.budget.maxAttemptsPerNode
     ) {
       throw new WorkflowControlConflictError(
         "The workflow node exhausted its attempt budget.",
@@ -3689,7 +4380,8 @@ export class WorkflowRunRepository {
         .update(schema.workflowRunNodes)
         .set({
           status: collectionNode ? "running" : "ready",
-          structuredResult: null,
+          structuredResult:
+            node.nodeType === "repeatUntil" ? node.structuredResult : null,
           executionLeaseKey: null,
           notBefore: null,
           timeoutAt: null,
@@ -4038,6 +4730,177 @@ export class WorkflowRunRepository {
       )
       .returning({ id: schema.agentInteractionRequests.id });
     return Boolean(rows[0]);
+  }
+
+  private async initializeRepeatUntilNode(
+    ownerId: string,
+    detail: WorkflowRunDetail,
+    node: WorkflowRunNode,
+  ): Promise<boolean> {
+    const now = new Date();
+    const executionState = workflowRepeatUntilExecutionStateSchema.parse({
+      kind: "repeatUntil",
+      currentIteration: 1,
+      currentIterationAttemptCount: 0,
+      startedAt: now.toISOString(),
+      unchangedIterations: 0,
+      logicalNodeCount: 1,
+      lastProgress: { available: false },
+      completedIterations: [],
+    });
+    for (let retry = 0; retry < 20; retry += 1) {
+      try {
+        return await this.database.transaction(async (transaction) => {
+          const nodes = await transaction
+            .update(schema.workflowRunNodes)
+            .set({
+              dependencyState: {
+                ...workflowJsonObjectSchema.parse(node.dependencyState),
+                repeatUntil: executionState,
+              },
+              startedAt: node.startedAt ? new Date(node.startedAt) : now,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(schema.workflowRunNodes.id, node.id),
+                eq(schema.workflowRunNodes.runId, detail.run.id),
+                eq(schema.workflowRunNodes.status, "ready"),
+              ),
+            )
+            .returning({ id: schema.workflowRunNodes.id });
+          if (!nodes[0]) return false;
+          const lockedRun = await lockWorkflowRun(
+            transaction,
+            ownerId,
+            detail.run.id,
+          );
+          if (
+            !lockedRun ||
+            !["queued", "running", "waiting"].includes(lockedRun.status)
+          ) {
+            throw new Error(
+              "The workflow run changed state while initializing its repeat-until node.",
+            );
+          }
+          await transaction
+            .update(schema.workflowRuns)
+            .set({
+              status: "running",
+              startedAt: lockedRun.startedAt ?? now,
+              updatedAt: now,
+            })
+            .where(eq(schema.workflowRuns.id, detail.run.id));
+          await insertWorkflowRunEvent(transaction, {
+            runId: detail.run.id,
+            runNodeId: node.id,
+            attemptId: null,
+            eventKey: `repeat-until-initialized:${node.id}`,
+            type: "node.repeat-until.initialized",
+            payload: {
+              currentIteration: executionState.currentIteration,
+              startedAt: executionState.startedAt,
+            },
+            actorType: "server",
+            actorId: null,
+          });
+          return true;
+        });
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+      }
+    }
+    throw new Error(
+      "Repeat-until initialization event contention exceeded its limit.",
+    );
+  }
+
+  private async failReadyRepeatUntilNode(
+    ownerId: string,
+    detail: WorkflowRunDetail,
+    node: WorkflowRunNode,
+    code: string,
+    message: string,
+  ): Promise<boolean> {
+    const now = new Date();
+    const updated = await this.database.transaction(async (transaction) => {
+      const nodes = await transaction
+        .update(schema.workflowRunNodes)
+        .set({ status: "failed", completedAt: now, updatedAt: now })
+        .where(
+          and(
+            eq(schema.workflowRunNodes.id, node.id),
+            eq(schema.workflowRunNodes.runId, detail.run.id),
+            eq(schema.workflowRunNodes.status, "ready"),
+          ),
+        )
+        .returning({ id: schema.workflowRunNodes.id });
+      if (!nodes[0]) return false;
+      const runs = await transaction
+        .update(schema.workflowRuns)
+        .set({
+          status: "failed",
+          errorCode: code.slice(0, 200),
+          errorMessage: message.slice(0, 5_000),
+          completedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.workflowRuns.id, detail.run.id),
+            eq(schema.workflowRuns.ownerId, ownerId),
+            inArray(schema.workflowRuns.status, [
+              "queued",
+              "running",
+              "waiting",
+            ]),
+          ),
+        )
+        .returning({ id: schema.workflowRuns.id });
+      if (!runs[0]) {
+        throw new Error(
+          "The workflow run changed state while failing its repeat-until node.",
+        );
+      }
+      await transaction
+        .update(schema.workflowRunNodes)
+        .set({ status: "skipped", completedAt: now, updatedAt: now })
+        .where(
+          and(
+            eq(schema.workflowRunNodes.runId, detail.run.id),
+            inArray(schema.workflowRunNodes.status, ["blocked", "ready"]),
+          ),
+        );
+      await transaction
+        .update(schema.workflowRunNodeDependencies)
+        .set({ status: "failed" })
+        .where(
+          and(
+            eq(schema.workflowRunNodeDependencies.runId, detail.run.id),
+            eq(schema.workflowRunNodeDependencies.status, "blocked"),
+          ),
+        );
+      await insertWorkflowRunEvent(transaction, {
+        runId: detail.run.id,
+        runNodeId: node.id,
+        attemptId: null,
+        eventKey: `repeat-until-failed:${node.id}:${code}`,
+        type: "node.repeat-until.failed",
+        payload: { code, message },
+        actorType: "server",
+        actorId: null,
+      });
+      return true;
+    });
+    if (updated) {
+      await this.database.transaction((transaction) =>
+        cancelPendingWorkflowGates(transaction, {
+          now,
+          runId: detail.run.id,
+        }),
+      );
+    }
+    return updated;
   }
 
   private async initializePipelineNode(
