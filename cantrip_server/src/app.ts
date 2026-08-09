@@ -164,6 +164,7 @@ import {
 } from "@cantrip/protocol";
 import Fastify from "fastify";
 import type {
+  AppLiveScope,
   ChatMessage,
   ChatTurnCreate,
   CodeRuntimeStatus,
@@ -268,6 +269,7 @@ import {
   optionalToolString,
   requiredToolString,
 } from "./http/request-helpers.js";
+import { AppLiveHub } from "./live/hub.js";
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -376,6 +378,38 @@ export async function buildApp({
     origin: config.appOrigins,
   });
   await app.register(websocket);
+
+  const liveHub = new AppLiveHub();
+  const authorizeLiveScope = async (scope: AppLiveScope): Promise<boolean> => {
+    switch (scope.kind) {
+      case "current-user":
+        return true;
+      case "project":
+        return (await repository.listProjects(LOCAL_USER_ID)).some(
+          (project) => project.id === scope.projectId,
+        );
+      case "chat":
+        return Boolean(
+          await repository.getChatExecutionContext(LOCAL_USER_ID, scope.chatId),
+        );
+      case "workflow-run":
+        return Boolean(
+          await repository.workflowRuns.getRun(LOCAL_USER_ID, scope.runId),
+        );
+    }
+  };
+
+  app.get("/api/live", { websocket: true }, (socket, request) => {
+    const origin = request.headers.origin;
+    if (!origin || !config.appOrigins.includes(origin)) {
+      socket.close(1008, "Origin is not allowed");
+      return;
+    }
+    liveHub.attach(socket, {
+      ownerId: LOCAL_USER_ID,
+      authorizeScope: authorizeLiveScope,
+    });
+  });
 
   const dispatchingChats = new Set<string>();
   const pendingQueueDispatches = new Set<string>();
@@ -7939,6 +7973,7 @@ export async function buildApp({
     clearInterval(workflowGateExpiryTimer);
     clearInterval(workflowScheduleTimer);
     workflowExecutor.stop();
+    liveHub.close();
     codeTunnel.close();
     bridge.close();
     await activeScheduleTick;
