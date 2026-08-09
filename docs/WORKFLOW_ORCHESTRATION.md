@@ -6,6 +6,11 @@ workflow graph, schedules durable node boundaries, routes worker commands, and
 persists intermediate results. Workflow definitions never contain executable
 JavaScript or another general-purpose expression language.
 
+For deployment boundaries, recovery, trigger operation, migrations, and
+rollback, see [Workflow operations](WORKFLOW_OPERATIONS.md). The final
+requirement-to-test matrix and implementation ledger are in the
+[Workflow implementation audit](WORKFLOW_IMPLEMENTATION_AUDIT.md).
+
 ## Definition boundary
 
 Every immutable workflow revision uses graph version `1`. A graph is a bounded

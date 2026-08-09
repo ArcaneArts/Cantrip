@@ -57,7 +57,7 @@ The React frontend is the control surface. Vite provides the browser development
 
 ### `cantrip_server`
 
-The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings, stores projects and durable conversation history, tracks worker presence, persists worktree observations and chat execution leases, and routes every file, terminal, Git, and Codex operation to the correct worker checkout.
+The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings, stores projects, durable conversation history, workflow definitions, runs, and triggers, tracks worker presence, persists worktree observations and chat execution leases, and routes every file, terminal, Git, Codex, and workflow operation to the correct worker checkout.
 
 Local development uses embedded PGlite under `.cantrip/dev/`. A PostgreSQL `DATABASE_URL` can be supplied for a standalone database. Source files and attachment bytes are not copied into the server database. The server stores attachment metadata with conversation history and relays bounded upload and preview chunks to the owning worker.
 
@@ -86,6 +86,35 @@ The account area in the main sidebar is also the server switcher. Its **Add serv
 Standalone server and worker packages establish the deployable boundary for a future cloud control plane. The server can bind remotely only with the explicit `CANTRIP_ALLOW_INSECURE_REMOTE=true` acknowledgement. Until account authentication and worker enrollment land, use that mode only on a trusted private network or behind an authenticating reverse proxy; it is not safe to expose directly to the public internet.
 
 Conversation history and configuration live on the server, so they remain readable when a worker is unavailable. Project files and live runtime state remain on the worker. Moving a conversation to another worker will therefore require a compatible checkout and an explicit handoff rather than pretending that uncommitted files moved automatically.
+
+## Codex-native customization and workflows
+
+Cantrip extends one agent runtime instead of maintaining Claude CLI and Codex
+backends. Codex App Server remains responsible for threads, turns, tools,
+approvals, skills, hooks, MCP, plans, goals, and subagents. The app inventories
+and capability-gates those native surfaces, exposes commands and skills in one
+palette, and can translate recognized external Claude/Cursor data into inert
+Codex-native records without executing imported scripts.
+
+Above that runtime, Cantrip provides a durable, data-only workflow control
+plane. Immutable revisions can compose agent, verification, reduction,
+condition, approval-gate, map, pipeline, and repeat-until nodes with explicit
+budgets, bounded concurrency, pause/cancel/retry controls, and isolated
+worktrees for mutation. Workflows can be authored directly, generated with
+Codex assistance, saved from completed runs, or imported/exported as reviewed
+repository data.
+
+Schedule, scoped API, credentialed webhook, normalized Git/GitHub, and saved
+command triggers all create the same durable run records. Unattended execution
+requires trusted, preauthorized revisions and permission manifests; the UI
+creates triggers disabled until an operator explicitly enables them. This is a
+local/trusted-network product boundary today, not a public multi-user automation
+service or a raw GitHub HMAC webhook receiver.
+
+See the [orchestration contract](docs/WORKFLOW_ORCHESTRATION.md),
+[operator and recovery guide](docs/WORKFLOW_OPERATIONS.md),
+[implementation audit](docs/WORKFLOW_IMPLEMENTATION_AUDIT.md), and
+[architecture decision](docs/adr/0004-codex-native-workflow-control-plane.md).
 
 ## Agent-managed worktrees
 
