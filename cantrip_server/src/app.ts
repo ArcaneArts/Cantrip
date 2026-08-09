@@ -382,7 +382,12 @@ export async function buildApp({
     repository,
     bridge,
   );
-  const workflowExecutor = new WorkflowExecutor(repository, bridge, app.log);
+  const workflowExecutor = new WorkflowExecutor(
+    repository,
+    bridge,
+    worktreeCoordinator,
+    app.log,
+  );
   const [serverId, currentUser] = await Promise.all([
     repository.getOrCreateServerId(),
     repository.ensureLocalIdentity(),

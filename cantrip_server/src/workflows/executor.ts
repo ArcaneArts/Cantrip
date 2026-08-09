@@ -1,5 +1,6 @@
 import {
   agentInteractionAcceptedSchema,
+  worktreeStatusResultSchema,
   type AgentInteractionRequest,
   type AgentInteractionResponse,
   type WorkerEvent,
@@ -24,11 +25,13 @@ import type {
   WorkflowAttemptLease,
   WorkflowAgentCandidate,
   WorkflowCancellationExecutionContext,
+  WorkflowWorktreeCheckpoint,
 } from "../db/workflow-runs.js";
 import {
   type WorkerCommandBus,
   WorkerUnavailableError,
 } from "../workers/bridge.js";
+import type { ProjectWorktreeCoordinator } from "../worktrees/coordinator.js";
 import { evaluateWorkflowPredicate } from "./values.js";
 
 interface WorkflowExecutorLogger {
@@ -65,6 +68,7 @@ export class WorkflowExecutor {
   constructor(
     private readonly repository: ServerRepository,
     private readonly bridge: WorkerCommandBus,
+    private readonly worktreeCoordinator: ProjectWorktreeCoordinator,
     private readonly logger: WorkflowExecutorLogger,
   ) {}
 
@@ -361,6 +365,7 @@ export class WorkflowExecutor {
         );
         break;
       }
+      let allocationBlocked = false;
       for (const ready of candidates) {
         const runtime = await this.runtimeFor(ready);
         if (!runtime) {
@@ -371,41 +376,71 @@ export class WorkflowExecutor {
           );
           break;
         }
+        let target = source!;
+        if (ready.node.writeCapable) {
+          try {
+            const allocation =
+              await this.worktreeCoordinator.allocateWorkflowLane(
+                LOCAL_USER_ID,
+                ready.projectId!,
+                {
+                  runId: ready.run.id,
+                  runNodeId: ready.node.id,
+                  runNodeItemId: ready.item?.id ?? null,
+                },
+              );
+            if (!allocation) {
+              allocationBlocked = true;
+              break;
+            }
+            target = {
+              cwd: allocation.worktree.path,
+              workerId: allocation.worktree.workerId,
+              worktreeId: allocation.worktree.id,
+            };
+          } catch (error) {
+            allocationBlocked = true;
+            this.logger.warn(
+              {
+                err: error,
+                workflowRunId: ready.run.id,
+                workflowRunNodeId: ready.node.id,
+              },
+              "Workflow worktree allocation failed",
+            );
+            break;
+          }
+        }
         const lease = await this.repository.workflowRuns.claimAgentAttempt(
           LOCAL_USER_ID,
           ready,
           {
-            cwd: source!.cwd,
+            cwd: target.cwd,
             modelRouteId: runtime.routeId,
             permissionProfileId: ready.node.permissionProfileId,
-            workerId: source!.workerId,
-            worktreeId: source!.worktreeId,
+            workerId: target.workerId,
+            worktreeId: target.worktreeId,
           },
         );
         if (!lease) continue;
         let task!: Promise<void>;
-        task = this.executeAttempt(
-          lease,
-          source!.cwd,
-          source!.workerId,
-          source!.worktreeId,
-          runtime,
-        ).finally(() => active.delete(task));
+        task = this.executeAttempt(lease, runtime).finally(() =>
+          active.delete(task),
+        );
         active.add(task);
       }
       if (active.size === 0) break;
       await Promise.race(active);
+      if (allocationBlocked && active.size === 0) break;
     }
     await Promise.allSettled(active);
   }
 
   private async executeAttempt(
     lease: WorkflowAttemptLease,
-    cwd: string,
-    workerId: string,
-    worktreeId: string,
     runtime: ModelRuntime,
   ): Promise<void> {
+    const { cwd, workerId, worktreeId } = lease.assignment;
     try {
       const rawResult = await this.bridge.request(
         workerId,
@@ -428,7 +463,9 @@ export class WorkflowExecutor {
             lease.candidate.configuration!.developerInstructions,
           skillNames: lease.candidate.node.permissionManifest.skills,
           outputSchema: lease.candidate.outputSchema,
-          mutationMode: "read-only",
+          mutationMode: lease.candidate.node.writeCapable
+            ? "write"
+            : "read-only",
           networkAccess: lease.candidate.node.permissionManifest.network,
           approvalMode: lease.candidate.node.permissionManifest.approvalMode,
           permissionProfileId: lease.candidate.node.permissionProfileId,
@@ -466,6 +503,7 @@ export class WorkflowExecutor {
         LOCAL_USER_ID,
         lease,
         result,
+        await this.captureWorktreeCheckpoint(lease),
       );
     } catch (error) {
       const failure = await this.repository.workflowRuns.failAgentAttempt(
@@ -478,6 +516,72 @@ export class WorkflowExecutor {
         "Map failure was persisted but sibling runtime interruption failed",
       );
     }
+  }
+
+  private async captureWorktreeCheckpoint(
+    lease: WorkflowAttemptLease,
+  ): Promise<WorkflowWorktreeCheckpoint | null> {
+    if (!lease.candidate.node.writeCapable) return null;
+    const projectId = lease.candidate.projectId;
+    if (!projectId || !lease.worktreeLeaseId) {
+      throw new Error(
+        "The write-capable workflow attempt has no attributed worktree lease.",
+      );
+    }
+    const context = await this.repository.getProjectWorktreeContext(
+      LOCAL_USER_ID,
+      projectId,
+      lease.assignment.worktreeId,
+    );
+    if (
+      !context ||
+      context.workerId !== lease.assignment.workerId ||
+      context.worktree.isPrimary
+    ) {
+      throw new Error(
+        "The write-capable workflow attempt is no longer bound to its isolated lane.",
+      );
+    }
+    const result = worktreeStatusResultSchema.parse(
+      await this.bridge.request(context.workerId, {
+        type: "worktree.status",
+        sourcePath: context.sourcePath,
+        worktreePath: context.worktree.path,
+      }),
+    );
+    if (!result.status.head || result.status.head !== result.worktree.head) {
+      throw new Error(
+        "Worker Git status did not provide a consistent checkpoint revision.",
+      );
+    }
+    const observed = await this.repository.observeProjectWorktree(
+      LOCAL_USER_ID,
+      projectId,
+      context.worktree.id,
+      result.worktree,
+    );
+    if (
+      !observed ||
+      observed.isPrimary ||
+      observed.lifecycleState !== "ready" ||
+      !observed.branch
+    ) {
+      throw new Error("The workflow worktree is not ready to checkpoint.");
+    }
+    return {
+      endingRevision: result.status.head,
+      worktreeDirty: result.status.files.length > 0,
+      producedChanges: {
+        git: {
+          branch: result.status.branch,
+          head: result.status.head,
+          upstream: result.status.upstream,
+          ahead: result.status.ahead,
+          behind: result.status.behind,
+          files: result.status.files,
+        },
+      },
+    };
   }
 
   private async recordWorkerEvent(
