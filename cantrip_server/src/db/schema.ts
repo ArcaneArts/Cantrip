@@ -1427,10 +1427,15 @@ export const workflowWorktreeLeases = pgTable(
     errorCode: text("error_code"),
     errorMessage: text("error_message"),
     outcome: text("outcome"),
+    pendingOutcome: text("pending_outcome"),
+    pendingOutcomeRequest: jsonb("pending_outcome_request").$type<
+      Record<string, unknown>
+    >(),
     resolvedByActorType: text("resolved_by_actor_type"),
     resolvedByActorId: text("resolved_by_actor_id"),
     activatedAt: timestamp("activated_at", { withTimezone: true }),
     checkpointedAt: timestamp("checkpointed_at", { withTimezone: true }),
+    outcomeStartedAt: timestamp("outcome_started_at", { withTimezone: true }),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     releasedAt: timestamp("released_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -1479,6 +1484,10 @@ export const workflowWorktreeLeases = pgTable(
     check(
       "workflow_worktree_leases_outcome_check",
       sql`${table.outcome} IS NULL OR (${table.outcome} = 'kept' AND ${table.state} = 'checkpointed') OR (${table.outcome} IN ('delivered', 'discarded', 'released') AND ${table.state} = 'released')`,
+    ),
+    check(
+      "workflow_worktree_leases_pending_outcome_check",
+      sql`(${table.pendingOutcome} IS NULL AND ${table.pendingOutcomeRequest} IS NULL AND ${table.outcomeStartedAt} IS NULL) OR (${table.pendingOutcome} IN ('deliver', 'discard', 'release') AND ${table.pendingOutcomeRequest} IS NOT NULL AND ${table.outcomeStartedAt} IS NOT NULL AND ${table.state} = 'recovering')`,
     ),
   ],
 );

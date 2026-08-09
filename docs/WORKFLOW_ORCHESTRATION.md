@@ -247,6 +247,18 @@ outcomes are:
 
 Before a terminal outcome, the owning worker must be online and its current
 Git branch, HEAD, upstream/ahead/behind values, and file summary must exactly
-match the checkpoint. Drift leaves the lease checkpointed so the user can keep
-and inspect it. Replaying an outcome with the same key and payload is safe;
-reusing the key with different input is a conflict.
+match the checkpoint. Drift before resolution starts leaves the lease
+checkpointed so the user can keep and inspect it. After validation, `deliver`,
+`release`, and `discard` persist the exact pending request and move the lease to
+`recovering` before any terminal filesystem side effect. The unreleased lease
+continues blocking cleanup throughout that boundary.
+
+An exact retry resumes the persisted intent. In particular, a retried discard
+first reconciles the worker inventory: an already-absent isolated checkout is
+treated as a completed removal and the durable `discarded` outcome is finalized
+without issuing a second remove. A different terminal request conflicts while
+an intent is recovering. `keep` is the safe escape hatch: it cancels the
+pending terminal intent, preserves the checkout and cleanup blocker, and
+returns the lease to its checkpointed `kept` state. Replaying a finalized
+outcome with the same key and payload is safe; reusing the key with different
+input is a conflict.

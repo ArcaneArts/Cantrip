@@ -202,6 +202,7 @@ function toWorkflowWorktreeLease(
     ...lease,
     activatedAt: nullableISOString(lease.activatedAt),
     checkpointedAt: nullableISOString(lease.checkpointedAt),
+    outcomeStartedAt: nullableISOString(lease.outcomeStartedAt),
     resolvedAt: nullableISOString(lease.resolvedAt),
     releasedAt: nullableISOString(lease.releasedAt),
     createdAt: toISOString(lease.createdAt),
@@ -1414,6 +1415,131 @@ export class WorkflowRunRepository {
     return { lease: toWorkflowWorktreeLease(lease), replayed: false };
   }
 
+  async beginWorktreeLeaseOutcome(
+    ownerId: string,
+    runId: string,
+    leaseId: string,
+    request: WorkflowWorktreeOutcomeRequest,
+  ): Promise<WorkflowWorktreeLease | null> {
+    const input = workflowWorktreeOutcomeRequestSchema.parse(request);
+    if (input.action === "keep") {
+      throw new WorkflowControlConflictError(
+        "Keeping a workflow worktree does not require a recovery intent.",
+      );
+    }
+    const finalEventKey = `worktree-outcome:${leaseId}:${input.idempotencyKey}`;
+    const startedEventKey = `worktree-outcome-started:${leaseId}:${input.idempotencyKey}`;
+    for (let retry = 0; retry < 20; retry += 1) {
+      try {
+        const lease = await this.database.transaction(async (transaction) => {
+          const rows = await transaction
+            .select({ lease: schema.workflowWorktreeLeases })
+            .from(schema.workflowWorktreeLeases)
+            .innerJoin(
+              schema.workflowRuns,
+              and(
+                eq(schema.workflowRuns.id, schema.workflowWorktreeLeases.runId),
+                eq(schema.workflowRuns.ownerId, ownerId),
+              ),
+            )
+            .where(
+              and(
+                eq(schema.workflowWorktreeLeases.id, leaseId),
+                eq(schema.workflowWorktreeLeases.runId, runId),
+              ),
+            )
+            .for("update")
+            .limit(1);
+          const current = rows[0]?.lease;
+          if (!current) return null;
+          const finalEvents = await transaction
+            .select({ payload: schema.workflowRunEvents.payload })
+            .from(schema.workflowRunEvents)
+            .where(
+              and(
+                eq(schema.workflowRunEvents.runId, runId),
+                eq(schema.workflowRunEvents.eventKey, finalEventKey),
+              ),
+            )
+            .limit(1);
+          if (finalEvents[0]) {
+            this.assertWorktreeOutcomeReplay(finalEvents[0].payload, input);
+            return current;
+          }
+          const startedEvents = await transaction
+            .select({ payload: schema.workflowRunEvents.payload })
+            .from(schema.workflowRunEvents)
+            .where(
+              and(
+                eq(schema.workflowRunEvents.runId, runId),
+                eq(schema.workflowRunEvents.eventKey, startedEventKey),
+              ),
+            )
+            .limit(1);
+          if (startedEvents[0]) {
+            this.assertWorktreeOutcomeReplay(startedEvents[0].payload, input);
+          }
+          this.assertWorktreeOutcomeEligible(current, input);
+          if (current.state === "recovering") return current;
+          const now = new Date();
+          const updated = await transaction
+            .update(schema.workflowWorktreeLeases)
+            .set({
+              state: "recovering",
+              outcome: null,
+              pendingOutcome: input.action,
+              pendingOutcomeRequest: input,
+              resolvedByActorType: null,
+              resolvedByActorId: null,
+              outcomeStartedAt: now,
+              resolvedAt: null,
+              releasedAt: null,
+              errorCode: null,
+              errorMessage: null,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(schema.workflowWorktreeLeases.id, leaseId),
+                eq(schema.workflowWorktreeLeases.state, "checkpointed"),
+              ),
+            )
+            .returning();
+          if (!updated[0]) {
+            throw new WorkflowControlConflictError(
+              "The workflow worktree lease changed while starting its outcome.",
+            );
+          }
+          if (!startedEvents[0]) {
+            await insertWorkflowRunEvent(transaction, {
+              runId,
+              runNodeId: current.runNodeId,
+              attemptId: null,
+              eventKey: startedEventKey,
+              type: "worktree.lease.outcome-started",
+              payload: {
+                leaseId,
+                worktreeId: current.worktreeId,
+                branchName: current.branchName,
+                endingRevision: current.endingRevision,
+                request: input,
+              },
+              actorType: "user",
+              actorId: ownerId,
+            });
+          }
+          return updated[0];
+        });
+        return lease ? toWorkflowWorktreeLease(lease) : null;
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+      }
+    }
+    throw new Error(
+      "Workflow worktree outcome start contention exceeded its limit.",
+    );
+  }
+
   async resolveWorktreeLeaseOutcome(
     ownerId: string,
     runId: string,
@@ -1481,16 +1607,26 @@ export class WorkflowRunRepository {
             .set({
               state: terminal ? "released" : "checkpointed",
               outcome,
+              pendingOutcome: null,
+              pendingOutcomeRequest: null,
               resolvedByActorType: "user",
               resolvedByActorId: ownerId,
+              outcomeStartedAt: null,
               resolvedAt: now,
               releasedAt: terminal ? now : null,
+              errorCode: null,
+              errorMessage: null,
               updatedAt: now,
             })
             .where(
               and(
                 eq(schema.workflowWorktreeLeases.id, leaseId),
-                eq(schema.workflowWorktreeLeases.state, "checkpointed"),
+                terminal
+                  ? eq(schema.workflowWorktreeLeases.state, "recovering")
+                  : inArray(schema.workflowWorktreeLeases.state, [
+                      "checkpointed",
+                      "recovering",
+                    ]),
               ),
             )
             .returning();
@@ -7234,11 +7370,6 @@ export class WorkflowRunRepository {
     lease: typeof schema.workflowWorktreeLeases.$inferSelect,
     input: WorkflowWorktreeOutcomeRequest,
   ): void {
-    if (lease.state !== "checkpointed") {
-      throw new WorkflowControlConflictError(
-        `A ${lease.state} workflow worktree lease cannot accept an outcome.`,
-      );
-    }
     if (
       !lease.worktreeId ||
       !lease.workerId ||
@@ -7254,6 +7385,22 @@ export class WorkflowRunRepository {
         "The workflow worktree ending revision changed before the outcome was applied.",
       );
     }
+    if (lease.state === "checkpointed") return;
+    if (lease.state === "recovering") {
+      if (input.action === "keep") return;
+      if (
+        lease.pendingOutcome === input.action &&
+        canonicalJson(lease.pendingOutcomeRequest) === canonicalJson(input)
+      ) {
+        return;
+      }
+      throw new WorkflowControlConflictError(
+        "The workflow worktree is already recovering a different outcome request.",
+      );
+    }
+    throw new WorkflowControlConflictError(
+      `A ${lease.state} workflow worktree lease cannot accept an outcome.`,
+    );
   }
 
   private assertWorktreeOutcomeReplay(
