@@ -59,6 +59,7 @@ import {
   updateProjectWorktreePolicy,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { WorkflowCenter } from "@/components/workflows/workflow-center";
 
 const menuContentClass =
   "z-50 min-w-52 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
@@ -397,6 +398,11 @@ export function ProjectSettingsPage({
             })}
           </div>
         </section>
+
+        <WorkflowCenter
+          projectId={project.id}
+          onOpenHistory={onCreateHistory}
+        />
 
         <section aria-labelledby="worktrees-title">
           <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
