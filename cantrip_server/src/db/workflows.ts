@@ -311,6 +311,25 @@ export class WorkflowRepository {
     return rows[0] ? this.loadRevision(rows[0]) : null;
   }
 
+  async getRevisionById(
+    ownerId: string,
+    workflowId: string,
+    revisionId: string,
+  ): Promise<WorkflowRevision | null> {
+    if (!(await this.definitionRow(ownerId, workflowId))) return null;
+    const rows = await this.database
+      .select()
+      .from(schema.workflowRevisions)
+      .where(
+        and(
+          eq(schema.workflowRevisions.id, revisionId),
+          eq(schema.workflowRevisions.workflowId, workflowId),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? this.loadRevision(rows[0]) : null;
+  }
+
   async appendRevision(
     ownerId: string,
     workflowId: string,

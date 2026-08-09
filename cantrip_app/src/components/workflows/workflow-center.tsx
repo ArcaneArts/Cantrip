@@ -13,6 +13,7 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
+  BookmarkPlus,
   CircleAlert,
   CirclePause,
   CirclePlay,
@@ -54,6 +55,7 @@ import {
   resolveWorkflowWorktree,
   resumeWorkflowRun,
   retryWorkflowNode,
+  saveWorkflowRunRevision,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { WorkflowAuthorDialog } from "./workflow-author-dialog";
@@ -370,11 +372,23 @@ export function WorkflowCenter({
     },
     onSuccess: storeRun,
   });
+  const saveRun = useMutation({
+    mutationFn: (runId: string) =>
+      saveWorkflowRunRevision(runId, {
+        trustState: "modified",
+        useRunInputAsDefaults: true,
+      }),
+    onSuccess: (saved) => {
+      setSelectedWorkflowId(saved.workflow.id);
+      queryClient.setQueryData(["workflow", saved.workflow.id], saved);
+      void queryClient.invalidateQueries({ queryKey: ["workflows"] });
+    },
+  });
 
   const selectedDefinition = visibleWorkflows.find(
     ({ id }) => id === selectedWorkflowId,
   );
-  const controlError = control.error ?? launch.error;
+  const controlError = control.error ?? launch.error ?? saveRun.error;
 
   const prepareReview = () => {
     try {
@@ -646,10 +660,11 @@ export function WorkflowCenter({
           ) : run.data ? (
             <RunDetail
               detail={run.data}
-              pending={control.isPending}
+              pending={control.isPending || saveRun.isPending}
               revisionNodes={workflow.data?.revision?.nodes ?? []}
               onControl={(action) => control.mutate(action)}
               onOpenHistory={onOpenHistory}
+              onSaveRevision={() => saveRun.mutate(run.data!.run.id)}
             />
           ) : (
             <div className="grid h-full place-items-center text-center text-sm text-muted-foreground">
@@ -778,12 +793,14 @@ function RunDetail({
   detail,
   onControl,
   onOpenHistory,
+  onSaveRevision,
   pending,
   revisionNodes,
 }: {
   detail: WorkflowRunDetail;
   onControl(action: ControlAction): void;
   onOpenHistory(worktreeId: string): void;
+  onSaveRevision(): void;
   pending: boolean;
   revisionNodes: WorkflowGraph["nodes"];
 }) {
@@ -819,6 +836,16 @@ function RunDetail({
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
+          {run.status === "completed" ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={onSaveRevision}
+            >
+              <BookmarkPlus className="size-4" /> Save as revision
+            </Button>
+          ) : null}
           {actions.canPause ? (
             <Button
               size="sm"

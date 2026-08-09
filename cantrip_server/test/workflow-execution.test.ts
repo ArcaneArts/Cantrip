@@ -908,6 +908,39 @@ describe.sequential("single-agent workflow execution", () => {
       "node.attempt.completed",
     ]);
 
+    const savedResponse = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/save-revision`,
+      payload: { trustState: "modified", useRunInputAsDefaults: true },
+    });
+    expect(savedResponse.statusCode).toBe(200);
+    const saved = workflowDefinitionDetailSchema.parse(savedResponse.json());
+    expect(saved).toMatchObject({
+      workflow: { trustState: "modified" },
+      revision: {
+        revision: 2,
+        source: "saved-run",
+        trustState: "modified",
+        provenance: {
+          origin: "workflow-run",
+          sourceId: runId,
+          sourceRevision: revisionId,
+          metadata: { useRunInputAsDefaults: true },
+        },
+        defaults: { target: "src" },
+      },
+    });
+    const savedReplay = workflowDefinitionDetailSchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/workflow-runs/${runId}/save-revision`,
+          payload: { trustState: "modified", useRunInputAsDefaults: true },
+        })
+      ).json(),
+    );
+    expect(savedReplay.revision?.id).toBe(saved.revision?.id);
+
     const replay = await createRun("execute-success");
     expect(replay.statusCode).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 20));

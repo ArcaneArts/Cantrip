@@ -1424,6 +1424,11 @@ export const workflowRunResumeSchema = z.object({
   idempotencyKey: z.string().trim().min(1).max(200),
 });
 
+export const workflowRunSaveRevisionSchema = z.object({
+  useRunInputAsDefaults: z.boolean().default(true),
+  trustState: workflowTrustStateSchema.default("modified"),
+});
+
 export const workflowNodeRetrySchema = z.object({
   reason: z.string().trim().min(1).max(2_000).nullable().default(null),
   idempotencyKey: z.string().trim().min(1).max(200),
@@ -1620,6 +1625,9 @@ export type WorkflowRunStatusUpdate = z.infer<
 export type WorkflowRunCancel = z.infer<typeof workflowRunCancelSchema>;
 export type WorkflowRunPause = z.infer<typeof workflowRunPauseSchema>;
 export type WorkflowRunResume = z.infer<typeof workflowRunResumeSchema>;
+export type WorkflowRunSaveRevision = z.infer<
+  typeof workflowRunSaveRevisionSchema
+>;
 export type WorkflowWorktreeOutcomeRequest = z.infer<
   typeof workflowWorktreeOutcomeRequestSchema
 >;
