@@ -36,6 +36,7 @@ import {
   remoteSurfaceWebRtcConfigurationSchema,
   remoteSurfaceWebRtcSignalSchema,
   gitActionSchema,
+  gitFileDiffSchema,
   mentionedSkillNames,
   normalizeResponsesBaseUrl,
   chatPermissionProfileStateSchema,
@@ -678,6 +679,25 @@ describe("Cantrip protocol", () => {
     expect(
       gitActionSchema.safeParse({ type: "stage", paths: [] }).success,
     ).toBe(false);
+    expect(
+      gitActionSchema.parse({ type: "discard", paths: ["src/app.ts"] }),
+    ).toEqual({ type: "discard", paths: ["src/app.ts"] });
+    expect(
+      workerCommandSchema.parse({
+        type: "git.diff",
+        cwd: "/workspace/Cantrip",
+        path: "src/app.ts",
+        scope: "unstaged",
+      }).type,
+    ).toBe("git.diff");
+    expect(
+      gitFileDiffSchema.parse({
+        path: "src/app.ts",
+        scope: "staged",
+        patch: "@@ -1 +1 @@",
+        truncated: false,
+      }).scope,
+    ).toBe("staged");
   });
 
   it("validates worker worktree lifecycle commands and inventories", () => {

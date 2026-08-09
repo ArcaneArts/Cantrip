@@ -1,12 +1,17 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { readGitHistory, readGitStatus, runGitAction } from "../src/git.js";
+import {
+  readGitFileDiff,
+  readGitHistory,
+  readGitStatus,
+  runGitAction,
+} from "../src/git.js";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
@@ -266,5 +271,101 @@ describe("Git history", () => {
       await runGitAction(directory, { type: "checkout", branch: "main" })
     ).status;
     expect(status.branch).toBe("main");
+  });
+
+  it("reads staged and unstaged patches and discards only working changes", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "README.md"), "initial\n");
+    await execFileAsync("git", ["-C", directory, "add", "README.md"]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Initial"]);
+
+    await writeFile(path.join(directory, "README.md"), "staged\n");
+    await writeFile(path.join(directory, "scratch.txt"), "scratch\n");
+    expect(
+      (await readGitFileDiff(directory, "README.md", "unstaged")).patch,
+    ).toContain("+staged");
+    expect(
+      (await readGitFileDiff(directory, "scratch.txt", "unstaged")).patch,
+    ).toContain("+scratch");
+
+    await runGitAction(directory, { type: "stage", paths: ["README.md"] });
+    await writeFile(path.join(directory, "README.md"), "working\n");
+    expect(
+      (await readGitFileDiff(directory, "README.md", "staged")).patch,
+    ).toContain("+staged");
+    expect(
+      (await readGitFileDiff(directory, "README.md", "unstaged")).patch,
+    ).toContain("+working");
+
+    await runGitAction(directory, { type: "discard", paths: ["README.md"] });
+    expect(await readFile(path.join(directory, "README.md"), "utf8")).toBe(
+      "staged\n",
+    );
+    expect(
+      (await readGitStatus(directory)).files.find(
+        ({ path: filePath }) => filePath === "README.md",
+      ),
+    ).toMatchObject({ staged: true, unstaged: false });
+
+    await runGitAction(directory, { type: "discardAll" });
+    expect(
+      (await readGitStatus(directory)).files.some(
+        ({ path: filePath }) => filePath === "scratch.txt",
+      ),
+    ).toBe(false);
+    await expect(
+      readGitFileDiff(directory, "../outside.txt", "unstaged"),
+    ).rejects.toThrow("Invalid Git diff path");
+  });
+
+  it("treats discarded filenames as literals instead of Git pathspecs", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "[ab].txt"), "literal\n");
+    await writeFile(path.join(directory, "a.txt"), "ordinary\n");
+    await execFileAsync("git", ["-C", directory, "add", "-A"]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Initial"]);
+
+    await writeFile(path.join(directory, "[ab].txt"), "discard me\n");
+    await writeFile(path.join(directory, "a.txt"), "keep me\n");
+    await runGitAction(directory, { type: "discard", paths: ["[ab].txt"] });
+
+    expect(await readFile(path.join(directory, "[ab].txt"), "utf8")).toBe(
+      "literal\n",
+    );
+    expect(await readFile(path.join(directory, "a.txt"), "utf8")).toBe(
+      "keep me\n",
+    );
   });
 });

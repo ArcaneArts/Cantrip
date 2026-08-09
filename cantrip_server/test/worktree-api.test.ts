@@ -11,6 +11,7 @@ import {
   codeTabSummarySchema,
   explorerSummarySchema,
   gitActionResultSchema,
+  gitFileDiffSchema,
   gitHistorySchema,
   projectViewSummarySchema,
   projectWorktreeListSchema,
@@ -54,6 +55,7 @@ let connected = true;
 let activeCreates = 0;
 let maximumConcurrentCreates = 0;
 const gitActionPaths: string[] = [];
+const gitDiffCommands: Array<Extract<WorkerCommand, { type: "git.diff" }>> = [];
 const gitHistoryCommands: Array<
   Extract<WorkerCommand, { type: "git.history" }>
 > = [];
@@ -214,6 +216,14 @@ const workerBridge = {
       case "git.action":
         gitActionPaths.push(command.cwd);
         return { status: status(), output: "done" };
+      case "git.diff":
+        gitDiffCommands.push(command);
+        return {
+          path: command.path,
+          scope: command.scope,
+          patch: "@@ -1 +1 @@\n-old\n+new\n",
+          truncated: false,
+        };
       case "code.prepareAgentTurn":
         return { prepared: true, sessions: [] };
       case "code.agentTurnState":
@@ -1164,6 +1174,19 @@ describe.sequential("server worktree control plane", () => {
     });
     gitActionResultSchema.parse(actionResponse.json());
     expect(gitActionPaths.at(-1)).toBe(target.path);
+    const diffResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/diff?path=src%2Fapp.ts&scope=unstaged`,
+    });
+    expect(gitFileDiffSchema.parse(diffResponse.json())).toMatchObject({
+      path: "src/app.ts",
+      scope: "unstaged",
+    });
+    expect(gitDiffCommands.at(-1)).toMatchObject({
+      cwd: target.path,
+      path: "src/app.ts",
+      scope: "unstaged",
+    });
   });
 
   it("locks, unlocks, and protects Primary and external removal", async () => {

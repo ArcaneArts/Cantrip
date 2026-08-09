@@ -3,10 +3,13 @@ import { promisify } from "node:util";
 
 import {
   gitActionResultSchema,
+  gitFileDiffSchema,
   gitHistorySchema,
   gitStatusSchema,
   type GitAction,
   type GitActionResult,
+  type GitDiffScope,
+  type GitFileDiff,
   type GitHistory,
   type GitRef,
   type GitStatus,
@@ -14,6 +17,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 const GIT_BUFFER = 16 * 1024 * 1024;
+const DIFF_CHARACTER_LIMIT = 2_000_000;
 
 async function gitOutput(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
@@ -29,6 +33,38 @@ async function gitRaw(cwd: string, args: string[]): Promise<string> {
     maxBuffer: GIT_BUFFER,
   });
   return stdout;
+}
+
+async function gitDiffOutput(
+  cwd: string,
+  args: string[],
+  allowDifferenceExit: boolean,
+): Promise<{ output: string; truncated: boolean }> {
+  try {
+    return { output: await gitRaw(cwd, args), truncated: false };
+  } catch (error) {
+    const failure = error as {
+      code?: number | string;
+      stdout?: string;
+    };
+    if (allowDifferenceExit && failure.code === 1) {
+      return { output: failure.stdout ?? "", truncated: false };
+    }
+    if (failure.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+      return { output: failure.stdout ?? "", truncated: true };
+    }
+    throw error;
+  }
+}
+
+function safeGitPath(candidate: string): boolean {
+  return (
+    candidate.length > 0 &&
+    !candidate.startsWith("/") &&
+    !/^[A-Za-z]:[\\/]/u.test(candidate) &&
+    !candidate.split(/[\\/]/u).includes("..") &&
+    !candidate.includes("\0")
+  );
 }
 
 async function runGit(cwd: string, args: string[]): Promise<string> {
@@ -294,6 +330,54 @@ export async function readGitStatus(cwd: string): Promise<GitStatus> {
   });
 }
 
+export async function readGitFileDiff(
+  cwd: string,
+  filePath: string,
+  scope: GitDiffScope,
+): Promise<GitFileDiff> {
+  if (!safeGitPath(filePath)) throw new Error("Invalid Git diff path.");
+  const status = await readGitStatus(cwd);
+  const change = status.files.find(({ path }) => path === filePath);
+  if (!change || (scope === "staged" ? !change.staged : !change.unstaged)) {
+    throw new Error(`No ${scope} change exists for ${filePath}.`);
+  }
+
+  const commonArguments = [
+    "--literal-pathspecs",
+    "diff",
+    "--no-color",
+    "--no-ext-diff",
+    "--no-textconv",
+    "--unified=3",
+  ];
+  const untracked = change.indexStatus === "?" && change.worktreeStatus === "?";
+  const result =
+    scope === "unstaged" && untracked
+      ? await gitDiffOutput(
+          cwd,
+          [...commonArguments, "--no-index", "--", "/dev/null", filePath],
+          true,
+        )
+      : await gitDiffOutput(
+          cwd,
+          [
+            ...commonArguments,
+            ...(scope === "staged" ? ["--cached"] : []),
+            "--",
+            filePath,
+          ],
+          false,
+        );
+  const truncated =
+    result.truncated || result.output.length > DIFF_CHARACTER_LIMIT;
+  return gitFileDiffSchema.parse({
+    path: filePath,
+    scope,
+    patch: result.output.slice(0, DIFF_CHARACTER_LIMIT),
+    truncated,
+  });
+}
+
 async function unstage(cwd: string, paths: string[] | null): Promise<string> {
   const hasHead = await gitSucceeds(cwd, ["rev-parse", "--verify", "HEAD"]);
   if (hasHead) {
@@ -314,6 +398,68 @@ async function unstage(cwd: string, paths: string[] | null): Promise<string> {
   ]);
 }
 
+async function discardUnstaged(
+  cwd: string,
+  paths: string[] | null,
+): Promise<string> {
+  const status = await readGitStatus(cwd);
+  const requested = paths ? new Set(paths) : null;
+  const changes = status.files.filter(
+    (change) => change.unstaged && (!requested || requested.has(change.path)),
+  );
+  if (requested) {
+    const found = new Set(changes.map(({ path }) => path));
+    const missing = (paths ?? []).filter((candidate) => !found.has(candidate));
+    if (missing.length > 0) {
+      throw new Error(`No unstaged change exists for ${missing.join(", ")}.`);
+    }
+  }
+  if (
+    changes.some(
+      (change) =>
+        /U/u.test(`${change.indexStatus}${change.worktreeStatus}`) ||
+        ["DD", "AA"].includes(`${change.indexStatus}${change.worktreeStatus}`),
+    )
+  ) {
+    throw new Error("Resolve conflicts before discarding unstaged changes.");
+  }
+  const untracked = changes
+    .filter(
+      (change) => change.indexStatus === "?" && change.worktreeStatus === "?",
+    )
+    .map(({ path }) => path);
+  const tracked = changes
+    .filter(
+      (change) =>
+        !(change.indexStatus === "?" && change.worktreeStatus === "?"),
+    )
+    .map(({ path }) => path);
+  const output: string[] = [];
+  if (tracked.length > 0) {
+    output.push(
+      await runGit(cwd, [
+        "--literal-pathspecs",
+        "restore",
+        "--worktree",
+        "--",
+        ...tracked,
+      ]),
+    );
+  }
+  if (untracked.length > 0) {
+    output.push(
+      await runGit(cwd, [
+        "--literal-pathspecs",
+        "clean",
+        "-f",
+        "--",
+        ...untracked,
+      ]),
+    );
+  }
+  return output.filter(Boolean).join("\n");
+}
+
 export async function runGitAction(
   cwd: string,
   action: GitAction,
@@ -326,11 +472,17 @@ export async function runGitAction(
     case "unstage":
       output = await unstage(cwd, action.paths);
       break;
+    case "discard":
+      output = await discardUnstaged(cwd, action.paths);
+      break;
     case "stageAll":
       output = await runGit(cwd, ["add", "-A"]);
       break;
     case "unstageAll":
       output = await unstage(cwd, null);
+      break;
+    case "discardAll":
+      output = await discardUnstaged(cwd, null);
       break;
     case "commit":
       if (action.all) await runGit(cwd, ["add", "-A"]);

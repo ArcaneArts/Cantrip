@@ -2685,12 +2685,23 @@ export const gitStatusSchema = z.object({
   branches: z.array(gitBranchSchema),
 });
 
+export const gitDiffScopeSchema = z.enum(["unstaged", "staged"]);
+
+export const gitFileDiffSchema = z.object({
+  path: z.string().min(1).max(4_096),
+  scope: gitDiffScopeSchema,
+  patch: z.string().max(2_000_000),
+  truncated: z.boolean(),
+});
+
 const gitPathsSchema = z.array(z.string().min(1).max(4_096)).min(1).max(1_000);
 export const gitActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("stage"), paths: gitPathsSchema }),
   z.object({ type: z.literal("unstage"), paths: gitPathsSchema }),
+  z.object({ type: z.literal("discard"), paths: gitPathsSchema }),
   z.object({ type: z.literal("stageAll") }),
   z.object({ type: z.literal("unstageAll") }),
+  z.object({ type: z.literal("discardAll") }),
   z.object({
     type: z.literal("commit"),
     message: z.string().trim().min(1).max(10_000),
@@ -2955,6 +2966,12 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("git.status"),
     cwd: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("git.diff"),
+    cwd: z.string().min(1),
+    path: z.string().min(1).max(4_096),
+    scope: gitDiffScopeSchema,
   }),
   z.object({
     type: z.literal("git.action"),
@@ -3617,6 +3634,8 @@ export type GitHistory = z.infer<typeof gitHistorySchema>;
 export type GitFileChange = z.infer<typeof gitFileChangeSchema>;
 export type GitBranch = z.infer<typeof gitBranchSchema>;
 export type GitStatus = z.infer<typeof gitStatusSchema>;
+export type GitDiffScope = z.infer<typeof gitDiffScopeSchema>;
+export type GitFileDiff = z.infer<typeof gitFileDiffSchema>;
 export type GitAction = z.infer<typeof gitActionSchema>;
 export type GitActionResult = z.infer<typeof gitActionResultSchema>;
 export type WorkerWorktreeSummary = z.infer<typeof workerWorktreeSummarySchema>;

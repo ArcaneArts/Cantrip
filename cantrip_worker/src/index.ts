@@ -19,7 +19,12 @@ import { readWorkerConfig } from "./config.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
 import { listExplorerDirectory, readExplorerFile } from "./explorer.js";
 import { GithubClient } from "./github.js";
-import { readGitHistory, readGitStatus, runGitAction } from "./git.js";
+import {
+  readGitFileDiff,
+  readGitHistory,
+  readGitStatus,
+  runGitAction,
+} from "./git.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
 import { TerminalManager } from "./terminal-manager.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
@@ -185,6 +190,8 @@ async function start(): Promise<void> {
         );
       case "git.status":
         return readGitStatus(command.cwd);
+      case "git.diff":
+        return readGitFileDiff(command.cwd, command.path, command.scope);
       case "git.action":
         return runGitAction(command.cwd, command.action);
       case "worktree.list":
