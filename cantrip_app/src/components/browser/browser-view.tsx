@@ -34,6 +34,7 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
 import { remoteSurfaceWebSocketUrl } from "@/lib/api";
 import { RemoteSurfaceWebRtcClient } from "@/lib/remote-surface-webrtc";
 
@@ -171,6 +172,10 @@ export function BrowserView({
   >("ready");
   const [runtimeMessage, setRuntimeMessage] = useState<string | null>(null);
   const [clipboardMessage, setClipboardMessage] = useState<string | null>(null);
+  const [renderedSurfaceId, setRenderedSurfaceId] = useState<string | null>(
+    null,
+  );
+  const surfaceReady = renderedSurfaceId === browser.id;
   onPageStateRef.current = onPageState;
 
   const sendFrame = useCallback(
@@ -305,6 +310,7 @@ export function BrowserView({
           canvas.height = bitmap.height;
           canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
           bitmap.close();
+          setRenderedSurfaceId(browser.id);
         })
         .catch(() => {
           if (!disposed)
@@ -702,7 +708,18 @@ export function BrowserView({
           onKeyDown={(event) => key(event, "down")}
           onKeyUp={(event) => key(event, "up")}
         />
-        {connectionState !== "ready" || runtimeStatus === "recovering" ? (
+        <SurfaceLoadingVeil
+          label={
+            runtimeStatus === "recovering"
+              ? runtimeMessage || "Restarting browser…"
+              : connectionState === "reconnecting"
+                ? "Reconnecting to browser…"
+                : "Starting browser…"
+          }
+          visible={!surfaceReady}
+        />
+        {surfaceReady &&
+        (connectionState !== "ready" || runtimeStatus === "recovering") ? (
           <div className="pointer-events-none absolute right-4 top-3 flex items-center gap-2 rounded-md bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur-xl">
             <Loader2 className="size-3 animate-spin" />
             {runtimeStatus === "recovering"

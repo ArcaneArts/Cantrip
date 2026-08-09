@@ -33,6 +33,7 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
 import {
   remoteSurfaceWebSocketUrl,
   updateRemoteDesktopTarget,
@@ -218,6 +219,10 @@ export function ManagedRemoteDesktopView({
     string | null
   >(null);
   const [targetMessage, setTargetMessage] = useState<string | null>(null);
+  const [renderedSurfaceId, setRenderedSurfaceId] = useState<string | null>(
+    null,
+  );
+  const surfaceReady = renderedSurfaceId === desktop.id;
 
   const updateTarget = useMutation({
     mutationFn: (target: RemoteDesktopTarget) =>
@@ -372,6 +377,7 @@ export function ManagedRemoteDesktopView({
         canvas.height = bitmap.height;
         canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
         bitmap.close();
+        setRenderedSurfaceId(desktop.id);
         renderedFrames += 1;
         decodeTimeMs += performance.now() - startedAt;
       } catch {
@@ -835,7 +841,15 @@ export function ManagedRemoteDesktopView({
           onKeyDown={(event) => key(event, "down")}
           onKeyUp={(event) => key(event, "up")}
         />
-        {connectionState !== "ready" ? (
+        <SurfaceLoadingVeil
+          label={
+            connectionState === "reconnecting"
+              ? "Reconnecting to Remote Desktop…"
+              : "Starting Remote Desktop…"
+          }
+          visible={!surfaceReady}
+        />
+        {surfaceReady && connectionState !== "ready" ? (
           <div className="pointer-events-none absolute right-4 top-3 flex items-center gap-2 rounded-md bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur-xl">
             <Loader2 className="size-3 animate-spin" />
             {connectionState === "connecting"
