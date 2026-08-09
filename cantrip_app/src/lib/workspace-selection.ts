@@ -80,3 +80,25 @@ export function selectWorkspaceTab(
     selectedGroupId: group.id,
   };
 }
+
+export function selectWorkspaceGroup(
+  selection: WorkspaceSelection,
+  layout: ProjectTabLayoutSummary,
+  groupId: string,
+): WorkspaceSelection {
+  const group = layout.groups.find((candidate) => candidate.id === groupId);
+  if (!group) return selection;
+  const remembered = selection.activeTabByGroup[group.id];
+  const activeTabKey =
+    remembered && group.members.some((member) => member.tabKey === remembered)
+      ? remembered
+      : group.anchorTabKey;
+  return {
+    activeTabByGroup: {
+      ...selection.activeTabByGroup,
+      [group.id]: activeTabKey,
+    },
+    projectId: layout.projectId,
+    selectedGroupId: group.id,
+  };
+}

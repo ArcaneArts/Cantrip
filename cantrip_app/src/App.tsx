@@ -115,6 +115,10 @@ import {
 } from "@/components/git/git-history";
 import type { ExplorerHeaderState } from "@/components/explorer/explorer-view";
 import { ProjectChatList } from "@/components/sidebar/project-chat-list";
+import {
+  ProjectTabBar,
+  type ProjectSurfaceCreateKind,
+} from "@/components/workspace/project-tab-bar";
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { ServerSwitcher } from "@/components/servers/server-switcher";
@@ -231,6 +235,7 @@ import {
 import { browserUpdateForPageState } from "@/lib/browser-page-state";
 import {
   buildProjectSurfaceIndex,
+  type ProjectSurface,
   projectSurfaceTabId,
   projectSurfaceTabKey,
 } from "@/lib/project-surface";
@@ -247,6 +252,7 @@ import {
   emptyWorkspaceSelection,
   reconcileWorkspaceSelection,
   selectedWorkspaceTabKey,
+  selectWorkspaceGroup,
   selectWorkspaceTab,
 } from "@/lib/workspace-selection";
 
@@ -2483,13 +2489,16 @@ export function App() {
   const newChat = useMutation({
     mutationFn: ({
       projectId,
+      tabGroupId,
       worktreeId,
       worktreeMode,
     }: {
       projectId: string;
+      tabGroupId?: string;
       worktreeId?: string;
       worktreeMode?: "agent-managed" | "pinned";
-    }) => createChat(projectId, "New chat", worktreeId, worktreeMode),
+    }) =>
+      createChat(projectId, "New chat", worktreeId, worktreeMode, tabGroupId),
     onSuccess: (chat) => {
       queryClient.setQueryData<ChatSummary[]>(
         ["chats", chat.projectId],
@@ -2507,11 +2516,13 @@ export function App() {
   const newTerminal = useMutation({
     mutationFn: ({
       projectId,
+      tabGroupId,
       worktreeId,
     }: {
       projectId: string;
+      tabGroupId?: string;
       worktreeId?: string;
-    }) => createTerminal(projectId, "Terminal", worktreeId),
+    }) => createTerminal(projectId, "Terminal", worktreeId, tabGroupId),
     onSuccess: (terminal) => {
       queryClient.setQueryData<TerminalSummary[]>(
         ["terminals", terminal.projectId],
@@ -2542,11 +2553,13 @@ export function App() {
   const newExplorer = useMutation({
     mutationFn: ({
       projectId,
+      tabGroupId,
       worktreeId,
     }: {
       projectId: string;
+      tabGroupId?: string;
       worktreeId?: string;
-    }) => createExplorer(projectId, "Explorer", worktreeId),
+    }) => createExplorer(projectId, "Explorer", worktreeId, tabGroupId),
     onSuccess: (explorer) => {
       queryClient.setQueryData<ExplorerSummary[]>(
         ["explorers", explorer.projectId],
@@ -2562,7 +2575,13 @@ export function App() {
     },
   });
   const newBrowser = useMutation({
-    mutationFn: (projectId: string) => createBrowser(projectId, "Browser"),
+    mutationFn: ({
+      projectId,
+      tabGroupId,
+    }: {
+      projectId: string;
+      tabGroupId?: string;
+    }) => createBrowser(projectId, "Browser", tabGroupId),
     onSuccess: (browser) => {
       queryClient.setQueryData<BrowserSummary[]>(
         ["browsers", browser.projectId],
@@ -2580,11 +2599,13 @@ export function App() {
   const newCodeTab = useMutation({
     mutationFn: ({
       projectId,
+      tabGroupId,
       worktreeId,
     }: {
       projectId: string;
+      tabGroupId?: string;
       worktreeId?: string;
-    }) => createCodeTab(projectId, "Code", worktreeId),
+    }) => createCodeTab(projectId, "Code", worktreeId, tabGroupId),
     onSuccess: (codeTab) => {
       queryClient.setQueryData<CodeTabSummary[]>(
         ["code-tabs", codeTab.projectId],
@@ -2603,17 +2624,24 @@ export function App() {
     mutationFn: ({
       projectId,
       kind,
+      tabGroupId,
       worktreeId,
     }: {
       projectId: string;
       kind: ProjectViewKind;
+      tabGroupId?: string;
       worktreeId?: string;
     }) =>
       createProjectView(
         projectId,
         kind,
-        kind === "remote-desktop" ? "Remote Desktop" : "Git",
+        kind === "history"
+          ? "History"
+          : kind === "issues"
+            ? "Issues"
+            : "Remote Desktop",
         worktreeId,
+        tabGroupId,
       ),
     onSuccess: (view) => {
       queryClient.setQueryData<ProjectViewSummary[]>(
@@ -2776,7 +2804,13 @@ export function App() {
     },
   });
   const newRemoteDesktop = useMutation({
-    mutationFn: (projectId: string) => createRemoteDesktop(projectId),
+    mutationFn: ({
+      projectId,
+      tabGroupId,
+    }: {
+      projectId: string;
+      tabGroupId?: string;
+    }) => createRemoteDesktop(projectId, tabGroupId),
     onSuccess: (desktop) => {
       queryClient.setQueryData<ProjectViewSummary[]>(
         ["project-views", desktop.projectId],
@@ -3074,6 +3108,13 @@ export function App() {
   const selectedSurface = selectedTabKey
     ? projectSurfaceIndex.byTabKey.get(selectedTabKey)
     : undefined;
+  const selectedTabGroup = tabLayout.data?.groups.find(
+    (group) => group.id === workspaceSelection.selectedGroupId,
+  );
+  const selectedGroupSurfaces = workspaceSelection.selectedGroupId
+    ? (projectSurfaceIndex.byGroupId.get(workspaceSelection.selectedGroupId) ??
+      [])
+    : [];
   const selectedProjectView =
     selectedSurface?.kind === "history" ||
     selectedSurface?.kind === "issues" ||
@@ -3529,6 +3570,68 @@ export function App() {
     setChatConsoleChatId(null);
     revealWorkspace();
   };
+  const selectGroupFromSidebar = (groupId: string) => {
+    const layout = tabLayout.data;
+    if (!layout) return;
+    setWorkspaceSelection((current) =>
+      selectWorkspaceGroup(current, layout, groupId),
+    );
+    setChatConsoleChatId(null);
+    revealWorkspace();
+  };
+  const createSurfaceInSelectedGroup = (kind: ProjectSurfaceCreateKind) => {
+    if (!selectedProject || !selectedTabGroup) return;
+    const input = {
+      projectId: selectedProject.id,
+      tabGroupId: selectedTabGroup.id,
+    };
+    if (kind === "chat") newChat.mutate(input);
+    else if (kind === "terminal") newTerminal.mutate(input);
+    else if (kind === "explorer") newExplorer.mutate(input);
+    else if (kind === "browser") newBrowser.mutate(input);
+    else if (kind === "code") newCodeTab.mutate(input);
+    else if (kind === "remote-desktop") newRemoteDesktop.mutate(input);
+    else newProjectView.mutate({ ...input, kind });
+  };
+  const renameSurface = (surface: ProjectSurface, title: string) => {
+    if (surface.kind === "chat") {
+      renameChatMutation.mutate({ chatId: surface.tabId, title });
+    } else if (surface.kind === "terminal") {
+      renameTerminalMutation.mutate({ terminalId: surface.tabId, title });
+    } else if (surface.kind === "explorer") {
+      renameExplorerMutation.mutate({ explorerId: surface.tabId, title });
+    } else if (surface.kind === "browser") {
+      updateBrowserMutation.mutate({
+        browserId: surface.tabId,
+        input: { title },
+      });
+    } else if (surface.kind === "code") {
+      updateCodeTabMutation.mutate({ codeTabId: surface.tabId, title });
+    } else {
+      renameProjectViewMutation.mutate({ viewId: surface.tabId, title });
+    }
+  };
+  const deleteSurface = (surface: ProjectSurface) => {
+    if (surface.kind === "chat") deleteChatMutation.mutate(surface.tabId);
+    else if (surface.kind === "terminal")
+      deleteTerminalMutation.mutate(surface.tabId);
+    else if (surface.kind === "explorer")
+      deleteExplorerMutation.mutate(surface.tabId);
+    else if (surface.kind === "browser")
+      deleteBrowserMutation.mutate(surface.tabId);
+    else if (surface.kind === "code")
+      deleteCodeTabMutation.mutate(surface.tabId);
+    else deleteProjectViewMutation.mutate(surface.tabId);
+  };
+  const creatingSurfaceKinds = new Set<ProjectSurfaceCreateKind>([
+    ...(newChat.isPending ? (["chat"] as const) : []),
+    ...(newTerminal.isPending ? (["terminal"] as const) : []),
+    ...(newExplorer.isPending ? (["explorer"] as const) : []),
+    ...(newBrowser.isPending ? (["browser"] as const) : []),
+    ...(newCodeTab.isPending ? (["code"] as const) : []),
+    ...(newProjectView.isPending ? (["history", "issues"] as const) : []),
+    ...(newRemoteDesktop.isPending ? (["remote-desktop"] as const) : []),
+  ]);
 
   return (
     <main
@@ -3656,7 +3759,9 @@ export function App() {
                 creatingView={newProjectView.isPending}
                 onCreateChat={(projectId) => newChat.mutate({ projectId })}
                 onCreateCode={(projectId) => newCodeTab.mutate({ projectId })}
-                onCreateBrowser={(projectId) => newBrowser.mutate(projectId)}
+                onCreateBrowser={(projectId) =>
+                  newBrowser.mutate({ projectId })
+                }
                 onCreateExplorer={(projectId) =>
                   newExplorer.mutate({ projectId })
                 }
@@ -3665,7 +3770,7 @@ export function App() {
                 }
                 onCreateRemoteDesktop={(projectId) => {
                   newRemoteDesktop.reset();
-                  newRemoteDesktop.mutate(projectId);
+                  newRemoteDesktop.mutate({ projectId });
                 }}
                 onCreateTerminal={(projectId) =>
                   newTerminal.mutate({ projectId })
@@ -3729,6 +3834,7 @@ export function App() {
                   reorderGroupsMutation.mutate({ projectId, groupIds })
                 }
                 onSelectProject={selectProjectFromSidebar}
+                onSelectGroup={selectGroupFromSidebar}
                 onSelectTab={selectTabFromSidebar}
               />
             </nav>
@@ -4298,6 +4404,28 @@ export function App() {
           </header>
         ) : null}
 
+        {!showImporter &&
+        !showSettings &&
+        !showProjectSettings &&
+        selectedTabKey &&
+        selectedTabGroup &&
+        selectedGroupSurfaces.length > 0 ? (
+          <ProjectTabBar
+            activeTabKey={selectedTabKey}
+            creatingKinds={creatingSurfaceKinds}
+            surfaces={selectedGroupSurfaces}
+            onCreate={createSurfaceInSelectedGroup}
+            onDelete={deleteSurface}
+            onDuplicate={(surface) => {
+              if (surface.kind === "chat") {
+                forkChatMutation.mutate(surface.tabId);
+              }
+            }}
+            onRename={renameSurface}
+            onSelect={selectTabFromSidebar}
+          />
+        ) : null}
+
         {isPopout && activeChat && !showImporter && !showSettings ? (
           <div className="absolute right-3 top-3 z-40 flex gap-2">
             <Button
@@ -4675,7 +4803,9 @@ export function App() {
                   <Button
                     variant="outline"
                     disabled={newBrowser.isPending || !selectedProject.source}
-                    onClick={() => newBrowser.mutate(selectedProject.id)}
+                    onClick={() =>
+                      newBrowser.mutate({ projectId: selectedProject.id })
+                    }
                   >
                     {newBrowser.isPending ? (
                       <Loader2 className="size-4 animate-spin" />
@@ -4804,7 +4934,7 @@ export function App() {
               creatingView={newProjectView.isPending}
               onCreateChat={(projectId) => newChat.mutate({ projectId })}
               onCreateCode={(projectId) => newCodeTab.mutate({ projectId })}
-              onCreateBrowser={(projectId) => newBrowser.mutate(projectId)}
+              onCreateBrowser={(projectId) => newBrowser.mutate({ projectId })}
               onCreateExplorer={(projectId) =>
                 newExplorer.mutate({ projectId })
               }
@@ -4813,7 +4943,7 @@ export function App() {
               }
               onCreateRemoteDesktop={(projectId) => {
                 newRemoteDesktop.reset();
-                newRemoteDesktop.mutate(projectId);
+                newRemoteDesktop.mutate({ projectId });
               }}
               onCreateTerminal={(projectId) =>
                 newTerminal.mutate({ projectId })
@@ -4879,6 +5009,7 @@ export function App() {
                 reorderGroupsMutation.mutate({ projectId, groupIds })
               }
               onSelectProject={selectProjectFromSidebar}
+              onSelectGroup={selectGroupFromSidebar}
               onSelectTab={selectTabFromSidebar}
             />
           </div>

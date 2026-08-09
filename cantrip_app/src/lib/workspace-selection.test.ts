@@ -5,6 +5,7 @@ import {
   emptyWorkspaceSelection,
   reconcileWorkspaceSelection,
   selectedWorkspaceTabKey,
+  selectWorkspaceGroup,
   selectWorkspaceTab,
 } from "./workspace-selection";
 
@@ -127,5 +128,16 @@ describe("workspace selection", () => {
       selectedGroupId: "other-group",
       activeTabByGroup: { "other-group": "chat:other" },
     });
+  });
+
+  it("restores the window-local active member when selecting a group", () => {
+    let selected = selectWorkspaceTab(
+      reconcileWorkspaceSelection(emptyWorkspaceSelection(), initialLayout),
+      initialLayout,
+      "terminal:one",
+    );
+    selected = selectWorkspaceGroup(selected, initialLayout, "group-2");
+    selected = selectWorkspaceGroup(selected, initialLayout, "group-1");
+    expect(selectedWorkspaceTabKey(selected)).toBe("terminal:one");
   });
 });
