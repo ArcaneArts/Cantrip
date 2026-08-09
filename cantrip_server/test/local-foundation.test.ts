@@ -6,6 +6,7 @@ import {
   agentInteractionRequestListSchema,
   agentInteractionRequestSchema,
   agentThreadSyncSchema,
+  appLiveServerMessageSchema,
   browserListSchema,
   browserSummarySchema,
   codexCustomizationInventorySchema,
@@ -66,11 +67,13 @@ import {
 } from "@cantrip/protocol";
 import type {
   AgentInteractionRequestCreate,
+  AppLiveServerMessage,
   PlanMode,
   ThreadGoal,
   WorkerCommand,
 } from "@cantrip/protocol";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import type { WebSocket } from "ws";
 
 import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
@@ -2612,6 +2615,48 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
+    const richLiveEvents: AppLiveServerMessage[] = [];
+    let richLiveClient: WebSocket | null = null;
+    const richLiveSocket = await firstApp.injectWS(
+      "/api/live",
+      { headers: { origin: config.appOrigins[0] } },
+      {
+        onInit(client) {
+          richLiveClient = client;
+          client.on("message", (data) => {
+            richLiveEvents.push(
+              appLiveServerMessageSchema.parse(JSON.parse(data.toString())),
+            );
+          });
+        },
+      },
+    );
+    if (!richLiveClient)
+      throw new Error("Rich live socket did not initialize.");
+    richLiveClient.send(
+      JSON.stringify({
+        type: "initialize",
+        protocolVersion: 1,
+        client: { id: "rich-events", name: "Foundation test", version: "1" },
+        resume: null,
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(richLiveEvents.at(-1)).toMatchObject({ type: "ready" }),
+    );
+    richLiveClient.send(
+      JSON.stringify({
+        type: "subscribe",
+        requestId: "rich-chat",
+        scopes: [{ kind: "chat", chatId: richChat.id }],
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(richLiveEvents.at(-1)).toMatchObject({
+        type: "subscribed",
+        requestId: "rich-chat",
+      }),
+    );
     await firstApp.inject({
       method: "PATCH",
       url: `/api/chats/${richChat.id}/model`,
@@ -2651,6 +2696,26 @@ describe("local server foundation", () => {
         ),
       ),
     ).toHaveLength(1);
+    await vi.waitFor(() => {
+      const streamedMessages = richLiveEvents.filter(
+        (event) => event.type === "event" && event.resource === "chat-message",
+      );
+      expect(streamedMessages).toHaveLength(7);
+      expect(
+        streamedMessages.map((event) =>
+          event.type === "event" ? event.payload : null,
+        ),
+      ).toEqual(richMessages);
+      expect(
+        richLiveEvents.some(
+          (event) =>
+            event.type === "event" &&
+            event.resource === "chat" &&
+            event.scope.kind === "chat",
+        ),
+      ).toBe(true);
+    });
+    richLiveSocket.terminate();
     const reorderedTerminal = terminalSummarySchema.parse(
       (
         await firstApp.inject({
@@ -3741,6 +3806,49 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
+    const approvalLiveEvents: AppLiveServerMessage[] = [];
+    let approvalLiveClient: WebSocket | null = null;
+    const approvalLiveSocket = await firstApp.injectWS(
+      "/api/live",
+      { headers: { origin: config.appOrigins[0] } },
+      {
+        onInit(client) {
+          approvalLiveClient = client;
+          client.on("message", (data) => {
+            approvalLiveEvents.push(
+              appLiveServerMessageSchema.parse(JSON.parse(data.toString())),
+            );
+          });
+        },
+      },
+    );
+    if (!approvalLiveClient) {
+      throw new Error("Approval live socket did not initialize.");
+    }
+    approvalLiveClient.send(
+      JSON.stringify({
+        type: "initialize",
+        protocolVersion: 1,
+        client: { id: "approval", name: "Foundation test", version: "1" },
+        resume: null,
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(approvalLiveEvents.at(-1)).toMatchObject({ type: "ready" }),
+    );
+    approvalLiveClient.send(
+      JSON.stringify({
+        type: "subscribe",
+        requestId: "approval-chat",
+        scopes: [{ kind: "chat", chatId: bridgedApprovalChat.id }],
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(approvalLiveEvents.at(-1)).toMatchObject({
+        type: "subscribed",
+        requestId: "approval-chat",
+      }),
+    );
     await firstApp.inject({
       method: "PATCH",
       url: `/api/chats/${bridgedApprovalChat.id}/model`,
@@ -3780,6 +3888,14 @@ describe("local server foundation", () => {
       )?.status,
     ).toBe("waiting-for-approval");
     expect(deliveredAgentInteractionResponses).toEqual([]);
+    await vi.waitFor(() =>
+      expect(
+        approvalLiveEvents.filter(
+          (event) =>
+            event.type === "event" && event.resource === "agent-interaction",
+        ),
+      ).toHaveLength(1),
+    );
     expect(
       agentInteractionRequestSchema.parse(
         (
@@ -3815,6 +3931,15 @@ describe("local server foundation", () => {
         )?.status,
       ).toBe("idle");
     });
+    await vi.waitFor(() =>
+      expect(
+        approvalLiveEvents.filter(
+          (event) =>
+            event.type === "event" && event.resource === "agent-interaction",
+        ).length,
+      ).toBeGreaterThanOrEqual(2),
+    );
+    approvalLiveSocket.terminate();
 
     await firstApp.close();
 

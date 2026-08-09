@@ -815,6 +815,11 @@ function ChatTranscript({
   syncEnabled: boolean;
 }) {
   const queryClient = useQueryClient();
+  const liveStatus = useAppLiveStatus();
+  const chatResourcesLive = liveStatus === "live";
+  const chatExecuting =
+    chat.status === "running" || chat.status === "waiting-for-approval";
+  const chatFallbackInterval = chatExecuting ? 3_000 : 10_000;
   const [draft, setDraft] = useState("");
   const [composerMode, setComposerMode] = useState<ChatTurnMode>("default");
   const [editingPrompt, setEditingPrompt] = useState<{
@@ -857,10 +862,7 @@ function ChatTranscript({
   const messages = useQuery({
     queryFn: () => getMessages(chat.id),
     queryKey: ["messages", chat.id],
-    refetchInterval:
-      chat.status === "running" || chat.status === "waiting-for-approval"
-        ? 750
-        : 3_000,
+    refetchInterval: chatResourcesLive ? false : chatFallbackInterval,
   });
   useQuery({
     enabled: syncEnabled,
@@ -877,34 +879,31 @@ function ChatTranscript({
       return result;
     },
     queryKey: ["chat-sync", chat.id],
-    refetchInterval: 750,
+    refetchInterval: chatResourcesLive ? false : chatFallbackInterval,
     retry: false,
   });
   const queuedPrompts = useQuery({
     queryFn: () => getQueuedPrompts(chat.id),
     queryKey: ["prompt-queue", chat.id],
-    refetchInterval: chat.status === "running" ? 750 : 3_000,
+    refetchInterval: chatResourcesLive ? false : chatFallbackInterval,
   });
   const goalState = useQuery({
     queryFn: () => getChatGoal(chat.id),
     queryKey: ["goal", chat.id],
-    refetchInterval: chat.status === "running" ? 750 : 3_000,
+    refetchInterval: chatResourcesLive ? false : chatFallbackInterval,
     retry: false,
   });
   const planState = useQuery({
     queryFn: () => getChatPlan(chat.id),
     queryKey: ["plan", chat.id],
-    refetchInterval: chat.status === "running" ? 750 : 3_000,
+    refetchInterval: chatResourcesLive ? false : chatFallbackInterval,
     retry: false,
   });
   const interactionRequests = useQuery({
     queryFn: () =>
       getAgentInteractionRequests({ chatId: chat.id, status: "pending" }),
     queryKey: ["agent-requests", chat.id, "pending"],
-    refetchInterval:
-      chat.status === "running" || chat.status === "waiting-for-approval"
-        ? 750
-        : 3_000,
+    refetchInterval: chatResourcesLive ? false : chatFallbackInterval,
     retry: false,
   });
   const permissionProfiles = useQuery({

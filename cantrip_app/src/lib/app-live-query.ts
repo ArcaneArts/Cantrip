@@ -1,7 +1,9 @@
+import { chatMessageSchema } from "@cantrip/protocol";
 import type {
   AppLiveResyncReason,
   AppLiveScope,
   AppLiveServerMessage,
+  ChatMessage,
 } from "@cantrip/protocol";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 
@@ -19,7 +21,7 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
     case "settings":
       return [["settings"]];
     case "worker":
-      return [["workers"]];
+      return [["workers"], ["chat-sync"]];
     case "project":
       return [["projects"]];
     case "worktree":
@@ -165,6 +167,7 @@ function uniqueQueryKeys(keys: QueryKey[]): QueryKey[] {
 }
 
 export class AppLiveQueryBridge {
+  readonly #messageCursors = new Map<string, number>();
   readonly #pendingKeys = new Map<string, QueryKey>();
   readonly #queryClient: QueryClient;
   #flushScheduled = false;
@@ -174,6 +177,7 @@ export class AppLiveQueryBridge {
   }
 
   handleEvent(event: AppLiveEvent): void {
+    if (this.#applyChatMessageEvent(event)) return;
     for (const key of appLiveEventQueryKeys(event)) {
       this.#pendingKeys.set(JSON.stringify(key), key);
     }
@@ -185,11 +189,62 @@ export class AppLiveQueryBridge {
     });
   }
 
+  #applyChatMessageEvent(event: AppLiveEvent): boolean {
+    if (
+      event.resource !== "chat-message" ||
+      event.scope.kind !== "chat" ||
+      !event.entityId
+    ) {
+      return false;
+    }
+    const entityKey = `${event.scope.chatId}:${event.entityId}`;
+    const latestCursor = this.#messageCursors.get(entityKey);
+    if (latestCursor !== undefined && event.cursor <= latestCursor) return true;
+
+    const queryKey = ["messages", event.scope.chatId] as const;
+    const current = this.#queryClient.getQueryData<ChatMessage[]>(queryKey);
+    if (!current) return false;
+    if (event.action === "deleted") {
+      this.#queryClient.setQueryData<ChatMessage[]>(
+        queryKey,
+        current.filter((message) => message.id !== event.entityId),
+      );
+      this.#messageCursors.set(entityKey, event.cursor);
+      return true;
+    }
+
+    const parsed = chatMessageSchema.safeParse(event.payload);
+    if (
+      !parsed.success ||
+      parsed.data.id !== event.entityId ||
+      parsed.data.chatId !== event.scope.chatId
+    ) {
+      return false;
+    }
+    const next = [
+      ...current.filter((message) => message.id !== parsed.data.id),
+      parsed.data,
+    ].sort(
+      (left, right) =>
+        left.sequence - right.sequence || left.id.localeCompare(right.id),
+    );
+    this.#queryClient.setQueryData<ChatMessage[]>(queryKey, next);
+    this.#messageCursors.set(entityKey, event.cursor);
+    return true;
+  }
+
   async recoverScopes(
     scopes: AppLiveScope[],
     _reason: AppLiveResyncReason,
   ): Promise<void> {
     await this.#flush();
+    for (const scope of scopes) {
+      if (scope.kind !== "chat") continue;
+      const prefix = `${scope.chatId}:`;
+      for (const key of this.#messageCursors.keys()) {
+        if (key.startsWith(prefix)) this.#messageCursors.delete(key);
+      }
+    }
     const keys = uniqueQueryKeys(scopes.flatMap(appLiveScopeQueryKeys));
     await Promise.all(
       keys.map((queryKey) => this.#queryClient.invalidateQueries({ queryKey })),
