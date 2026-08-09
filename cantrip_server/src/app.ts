@@ -111,6 +111,7 @@ import {
   projectListSchema,
   projectRemoveSchema,
   projectSummarySchema,
+  projectTabLayoutSummarySchema,
   projectWorktreeCreateSchema,
   projectWorktreeListSchema,
   projectWorktreeLockSchema,
@@ -143,6 +144,9 @@ import {
   serverBootstrapSchema,
   settingsBundleSchema,
   skillListSchema,
+  tabGroupMemberMoveSchema,
+  tabGroupMemberOrderSchema,
+  tabGroupOrderSchema,
   systemHealthSchema,
   terminalClientMessageSchema,
   terminalCreateSchema,
@@ -227,6 +231,10 @@ import {
 } from "./chats/execution-helpers.js";
 import { CodeTunnelBroker } from "./code/tunnel.js";
 import type { DatabaseConnection } from "./db/index.js";
+import {
+  TabLayoutConflictError,
+  TabLayoutInvariantError,
+} from "./db/tab-layouts.js";
 import {
   AgentInteractionConflictError,
   CodeCapabilityUnavailableError,
@@ -5134,6 +5142,7 @@ export async function buildApp({
           request.params.projectId,
           desktopId,
           worker.workerId,
+          input.data.tabGroupId,
         );
         if (!desktop) {
           return reply
@@ -5865,6 +5874,117 @@ export async function buildApp({
       ))
         ? reply.code(204).send()
         : reply.code(400).send({ error: "Tab order did not match." });
+    },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/tab-groups",
+    async (request, reply) => {
+      try {
+        const layout = await repository.tabLayouts.get(
+          LOCAL_USER_ID,
+          request.params.projectId,
+        );
+        return layout
+          ? reply.send(projectTabLayoutSummarySchema.parse(layout))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        if (error instanceof TabLayoutInvariantError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.patch<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/tab-groups/order",
+    async (request, reply) => {
+      const input = tabGroupOrderSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const layout = await repository.tabLayouts.reorderGroups(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          input.data,
+        );
+        return layout
+          ? reply.send(projectTabLayoutSummarySchema.parse(layout))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        if (
+          error instanceof TabLayoutConflictError ||
+          error instanceof TabLayoutInvariantError
+        ) {
+          return reply
+            .code(error instanceof TabLayoutConflictError ? 409 : 400)
+            .send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.patch<{ Params: { projectId: string; groupId: string } }>(
+    "/api/projects/:projectId/tab-groups/:groupId/members/order",
+    async (request, reply) => {
+      const input = tabGroupMemberOrderSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const layout = await repository.tabLayouts.reorderMembers(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          request.params.groupId,
+          input.data,
+        );
+        return layout
+          ? reply.send(projectTabLayoutSummarySchema.parse(layout))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        if (
+          error instanceof TabLayoutConflictError ||
+          error instanceof TabLayoutInvariantError
+        ) {
+          return reply
+            .code(error instanceof TabLayoutConflictError ? 409 : 400)
+            .send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.patch<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/tab-groups/member",
+    async (request, reply) => {
+      const input = tabGroupMemberMoveSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const layout = await repository.tabLayouts.moveMember(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          input.data,
+        );
+        return layout
+          ? reply.send(projectTabLayoutSummarySchema.parse(layout))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        if (
+          error instanceof TabLayoutConflictError ||
+          error instanceof TabLayoutInvariantError
+        ) {
+          return reply
+            .code(error instanceof TabLayoutConflictError ? 409 : 400)
+            .send({ error: error.message });
+        }
+        throw error;
+      }
     },
   );
 

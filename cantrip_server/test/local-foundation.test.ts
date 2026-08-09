@@ -46,6 +46,7 @@ import {
   modelProviderSummarySchema,
   projectListSchema,
   projectSummarySchema,
+  projectTabLayoutSummarySchema,
   projectViewListSchema,
   projectViewSummarySchema,
   queuedPromptListSchema,
@@ -2914,6 +2915,143 @@ describe("local server foundation", () => {
         )
         .find(({ id }) => id === remoteDesktop.id),
     ).toMatchObject({ kind: "remote-desktop", title: "Remote Desktop" });
+    const initialTabLayout = projectTabLayoutSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/tab-groups`,
+        })
+      ).json(),
+    );
+    expect(
+      initialTabLayout.groups.every(({ members }) => members.length === 1),
+    ).toBe(true);
+    expect(
+      initialTabLayout.groups.flatMap(({ members }) =>
+        members.map(({ tabKey }) => tabKey),
+      ),
+    ).toContain(`view:${remoteDesktop.id}`);
+    const explorerGroup = initialTabLayout.groups.find(({ members }) =>
+      members.some(({ tabKey }) => tabKey === `explorer:${explorer.id}`),
+    )!;
+    const groupedIssuesView = projectViewSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/views`,
+          payload: {
+            kind: "issues",
+            title: "Issues",
+            tabGroupId: explorerGroup.id,
+          },
+        })
+      ).json(),
+    );
+    const groupedTabLayout = projectTabLayoutSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/tab-groups`,
+        })
+      ).json(),
+    );
+    expect(groupedTabLayout.groups).toHaveLength(
+      initialTabLayout.groups.length,
+    );
+    expect(
+      groupedTabLayout.groups
+        .find(({ id }) => id === explorerGroup.id)
+        ?.members.map(({ tabKey }) => tabKey),
+    ).toEqual([`explorer:${explorer.id}`, `view:${groupedIssuesView.id}`]);
+    const reorderedTabLayout = projectTabLayoutSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/projects/${project.id}/tab-groups/${explorerGroup.id}/members/order`,
+          payload: {
+            revision: groupedTabLayout.revision,
+            tabKeys: [
+              `view:${groupedIssuesView.id}`,
+              `explorer:${explorer.id}`,
+            ],
+          },
+        })
+      ).json(),
+    );
+    expect(
+      reorderedTabLayout.groups
+        .find(({ id }) => id === explorerGroup.id)
+        ?.members.map(({ tabKey }) => tabKey),
+    ).toEqual([`view:${groupedIssuesView.id}`, `explorer:${explorer.id}`]);
+    expect(
+      await firstApp.inject({
+        method: "PATCH",
+        url: `/api/projects/${project.id}/tab-groups/member`,
+        payload: {
+          revision: groupedTabLayout.revision,
+          tabKey: `view:${groupedIssuesView.id}`,
+          targetGroupId: null,
+          targetMemberPosition: 0,
+          targetGroupPosition: 0,
+        },
+      }),
+    ).toMatchObject({ statusCode: 409 });
+    const splitTabLayout = projectTabLayoutSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/projects/${project.id}/tab-groups/member`,
+          payload: {
+            revision: reorderedTabLayout.revision,
+            tabKey: `view:${groupedIssuesView.id}`,
+            targetGroupId: null,
+            targetMemberPosition: 0,
+            targetGroupPosition: 0,
+          },
+        })
+      ).json(),
+    );
+    expect(splitTabLayout.groups[0]?.members).toMatchObject([
+      { tabKey: `view:${groupedIssuesView.id}` },
+    ]);
+    const reorderedGroupsLayout = projectTabLayoutSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/projects/${project.id}/tab-groups/order`,
+          payload: {
+            revision: splitTabLayout.revision,
+            groupIds: splitTabLayout.groups.map(({ id }) => id).reverse(),
+          },
+        })
+      ).json(),
+    );
+    expect(reorderedGroupsLayout.groups.map(({ id }) => id)).toEqual(
+      splitTabLayout.groups.map(({ id }) => id).reverse(),
+    );
+    const mergedTabLayout = projectTabLayoutSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/projects/${project.id}/tab-groups/member`,
+          payload: {
+            revision: reorderedGroupsLayout.revision,
+            tabKey: `view:${groupedIssuesView.id}`,
+            targetGroupId: explorerGroup.id,
+            targetMemberPosition: 1,
+          },
+        })
+      ).json(),
+    );
+    expect(
+      mergedTabLayout.groups.find(({ id }) => id === explorerGroup.id),
+    ).toMatchObject({
+      anchorTabKey: `explorer:${explorer.id}`,
+      members: [
+        { tabKey: `explorer:${explorer.id}` },
+        { tabKey: `view:${groupedIssuesView.id}` },
+      ],
+    });
     let resolveDesktopReady: ((message: unknown) => void) | null = null;
     const desktopReadyPromise = new Promise<unknown>((resolve) => {
       resolveDesktopReady = resolve;
@@ -2947,6 +3085,20 @@ describe("local server foundation", () => {
         url: `/api/project-views/${remoteDesktop.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
+    expect(
+      projectTabLayoutSummarySchema
+        .parse(
+          (
+            await firstApp.inject({
+              method: "GET",
+              url: `/api/projects/${project.id}/tab-groups`,
+            })
+          ).json(),
+        )
+        .groups.some(({ members }) =>
+          members.some(({ tabKey }) => tabKey === `view:${remoteDesktop.id}`),
+        ),
+    ).toBe(false);
     const consoleFirstChat = chatSummarySchema.parse(
       (
         await firstApp.inject({
@@ -3781,12 +3933,44 @@ describe("local server foundation", () => {
         url: `/api/browsers/${browser.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
+    const layoutAfterBrowserDelete = projectTabLayoutSummarySchema.parse(
+      (
+        await secondApp.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/tab-groups`,
+        })
+      ).json(),
+    );
+    expect(
+      layoutAfterBrowserDelete.groups.flatMap(({ members }) =>
+        members.map(({ tabKey }) => tabKey),
+      ),
+    ).not.toContain(`browser:${browser.id}`);
     expect(
       await secondApp.inject({
         method: "DELETE",
         url: `/api/explorers/${explorer.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
+    const layoutAfterSurfaceDeletes = projectTabLayoutSummarySchema.parse(
+      (
+        await secondApp.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/tab-groups`,
+        })
+      ).json(),
+    );
+    expect(
+      layoutAfterSurfaceDeletes.groups.find(({ members }) =>
+        members.some(({ tabKey }) => tabKey === `view:${groupedIssuesView.id}`),
+      ),
+    ).toMatchObject({
+      anchorTabKey: `view:${groupedIssuesView.id}`,
+      members: [{ tabKey: `view:${groupedIssuesView.id}` }],
+    });
+    expect(
+      layoutAfterSurfaceDeletes.groups.map(({ position }) => position),
+    ).toEqual(layoutAfterSurfaceDeletes.groups.map((_, position) => position));
 
     const unlinkResponse = await secondApp.inject({
       method: "DELETE",

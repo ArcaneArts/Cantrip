@@ -841,6 +841,7 @@ export const chatCreateSchema = z.object({
   title: z.string().trim().min(1).max(200).default("New chat"),
   worktreeId: z.string().min(1).optional(),
   worktreeMode: z.enum(["agent-managed", "pinned"]).default("agent-managed"),
+  tabGroupId: z.string().min(1).optional(),
 });
 
 export const chatUpdateSchema = z.object({
@@ -911,6 +912,7 @@ export const chatPermissionProfileUpdateSchema = z.object({
 export const terminalCreateSchema = z.object({
   title: z.string().trim().min(1).max(200).default("Terminal"),
   worktreeId: z.string().min(1).optional(),
+  tabGroupId: z.string().min(1).optional(),
 });
 
 export const terminalUpdateSchema = z.object({
@@ -935,6 +937,7 @@ export const terminalListSchema = z.array(terminalSummarySchema);
 export const explorerCreateSchema = z.object({
   title: z.string().trim().min(1).max(200).default("Explorer"),
   worktreeId: z.string().min(1).optional(),
+  tabGroupId: z.string().min(1).optional(),
 });
 
 export const explorerUpdateSchema = z.object({
@@ -984,6 +987,7 @@ export const codeTabCreateSchema = z.object({
   worktreeId: z.string().min(1).optional(),
   profileId: z.string().trim().min(1).max(200).default("default"),
   themeMode: codeThemeModeSchema.default("follow-cantrip"),
+  tabGroupId: z.string().min(1).optional(),
 });
 
 export const codeTabUpdateSchema = z
@@ -1305,6 +1309,7 @@ export function decodeCodeTunnelFrame(frame: Uint8Array): {
 
 export const browserCreateSchema = z.object({
   title: z.string().trim().min(1).max(200).default("Browser"),
+  tabGroupId: z.string().min(1).optional(),
 });
 
 export const browserUpdateSchema = z
@@ -1328,7 +1333,9 @@ export const browserSummarySchema = z.object({
 
 export const browserListSchema = z.array(browserSummarySchema);
 
-export const remoteDesktopCreateSchema = z.object({}).strict();
+export const remoteDesktopCreateSchema = z
+  .object({ tabGroupId: z.string().min(1).optional() })
+  .strict();
 
 export const remoteDesktopTargetSchema = z.discriminatedUnion("kind", [
   z.object({
@@ -1784,7 +1791,89 @@ export const projectViewCreateSchema = z.object({
   title: z.string().trim().min(1).max(200),
   kind: projectViewKindSchema,
   worktreeId: z.string().min(1).optional(),
+  tabGroupId: z.string().min(1).optional(),
 });
+
+export const projectTabKindSchema = z.enum([
+  "chat",
+  "terminal",
+  "explorer",
+  "browser",
+  "code",
+  "history",
+  "issues",
+  "remote-desktop",
+]);
+
+export const projectTabMemberSummarySchema = z.object({
+  tabKey: z.string().min(1),
+  groupId: z.string().min(1),
+  projectId: z.string().min(1),
+  tabKind: projectTabKindSchema,
+  tabId: z.string().min(1),
+  title: z.string().min(1),
+  position: z.number().int().nonnegative(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const tabGroupSummarySchema = z.object({
+  id: z.string().min(1),
+  projectId: z.string().min(1),
+  position: z.number().int().nonnegative(),
+  anchorTabKey: z.string().min(1),
+  members: z.array(projectTabMemberSummarySchema).min(1),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const projectTabLayoutSummarySchema = z.object({
+  projectId: z.string().min(1),
+  revision: z.number().int().nonnegative(),
+  groups: z.array(tabGroupSummarySchema),
+});
+
+export const tabGroupOrderSchema = z.object({
+  revision: z.number().int().nonnegative(),
+  groupIds: z
+    .array(z.string().min(1))
+    .min(1)
+    .refine((groupIds) => new Set(groupIds).size === groupIds.length, {
+      message: "Tab group ids must be unique.",
+    }),
+});
+
+export const tabGroupMemberOrderSchema = z.object({
+  revision: z.number().int().nonnegative(),
+  tabKeys: z
+    .array(z.string().min(1))
+    .min(1)
+    .refine((tabKeys) => new Set(tabKeys).size === tabKeys.length, {
+      message: "Tab keys must be unique.",
+    }),
+});
+
+export const tabGroupMemberMoveSchema = z
+  .object({
+    revision: z.number().int().nonnegative(),
+    tabKey: z.string().min(1),
+    targetGroupId: z.string().min(1).nullable(),
+    targetMemberPosition: z.number().int().nonnegative(),
+    targetGroupPosition: z.number().int().nonnegative().optional(),
+  })
+  .superRefine((input, context) => {
+    if (
+      input.targetGroupId === null &&
+      input.targetGroupPosition === undefined
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "A sidebar position is required when splitting a tab into a new group.",
+        path: ["targetGroupPosition"],
+      });
+    }
+  });
 
 export const projectViewUpdateSchema = z.object({
   title: z.string().trim().min(1).max(200),
@@ -3781,6 +3870,17 @@ export type ProjectViewKind = z.infer<typeof projectViewKindSchema>;
 export type ProjectViewCreate = z.infer<typeof projectViewCreateSchema>;
 export type ProjectViewUpdate = z.infer<typeof projectViewUpdateSchema>;
 export type ProjectViewSummary = z.infer<typeof projectViewSummarySchema>;
+export type ProjectTabKind = z.infer<typeof projectTabKindSchema>;
+export type ProjectTabMemberSummary = z.infer<
+  typeof projectTabMemberSummarySchema
+>;
+export type TabGroupSummary = z.infer<typeof tabGroupSummarySchema>;
+export type ProjectTabLayoutSummary = z.infer<
+  typeof projectTabLayoutSummarySchema
+>;
+export type TabGroupOrder = z.infer<typeof tabGroupOrderSchema>;
+export type TabGroupMemberOrder = z.infer<typeof tabGroupMemberOrderSchema>;
+export type TabGroupMemberMove = z.infer<typeof tabGroupMemberMoveSchema>;
 export type ExplorerEntry = z.infer<typeof explorerEntrySchema>;
 export type ExplorerDirectory = z.infer<typeof explorerDirectorySchema>;
 export type ExplorerFile = z.infer<typeof explorerFileSchema>;
