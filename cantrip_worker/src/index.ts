@@ -27,6 +27,7 @@ import {
 } from "./git.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
 import { ProjectShareManager } from "./project-share-manager.js";
+import { ProjectShareTunnelProxy } from "./project-share-tunnel-proxy.js";
 import { TerminalManager } from "./terminal-manager.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
 import { WorkerConnection } from "./transport.js";
@@ -89,6 +90,7 @@ async function start(): Promise<void> {
   const codexRuntimes = new Map<string, CodexRuntime>();
   const pausedChats = new Set<string>();
   const projectShares = new ProjectShareManager();
+  const projectShareTunnel = new ProjectShareTunnelProxy(projectShares);
   const terminals = new TerminalManager();
   const remoteSurfaces = new RemoteSurfaceManager({
     browser: browserAdapter,
@@ -186,6 +188,7 @@ async function start(): Promise<void> {
       case "project.share.open":
         return projectShares.open(command);
       case "project.share.close":
+        projectShareTunnel.closeShare(command.shareId);
         await projectShares.close(command.shareId);
         return { accepted: true };
       case "git.history":
@@ -750,6 +753,7 @@ async function start(): Promise<void> {
     handleCommand,
     (header, payload) => remoteSurfaces.handleFrame(header, payload),
     (header, payload) => codeTunnel.handleFrame(header, payload),
+    (header, payload) => projectShareTunnel.handleFrame(header, payload),
   );
   worktrees.setObservationEmitter((notification) =>
     commandConnection.sendNotification(notification),
@@ -760,6 +764,11 @@ async function start(): Promise<void> {
   codeTunnel.setFrameEmitter(
     (header, payload) => commandConnection.sendCodeTunnelFrame(header, payload),
     () => commandConnection.waitForCodeTunnelCapacity(),
+  );
+  projectShareTunnel.setFrameEmitter(
+    (header, payload) =>
+      commandConnection.sendProjectShareTunnelFrame(header, payload),
+    () => commandConnection.waitForProjectShareTunnelCapacity(),
   );
 
   console.log(
@@ -806,6 +815,7 @@ async function start(): Promise<void> {
       commandConnection.close();
       for (const client of codexAuthClients.values()) client.close();
       terminals.closeAll();
+      projectShareTunnel.close();
       await projectShares.closeAll();
       codeTunnel.close();
       await code.close();

@@ -1,10 +1,14 @@
 import {
   decodeCodeTunnelFrame,
+  decodeProjectShareTunnelFrame,
   decodeRemoteSurfaceFrame,
   encodeCodeTunnelFrame,
+  encodeProjectShareTunnelFrame,
   encodeRemoteSurfaceFrame,
   isCodeTunnelFrame,
+  isProjectShareTunnelFrame,
   type CodeTunnelFrameHeader,
+  type ProjectShareTunnelFrameHeader,
   type RemoteSurfaceFrameHeader,
   type WorkerCommand,
   workerEventEnvelopeSchema,
@@ -33,6 +37,11 @@ type CodeTunnelFrameHandler = (
   payload: Uint8Array,
 ) => Promise<void> | void;
 
+type ProjectShareTunnelFrameHandler = (
+  header: ProjectShareTunnelFrameHeader,
+  payload: Uint8Array,
+) => Promise<void> | void;
+
 const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
 const MAX_BUFFERED_NOTIFICATION_BYTES = 1 * 1_024 * 1_024;
 const CODE_TUNNEL_LOW_WATER_BYTES = 256 * 1_024;
@@ -54,6 +63,8 @@ export class WorkerConnection {
     private readonly handleCommand: CommandHandler,
     private readonly handleSurfaceFrame: SurfaceFrameHandler = () => undefined,
     private readonly handleCodeTunnelFrame: CodeTunnelFrameHandler = () =>
+      undefined,
+    private readonly handleProjectShareTunnelFrame: ProjectShareTunnelFrameHandler = () =>
       undefined,
   ) {}
 
@@ -146,6 +157,23 @@ export class WorkerConnection {
     }
   }
 
+  sendProjectShareTunnelFrame(
+    header: ProjectShareTunnelFrameHeader,
+    payload: Uint8Array,
+  ): boolean {
+    const socket = this.#socket;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+    if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) return false;
+    try {
+      socket.send(encodeProjectShareTunnelFrame(header, payload), {
+        binary: true,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   sendNotification(notification: WorkerNotification): boolean {
     const socket = this.#socket;
     if (
@@ -180,6 +208,10 @@ export class WorkerConnection {
     return false;
   }
 
+  waitForProjectShareTunnelCapacity(): Promise<boolean> {
+    return this.waitForCodeTunnelCapacity();
+  }
+
   private async onMessage(
     socket: WebSocket,
     data: RawData,
@@ -188,7 +220,10 @@ export class WorkerConnection {
     if (isBinary) {
       try {
         const bytes = rawDataBytes(data);
-        if (isCodeTunnelFrame(bytes)) {
+        if (isProjectShareTunnelFrame(bytes)) {
+          const frame = decodeProjectShareTunnelFrame(bytes);
+          await this.handleProjectShareTunnelFrame(frame.header, frame.payload);
+        } else if (isCodeTunnelFrame(bytes)) {
           const frame = decodeCodeTunnelFrame(bytes);
           await this.handleCodeTunnelFrame(frame.header, frame.payload);
         } else {

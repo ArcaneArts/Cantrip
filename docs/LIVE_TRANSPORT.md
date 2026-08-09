@@ -18,6 +18,7 @@ The architecture decision is recorded in
 | Terminal PTY streams                                              | Dedicated terminal WebSocket                 |
 | Browser and Remote Desktop frames/input                           | Dedicated Remote Surface WebSocket or WebRTC |
 | Cantrip Code proxy                                                | Dedicated HTTP/WebSocket tunnel              |
+| Project network-share request/response bytes                      | Dedicated HTTP/WebDAV worker tunnel          |
 | Worker commands and events                                        | Authenticated outbound worker WebSocket      |
 
 ## Version 1 contract

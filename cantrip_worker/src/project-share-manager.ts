@@ -2,7 +2,11 @@ import { randomBytes } from "node:crypto";
 import { realpath, stat } from "node:fs/promises";
 import type { Server } from "node:http";
 
-import type { WorkerProjectShareOpenResult } from "@cantrip/protocol";
+import {
+  projectSharePublicBasePathSchema,
+  projectSharePublicOriginSchema,
+  type WorkerProjectShareOpenResult,
+} from "@cantrip/protocol";
 import { v2 as webdav } from "webdav-server";
 
 const LOOPBACK_HOST = "127.0.0.1" as const;
@@ -17,6 +21,8 @@ interface ManagedProjectShare {
 }
 
 export interface ProjectShareOpenInput {
+  publicBasePath: string;
+  publicOrigin: string;
   root: string;
   shareId: string;
 }
@@ -44,6 +50,12 @@ export class ProjectShareManager {
   async open(
     input: ProjectShareOpenInput,
   ): Promise<WorkerProjectShareOpenResult> {
+    const publicBasePath = projectSharePublicBasePathSchema.parse(
+      input.publicBasePath,
+    );
+    const publicOrigin = projectSharePublicOriginSchema.parse(
+      input.publicOrigin,
+    );
     const root = await realpath(input.root);
     const rootStat = await stat(root);
     if (!rootStat.isDirectory()) {
@@ -52,9 +64,13 @@ export class ProjectShareManager {
 
     const existing = this.#shares.get(input.shareId);
     if (existing) {
-      if (existing.root !== root) {
+      if (
+        existing.root !== root ||
+        existing.descriptor.publicBasePath !== publicBasePath ||
+        existing.descriptor.publicOrigin !== publicOrigin
+      ) {
         throw new Error(
-          "Project share identity is already bound to another root.",
+          "Project share identity is already bound to another root or public endpoint.",
         );
       }
       return existing.descriptor;
@@ -72,7 +88,12 @@ export class ProjectShareManager {
       );
     }
 
-    const pending = this.#start({ ...input, root });
+    const pending = this.#start({
+      ...input,
+      publicBasePath,
+      publicOrigin,
+      root,
+    });
     this.#opening.set(input.shareId, pending);
     try {
       return await pending;
@@ -112,7 +133,7 @@ export class ProjectShareManager {
     const userManager = new webdav.SimpleUserManager();
     const user = userManager.addUser(username, password, false);
     const privilegeManager = new webdav.SimplePathPrivilegeManager();
-    privilegeManager.setRights(user, "/", ["all"]);
+    privilegeManager.setRights(user, input.publicBasePath, ["all"]);
 
     const server = new webdav.WebDAVServer({
       hostname: LOOPBACK_HOST,
@@ -123,9 +144,16 @@ export class ProjectShareManager {
       port: 0,
       privilegeManager,
       requireAuthentification: true,
-      rootFileSystem: new webdav.PhysicalFileSystem(input.root),
       serverName: "Cantrip",
     });
+    if (
+      !server.setFileSystemSync(
+        input.publicBasePath,
+        new webdav.PhysicalFileSystem(input.root),
+      )
+    ) {
+      throw new Error("Could not mount the project at its public share path.");
+    }
     const listener = await server.startAsync(0);
     const address = listener.address();
     if (
@@ -146,6 +174,8 @@ export class ProjectShareManager {
       loopbackPort: address.port,
       password,
       protocol: "webdav",
+      publicBasePath: input.publicBasePath,
+      publicOrigin: input.publicOrigin,
       realm: SHARE_REALM,
       shareId: input.shareId,
       username,

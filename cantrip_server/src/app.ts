@@ -111,6 +111,7 @@ import {
   projectCloneResultSchema,
   projectListSchema,
   projectRemoveSchema,
+  projectShareAttachmentSchema,
   projectSummarySchema,
   projectWorkspaceCreateSchema,
   projectWorkspaceListSchema,
@@ -243,6 +244,7 @@ import {
   scopedCodeProfileId,
 } from "./chats/execution-helpers.js";
 import { CodeTunnelBroker } from "./code/tunnel.js";
+import { ProjectShareTunnelBroker } from "./project-shares/tunnel.js";
 import type { DatabaseConnection } from "./db/index.js";
 import {
   TabLayoutConflictError,
@@ -302,6 +304,7 @@ export interface BuildAppOptions {
   database: DatabaseConnection;
   logger?: boolean;
   codeTunnel?: CodeTunnelBroker;
+  projectShareTunnel?: ProjectShareTunnelBroker;
   workerBridge?: WorkerCommandBus;
 }
 
@@ -430,6 +433,7 @@ export async function buildApp({
   codeTunnel: providedCodeTunnel,
   database,
   logger = true,
+  projectShareTunnel: providedProjectShareTunnel,
   workerBridge,
 }: BuildAppOptions) {
   const app = Fastify({ logger });
@@ -444,6 +448,11 @@ export async function buildApp({
     providedCodeTunnel ??
     new CodeTunnelBroker(bridge, {
       allowedFrameAncestors: config.appOrigins,
+      surfaceOrigin: codeSurface.origin,
+    });
+  const projectShareTunnel =
+    providedProjectShareTunnel ??
+    new ProjectShareTunnelBroker(bridge, {
       surfaceOrigin: codeSurface.origin,
     });
   const surfaceRelay = new RemoteSurfaceRelay(bridge);
@@ -4490,6 +4499,51 @@ export async function buildApp({
       : reply.code(404).send({ error: "Workflow run not found." });
   });
 
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/network-shares",
+    async (request, reply) => {
+      const source = await repository.getProjectSource(
+        LOCAL_USER_ID,
+        request.params.projectId,
+      );
+      if (!source) {
+        return reply.code(404).send({ error: "Project source not found." });
+      }
+      try {
+        const attachment = await projectShareTunnel.open({
+          ownerId: LOCAL_USER_ID,
+          projectId: request.params.projectId,
+          root: source.cwd,
+          workerId: source.workerId,
+        });
+        return reply
+          .code(201)
+          .send(projectShareAttachmentSchema.parse(attachment));
+      } catch (error) {
+        const message = errorMessage(error);
+        return reply
+          .code(
+            error instanceof WorkerUnavailableError ||
+              message.toLowerCase().includes("offline")
+              ? 503
+              : 502,
+          )
+          .send({ error: message });
+      }
+    },
+  );
+
+  app.delete<{ Params: { attachmentId: string } }>(
+    "/api/project-shares/:attachmentId",
+    async (request, reply) =>
+      (await projectShareTunnel.revokeAttachment(
+        request.params.attachmentId,
+        LOCAL_USER_ID,
+      ))
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "Project share not found." }),
+  );
+
   app.patch<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/worktree-policy",
     async (request, reply) => {
@@ -5236,6 +5290,10 @@ export async function buildApp({
           .code(409)
           .send({ error: "Wait for the repository clone to finish." });
       }
+      await projectShareTunnel.revokeProject(
+        request.params.projectId,
+        LOCAL_USER_ID,
+      );
       const { cwd, workerId } = context;
 
       try {
@@ -9145,6 +9203,7 @@ export async function buildApp({
     );
     liveHub.close();
     codeTunnel.close();
+    await projectShareTunnel.close();
     bridge.close();
     await activeScheduleTick;
     await workflowExecutor.drain();

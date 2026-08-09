@@ -174,16 +174,21 @@ describe("Cantrip protocol", () => {
   });
 
   it("validates worker-owned authenticated project share lifecycles", () => {
+    const publicBasePath = `/project-shares/${"x".repeat(43)}`;
     expect(
       workerCommandSchema.parse({
         type: "project.share.open",
         shareId: "share-1",
         root: "/worker/projects/cantrip",
+        publicBasePath,
+        publicOrigin: "https://surface.cantrip.example",
       }),
     ).toEqual({
       type: "project.share.open",
       shareId: "share-1",
       root: "/worker/projects/cantrip",
+      publicBasePath,
+      publicOrigin: "https://surface.cantrip.example",
     });
     expect(
       workerCommandSchema.parse({
@@ -195,6 +200,8 @@ describe("Cantrip protocol", () => {
       workerProjectShareOpenResultSchema.parse({
         shareId: "share-1",
         protocol: "webdav",
+        publicBasePath,
+        publicOrigin: "https://surface.cantrip.example",
         loopbackHost: "127.0.0.1",
         loopbackPort: 43_210,
         username: "cantrip-user",
@@ -206,6 +213,8 @@ describe("Cantrip protocol", () => {
       workerProjectShareOpenResultSchema.safeParse({
         shareId: "share-1",
         protocol: "webdav",
+        publicBasePath,
+        publicOrigin: "https://surface.cantrip.example",
         loopbackHost: "0.0.0.0",
         loopbackPort: 43_210,
         username: "cantrip-user",
