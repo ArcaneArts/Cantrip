@@ -188,6 +188,7 @@ import {
   workflowDefinitionSummarySchema,
   workflowDefinitionUpdateSchema,
   workflowGateDecisionSchema,
+  workflowGitEventDeliveryCreateSchema,
   workflowJsonObjectSchema,
   workflowRevisionCreateSchema,
   workflowRevisionListSchema,
@@ -374,6 +375,16 @@ function safeCredentialMatch(value: string, expectedHash: string): boolean {
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
+function gitBranchMatches(pattern: string, branch: string): boolean {
+  const expression = pattern
+    .split("*")
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
+    .join(".*");
+  const matcher = new RegExp(`^${expression}$`, "u");
+  const normalizedBranch = branch.replace(/^refs\/heads\//u, "");
+  return matcher.test(branch) || matcher.test(normalizedBranch);
+}
+
 function scopedCodeProfileId(ownerId: string, profileId: string): string {
   return createHash("sha256").update(`${ownerId}\0${profileId}`).digest("hex");
 }
@@ -548,14 +559,16 @@ export async function buildApp({
     allowOfflineQueue,
     allowedType,
     idempotencyKey,
+    metadata,
     structuredInput,
     triggerId,
   }: {
     actorId: string | null;
-    actorType: "api" | "schedule" | "webhook" | "git";
+    actorType: "user" | "api" | "schedule" | "webhook" | "git";
     allowOfflineQueue: boolean;
     allowedType: "api" | "schedule" | "webhook" | "git" | "saved-command";
     idempotencyKey: string;
+    metadata: Record<string, unknown>;
     structuredInput: Record<string, unknown>;
     triggerId: string;
   }) => {
@@ -598,6 +611,7 @@ export async function buildApp({
       actorId,
       deliveredAt,
       metadata: {
+        ...metadata,
         triggerName: context.trigger.name,
         projectId: context.trigger.projectId,
       },
@@ -724,6 +738,7 @@ export async function buildApp({
               candidate.trigger.configuration.offlinePolicy === "queue",
             allowedType: "schedule",
             idempotencyKey: expected.toISOString(),
+            metadata: {},
             structuredInput: {},
             triggerId: candidate.trigger.id,
           });
@@ -2655,6 +2670,7 @@ export async function buildApp({
           allowOfflineQueue: false,
           allowedType: "api",
           idempotencyKey: input.data.idempotencyKey,
+          metadata: {},
           structuredInput: input.data.structuredInput,
           triggerId: request.params.triggerId,
         });
@@ -2709,6 +2725,7 @@ export async function buildApp({
         allowOfflineQueue: false,
         allowedType: "webhook",
         idempotencyKey: input.data.idempotencyKey,
+        metadata: {},
         structuredInput: input.data.structuredInput,
         triggerId: request.params.triggerId,
       });
@@ -2732,6 +2749,116 @@ export async function buildApp({
       return reply.code(status).send({ error: errorMessage(error) });
     }
   });
+
+  app.post<{ Params: { triggerId: string } }>(
+    "/api/workflow-triggers/:triggerId/git-event",
+    async (request, reply) => {
+      const input = workflowGitEventDeliveryCreateSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.workflowTriggers.getDeliveryContext(
+        LOCAL_USER_ID,
+        request.params.triggerId,
+      );
+      if (
+        !context ||
+        context.trigger.type !== "git" ||
+        context.trigger.configuration.event !== input.data.event ||
+        !gitBranchMatches(
+          context.trigger.configuration.branchPattern,
+          input.data.branch,
+        )
+      ) {
+        return reply
+          .code(409)
+          .send({ error: "Git event does not match this workflow trigger." });
+      }
+      try {
+        const result = await deliverWorkflowTrigger({
+          actorId: null,
+          actorType: "git",
+          allowOfflineQueue: false,
+          allowedType: "git",
+          idempotencyKey: input.data.deliveryId,
+          metadata: {
+            event: input.data.event,
+            branch: input.data.branch,
+            deliveryId: input.data.deliveryId,
+          },
+          structuredInput: input.data.structuredInput,
+          triggerId: request.params.triggerId,
+        });
+        return reply
+          .code(result.replayed ? 200 : 201)
+          .send(workflowTriggerDeliveryResultSchema.parse(result));
+      } catch (error) {
+        if (error instanceof WorkflowTriggerRateLimitError) {
+          return reply
+            .header("retry-after", String(error.retryAfterSeconds))
+            .code(429)
+            .send({ error: error.message });
+        }
+        const status =
+          error instanceof WorkerUnavailableError
+            ? 503
+            : error instanceof WorkflowTriggerConflictError ||
+                error instanceof WorkflowRunConflictError
+              ? 409
+              : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { triggerId: string } }>(
+    "/api/workflow-triggers/:triggerId/invoke",
+    async (request, reply) => {
+      const input = workflowTriggerDeliveryCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.workflowTriggers.getDeliveryContext(
+        LOCAL_USER_ID,
+        request.params.triggerId,
+      );
+      if (!context || context.trigger.type !== "saved-command") {
+        return reply.code(404).send({ error: "Saved command not found." });
+      }
+      try {
+        const result = await deliverWorkflowTrigger({
+          actorId: LOCAL_USER_ID,
+          actorType: "user",
+          allowOfflineQueue: false,
+          allowedType: "saved-command",
+          idempotencyKey: input.data.idempotencyKey,
+          metadata: { command: context.trigger.configuration.command },
+          structuredInput: input.data.structuredInput,
+          triggerId: request.params.triggerId,
+        });
+        return reply
+          .code(result.replayed ? 200 : 201)
+          .send(workflowTriggerDeliveryResultSchema.parse(result));
+      } catch (error) {
+        if (error instanceof WorkflowTriggerRateLimitError) {
+          return reply
+            .header("retry-after", String(error.retryAfterSeconds))
+            .code(429)
+            .send({ error: error.message });
+        }
+        const status =
+          error instanceof WorkerUnavailableError
+            ? 503
+            : error instanceof WorkflowTriggerConflictError ||
+                error instanceof WorkflowRunConflictError
+              ? 409
+              : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
 
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/workflow-generation",

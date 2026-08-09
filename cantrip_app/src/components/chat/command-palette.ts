@@ -1,5 +1,8 @@
 import type { SkillSummary } from "@cantrip/protocol";
-import type { WorkflowDefinitionSummary } from "@cantrip/protocol/workflows";
+import type {
+  WorkflowAutomationTrigger,
+  WorkflowDefinitionSummary,
+} from "@cantrip/protocol/workflows";
 
 import {
   filterSlashCommands,
@@ -27,10 +30,18 @@ export type CommandPaletteSuggestion =
       label: string;
       description: string;
       workflow: WorkflowDefinitionSummary;
+    }
+  | {
+      kind: "saved-command";
+      invocation: string;
+      label: string;
+      description: string;
+      trigger: WorkflowAutomationTrigger & { type: "saved-command" };
     };
 
 const kindRank: Record<CommandPaletteSuggestion["kind"], number> = {
   builtin: 0,
+  "saved-command": 1,
   workflow: 1,
   skill: 2,
 };
@@ -44,6 +55,7 @@ export function filterCommandPalette(
   skills: readonly SkillSummary[],
   workflows: readonly WorkflowDefinitionSummary[],
   projectId: string,
+  triggers: readonly WorkflowAutomationTrigger[] = [],
 ): CommandPaletteSuggestion[] {
   const suggestions: CommandPaletteSuggestion[] = [
     ...filterSlashCommands("").map((command): CommandPaletteSuggestion => ({
@@ -67,6 +79,21 @@ export function filterCommandPalette(
           `Open workflow revision ${workflow.latestRevision?.revision ?? "draft"}.`,
         workflow,
       })),
+    ...triggers.flatMap((trigger): CommandPaletteSuggestion[] =>
+      trigger.enabled &&
+      trigger.projectId === projectId &&
+      trigger.type === "saved-command"
+        ? [
+            {
+              kind: "saved-command",
+              invocation: `/command/${trigger.configuration.command}`,
+              label: trigger.name,
+              description: `Run saved workflow command ${trigger.configuration.command}.`,
+              trigger,
+            },
+          ]
+        : [],
+    ),
     ...skills.map((skill): CommandPaletteSuggestion => ({
       kind: "skill",
       invocation: `$${skill.name}`,

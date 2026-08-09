@@ -1091,6 +1091,13 @@ export const workflowTriggerDeliveryCreateSchema = z.object({
   idempotencyKey: z.string().trim().min(1).max(200),
 });
 
+export const workflowGitEventDeliveryCreateSchema = z.object({
+  event: z.enum(["push", "pull-request"]),
+  branch: z.string().trim().min(1).max(500),
+  deliveryId: z.string().trim().min(1).max(200),
+  structuredInput: workflowJsonObjectSchema.default({}),
+});
+
 export const workflowRunCreateSchema = z.object({
   workflowRevisionId: idSchema,
   projectId: optionalIdSchema,
@@ -1869,6 +1876,9 @@ export type WorkflowAutomationTrigger = z.infer<
 >;
 export type WorkflowTriggerDeliveryCreate = z.infer<
   typeof workflowTriggerDeliveryCreateSchema
+>;
+export type WorkflowGitEventDeliveryCreate = z.infer<
+  typeof workflowGitEventDeliveryCreateSchema
 >;
 export type WorkflowTriggerDelivery = z.infer<
   typeof workflowTriggerDeliverySchema

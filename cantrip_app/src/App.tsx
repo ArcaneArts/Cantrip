@@ -184,6 +184,8 @@ import {
   getTerminals,
   getWorkers,
   getWorkflows,
+  getWorkflowAutomationTriggers,
+  invokeSavedWorkflowCommand,
   renameChat,
   renameExplorer,
   renameProjectView,
@@ -910,6 +912,19 @@ function ChatTranscript({
     retry: false,
     staleTime: 30_000,
   });
+  const commandTriggers = useQuery({
+    enabled: slashCommandQuery(draft) !== null,
+    queryFn: () =>
+      getWorkflowAutomationTriggers({
+        projectId: chat.projectId,
+        enabled: true,
+        type: "saved-command",
+        limit: 500,
+      }),
+    queryKey: ["workflow-triggers", chat.projectId, "saved-command", true],
+    retry: false,
+    staleTime: 30_000,
+  });
   const timeline = useMemo(
     () => buildChatTimeline(messages.data ?? []),
     [messages.data],
@@ -924,8 +939,15 @@ function ChatTranscript({
             skills.data ?? [],
             commandWorkflows.data ?? [],
             chat.projectId,
+            commandTriggers.data ?? [],
           ),
-    [chat.projectId, commandWorkflows.data, skills.data, slashQuery],
+    [
+      chat.projectId,
+      commandTriggers.data,
+      commandWorkflows.data,
+      skills.data,
+      slashQuery,
+    ],
   );
   const slashMenuOpen =
     !slashMenuDismissed && slashQuery !== null && slashSuggestions.length > 0;
@@ -1388,6 +1410,25 @@ function ChatTranscript({
       onOpenWorkflow(suggestion.workflow.id);
       return;
     }
+    if (suggestion.kind === "saved-command") {
+      setDraft("");
+      try {
+        const result = await invokeSavedWorkflowCommand(suggestion.trigger.id, {
+          idempotencyKey: `saved-command-${crypto.randomUUID()}`,
+          structuredInput: {},
+        });
+        setCommandNotice(
+          `Started ${suggestion.label} as run ${result.run.run.id.slice(0, 8)}.`,
+        );
+        void queryClient.invalidateQueries({
+          queryKey: ["workflow-runs", chat.projectId],
+        });
+        onOpenWorkflow(suggestion.trigger.workflowId);
+      } catch (error) {
+        setCommandNotice(errorText(error));
+      }
+      return;
+    }
     const text = `$${suggestion.skill.name} `;
     setDraft(text);
     setComposerCaret(text.length);
@@ -1573,7 +1614,11 @@ function ChatTranscript({
             >
               {slashSuggestions.map((suggestion, index) => (
                 <button
-                  key={suggestion.invocation}
+                  key={`${suggestion.kind}:${
+                    suggestion.kind === "saved-command"
+                      ? suggestion.trigger.id
+                      : suggestion.invocation
+                  }`}
                   id={`slash-command-${index}`}
                   data-command-index={index}
                   role="option"
