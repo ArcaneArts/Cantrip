@@ -6,14 +6,8 @@ const {
   parseRequest,
   reconnectDelayMs,
   safeRelativePaths,
+  themeNameForAppearance,
 } = require("./protocol.js");
-
-const THEME_NAMES = {
-  light: "Cantrip Light",
-  dark: "Cantrip Dark",
-  "high-contrast-light": "Cantrip High Contrast Light",
-  "high-contrast-dark": "Cantrip High Contrast Dark",
-};
 
 function configuration() {
   return vscode.workspace.getConfiguration("cantrip");
@@ -447,11 +441,9 @@ class WorkbenchCoordinator {
   }
 
   async setTheme(params) {
-    const themeMode = params.themeMode;
     const appearance = params.appearance;
-    const theme =
-      themeMode === "follow-cantrip" ? THEME_NAMES[appearance] : undefined;
-    if (themeMode === "follow-cantrip" && !theme) {
+    const theme = themeNameForAppearance(appearance);
+    if (!theme) {
       throw new Error(`Unknown Cantrip appearance: ${String(appearance)}`);
     }
     await vscode.workspace

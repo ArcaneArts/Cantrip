@@ -377,23 +377,6 @@ function CodeHeaderActions({
         )}
         {header?.status ?? "connecting"}
       </Badge>
-      <select
-        aria-label="Editor theme"
-        className={cn(
-          "hidden h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring sm:block",
-          floating && "bg-background/75 shadow-md backdrop-blur-xl",
-        )}
-        disabled={!header || header.isBusy}
-        value={header?.themeMode ?? "follow-cantrip"}
-        onChange={(event) =>
-          void header?.setThemeMode(
-            event.target.value as "follow-cantrip" | "independent",
-          )
-        }
-      >
-        <option value="follow-cantrip">Follow Cantrip theme</option>
-        <option value="independent">Independent theme</option>
-      </select>
       <Button
         size="icon"
         variant={floating ? "outline" : "ghost"}

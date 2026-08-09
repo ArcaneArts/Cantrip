@@ -4,6 +4,17 @@ import { afterEach, describe, expect, it } from "vitest";
 import { CodeWorkbenchBridge } from "../src/code/workbench-bridge.js";
 
 const bridges: CodeWorkbenchBridge[] = [];
+interface WorkbenchRequest {
+  id: string;
+  method: string;
+  params: Record<string, unknown>;
+}
+
+const requestQueues = new WeakMap<WebSocket, WorkbenchRequest[]>();
+const requestWaiters = new WeakMap<
+  WebSocket,
+  (request: WorkbenchRequest) => void
+>();
 
 afterEach(async () => {
   await Promise.all(bridges.splice(0).map((bridge) => bridge.close()));
@@ -12,9 +23,46 @@ afterEach(async () => {
 function openSocket(url: string): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url);
+    requestQueues.set(socket, []);
+    socket.on("message", (data) => {
+      const request = JSON.parse(data.toString()) as WorkbenchRequest;
+      const waiter = requestWaiters.get(socket);
+      if (waiter) {
+        requestWaiters.delete(socket);
+        waiter(request);
+      } else {
+        requestQueues.get(socket)?.push(request);
+      }
+    });
     socket.once("open", () => resolve(socket));
     socket.once("error", reject);
   });
+}
+
+function nextRequest(socket: WebSocket): Promise<WorkbenchRequest> {
+  const queued = requestQueues.get(socket)?.shift();
+  if (queued) return Promise.resolve(queued);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      requestWaiters.delete(socket);
+      reject(new Error("Timed out waiting for a workbench request."));
+    }, 1_000);
+    requestWaiters.set(socket, (request) => {
+      clearTimeout(timer);
+      resolve(request);
+    });
+  });
+}
+
+function respond(socket: WebSocket, request: WorkbenchRequest, result = {}) {
+  socket.send(
+    JSON.stringify({
+      type: "response",
+      id: request.id,
+      ok: true,
+      result,
+    }),
+  );
 }
 
 describe("Cantrip workbench bridge", () => {
@@ -24,6 +72,12 @@ describe("Cantrip workbench bridge", () => {
     await bridge.start();
     const url = bridge.register("session-one", "secret-one");
     const socket = await openSocket(url);
+    const initialTheme = await nextRequest(socket);
+    expect(initialTheme).toMatchObject({
+      method: "setTheme",
+      params: { appearance: "dark" },
+    });
+    respond(socket, initialTheme);
 
     socket.send(
       JSON.stringify({
@@ -72,75 +126,49 @@ describe("Cantrip workbench bridge", () => {
       savePolicy: "always",
     });
 
-    socket.once("message", (data) => {
-      const request = JSON.parse(data.toString()) as {
-        id: string;
-        method: string;
-      };
-      expect(request.method).toBe("saveAll");
-      socket.send(
-        JSON.stringify({
-          type: "response",
-          id: request.id,
-          ok: true,
-          result: { saved: ["file:///repo/README.md"], failed: [] },
-        }),
-      );
+    const nextSaveRequest = nextRequest(socket);
+    const save = bridge.saveAll("session-one");
+    const saveRequest = await nextSaveRequest;
+    expect(saveRequest.method).toBe("saveAll");
+    respond(socket, saveRequest, {
+      saved: ["file:///repo/README.md"],
+      failed: [],
     });
-    await expect(bridge.saveAll("session-one")).resolves.toEqual({
+    await expect(save).resolves.toEqual({
       saved: ["file:///repo/README.md"],
       failed: [],
     });
 
-    socket.once("message", (data) => {
-      const request = JSON.parse(data.toString()) as {
-        id: string;
-        method: string;
-      };
-      expect(request.method).toBe("prepareAgentTurn");
-      socket.send(
-        JSON.stringify({
-          type: "response",
-          id: request.id,
-          ok: true,
-          result: {
-            allowed: true,
-            policy: "always",
-            dirtyEditors: [],
-            saved: ["file:///repo/README.md"],
-            failed: [],
-            reason: null,
-          },
-        }),
-      );
+    const nextPrepareRequest = nextRequest(socket);
+    const prepare = bridge.prepareAgentTurn("session-one");
+    const prepareRequest = await nextPrepareRequest;
+    expect(prepareRequest.method).toBe("prepareAgentTurn");
+    respond(socket, prepareRequest, {
+      allowed: true,
+      policy: "always",
+      dirtyEditors: [],
+      saved: ["file:///repo/README.md"],
+      failed: [],
+      reason: null,
     });
-    await expect(bridge.prepareAgentTurn("session-one")).resolves.toMatchObject(
-      {
-        sessionId: "session-one",
-        bridgeConnected: true,
-        allowed: true,
-        policy: "always",
-      },
-    );
+    await expect(prepare).resolves.toMatchObject({
+      sessionId: "session-one",
+      bridgeConnected: true,
+      allowed: true,
+      policy: "always",
+    });
 
-    socket.once("message", (data) => {
-      const request = JSON.parse(data.toString()) as {
-        id: string;
-        method: string;
-      };
-      expect(request.method).toBe("agentTurnState");
-      socket.send(
-        JSON.stringify({
-          type: "response",
-          id: request.id,
-          ok: true,
-          result: { refreshed: ["README.md"], conflicts: [] },
-        }),
-      );
+    const nextNotificationRequest = nextRequest(socket);
+    const notification = bridge.notifyAgentTurn("session-one", "completed", [
+      "README.md",
+    ]);
+    const notificationRequest = await nextNotificationRequest;
+    expect(notificationRequest.method).toBe("agentTurnState");
+    respond(socket, notificationRequest, {
+      refreshed: ["README.md"],
+      conflicts: [],
     });
-    await expect(
-      bridge.notifyAgentTurn("session-one", "completed", ["README.md"]),
-    ).resolves.toEqual({
+    await expect(notification).resolves.toEqual({
       notifiedSessions: 1,
       refreshed: ["README.md"],
       conflicts: [],
@@ -152,5 +180,70 @@ describe("Cantrip workbench bridge", () => {
       "Unexpected server response: 401",
     );
     socket.close();
+  });
+
+  it("keeps every workbench surface connected and reapplies themes", async () => {
+    const bridge = new CodeWorkbenchBridge();
+    bridges.push(bridge);
+    await bridge.start();
+    const url = bridge.register(
+      "shared-session",
+      "shared-secret",
+      "high-contrast-dark",
+    );
+    const first = await openSocket(url);
+    const firstInitialTheme = await nextRequest(first);
+    expect(firstInitialTheme).toMatchObject({
+      method: "setTheme",
+      params: { appearance: "high-contrast-dark" },
+    });
+    respond(first, firstInitialTheme);
+
+    const second = await openSocket(url);
+    const secondInitialTheme = await nextRequest(second);
+    expect(secondInitialTheme).toMatchObject({
+      method: "setTheme",
+      params: { appearance: "high-contrast-dark" },
+    });
+    respond(second, secondInitialTheme);
+
+    expect(first.readyState).toBe(WebSocket.OPEN);
+    expect(second.readyState).toBe(WebSocket.OPEN);
+    expect(bridge.connected("shared-session")).toBe(true);
+
+    const firstUpdateRequest = nextRequest(first);
+    const secondUpdateRequest = nextRequest(second);
+    const update = bridge.setTheme("shared-session", "light");
+    const [firstUpdate, secondUpdate] = await Promise.all([
+      firstUpdateRequest,
+      secondUpdateRequest,
+    ]);
+    expect(firstUpdate).toMatchObject({
+      method: "setTheme",
+      params: { appearance: "light" },
+    });
+    expect(secondUpdate).toMatchObject({
+      method: "setTheme",
+      params: { appearance: "light" },
+    });
+    respond(first, firstUpdate);
+    respond(second, secondUpdate);
+    await update;
+
+    second.close();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(first.readyState).toBe(WebSocket.OPEN);
+    expect(bridge.connected("shared-session")).toBe(true);
+
+    const finalUpdateRequest = nextRequest(first);
+    const finalUpdate = bridge.setTheme("shared-session", "dark");
+    const finalRequest = await finalUpdateRequest;
+    expect(finalRequest).toMatchObject({
+      method: "setTheme",
+      params: { appearance: "dark" },
+    });
+    respond(first, finalRequest);
+    await finalUpdate;
+    first.close();
   });
 });

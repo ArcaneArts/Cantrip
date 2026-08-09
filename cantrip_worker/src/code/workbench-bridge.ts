@@ -7,7 +7,6 @@ import type {
   CodeAppearance,
   CodeDirtyEditor,
   CodeSaveAllResult,
-  CodeThemeMode,
   CodeWorkbenchState,
 } from "@cantrip/protocol";
 import {
@@ -18,16 +17,18 @@ import {
 import WebSocket, { WebSocketServer } from "ws";
 
 interface BridgeSession {
+  appearance: CodeAppearance;
   dirtyEditors: CodeDirtyEditor[];
   pending: Map<
     string,
     {
       reject(error: Error): void;
       resolve(value: unknown): void;
+      socket: WebSocket;
       timer: ReturnType<typeof setTimeout>;
     }
   >;
-  socket: WebSocket | null;
+  sockets: Set<WebSocket>;
   token: string;
   workbench: CodeWorkbenchState;
 }
@@ -141,17 +142,23 @@ export class CodeWorkbenchBridge {
     this.#origin = `ws://127.0.0.1:${address.port}`;
   }
 
-  register(sessionId: string, token: string): string {
+  register(
+    sessionId: string,
+    token: string,
+    appearance: CodeAppearance = "dark",
+  ): string {
     if (!this.#origin)
       throw new Error("Cantrip workbench bridge is not ready.");
     const current = this.#sessions.get(sessionId);
     if (current) {
       current.token = token;
+      current.appearance = appearance;
     } else {
       this.#sessions.set(sessionId, {
+        appearance,
         dirtyEditors: [],
         pending: new Map(),
-        socket: null,
+        sockets: new Set(),
         token,
         workbench: { ...DEFAULT_WORKBENCH_STATE },
       });
@@ -168,12 +175,17 @@ export class CodeWorkbenchBridge {
     const session = this.#sessions.get(sessionId);
     if (!session) return;
     this.#rejectPending(session, "Cantrip Code session stopped.");
-    session.socket?.close(1000, "Code session stopped");
+    for (const socket of session.sockets) {
+      socket.close(1000, "Code session stopped");
+    }
+    session.sockets.clear();
     this.#sessions.delete(sessionId);
   }
 
   connected(sessionId: string): boolean {
-    return this.#sessions.get(sessionId)?.socket?.readyState === WebSocket.OPEN;
+    return [...(this.#sessions.get(sessionId)?.sockets ?? [])].some(
+      (socket) => socket.readyState === WebSocket.OPEN,
+    );
   }
 
   dirtyEditors(sessionId: string): CodeDirtyEditor[] {
@@ -280,14 +292,26 @@ export class CodeWorkbenchBridge {
     });
   }
 
-  async setTheme(
-    sessionId: string,
-    themeMode: CodeThemeMode,
-    appearance: CodeAppearance,
-  ): Promise<void> {
+  async setTheme(sessionId: string, appearance: CodeAppearance): Promise<void> {
     const session = this.#sessions.get(sessionId);
-    if (!session || !this.connected(sessionId)) return;
-    await this.#request(session, "setTheme", { themeMode, appearance });
+    if (!session) return;
+    session.appearance = appearance;
+    const requests = [...session.sockets]
+      .filter((socket) => socket.readyState === WebSocket.OPEN)
+      .map((socket) =>
+        this.#requestOnSocket(session, socket, "setTheme", { appearance }),
+      );
+    if (requests.length === 0) return;
+    const results = await Promise.allSettled(requests);
+    if (results.every((result) => result.status === "rejected")) {
+      const failure = results.find(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      );
+      throw failure?.reason instanceof Error
+        ? failure.reason
+        : new Error("Cantrip workbench theme update failed.");
+    }
   }
 
   async notifyExternalFiles(
@@ -355,18 +379,24 @@ export class CodeWorkbenchBridge {
       socket.close(1008, "Unknown Code session");
       return;
     }
-    session.socket?.close(1000, "Bridge replaced");
-    session.socket = socket;
+    session.sockets.add(socket);
+    void this.#requestOnSocket(session, socket, "setTheme", {
+      appearance: session.appearance,
+    }).catch(() => undefined);
     socket.on("message", (data, isBinary) => {
-      if (!isBinary) this.#onMessage(session, data.toString());
+      if (!isBinary) this.#onMessage(session, socket, data.toString());
     });
     socket.once("close", () => {
-      if (session.socket === socket) session.socket = null;
-      this.#rejectPending(session, "Cantrip workbench bridge disconnected.");
+      session.sockets.delete(socket);
+      this.#rejectPending(
+        session,
+        "Cantrip workbench bridge disconnected.",
+        socket,
+      );
     });
   }
 
-  #onMessage(session: BridgeSession, raw: string): void {
+  #onMessage(session: BridgeSession, socket: WebSocket, raw: string): void {
     let message: BridgeResponse | BridgeState;
     try {
       message = JSON.parse(raw) as BridgeResponse | BridgeState;
@@ -387,7 +417,7 @@ export class CodeWorkbenchBridge {
     }
     if (message.type !== "response" || typeof message.id !== "string") return;
     const pending = session.pending.get(message.id);
-    if (!pending) return;
+    if (!pending || pending.socket !== socket) return;
     clearTimeout(pending.timer);
     session.pending.delete(message.id);
     if (message.ok) pending.resolve(message.result);
@@ -400,8 +430,24 @@ export class CodeWorkbenchBridge {
     method: string,
     params: unknown,
   ): Promise<unknown> {
-    const socket = session.socket;
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
+    const socket = [...session.sockets]
+      .reverse()
+      .find((candidate) => candidate.readyState === WebSocket.OPEN);
+    if (!socket) {
+      return Promise.reject(
+        new Error("Cantrip workbench bridge is not connected."),
+      );
+    }
+    return this.#requestOnSocket(session, socket, method, params);
+  }
+
+  #requestOnSocket(
+    session: BridgeSession,
+    socket: WebSocket,
+    method: string,
+    params: unknown,
+  ): Promise<unknown> {
+    if (socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(
         new Error("Cantrip workbench bridge is not connected."),
       );
@@ -413,7 +459,7 @@ export class CodeWorkbenchBridge {
         session.pending.delete(id);
         reject(new Error(`Cantrip workbench ${method} request timed out.`));
       }, 5_000);
-      session.pending.set(id, { resolve, reject, timer });
+      session.pending.set(id, { resolve, reject, socket, timer });
       socket.send(JSON.stringify(request), (error) => {
         if (!error) return;
         clearTimeout(timer);
@@ -423,11 +469,16 @@ export class CodeWorkbenchBridge {
     });
   }
 
-  #rejectPending(session: BridgeSession, message: string): void {
-    for (const pending of session.pending.values()) {
+  #rejectPending(
+    session: BridgeSession,
+    message: string,
+    socket?: WebSocket,
+  ): void {
+    for (const [id, pending] of session.pending) {
+      if (socket && pending.socket !== socket) continue;
       clearTimeout(pending.timer);
       pending.reject(new Error(message));
+      session.pending.delete(id);
     }
-    session.pending.clear();
   }
 }

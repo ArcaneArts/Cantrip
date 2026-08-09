@@ -174,11 +174,12 @@ describe("Cantrip Code supervisor", () => {
     expect(supervisor.status("shared").status).toBe("running");
   });
 
-  it("shares a persistent profile process while isolating tab workspaces", async () => {
+  it("shares a persistent profile process and always writes the Cantrip theme", async () => {
     const { dataDirectory, repository, supervisor } = await fixture();
-    const first = await supervisor.open(
-      openCommand("one", repository, "primary"),
-    );
+    const first = await supervisor.open({
+      ...openCommand("one", repository, "primary"),
+      themeMode: "independent",
+    });
     const second = await supervisor.open(
       openCommand("two", repository, "feature"),
     );

@@ -4450,7 +4450,7 @@ export async function buildApp({
         const codeTab = await repository.createCodeTab(
           LOCAL_USER_ID,
           request.params.projectId,
-          input.data,
+          { ...input.data, themeMode: "follow-cantrip" },
         );
         return codeTab
           ? reply.code(201).send(codeTabSummarySchema.parse(codeTab))
@@ -4476,7 +4476,7 @@ export async function buildApp({
       const codeTab = await repository.updateCodeTab(
         LOCAL_USER_ID,
         request.params.codeTabId,
-        input.data,
+        { ...input.data, themeMode: "follow-cantrip" },
       );
       return codeTab
         ? reply.send(codeTabSummarySchema.parse(codeTab))
@@ -4588,7 +4588,7 @@ export async function buildApp({
               LOCAL_USER_ID,
               context.codeTab.profileId,
             ),
-            themeMode: context.codeTab.themeMode,
+            themeMode: "follow-cantrip",
             appearance: input.data.appearance,
           }),
         );
@@ -4772,7 +4772,7 @@ export async function buildApp({
       const codeTab = await repository.updateCodeTab(
         LOCAL_USER_ID,
         request.params.codeTabId,
-        { themeMode: input.data.themeMode },
+        { themeMode: "follow-cantrip" },
       );
       const sessions =
         (await repository.listCodeSessions(
@@ -4788,7 +4788,7 @@ export async function buildApp({
             await bridge.request(context.workerId, {
               type: "code.setTheme",
               sessionId: session.id,
-              themeMode: input.data.themeMode,
+              themeMode: "follow-cantrip",
               appearance: input.data.appearance,
             }),
           );
