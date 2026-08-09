@@ -56,6 +56,7 @@ import {
   type ChatWorktreeActions,
 } from "@/components/chat/chat-menu";
 import { Button } from "@/components/ui/button";
+import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
 import {
   Dialog,
   DialogClose,
@@ -66,6 +67,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import type { ProjectTabGroupVisualKind } from "@/lib/project-tab-group";
 import {
   WorktreeIndicator,
   type WorktreeStatusMap,
@@ -831,6 +833,56 @@ function ProjectViewTab({
   );
 }
 
+function GroupedSidebarTab({
+  active,
+  count,
+  onSelect,
+  sortId,
+  title,
+  visualKind,
+}: {
+  active: boolean;
+  count: number;
+  onSelect(): void;
+  sortId: string;
+  title: string;
+  visualKind: ProjectTabGroupVisualKind;
+}) {
+  const sortable = useSortable({ id: sortId });
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(sortable.transform),
+    transition: sortable.transition,
+    opacity: sortable.isDragging ? 0.25 : 1,
+    zIndex: sortable.isDragging ? 10 : undefined,
+  };
+  return (
+    <div
+      ref={sortable.setNodeRef}
+      style={style}
+      className={cn(
+        "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
+        active && "bg-muted text-foreground",
+      )}
+    >
+      <DragHandle
+        attributes={sortable.attributes}
+        listeners={sortable.listeners}
+      />
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-2 text-left"
+        onClick={onSelect}
+      >
+        <ProjectSurfaceIcon kind={visualKind} className="size-3.5 shrink-0" />
+        <span className="truncate">{title}</span>
+        <span className="ml-auto rounded-full bg-background/70 px-1.5 text-[10px] tabular-nums text-muted-foreground">
+          {count}
+        </span>
+      </button>
+    </div>
+  );
+}
+
 function SortableProject({
   active,
   children,
@@ -1084,6 +1136,7 @@ export function ProjectChatList({
   onRenameTerminal,
   onReorderGroups,
   onReorderProjects,
+  onSelectGroup,
   onSelectTab,
   onSelectProject,
   projects,
@@ -1140,6 +1193,7 @@ export function ProjectChatList({
   onRenameTerminal(terminalId: string, title: string): void;
   onReorderGroups(projectId: string, groupIds: string[]): void;
   onReorderProjects(ids: string[]): void;
+  onSelectGroup(groupId: string): void;
   onSelectTab(tabKey: string): void;
   onSelectProject(projectId: string): void;
   projects: ProjectSummary[];
@@ -1261,17 +1315,61 @@ export function ProjectChatList({
       members.map(({ tabKey }) => tabKey),
     ) ?? [],
   );
-  const tabs = tabLayout
+  const sidebarGroups = tabLayout
     ? [
-        ...tabLayout.groups.flatMap(({ members }) =>
-          members.flatMap(({ tabKey }) => {
+        ...tabLayout.groups.flatMap((group) => {
+          const members = group.members.flatMap(({ tabKey }) => {
             const tab = legacyTabByKey.get(tabKey);
             return tab ? [tab] : [];
-          }),
-        ),
-        ...legacyTabs.filter(({ id }) => !layoutTabKeys.has(id)),
+          });
+          const anchor =
+            members.find((tab) => tab.id === group.anchorTabKey) ?? members[0];
+          return anchor
+            ? [
+                {
+                  anchor,
+                  id: group.id,
+                  members,
+                  persisted: true as const,
+                  sortId: anchor.id,
+                },
+              ]
+            : [];
+        }),
+        ...legacyTabs
+          .filter(({ id }) => !layoutTabKeys.has(id))
+          .map((tab) => ({
+            anchor: tab,
+            id: `legacy:${tab.id}`,
+            members: [tab],
+            persisted: false as const,
+            sortId: tab.id,
+          })),
       ]
-    : legacyTabs;
+    : legacyTabs.map((tab) => ({
+        anchor: tab,
+        id: `legacy:${tab.id}`,
+        members: [tab],
+        persisted: false as const,
+        sortId: tab.id,
+      }));
+  const tabVisualKind = (tab: SidebarTab): ProjectTabGroupVisualKind =>
+    tab.kind === "view" ? tab.view.kind : tab.kind;
+  const tabTitle = (tab: SidebarTab): string =>
+    tab.kind === "chat"
+      ? tab.chat.title
+      : tab.kind === "terminal"
+        ? tab.terminal.title
+        : tab.kind === "explorer"
+          ? tab.explorer.title
+          : tab.kind === "browser"
+            ? tab.browser.title
+            : tab.kind === "code"
+              ? tab.codeTab.title
+              : tab.view.title;
+  const selectedGroupId = tabLayout?.groups.find(({ members }) =>
+    members.some(({ tabKey }) => tabKey === selectedTabKey),
+  )?.id;
   const worktreeById = new Map(
     worktrees.map((worktree) => [worktree.id, worktree]),
   );
@@ -1377,24 +1475,15 @@ export function ProjectChatList({
       !activeId.startsWith("project:") &&
       !overId.startsWith("project:")
     ) {
-      if (
-        !tabLayout ||
-        tabLayout.groups.some(({ members }) => members.length !== 1)
-      ) {
-        return;
-      }
-      const from = tabs.findIndex((tab) => tab.id === activeId);
-      const to = tabs.findIndex((tab) => tab.id === overId);
-      const groupByTabKey = new Map(
-        tabLayout.groups.flatMap((group) =>
-          group.members.map(({ tabKey }) => [tabKey, group.id] as const),
-        ),
+      if (!tabLayout) return;
+      const from = sidebarGroups.findIndex(
+        (group) => group.sortId === activeId,
       );
+      const to = sidebarGroups.findIndex((group) => group.sortId === overId);
       if (from >= 0 && to >= 0) {
-        const groupIds = arrayMove(tabs, from, to).flatMap((tab) => {
-          const groupId = groupByTabKey.get(tab.id);
-          return groupId ? [groupId] : [];
-        });
+        const groupIds = arrayMove(sidebarGroups, from, to).flatMap((group) =>
+          group.persisted ? [group.id] : [],
+        );
         if (groupIds.length === tabLayout.groups.length) {
           onReorderGroups(selectedProjectId, groupIds);
         }
@@ -1419,6 +1508,9 @@ export function ProjectChatList({
   );
   const draggedProjectView = projectViews.find(
     (view) => viewId(view.id) === activeDrag,
+  );
+  const draggedGroup = sidebarGroups.find(
+    (group) => group.sortId === activeDrag,
   );
 
   return (
@@ -1465,11 +1557,37 @@ export function ProjectChatList({
                 {active ? (
                   <div className="mt-1">
                     <SortableContext
-                      items={tabs.map((tab) => tab.id)}
+                      items={sidebarGroups.map((group) => group.sortId)}
                       strategy={verticalListSortingStrategy}
                     >
-                      {tabs.map((tab) =>
-                        tab.kind === "chat" ? (
+                      {sidebarGroups.map((group) => {
+                        const tab = group.anchor;
+                        if (group.members.length > 1) {
+                          const visualKinds = new Set(
+                            group.members.map(tabVisualKind),
+                          );
+                          return (
+                            <GroupedSidebarTab
+                              key={group.id}
+                              active={group.id === selectedGroupId}
+                              count={group.members.length}
+                              onSelect={() =>
+                                group.persisted
+                                  ? onSelectGroup(group.id)
+                                  : onSelectTab(tab.id)
+                              }
+                              sortId={group.sortId}
+                              title={tabTitle(tab)}
+                              visualKind={
+                                visualKinds.size > 1
+                                  ? "mixed"
+                                  : (visualKinds.values().next().value ??
+                                    "mixed")
+                              }
+                            />
+                          );
+                        }
+                        return tab.kind === "chat" ? (
                           <SortableChat
                             key={tab.id}
                             chat={tab.chat}
@@ -1620,8 +1738,8 @@ export function ProjectChatList({
                                 : undefined
                             }
                           />
-                        ),
-                      )}
+                        );
+                      })}
                     </SortableContext>
                   </div>
                 ) : null}
@@ -1634,6 +1752,21 @@ export function ProjectChatList({
             <div className="flex w-64 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-sm shadow-xl">
               <FolderGit2 className="size-4" />
               <span className="truncate">{draggedProject.name}</span>
+            </div>
+          ) : draggedGroup && draggedGroup.members.length > 1 ? (
+            <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
+              <ProjectSurfaceIcon
+                kind={
+                  new Set(draggedGroup.members.map(tabVisualKind)).size > 1
+                    ? "mixed"
+                    : tabVisualKind(draggedGroup.anchor)
+                }
+                className="size-3.5"
+              />
+              <span className="truncate">{tabTitle(draggedGroup.anchor)}</span>
+              <span className="ml-auto text-[10px] text-muted-foreground">
+                {draggedGroup.members.length}
+              </span>
             </div>
           ) : draggedChat ? (
             <div className="flex w-56 items-center gap-2 rounded-md border bg-popover px-3 py-2 text-xs shadow-xl">
