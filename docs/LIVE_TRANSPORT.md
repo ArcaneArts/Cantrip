@@ -31,7 +31,7 @@ heartbeat interval, and replay decision.
 Every event contains exactly one authorized scope, typed resource and action,
 optional entity ID and revision, committed timestamp, and optional bounded JSON
 payload. Resource types cover settings, workers, projects, worktrees, project
-tabs, chat state, interactions, workflows, and customization.
+tabs and tab layouts, chat state, interactions, workflows, and customization.
 
 The server may replay retained events after a same-epoch cursor and ends replay
 with `caught-up`. It emits `resync-required` when the server restarted, the
@@ -55,7 +55,8 @@ Project lists, workers, worktree metadata, tabs, terminals, explorers,
 browsers, Code tabs, project views, and Remote Desktop metadata now use live
 invalidations while the connection is healthy. During connection startup,
 reconnect, or resynchronization, the app retains a bounded 10–15 second HTTP
-fallback. Worktree Git status is also live: the worker publishes debounced
+fallback. Project tab layouts follow the same rule instead of refreshing every
+second. Worktree Git status is also live: the worker publishes debounced
 filesystem observations and a bounded reconciliation sweep, the server stores
 the latest status snapshot, and the app applies complete Git-status payloads
 directly. The former three-second, per-worktree client polling loop is disabled
@@ -101,3 +102,16 @@ payloads. A healthy app socket applies those payloads directly, so the previous
 one-second status GETs are disabled. A disconnected app retains the one-second
 status GET as a recovery fallback, and reconnect recovery refetches the
 authoritative status before observation resumes.
+
+## Observability and verification
+
+`GET /api/health` exposes the live hub's epoch, cursor, connection, delivery,
+replay, resync, heartbeat, protocol-violation, and queue-pressure counters. The
+server records the final counter snapshot during orderly shutdown. The app
+query bridge also counts received events, directly applied payloads, coalesced
+query keys, invalidation flushes, and invalidated queries for deterministic
+tests and diagnostics.
+
+The measured request reduction, real-browser trace, timer inventory, recovery
+matrix, troubleshooting steps, and remaining deployment limits are recorded in
+the [application live transport audit](LIVE_TRANSPORT_AUDIT.md).

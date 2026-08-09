@@ -2508,7 +2508,7 @@ export function App() {
     enabled: Boolean(selectedProjectId),
     queryFn: () => getProjectTabLayout(selectedProjectId!),
     queryKey: ["project-tab-layout", selectedProjectId],
-    refetchInterval: projectResourcesLive ? 15_000 : 1_000,
+    refetchInterval: projectResourcesLive ? false : 10_000,
   });
   const worktrees = useQuery({
     enabled: Boolean(selectedProjectId),

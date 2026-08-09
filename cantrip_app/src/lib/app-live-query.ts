@@ -17,6 +17,14 @@ import type { QueryClient, QueryKey } from "@tanstack/react-query";
 
 type AppLiveEvent = Extract<AppLiveServerMessage, { type: "event" }>;
 
+export interface AppLiveQueryBridgeStats {
+  coalescedInvalidationCount: number;
+  directlyAppliedEventCount: number;
+  invalidatedQueryCount: number;
+  invalidationFlushCount: number;
+  receivedEventCount: number;
+}
+
 const MAX_TRACKED_WORKFLOW_SEQUENCES = 4_096;
 
 function projectScopeId(scope: AppLiveScope): string | null {
@@ -36,6 +44,12 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
       return projectId
         ? [["projects"], ["project-tab-layout", projectId]]
         : [["projects"]];
+    case "project-tab-layout":
+      return projectId
+        ? [["project-tab-layout", projectId]]
+        : event.scope.kind === "current-user"
+          ? [["project-tab-layout"]]
+          : [];
     case "worktree":
       return projectId
         ? [["worktrees", projectId]]
@@ -194,20 +208,35 @@ export class AppLiveQueryBridge {
   readonly #pendingKeys = new Map<string, QueryKey>();
   readonly #queryClient: QueryClient;
   readonly #workflowRunSequences = new Map<string, number>();
+  #coalescedInvalidationCount = 0;
   #coalescedFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  #directlyAppliedEventCount = 0;
   #flushScheduled = false;
+  #invalidatedQueryCount = 0;
+  #invalidationFlushCount = 0;
+  #receivedEventCount = 0;
 
   constructor(queryClient: QueryClient) {
     this.#queryClient = queryClient;
   }
 
   handleEvent(event: AppLiveEvent): void {
+    this.#receivedEventCount += 1;
     if (!this.#acceptWorkflowEvent(event)) return;
-    if (this.#applyChatMessageEvent(event)) return;
-    if (this.#applyWorktreeStatusEvent(event)) return;
-    if (this.#applyCustomizationStatusEvent(event)) return;
+    if (
+      this.#applyChatMessageEvent(event) ||
+      this.#applyWorktreeStatusEvent(event) ||
+      this.#applyCustomizationStatusEvent(event)
+    ) {
+      this.#directlyAppliedEventCount += 1;
+      return;
+    }
     for (const key of appLiveEventQueryKeys(event)) {
-      this.#pendingKeys.set(JSON.stringify(key), key);
+      const serialized = JSON.stringify(key);
+      if (this.#pendingKeys.has(serialized)) {
+        this.#coalescedInvalidationCount += 1;
+      }
+      this.#pendingKeys.set(serialized, key);
     }
     if (this.#pendingKeys.size === 0) return;
     if (
@@ -399,10 +428,22 @@ export class AppLiveQueryBridge {
     );
   }
 
+  stats(): AppLiveQueryBridgeStats {
+    return {
+      coalescedInvalidationCount: this.#coalescedInvalidationCount,
+      directlyAppliedEventCount: this.#directlyAppliedEventCount,
+      invalidatedQueryCount: this.#invalidatedQueryCount,
+      invalidationFlushCount: this.#invalidationFlushCount,
+      receivedEventCount: this.#receivedEventCount,
+    };
+  }
+
   async #flush(): Promise<void> {
     if (this.#pendingKeys.size === 0) return;
     const keys = [...this.#pendingKeys.values()];
     this.#pendingKeys.clear();
+    this.#invalidationFlushCount += 1;
+    this.#invalidatedQueryCount += keys.length;
     await Promise.all(
       keys.map((queryKey) => this.#queryClient.invalidateQueries({ queryKey })),
     );

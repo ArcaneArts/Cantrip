@@ -343,14 +343,16 @@ slash-command imports continue to use Codex App Server
 duplicate those native semantics. Plugin packaging remains disabled while the
 installed App Server marks plugin mutation APIs as under development.
 
-Project runs poll while active and expose durable run and recovery states,
-node duration and usage, worker/worktree/model/Codex attribution, pending
-approval gates, and checkpointed execution lanes. Operators can pause, resume,
-cancel, approve, deny, retry eligible failed nodes, open a lane in the Git
-view, or select an explicit lane outcome. Controls use a fresh idempotency key
-and replace the local run snapshot only after the server returns the validated
-durable state. An offline or recovering lane therefore stays visible instead
-of being optimistically treated as complete.
+Project runs receive committed state changes through the application live
+channel and retain 1.5–2 second active-run snapshots only as a disconnected
+fallback. They expose durable run and recovery states, node duration and usage,
+worker/worktree/model/Codex attribution, pending approval gates, and
+checkpointed execution lanes. Operators can pause, resume, cancel, approve,
+deny, retry eligible failed nodes, open a lane in the Git view, or select an
+explicit lane outcome. Controls use a fresh idempotency key and replace the
+local run snapshot only after the server returns the validated durable state.
+An offline or recovering lane therefore stays visible instead of being
+optimistically treated as complete.
 
 A completed run can be saved back to its owning workflow as an immutable
 `saved-run` revision. The snapshot reuses the exact executed graph and declared

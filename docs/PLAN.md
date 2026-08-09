@@ -737,7 +737,7 @@ The first engineering pass should follow one end-to-end path rather than buildin
 
 1. Complete the current foundation: local process supervision, server bootstrap, anonymous identity, database-backed workers/projects/chats/messages, and the shadcn status UI.
 2. Add worker-side GitHub authentication discovery, repository listing, and managed cloning through the server. (Implemented for GitHub CLI or `GH_TOKEN`.)
-3. Add the project/chat sidebar and persisted chat composer, initially polling for completed agent messages. (Implemented.)
+3. Add the project/chat sidebar and persisted chat composer, initially polling for completed agent messages. (Implemented; healthy app state now uses the singleton resumable application-control WebSocket, with HTTP snapshots retained for recovery. See the [live transport audit](LIVE_TRANSPORT_AUDIT.md).)
 4. Supervise Codex app-server over stdio and run local Ollama/Gemma turns. Persist Markdown responses, command lifecycle activity, and turn-level workspace file changes. (Initial implementation complete.)
 5. Persist inputs, turns, normalized events, queue state, and cursors; complete one reconnect-safe real turn.
 6. Add approvals and interrupt, then steering and the durable queue, then compaction.

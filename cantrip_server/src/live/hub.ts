@@ -57,10 +57,23 @@ export interface AppLiveHubOptions {
 }
 
 export interface AppLiveHubStats {
+  acceptedConnectionCount: number;
   connectionCount: number;
   currentCursor: number;
+  deliveredEventCount: number;
+  disconnectedConnectionCount: number;
+  heartbeatPongCount: number;
+  heartbeatTimeoutCount: number;
+  protocolViolationCount: number;
+  publicationCount: number;
+  queuePressureCount: number;
   replayEventCount: number;
+  replaySessionCount: number;
+  replayedEventCount: number;
+  resyncRequiredCount: number;
+  resumeAttemptCount: number;
   serverEpoch: string;
+  slowConsumerClosureCount: number;
 }
 
 interface ResumeState {
@@ -134,8 +147,21 @@ export class AppLiveHub {
   readonly #now: () => number;
   readonly #replayEvents: AppLiveEvent[] = [];
   readonly #heartbeatTimer: ReturnType<typeof setInterval>;
+  #acceptedConnectionCount = 0;
   #closed = false;
   #currentCursor = 0;
+  #deliveredEventCount = 0;
+  #disconnectedConnectionCount = 0;
+  #heartbeatPongCount = 0;
+  #heartbeatTimeoutCount = 0;
+  #protocolViolationCount = 0;
+  #publicationCount = 0;
+  #queuePressureCount = 0;
+  #replaySessionCount = 0;
+  #replayedEventCount = 0;
+  #resyncRequiredCount = 0;
+  #resumeAttemptCount = 0;
+  #slowConsumerClosureCount = 0;
 
   constructor(options: AppLiveHubOptions = {}) {
     this.#epoch = options.epoch ?? randomUUID();
@@ -189,6 +215,7 @@ export class AppLiveHub {
       socket,
     };
     this.#connections.add(connection);
+    this.#acceptedConnectionCount += 1;
 
     socket.on("message", (data, isBinary) => {
       connection.serial = connection.serial
@@ -223,6 +250,7 @@ export class AppLiveHub {
       throw new Error("Live publication did not produce an event.");
     }
     this.#currentCursor = cursor;
+    this.#publicationCount += 1;
     this.#replayEvents.push(parsed);
     if (this.#replayEvents.length > this.#maxReplayEvents) {
       this.#replayEvents.splice(
@@ -238,7 +266,7 @@ export class AppLiveHub {
         connection.scopes.has(scopeKey) &&
         !connection.resume
       ) {
-        this.#send(connection, parsed);
+        if (this.#send(connection, parsed)) this.#deliveredEventCount += 1;
       }
     }
     return parsed;
@@ -246,10 +274,23 @@ export class AppLiveHub {
 
   stats(): AppLiveHubStats {
     return {
+      acceptedConnectionCount: this.#acceptedConnectionCount,
       connectionCount: this.#connections.size,
       currentCursor: this.#currentCursor,
+      deliveredEventCount: this.#deliveredEventCount,
+      disconnectedConnectionCount: this.#disconnectedConnectionCount,
+      heartbeatPongCount: this.#heartbeatPongCount,
+      heartbeatTimeoutCount: this.#heartbeatTimeoutCount,
+      protocolViolationCount: this.#protocolViolationCount,
+      publicationCount: this.#publicationCount,
+      queuePressureCount: this.#queuePressureCount,
       replayEventCount: this.#replayEvents.length,
+      replaySessionCount: this.#replaySessionCount,
+      replayedEventCount: this.#replayedEventCount,
+      resyncRequiredCount: this.#resyncRequiredCount,
+      resumeAttemptCount: this.#resumeAttemptCount,
       serverEpoch: this.#epoch,
+      slowConsumerClosureCount: this.#slowConsumerClosureCount,
     };
   }
 
@@ -261,6 +302,7 @@ export class AppLiveHub {
       connection.closed = true;
       connection.socket.close(1001, "Live service is shutting down");
       this.#connections.delete(connection);
+      this.#disconnectedConnectionCount += 1;
     }
   }
 
@@ -355,6 +397,7 @@ export class AppLiveHub {
       return;
     }
     if (message.type === "ping") {
+      this.#heartbeatPongCount += 1;
       this.#send(connection, {
         type: "pong",
         nonce: message.nonce,
@@ -400,6 +443,7 @@ export class AppLiveHub {
     let resumeMode: Extract<AppLiveServerMessage, { type: "ready" }>["resume"] =
       "not-requested";
     if (message.resume) {
+      this.#resumeAttemptCount += 1;
       const reason = this.#resumeFailureReason(
         message.resume.serverEpoch,
         message.resume.cursor,
@@ -496,14 +540,14 @@ export class AppLiveHub {
     );
     if (reason) {
       connection.resume = { cursor: message.cursor, reason };
-      const response: AppLiveServerMessage = {
+      const response = {
         type: "resync-required",
         cursor: this.#currentCursor,
         reason,
         scopes: [...connection.scopes.values()],
-      };
+      } satisfies Extract<AppLiveServerMessage, { type: "resync-required" }>;
       this.#rememberRequest(connection, message.requestId, response);
-      this.#send(connection, response);
+      this.#sendResyncRequired(connection, response);
       return;
     }
 
@@ -535,7 +579,7 @@ export class AppLiveHub {
     const resume = connection.resume;
     if (!resume) return;
     if (resume.reason) {
-      this.#send(connection, {
+      this.#sendResyncRequired(connection, {
         type: "resync-required",
         cursor: this.#currentCursor,
         reason: resume.reason,
@@ -548,6 +592,7 @@ export class AppLiveHub {
 
   #replay(connection: Connection, cursor: number): void {
     connection.resume = null;
+    this.#replaySessionCount += 1;
     let replayedCount = 0;
     for (const event of this.#replayEvents) {
       if (
@@ -556,6 +601,8 @@ export class AppLiveHub {
       ) {
         if (!this.#send(connection, event)) return;
         replayedCount += 1;
+        this.#replayedEventCount += 1;
+        this.#deliveredEventCount += 1;
       }
     }
     this.#send(connection, {
@@ -588,6 +635,7 @@ export class AppLiveHub {
     message: string,
   ): void {
     connection.protocolViolations += 1;
+    this.#protocolViolationCount += 1;
     this.#sendError(connection, requestId, code, message, false);
     if (connection.protocolViolations >= MAX_PROTOCOL_VIOLATIONS) {
       this.#closeConnection(connection, 1008, "Too many live protocol errors");
@@ -609,6 +657,14 @@ export class AppLiveHub {
       retryable,
     };
     this.#rememberAndSend(connection, response);
+  }
+
+  #sendResyncRequired(
+    connection: Connection,
+    message: Extract<AppLiveServerMessage, { type: "resync-required" }>,
+  ): boolean {
+    this.#resyncRequiredCount += 1;
+    return this.#send(connection, message);
   }
 
   #sendError(
@@ -664,6 +720,8 @@ export class AppLiveHub {
       connection.socket.bufferedAmount + Buffer.byteLength(encoded) >
       this.#maxBufferedBytes
     ) {
+      this.#queuePressureCount += 1;
+      this.#slowConsumerClosureCount += 1;
       this.#closeConnection(
         connection,
         1013,
@@ -684,6 +742,7 @@ export class AppLiveHub {
     const staleBefore = this.#now() - this.#heartbeatIntervalMs * 3;
     for (const connection of this.#connections) {
       if (connection.lastSeenAt < staleBefore) {
+        this.#heartbeatTimeoutCount += 1;
         this.#closeConnection(connection, 1001, "Live heartbeat timed out");
       }
     }
@@ -693,6 +752,7 @@ export class AppLiveHub {
     if (connection.closed) return;
     connection.closed = true;
     this.#connections.delete(connection);
+    this.#disconnectedConnectionCount += 1;
     connection.socket.close(code, reason);
   }
 
@@ -700,5 +760,6 @@ export class AppLiveHub {
     if (connection.closed) return;
     connection.closed = true;
     this.#connections.delete(connection);
+    this.#disconnectedConnectionCount += 1;
   }
 }

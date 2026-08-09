@@ -38,6 +38,14 @@ describe("application live query bridge", () => {
     expect(
       appLiveEventQueryKeys(
         event({
+          resource: "project-tab-layout",
+          scope: { kind: "project", projectId: "project-one" },
+        }),
+      ),
+    ).toEqual([["project-tab-layout", "project-one"]]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
           entityId: "worktree-one",
           resource: "worktree-status",
           scope: { kind: "project", projectId: "project-one" },
@@ -110,6 +118,12 @@ describe("application live query bridge", () => {
     expect(invalidate).toHaveBeenCalledTimes(2);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["workers"] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chat-sync"] });
+    expect(bridge.stats()).toMatchObject({
+      coalescedInvalidationCount: 2,
+      invalidatedQueryCount: 2,
+      invalidationFlushCount: 1,
+      receivedEventCount: 2,
+    });
   });
 
   it("upserts persisted message payloads without a follow-up GET", async () => {
