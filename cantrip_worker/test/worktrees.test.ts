@@ -138,6 +138,25 @@ describe("worker Git worktrees", () => {
     expect(
       created.worktree.path.startsWith(path.join(workerData, "worktrees")),
     ).toBe(true);
+    await expect(
+      manager.create(repository, "managed-one", "Feature lane", {
+        type: "newBranch",
+        branch: "agent/feature-lane",
+        startPoint: null,
+      }),
+    ).resolves.toMatchObject({
+      worktree: {
+        branch: "agent/feature-lane",
+        path: created.worktree.path,
+      },
+    });
+    await expect(
+      manager.create(repository, "managed-one", "Feature lane", {
+        type: "newBranch",
+        branch: "agent/different-lane",
+        startPoint: null,
+      }),
+    ).rejects.toThrow("different create request");
 
     const [existing, detached] = await Promise.all([
       manager.create(repository, "managed-two", "Existing lane", {

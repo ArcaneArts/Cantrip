@@ -92,6 +92,7 @@ import {
   lte,
   ne,
   notInArray,
+  or,
   sql,
 } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
@@ -1780,7 +1781,13 @@ export class ServerRepository {
           .from(schema.workflowWorktreeLeases)
           .where(
             and(
-              eq(schema.workflowWorktreeLeases.worktreeId, worktreeId),
+              or(
+                eq(schema.workflowWorktreeLeases.worktreeId, worktreeId),
+                eq(
+                  schema.workflowWorktreeLeases.requestedWorktreeId,
+                  worktreeId,
+                ),
+              ),
               ne(schema.workflowWorktreeLeases.state, "released"),
             ),
           ),

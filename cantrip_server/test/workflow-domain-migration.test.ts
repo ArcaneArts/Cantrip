@@ -191,6 +191,13 @@ describe("workflow domain migration", () => {
           state: "allocating",
         },
       });
+      expect(
+        await repository.getWorktreeRemovalBlockers(
+          "user-1",
+          "project-1",
+          "worktree-1",
+        ),
+      ).toMatchObject({ workflowLeaseIds: [reservation!.lease.id] });
       await expect(
         repository.workflowRuns.reserveWorktreeLease("user-1", {
           runId: "run-1",

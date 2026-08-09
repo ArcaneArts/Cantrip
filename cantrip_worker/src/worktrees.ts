@@ -336,9 +336,6 @@ export class WorktreeManager {
         "Managed worktree path escaped the worker data directory.",
       );
     }
-    if (await exists(target)) {
-      throw new Error("The managed worktree destination already exists.");
-    }
     return target;
   }
 
@@ -352,6 +349,7 @@ export class WorktreeManager {
       const inventory = await this.list(sourcePath);
       const target = await this.managedTarget(inventory, worktreeId, name);
       const args = ["worktree", "add"];
+      let detachedRevision: string | null = null;
       switch (mode.type) {
         case "newBranch":
           await gitOutput(inventory.sourcePath, [
@@ -385,7 +383,7 @@ export class WorktreeManager {
           args.push("--", target, mode.branch);
           break;
         case "detached":
-          await gitOutput(inventory.sourcePath, [
+          detachedRevision = await gitOutput(inventory.sourcePath, [
             "rev-parse",
             "--verify",
             "--end-of-options",
@@ -393,6 +391,31 @@ export class WorktreeManager {
           ]);
           args.push("--detach", "--", target, mode.revision);
           break;
+      }
+      const existing = inventory.worktrees.find(
+        ({ path: candidate }) => candidate === target,
+      );
+      if (existing) {
+        const matches =
+          !existing.isPrimary &&
+          existing.managed &&
+          !existing.missing &&
+          !existing.prunable &&
+          (mode.type === "detached"
+            ? existing.detached && existing.head === detachedRevision
+            : !existing.detached && existing.branch === mode.branch);
+        if (!matches) {
+          throw new Error(
+            "The managed worktree identity belongs to a different create request.",
+          );
+        }
+        return worktreeCreateResultSchema.parse({
+          worktree: existing,
+          inventory,
+        });
+      }
+      if (await exists(target)) {
+        throw new Error("The managed worktree destination already exists.");
       }
       await gitOutput(inventory.sourcePath, args);
 
