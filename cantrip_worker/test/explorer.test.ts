@@ -1,10 +1,21 @@
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { listExplorerDirectory, readExplorerFile } from "../src/explorer.js";
+import {
+  listExplorerDirectory,
+  readExplorerFile,
+  writeExplorerFile,
+} from "../src/explorer.js";
 
 const directories: string[] = [];
 
@@ -42,10 +53,26 @@ describe("project explorer", () => {
       viewable: false,
       markdown: false,
     });
-    await expect(readExplorerFile(root, "README.md")).resolves.toMatchObject({
+    const original = await readExplorerFile(root, "README.md");
+    expect(original).toMatchObject({
       content: "# Explorer\n",
       markdown: true,
     });
+    expect(original.version).toMatch(/^[a-f0-9]{64}$/u);
+    const saved = await writeExplorerFile(
+      root,
+      "README.md",
+      "# Updated\n",
+      original.version,
+    );
+    expect(saved.content).toBe("# Updated\n");
+    expect(saved.version).not.toBe(original.version);
+    await expect(readFile(path.join(root, "README.md"), "utf8")).resolves.toBe(
+      "# Updated\n",
+    );
+    await expect(
+      writeExplorerFile(root, "README.md", "# Stale\n", original.version),
+    ).rejects.toThrow("changed on disk");
     await expect(readExplorerFile(root, "image.png")).rejects.toThrow(
       "not available for preview",
     );
@@ -66,5 +93,11 @@ describe("project explorer", () => {
     await expect(readExplorerFile(root, "linked.txt")).rejects.toThrow(
       "does not follow symbolic links",
     );
+    await expect(
+      writeExplorerFile(root, "../outside.txt", "overwrite\n", "a".repeat(64)),
+    ).rejects.toThrow("traversal");
+    await expect(
+      writeExplorerFile(root, "linked.txt", "overwrite\n", "a".repeat(64)),
+    ).rejects.toThrow("does not follow symbolic links");
   });
 });

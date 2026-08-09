@@ -1,4 +1,6 @@
-import { lstat, readFile, readdir, realpath } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { constants } from "node:fs";
+import { lstat, open, readFile, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -81,6 +83,10 @@ function markdownFile(name: string): boolean {
 function viewableFile(name: string): boolean {
   const lower = name.toLowerCase();
   return TEXT_FILENAMES.has(lower) || TEXT_EXTENSIONS.has(path.extname(lower));
+}
+
+function fileVersion(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 function pathSegments(relativePath: string): string[] {
@@ -198,5 +204,60 @@ export async function readExplorerFile(
     content,
     size: metadata.size,
     markdown: markdownFile(targetPath),
+    version: fileVersion(bytes),
   });
+}
+
+export async function writeExplorerFile(
+  root: string,
+  relativePath: string,
+  content: string,
+  version: string,
+): Promise<ExplorerFile> {
+  const bytes = new TextEncoder().encode(content);
+  if (bytes.byteLength > FILE_SIZE_LIMIT) {
+    throw new Error("Text files are limited to 2 MB.");
+  }
+  const { targetPath } = await resolveEntry(root, relativePath);
+  const handle = await open(
+    targetPath,
+    constants.O_RDWR | constants.O_NOFOLLOW,
+  );
+  try {
+    const metadata = await handle.stat();
+    if (!metadata.isFile() || !viewableFile(path.basename(targetPath))) {
+      throw new Error("This file type is not available for editing.");
+    }
+    if (metadata.size > FILE_SIZE_LIMIT) {
+      throw new Error("Text files are limited to 2 MB.");
+    }
+    const currentBytes = Buffer.alloc(metadata.size);
+    let offset = 0;
+    while (offset < currentBytes.byteLength) {
+      const { bytesRead } = await handle.read(
+        currentBytes,
+        offset,
+        currentBytes.byteLength - offset,
+        offset,
+      );
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+    }
+    const verifiedMetadata = await handle.stat();
+    if (
+      offset !== currentBytes.byteLength ||
+      verifiedMetadata.size !== metadata.size ||
+      fileVersion(currentBytes) !== version
+    ) {
+      throw new Error(
+        "This file changed on disk. Reload it before saving your edits.",
+      );
+    }
+    await handle.truncate(0);
+    await handle.writeFile(bytes);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  return readExplorerFile(root, relativePath);
 }

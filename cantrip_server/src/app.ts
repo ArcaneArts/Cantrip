@@ -81,6 +81,7 @@ import {
   explorerCreateSchema,
   explorerDirectorySchema,
   explorerFileSchema,
+  explorerFileWriteSchema,
   explorerListSchema,
   explorerSummarySchema,
   explorerUpdateSchema,
@@ -6778,6 +6779,34 @@ export async function buildApp({
       return reply.code(status).send({ error: errorMessage(error) });
     }
   });
+
+  app.put<{ Params: { explorerId: string } }>(
+    "/api/explorers/:explorerId/file",
+    async (request, reply) => {
+      const input = explorerFileWriteSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getExplorerExecutionContext(
+        LOCAL_USER_ID,
+        request.params.explorerId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Explorer not found." });
+      }
+      try {
+        const file = await bridge.request(context.workerId, {
+          type: "explorer.file.write",
+          root: context.root,
+          ...input.data,
+        });
+        return reply.send(explorerFileSchema.parse(file));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
 
   app.get<{ Params: { terminalId: string } }>(
     "/api/terminals/:terminalId/connect",

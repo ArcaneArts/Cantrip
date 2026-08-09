@@ -17,7 +17,11 @@ import { CodeSupervisor } from "./code/supervisor.js";
 import { CodeTunnelProxy } from "./code/tunnel-proxy.js";
 import { readWorkerConfig } from "./config.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
-import { listExplorerDirectory, readExplorerFile } from "./explorer.js";
+import {
+  listExplorerDirectory,
+  readExplorerFile,
+  writeExplorerFile,
+} from "./explorer.js";
 import { GithubClient } from "./github.js";
 import {
   readGitFileDiff,
@@ -239,6 +243,13 @@ async function start(): Promise<void> {
         return listExplorerDirectory(command.root, command.path);
       case "explorer.file.read":
         return readExplorerFile(command.root, command.path);
+      case "explorer.file.write":
+        return writeExplorerFile(
+          command.root,
+          command.path,
+          command.content,
+          command.version,
+        );
       case "code.probe":
         return code.probe();
       case "code.open":

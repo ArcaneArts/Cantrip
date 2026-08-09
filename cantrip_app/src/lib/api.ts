@@ -48,6 +48,7 @@ import {
   codexSkillRootsUpdateSchema,
   explorerDirectorySchema,
   explorerFileSchema,
+  explorerFileWriteSchema,
   explorerListSchema,
   explorerSummarySchema,
   githubAuthStatusSchema,
@@ -125,6 +126,7 @@ import type {
   ProjectWorktreeCreate,
   RemoteDesktopTarget,
   UserSettingsUpdate,
+  ExplorerFileWrite,
   WorktreePolicy,
 } from "@cantrip/protocol";
 import { CantripApiError, post, request, withQuery } from "@/lib/api-client";
@@ -931,6 +933,18 @@ export async function getExplorerFile(explorerId: string, path: string) {
     await request(
       `/api/explorers/${encodeURIComponent(explorerId)}/file?path=${encodeURIComponent(path)}`,
     ),
+  );
+}
+
+export async function saveExplorerFile(
+  explorerId: string,
+  input: ExplorerFileWrite,
+) {
+  return explorerFileSchema.parse(
+    await request(`/api/explorers/${encodeURIComponent(explorerId)}/file`, {
+      method: "PUT",
+      body: JSON.stringify(explorerFileWriteSchema.parse(input)),
+    }),
   );
 }
 

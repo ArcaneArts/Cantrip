@@ -2119,6 +2119,13 @@ export const explorerFileSchema = z.object({
   content: z.string(),
   size: z.number().int().nonnegative(),
   markdown: z.boolean(),
+  version: z.string().regex(/^[a-f0-9]{64}$/u),
+});
+
+export const explorerFileWriteSchema = z.object({
+  path: z.string().min(1).max(8_192),
+  content: z.string().max(2 * 1024 * 1024),
+  version: explorerFileSchema.shape.version,
 });
 
 export const terminalClientMessageSchema = z.discriminatedUnion("type", [
@@ -3386,6 +3393,13 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     root: z.string().min(1),
     path: z.string().min(1),
   }),
+  z.object({
+    type: z.literal("explorer.file.write"),
+    root: z.string().min(1),
+    path: explorerFileWriteSchema.shape.path,
+    content: explorerFileWriteSchema.shape.content,
+    version: explorerFileWriteSchema.shape.version,
+  }),
   z.object({ type: z.literal("code.probe") }),
   z.object({
     type: z.literal("code.open"),
@@ -4177,6 +4191,7 @@ export type TabGroupMemberMove = z.infer<typeof tabGroupMemberMoveSchema>;
 export type ExplorerEntry = z.infer<typeof explorerEntrySchema>;
 export type ExplorerDirectory = z.infer<typeof explorerDirectorySchema>;
 export type ExplorerFile = z.infer<typeof explorerFileSchema>;
+export type ExplorerFileWrite = z.infer<typeof explorerFileWriteSchema>;
 export type TerminalClientMessage = z.infer<typeof terminalClientMessageSchema>;
 export type TerminalServerMessage = z.infer<typeof terminalServerMessageSchema>;
 export type TerminalOpenResult = z.infer<typeof terminalOpenResultSchema>;

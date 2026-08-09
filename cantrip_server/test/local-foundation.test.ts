@@ -123,6 +123,11 @@ const exhaustedProviderIds = new Set<string>();
 const steeredPrompts: string[] = [];
 const steeredAttachmentIds: string[][] = [];
 const pauseCommands: Array<{ chatId: string; paused: boolean }> = [];
+const explorerWrites: Array<{
+  content: string;
+  path: string;
+  version: string;
+}> = [];
 let codexGoal: ThreadGoal | null = null;
 let codexPlanMode: PlanMode = "default";
 let releasePlanQuestion: (() => void) | null = null;
@@ -468,6 +473,20 @@ const workerBridge = {
           content: "# Cantrip explorer\n",
           size: 18,
           markdown: true,
+          version: "a".repeat(64),
+        };
+      case "explorer.file.write":
+        explorerWrites.push({
+          content: command.content,
+          path: command.path,
+          version: command.version,
+        });
+        return {
+          path: command.path,
+          content: command.content,
+          size: Buffer.byteLength(command.content),
+          markdown: true,
+          version: "b".repeat(64),
         };
       case "skills.list":
         return [
@@ -2883,6 +2902,30 @@ describe("local server foundation", () => {
         ).json(),
       ).content,
     ).toContain("Cantrip explorer");
+    const explorerWriteVersion = "a".repeat(64);
+    expect(
+      explorerFileSchema.parse(
+        (
+          await firstApp.inject({
+            method: "PUT",
+            url: `/api/explorers/${explorer.id}/file`,
+            payload: {
+              path: "README.md",
+              content: "# Edited in Monaco\n",
+              version: explorerWriteVersion,
+            },
+          })
+        ).json(),
+      ),
+    ).toMatchObject({
+      content: "# Edited in Monaco\n",
+      version: "b".repeat(64),
+    });
+    expect(explorerWrites.at(-1)).toEqual({
+      path: "README.md",
+      content: "# Edited in Monaco\n",
+      version: explorerWriteVersion,
+    });
     expect(
       explorerSummarySchema.parse(
         (
@@ -4232,5 +4275,5 @@ describe("local server foundation", () => {
     ]);
 
     await secondApp.close();
-  });
+  }, 15_000);
 });

@@ -28,6 +28,7 @@ import {
   desktopStreamSettingsSchema,
   encodeCodeTunnelFrame,
   encodeRemoteSurfaceFrame,
+  explorerFileWriteSchema,
   remoteBrowserClipboardMessageSchema,
   remoteBrowserClientMessageSchema,
   remoteBrowserCursorMessageSchema,
@@ -71,6 +72,37 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("bounds version-checked explorer file writes", () => {
+    const version = "a".repeat(64);
+    expect(
+      explorerFileWriteSchema.parse({
+        path: "src/index.ts",
+        content: "export {};\n",
+        version,
+      }),
+    ).toEqual({
+      path: "src/index.ts",
+      content: "export {};\n",
+      version,
+    });
+    expect(
+      workerCommandSchema.parse({
+        type: "explorer.file.write",
+        root: "/workspace/Cantrip",
+        path: "src/index.ts",
+        content: "export {};\n",
+        version,
+      }),
+    ).toMatchObject({ type: "explorer.file.write", version });
+    expect(() =>
+      explorerFileWriteSchema.parse({
+        path: "src/index.ts",
+        content: "export {};\n",
+        version: "stale",
+      }),
+    ).toThrow();
+  });
+
   it("bounds and validates worker-owned worktree observation", () => {
     expect(
       workerCommandSchema.parse({
