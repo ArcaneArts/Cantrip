@@ -1101,6 +1101,120 @@ export const workflowRuns = pgTable(
   ],
 );
 
+export const workflowAutomationTriggers = pgTable(
+  "workflow_automation_triggers",
+  {
+    id: text("id").primaryKey(),
+    workflowId: text("workflow_id")
+      .notNull()
+      .references(() => workflowDefinitions.id, { onDelete: "cascade" }),
+    workflowRevisionId: text("workflow_revision_id")
+      .notNull()
+      .references(() => workflowRevisions.id, { onDelete: "restrict" }),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    type: text("type").notNull(),
+    enabled: boolean("enabled").notNull().default(false),
+    configuration: jsonb("configuration")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    structuredInput: jsonb("structured_input")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    budget: jsonb("budget")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    permissionManifest: jsonb("permission_manifest")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    selectedModelRouteId: text("selected_model_route_id").references(
+      () => modelRoutes.id,
+      { onDelete: "set null" },
+    ),
+    selectedPermissionProfileId: text("selected_permission_profile_id"),
+    nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+    lastDeliveredAt: timestamp("last_delivered_at", { withTimezone: true }),
+    lastRunId: text("last_run_id").references(() => workflowRuns.id, {
+      onDelete: "set null",
+    }),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("workflow_automation_triggers_owner_index").on(
+      table.ownerId,
+      table.projectId,
+      table.type,
+    ),
+    index("workflow_automation_triggers_due_index").on(
+      table.enabled,
+      table.type,
+      table.nextRunAt,
+    ),
+    check(
+      "workflow_automation_triggers_type_check",
+      sql`${table.type} IN ('schedule', 'api', 'webhook', 'git', 'saved-command')`,
+    ),
+  ],
+);
+
+export const workflowTriggerDeliveries = pgTable(
+  "workflow_trigger_deliveries",
+  {
+    id: text("id").primaryKey(),
+    triggerId: text("trigger_id")
+      .notNull()
+      .references(() => workflowAutomationTriggers.id, {
+        onDelete: "cascade",
+      }),
+    runId: text("run_id").references(() => workflowRuns.id, {
+      onDelete: "set null",
+    }),
+    status: text("status").notNull().default("pending"),
+    idempotencyKey: text("idempotency_key").notNull(),
+    triggerProvenance: jsonb("trigger_provenance")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("workflow_trigger_deliveries_idempotency_unique").on(
+      table.triggerId,
+      table.idempotencyKey,
+    ),
+    index("workflow_trigger_deliveries_trigger_created_index").on(
+      table.triggerId,
+      table.createdAt,
+    ),
+    check(
+      "workflow_trigger_deliveries_status_check",
+      sql`${table.status} IN ('pending', 'accepted', 'failed')`,
+    ),
+  ],
+);
+
 export const workflowRunNodes = pgTable(
   "workflow_run_nodes",
   {

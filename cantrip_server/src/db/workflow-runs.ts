@@ -708,6 +708,15 @@ export class WorkflowRunRepository {
     ) {
       throw new WorkflowRunConflictError("Blocked workflows cannot be run.");
     }
+    if (
+      input.trigger.type !== "manual" &&
+      (context.definition.trustState !== "trusted" ||
+        context.revision.trustState !== "trusted")
+    ) {
+      throw new WorkflowRunConflictError(
+        "Unattended workflow runs require a trusted workflow and revision.",
+      );
+    }
 
     const [revisionNodes, revisionEdges] = await Promise.all([
       this.database
@@ -734,6 +743,17 @@ export class WorkflowRunRepository {
         workflowPermissionRequirementsSchema.parse(node.permissionRequirements),
       ),
     ];
+    if (
+      input.trigger.type !== "manual" &&
+      (input.permissionManifest.approvalMode !== "preauthorized" ||
+        requirements.some(
+          ({ approvalMode }) => approvalMode !== "preauthorized",
+        ))
+    ) {
+      throw new WorkflowRunConflictError(
+        "Unattended workflow runs require a fully preauthorized permission manifest and stages.",
+      );
+    }
     if (
       requirements.some(
         (requirement) =>

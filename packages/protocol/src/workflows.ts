@@ -998,6 +998,99 @@ export const workflowTriggerProvenanceSchema = z.object({
   metadata: workflowJsonObjectSchema.default({}),
 });
 
+const workflowScheduleTriggerConfigurationSchema = z.object({
+  intervalSeconds: z
+    .number()
+    .int()
+    .min(60)
+    .max(30 * 24 * 60 * 60),
+  startAt: z.string().datetime().nullable().default(null),
+  catchUpPolicy: z.enum(["skip", "once"]).default("once"),
+  offlinePolicy: z.enum(["pause", "queue"]).default("pause"),
+});
+
+const workflowApiTriggerConfigurationSchema = z.object({
+  minimumIntervalSeconds: z.number().int().min(1).max(3_600).default(1),
+});
+
+const workflowWebhookTriggerConfigurationInputSchema = z.object({
+  minimumIntervalSeconds: z.number().int().min(1).max(3_600).default(1),
+  credentialHash: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+
+const workflowGitTriggerConfigurationSchema = z.object({
+  event: z.enum(["push", "pull-request"]),
+  branchPattern: z.string().trim().min(1).max(500).default("*"),
+  minimumIntervalSeconds: z.number().int().min(1).max(3_600).default(1),
+});
+
+const workflowSavedCommandTriggerConfigurationSchema = z.object({
+  command: workflowKeySchema,
+  minimumIntervalSeconds: z.number().int().min(1).max(3_600).default(1),
+});
+
+const workflowTriggerCreateBase = z.object({
+  workflowRevisionId: idSchema,
+  projectId: idSchema,
+  name: z.string().trim().min(1).max(200),
+  enabled: z.boolean().default(false),
+  structuredInput: workflowJsonObjectSchema.default({}),
+  budget: workflowBudgetSchema.default(defaultWorkflowBudget),
+  permissionManifest: workflowPermissionRequirementsSchema,
+  selectedModelRouteId: optionalIdSchema,
+  selectedPermissionProfileId: optionalIdSchema,
+});
+
+export const workflowAutomationTriggerCreateSchema = z.discriminatedUnion(
+  "type",
+  [
+    workflowTriggerCreateBase.extend({
+      type: z.literal("schedule"),
+      configuration: workflowScheduleTriggerConfigurationSchema,
+    }),
+    workflowTriggerCreateBase.extend({
+      type: z.literal("api"),
+      configuration: workflowApiTriggerConfigurationSchema,
+    }),
+    workflowTriggerCreateBase.extend({
+      type: z.literal("webhook"),
+      configuration: workflowWebhookTriggerConfigurationInputSchema,
+    }),
+    workflowTriggerCreateBase.extend({
+      type: z.literal("git"),
+      configuration: workflowGitTriggerConfigurationSchema,
+    }),
+    workflowTriggerCreateBase.extend({
+      type: z.literal("saved-command"),
+      configuration: workflowSavedCommandTriggerConfigurationSchema,
+    }),
+  ],
+);
+
+export const workflowAutomationTriggerUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200).optional(),
+    enabled: z.boolean().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "Provide at least one trigger update.",
+  });
+
+export const workflowAutomationTriggerQuerySchema = z.object({
+  projectId: idSchema.optional(),
+  type: workflowTriggerTypeSchema.exclude(["manual"]).optional(),
+  enabled: z.preprocess(
+    (value) => (value === "true" ? true : value === "false" ? false : value),
+    z.boolean().optional(),
+  ),
+  limit: z.coerce.number().int().min(1).max(500).default(100),
+});
+
+export const workflowTriggerDeliveryCreateSchema = z.object({
+  structuredInput: workflowJsonObjectSchema.default({}),
+  idempotencyKey: z.string().trim().min(1).max(200),
+});
+
 export const workflowRunCreateSchema = z.object({
   workflowRevisionId: idSchema,
   projectId: optionalIdSchema,
@@ -1467,6 +1560,81 @@ export const workflowRunDetailSchema = z.object({
   worktreeLeases: z.array(workflowWorktreeLeaseSchema).max(10_000).default([]),
   gates: z.array(workflowApprovalGateSchema).max(1_000),
 });
+
+const workflowAutomationTriggerBase = z.object({
+  id: idSchema,
+  workflowId: idSchema,
+  workflowRevisionId: idSchema,
+  ownerId: idSchema,
+  projectId: idSchema,
+  name: z.string().min(1).max(200),
+  enabled: z.boolean(),
+  structuredInput: workflowJsonObjectSchema,
+  budget: workflowBudgetSchema,
+  permissionManifest: workflowPermissionRequirementsSchema,
+  selectedModelRouteId: optionalIdSchema,
+  selectedPermissionProfileId: optionalIdSchema,
+  nextRunAt: nullableTimestamp,
+  lastDeliveredAt: nullableTimestamp,
+  lastRunId: idSchema.nullable(),
+  lastError: z.string().max(5_000).nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const workflowAutomationTriggerSchema = z.discriminatedUnion("type", [
+  workflowAutomationTriggerBase.extend({
+    type: z.literal("schedule"),
+    configuration: workflowScheduleTriggerConfigurationSchema,
+  }),
+  workflowAutomationTriggerBase.extend({
+    type: z.literal("api"),
+    configuration: workflowApiTriggerConfigurationSchema,
+  }),
+  workflowAutomationTriggerBase.extend({
+    type: z.literal("webhook"),
+    configuration: workflowApiTriggerConfigurationSchema.extend({
+      credentialConfigured: z.boolean(),
+    }),
+  }),
+  workflowAutomationTriggerBase.extend({
+    type: z.literal("git"),
+    configuration: workflowGitTriggerConfigurationSchema,
+  }),
+  workflowAutomationTriggerBase.extend({
+    type: z.literal("saved-command"),
+    configuration: workflowSavedCommandTriggerConfigurationSchema,
+  }),
+]);
+
+export const workflowAutomationTriggerListSchema = z.array(
+  workflowAutomationTriggerSchema,
+);
+
+export const workflowTriggerDeliveryStatusSchema = z.enum([
+  "pending",
+  "accepted",
+  "failed",
+]);
+
+export const workflowTriggerDeliverySchema = z.object({
+  id: idSchema,
+  triggerId: idSchema,
+  runId: idSchema.nullable(),
+  status: workflowTriggerDeliveryStatusSchema,
+  idempotencyKey: z.string().min(1).max(200),
+  trigger: workflowTriggerProvenanceSchema,
+  errorCode: z.string().max(200).nullable(),
+  errorMessage: z.string().max(5_000).nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const workflowTriggerDeliveryResultSchema = z.object({
+  delivery: workflowTriggerDeliverySchema,
+  run: workflowRunDetailSchema,
+  replayed: z.boolean(),
+});
 export const workflowRunListSchema = z.array(workflowRunSchema);
 export const workflowRunQuerySchema = z.object({
   workflowId: idSchema.optional(),
@@ -1686,6 +1854,27 @@ export type WorkflowRecoveryState = z.infer<typeof workflowRecoveryStateSchema>;
 export type WorkflowTriggerType = z.infer<typeof workflowTriggerTypeSchema>;
 export type WorkflowTriggerProvenance = z.infer<
   typeof workflowTriggerProvenanceSchema
+>;
+export type WorkflowAutomationTriggerCreate = z.infer<
+  typeof workflowAutomationTriggerCreateSchema
+>;
+export type WorkflowAutomationTriggerUpdate = z.infer<
+  typeof workflowAutomationTriggerUpdateSchema
+>;
+export type WorkflowAutomationTriggerQuery = z.infer<
+  typeof workflowAutomationTriggerQuerySchema
+>;
+export type WorkflowAutomationTrigger = z.infer<
+  typeof workflowAutomationTriggerSchema
+>;
+export type WorkflowTriggerDeliveryCreate = z.infer<
+  typeof workflowTriggerDeliveryCreateSchema
+>;
+export type WorkflowTriggerDelivery = z.infer<
+  typeof workflowTriggerDeliverySchema
+>;
+export type WorkflowTriggerDeliveryResult = z.infer<
+  typeof workflowTriggerDeliveryResultSchema
 >;
 export type WorkflowRunCreate = z.infer<typeof workflowRunCreateSchema>;
 export type WorkflowRun = z.infer<typeof workflowRunSchema>;
