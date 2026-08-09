@@ -12,6 +12,7 @@ import type {
   GithubRepository,
   ModelProfileSummary,
   ProjectSummary,
+  ProjectTabLayoutSummary,
   ProjectWorktreeCreate,
   ProjectWorktreeSummary,
   ProjectViewKind,
@@ -177,6 +178,7 @@ import {
   getMessages,
   getAgentInteractionRequests,
   getProjects,
+  getProjectTabLayout,
   getProjectWorktrees,
   getProjectWorktreeStatus,
   getProjectViews,
@@ -195,7 +197,7 @@ import {
   renameProjectView,
   renameTerminal,
   removeProject,
-  reorderProjectTabs,
+  reorderProjectTabGroups,
   reorderProjects,
   reorderQueuedPrompts,
   respondToAgentInteractionRequest,
@@ -227,7 +229,11 @@ import {
   type DesktopPopoutTarget,
 } from "@/lib/desktop-popout";
 import { browserUpdateForPageState } from "@/lib/browser-page-state";
-import { selectDefaultProjectTab } from "@/lib/default-project-tab";
+import {
+  buildProjectSurfaceIndex,
+  projectSurfaceTabId,
+  projectSurfaceTabKey,
+} from "@/lib/project-surface";
 import {
   clampSidebarWidth,
   DEFAULT_SIDEBAR_WIDTH,
@@ -237,6 +243,12 @@ import {
   sidebarWidthFromPointer,
 } from "@/lib/sidebar-resize";
 import { cn } from "@/lib/utils";
+import {
+  emptyWorkspaceSelection,
+  reconcileWorkspaceSelection,
+  selectedWorkspaceTabKey,
+  selectWorkspaceTab,
+} from "@/lib/workspace-selection";
 
 function modelDisplayName(model: ModelProfileSummary): string {
   const routeCount = model.routes.filter((route) => route.enabled).length;
@@ -2255,24 +2267,30 @@ export function App() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     popoutTarget?.projectId ?? null,
   );
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(
-    popoutTarget?.kind === "chat" ? popoutTarget.tabId : null,
+  const popoutTabKey = popoutTarget
+    ? projectSurfaceTabKey(popoutTarget.kind, popoutTarget.tabId)
+    : null;
+  const [workspaceSelection, setWorkspaceSelection] = useState(() =>
+    emptyWorkspaceSelection(popoutTarget?.projectId ?? null),
   );
-  const [selectedBrowserId, setSelectedBrowserId] = useState<string | null>(
-    popoutTarget?.kind === "browser" ? popoutTarget.tabId : null,
+  const [pendingSurfaceSelection, setPendingSurfaceSelection] = useState<{
+    projectId: string;
+    tabKey: string;
+  } | null>(
+    popoutTarget
+      ? { projectId: popoutTarget.projectId, tabKey: popoutTabKey! }
+      : null,
   );
-  const [selectedCodeTabId, setSelectedCodeTabId] = useState<string | null>(
-    popoutTarget?.kind === "code" ? popoutTarget.tabId : null,
+  const [chatConsoleChatId, setChatConsoleChatId] = useState<string | null>(
+    null,
   );
-  const [selectedExplorerId, setSelectedExplorerId] = useState<string | null>(
-    popoutTarget?.kind === "explorer" ? popoutTarget.tabId : null,
-  );
-  const [selectedTerminalId, setSelectedTerminalId] = useState<string | null>(
-    popoutTarget?.kind === "terminal" ? popoutTarget.tabId : null,
-  );
-  const [selectedProjectViewId, setSelectedProjectViewId] = useState<
-    string | null
-  >(popoutTarget?.kind === "view" ? popoutTarget.tabId : null);
+  const selectedTabKey = selectedWorkspaceTabKey(workspaceSelection);
+  const selectedChatId = projectSurfaceTabId(selectedTabKey, "chat");
+  const selectedTerminalId = projectSurfaceTabId(selectedTabKey, "terminal");
+  const selectedExplorerId = projectSurfaceTabId(selectedTabKey, "explorer");
+  const selectedBrowserId = projectSurfaceTabId(selectedTabKey, "browser");
+  const selectedCodeTabId = projectSurfaceTabId(selectedTabKey, "code");
+  const selectedProjectViewId = projectSurfaceTabId(selectedTabKey, "view");
   useAppLiveScope(
     selectedProjectId
       ? { kind: "project", projectId: selectedProjectId }
@@ -2327,13 +2345,13 @@ export function App() {
     kind: "browser" | "chat" | "code" | "explorer" | "terminal" | "view",
     tabId: string,
   ) => {
+    const tabKey = projectSurfaceTabKey(kind, tabId);
     setSelectedProjectId(projectId);
-    setSelectedChatId(kind === "chat" ? tabId : null);
-    setSelectedTerminalId(kind === "terminal" ? tabId : null);
-    setSelectedExplorerId(kind === "explorer" ? tabId : null);
-    setSelectedBrowserId(kind === "browser" ? tabId : null);
-    setSelectedCodeTabId(kind === "code" ? tabId : null);
-    setSelectedProjectViewId(kind === "view" ? tabId : null);
+    setPendingSurfaceSelection({ projectId, tabKey });
+    setChatConsoleChatId(null);
+    void queryClient.invalidateQueries({
+      queryKey: ["project-tab-layout", projectId],
+    });
     setShowImporter(false);
     setShowSettings(false);
     setShowProjectSettings(false);
@@ -2346,12 +2364,7 @@ export function App() {
     workflowId: string | null = null,
   ) => {
     setSelectedProjectId(projectId);
-    setSelectedChatId(null);
-    setSelectedTerminalId(null);
-    setSelectedExplorerId(null);
-    setSelectedBrowserId(null);
-    setSelectedCodeTabId(null);
-    setSelectedProjectViewId(null);
+    setChatConsoleChatId(null);
     setShowImporter(false);
     setShowSettings(false);
     setShowProjectSettings(true);
@@ -2385,6 +2398,12 @@ export function App() {
           query.state.data?.some((project) => project.setupStatus === "cloning")
             ? 3_000
             : 15_000,
+  });
+  const tabLayout = useQuery({
+    enabled: Boolean(selectedProjectId),
+    queryFn: () => getProjectTabLayout(selectedProjectId!),
+    queryKey: ["project-tab-layout", selectedProjectId],
+    refetchInterval: 1_000,
   });
   const worktrees = useQuery({
     enabled: Boolean(selectedProjectId),
@@ -2518,7 +2537,7 @@ export function App() {
           terminal,
         ],
       );
-      openCreatedTab(terminal.projectId, "terminal", terminal.id);
+      setChatConsoleChatId(terminal.linkedChatId);
     },
   });
   const newExplorer = useMutation({
@@ -2800,20 +2819,18 @@ export function App() {
       await queryClient.invalidateQueries({
         queryKey: ["chats", forked.projectId],
       });
-      setSelectedProjectId(forked.projectId);
-      setSelectedTerminalId(null);
-      setSelectedExplorerId(null);
-      setSelectedBrowserId(null);
-      setSelectedCodeTabId(null);
-      setSelectedChatId(forked.id);
+      openCreatedTab(forked.projectId, "chat", forked.id);
     },
   });
   const deleteChatMutation = useMutation({
     mutationFn: deleteChat,
     onSuccess: async (_value, deletedId) => {
-      if (selectedChatId === deletedId) setSelectedChatId(null);
+      if (selectedChatId === deletedId) setChatConsoleChatId(null);
       await queryClient.invalidateQueries({
         queryKey: ["chats", selectedProjectId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["project-tab-layout", selectedProjectId],
       });
     },
   });
@@ -2837,9 +2854,11 @@ export function App() {
   const deleteTerminalMutation = useMutation({
     mutationFn: deleteTerminal,
     onSuccess: async (_value, deletedId) => {
-      if (selectedTerminalId === deletedId) setSelectedTerminalId(null);
       await queryClient.invalidateQueries({
         queryKey: ["terminals", selectedProjectId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["project-tab-layout", selectedProjectId],
       });
     },
   });
@@ -2863,9 +2882,11 @@ export function App() {
   const deleteExplorerMutation = useMutation({
     mutationFn: deleteExplorer,
     onSuccess: async (_value, deletedId) => {
-      if (selectedExplorerId === deletedId) setSelectedExplorerId(null);
       await queryClient.invalidateQueries({
         queryKey: ["explorers", selectedProjectId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["project-tab-layout", selectedProjectId],
       });
     },
   });
@@ -2889,9 +2910,11 @@ export function App() {
   const deleteBrowserMutation = useMutation({
     mutationFn: deleteBrowser,
     onSuccess: async (_value, deletedId) => {
-      if (selectedBrowserId === deletedId) setSelectedBrowserId(null);
       await queryClient.invalidateQueries({
         queryKey: ["browsers", selectedProjectId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["project-tab-layout", selectedProjectId],
       });
     },
   });
@@ -2910,9 +2933,11 @@ export function App() {
   const deleteCodeTabMutation = useMutation({
     mutationFn: deleteCodeTab,
     onSuccess: async (_value, deletedId) => {
-      if (selectedCodeTabId === deletedId) setSelectedCodeTabId(null);
       await queryClient.invalidateQueries({
         queryKey: ["code-tabs", selectedProjectId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["project-tab-layout", selectedProjectId],
       });
     },
   });
@@ -2929,9 +2954,11 @@ export function App() {
   const deleteProjectViewMutation = useMutation({
     mutationFn: deleteProjectView,
     onSuccess: async (_value, deletedId) => {
-      if (selectedProjectViewId === deletedId) setSelectedProjectViewId(null);
       await queryClient.invalidateQueries({
         queryKey: ["project-views", selectedProjectId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["project-tab-layout", selectedProjectId],
       });
     },
   });
@@ -2946,12 +2973,9 @@ export function App() {
     onSuccess: async (_value, { projectId }) => {
       if (selectedProjectId === projectId) {
         setSelectedProjectId(null);
-        setSelectedChatId(null);
-        setSelectedTerminalId(null);
-        setSelectedExplorerId(null);
-        setSelectedBrowserId(null);
-        setSelectedCodeTabId(null);
-        setSelectedProjectViewId(null);
+        setWorkspaceSelection(emptyWorkspaceSelection());
+        setPendingSurfaceSelection(null);
+        setChatConsoleChatId(null);
         setShowProjectSettings(false);
       }
       await Promise.all([
@@ -2977,172 +3001,110 @@ export function App() {
       queryClient.setQueryData(["projects"], context?.previous),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
   });
-  const reorderTabsMutation = useMutation({
-    mutationFn: ({ projectId, ids }: { projectId: string; ids: string[] }) =>
-      reorderProjectTabs(projectId, ids),
-    onMutate: async ({ projectId, ids }) => {
-      const chatKey = ["chats", projectId] as const;
-      const terminalKey = ["terminals", projectId] as const;
-      const explorerKey = ["explorers", projectId] as const;
-      const browserKey = ["browsers", projectId] as const;
-      const codeKey = ["code-tabs", projectId] as const;
-      const viewKey = ["project-views", projectId] as const;
-      await Promise.all([
-        queryClient.cancelQueries({ queryKey: chatKey }),
-        queryClient.cancelQueries({ queryKey: terminalKey }),
-        queryClient.cancelQueries({ queryKey: explorerKey }),
-        queryClient.cancelQueries({ queryKey: browserKey }),
-        queryClient.cancelQueries({ queryKey: codeKey }),
-        queryClient.cancelQueries({ queryKey: viewKey }),
+  const reorderGroupsMutation = useMutation({
+    mutationFn: ({
+      projectId,
+      groupIds,
+    }: {
+      projectId: string;
+      groupIds: string[];
+    }) => {
+      const current = queryClient.getQueryData<ProjectTabLayoutSummary>([
+        "project-tab-layout",
+        projectId,
       ]);
-      const previousChats = queryClient.getQueryData<ChatSummary[]>(chatKey);
-      const previousTerminals =
-        queryClient.getQueryData<TerminalSummary[]>(terminalKey);
-      const previousExplorers =
-        queryClient.getQueryData<ExplorerSummary[]>(explorerKey);
-      const previousBrowsers =
-        queryClient.getQueryData<BrowserSummary[]>(browserKey);
-      const previousCodeTabs =
-        queryClient.getQueryData<CodeTabSummary[]>(codeKey);
-      const previousViews =
-        queryClient.getQueryData<ProjectViewSummary[]>(viewKey);
-      const positions = new Map(ids.map((id, position) => [id, position]));
-      queryClient.setQueryData<ChatSummary[]>(chatKey, (current = []) =>
-        current
-          .map((chat) => ({
-            ...chat,
-            position: positions.get(`chat:${chat.id}`) ?? chat.position,
-          }))
-          .sort((a, b) => a.position - b.position),
-      );
-      queryClient.setQueryData<TerminalSummary[]>(terminalKey, (current = []) =>
-        current
-          .map((terminal) => ({
-            ...terminal,
-            position:
-              positions.get(`terminal:${terminal.id}`) ?? terminal.position,
-          }))
-          .sort((a, b) => a.position - b.position),
-      );
-      queryClient.setQueryData<ExplorerSummary[]>(explorerKey, (current = []) =>
-        current
-          .map((explorer) => ({
-            ...explorer,
-            position:
-              positions.get(`explorer:${explorer.id}`) ?? explorer.position,
-          }))
-          .sort((a, b) => a.position - b.position),
-      );
-      queryClient.setQueryData<BrowserSummary[]>(browserKey, (current = []) =>
-        current
-          .map((browser) => ({
-            ...browser,
-            position:
-              positions.get(`browser:${browser.id}`) ?? browser.position,
-          }))
-          .sort((a, b) => a.position - b.position),
-      );
-      queryClient.setQueryData<CodeTabSummary[]>(codeKey, (current = []) =>
-        current
-          .map((codeTab) => ({
-            ...codeTab,
-            position: positions.get(`code:${codeTab.id}`) ?? codeTab.position,
-          }))
-          .sort((a, b) => a.position - b.position),
-      );
-      queryClient.setQueryData<ProjectViewSummary[]>(viewKey, (current = []) =>
-        current
-          .map((view) => ({
-            ...view,
-            position: positions.get(`view:${view.id}`) ?? view.position,
-          }))
-          .sort((a, b) => a.position - b.position),
-      );
-      return {
-        browserKey,
-        chatKey,
-        codeKey,
-        explorerKey,
-        terminalKey,
-        viewKey,
-        previousChats,
-        previousBrowsers,
-        previousCodeTabs,
-        previousExplorers,
-        previousTerminals,
-        previousViews,
-      };
+      if (!current) throw new Error("The project tab layout is not loaded.");
+      return reorderProjectTabGroups(projectId, current.revision, groupIds);
     },
-    onError: (_error, _input, context) => {
-      queryClient.setQueryData(context?.chatKey ?? [], context?.previousChats);
-      queryClient.setQueryData(
-        context?.terminalKey ?? [],
-        context?.previousTerminals,
-      );
-      queryClient.setQueryData(
-        context?.explorerKey ?? [],
-        context?.previousExplorers,
-      );
-      queryClient.setQueryData(
-        context?.browserKey ?? [],
-        context?.previousBrowsers,
-      );
-      queryClient.setQueryData(
-        context?.codeKey ?? [],
-        context?.previousCodeTabs,
-      );
-      queryClient.setQueryData(context?.viewKey ?? [], context?.previousViews);
+    onMutate: async ({ projectId, groupIds }) => {
+      const queryKey = ["project-tab-layout", projectId] as const;
+      await queryClient.cancelQueries({ queryKey });
+      const previous =
+        queryClient.getQueryData<ProjectTabLayoutSummary>(queryKey);
+      if (previous) {
+        const groupById = new Map(
+          previous.groups.map((group) => [group.id, group]),
+        );
+        queryClient.setQueryData<ProjectTabLayoutSummary>(queryKey, {
+          ...previous,
+          groups: groupIds.flatMap((id, position) => {
+            const group = groupById.get(id);
+            return group ? [{ ...group, position }] : [];
+          }),
+        });
+      }
+      return { previous, queryKey };
     },
+    onError: (_error, _input, context) =>
+      queryClient.setQueryData(context?.queryKey ?? [], context?.previous),
+    onSuccess: (layout) =>
+      queryClient.setQueryData(
+        ["project-tab-layout", layout.projectId],
+        layout,
+      ),
     onSettled: (_data, _error, input) =>
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["chats", input.projectId] }),
-        queryClient.invalidateQueries({
-          queryKey: ["terminals", input.projectId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["explorers", input.projectId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["browsers", input.projectId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["project-views", input.projectId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["code-tabs", input.projectId],
-        }),
-      ]),
+      queryClient.invalidateQueries({
+        queryKey: ["project-tab-layout", input.projectId],
+      }),
   });
 
   const onlineWorker = workers.data?.find((worker) => worker.online) ?? null;
   const selectedProject = projects.data?.find(
     (project) => project.id === selectedProjectId,
   );
-  const selectedProjectView = projectViews.data?.find(
-    (view) => view.id === selectedProjectViewId,
+  const projectSurfaceIndex = useMemo(
+    () =>
+      buildProjectSurfaceIndex(tabLayout.data, {
+        browsers: browsers.data ?? [],
+        chats: chats.data ?? [],
+        codeTabs: codeTabs.data ?? [],
+        explorers: explorers.data ?? [],
+        projectViews: projectViews.data ?? [],
+        terminals: terminals.data ?? [],
+      }),
+    [
+      browsers.data,
+      chats.data,
+      codeTabs.data,
+      explorers.data,
+      projectViews.data,
+      tabLayout.data,
+      terminals.data,
+    ],
   );
+  const selectedSurface = selectedTabKey
+    ? projectSurfaceIndex.byTabKey.get(selectedTabKey)
+    : undefined;
+  const selectedProjectView =
+    selectedSurface?.kind === "history" ||
+    selectedSurface?.kind === "issues" ||
+    selectedSurface?.kind === "remote-desktop"
+      ? selectedSurface.entity
+      : undefined;
   const gitHistoryProject =
     selectedProjectView?.kind === "history" ||
     selectedProjectView?.kind === "issues"
       ? selectedProject
       : undefined;
-  const selectedChat = chats.data?.find((chat) => chat.id === selectedChatId);
-  const selectedTerminal = terminals.data?.find(
-    (terminal) => terminal.id === selectedTerminalId,
-  );
-  const linkedConsoleChat = selectedTerminal?.linkedChatId
-    ? chats.data?.find((chat) => chat.id === selectedTerminal.linkedChatId)
-    : undefined;
-  const activeChat = selectedChat ?? linkedConsoleChat;
-  const selectedExplorer = explorers.data?.find(
-    (explorer) => explorer.id === selectedExplorerId,
-  );
-  const selectedBrowser = browsers.data?.find(
-    (browser) => browser.id === selectedBrowserId,
-  );
-  const selectedCodeTab = codeTabs.data?.find(
-    (codeTab) => codeTab.id === selectedCodeTabId,
-  );
+  const selectedChat =
+    selectedSurface?.kind === "chat" ? selectedSurface.entity : undefined;
+  const selectedStandaloneTerminal =
+    selectedSurface?.kind === "terminal" ? selectedSurface.entity : undefined;
+  const linkedConsoleTerminal =
+    selectedChat && chatConsoleChatId === selectedChat.id
+      ? terminals.data?.find(
+          (terminal) => terminal.linkedChatId === selectedChat.id,
+        )
+      : undefined;
+  const selectedTerminal = selectedStandaloneTerminal ?? linkedConsoleTerminal;
+  const linkedConsoleChat = linkedConsoleTerminal ? selectedChat : undefined;
+  const activeChat = selectedChat;
+  const selectedExplorer =
+    selectedSurface?.kind === "explorer" ? selectedSurface.entity : undefined;
+  const selectedBrowser =
+    selectedSurface?.kind === "browser" ? selectedSurface.entity : undefined;
+  const selectedCodeTab =
+    selectedSurface?.kind === "code" ? selectedSurface.entity : undefined;
   const activeWorktreeTarget: WorktreeBindingTarget | null = activeChat
     ? {
         kind: "chat",
@@ -3275,18 +3237,6 @@ export function App() {
         title: selectedExplorer.title,
       };
     }
-    if (selectedTerminal) {
-      return {
-        target: {
-          kind: "terminal",
-          projectId: selectedTerminal.projectId,
-          tabId: selectedTerminal.id,
-        },
-        title: selectedTerminal.linkedChatId
-          ? `${linkedConsoleChat?.title ?? "Chat"} · Codex console`
-          : selectedTerminal.title,
-      };
-    }
     if (selectedChat) {
       return {
         target: {
@@ -3294,12 +3244,24 @@ export function App() {
           projectId: selectedChat.projectId,
           tabId: selectedChat.id,
         },
-        title: selectedChat.title,
+        title: linkedConsoleTerminal
+          ? `${selectedChat.title} · Codex console`
+          : selectedChat.title,
+      };
+    }
+    if (selectedTerminal) {
+      return {
+        target: {
+          kind: "terminal",
+          projectId: selectedTerminal.projectId,
+          tabId: selectedTerminal.id,
+        },
+        title: selectedTerminal.title,
       };
     }
     return null;
   }, [
-    linkedConsoleChat?.title,
+    linkedConsoleTerminal,
     selectedBrowser,
     selectedChat,
     selectedCodeTab,
@@ -3459,7 +3421,7 @@ export function App() {
       (terminal) => terminal.linkedChatId === chat.id,
     );
     if (existing) {
-      openCreatedTab(chat.projectId, "terminal", existing.id);
+      setChatConsoleChatId(chat.id);
     } else {
       openChatConsole.mutate(chat.id);
     }
@@ -3502,13 +3464,6 @@ export function App() {
   ]);
 
   useEffect(() => {
-    if (showImporter || showSettings || showProjectSettings) {
-      setSelectedProjectViewId(null);
-      setSelectedCodeTabId(null);
-    }
-  }, [showImporter, showProjectSettings, showSettings]);
-
-  useEffect(() => {
     if (!projects.data) return;
     if (projects.data.length === 0) {
       setShowImporter(true);
@@ -3523,58 +3478,58 @@ export function App() {
   }, [projects.data, selectedProjectId]);
 
   useEffect(() => {
-    if (showImporter || showSettings || showProjectSettings) return;
-    if (
-      !chats.data ||
-      !terminals.data ||
-      !explorers.data ||
-      !browsers.data ||
-      !codeTabs.data ||
-      !projectViews.data
-    )
+    if (!selectedProjectId) {
+      setWorkspaceSelection(emptyWorkspaceSelection());
       return;
-    if (chats.data.some((chat) => chat.id === selectedChatId)) return;
-    if (terminals.data.some((terminal) => terminal.id === selectedTerminalId))
-      return;
-    if (explorers.data.some((explorer) => explorer.id === selectedExplorerId))
-      return;
-    if (browsers.data.some((browser) => browser.id === selectedBrowserId))
-      return;
-    if (codeTabs.data.some((codeTab) => codeTab.id === selectedCodeTabId))
-      return;
-    if (projectViews.data.some((view) => view.id === selectedProjectViewId))
-      return;
-    const first = selectDefaultProjectTab({
-      browsers: browsers.data,
-      chats: chats.data,
-      codeTabs: codeTabs.data,
-      explorers: explorers.data,
-      projectViews: projectViews.data,
-      terminals: terminals.data,
+    }
+    const layout = tabLayout.data;
+    if (!layout || layout.projectId !== selectedProjectId) return;
+    const pendingTabKey =
+      pendingSurfaceSelection?.projectId === selectedProjectId &&
+      layout.groups.some(({ members }) =>
+        members.some(({ tabKey }) => tabKey === pendingSurfaceSelection.tabKey),
+      )
+        ? pendingSurfaceSelection.tabKey
+        : null;
+    setWorkspaceSelection((current) => {
+      const reconciled = reconcileWorkspaceSelection(
+        current,
+        layout,
+        pendingTabKey,
+      );
+      return pendingTabKey
+        ? selectWorkspaceTab(reconciled, layout, pendingTabKey)
+        : reconciled;
     });
-    setSelectedChatId(first?.kind === "chat" ? first.id : null);
-    setSelectedTerminalId(first?.kind === "terminal" ? first.id : null);
-    setSelectedExplorerId(first?.kind === "explorer" ? first.id : null);
-    setSelectedBrowserId(first?.kind === "browser" ? first.id : null);
-    setSelectedCodeTabId(first?.kind === "code" ? first.id : null);
-    setSelectedProjectViewId(first?.kind === "view" ? first.id : null);
-  }, [
-    browsers.data,
-    chats.data,
-    codeTabs.data,
-    explorers.data,
-    projectViews.data,
-    showImporter,
-    showProjectSettings,
-    showSettings,
-    selectedChatId,
-    selectedCodeTabId,
-    selectedBrowserId,
-    selectedExplorerId,
-    selectedProjectViewId,
-    selectedTerminalId,
-    terminals.data,
-  ]);
+    if (pendingTabKey) setPendingSurfaceSelection(null);
+  }, [pendingSurfaceSelection, selectedProjectId, tabLayout.data]);
+
+  const revealWorkspace = () => {
+    setMobileNavigationOpen(false);
+    setShowImporter(false);
+    setShowSettings(false);
+    setShowProjectSettings(false);
+  };
+  const selectProjectFromSidebar = (projectId: string) => {
+    setSelectedProjectId(projectId);
+    setChatConsoleChatId(null);
+    if (workspaceSelection.projectId !== projectId) {
+      setWorkspaceSelection(emptyWorkspaceSelection(projectId));
+    }
+    revealWorkspace();
+  };
+  const selectTabFromSidebar = (tabKey: string) => {
+    const layout = tabLayout.data;
+    if (layout) {
+      setWorkspaceSelection((current) =>
+        selectWorkspaceTab(current, layout, tabKey),
+      );
+    } else if (selectedProjectId) {
+      setPendingSurfaceSelection({ projectId: selectedProjectId, tabKey });
+    }
+    setChatConsoleChatId(null);
+    revealWorkspace();
+  };
 
   return (
     <main
@@ -3713,12 +3668,8 @@ export function App() {
                 worktrees={worktrees.data ?? []}
                 worktreeStatuses={worktreeStatuses}
                 selectedProjectId={selectedProjectId}
-                selectedBrowserId={selectedBrowserId}
-                selectedChatId={selectedChatId}
-                selectedCodeTabId={selectedCodeTabId}
-                selectedExplorerId={selectedExplorerId}
-                selectedProjectViewId={selectedProjectViewId}
-                selectedTerminalId={selectedTerminalId}
+                selectedTabKey={selectedTabKey}
+                tabLayout={tabLayout.data ?? null}
                 creatingChat={newChat.isPending}
                 creatingCode={newCodeTab.isPending}
                 creatingBrowser={newBrowser.isPending}
@@ -3797,87 +3748,11 @@ export function App() {
                 }
                 onOpenProjectSettings={openProjectSettings}
                 onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
-                onReorderTabs={(projectId, ids) =>
-                  reorderTabsMutation.mutate({ projectId, ids })
+                onReorderGroups={(projectId, groupIds) =>
+                  reorderGroupsMutation.mutate({ projectId, groupIds })
                 }
-                onSelectProject={(projectId) => {
-                  setSelectedProjectViewId(null);
-                  setSelectedProjectId(projectId);
-                  setSelectedChatId(null);
-                  setSelectedTerminalId(null);
-                  setSelectedExplorerId(null);
-                  setSelectedBrowserId(null);
-                  setSelectedCodeTabId(null);
-                  setShowImporter(false);
-                  setShowSettings(false);
-                  setShowProjectSettings(false);
-                }}
-                onSelectChat={(chatId) => {
-                  setSelectedProjectViewId(null);
-                  setSelectedTerminalId(null);
-                  setSelectedExplorerId(null);
-                  setSelectedBrowserId(null);
-                  setSelectedCodeTabId(null);
-                  setSelectedChatId(chatId);
-                  setShowImporter(false);
-                  setShowSettings(false);
-                  setShowProjectSettings(false);
-                }}
-                onSelectTerminal={(terminalId) => {
-                  setSelectedProjectViewId(null);
-                  setSelectedChatId(null);
-                  setSelectedExplorerId(null);
-                  setSelectedBrowserId(null);
-                  setSelectedCodeTabId(null);
-                  setSelectedTerminalId(terminalId);
-                  setShowImporter(false);
-                  setShowSettings(false);
-                  setShowProjectSettings(false);
-                }}
-                onSelectExplorer={(explorerId) => {
-                  setSelectedProjectViewId(null);
-                  setSelectedChatId(null);
-                  setSelectedTerminalId(null);
-                  setSelectedBrowserId(null);
-                  setSelectedCodeTabId(null);
-                  setSelectedExplorerId(explorerId);
-                  setShowImporter(false);
-                  setShowSettings(false);
-                  setShowProjectSettings(false);
-                }}
-                onSelectBrowser={(browserId) => {
-                  setSelectedProjectViewId(null);
-                  setSelectedChatId(null);
-                  setSelectedTerminalId(null);
-                  setSelectedExplorerId(null);
-                  setSelectedCodeTabId(null);
-                  setSelectedBrowserId(browserId);
-                  setShowImporter(false);
-                  setShowSettings(false);
-                  setShowProjectSettings(false);
-                }}
-                onSelectProjectView={(viewId) => {
-                  setSelectedChatId(null);
-                  setSelectedTerminalId(null);
-                  setSelectedExplorerId(null);
-                  setSelectedBrowserId(null);
-                  setSelectedCodeTabId(null);
-                  setSelectedProjectViewId(viewId);
-                  setShowImporter(false);
-                  setShowSettings(false);
-                  setShowProjectSettings(false);
-                }}
-                onSelectCode={(codeTabId) => {
-                  setSelectedProjectViewId(null);
-                  setSelectedChatId(null);
-                  setSelectedTerminalId(null);
-                  setSelectedExplorerId(null);
-                  setSelectedBrowserId(null);
-                  setSelectedCodeTabId(codeTabId);
-                  setShowImporter(false);
-                  setShowSettings(false);
-                  setShowProjectSettings(false);
-                }}
+                onSelectProject={selectProjectFromSidebar}
+                onSelectTab={selectTabFromSidebar}
               />
             </nav>
 
@@ -4226,11 +4101,7 @@ export function App() {
                     disabled={!linkedConsoleChat && openChatConsole.isPending}
                     onClick={() =>
                       linkedConsoleChat
-                        ? openCreatedTab(
-                            linkedConsoleChat.projectId,
-                            "chat",
-                            linkedConsoleChat.id,
-                          )
+                        ? setChatConsoleChatId(null)
                         : showChatConsole(activeChat)
                     }
                   >
@@ -4381,11 +4252,7 @@ export function App() {
                     disabled={!linkedConsoleChat && openChatConsole.isPending}
                     onClick={() =>
                       linkedConsoleChat
-                        ? openCreatedTab(
-                            linkedConsoleChat.projectId,
-                            "chat",
-                            linkedConsoleChat.id,
-                          )
+                        ? setChatConsoleChatId(null)
                         : showChatConsole(activeChat)
                     }
                     title={
@@ -4449,11 +4316,7 @@ export function App() {
               disabled={!linkedConsoleChat && openChatConsole.isPending}
               onClick={() =>
                 linkedConsoleChat
-                  ? openCreatedTab(
-                      linkedConsoleChat.projectId,
-                      "chat",
-                      linkedConsoleChat.id,
-                    )
+                  ? setChatConsoleChatId(null)
                   : showChatConsole(activeChat)
               }
               title={linkedConsoleChat ? "Show chat" : "Show Codex console"}
@@ -4699,13 +4562,7 @@ export function App() {
             {linkedConsoleChat ? (
               <TerminalView
                 terminal={selectedTerminal}
-                onExit={() => {
-                  openCreatedTab(
-                    linkedConsoleChat.projectId,
-                    "chat",
-                    linkedConsoleChat.id,
-                  );
-                }}
+                onExit={() => setChatConsoleChatId(null)}
               />
             ) : (
               <TerminalView terminal={selectedTerminal} />
@@ -4725,15 +4582,9 @@ export function App() {
               newChat.mutate({ projectId: selectedChat.projectId })
             }
             onDelete={() => deleteChatMutation.mutate(selectedChat.id)}
-            onForked={(forked) => {
-              setSelectedProjectId(forked.projectId);
-              setSelectedTerminalId(null);
-              setSelectedExplorerId(null);
-              setSelectedBrowserId(null);
-              setSelectedCodeTabId(null);
-              setSelectedProjectViewId(null);
-              setSelectedChatId(forked.id);
-            }}
+            onForked={(forked) =>
+              openCreatedTab(forked.projectId, "chat", forked.id)
+            }
             onOpenWorkflow={(workflowId) =>
               openProjectSettings(selectedChat.projectId, workflowId)
             }
@@ -4939,12 +4790,8 @@ export function App() {
               worktrees={worktrees.data ?? []}
               worktreeStatuses={worktreeStatuses}
               selectedProjectId={selectedProjectId}
-              selectedBrowserId={selectedBrowserId}
-              selectedChatId={selectedChatId}
-              selectedCodeTabId={selectedCodeTabId}
-              selectedExplorerId={selectedExplorerId}
-              selectedProjectViewId={selectedProjectViewId}
-              selectedTerminalId={selectedTerminalId}
+              selectedTabKey={selectedTabKey}
+              tabLayout={tabLayout.data ?? null}
               creatingChat={newChat.isPending}
               creatingCode={newCodeTab.isPending}
               creatingBrowser={newBrowser.isPending}
@@ -5025,94 +4872,11 @@ export function App() {
               }}
               onOpenProjectSettings={openProjectSettings}
               onReorderProjects={(ids) => reorderProjectsMutation.mutate(ids)}
-              onReorderTabs={(projectId, ids) =>
-                reorderTabsMutation.mutate({ projectId, ids })
+              onReorderGroups={(projectId, groupIds) =>
+                reorderGroupsMutation.mutate({ projectId, groupIds })
               }
-              onSelectProject={(projectId) => {
-                setSelectedProjectViewId(null);
-                setSelectedProjectId(projectId);
-                setSelectedChatId(null);
-                setSelectedTerminalId(null);
-                setSelectedExplorerId(null);
-                setSelectedBrowserId(null);
-                setSelectedCodeTabId(null);
-                setMobileNavigationOpen(false);
-                setShowImporter(false);
-                setShowSettings(false);
-                setShowProjectSettings(false);
-              }}
-              onSelectChat={(chatId) => {
-                setSelectedProjectViewId(null);
-                setSelectedTerminalId(null);
-                setSelectedExplorerId(null);
-                setSelectedBrowserId(null);
-                setSelectedCodeTabId(null);
-                setSelectedChatId(chatId);
-                setMobileNavigationOpen(false);
-                setShowImporter(false);
-                setShowSettings(false);
-                setShowProjectSettings(false);
-              }}
-              onSelectTerminal={(terminalId) => {
-                setSelectedProjectViewId(null);
-                setSelectedChatId(null);
-                setSelectedExplorerId(null);
-                setSelectedBrowserId(null);
-                setSelectedCodeTabId(null);
-                setSelectedTerminalId(terminalId);
-                setMobileNavigationOpen(false);
-                setShowImporter(false);
-                setShowSettings(false);
-                setShowProjectSettings(false);
-              }}
-              onSelectExplorer={(explorerId) => {
-                setSelectedProjectViewId(null);
-                setSelectedChatId(null);
-                setSelectedTerminalId(null);
-                setSelectedBrowserId(null);
-                setSelectedCodeTabId(null);
-                setSelectedExplorerId(explorerId);
-                setMobileNavigationOpen(false);
-                setShowImporter(false);
-                setShowSettings(false);
-                setShowProjectSettings(false);
-              }}
-              onSelectBrowser={(browserId) => {
-                setSelectedProjectViewId(null);
-                setSelectedChatId(null);
-                setSelectedTerminalId(null);
-                setSelectedExplorerId(null);
-                setSelectedCodeTabId(null);
-                setSelectedBrowserId(browserId);
-                setMobileNavigationOpen(false);
-                setShowImporter(false);
-                setShowSettings(false);
-                setShowProjectSettings(false);
-              }}
-              onSelectProjectView={(viewId) => {
-                setSelectedChatId(null);
-                setSelectedTerminalId(null);
-                setSelectedExplorerId(null);
-                setSelectedBrowserId(null);
-                setSelectedCodeTabId(null);
-                setSelectedProjectViewId(viewId);
-                setMobileNavigationOpen(false);
-                setShowImporter(false);
-                setShowSettings(false);
-                setShowProjectSettings(false);
-              }}
-              onSelectCode={(codeTabId) => {
-                setSelectedProjectViewId(null);
-                setSelectedChatId(null);
-                setSelectedTerminalId(null);
-                setSelectedExplorerId(null);
-                setSelectedBrowserId(null);
-                setSelectedCodeTabId(codeTabId);
-                setMobileNavigationOpen(false);
-                setShowImporter(false);
-                setShowSettings(false);
-                setShowProjectSettings(false);
-              }}
+              onSelectProject={selectProjectFromSidebar}
+              onSelectTab={selectTabFromSidebar}
             />
           </div>
         </DialogContent>
