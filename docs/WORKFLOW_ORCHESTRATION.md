@@ -291,6 +291,24 @@ state in provenance; editing a previously trusted definition defaults the new
 revision to `modified` until the operator explicitly chooses another trust
 state.
 
+The authoring dialog can ask Codex to generate a definition from a task,
+selected chat, pasted runbook, or demonstrated process. The operator selects an
+existing project chat only to reuse its worker checkout and model route; the
+worker starts a separate workflow-owned Codex thread with read-only filesystem,
+no network, no skills, and a strict structured-output contract. For chat
+sources, the server supplies a bounded copy of server-owned text history. Codex
+does not receive authority to persist or launch the result.
+
+`POST /api/chats/:chatId/workflow-generation` parses the model envelope, parses
+each embedded JSON document, and validates the complete definition with the
+same canonical graph, schema, permission, scope, and provenance validators used
+by normal authoring. Invalid output fails closed. A successful response is an
+unpersisted `generated`/`untrusted` preview attributed to its Codex thread,
+turn, route, provider, and measured usage. The app only populates the existing
+authoring fields; an explicit Create or Append action is still required after
+review. This keeps Codex responsible for the agent turn while Cantrip owns the
+constrained workflow representation, validation, trust, and persistence.
+
 Project runs poll while active and expose durable run and recovery states,
 node duration and usage, worker/worktree/model/Codex attribution, pending
 approval gates, and checkpointed execution lanes. Operators can pause, resume,

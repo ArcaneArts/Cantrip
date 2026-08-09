@@ -781,6 +781,40 @@ export const workflowDefinitionCreateSchema =
     }
   });
 
+export const workflowDefinitionGenerationSourceSchema = z.enum([
+  "task",
+  "chat",
+  "runbook",
+  "demonstration",
+]);
+
+export const workflowDefinitionGenerationCreateSchema = z.object({
+  sourceType: workflowDefinitionGenerationSourceSchema,
+  prompt: z.string().trim().min(1).max(50_000),
+  scope: workflowScopeSchema.default("project"),
+});
+
+export const workflowDefinitionGenerationModelOutputSchema = z
+  .object({
+    slug: workflowDefinitionCreateObject.shape.slug,
+    name: workflowDefinitionCreateObject.shape.name,
+    description: z.string().max(5_000),
+    graphJson: z.string().min(1).max(1_000_000),
+    declaredInputsJson: z.string().min(1).max(1_000_000),
+    declaredOutputsJson: z.string().min(1).max(1_000_000),
+    defaultsJson: z.string().min(1).max(1_000_000),
+    permissionRequirementsJson: z.string().min(1).max(1_000_000),
+  })
+  .strict();
+
+export const workflowDefinitionGenerationResultSchema = z.object({
+  generationId: idSchema,
+  definition: workflowDefinitionCreateSchema,
+  codexThreadId: idSchema,
+  codexTurnId: idSchema,
+  measuredUsage: workflowMeasuredUsageSchema,
+});
+
 export const workflowDefinitionUpdateSchema = z
   .object({
     name: z.string().trim().min(1).max(200).optional(),
@@ -1542,6 +1576,18 @@ export type WorkflowRevisionCreate = z.infer<
 >;
 export type WorkflowDefinitionCreate = z.infer<
   typeof workflowDefinitionCreateSchema
+>;
+export type WorkflowDefinitionGenerationSource = z.infer<
+  typeof workflowDefinitionGenerationSourceSchema
+>;
+export type WorkflowDefinitionGenerationCreate = z.infer<
+  typeof workflowDefinitionGenerationCreateSchema
+>;
+export type WorkflowDefinitionGenerationModelOutput = z.infer<
+  typeof workflowDefinitionGenerationModelOutputSchema
+>;
+export type WorkflowDefinitionGenerationResult = z.infer<
+  typeof workflowDefinitionGenerationResultSchema
 >;
 export type WorkflowDefinitionUpdate = z.infer<
   typeof workflowDefinitionUpdateSchema

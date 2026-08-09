@@ -1,17 +1,22 @@
+import { type ChatSummary } from "@cantrip/protocol";
 import {
   workflowDefinitionCreateSchema,
   workflowPermissionRequirementsSchema,
   workflowRevisionCreateSchema,
   type WorkflowDefinitionCreate,
   type WorkflowDefinitionDetail,
+  type WorkflowDefinitionGenerationResult,
   type WorkflowGraph,
   type WorkflowJsonObject,
+  type WorkflowProvenance,
   type WorkflowRevisionCreate,
   type WorkflowScope,
+  type WorkflowSource,
   type WorkflowTrustState,
+  type WorkflowDefinitionGenerationSource,
 } from "@cantrip/protocol/workflows";
 import { useMutation } from "@tanstack/react-query";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, WandSparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -27,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import {
   appendWorkflowRevision,
   createWorkflow,
+  generateWorkflowDefinition,
   getWorkflow,
   updateWorkflow,
 } from "@/lib/api";
@@ -65,8 +71,10 @@ export interface WorkflowAuthoringValues {
   graphText: string;
   name: string;
   permissionsText: string;
+  provenance: WorkflowProvenance;
   scope: WorkflowScope;
   slug: string;
+  source: WorkflowSource;
   trustState: WorkflowTrustState;
 }
 
@@ -87,29 +95,9 @@ function parseObject(value: string, label: string): WorkflowJsonObject {
 
 export function parseWorkflowAuthoringRevision(
   values: WorkflowAuthoringValues,
-  workflow: WorkflowDefinitionDetail | null,
+  _workflow: WorkflowDefinitionDetail | null,
 ): WorkflowRevisionCreate {
   const graph = parseObject(values.graphText, "Graph");
-  const provenance = workflow
-    ? {
-        origin: "cantrip" as const,
-        sourceId: workflow.workflow.id,
-        sourceRevision: workflow.revision?.contentHash ?? null,
-        reference: workflow.workflow.provenance.reference,
-        importedAt: null,
-        metadata: {
-          editedFromSource: workflow.workflow.source,
-          editedFromTrust: workflow.workflow.trustState,
-        },
-      }
-    : {
-        origin: "cantrip" as const,
-        sourceId: null,
-        sourceRevision: null,
-        reference: null,
-        importedAt: null,
-        metadata: { authoredIn: "cantrip" },
-      };
   return workflowRevisionCreateSchema.parse({
     graph,
     declaredInputs: parseObject(values.declaredInputsText, "Declared inputs"),
@@ -122,8 +110,8 @@ export function parseWorkflowAuthoringRevision(
       values.permissionsText,
       "Permission requirements",
     ),
-    source: "manual",
-    provenance,
+    source: values.source,
+    provenance: values.provenance,
     trustState: values.trustState,
   });
 }
@@ -154,6 +142,26 @@ function initialValues(
   workflow: WorkflowDefinitionDetail | null,
 ): WorkflowAuthoringValues {
   const revision = workflow?.revision;
+  const provenance: WorkflowProvenance = workflow
+    ? {
+        origin: "cantrip",
+        sourceId: workflow.workflow.id,
+        sourceRevision: workflow.revision?.contentHash ?? null,
+        reference: workflow.workflow.provenance.reference,
+        importedAt: null,
+        metadata: {
+          editedFromSource: workflow.workflow.source,
+          editedFromTrust: workflow.workflow.trustState,
+        },
+      }
+    : {
+        origin: "cantrip",
+        sourceId: null,
+        sourceRevision: null,
+        reference: null,
+        importedAt: null,
+        metadata: { authoredIn: "cantrip" },
+      };
   return {
     scope: workflow?.workflow.scope ?? "project",
     slug: workflow?.workflow.slug ?? "new-workflow",
@@ -163,6 +171,8 @@ function initialValues(
       workflow?.workflow.trustState === "trusted"
         ? "modified"
         : (workflow?.workflow.trustState ?? "untrusted"),
+    source: "manual",
+    provenance,
     graphText: json(revision?.graph ?? starterWorkflowGraph),
     declaredInputsText: json(revision?.declaredInputs ?? {}),
     declaredOutputsText: json(revision?.declaredOutputs ?? {}),
@@ -170,6 +180,29 @@ function initialValues(
     permissionsText: json(
       revision?.permissionRequirements ?? defaultPermissions,
     ),
+  };
+}
+
+export function valuesFromGeneratedWorkflow(
+  current: WorkflowAuthoringValues,
+  result: WorkflowDefinitionGenerationResult,
+  editing: boolean,
+): WorkflowAuthoringValues {
+  const { definition } = result;
+  return {
+    ...current,
+    scope: editing ? current.scope : definition.scope,
+    slug: editing ? current.slug : definition.slug,
+    name: definition.name,
+    description: definition.description ?? "",
+    trustState: "untrusted",
+    source: "generated",
+    provenance: definition.provenance,
+    graphText: json(definition.revision.graph),
+    declaredInputsText: json(definition.revision.declaredInputs),
+    declaredOutputsText: json(definition.revision.declaredOutputs),
+    defaultsText: json(definition.revision.defaults),
+    permissionsText: json(definition.revision.permissionRequirements),
   };
 }
 
@@ -204,12 +237,14 @@ function JsonField({
 }
 
 export function WorkflowAuthorDialog({
+  chats,
   onOpenChange,
   onSaved,
   open,
   projectId,
   workflow,
 }: {
+  chats: ChatSummary[];
   onOpenChange(open: boolean): void;
   onSaved(workflow: WorkflowDefinitionDetail): void;
   open: boolean;
@@ -219,11 +254,38 @@ export function WorkflowAuthorDialog({
   const [values, setValues] = useState<WorkflowAuthoringValues>(() =>
     initialValues(workflow),
   );
+  const [generationChatId, setGenerationChatId] = useState(chats[0]?.id ?? "");
+  const [generationPrompt, setGenerationPrompt] = useState("");
+  const [generationSource, setGenerationSource] =
+    useState<WorkflowDefinitionGenerationSource>("task");
+  const [generationResult, setGenerationResult] =
+    useState<WorkflowDefinitionGenerationResult | null>(null);
   const editing = Boolean(workflow);
 
   useEffect(() => {
-    if (open) setValues(initialValues(workflow));
-  }, [open, workflow]);
+    if (!open) return;
+    setValues(initialValues(workflow));
+    setGenerationChatId((current) =>
+      chats.some(({ id }) => id === current) ? current : (chats[0]?.id ?? ""),
+    );
+    setGenerationPrompt("");
+    setGenerationResult(null);
+  }, [chats, open, workflow]);
+
+  const generate = useMutation({
+    mutationFn: () =>
+      generateWorkflowDefinition(generationChatId, {
+        sourceType: generationSource,
+        prompt: generationPrompt,
+        scope: values.scope,
+      }),
+    onSuccess: (result) => {
+      setGenerationResult(result);
+      setValues((current) =>
+        valuesFromGeneratedWorkflow(current, result, editing),
+      );
+    },
+  });
 
   const save = useMutation({
     mutationFn: async () => {
@@ -251,7 +313,7 @@ export function WorkflowAuthorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {editing ? "Edit workflow" : "Create workflow"}
@@ -324,6 +386,105 @@ export function WorkflowAuthorDialog({
             configuration fields, unsafe permission mismatches, unbounded repeat
             nodes, and invalid predicates. Workflow JSON is data, never
             executable JavaScript.
+          </div>
+
+          <div className="grid gap-3 rounded-lg border p-4">
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-medium">
+                <WandSparkles className="size-4" /> Generate with Codex
+              </h3>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Codex works in a new read-only thread and returns a validated,
+                untrusted preview. Review the populated JSON before saving.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-1.5 text-sm">
+                <span className="font-medium">Source</span>
+                <select
+                  className="h-10 rounded-md border bg-background px-3 text-sm"
+                  value={generationSource}
+                  onChange={(event) =>
+                    setGenerationSource(
+                      event.target.value as WorkflowDefinitionGenerationSource,
+                    )
+                  }
+                >
+                  <option value="task">Task</option>
+                  <option value="chat">Selected chat</option>
+                  <option value="runbook">Runbook</option>
+                  <option value="demonstration">Demonstrated process</option>
+                </select>
+              </label>
+              <label className="grid gap-1.5 text-sm">
+                <span className="font-medium">Codex runtime</span>
+                <select
+                  className="h-10 rounded-md border bg-background px-3 text-sm"
+                  value={generationChatId}
+                  onChange={(event) => setGenerationChatId(event.target.value)}
+                >
+                  {chats.map((chat) => (
+                    <option key={chat.id} value={chat.id}>
+                      {chat.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <label className="grid gap-1.5 text-sm">
+              <span className="font-medium">
+                {generationSource === "chat"
+                  ? "Generation instructions"
+                  : "Source material"}
+              </span>
+              <textarea
+                className="min-h-24 rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                placeholder={
+                  generationSource === "chat"
+                    ? "Describe which process in the selected chat should become a workflow."
+                    : "Describe or paste the process Codex should turn into a workflow."
+                }
+                value={generationPrompt}
+                onChange={(event) => setGenerationPrompt(event.target.value)}
+              />
+            </label>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={
+                  generate.isPending ||
+                  !generationChatId ||
+                  !generationPrompt.trim()
+                }
+                onClick={() => generate.mutate()}
+              >
+                {generate.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <WandSparkles className="size-4" />
+                )}
+                Generate preview
+              </Button>
+              {!chats.length ? (
+                <span className="text-xs text-amber-700 dark:text-amber-300">
+                  Create a project chat to select a Codex runtime.
+                </span>
+              ) : null}
+              {generationResult ? (
+                <span className="text-xs text-muted-foreground">
+                  Preview from thread{" "}
+                  {generationResult.codexThreadId.slice(0, 8)} ·{" "}
+                  {generationResult.measuredUsage.totalTokens.toLocaleString()}{" "}
+                  tokens
+                </span>
+              ) : null}
+            </div>
+            {generate.error ? (
+              <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {errorText(generate.error)}
+              </p>
+            ) : null}
           </div>
 
           <JsonField
