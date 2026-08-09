@@ -154,8 +154,6 @@ import {
   workerAttachmentReadResultSchema,
   workerAttachmentUploadResultSchema,
   workerListSchema,
-  worktreeCreateResultSchema,
-  worktreeInventorySchema,
   worktreeMutationResultSchema,
   worktreePruneResultSchema,
   worktreeRemoveResultSchema,
@@ -221,6 +219,7 @@ import {
 import { RemoteSurfaceRelay } from "./remote-surfaces/relay.js";
 import { createRemoteSurfaceWebRtcConfiguration } from "./remote-surfaces/webrtc.js";
 import { WorkflowExecutor } from "./workflows/executor.js";
+import { ProjectWorktreeCoordinator } from "./worktrees/coordinator.js";
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -379,6 +378,10 @@ export async function buildApp({
     });
   const surfaceRelay = new RemoteSurfaceRelay(bridge);
   const repository = database.repository;
+  const worktreeCoordinator = new ProjectWorktreeCoordinator(
+    repository,
+    bridge,
+  );
   const workflowExecutor = new WorkflowExecutor(repository, bridge, app.log);
   const [serverId, currentUser] = await Promise.all([
     repository.getOrCreateServerId(),
@@ -411,7 +414,6 @@ export async function buildApp({
   const projectSetupTasks = new Set<Promise<void>>();
   const routeCooldowns = new Map<string, number>();
   const surfaceAttachmentCounts = new Map<string, number>();
-  const worktreeMutationQueues = new Map<string, Promise<void>>();
   const agentInteractionExpiryTimer = setInterval(() => {
     void repository.expireAgentInteractionRequests().catch((error) => {
       app.log.error(
@@ -427,26 +429,6 @@ export async function buildApp({
     });
   }, WORKFLOW_GATE_EXPIRY_SWEEP_MS);
   workflowGateExpiryTimer.unref();
-
-  const serializeWorktreeMutation = async <T>(
-    projectId: string,
-    operation: () => Promise<T>,
-  ): Promise<T> => {
-    const previous = worktreeMutationQueues.get(projectId) ?? Promise.resolve();
-    const current = previous.catch(() => undefined).then(operation);
-    const settled = current.then(
-      () => undefined,
-      () => undefined,
-    );
-    worktreeMutationQueues.set(projectId, settled);
-    try {
-      return await current;
-    } finally {
-      if (worktreeMutationQueues.get(projectId) === settled) {
-        worktreeMutationQueues.delete(projectId);
-      }
-    }
-  };
 
   const createAgentWorktree = async (
     projectId: string,
@@ -479,33 +461,13 @@ export async function buildApp({
                   "intent must be newBranch, existingBranch, or detached.",
                 );
               })();
-    return serializeWorktreeMutation(projectId, async () => {
-      const source = await repository.getProjectSource(
-        LOCAL_USER_ID,
-        projectId,
-      );
-      if (!source) throw new Error("Project source not found.");
-      const worktreeId = randomUUID();
-      const result = worktreeCreateResultSchema.parse(
-        await bridge.request(source.workerId, {
-          type: "worktree.create",
-          sourcePath: source.cwd,
-          worktreeId,
-          name,
-          mode,
-        }),
-      );
-      const reconciled = await repository.reconcileProjectWorktrees(
-        LOCAL_USER_ID,
-        projectId,
-        result.inventory,
-        { id: worktreeId, name, origin: "agent", path: result.worktree.path },
-      );
-      const created = reconciled?.find(({ id }) => id === worktreeId);
-      if (!created)
-        throw new Error("Created worktree could not be reconciled.");
-      return created;
+    const created = await worktreeCoordinator.create(LOCAL_USER_ID, projectId, {
+      mode,
+      name,
+      origin: "agent",
     });
+    if (!created) throw new Error("Project source not found.");
+    return created;
   };
 
   const executeAgentWorktreeTool = async (
@@ -711,7 +673,7 @@ export async function buildApp({
         if (status.status.files.length > 0) {
           throw new Error("Dirty worktrees cannot be removed by an agent.");
         }
-        const removed = await serializeWorktreeMutation(
+        const removed = await worktreeCoordinator.serialize(
           context.projectId,
           async () => {
             const result = worktreeRemoveResultSchema.parse(
@@ -2619,26 +2581,9 @@ export async function buildApp({
     "/api/projects/:projectId/worktrees/reconcile",
     async (request, reply) => {
       try {
-        const worktrees = await serializeWorktreeMutation(
+        const worktrees = await worktreeCoordinator.reconcile(
+          LOCAL_USER_ID,
           request.params.projectId,
-          async () => {
-            const source = await repository.getProjectSource(
-              LOCAL_USER_ID,
-              request.params.projectId,
-            );
-            if (!source) return null;
-            const inventory = worktreeInventorySchema.parse(
-              await bridge.request(source.workerId, {
-                type: "worktree.reconcile",
-                sourcePath: source.cwd,
-              }),
-            );
-            return repository.reconcileProjectWorktrees(
-              LOCAL_USER_ID,
-              request.params.projectId,
-              inventory,
-            );
-          },
         );
         return worktrees
           ? reply.send(projectWorktreeListSchema.parse(worktrees))
@@ -2658,36 +2603,13 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       try {
-        const created = await serializeWorktreeMutation(
+        const created = await worktreeCoordinator.create(
+          LOCAL_USER_ID,
           request.params.projectId,
-          async () => {
-            const source = await repository.getProjectSource(
-              LOCAL_USER_ID,
-              request.params.projectId,
-            );
-            if (!source) return null;
-            const worktreeId = randomUUID();
-            const result = worktreeCreateResultSchema.parse(
-              await bridge.request(source.workerId, {
-                type: "worktree.create",
-                sourcePath: source.cwd,
-                worktreeId,
-                name: input.data.name,
-                mode: input.data.mode,
-              }),
-            );
-            const reconciled = await repository.reconcileProjectWorktrees(
-              LOCAL_USER_ID,
-              request.params.projectId,
-              result.inventory,
-              {
-                id: worktreeId,
-                name: input.data.name,
-                origin: "user",
-                path: result.worktree.path,
-              },
-            );
-            return reconciled?.find((item) => item.id === worktreeId) ?? null;
+          {
+            mode: input.data.mode,
+            name: input.data.name,
+            origin: "user",
           },
         );
         return created
@@ -2708,7 +2630,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       try {
-        const worktree = await serializeWorktreeMutation(
+        const worktree = await worktreeCoordinator.serialize(
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
@@ -2751,7 +2673,7 @@ export async function buildApp({
     "/api/projects/:projectId/worktrees/:worktreeId/unlock",
     async (request, reply) => {
       try {
-        const worktree = await serializeWorktreeMutation(
+        const worktree = await worktreeCoordinator.serialize(
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
@@ -2797,7 +2719,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       try {
-        const worktree = await serializeWorktreeMutation(
+        const worktree = await worktreeCoordinator.serialize(
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
@@ -2890,7 +2812,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       try {
-        const worktrees = await serializeWorktreeMutation(
+        const worktrees = await worktreeCoordinator.serialize(
           request.params.projectId,
           async () => {
             const source = await repository.getProjectSource(

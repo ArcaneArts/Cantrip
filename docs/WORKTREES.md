@@ -96,7 +96,9 @@ Cantrip enforces these boundaries:
 - clients and agents provide intent, branch, name, and base revision, never a
   target path;
 - the worker canonicalizes paths and verifies Git common-directory identity;
-- mutating worktree operations serialize per project source;
+- one server coordinator serializes mutating worktree operations per project
+  source; user and chat-agent operations use it now, and workflow allocation
+  must enter through the same boundary;
 - Primary cannot be individually removed or locked;
 - branches are retained when a worktree is removed;
 - locked, dirty, active, leased, or terminal-backed worktrees block unsafe
