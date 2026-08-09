@@ -123,6 +123,7 @@ import {
   type WorktreeStatusMap,
 } from "@/components/worktrees/worktree-control";
 import { hasScrolledContent } from "@/lib/scroll-divider";
+import { useAppLiveScope } from "@/lib/app-live-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -2257,6 +2258,14 @@ export function App() {
   const [selectedProjectViewId, setSelectedProjectViewId] = useState<
     string | null
   >(popoutTarget?.kind === "view" ? popoutTarget.tabId : null);
+  useAppLiveScope(
+    selectedProjectId
+      ? { kind: "project", projectId: selectedProjectId }
+      : null,
+  );
+  useAppLiveScope(
+    selectedChatId ? { kind: "chat", chatId: selectedChatId } : null,
+  );
   const [showImporter, setShowImporter] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showProjectSettings, setShowProjectSettings] = useState(false);
