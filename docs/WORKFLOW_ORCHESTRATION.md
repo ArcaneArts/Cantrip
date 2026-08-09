@@ -218,9 +218,10 @@ node-local concurrency and loop limits.
 
 Write-capable `agent`, `map`, `pipeline`, `reduce`, `verify`, and `repeatUntil`
 nodes use the same declared filesystem permission invariant as other workflow
-nodes. `condition` and `gate` nodes are always read-only. Until workflow
-worktree allocation lands, the runtime rejects every write-capable executable
-node, including `map`. This contract does not authorize writes to Primary.
+nodes. `condition` and `gate` nodes are always read-only. Every write-capable
+execution unit is dispatched into its attributed non-Primary workflow lane;
+the repository rejects a write attempt that does not hold the exact active
+run/node/item lease for that worker and worktree.
 
 The durable allocation boundary is represented by a workflow worktree lease.
 Each lease belongs to exactly one node or collection item, reserves a
@@ -228,7 +229,24 @@ worker-selected worktree identity before filesystem creation, and progresses
 through allocating, active, checkpointed, recovery, and terminal states. It
 records the source and worker attribution, branch and base revision, starting
 and ending revisions, dirty state, and a structured produced-change summary.
-An unreleased workflow lease is an explicit worktree-removal blocker. The
-presence of this persistence model alone does not enable write-capable
-execution; allocation, checkpoint, resolution, and recovery transitions must
-be wired before the runtime can remove the fail-closed guard.
+An unreleased workflow lease is an explicit worktree-removal blocker. Terminal
+unit completion records the worker-observed Git HEAD, dirty state, and file
+summary in the same database transaction as the durable node boundary.
+
+`POST /api/workflow-runs/:runId/worktree-leases/:leaseId/outcome` requires the
+checkpoint's expected ending revision and an idempotency key. Its explicit
+outcomes are:
+
+- `keep`: retain the checkpointed lease and its cleanup blocker for inspection;
+- `deliver`: accept the checkpoint and hand the managed checkout back for
+  ordinary Cantrip use without merging or copying anything into Primary;
+- `release`: relinquish workflow ownership while preserving the checkout, with
+  a neutral audit outcome; and
+- `discard`: force-remove only the isolated Cantrip-managed checkout, without
+  deleting its branch or resetting Primary.
+
+Before a terminal outcome, the owning worker must be online and its current
+Git branch, HEAD, upstream/ahead/behind values, and file summary must exactly
+match the checkpoint. Drift leaves the lease checkpointed so the user can keep
+and inspect it. Replaying an outcome with the same key and payload is safe;
+reusing the key with different input is a conflict.

@@ -1426,8 +1426,12 @@ export const workflowWorktreeLeases = pgTable(
       .default({}),
     errorCode: text("error_code"),
     errorMessage: text("error_message"),
+    outcome: text("outcome"),
+    resolvedByActorType: text("resolved_by_actor_type"),
+    resolvedByActorId: text("resolved_by_actor_id"),
     activatedAt: timestamp("activated_at", { withTimezone: true }),
     checkpointedAt: timestamp("checkpointed_at", { withTimezone: true }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     releasedAt: timestamp("released_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -1471,6 +1475,10 @@ export const workflowWorktreeLeases = pgTable(
     check(
       "workflow_worktree_leases_state_check",
       sql`${table.state} IN ('allocating', 'active', 'checkpointed', 'recovering', 'released', 'failed')`,
+    ),
+    check(
+      "workflow_worktree_leases_outcome_check",
+      sql`${table.outcome} IS NULL OR (${table.outcome} = 'kept' AND ${table.state} = 'checkpointed') OR (${table.outcome} IN ('delivered', 'discarded', 'released') AND ${table.state} = 'released')`,
     ),
   ],
 );
