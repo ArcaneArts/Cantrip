@@ -120,6 +120,7 @@ import {
   WorktreeCreateDialog,
   type WorktreeStatusMap,
 } from "@/components/worktrees/worktree-control";
+import { hasScrolledContent } from "@/lib/scroll-divider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -2254,6 +2255,7 @@ export function App() {
   const [showCustomizations, setShowCustomizations] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [contentScrolled, setContentScrolled] = useState(false);
   const [gitHistoryHeader, setGitHistoryHeader] =
     useState<GitHistoryHeaderState | null>(null);
   const [explorerHeader, setExplorerHeader] =
@@ -2271,6 +2273,8 @@ export function App() {
       ? "dark"
       : "light",
   );
+  const contentRootRef = useRef<HTMLElement>(null);
+  const scrolledContentRef = useRef(new Set<EventTarget>());
 
   const openCreatedTab = (
     projectId: string,
@@ -3252,6 +3256,15 @@ export function App() {
     showSettings,
   ]);
   const activePopout = desktopRuntime && !isPopout ? currentSurface : null;
+  const activeContentKey = showImporter
+    ? "importer"
+    : showSettings
+      ? "settings"
+      : showProjectSettings
+        ? `project-settings:${selectedProjectId ?? "none"}`
+        : currentSurface
+          ? `${currentSurface.target.kind}:${currentSurface.target.tabId}:${gitHistoryHeader?.section ?? "content"}`
+          : `project:${selectedProjectId ?? "none"}`;
   const popOutActiveView = () => {
     if (!activePopout || popoutPending) return;
     setPopoutPending(true);
@@ -3272,6 +3285,29 @@ export function App() {
       console.error("Could not update the pop-out window title", error);
     });
   }, [currentSurface, isPopout, selectedProject]);
+  useEffect(() => {
+    scrolledContentRef.current.clear();
+    setContentScrolled(false);
+  }, [activeContentKey]);
+  useEffect(() => {
+    const root = contentRootRef.current;
+    if (!root || isPopout) return;
+    const update = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Node) || !root.contains(target)) return;
+      const scrolled = scrolledContentRef.current;
+      for (const candidate of scrolled) {
+        if (!(candidate instanceof Node) || !root.contains(candidate)) {
+          scrolled.delete(candidate);
+        }
+      }
+      if (hasScrolledContent(target)) scrolled.add(target);
+      else scrolled.delete(target);
+      setContentScrolled(scrolled.size > 0);
+    };
+    root.addEventListener("scroll", update, true);
+    return () => root.removeEventListener("scroll", update, true);
+  }, [isPopout]);
   const showChatConsole = (chat: ChatSummary) => {
     const existing = terminals.data?.find(
       (terminal) => terminal.linkedChatId === chat.id,
@@ -3401,7 +3437,7 @@ export function App() {
           data-slot="app-sidebar"
           className="hidden w-72 shrink-0 flex-col border-r bg-background md:flex"
         >
-          <div className="flex h-16 items-center gap-3 border-b px-4">
+          <div className="flex h-16 items-center gap-3 px-4">
             <div className="grid size-9 place-items-center rounded-xl border bg-background shadow-sm">
               <WandSparkles className="size-4" />
             </div>
@@ -3621,7 +3657,7 @@ export function App() {
             />
           </nav>
 
-          <div className="border-t p-3">
+          <div className="p-3">
             <div className="flex items-center gap-1">
               <ServerSwitcher
                 currentUserName={
@@ -3647,9 +3683,12 @@ export function App() {
         </aside>
       ) : null}
 
-      <section className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <section
+        ref={contentRootRef}
+        className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+      >
         {!isPopout ? (
-          <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b px-4 sm:px-6">
+          <header className="relative z-30 flex h-16 shrink-0 items-center justify-between gap-4 px-4 sm:px-6">
             {sidebarCollapsed ? (
               <Button
                 size="icon"
@@ -4097,6 +4136,13 @@ export function App() {
                 </Badge>
               ) : null}
             </div>
+            <span
+              aria-hidden="true"
+              className={cn(
+                "pointer-events-none absolute inset-x-0 bottom-0 h-px bg-border transition-opacity duration-200",
+                contentScrolled ? "opacity-100" : "opacity-0",
+              )}
+            />
           </header>
         ) : null}
 

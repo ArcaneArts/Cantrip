@@ -620,7 +620,7 @@ export function GitHistoryView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-11 shrink-0 items-center gap-3 border-b px-3">
+      <div className="flex h-11 shrink-0 items-center gap-3 px-3">
         <div className="flex rounded-lg bg-muted/50 p-0.5">
           {(["history", "issues", "prs"] as const).map((candidate) => (
             <button
@@ -802,7 +802,7 @@ export function GitHistoryView({
             ) : (
               <div className="min-w-[760px] py-2 text-xs">
                 <div
-                  className="sticky top-0 z-10 grid h-7 items-center border-y bg-muted/95 px-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur"
+                  className="sticky top-0 z-10 grid h-7 items-center border-b bg-muted/95 px-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur"
                   style={{ gridTemplateColumns: historyColumns }}
                 >
                   <div className="flex items-center gap-1">
