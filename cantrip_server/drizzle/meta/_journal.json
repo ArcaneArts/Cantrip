@@ -225,6 +225,13 @@
       "when": 1786236304767,
       "tag": "0031_jittery_cerebro",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1786241859167,
+      "tag": "0032_absent_stellaris",
+      "breakpoints": true
     }
   ]
 }

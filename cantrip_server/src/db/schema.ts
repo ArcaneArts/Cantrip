@@ -1388,6 +1388,93 @@ export const workflowNodeAttempts = pgTable(
   ],
 );
 
+export const workflowWorktreeLeases = pgTable(
+  "workflow_worktree_leases",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => workflowRuns.id, { onDelete: "cascade" }),
+    runNodeId: text("run_node_id")
+      .notNull()
+      .references(() => workflowRunNodes.id, { onDelete: "cascade" }),
+    runNodeItemId: text("run_node_item_id").references(
+      () => workflowRunNodeItems.id,
+      { onDelete: "cascade" },
+    ),
+    projectSourceId: text("project_source_id").references(
+      () => projectSources.id,
+      { onDelete: "set null" },
+    ),
+    workerId: text("worker_id").references(() => workers.id, {
+      onDelete: "set null",
+    }),
+    requestedWorktreeId: text("requested_worktree_id").notNull(),
+    worktreeId: text("worktree_id").references(() => projectWorktrees.id, {
+      onDelete: "set null",
+    }),
+    leaseKey: text("lease_key").notNull(),
+    state: text("state").notNull().default("allocating"),
+    branchName: text("branch_name"),
+    baseRevision: text("base_revision"),
+    startingRevision: text("starting_revision"),
+    endingRevision: text("ending_revision"),
+    worktreeDirty: boolean("worktree_dirty"),
+    producedChanges: jsonb("produced_changes")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+    checkpointedAt: timestamp("checkpointed_at", { withTimezone: true }),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("workflow_worktree_leases_run_key_unique").on(
+      table.runId,
+      table.leaseKey,
+    ),
+    uniqueIndex("workflow_worktree_leases_requested_worktree_unique").on(
+      table.requestedWorktreeId,
+    ),
+    uniqueIndex("workflow_worktree_leases_node_active_unique")
+      .on(table.runNodeId)
+      .where(
+        sql`${table.runNodeItemId} IS NULL AND ${table.state} <> 'released'`,
+      ),
+    uniqueIndex("workflow_worktree_leases_item_active_unique")
+      .on(table.runNodeItemId)
+      .where(
+        sql`${table.runNodeItemId} IS NOT NULL AND ${table.state} <> 'released'`,
+      ),
+    uniqueIndex("workflow_worktree_leases_worktree_active_unique")
+      .on(table.worktreeId)
+      .where(
+        sql`${table.worktreeId} IS NOT NULL AND ${table.state} <> 'released'`,
+      ),
+    index("workflow_worktree_leases_run_state_index").on(
+      table.runId,
+      table.state,
+      table.createdAt,
+    ),
+    index("workflow_worktree_leases_recovery_index").on(
+      table.state,
+      table.updatedAt,
+    ),
+    check(
+      "workflow_worktree_leases_state_check",
+      sql`${table.state} IN ('allocating', 'active', 'checkpointed', 'recovering', 'released', 'failed')`,
+    ),
+  ],
+);
+
 export const workflowRunEvents = pgTable(
   "workflow_run_events",
   {

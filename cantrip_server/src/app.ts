@@ -694,10 +694,11 @@ export async function buildApp({
           (blockers.activeChatIds.length ||
             blockers.activeLeaseChatIds.length ||
             blockers.boundCodeTabIds.length ||
-            blockers.runningTerminalIds.length)
+            blockers.runningTerminalIds.length ||
+            blockers.workflowLeaseIds.length)
         ) {
           throw new Error(
-            "The worktree is still used by a chat, lease, Code tab, or terminal. Retarget or delete bound Code tabs before removal.",
+            "The worktree is still used by a chat, workflow lease, Code tab, or terminal. Retarget or delete bound Code tabs before removal.",
           );
         }
         const status = worktreeStatusResultSchema.parse(
@@ -2826,10 +2827,11 @@ export async function buildApp({
               (blockers.activeChatIds.length > 0 ||
                 blockers.activeLeaseChatIds.length > 0 ||
                 blockers.boundCodeTabIds.length > 0 ||
-                blockers.runningTerminalIds.length > 0)
+                blockers.runningTerminalIds.length > 0 ||
+                blockers.workflowLeaseIds.length > 0)
             ) {
               throw new Error(
-                "Stop active chats and terminals, release the worktree lease, and retarget or delete bound Code tabs before removal.",
+                "Stop active chats and terminals, release chat and workflow leases, and retarget or delete bound Code tabs before removal.",
               );
             }
             const previousState = context.worktree.lifecycleState;

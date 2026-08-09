@@ -1249,6 +1249,40 @@ export const workflowNodeAttemptSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const workflowWorktreeLeaseStateSchema = z.enum([
+  "allocating",
+  "active",
+  "checkpointed",
+  "recovering",
+  "released",
+  "failed",
+]);
+export const workflowWorktreeLeaseSchema = z.object({
+  id: idSchema,
+  runId: idSchema,
+  runNodeId: idSchema,
+  runNodeItemId: idSchema.nullable(),
+  projectSourceId: idSchema.nullable(),
+  workerId: idSchema.nullable(),
+  requestedWorktreeId: idSchema,
+  worktreeId: idSchema.nullable(),
+  leaseKey: z.string().min(1).max(500),
+  state: workflowWorktreeLeaseStateSchema,
+  branchName: z.string().min(1).max(255).nullable(),
+  baseRevision: z.string().min(1).max(1_024).nullable(),
+  startingRevision: z.string().min(1).max(500).nullable(),
+  endingRevision: z.string().min(1).max(500).nullable(),
+  worktreeDirty: z.boolean().nullable(),
+  producedChanges: workflowJsonObjectSchema,
+  errorCode: z.string().max(200).nullable(),
+  errorMessage: z.string().max(5_000).nullable(),
+  activatedAt: nullableTimestamp,
+  checkpointedAt: nullableTimestamp,
+  releasedAt: nullableTimestamp,
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
 export const workflowRunEventSchema = z.object({
   id: z.number().int().positive(),
   runId: idSchema,
@@ -1314,6 +1348,7 @@ export const workflowRunDetailSchema = z.object({
   items: z.array(workflowRunNodeItemSchema).max(10_000).default([]),
   dependencies: z.array(workflowRunNodeDependencySchema).max(10_000),
   attempts: z.array(workflowNodeAttemptSchema).max(10_000),
+  worktreeLeases: z.array(workflowWorktreeLeaseSchema).max(10_000).default([]),
   gates: z.array(workflowApprovalGateSchema).max(1_000),
 });
 export const workflowRunListSchema = z.array(workflowRunSchema);
@@ -1531,6 +1566,10 @@ export type WorkflowNodeAttemptStatus = z.infer<
   typeof workflowNodeAttemptStatusSchema
 >;
 export type WorkflowNodeAttempt = z.infer<typeof workflowNodeAttemptSchema>;
+export type WorkflowWorktreeLeaseState = z.infer<
+  typeof workflowWorktreeLeaseStateSchema
+>;
+export type WorkflowWorktreeLease = z.infer<typeof workflowWorktreeLeaseSchema>;
 export type WorkflowRunEvent = z.infer<typeof workflowRunEventSchema>;
 export type WorkflowApprovalGateStatus = z.infer<
   typeof workflowApprovalGateStatusSchema

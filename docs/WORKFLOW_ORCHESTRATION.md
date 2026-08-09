@@ -221,3 +221,14 @@ nodes use the same declared filesystem permission invariant as other workflow
 nodes. `condition` and `gate` nodes are always read-only. Until workflow
 worktree allocation lands, the runtime rejects every write-capable executable
 node, including `map`. This contract does not authorize writes to Primary.
+
+The durable allocation boundary is represented by a workflow worktree lease.
+Each lease belongs to exactly one node or collection item, reserves a
+worker-selected worktree identity before filesystem creation, and progresses
+through allocating, active, checkpointed, recovery, and terminal states. It
+records the source and worker attribution, branch and base revision, starting
+and ending revisions, dirty state, and a structured produced-change summary.
+An unreleased workflow lease is an explicit worktree-removal blocker. The
+presence of this persistence model alone does not enable write-capable
+execution; allocation, checkpoint, resolution, and recovery transitions must
+be wired before the runtime can remove the fail-closed guard.
