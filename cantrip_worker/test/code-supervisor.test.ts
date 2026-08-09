@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 
 import { verifyCantripCodeInstallation } from "../src/code/installation.js";
+import { CodeWorkbenchBridge } from "../src/code/workbench-bridge.js";
 import {
   CodeSupervisor,
   type CodeSupervisorOptions,
@@ -36,7 +37,7 @@ afterEach(async () => {
 async function fixture(
   options: Pick<
     CodeSupervisorOptions,
-    "idleSweepIntervalMs" | "idleTimeoutMs"
+    "bridge" | "idleSweepIntervalMs" | "idleTimeoutMs"
   > = {},
 ) {
   const root = await mkdtemp(path.join(tmpdir(), "cantrip-code-supervisor-"));
@@ -160,6 +161,31 @@ function openSocket(url: string): Promise<WebSocket> {
 }
 
 describe("Cantrip Code supervisor", () => {
+  it("does not block reopening on an unresponsive workbench surface", async () => {
+    const bridge = new CodeWorkbenchBridge({ requestTimeoutMs: 1_000 });
+    const { repository, supervisor } = await fixture({ bridge });
+    const command = openCommand("stale-workbench", repository, "primary");
+    await supervisor.open(command);
+    const target = supervisor.proxyTarget(command.sessionId);
+    const workspace = JSON.parse(
+      await readFile(new URL(target.workspaceUri), "utf8"),
+    ) as { settings: Record<string, string> };
+    const stale = await openSocket(workspace.settings["cantrip.bridgeUrl"]!);
+
+    await expect(
+      Promise.race([
+        supervisor.open(command),
+        new Promise<never>((_resolve, reject) =>
+          setTimeout(
+            () => reject(new Error("Reopening waited on the stale bridge.")),
+            250,
+          ),
+        ),
+      ]),
+    ).resolves.toMatchObject({ status: "running" });
+    stale.close();
+  });
+
   it("serializes concurrent opens for the same durable session", async () => {
     const { repository, supervisor } = await fixture();
     const command = openCommand("shared", repository, "primary");
