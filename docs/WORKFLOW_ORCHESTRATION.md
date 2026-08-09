@@ -309,6 +309,35 @@ authoring fields; an explicit Create or Append action is still required after
 review. This keeps Codex responsible for the agent turn while Cantrip owns the
 constrained workflow representation, validation, trust, and persistence.
 
+Repository portability and the Claude workflow bridge use the versioned
+project convention
+`.cantrip/workflows/<slug>.json`. The document format is
+`cantrip.workflow` version `1` and contains the portable definition plus the
+source workflow and revision identity. Export always targets the project
+Primary checkout through a worker command. A different existing file returns a
+collision and requires an explicit reviewed overwrite; an identical snapshot
+is idempotent. Personal workflows remain server-managed and are never silently
+written to a project or user configuration directory.
+
+The same worker-owned scan inspects only regular, bounded files directly under
+`.cantrip/workflows` and `.claude/workflows`; it does not follow directory or
+file symlinks. Cantrip v1 JSON documents, Claude Markdown prompt workflows, and
+Claude JSON `steps` graphs are translated into the constrained portable model.
+Every detected item has a content-derived opaque id. Import re-scans the
+checkout and requires that reviewed id to still exist, then creates a project
+workflow with repository/Claude provenance and `untrusted` trust. Slug
+collisions fail instead of replacing durable state.
+
+JavaScript, TypeScript, unknown formats, and malformed definitions are never
+loaded or executed. The operator sees an explicit diagnostic. Bounded source
+text may be opened in the existing Codex-assisted authoring path as inert
+runbook material; the read-only generation boundary and canonical validation
+still apply before an explicit save. General Claude/Cursor configuration and
+slash-command imports continue to use Codex App Server
+`externalAgentConfig/detect` and `externalAgentConfig/import`; Cantrip does not
+duplicate those native semantics. Plugin packaging remains disabled while the
+installed App Server marks plugin mutation APIs as under development.
+
 Project runs poll while active and expose durable run and recovery states,
 node duration and usage, worker/worktree/model/Codex attribution, pending
 approval gates, and checkpointed execution lanes. Operators can pause, resume,

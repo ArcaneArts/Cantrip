@@ -815,6 +815,59 @@ export const workflowDefinitionGenerationResultSchema = z.object({
   measuredUsage: workflowMeasuredUsageSchema,
 });
 
+export const workflowPortableDefinitionSchema = z.object({
+  slug: workflowDefinitionCreateObject.shape.slug,
+  name: workflowDefinitionCreateObject.shape.name,
+  description: workflowDefinitionCreateObject.shape.description,
+  revision: workflowRevisionCreateSchema.omit({
+    source: true,
+    provenance: true,
+    trustState: true,
+  }),
+});
+
+export const workflowRepositoryDocumentSchema = z
+  .object({
+    format: z.literal("cantrip.workflow"),
+    version: z.literal(1),
+    definition: workflowPortableDefinitionSchema,
+    exportedAt: z.string().datetime(),
+    sourceWorkflowId: idSchema,
+    sourceRevision: z.string().min(1).max(200),
+  })
+  .strict();
+
+export const workflowRepositoryItemSchema = z.object({
+  id: z.string().min(1).max(200),
+  path: z.string().min(1).max(2_000),
+  source: z.enum(["cantrip", "claude-code"]),
+  status: z.enum(["ready", "unsupported", "invalid"]),
+  diagnostic: z.string().min(1).max(5_000).nullable(),
+  contentHash: z.string().regex(/^[0-9a-f]{64}$/u),
+  definition: workflowPortableDefinitionSchema.nullable(),
+  conversionSource: z.string().max(100_000).nullable(),
+});
+
+export const workflowRepositoryInventorySchema = z.object({
+  convention: z.literal(".cantrip/workflows/<slug>.json"),
+  items: z.array(workflowRepositoryItemSchema).max(200),
+  diagnostics: z.array(z.string().min(1).max(5_000)).max(200),
+});
+
+export const workflowRepositoryExportSchema = z.object({
+  overwrite: z.boolean().default(false),
+});
+
+export const workflowRepositoryWriteResultSchema = z.object({
+  path: z.string().min(1).max(2_000),
+  contentHash: z.string().regex(/^[0-9a-f]{64}$/u),
+  changed: z.boolean(),
+});
+
+export const workflowRepositoryImportSchema = z.object({
+  itemId: z.string().min(1).max(200),
+});
+
 export const workflowDefinitionUpdateSchema = z
   .object({
     name: z.string().trim().min(1).max(200).optional(),
@@ -1588,6 +1641,27 @@ export type WorkflowDefinitionGenerationModelOutput = z.infer<
 >;
 export type WorkflowDefinitionGenerationResult = z.infer<
   typeof workflowDefinitionGenerationResultSchema
+>;
+export type WorkflowPortableDefinition = z.infer<
+  typeof workflowPortableDefinitionSchema
+>;
+export type WorkflowRepositoryDocument = z.infer<
+  typeof workflowRepositoryDocumentSchema
+>;
+export type WorkflowRepositoryItem = z.infer<
+  typeof workflowRepositoryItemSchema
+>;
+export type WorkflowRepositoryInventory = z.infer<
+  typeof workflowRepositoryInventorySchema
+>;
+export type WorkflowRepositoryExport = z.infer<
+  typeof workflowRepositoryExportSchema
+>;
+export type WorkflowRepositoryWriteResult = z.infer<
+  typeof workflowRepositoryWriteResultSchema
+>;
+export type WorkflowRepositoryImport = z.infer<
+  typeof workflowRepositoryImportSchema
 >;
 export type WorkflowDefinitionUpdate = z.infer<
   typeof workflowDefinitionUpdateSchema

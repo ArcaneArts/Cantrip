@@ -25,6 +25,10 @@ import { TerminalManager } from "./terminal-manager.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
 import { WorkerConnection } from "./transport.js";
 import { WorktreeManager } from "./worktrees.js";
+import {
+  scanWorkflowRepository,
+  writeWorkflowRepositoryDocument,
+} from "./workflow-repository.js";
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
 
@@ -592,6 +596,14 @@ async function start(): Promise<void> {
           model: command.model,
           provider: command.provider,
         });
+      case "workflow.repository.scan":
+        return scanWorkflowRepository(command.cwd);
+      case "workflow.repository.write":
+        return writeWorkflowRepositoryDocument(
+          command.cwd,
+          command.document,
+          command.overwrite,
+        );
       case "workflow.node.interrupt":
         return runtimeFor(command).interruptThread(command.threadId);
       case "chat.pause.set":

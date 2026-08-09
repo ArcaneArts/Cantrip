@@ -198,6 +198,11 @@ import {
   workflowRunQuerySchema,
   workflowRunResumeSchema,
   workflowRunSaveRevisionSchema,
+  workflowRepositoryDocumentSchema,
+  workflowRepositoryExportSchema,
+  workflowRepositoryImportSchema,
+  workflowRepositoryInventorySchema,
+  workflowRepositoryWriteResultSchema,
   workflowWorktreeOutcomeRequestSchema,
 } from "@cantrip/protocol/workflows";
 
@@ -2430,6 +2435,121 @@ export async function buildApp({
     );
   });
 
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/workflow-repository",
+    async (request, reply) => {
+      const source = await repository.getProjectSource(
+        LOCAL_USER_ID,
+        request.params.projectId,
+      );
+      if (!source) {
+        return reply.code(404).send({ error: "Project source not found." });
+      }
+      if (!bridge.isConnected(source.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        return reply.send(
+          workflowRepositoryInventorySchema.parse(
+            await bridge.request(source.workerId, {
+              type: "workflow.repository.scan",
+              cwd: source.cwd,
+            }),
+          ),
+        );
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/workflow-repository/import",
+    async (request, reply) => {
+      const input = workflowRepositoryImportSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const source = await repository.getProjectSource(
+        LOCAL_USER_ID,
+        request.params.projectId,
+      );
+      if (!source) {
+        return reply.code(404).send({ error: "Project source not found." });
+      }
+      if (!bridge.isConnected(source.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const inventory = workflowRepositoryInventorySchema.parse(
+          await bridge.request(source.workerId, {
+            type: "workflow.repository.scan",
+            cwd: source.cwd,
+          }),
+        );
+        const item = inventory.items.find(({ id }) => id === input.data.itemId);
+        if (!item || item.status !== "ready" || !item.definition) {
+          return reply.code(409).send({
+            error:
+              "The reviewed workflow source changed or is no longer importable. Refresh the repository preview.",
+          });
+        }
+        const importedAt = new Date().toISOString();
+        const workflowSource =
+          item.source === "cantrip"
+            ? ("repository" as const)
+            : ("imported" as const);
+        const provenance = {
+          origin:
+            item.source === "cantrip"
+              ? ("repository" as const)
+              : ("claude-code" as const),
+          sourceId: item.path,
+          sourceRevision: item.contentHash,
+          reference: item.path,
+          importedAt,
+          metadata: {
+            repositoryConvention: inventory.convention,
+            translator:
+              item.source === "cantrip"
+                ? "cantrip-workflow-v1"
+                : "claude-workflow-bridge-v1",
+          },
+        };
+        const definition = workflowDefinitionCreateSchema.parse({
+          scope: "project",
+          projectId: request.params.projectId,
+          slug: item.definition.slug,
+          name: item.definition.name,
+          description: item.definition.description,
+          source: workflowSource,
+          provenance,
+          trustState: "untrusted",
+          revision: {
+            ...item.definition.revision,
+            source: workflowSource,
+            provenance,
+            trustState: "untrusted",
+          },
+        });
+        const created = await repository.workflows.createDefinition(
+          LOCAL_USER_ID,
+          definition,
+        );
+        return created
+          ? reply.code(201).send(workflowDefinitionDetailSchema.parse(created))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        if (error instanceof WorkflowConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
   app.post("/api/workflows", async (request, reply) => {
     const input = workflowDefinitionCreateSchema.safeParse(request.body);
     if (!input.success) {
@@ -2461,6 +2581,83 @@ export async function buildApp({
       return workflow
         ? reply.send(workflowDefinitionDetailSchema.parse(workflow))
         : reply.code(404).send({ error: "Workflow not found." });
+    },
+  );
+
+  app.post<{ Params: { workflowId: string } }>(
+    "/api/workflows/:workflowId/repository-export",
+    async (request, reply) => {
+      const input = workflowRepositoryExportSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const workflow = await repository.workflows.getDefinition(
+        LOCAL_USER_ID,
+        request.params.workflowId,
+      );
+      if (!workflow) {
+        return reply.code(404).send({ error: "Workflow not found." });
+      }
+      if (
+        workflow.workflow.scope !== "project" ||
+        !workflow.workflow.projectId ||
+        !workflow.revision
+      ) {
+        return reply.code(409).send({
+          error:
+            "Only project workflows with a revision can be exported to a repository.",
+        });
+      }
+      const source = await repository.getProjectSource(
+        LOCAL_USER_ID,
+        workflow.workflow.projectId,
+      );
+      if (!source) {
+        return reply.code(404).send({ error: "Project source not found." });
+      }
+      if (!bridge.isConnected(source.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      const document = workflowRepositoryDocumentSchema.parse({
+        format: "cantrip.workflow",
+        version: 1,
+        definition: {
+          slug: workflow.workflow.slug,
+          name: workflow.workflow.name,
+          description: workflow.workflow.description,
+          revision: {
+            graph: workflow.revision.graph,
+            declaredInputs: workflow.revision.declaredInputs,
+            declaredOutputs: workflow.revision.declaredOutputs,
+            defaults: workflow.revision.defaults,
+            permissionRequirements: workflow.revision.permissionRequirements,
+          },
+        },
+        exportedAt: workflow.revision.createdAt,
+        sourceWorkflowId: workflow.workflow.id,
+        sourceRevision: workflow.revision.contentHash,
+      });
+      try {
+        return reply.send(
+          workflowRepositoryWriteResultSchema.parse(
+            await bridge.request(source.workerId, {
+              type: "workflow.repository.write",
+              cwd: source.cwd,
+              document,
+              overwrite: input.data.overwrite,
+            }),
+          ),
+        );
+      } catch (error) {
+        const message = errorMessage(error);
+        const status =
+          error instanceof WorkerUnavailableError
+            ? 503
+            : /already exists with different content/u.test(message)
+              ? 409
+              : 502;
+        return reply.code(status).send({ error: message });
+      }
     },
   );
 
