@@ -84,6 +84,16 @@ through the authoritative run-detail snapshot. The durable workflow-event API
 remains available for sequence diagnostics and replay inspection.
 
 The 1.5–2 second active workflow polling remains only as a disconnected live
-fallback. Workflow definitions, automation triggers, repository inventory, and
-customization refresh state are migrated in the following focused rollout
-lane.
+fallback. Workflow definition and revision writes invalidate the owner-visible
+catalog, while trigger creation, edits, deliveries, delivery failures, and
+schedule advancement invalidate project-scoped trigger queries. Known
+repository exports invalidate an open repository snapshot; external filesystem
+changes remain part of the worker-owned observation strategy.
+
+Customization inventory changes also publish on the chat scope. MCP OAuth and
+external-import operations return their initial HTTP result, then the server
+observes only that bounded pending worker operation and publishes typed status
+payloads. A healthy app socket applies those payloads directly, so the previous
+one-second status GETs are disabled. A disconnected app retains the one-second
+status GET as a recovery fallback, and reconnect recovery refetches the
+authoritative status before observation resumes.

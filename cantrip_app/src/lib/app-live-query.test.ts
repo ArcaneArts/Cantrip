@@ -62,6 +62,15 @@ describe("application live query bridge", () => {
         }),
       ),
     ).toEqual([["terminals"]]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
+          entityId: "workflow-one",
+          resource: "workflow-definition",
+          scope: { kind: "project", projectId: "project-one" },
+        }),
+      ),
+    ).toEqual([["workflow-repository", "project-one"]]);
   });
 
   it("coalesces repeated events before invalidating TanStack Query", async () => {
@@ -244,8 +253,78 @@ describe("application live query bridge", () => {
       queryKey: ["messages", "chat-one"],
     });
     expect(invalidate).toHaveBeenCalledWith({
-      queryKey: ["chat-customizations", "chat-one"],
+      queryKey: ["chat-customizations", "chat-one", "inventory"],
     });
+  });
+
+  it("applies live customization statuses without a follow-up GET", async () => {
+    vi.useFakeTimers();
+    try {
+      const queryClient = new QueryClient();
+      const invalidate = vi
+        .spyOn(queryClient, "invalidateQueries")
+        .mockResolvedValue();
+      const bridge = new AppLiveQueryBridge(queryClient);
+
+      bridge.handleEvent({
+        ...event({
+          entityId: "mcp-oauth",
+          resource: "customization",
+          scope: { kind: "chat", chatId: "chat-one" },
+        }),
+        payload: { server: "docs", status: "succeeded", error: null },
+      });
+      bridge.handleEvent({
+        ...event({
+          entityId: "external-import",
+          resource: "customization",
+          scope: { kind: "chat", chatId: "chat-one" },
+        }),
+        cursor: 2,
+        payload: {
+          importId: "import-one",
+          status: "completed",
+          results: [],
+        },
+      });
+
+      expect(
+        queryClient.getQueryData([
+          "chat-customizations",
+          "chat-one",
+          "mcp-oauth",
+          "docs",
+        ]),
+      ).toEqual({ server: "docs", status: "succeeded", error: null });
+      expect(
+        queryClient.getQueryData([
+          "chat-customizations",
+          "chat-one",
+          "external-import",
+          "import-one",
+        ]),
+      ).toEqual({ importId: "import-one", status: "completed", results: [] });
+      expect(invalidate).not.toHaveBeenCalled();
+
+      bridge.handleEvent({
+        ...event({
+          resource: "customization",
+          scope: { kind: "chat", chatId: "chat-one" },
+        }),
+        action: "invalidated",
+        cursor: 3,
+      });
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ["chat-customizations", "chat-one", "inventory"],
+      });
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ["skills", "chat-one"],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("coalesces workflow progress and rejects duplicate durable sequences", async () => {

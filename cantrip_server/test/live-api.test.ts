@@ -5,9 +5,15 @@ import path from "node:path";
 import {
   appLiveServerMessageSchema,
   chatMessageSchema,
+  codexMcpOauthStartResultSchema,
   unprobedCodexRuntimeReport,
 } from "@cantrip/protocol";
 import type { AppLiveServerMessage } from "@cantrip/protocol";
+import {
+  workflowAutomationTriggerSchema,
+  workflowDefinitionDetailSchema,
+  workflowTriggerDeliveryResultSchema,
+} from "@cantrip/protocol/workflows";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
 
@@ -15,6 +21,7 @@ import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
+import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
 const dataDirectory = await mkdtemp(path.join(tmpdir(), "cantrip-live-api-"));
 const config: ServerConfig = {
@@ -54,6 +61,48 @@ const liveTestHeartbeat = {
   },
   startedAt: new Date().toISOString(),
 };
+const preauthorized = {
+  filesystem: "read-only" as const,
+  network: "none" as const,
+  approvalMode: "preauthorized" as const,
+  skills: [],
+  mcpServers: [],
+  nativeSubagents: false,
+};
+let oauthStatusReads = 0;
+const workerBridge: WorkerCommandBus = {
+  attach() {},
+  close() {},
+  isConnected(workerId) {
+    return workerId === liveTestHeartbeat.workerId;
+  },
+  sendSurfaceFrame() {
+    return false;
+  },
+  subscribeWorkerDisconnect() {
+    return () => undefined;
+  },
+  subscribeSurfaceFrames() {
+    return () => undefined;
+  },
+  async request(_workerId, command) {
+    switch (command.type) {
+      case "customization.mcp.oauth.start":
+        return {
+          server: command.server,
+          authorizationUrl: `https://auth.example.test/${command.server}`,
+          status: "pending",
+        };
+      case "customization.mcp.oauth.status":
+        oauthStatusReads += 1;
+        return { server: command.server, status: "succeeded", error: null };
+      case "customization.skill.configure":
+        return { path: command.path, effectiveEnabled: command.enabled };
+      default:
+        throw new Error(`Unexpected worker command ${command.type}.`);
+    }
+  },
+};
 
 let database: DatabaseConnection;
 let app: Awaited<ReturnType<typeof buildApp>>;
@@ -88,7 +137,7 @@ beforeAll(async () => {
   });
   if (!chat) throw new Error("Could not create the live test chat.");
   chatId = chat.id;
-  app = await buildApp({ config, database, logger: false });
+  app = await buildApp({ config, database, logger: false, workerBridge });
   await app.ready();
 });
 
@@ -261,6 +310,143 @@ describe.sequential("application live WebSocket", () => {
         revision: persistedMessage.sequence,
       }),
     );
+
+    const workflowEventStart = messages.length;
+    const workflowResponse = await app.inject({
+      method: "POST",
+      url: "/api/workflows",
+      payload: {
+        scope: "project",
+        projectId,
+        slug: "live-workflow",
+        name: "Live workflow",
+        trustState: "trusted",
+        revision: {
+          graph: {
+            version: 1,
+            nodes: [
+              {
+                key: "gate",
+                type: "gate",
+                name: "Approval gate",
+                configuration: { prompt: "Approve completion." },
+                permissionRequirements: preauthorized,
+              },
+            ],
+            edges: [],
+          },
+          permissionRequirements: preauthorized,
+          trustState: "trusted",
+        },
+      },
+    });
+    expect(workflowResponse.statusCode).toBe(201);
+    const workflow = workflowDefinitionDetailSchema.parse(
+      workflowResponse.json(),
+    );
+    await vi.waitFor(() =>
+      expect(
+        messages
+          .slice(workflowEventStart)
+          .some(
+            (message) =>
+              message.type === "event" &&
+              message.resource === "workflow-definition" &&
+              message.entityId === workflow.workflow.id &&
+              message.scope.kind === "current-user",
+          ),
+      ).toBe(true),
+    );
+
+    const triggerEventStart = messages.length;
+    const triggerResponse = await app.inject({
+      method: "POST",
+      url: "/api/workflow-triggers",
+      payload: {
+        workflowRevisionId: workflow.revision!.id,
+        projectId,
+        name: "Live trigger",
+        type: "api",
+        enabled: true,
+        configuration: { minimumIntervalSeconds: 60 },
+        structuredInput: {},
+        permissionManifest: preauthorized,
+      },
+    });
+    expect(triggerResponse.statusCode).toBe(201);
+    const trigger = workflowAutomationTriggerSchema.parse(
+      triggerResponse.json(),
+    );
+    await vi.waitFor(() =>
+      expect(
+        messages
+          .slice(triggerEventStart)
+          .some(
+            (message) =>
+              message.type === "event" &&
+              message.resource === "workflow-trigger" &&
+              message.entityId === trigger.id &&
+              message.scope.kind === "project" &&
+              message.scope.projectId === projectId,
+          ),
+      ).toBe(true),
+    );
+
+    const deliveryEventStart = messages.length;
+    const deliveryResponse = await app.inject({
+      method: "POST",
+      url: `/api/workflow-triggers/${trigger.id}/deliver`,
+      payload: { idempotencyKey: "live-trigger-delivery" },
+    });
+    expect(deliveryResponse.statusCode).toBe(201);
+    expect(
+      workflowTriggerDeliveryResultSchema.parse(deliveryResponse.json())
+        .delivery.status,
+    ).toBe("accepted");
+    await vi.waitFor(() =>
+      expect(
+        messages
+          .slice(deliveryEventStart)
+          .some(
+            (message) =>
+              message.type === "event" &&
+              message.resource === "workflow-trigger" &&
+              message.entityId === trigger.id,
+          ),
+      ).toBe(true),
+    );
+
+    const customizationEventStart = messages.length;
+    const oauthStart = codexMcpOauthStartResultSchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/chats/${chatId}/customizations/mcp-oauth`,
+          payload: { server: "docs" },
+        })
+      ).json(),
+    );
+    expect(oauthStart.status).toBe("pending");
+    await vi.waitFor(
+      () =>
+        expect(
+          messages
+            .slice(customizationEventStart)
+            .find(
+              (message) =>
+                message.type === "event" &&
+                message.resource === "customization" &&
+                message.entityId === "mcp-oauth" &&
+                message.payload?.status === "succeeded",
+            ),
+        ).toMatchObject({
+          type: "event",
+          scope: { kind: "chat", chatId },
+          payload: { server: "docs", status: "succeeded", error: null },
+        }),
+      { timeout: 2_500 },
+    );
+    expect(oauthStatusReads).toBe(1);
 
     socket.terminate();
   });
