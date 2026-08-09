@@ -257,6 +257,95 @@ export interface WorkflowGateDecisionResult {
   run: WorkflowRunDetail;
 }
 
+export interface WorkflowRunBudgetViolation {
+  code:
+    | "workflow-cost-budget-exceeded"
+    | "workflow-cost-budget-unavailable"
+    | "workflow-duration-budget-exceeded"
+    | "workflow-token-budget-exceeded";
+  kind: "durationMs" | "estimatedCostUsd" | "tokens";
+  limit: number;
+  message: string;
+  observed: number | null;
+}
+
+export interface WorkflowRunBudgetEnforcementResult {
+  interruptions: WorkflowCancellationExecutionContext[];
+  violation: WorkflowRunBudgetViolation | null;
+}
+
+function workflowRunBudgetViolation(
+  run: WorkflowRun,
+  measuredUsage: WorkflowMeasuredUsage,
+  terminalCostUsage: WorkflowMeasuredUsage,
+  now: Date,
+): WorkflowRunBudgetViolation | null {
+  if (["cancelled", "failed"].includes(run.status)) return null;
+  const completed = run.status === "completed";
+  const reachesLimit = (observed: number, limit: number) =>
+    completed ? observed > limit : observed >= limit;
+  if (
+    run.budget.maxTokens !== null &&
+    reachesLimit(measuredUsage.totalTokens, run.budget.maxTokens)
+  ) {
+    return {
+      code: "workflow-token-budget-exceeded",
+      kind: "tokens",
+      limit: run.budget.maxTokens,
+      message: "The workflow run exhausted its token budget.",
+      observed: measuredUsage.totalTokens,
+    };
+  }
+  const elapsedMs = run.startedAt
+    ? Math.max(0, now.getTime() - new Date(run.startedAt).getTime())
+    : 0;
+  if (reachesLimit(elapsedMs, run.budget.maxDurationMs)) {
+    return {
+      code: "workflow-duration-budget-exceeded",
+      kind: "durationMs",
+      limit: run.budget.maxDurationMs,
+      message: "The workflow run exhausted its elapsed-time budget.",
+      observed: elapsedMs,
+    };
+  }
+  if (
+    run.budget.maxEstimatedCostUsd !== null &&
+    (terminalCostUsage.inputTokens > 0 ||
+      terminalCostUsage.outputTokens > 0 ||
+      terminalCostUsage.cachedInputTokens > 0 ||
+      terminalCostUsage.totalTokens > 0 ||
+      terminalCostUsage.durationMs > 0) &&
+    (!terminalCostUsage.costAvailable ||
+      terminalCostUsage.estimatedCostUsd === null)
+  ) {
+    return {
+      code: "workflow-cost-budget-unavailable",
+      kind: "estimatedCostUsd",
+      limit: run.budget.maxEstimatedCostUsd,
+      message:
+        "The workflow run cannot enforce its estimated-cost budget because measured cost is unavailable.",
+      observed: null,
+    };
+  }
+  if (
+    run.budget.maxEstimatedCostUsd !== null &&
+    terminalCostUsage.estimatedCostUsd !== null &&
+    reachesLimit(
+      terminalCostUsage.estimatedCostUsd,
+      run.budget.maxEstimatedCostUsd,
+    )
+  ) {
+    return {
+      code: "workflow-cost-budget-exceeded",
+      kind: "estimatedCostUsd",
+      limit: run.budget.maxEstimatedCostUsd,
+      message: "The workflow run exhausted its estimated-cost budget.",
+      observed: terminalCostUsage.estimatedCostUsd,
+    };
+  }
+  return null;
+}
+
 function jsonObject(value: unknown): Record<string, unknown> {
   return workflowJsonObjectSchema.parse(
     JSON.parse(JSON.stringify(value)) as unknown,
@@ -836,6 +925,242 @@ export class WorkflowRunRepository {
       .orderBy(asc(schema.workflowRuns.queuedAt))
       .limit(Math.max(1, Math.min(limit, 500)));
     return rows.map(({ id }) => id);
+  }
+
+  async enforceRunBudget(
+    ownerId: string,
+    runId: string,
+    now = new Date(),
+  ): Promise<WorkflowRunBudgetEnforcementResult | null> {
+    for (let retry = 0; retry < 20; retry += 1) {
+      try {
+        const outcome = await this.database.transaction(async (transaction) => {
+          const availableRuns = await transaction
+            .select({ id: schema.workflowRuns.id })
+            .from(schema.workflowRuns)
+            .where(
+              and(
+                eq(schema.workflowRuns.id, runId),
+                eq(schema.workflowRuns.ownerId, ownerId),
+              ),
+            )
+            .limit(1);
+          if (!availableRuns[0]) return null;
+          const nodeIdRows = await transaction
+            .select({ id: schema.workflowRunNodes.id })
+            .from(schema.workflowRunNodes)
+            .where(eq(schema.workflowRunNodes.runId, runId))
+            .orderBy(asc(schema.workflowRunNodes.id));
+          const nodeIds = nodeIdRows.map(({ id }) => id);
+          const attempts =
+            nodeIds.length === 0
+              ? []
+              : await transaction
+                  .select()
+                  .from(schema.workflowNodeAttempts)
+                  .where(
+                    inArray(schema.workflowNodeAttempts.runNodeId, nodeIds),
+                  )
+                  .orderBy(asc(schema.workflowNodeAttempts.id))
+                  .for("update");
+          const nodes = await transaction
+            .select()
+            .from(schema.workflowRunNodes)
+            .where(eq(schema.workflowRunNodes.runId, runId))
+            .orderBy(asc(schema.workflowRunNodes.id))
+            .for("update");
+          if (nodeIds.length > 0) {
+            await transaction
+              .select({ id: schema.workflowRunNodeItems.id })
+              .from(schema.workflowRunNodeItems)
+              .where(inArray(schema.workflowRunNodeItems.runNodeId, nodeIds))
+              .orderBy(asc(schema.workflowRunNodeItems.id))
+              .for("update");
+          }
+          const lockedRun = await lockWorkflowRun(transaction, ownerId, runId);
+          if (!lockedRun) return null;
+          const measuredUsage = aggregateWorkflowUsage(
+            nodes.map(({ measuredUsage: usage }) => usage),
+          );
+          const activeAttempts = attempts.filter(({ status }) =>
+            ["queued", "running", "waiting-for-approval"].includes(status),
+          );
+          const terminalCostUsage = aggregateWorkflowUsage(
+            attempts
+              .filter(
+                ({ status }) =>
+                  !["queued", "running", "waiting-for-approval"].includes(
+                    status,
+                  ),
+              )
+              .map(({ measuredUsage: usage }) => usage),
+          );
+          const violation = workflowRunBudgetViolation(
+            toRun(lockedRun),
+            measuredUsage,
+            terminalCostUsage,
+            now,
+          );
+          if (!violation) {
+            return {
+              interruptions: [] as WorkflowCancellationExecutionContext[],
+              nodeIds: [] as string[],
+              violation: null,
+            };
+          }
+          const interruptions = activeAttempts.flatMap((attempt) =>
+            attempt.workerId && attempt.modelRouteId && attempt.codexThreadId
+              ? [
+                  {
+                    attemptId: attempt.id,
+                    modelRouteId: attempt.modelRouteId,
+                    runId,
+                    runNodeId: attempt.runNodeId,
+                    threadId: attempt.codexThreadId,
+                    workerId: attempt.workerId,
+                  },
+                ]
+              : [],
+          );
+          if (activeAttempts.length > 0) {
+            await transaction
+              .update(schema.workflowNodeAttempts)
+              .set({
+                status: "interrupted",
+                structuredResult: null,
+                errorCode: violation.code,
+                errorMessage: violation.message,
+                heartbeatAt: now,
+                completedAt: now,
+                updatedAt: now,
+              })
+              .where(
+                inArray(
+                  schema.workflowNodeAttempts.id,
+                  activeAttempts.map(({ id }) => id),
+                ),
+              );
+          }
+          if (nodeIds.length > 0) {
+            await transaction
+              .update(schema.workflowRunNodeItems)
+              .set({
+                status: "cancelled",
+                structuredResult: null,
+                errorCode: violation.code,
+                errorMessage: violation.message,
+                executionLeaseKey: null,
+                timeoutAt: null,
+                waitingAt: null,
+                completedAt: now,
+                updatedAt: now,
+              })
+              .where(
+                and(
+                  inArray(schema.workflowRunNodeItems.runNodeId, nodeIds),
+                  inArray(schema.workflowRunNodeItems.status, [
+                    "ready",
+                    "running",
+                    "waiting-for-approval",
+                    "recovering",
+                  ]),
+                ),
+              );
+          }
+          await transaction
+            .update(schema.workflowRunNodes)
+            .set({
+              status: "cancelled",
+              structuredResult: null,
+              executionLeaseKey: null,
+              timeoutAt: null,
+              waitingAt: null,
+              completedAt: now,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(schema.workflowRunNodes.runId, runId),
+                inArray(schema.workflowRunNodes.status, [
+                  "blocked",
+                  "ready",
+                  "queued",
+                  "running",
+                  "waiting-for-approval",
+                  "paused",
+                  "cancelling",
+                  "retrying",
+                  "recovering",
+                ]),
+              ),
+            );
+          await transaction
+            .update(schema.workflowRunNodeDependencies)
+            .set({ status: "failed" })
+            .where(
+              and(
+                eq(schema.workflowRunNodeDependencies.runId, runId),
+                eq(schema.workflowRunNodeDependencies.status, "blocked"),
+              ),
+            );
+          await transaction
+            .update(schema.workflowApprovalGates)
+            .set({ status: "cancelled", updatedAt: now })
+            .where(
+              and(
+                eq(schema.workflowApprovalGates.runId, runId),
+                eq(schema.workflowApprovalGates.status, "pending"),
+              ),
+            );
+          await transaction
+            .update(schema.workflowRuns)
+            .set({
+              status: "failed",
+              structuredResult: null,
+              measuredUsage,
+              errorCode: violation.code,
+              errorMessage: violation.message,
+              pauseReason: null,
+              pausedAt: null,
+              recoveryState: "stable",
+              completedAt: now,
+              updatedAt: now,
+            })
+            .where(eq(schema.workflowRuns.id, runId));
+          await insertWorkflowRunEvent(transaction, {
+            runId,
+            runNodeId: null,
+            attemptId: null,
+            eventKey: `run-budget-exceeded:${violation.code}`,
+            type: "run.budget.exceeded",
+            payload: {
+              ...violation,
+              measuredUsage,
+            },
+            actorType: "server",
+            actorId: null,
+          });
+          return { interruptions, nodeIds, violation };
+        });
+        if (!outcome) return null;
+        if (outcome.violation) {
+          for (const nodeId of outcome.nodeIds) {
+            await this.terminalizeWorkflowInteractions(
+              runId,
+              nodeId,
+              "interrupted",
+            );
+          }
+        }
+        return {
+          interruptions: outcome.interruptions,
+          violation: outcome.violation,
+        };
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+      }
+    }
+    throw new Error("Workflow budget event contention exceeded its limit.");
   }
 
   async getReadyAgentCandidates(
@@ -1443,9 +1768,17 @@ export class WorkflowRunRepository {
               new Date(currentRepeatUntilState.startedAt).getTime()),
         )
       : candidate.node.budget.maxNodeDurationMs;
+    const runRemainingMs = candidate.run.startedAt
+      ? Math.max(
+          1,
+          candidate.run.budget.maxDurationMs -
+            (now.getTime() - new Date(candidate.run.startedAt).getTime()),
+        )
+      : candidate.run.budget.maxDurationMs;
     const timeoutMs = Math.min(
       candidate.node.budget.maxNodeDurationMs,
       repeatUntilRemainingMs,
+      runRemainingMs,
     );
     const timeoutAt = new Date(now.getTime() + timeoutMs);
 
@@ -4493,6 +4826,19 @@ export class WorkflowRunRepository {
     if (!detail) return null;
     const node = detail.nodes.find(({ id }) => id === runNodeId);
     if (!node) return null;
+    if (
+      detail.run.errorCode !== null &&
+      [
+        "workflow-cost-budget-exceeded",
+        "workflow-cost-budget-unavailable",
+        "workflow-duration-budget-exceeded",
+        "workflow-token-budget-exceeded",
+      ].includes(detail.run.errorCode)
+    ) {
+      throw new WorkflowControlConflictError(
+        "A run-wide hard limit cannot be bypassed by retrying a node; start a new run with a revised budget.",
+      );
+    }
     if (node.nodeType === "condition" || node.nodeType === "gate") {
       throw new WorkflowControlConflictError(
         `${node.nodeType} decisions are deterministic and final; start a new run instead of retrying this node.`,
@@ -6056,6 +6402,7 @@ export class WorkflowRunRepository {
               status: runStatus,
               pauseReason: configuration.prompt,
               pausedAt: runStatus === "waiting" ? now : null,
+              startedAt: lockedRun.startedAt ?? now,
               updatedAt: now,
             })
             .where(eq(schema.workflowRuns.id, detail.run.id));

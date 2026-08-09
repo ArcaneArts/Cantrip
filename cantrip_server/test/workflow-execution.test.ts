@@ -56,6 +56,7 @@ type ExecutionMode =
   | "pipeline-terminal-failure"
   | "sibling-failure"
   | "success"
+  | "token-budget"
   | "terminal-failure";
 
 let connected = true;
@@ -130,6 +131,7 @@ function resultFor(
                                 : command.prompt.includes("Verify passing")
                                   ? { passed: true }
                                   : { approved: true };
+  const costAvailable = command.prompt.includes("Costed analysis");
   return {
     threadId:
       command.prompt.includes("Repeat ") && command.threadId
@@ -144,8 +146,8 @@ function resultFor(
       cachedInputTokens: 2,
       totalTokens: 14,
       durationMs: 250,
-      estimatedCostUsd: null,
-      costAvailable: false,
+      estimatedCostUsd: costAvailable ? 0.6 : null,
+      costAvailable,
     },
     status: "completed" as const,
   };
@@ -178,6 +180,49 @@ const workerBridge: WorkerCommandBus = {
     if (!connected) throw new WorkerUnavailableError("Worker disconnected.");
     if (command.type === "workflow.node.execute") {
       executionCommands.push(command);
+      if (mode === "token-budget") {
+        const released = new Promise<void>((resolve) => {
+          heldExecution = resolve;
+        });
+        await options?.onEvent?.({
+          type: "workflow.node.activity",
+          attemptId: command.attemptId,
+          activity: {
+            type: "usage",
+            id: `budget-usage-${command.attemptId}`,
+            status: "completed",
+            total: {
+              totalTokens: 14,
+              inputTokens: 10,
+              cachedInputTokens: 2,
+              cacheWriteInputTokens: 0,
+              outputTokens: 4,
+              reasoningOutputTokens: 0,
+            },
+            last: {
+              totalTokens: 14,
+              inputTokens: 10,
+              cachedInputTokens: 2,
+              cacheWriteInputTokens: 0,
+              outputTokens: 4,
+              reasoningOutputTokens: 0,
+            },
+            modelContextWindow: 10_000,
+            contextUsedPercent: 0.1,
+            correlation: {
+              sourceMethod: "thread/tokenUsage/updated",
+              diagnosticId: null,
+              threadId: `thread-${command.attemptId}`,
+              turnId: `turn-${command.attemptId}`,
+              itemId: null,
+            },
+          },
+        });
+        await released;
+        heldExecution = null;
+        mode = "success";
+        return resultFor(command);
+      }
       if (mode === "disconnect") {
         await options?.onEvent?.({
           type: "workflow.node.activity",
@@ -824,6 +869,287 @@ describe.sequential("single-agent workflow execution", () => {
       beta: { finding: "beta" },
     });
     expect(parallelPeak).toBe(2);
+  });
+
+  it("interrupts a live turn as soon as reported usage exhausts the run token budget", async () => {
+    connected = true;
+    mode = "token-budget";
+    const executionsBefore = executionCommands.length;
+    const interruptsBefore = interruptCommands.length;
+    const response = await createRunForRevision(
+      revisionId,
+      "execute-live-token-budget",
+      { maxTokens: 13 },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("failed");
+    });
+    expect(await runDetail(runId)).toMatchObject({
+      run: {
+        errorCode: "workflow-token-budget-exceeded",
+        measuredUsage: { totalTokens: 14 },
+      },
+      nodes: [{ status: "cancelled" }],
+      attempts: [
+        {
+          status: "interrupted",
+          errorCode: "workflow-token-budget-exceeded",
+        },
+      ],
+    });
+    expect(executionCommands).toHaveLength(executionsBefore + 1);
+    expect(interruptCommands).toHaveLength(interruptsBefore + 1);
+  });
+
+  it("stops before the next node when the run token budget is exhausted", async () => {
+    const revision = await createWorkflowRevision(
+      "run-token-budget",
+      [
+        {
+          key: "alpha",
+          type: "agent",
+          name: "Alpha",
+          configuration: { prompt: "Alpha branch." },
+        },
+        {
+          key: "beta",
+          type: "agent",
+          name: "Beta",
+          configuration: { prompt: "Beta branch." },
+        },
+      ],
+      [{ from: "alpha", to: "beta" }],
+    );
+    connected = true;
+    mode = "success";
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-run-token-budget",
+      { maxTokens: 14 },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("failed");
+    });
+    expect(await runDetail(runId)).toMatchObject({
+      run: {
+        status: "failed",
+        errorCode: "workflow-token-budget-exceeded",
+        measuredUsage: { totalTokens: 14 },
+      },
+      nodes: [
+        { nodeKey: "alpha", status: "completed" },
+        { nodeKey: "beta", status: "cancelled" },
+      ],
+      attempts: [{ status: "completed" }],
+    });
+    expect(executionCommands).toHaveLength(before + 1);
+    const events = workflowRunEventPageSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/workflow-runs/${runId}/events`,
+        })
+      ).json(),
+    );
+    expect(events.events.at(-1)).toMatchObject({
+      type: "run.budget.exceeded",
+      payload: {
+        code: "workflow-token-budget-exceeded",
+        kind: "tokens",
+        limit: 14,
+        observed: 14,
+      },
+    });
+    const beta = (await runDetail(runId)).nodes.find(
+      ({ nodeKey }) => nodeKey === "beta",
+    )!;
+    const retry = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/nodes/${beta.id}/retry`,
+      payload: { idempotencyKey: "retry-token-budget" },
+    });
+    expect(retry.statusCode).toBe(409);
+    expect(executionCommands).toHaveLength(before + 1);
+  });
+
+  it("interrupts active siblings when a completed branch exceeds the run budget", async () => {
+    const revision = await createWorkflowRevision("parallel-run-budget", [
+      {
+        key: "alpha",
+        type: "agent",
+        name: "Alpha",
+        configuration: { prompt: "Alpha branch." },
+      },
+      {
+        key: "beta",
+        type: "agent",
+        name: "Beta",
+        configuration: { prompt: "Beta branch." },
+      },
+    ]);
+    connected = true;
+    mode = "parallel-hold";
+    heldParallelExecutions.clear();
+    const executionsBefore = executionCommands.length;
+    const interruptsBefore = interruptCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-parallel-run-budget",
+      { maxParallelism: 2, maxTokens: 13 },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(() => {
+      expect(heldParallelExecutions.size).toBe(2);
+    });
+    heldParallelExecutions.values().next().value?.();
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("failed");
+    });
+    await vi.waitFor(() => {
+      expect(heldParallelExecutions.size).toBe(0);
+    });
+    mode = "success";
+    const detail = await runDetail(runId);
+    expect(detail.run).toMatchObject({
+      status: "failed",
+      errorCode: "workflow-token-budget-exceeded",
+    });
+    expect(detail.nodes.map(({ status }) => status).sort()).toEqual([
+      "cancelled",
+      "completed",
+    ]);
+    expect(detail.attempts.map(({ status }) => status).sort()).toEqual([
+      "completed",
+      "interrupted",
+    ]);
+    expect(executionCommands).toHaveLength(executionsBefore + 2);
+    expect(interruptCommands).toHaveLength(interruptsBefore + 1);
+  });
+
+  it("enforces available estimated cost and fails closed when a cost cap cannot be measured", async () => {
+    const costedRevision = await createWorkflowRevision(
+      "run-cost-budget",
+      [
+        {
+          key: "first",
+          type: "agent",
+          name: "First",
+          configuration: { prompt: "Costed analysis first." },
+        },
+        {
+          key: "second",
+          type: "agent",
+          name: "Second",
+          configuration: { prompt: "Costed analysis second." },
+        },
+      ],
+      [{ from: "first", to: "second" }],
+    );
+    connected = true;
+    mode = "success";
+    const costedBefore = executionCommands.length;
+    const costedResponse = await createRunForRevision(
+      costedRevision,
+      "execute-run-cost-budget",
+      { maxEstimatedCostUsd: 0.6 },
+    );
+    const costedRunId = workflowRunDetailSchema.parse(costedResponse.json()).run
+      .id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(costedRunId)).run.status).toBe("failed");
+    });
+    expect((await runDetail(costedRunId)).run).toMatchObject({
+      errorCode: "workflow-cost-budget-exceeded",
+      measuredUsage: {
+        estimatedCostUsd: 0.6,
+        costAvailable: true,
+      },
+    });
+    expect(executionCommands).toHaveLength(costedBefore + 1);
+
+    const unavailableRevision = await createWorkflowRevision(
+      "run-cost-budget-unavailable",
+      [
+        {
+          key: "first",
+          type: "agent",
+          name: "First",
+          configuration: { prompt: "Alpha branch." },
+        },
+        {
+          key: "second",
+          type: "agent",
+          name: "Second",
+          configuration: { prompt: "Beta branch." },
+        },
+      ],
+      [{ from: "first", to: "second" }],
+    );
+    const unavailableBefore = executionCommands.length;
+    const unavailableResponse = await createRunForRevision(
+      unavailableRevision,
+      "execute-run-cost-budget-unavailable",
+      { maxEstimatedCostUsd: 1 },
+    );
+    const unavailableRunId = workflowRunDetailSchema.parse(
+      unavailableResponse.json(),
+    ).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(unavailableRunId)).run.status).toBe("failed");
+    });
+    expect((await runDetail(unavailableRunId)).run).toMatchObject({
+      errorCode: "workflow-cost-budget-unavailable",
+      measuredUsage: {
+        estimatedCostUsd: null,
+        costAvailable: false,
+      },
+    });
+    expect(executionCommands).toHaveLength(unavailableBefore + 1);
+  });
+
+  it("caps worker turns by the remaining run elapsed-time budget", async () => {
+    const revision = await createWorkflowRevision(
+      "run-duration-budget",
+      [
+        {
+          key: "alpha",
+          type: "agent",
+          name: "Alpha",
+          configuration: { prompt: "Alpha branch." },
+        },
+        {
+          key: "beta",
+          type: "agent",
+          name: "Beta",
+          configuration: { prompt: "Beta branch." },
+        },
+      ],
+      [{ from: "alpha", to: "beta" }],
+    );
+    connected = true;
+    mode = "hold-success";
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-run-duration-budget",
+      { maxDurationMs: 1_000, maxNodeDurationMs: 60_000 },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(() => expect(heldExecution).not.toBeNull());
+    expect(executionCommands[before]!.timeoutMs).toBeGreaterThan(0);
+    expect(executionCommands[before]!.timeoutMs).toBeLessThanOrEqual(1_000);
+    await new Promise((resolve) => setTimeout(resolve, 1_050));
+    heldExecution?.();
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("failed");
+    });
+    expect((await runDetail(runId)).run).toMatchObject({
+      errorCode: "workflow-duration-budget-exceeded",
+    });
+    expect(executionCommands).toHaveLength(before + 1);
   });
 
   it("cancels and interrupts every active parallel node", async () => {
