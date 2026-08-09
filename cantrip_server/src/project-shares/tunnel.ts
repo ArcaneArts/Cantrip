@@ -44,6 +44,7 @@ const MAX_ACTIVE_STREAMS_PER_ATTACHMENT = 64;
 const RESPONSE_START_TIMEOUT_MS = 30_000;
 const WORKER_SHARE_COMMAND_TIMEOUT_MS = 30_000;
 const WORKER_SHARE_CLOSE_TIMEOUT_MS = 5_000;
+const MAX_NATIVE_MOUNT_LEASE_MS = 24 * 60 * 60_000;
 const BLOCKED_CLIENT_HEADERS = new Set([
   "connection",
   "cookie",
@@ -128,8 +129,14 @@ export class ProjectShareTunnelBroker {
     if (!Number.isFinite(this.#idleTtlMs) || this.#idleTtlMs <= 0) {
       throw new Error("Project share idle lifetime must be positive.");
     }
-    if (!Number.isFinite(this.#maxLifetimeMs) || this.#maxLifetimeMs <= 0) {
-      throw new Error("Project share maximum lifetime must be positive.");
+    if (
+      !Number.isFinite(this.#maxLifetimeMs) ||
+      this.#maxLifetimeMs <= 0 ||
+      this.#maxLifetimeMs > MAX_NATIVE_MOUNT_LEASE_MS
+    ) {
+      throw new Error(
+        "Project share maximum lifetime must be between 1 ms and 24 hours.",
+      );
     }
     if (!Number.isInteger(this.#maxAttachments) || this.#maxAttachments < 1) {
       throw new Error("Project share attachment limit must be positive.");
@@ -452,10 +459,15 @@ export class ProjectShareTunnelBroker {
         descriptor.password === existing.attachment.password &&
         descriptor.realm === existing.attachment.realm
       ) {
-        this.#touch(existing);
+        const now = Date.now();
+        this.#touch(existing, now);
         return projectShareAttachmentSchema.parse({
           ...existing.attachment,
           expiresAt: new Date(existing.expiresAt).toISOString(),
+          mountLeaseMs: Math.max(
+            1,
+            existing.createdAt + this.#maxLifetimeMs - now,
+          ),
         });
       }
     }
@@ -520,6 +532,7 @@ export class ProjectShareTunnelBroker {
         password: descriptor.password,
         realm: descriptor.realm,
         expiresAt: new Date(expiresAt).toISOString(),
+        mountLeaseMs: this.#maxLifetimeMs,
       });
       const binding: ProjectShareAttachmentBinding = {
         attachment,

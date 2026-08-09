@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   coordinateDesktopProjectReveal,
   desktopProjectRevealLabel,
+  nativeProjectShareRequest,
 } from "./desktop-project-share";
 
 const project = {
@@ -13,6 +14,7 @@ const project = {
 const attachment = {
   attachmentId: "attachment-1",
   expiresAt: "2026-08-09T12:00:00.000Z",
+  mountLeaseMs: 43_200_000,
   password: "a".repeat(24),
   projectId: project.id,
   protocol: "webdav" as const,
@@ -44,6 +46,15 @@ describe("desktop project reveal", () => {
     });
     expect(invokeNative).toHaveBeenCalledWith(attachment, project);
     expect(revokeAttachment).not.toHaveBeenCalled();
+  });
+
+  it("passes the bounded server mount lease to the native command", () => {
+    expect(nativeProjectShareRequest(attachment, project)).toMatchObject({
+      attachmentId: attachment.attachmentId,
+      mountLeaseMs: 43_200_000,
+      projectId: project.id,
+      projectName: project.name,
+    });
   });
 
   it("revokes the attachment while preserving a native mount failure", async () => {

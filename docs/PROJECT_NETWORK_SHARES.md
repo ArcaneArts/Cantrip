@@ -69,8 +69,8 @@ Windows passes credentials in memory to the WebDAV Redirector with
 mounts with `mount_webdav` into a Cantrip-owned mount directory. Its credentials
 travel through the inherited URLMount credential descriptor, not process
 arguments, and the resulting volume opens in Finder. Native mounts are reused
-for repeated reveals and released when they are replaced or the desktop runtime
-shuts down.
+for repeated reveals and released when they are replaced, when the server's
+bounded maximum mount lease elapses, or when the desktop runtime shuts down.
 
 ## Security and lifecycle invariants
 
@@ -91,7 +91,9 @@ shuts down.
 - The server authorizes every project against the current owner and resolves
   the Primary checkout and its assigned worker before opening a share.
 - Server attachment credentials are short-lived and map to exactly one worker
-  share. Apps never choose a worker host, port, or filesystem path.
+  share. The server also supplies the remaining hard mount lease, bounded to 24
+  hours by the protocol, so a native mount cannot survive indefinitely. Apps
+  never choose a worker host, port, or filesystem path.
 - Hop-by-hop headers, cookies, proxy credentials, and worker-local absolute
   response locations are stripped before crossing trust boundaries. Digest,
   DAV, lock, range, and destination headers remain available to native clients.

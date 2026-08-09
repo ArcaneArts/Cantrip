@@ -387,6 +387,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
+ "tokio",
  "url",
  "windows-sys 0.61.2",
  "zeroize",

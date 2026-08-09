@@ -244,6 +244,16 @@ describe("project share server tunnel", () => {
     expect(attachment.url).not.toContain("127.0.0.1:43210");
     expect(attachment.password).toBe("a-strong-random-worker-password-1");
 
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+    const revealedAgain = await shares.open({
+      ownerId: "user-1",
+      projectId: "project-1",
+      root: "/worker/projects/cantrip",
+      workerId: "worker-1",
+    });
+    expect(revealedAgain.attachmentId).toBe(attachment.attachmentId);
+    expect(revealedAgain.mountLeaseMs).toBeLessThan(attachment.mountLeaseMs);
+
     const surface = createCodeSurfaceServer(code, surfaceOrigin, shares);
     await new Promise<void>((resolve) =>
       surface.listen(0, "127.0.0.1", resolve),
@@ -324,6 +334,8 @@ describe("project share server tunnel", () => {
       workerId: "worker-1",
     });
     const token = new URL(attachment.url).pathname.split("/")[2]!;
+    expect(attachment.mountLeaseMs).toBeGreaterThan(0);
+    expect(attachment.mountLeaseMs).toBeLessThanOrEqual(100);
 
     await new Promise<void>((resolve) => setTimeout(resolve, 5));
     expect(shares.hasAttachment(token)).toBe(false);
