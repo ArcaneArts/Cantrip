@@ -1,0 +1,68 @@
+{
+  "$schema": "vscode://schemas/color-theme",
+  "name": "Cantrip Light",
+  "type": "light",
+  "colors": {
+    "foreground": "#20242A",
+    "descriptionForeground": "#636A74",
+    "disabledForeground": "#8A9098",
+    "focusBorder": "#526C91",
+    "errorForeground": "#B4232C",
+    "editor.background": "#F8F9FB",
+    "editor.foreground": "#282C33",
+    "editorLineNumber.foreground": "#9BA0A8",
+    "editorLineNumber.activeForeground": "#444A53",
+    "editorCursor.foreground": "#20242A",
+    "editor.selectionBackground": "#B7CAE699",
+    "editor.inactiveSelectionBackground": "#D2DDEC99",
+    "editorWidget.background": "#FFFFFF",
+    "editorWidget.border": "#D8DBE0",
+    "sideBar.background": "#F8F9FB",
+    "sideBar.foreground": "#343941",
+    "sideBarSectionHeader.background": "#F2F3F6",
+    "activityBar.background": "#F8F9FB",
+    "activityBar.foreground": "#20242A",
+    "activityBar.inactiveForeground": "#7A8089",
+    "titleBar.activeBackground": "#F8F9FB",
+    "titleBar.activeForeground": "#20242A",
+    "statusBar.background": "#F2F3F6",
+    "statusBar.foreground": "#343941",
+    "panel.background": "#F8F9FB",
+    "panel.border": "#DFE2E7",
+    "input.background": "#FFFFFF",
+    "input.border": "#D4D7DC",
+    "dropdown.background": "#FFFFFF",
+    "dropdown.border": "#D4D7DC",
+    "list.activeSelectionBackground": "#E3E8F0",
+    "list.hoverBackground": "#EFF1F4",
+    "button.background": "#252A31",
+    "button.foreground": "#FFFFFF",
+    "button.hoverBackground": "#111419"
+  },
+  "tokenColors": [
+    {
+      "scope": ["comment", "punctuation.definition.comment"],
+      "settings": { "foreground": "#747B85" }
+    },
+    {
+      "scope": ["keyword", "storage"],
+      "settings": { "foreground": "#744A9C" }
+    },
+    {
+      "scope": ["string", "constant.other.symbol"],
+      "settings": { "foreground": "#477326" }
+    },
+    {
+      "scope": ["constant.numeric", "constant.language"],
+      "settings": { "foreground": "#985C19" }
+    },
+    {
+      "scope": ["entity.name.function", "support.function"],
+      "settings": { "foreground": "#245E9A" }
+    },
+    {
+      "scope": ["entity.name.type", "support.type"],
+      "settings": { "foreground": "#16706B" }
+    }
+  ]
+}

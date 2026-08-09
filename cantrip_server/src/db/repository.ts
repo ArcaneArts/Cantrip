@@ -217,8 +217,10 @@ export interface CodeTabExecutionContext {
   capabilities: CodeCapabilities;
   codeTab: CodeTabSummary;
   cwd: string;
+  projectName: string;
   workerId: string;
   worktreeId: string;
+  worktreeName: string;
 }
 
 export interface RemoteSurfaceExecutionContext {
@@ -3332,6 +3334,7 @@ export class ServerRepository {
     const rows = await this.database
       .select({
         codeTab: schema.codeTabs,
+        projectName: schema.projects.name,
         worktree: schema.projectWorktrees,
         codeCapabilities: schema.workers.codeCapabilities,
       })
@@ -3359,8 +3362,10 @@ export class ServerRepository {
           capabilities: row.codeCapabilities,
           codeTab: toCodeTabSummary(row.codeTab),
           cwd: row.worktree.absolutePath,
+          projectName: row.projectName,
           workerId: row.codeTab.activeWorkerId,
           worktreeId: row.worktree.id,
+          worktreeName: row.worktree.name,
         }
       : null;
   }

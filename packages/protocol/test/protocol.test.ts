@@ -815,6 +815,45 @@ describe("Cantrip protocol", () => {
       }).type,
     ).toBe("code.open");
     expect(
+      workerCommandSchema.parse({
+        type: "code.prepareAgentTurn",
+        cwd: "/workspace/Cantrip",
+      }).type,
+    ).toBe("code.prepareAgentTurn");
+    expect(
+      workerCommandSchema.parse({
+        type: "code.agentTurnState",
+        cwd: "/workspace/Cantrip",
+        phase: "completed",
+        paths: ["packages/protocol/src/index.ts"],
+      }).type,
+    ).toBe("code.agentTurnState");
+    expect(
+      codeRuntimeStatusSchema.parse({
+        sessionId: "session-1",
+        status: "running",
+        editorBuild: {
+          version: "1.109.5",
+          upstreamRevision: "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+          patchset: 1,
+          fingerprint: "a".repeat(64),
+        },
+        processInstanceId: "process-1",
+        bridgeConnected: true,
+        dirtyEditors: [],
+        workbench: {
+          activeEditor: null,
+          git: null,
+          conflicts: [],
+          savePolicy: "always",
+          agentStatus: "idle",
+        },
+        startedAt: "2026-08-07T12:00:00.000Z",
+        lastActivityAt: "2026-08-07T12:00:00.000Z",
+        lastError: null,
+      }).workbench.savePolicy,
+    ).toBe("always");
+    expect(
       codeRuntimeStatusSchema.safeParse({
         sessionId: "session-1",
         status: "running",

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import type { CodeCapabilities, CodeEditorBuild } from "@cantrip/protocol";
 
 export interface CantripCodeManifest {
-  schemaVersion: 1;
+  schemaVersion: 2;
   component: "cantrip-code";
   version: string;
   target: string;
@@ -17,6 +17,7 @@ export interface CantripCodeManifest {
   openvscodeServerCommit: string;
   vscodeCommit: string;
   patchset: number;
+  cantripWorkbenchVersion: string;
   entrypoint: string;
   files: Array<
     | {
@@ -53,6 +54,7 @@ export interface DiscoverCantripCodeOptions {
 }
 
 const MANIFEST_NAME = "cantrip-code.manifest.json";
+const WORKBENCH_PACKAGE = "extensions/cantrip-workbench/package.json";
 
 function defaultWorkerRoot(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -70,7 +72,7 @@ function isSafeRelative(candidate: unknown): candidate is string {
 function parseManifest(value: unknown): CantripCodeManifest {
   const candidate = value as Partial<CantripCodeManifest>;
   if (
-    candidate.schemaVersion !== 1 ||
+    candidate.schemaVersion !== 2 ||
     candidate.component !== "cantrip-code" ||
     typeof candidate.version !== "string" ||
     candidate.version.length === 0 ||
@@ -82,6 +84,8 @@ function parseManifest(value: unknown): CantripCodeManifest {
     !/^[0-9a-f]{40}$/u.test(candidate.vscodeCommit ?? "") ||
     !Number.isInteger(candidate.patchset) ||
     (candidate.patchset ?? -1) < 0 ||
+    typeof candidate.cantripWorkbenchVersion !== "string" ||
+    candidate.cantripWorkbenchVersion.length === 0 ||
     !isSafeRelative(candidate.entrypoint) ||
     !Array.isArray(candidate.files) ||
     candidate.files.length === 0
@@ -113,6 +117,11 @@ function parseManifest(value: unknown): CantripCodeManifest {
   }
   if (!paths.has(candidate.entrypoint)) {
     throw new Error("Cantrip Code manifest does not contain its entrypoint.");
+  }
+  if (!paths.has(WORKBENCH_PACKAGE)) {
+    throw new Error(
+      "Cantrip Code manifest does not contain cantrip-workbench.",
+    );
   }
   return candidate as CantripCodeManifest;
 }
@@ -183,6 +192,23 @@ export async function verifyCantripCodeInstallation(
   if (!existsSync(entrypoint)) {
     throw new Error(
       `Cantrip Code entrypoint is missing: ${manifest.entrypoint}`,
+    );
+  }
+  const workbenchPackagePath = path.join(root, WORKBENCH_PACKAGE);
+  let workbenchPackage: { name?: unknown; version?: unknown };
+  try {
+    workbenchPackage = JSON.parse(
+      await readFile(workbenchPackagePath, "utf8"),
+    ) as { name?: unknown; version?: unknown };
+  } catch {
+    throw new Error("Cantrip Code bundled workbench extension is missing.");
+  }
+  if (
+    workbenchPackage.name !== "cantrip-workbench" ||
+    workbenchPackage.version !== manifest.cantripWorkbenchVersion
+  ) {
+    throw new Error(
+      "Cantrip Code bundled workbench extension is incompatible with its manifest.",
     );
   }
   const resolvedEntrypoint = await realpath(entrypoint);

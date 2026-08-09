@@ -29,7 +29,9 @@ both the Worker and Cantrip Code contain native modules. `macos-*` and
 
 Worker packages contain `resources/cantrip-code/`, including the compiled
 browser-native editor, its bundled Node runtime, legal notices, and a
-content-hashed compatibility manifest. Packaging invokes `pnpm code:build`
+content-hashed compatibility manifest. The manifest also pins the bundled
+`cantrip-workbench` extension version, and worker startup verifies that exact
+extension package before launching the editor. Packaging invokes `pnpm code:build`
 when the exact target/input fingerprint is not cached. It never downloads or
 updates the editor after the artifact is assembled. Desktop embeds the same
 worker tree, so the standalone Worker and local-only desktop use an identical

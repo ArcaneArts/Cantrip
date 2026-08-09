@@ -120,6 +120,13 @@ const runtime: CodeRuntimeStatus = {
   processInstanceId: "process-1",
   bridgeConnected: true,
   dirtyEditors: [],
+  workbench: {
+    activeEditor: null,
+    git: null,
+    conflicts: [],
+    savePolicy: "always",
+    agentStatus: "idle",
+  },
   startedAt: "2026-08-08T12:00:00.000Z",
   lastActivityAt: "2026-08-08T12:00:00.000Z",
   lastError: null,

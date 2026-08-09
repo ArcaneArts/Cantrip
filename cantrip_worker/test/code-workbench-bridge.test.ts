@@ -36,6 +36,29 @@ describe("Cantrip workbench bridge", () => {
             dirty: true,
           },
         ],
+        activeEditor: {
+          uri: "file:///repo/README.md",
+          relativePath: "README.md",
+          selection: {
+            startLine: 2,
+            startCharacter: 1,
+            endLine: 2,
+            endCharacter: 4,
+          },
+        },
+        git: {
+          branch: "main",
+          head: "abc123",
+          ahead: 1,
+          behind: 0,
+          staged: 0,
+          unstaged: 1,
+          untracked: 0,
+          conflicts: 0,
+        },
+        conflicts: [],
+        savePolicy: "always",
+        agentStatus: "idle",
       }),
     );
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -43,6 +66,11 @@ describe("Cantrip workbench bridge", () => {
     expect(bridge.dirtyEditors("session-one")).toEqual([
       expect.objectContaining({ relativePath: "README.md", dirty: true }),
     ]);
+    expect(bridge.state("session-one")).toMatchObject({
+      activeEditor: { relativePath: "README.md" },
+      git: { branch: "main", unstaged: 1 },
+      savePolicy: "always",
+    });
 
     socket.once("message", (data) => {
       const request = JSON.parse(data.toString()) as {
@@ -62,6 +90,60 @@ describe("Cantrip workbench bridge", () => {
     await expect(bridge.saveAll("session-one")).resolves.toEqual({
       saved: ["file:///repo/README.md"],
       failed: [],
+    });
+
+    socket.once("message", (data) => {
+      const request = JSON.parse(data.toString()) as {
+        id: string;
+        method: string;
+      };
+      expect(request.method).toBe("prepareAgentTurn");
+      socket.send(
+        JSON.stringify({
+          type: "response",
+          id: request.id,
+          ok: true,
+          result: {
+            allowed: true,
+            policy: "always",
+            dirtyEditors: [],
+            saved: ["file:///repo/README.md"],
+            failed: [],
+            reason: null,
+          },
+        }),
+      );
+    });
+    await expect(bridge.prepareAgentTurn("session-one")).resolves.toMatchObject(
+      {
+        sessionId: "session-one",
+        bridgeConnected: true,
+        allowed: true,
+        policy: "always",
+      },
+    );
+
+    socket.once("message", (data) => {
+      const request = JSON.parse(data.toString()) as {
+        id: string;
+        method: string;
+      };
+      expect(request.method).toBe("agentTurnState");
+      socket.send(
+        JSON.stringify({
+          type: "response",
+          id: request.id,
+          ok: true,
+          result: { refreshed: ["README.md"], conflicts: [] },
+        }),
+      );
+    });
+    await expect(
+      bridge.notifyAgentTurn("session-one", "completed", ["README.md"]),
+    ).resolves.toEqual({
+      notifiedSessions: 1,
+      refreshed: ["README.md"],
+      conflicts: [],
     });
 
     const unauthorized = new URL(url);

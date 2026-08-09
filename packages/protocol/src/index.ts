@@ -1038,6 +1038,45 @@ export const codeDirtyEditorSchema = z.object({
   dirty: z.literal(true),
 });
 
+export const codeSaveBeforeAgentTurnSchema = z.enum(["always", "ask", "never"]);
+
+export const codeWorkbenchAgentStatusSchema = z.enum([
+  "idle",
+  "running",
+  "completed",
+  "failed",
+]);
+
+export const codeWorkbenchActiveEditorSchema = z.object({
+  uri: z.string().min(1).max(16_384),
+  relativePath: z.string().max(8_192).nullable(),
+  selection: z.object({
+    startLine: z.number().int().nonnegative(),
+    startCharacter: z.number().int().nonnegative(),
+    endLine: z.number().int().nonnegative(),
+    endCharacter: z.number().int().nonnegative(),
+  }),
+});
+
+export const codeWorkbenchGitStateSchema = z.object({
+  branch: z.string().max(1_000).nullable(),
+  head: z.string().max(200).nullable(),
+  ahead: z.number().int().nonnegative(),
+  behind: z.number().int().nonnegative(),
+  staged: z.number().int().nonnegative(),
+  unstaged: z.number().int().nonnegative(),
+  untracked: z.number().int().nonnegative(),
+  conflicts: z.number().int().nonnegative(),
+});
+
+export const codeWorkbenchStateSchema = z.object({
+  activeEditor: codeWorkbenchActiveEditorSchema.nullable(),
+  git: codeWorkbenchGitStateSchema.nullable(),
+  conflicts: z.array(codeDirtyEditorSchema).max(1_000),
+  savePolicy: codeSaveBeforeAgentTurnSchema,
+  agentStatus: codeWorkbenchAgentStatusSchema,
+});
+
 export const codeRuntimeStatusSchema = z.object({
   sessionId: z.string().min(1),
   status: codeSessionStatusSchema,
@@ -1045,6 +1084,7 @@ export const codeRuntimeStatusSchema = z.object({
   processInstanceId: z.string().min(1).nullable(),
   bridgeConnected: z.boolean(),
   dirtyEditors: z.array(codeDirtyEditorSchema).max(1_000),
+  workbench: codeWorkbenchStateSchema,
   startedAt: z.string().datetime().nullable(),
   lastActivityAt: z.string().datetime().nullable(),
   lastError: z.string().nullable(),
@@ -1060,6 +1100,28 @@ export const codeSaveAllResultSchema = z.object({
       }),
     )
     .max(1_000),
+});
+
+export const codeAgentTurnPreparationSessionSchema = z.object({
+  sessionId: z.string().min(1),
+  bridgeConnected: z.boolean(),
+  allowed: z.boolean(),
+  policy: codeSaveBeforeAgentTurnSchema.nullable(),
+  dirtyEditors: z.array(codeDirtyEditorSchema).max(1_000),
+  saved: z.array(z.string().max(16_384)).max(1_000),
+  failed: codeSaveAllResultSchema.shape.failed,
+  reason: z.string().max(4_000).nullable(),
+});
+
+export const codeAgentTurnPreparationResultSchema = z.object({
+  prepared: z.boolean(),
+  sessions: z.array(codeAgentTurnPreparationSessionSchema).max(128),
+});
+
+export const codeAgentTurnNotificationResultSchema = z.object({
+  notifiedSessions: z.number().int().nonnegative(),
+  refreshed: z.array(z.string().max(8_192)).max(5_000),
+  conflicts: z.array(codeDirtyEditorSchema).max(1_000),
 });
 
 export const codeAttachmentSchema = z.object({
@@ -2951,7 +3013,9 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     sessionId: z.string().min(1),
     codeTabId: z.string().min(1),
     projectId: z.string().min(1),
+    projectName: z.string().trim().min(1).max(200).optional(),
     worktreeId: z.string().min(1),
+    worktreeName: z.string().trim().min(1).max(200).optional(),
     cwd: z.string().min(1),
     profileId: z.string().min(1).max(200),
     themeMode: codeThemeModeSchema,
@@ -2978,6 +3042,16 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     sessionId: z.string().min(1),
     themeMode: codeThemeModeSchema,
     appearance: codeAppearanceSchema,
+  }),
+  z.object({
+    type: z.literal("code.prepareAgentTurn"),
+    cwd: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("code.agentTurnState"),
+    cwd: z.string().min(1),
+    phase: z.enum(["started", "completed", "failed"]),
+    paths: z.array(z.string().min(1).max(8_192)).max(5_000).default([]),
   }),
   z.object({
     type: z.literal("skills.list"),
@@ -3566,8 +3640,18 @@ export type CodeEditorBuild = z.infer<typeof codeEditorBuildSchema>;
 export type CodeProbeResult = z.infer<typeof codeProbeResultSchema>;
 export type CodeSessionSummary = z.infer<typeof codeSessionSummarySchema>;
 export type CodeDirtyEditor = z.infer<typeof codeDirtyEditorSchema>;
+export type CodeSaveBeforeAgentTurn = z.infer<
+  typeof codeSaveBeforeAgentTurnSchema
+>;
+export type CodeWorkbenchState = z.infer<typeof codeWorkbenchStateSchema>;
 export type CodeRuntimeStatus = z.infer<typeof codeRuntimeStatusSchema>;
 export type CodeSaveAllResult = z.infer<typeof codeSaveAllResultSchema>;
+export type CodeAgentTurnPreparationResult = z.infer<
+  typeof codeAgentTurnPreparationResultSchema
+>;
+export type CodeAgentTurnNotificationResult = z.infer<
+  typeof codeAgentTurnNotificationResultSchema
+>;
 export type CodeAttachment = z.infer<typeof codeAttachmentSchema>;
 export type CodeAttachmentCreate = z.infer<typeof codeAttachmentCreateSchema>;
 export type CodeThemeUpdate = z.infer<typeof codeThemeUpdateSchema>;

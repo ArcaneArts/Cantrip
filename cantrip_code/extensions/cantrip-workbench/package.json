@@ -1,0 +1,112 @@
+{
+  "name": "cantrip-workbench",
+  "displayName": "Cantrip Workbench",
+  "description": "Coordinates Cantrip Code with its worker, worktree, and agent runtime.",
+  "version": "0.1.0",
+  "publisher": "cantrip",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.109.0"
+  },
+  "categories": [
+    "Other",
+    "Themes"
+  ],
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./src/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": false
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "cantrip.saveAll",
+        "title": "Cantrip: Save All Editors"
+      },
+      {
+        "command": "cantrip.reconnectBridge",
+        "title": "Cantrip: Reconnect Worker Bridge"
+      },
+      {
+        "command": "cantrip.showIdentity",
+        "title": "Cantrip: Show Workspace Identity"
+      },
+      {
+        "command": "cantrip.showDirtyEditors",
+        "title": "Cantrip: Show Dirty Editors"
+      },
+      {
+        "command": "cantrip.showConflicts",
+        "title": "Cantrip: Show Agent Edit Conflicts"
+      }
+    ],
+    "configuration": {
+      "title": "Cantrip",
+      "properties": {
+        "cantrip.saveBeforeAgentTurn": {
+          "type": "string",
+          "enum": [
+            "always",
+            "ask",
+            "never"
+          ],
+          "enumDescriptions": [
+            "Save all dirty editors automatically before an agent turn.",
+            "Block the turn until you save or discard dirty editors yourself.",
+            "Allow the turn without saving dirty editors. Conflicting agent changes are still reported."
+          ],
+          "default": "always",
+          "scope": "window",
+          "description": "Controls how this Cantrip Code profile establishes a saved-file boundary before an agent turn."
+        },
+        "cantrip.agentNotifications": {
+          "type": "string",
+          "enum": [
+            "conflicts",
+            "all",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Only notify when an agent changes a file with an unsaved buffer.",
+            "Notify when agent editing starts, finishes, or conflicts.",
+            "Do not show agent-edit notifications. Status bar state remains available."
+          ],
+          "default": "conflicts",
+          "scope": "window",
+          "description": "Controls Cantrip agent-edit notifications in the workbench."
+        }
+      }
+    },
+    "themes": [
+      {
+        "label": "Cantrip Light",
+        "uiTheme": "vs",
+        "path": "./themes/cantrip-light.json"
+      },
+      {
+        "label": "Cantrip Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/cantrip-dark.json"
+      },
+      {
+        "label": "Cantrip High Contrast Light",
+        "uiTheme": "hc-light",
+        "path": "./themes/cantrip-hc-light.json"
+      },
+      {
+        "label": "Cantrip High Contrast Dark",
+        "uiTheme": "hc-black",
+        "path": "./themes/cantrip-hc-dark.json"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ArcaneArts/Cantrip.git"
+  }
+}

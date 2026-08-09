@@ -14,8 +14,10 @@ import {
   walkFiles,
 } from "./lib.mjs";
 
-export const CODE_BUILD_SCHEMA_VERSION = 1;
+export const CODE_BUILD_SCHEMA_VERSION = 2;
 export const CODE_MANIFEST_NAME = "cantrip-code.manifest.json";
+export const CANTRIP_WORKBENCH_PACKAGE =
+  "extensions/cantrip-workbench/package.json";
 
 const platformAliases = new Map([
   ["darwin", "darwin"],
@@ -156,6 +158,9 @@ export async function createDistributionFileInventory(directory) {
 
 export async function createBuildManifest(identity) {
   const upstream = await readJson(upstreamConfigPath);
+  const workbench = await readJson(
+    path.join(extensionsRoot, "cantrip-workbench", "package.json"),
+  );
   const files = await createDistributionFileInventory(
     identity.distributionDirectory,
   );
@@ -170,6 +175,7 @@ export async function createBuildManifest(identity) {
     openvscodeServerCommit: upstream.openvscodeServerCommit,
     vscodeCommit: upstream.vscodeCommit,
     patchset: upstream.patchset,
+    cantripWorkbenchVersion: workbench.version,
     entrypoint: path
       .relative(
         identity.distributionDirectory,
@@ -188,11 +194,15 @@ export async function verifyBuild(identity, options = {}) {
     );
   }
   const manifest = await readJson(identity.manifestPath);
+  const workbench = await readJson(
+    path.join(extensionsRoot, "cantrip-workbench", "package.json"),
+  );
   for (const [field, expected] of Object.entries({
     schemaVersion: CODE_BUILD_SCHEMA_VERSION,
     component: "cantrip-code",
     target: identity.target.id,
     fingerprint: identity.fingerprint,
+    cantripWorkbenchVersion: workbench.version,
   })) {
     if (manifest[field] !== expected) {
       throw new Error(
@@ -206,6 +216,24 @@ export async function verifyBuild(identity, options = {}) {
   );
   if (!(await exists(entrypoint))) {
     throw new Error(`Cantrip Code build is missing ${manifest.entrypoint}`);
+  }
+  const bundledWorkbench = path.join(
+    identity.distributionDirectory,
+    CANTRIP_WORKBENCH_PACKAGE,
+  );
+  if (!(await exists(bundledWorkbench))) {
+    throw new Error(
+      `Cantrip Code build is missing ${CANTRIP_WORKBENCH_PACKAGE}. Run pnpm code:build.`,
+    );
+  }
+  const bundledWorkbenchPackage = await readJson(bundledWorkbench);
+  if (
+    bundledWorkbenchPackage.name !== "cantrip-workbench" ||
+    bundledWorkbenchPackage.version !== manifest.cantripWorkbenchVersion
+  ) {
+    throw new Error(
+      "Cantrip Code contains an incompatible cantrip-workbench extension. Run pnpm code:build.",
+    );
   }
   if (options.full) {
     const actual = await createDistributionFileInventory(

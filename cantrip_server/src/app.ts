@@ -18,6 +18,8 @@ import {
   browserUpdateSchema,
   codeAttachmentCreateSchema,
   codeAttachmentSchema,
+  codeAgentTurnNotificationResultSchema,
+  codeAgentTurnPreparationResultSchema,
   codeProbeResultSchema,
   codeRuntimeStatusSchema,
   codeSaveAllResultSchema,
@@ -1072,6 +1074,56 @@ export async function buildApp({
     return attachments;
   };
 
+  const prepareCodeEditorsForTurn = async (
+    context: ChatExecutionContext,
+  ): Promise<void> => {
+    const result = codeAgentTurnPreparationResultSchema.parse(
+      await bridge.request(context.workerId, {
+        type: "code.prepareAgentTurn",
+        cwd: context.cwd,
+      }),
+    );
+    if (result.prepared) return;
+    const blocked = result.sessions.filter((session) => !session.allowed);
+    const files = [
+      ...new Set(
+        blocked.flatMap((session) =>
+          session.dirtyEditors.map(
+            (editor) => editor.relativePath ?? editor.uri,
+          ),
+        ),
+      ),
+    ];
+    const reason =
+      blocked.find((session) => session.reason)?.reason ??
+      "Cantrip Code could not establish a saved-file boundary.";
+    throw new Error(
+      `${reason}${files.length ? ` Dirty editors: ${files.slice(0, 10).join(", ")}${files.length > 10 ? ` and ${files.length - 10} more` : ""}.` : ""}`,
+    );
+  };
+
+  const notifyCodeAgentState = async (
+    context: Pick<ChatExecutionContext, "chatId" | "cwd" | "workerId">,
+    phase: "started" | "completed" | "failed",
+    paths: Iterable<string> = [],
+  ): Promise<void> => {
+    try {
+      codeAgentTurnNotificationResultSchema.parse(
+        await bridge.request(context.workerId, {
+          type: "code.agentTurnState",
+          cwd: context.cwd,
+          phase,
+          paths: [...paths].slice(0, 5_000),
+        }),
+      );
+    } catch (error) {
+      app.log.warn(
+        { chatId: context.chatId, err: error, phase },
+        "Could not synchronize the agent turn with Cantrip Code",
+      );
+    }
+  };
+
   const dispatchNextQueuedPrompt = async (chatId: string): Promise<void> => {
     if (dispatchingChats.has(chatId)) {
       pendingQueueDispatches.add(chatId);
@@ -1148,6 +1200,7 @@ export async function buildApp({
     );
     const turnMode = input.mode ?? "default";
     const turnPlanMode = turnMode === "plan" ? "plan" : "default";
+    await prepareCodeEditorsForTurn(context);
     const execution = await repository.startChatExecutionLane(
       LOCAL_USER_ID,
       context.chatId,
@@ -1214,7 +1267,9 @@ export async function buildApp({
 
     void (async () => {
       let anyActivity = false;
+      const changedPaths = new Set<string>();
       try {
+        await notifyCodeAgentState(execution, "started");
         for (const [index, runtime] of runtimes.entries()) {
           let attemptActivity = false;
           const canResume = runtime.routeId === execution.modelRouteId;
@@ -1398,6 +1453,11 @@ export async function buildApp({
                     return;
                   }
                   if (event.type !== "agent.activity") return;
+                  if (event.activity.type === "fileChange") {
+                    for (const change of event.activity.changes) {
+                      changedPaths.add(change.path);
+                    }
+                  }
                   await repository.upsertMessage(
                     LOCAL_USER_ID,
                     execution.chatId,
@@ -1415,6 +1475,7 @@ export async function buildApp({
               },
             );
             const result = agentTurnResultSchema.parse(rawResult);
+            await notifyCodeAgentState(execution, "completed", changedPaths);
             routeCooldowns.delete(runtime.routeId);
             await repository.updateChatRuntime(
               execution.chatId,
@@ -1476,6 +1537,7 @@ export async function buildApp({
           }
         }
       } catch (error: unknown) {
+        await notifyCodeAgentState(execution, "failed", changedPaths);
         if (!anyActivity && execution.modelRouteId) {
           await repository.updateChatRuntime(
             execution.chatId,
@@ -3633,7 +3695,9 @@ export async function buildApp({
             sessionId: session.id,
             codeTabId: context.codeTab.id,
             projectId: context.codeTab.projectId,
+            projectName: context.projectName,
             worktreeId: context.worktreeId,
+            worktreeName: context.worktreeName,
             cwd: context.cwd,
             profileId: scopedCodeProfileId(
               LOCAL_USER_ID,
@@ -3674,6 +3738,13 @@ export async function buildApp({
           processInstanceId: null,
           bridgeConnected: false,
           dirtyEditors: [],
+          workbench: {
+            activeEditor: null,
+            git: null,
+            conflicts: [],
+            savePolicy: "always",
+            agentStatus: "idle",
+          },
           startedAt: null,
           lastActivityAt: new Date().toISOString(),
           lastError: message,
@@ -6781,7 +6852,10 @@ export async function buildApp({
         const message = errorMessage(error);
         const status = message.includes("offline")
           ? 503
-          : message.includes("model") || message.includes("Model")
+          : message.includes("model") ||
+              message.includes("Model") ||
+              message.includes("Cantrip Code") ||
+              message.includes("unsaved")
             ? 409
             : 400;
         return reply.code(status).send({ error: message });

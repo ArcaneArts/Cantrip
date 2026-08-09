@@ -650,6 +650,13 @@ const workerBridge = {
           processInstanceId: "code-process-1",
           bridgeConnected: true,
           dirtyEditors: [],
+          workbench: {
+            activeEditor: null,
+            git: null,
+            conflicts: [],
+            savePolicy: "always",
+            agentStatus: "idle",
+          },
           startedAt: "2026-08-08T12:00:00.000Z",
           lastActivityAt: "2026-08-08T12:01:00.000Z",
           lastError: null,
@@ -662,12 +669,23 @@ const workerBridge = {
           processInstanceId: "code-process-1",
           bridgeConnected: false,
           dirtyEditors: [],
+          workbench: {
+            activeEditor: null,
+            git: null,
+            conflicts: [],
+            savePolicy: "always",
+            agentStatus: "idle",
+          },
           startedAt: "2026-08-08T12:00:00.000Z",
           lastActivityAt: "2026-08-08T12:02:00.000Z",
           lastError: null,
         };
       case "code.saveAll":
         return { saved: ["file:///workspace/Cantrip/README.md"], failed: [] };
+      case "code.prepareAgentTurn":
+        return { prepared: true, sessions: [] };
+      case "code.agentTurnState":
+        return { notifiedSessions: 0, refreshed: [], conflicts: [] };
       case "terminal.open":
         return { status: "detached" };
       case "terminal.detach":
