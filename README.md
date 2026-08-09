@@ -192,6 +192,42 @@ the pinned Codex source; subsequent starts reuse Cargo's cache. Copy
 `.env.example` into your preferred environment setup if you need to override
 ports, data directories, the server origin, or the default local model.
 
+## Command quick reference
+
+Run these commands from the repository root. The sections below explain the
+development stacks and artifacts in more detail.
+
+### Run
+
+| Command             | Purpose                                                                          |
+| ------------------- | -------------------------------------------------------------------------------- |
+| `pnpm dev`          | Run the protocol watcher, server, worker, and browser app.                       |
+| `pnpm devtop`       | Run the same local stack with the Tauri desktop app.                             |
+| `pnpm site`         | Run only the public marketing site at <http://127.0.0.1:5174>.                   |
+| `pnpm dev:postgres` | Run the browser stack against disposable PostgreSQL in Docker instead of PGlite. |
+
+### Build and verify
+
+| Command             | Purpose                                                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `pnpm build`        | Build every workspace package, including the browser app and marketing site production bundles.                    |
+| `pnpm typecheck`    | Type-check every workspace package without running tests.                                                          |
+| `pnpm test`         | Run Cantrip Code script and extension tests plus every workspace test suite.                                       |
+| `pnpm check`        | Run the complete pre-commit gate: safety checks, pinned-source verification, type-checking, tests, and formatting. |
+| `pnpm format`       | Format the repository with Prettier.                                                                               |
+| `pnpm format:check` | Check formatting without changing files.                                                                           |
+
+### Package
+
+| Command                        | Artifact                                                                     |
+| ------------------------------ | ---------------------------------------------------------------------------- |
+| `pnpm package:server`          | Standalone server tree for the current platform.                             |
+| `pnpm package:worker`          | Standalone worker tree with Codex and Cantrip Code for the current platform. |
+| `pnpm package:services`        | Both standalone service trees.                                               |
+| `pnpm package:desktop-runtime` | Local server and worker runtime staged for Tauri.                            |
+| `pnpm package:app`             | Native Tauri installer or application bundle.                                |
+| `pnpm package:all`             | Standalone services and the native desktop app.                              |
+
 ## Browser development with `pnpm dev`
 
 ```shell
@@ -287,6 +323,24 @@ Remote Surface logs contain lifecycle and validation errors only. Frame bytes,
 screenshots, keystrokes, clipboard contents, and browser cookies
 must never be logged.
 
+## Marketing site development with `pnpm site`
+
+```shell
+pnpm site
+```
+
+This runs only the `cantrip_site` React/Vite package at
+<http://127.0.0.1:5174>. It does not start the Cantrip server, worker, or app.
+The site follows the operating-system color scheme by default and retains an
+explicit System, Light, or Dark choice in browser storage.
+
+Build or preview just the production marketing site with:
+
+```shell
+pnpm --filter @cantrip/site build
+pnpm --filter @cantrip/site preview
+```
+
 ## Desktop development with `pnpm devtop`
 
 ```shell
@@ -296,6 +350,19 @@ pnpm devtop
 `devtop` runs the same protocol, server, and worker development stack, but launches the frontend inside the Tauri desktop window instead of asking you to open the standalone browser app. Tauri starts its Vite hot-reload server on <http://127.0.0.1:1420>, separately from the browser-development port.
 
 Do not run the complete `pnpm dev` and `pnpm devtop` stacks simultaneously with the default configuration because they still share the Cantrip server and worker. A separately running browser Vite process on port 5173 no longer prevents `devtop` from starting. Press `Ctrl+C` in the `devtop` terminal to stop the Tauri app and all processes it started.
+
+## Build
+
+```shell
+pnpm build
+```
+
+The root build runs each workspace package's build script. It compiles the
+shared protocol, server, and worker TypeScript and creates production Vite
+bundles for `cantrip_app` and `cantrip_site` in their package-local `dist/`
+directories. It does not create standalone service directories or a native
+desktop installer; use the packaging commands for those distributable
+artifacts.
 
 ## Packaging and standalone services
 
@@ -336,24 +403,63 @@ Run the complete repository check before committing:
 pnpm check
 ```
 
-That command runs TypeScript checks, all Vitest suites, and the Prettier check. Other useful commands are:
+That command rejects oversized tracked files, verifies the pinned Cantrip Code
+and Codex source trees, type-checks every package, runs the Cantrip Code script
+and extension tests plus all workspace test suites, and finishes with the
+Prettier check. Useful focused commands include:
 
 ```shell
-pnpm build
-pnpm test
 pnpm typecheck
-pnpm format
-pnpm format:check
+pnpm test
+pnpm check:large-files
+pnpm --filter @cantrip/protocol test
+pnpm --filter @cantrip/server test
+pnpm --filter @cantrip/worker test
+pnpm --filter @cantrip/app test
+pnpm --filter @cantrip/site build
 ```
 
 Worktree-focused tests and manual PGlite/PostgreSQL checks are documented in
 [docs/WORKTREES.md](docs/WORKTREES.md#development-validation).
+
+For Remote Surface browser testing, start the deterministic local fixture and
+open its printed URL in a Cantrip Browser tab:
+
+```shell
+pnpm qa:remote-surfaces
+```
 
 To verify only the Tauri Rust shell:
 
 ```shell
 cargo check --manifest-path cantrip_app/src-tauri/Cargo.toml
 ```
+
+## Pinned runtime maintenance
+
+`pnpm dev` and `pnpm devtop` call `pnpm dev:prepare` automatically. That
+preparation builds the shared protocol and pinned Codex runtime, then confirms
+that the fingerprinted Cantrip Code distribution is ready. Most contributors
+do not need to invoke the lower-level runtime commands directly.
+
+| Command                    | Purpose                                                     |
+| -------------------------- | ----------------------------------------------------------- |
+| `pnpm codex:verify`        | Verify the vendored Codex source manifest.                  |
+| `pnpm codex:build`         | Build the pinned Codex CLI for the host platform.           |
+| `pnpm codex:clean`         | Remove the local pinned Codex build output.                 |
+| `pnpm code:source:verify`  | Verify the vendored Cantrip Code source and patch manifest. |
+| `pnpm code:build`          | Build the fingerprinted Cantrip Code distribution.          |
+| `pnpm code:ready`          | Fast-check that the expected Cantrip Code build exists.     |
+| `pnpm code:verify`         | Fully verify Cantrip Code source and build contents.        |
+| `pnpm code:extension:test` | Run the Cantrip Code workbench extension tests.             |
+| `pnpm code:dev`            | Run the ready Cantrip Code distribution on port 9888.       |
+| `pnpm code:clean`          | Remove local Cantrip Code build and development output.     |
+
+Updating either pinned upstream is a deliberate maintainer workflow. Follow
+[the Cantrip Code guide](docs/CODE.md) before using `code:fetch`, `code:merge`,
+`code:patch`, or `code:divergence`, and follow
+[the Codex runtime policy](docs/CODEX_RUNTIME_COMPATIBILITY.md) before using
+`codex:sync`.
 
 ## Mobile and packaged clients
 
