@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   desktopPopoutSearch,
   parseDesktopPopoutTarget,
+  shouldUseOverlayTitlebar,
   type DesktopPopoutTarget,
 } from "./desktop-popout";
 
@@ -34,5 +35,21 @@ describe("desktop pop-out targets", () => {
       parseDesktopPopoutTarget("?cantrip-popout=settings&project=p&tab=s"),
     ).toBeNull();
     expect(parseDesktopPopoutTarget("?cantrip-popout=chat&tab=c")).toBeNull();
+  });
+});
+
+describe("desktop title bar layout", () => {
+  it("uses the overlay layout only for the macOS Tauri runtime", () => {
+    const mac =
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15";
+
+    expect(shouldUseOverlayTitlebar(true, mac)).toBe(true);
+    expect(shouldUseOverlayTitlebar(false, mac)).toBe(false);
+    expect(
+      shouldUseOverlayTitlebar(true, "Mozilla/5.0 (Windows NT 10.0)"),
+    ).toBe(false);
+    expect(
+      shouldUseOverlayTitlebar(true, "Mozilla/5.0 (X11; Linux x86_64)"),
+    ).toBe(false);
   });
 });

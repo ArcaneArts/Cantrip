@@ -44,6 +44,16 @@ export function isDesktopRuntime(): boolean {
   return isTauri();
 }
 
+export function shouldUseOverlayTitlebar(
+  desktopRuntime: boolean,
+  userAgent: string,
+): boolean {
+  return (
+    desktopRuntime &&
+    (userAgent.includes("Macintosh") || userAgent.includes("Mac OS X"))
+  );
+}
+
 export async function updateDesktopWindowTitle(title: string): Promise<void> {
   if (!isDesktopRuntime()) return;
   document.title = title;
