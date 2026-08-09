@@ -94,27 +94,46 @@ function resultFor(
       ? { inspected: structuredInput?.item }
       : command.prompt.includes("Pipeline summarize step")
         ? { summary: structuredInput?.inspected }
-        : command.prompt.includes("Reduce mapped collection")
-          ? { summary: "mapped" }
-          : command.prompt.includes("Alpha branch")
-            ? { finding: "alpha" }
-            : command.prompt.includes("Beta branch")
-              ? { finding: "beta" }
-              : command.prompt.includes("Gamma branch")
-                ? { finding: "gamma" }
-                : command.prompt.includes("Synthesize branches")
-                  ? { summary: "combined" }
-                  : command.prompt.includes("Collect nested findings")
-                    ? { payload: { findings: [{ finding: "nested" }] } }
-                    : command.prompt.includes("Synthesize selected findings")
-                      ? { summary: "selected" }
-                      : command.prompt.includes("Verify failing")
-                        ? { passed: false }
-                        : command.prompt.includes("Verify passing")
-                          ? { passed: true }
-                          : { approved: true };
+        : command.prompt.includes("Repeat until stable")
+          ? {
+              progress: Number(structuredInput?.progress ?? 0) + 1,
+              done: Number(structuredInput?.progress ?? 0) + 1 >= 3,
+            }
+          : command.prompt.includes("Repeat without progress")
+            ? { progress: "same", done: false }
+            : command.prompt.includes("Repeat through iteration limit")
+              ? {
+                  progress: Number(structuredInput?.progress ?? 0) + 1,
+                  done: false,
+                }
+              : command.prompt.includes("Repeat through duration limit")
+                ? { progress: 1, done: true }
+                : command.prompt.includes("Reduce mapped collection")
+                  ? { summary: "mapped" }
+                  : command.prompt.includes("Alpha branch")
+                    ? { finding: "alpha" }
+                    : command.prompt.includes("Beta branch")
+                      ? { finding: "beta" }
+                      : command.prompt.includes("Gamma branch")
+                        ? { finding: "gamma" }
+                        : command.prompt.includes("Synthesize branches")
+                          ? { summary: "combined" }
+                          : command.prompt.includes("Collect nested findings")
+                            ? { payload: { findings: [{ finding: "nested" }] } }
+                            : command.prompt.includes(
+                                  "Synthesize selected findings",
+                                )
+                              ? { summary: "selected" }
+                              : command.prompt.includes("Verify failing")
+                                ? { passed: false }
+                                : command.prompt.includes("Verify passing")
+                                  ? { passed: true }
+                                  : { approved: true };
   return {
-    threadId: `thread-${command.attemptId}`,
+    threadId:
+      command.prompt.includes("Repeat ") && command.threadId
+        ? command.threadId
+        : `thread-${command.attemptId}`,
     turnId: `turn-${command.attemptId}`,
     text: JSON.stringify(structuredResult),
     structuredResult,
@@ -2419,6 +2438,488 @@ describe.sequential("single-agent workflow execution", () => {
     expect((await runDetail(runId)).run.structuredResult).toEqual([
       { summary: "survive" },
     ]);
+  });
+
+  it("repeats through durable iterations until the success predicate matches", async () => {
+    const revision = await createWorkflowRevision("repeat-until-success", [
+      {
+        key: "repeat_until_stable",
+        type: "repeatUntil",
+        name: "Repeat until stable",
+        configuration: {
+          prompt: "Repeat until stable.",
+          successCondition: {
+            path: "/done",
+            operator: "equals",
+            value: true,
+          },
+          progressPath: "/progress",
+          maxUnchangedIterations: 2,
+          maxIterations: 5,
+          maxDurationMs: 60_000,
+        },
+        outputSchema: { type: "object" },
+      },
+    ]);
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-repeat-until-success",
+      { maxNodes: 10 },
+      { progress: 0 },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    const detail = await runDetail(runId);
+    const commands = executionCommands.slice(before);
+    const firstThreadId = `thread-${commands[0]!.attemptId}`;
+    expect(commands.map(({ threadId }) => threadId)).toEqual([
+      null,
+      firstThreadId,
+      firstThreadId,
+    ]);
+    expect(detail.run.structuredResult).toEqual({ progress: 3, done: true });
+    expect(detail.nodes[0]).toMatchObject({
+      attemptCount: 3,
+      measuredUsage: { totalTokens: 42 },
+      status: "completed",
+      dependencyState: {
+        repeatUntil: {
+          kind: "repeatUntil",
+          currentIteration: 4,
+          currentIterationAttemptCount: 0,
+          unchangedIterations: 0,
+          logicalNodeCount: 3,
+          completedIterations: [
+            { iteration: 1, progressValue: 1 },
+            { iteration: 2, progressValue: 2 },
+            { iteration: 3, progressValue: 3 },
+          ],
+        },
+      },
+    });
+    expect(
+      detail.attempts.map(({ attempt, executionUnitKey, status }) => ({
+        attempt,
+        executionUnitKey,
+        status,
+      })),
+    ).toEqual([
+      { attempt: 1, executionUnitKey: "iteration-1", status: "completed" },
+      { attempt: 2, executionUnitKey: "iteration-2", status: "completed" },
+      { attempt: 3, executionUnitKey: "iteration-3", status: "completed" },
+    ]);
+  });
+
+  it("stops a repeat-until node when progress remains unchanged", async () => {
+    const revision = await createWorkflowRevision("repeat-no-progress", [
+      {
+        key: "repeat_without_progress",
+        type: "repeatUntil",
+        name: "Repeat without progress",
+        configuration: {
+          prompt: "Repeat without progress.",
+          successCondition: {
+            path: "/done",
+            operator: "equals",
+            value: true,
+          },
+          progressPath: "/progress",
+          maxUnchangedIterations: 1,
+          maxIterations: 5,
+          maxDurationMs: 60_000,
+        },
+      },
+    ]);
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-repeat-no-progress",
+      { maxNodes: 10 },
+      { progress: "start" },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("failed");
+    });
+    const detail = await runDetail(runId);
+    expect(executionCommands).toHaveLength(before + 2);
+    expect(detail.run).toMatchObject({
+      errorCode: "repeat-no-progress",
+      errorMessage: expect.stringContaining("unchanged-progress"),
+    });
+    expect(detail.nodes[0]).toMatchObject({
+      status: "failed",
+      dependencyState: {
+        repeatUntil: {
+          currentIteration: 3,
+          unchangedIterations: 1,
+          logicalNodeCount: 2,
+          completedIterations: [{ iteration: 1 }, { iteration: 2 }],
+        },
+      },
+    });
+    const retry = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/nodes/${detail.nodes[0]!.id}/retry`,
+      payload: {
+        reason: "Try past the configured no-progress ceiling.",
+        idempotencyKey: "retry-repeat-no-progress",
+      },
+    });
+    expect(retry.statusCode).toBe(409);
+  });
+
+  it("fails explicitly when a repeat-until progress path is missing", async () => {
+    const revision = await createWorkflowRevision("repeat-missing-progress", [
+      {
+        key: "repeat_missing_progress",
+        type: "repeatUntil",
+        name: "Repeat missing progress",
+        configuration: {
+          prompt: "Return a result without repeat progress.",
+          successCondition: {
+            path: "/done",
+            operator: "equals",
+            value: true,
+          },
+          progressPath: "/progress",
+          maxUnchangedIterations: 1,
+          maxIterations: 2,
+          maxDurationMs: 60_000,
+        },
+      },
+    ]);
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-repeat-missing-progress",
+      { maxNodes: 5 },
+      { progress: 0 },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("failed");
+    });
+    const detail = await runDetail(runId);
+    expect(executionCommands).toHaveLength(before + 1);
+    expect(detail.run).toMatchObject({
+      errorCode: "repeat-progress-missing",
+      errorMessage: expect.stringContaining("/progress"),
+    });
+    expect(detail.nodes[0]?.dependencyState).toMatchObject({
+      repeatUntil: {
+        currentIteration: 1,
+        currentIterationAttemptCount: 1,
+        completedIterations: [],
+      },
+    });
+  });
+
+  it("enforces repeat-until iteration and workflow-node ceilings", async () => {
+    const revision = await createWorkflowRevision("repeat-iteration-limit", [
+      {
+        key: "repeat_through_limit",
+        type: "repeatUntil",
+        name: "Repeat through limit",
+        configuration: {
+          prompt: "Repeat through iteration limit.",
+          successCondition: {
+            path: "/done",
+            operator: "equals",
+            value: true,
+          },
+          progressPath: "/progress",
+          maxUnchangedIterations: 2,
+          maxIterations: 2,
+          maxDurationMs: 60_000,
+        },
+      },
+    ]);
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-repeat-iteration-limit",
+      { maxNodes: 10 },
+      { progress: 0 },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("failed");
+    });
+    expect((await runDetail(runId)).run).toMatchObject({
+      errorCode: "repeat-iteration-limit",
+    });
+    expect(executionCommands).toHaveLength(before + 2);
+
+    const boundedBefore = executionCommands.length;
+    const boundedResponse = await createRunForRevision(
+      revision,
+      "execute-repeat-node-budget",
+      { maxNodes: 2 },
+      { progress: 0 },
+    );
+    const boundedRunId = workflowRunDetailSchema.parse(boundedResponse.json())
+      .run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(boundedRunId)).run.status).toBe("failed");
+    });
+    expect((await runDetail(boundedRunId)).run).toMatchObject({
+      errorCode: "workflow-node-budget-exceeded",
+    });
+    expect(executionCommands).toHaveLength(boundedBefore + 1);
+  });
+
+  it("retries within one repeat-until iteration without losing usage", async () => {
+    const revision = await createWorkflowRevision("repeat-iteration-retry", [
+      {
+        key: "repeat_until_stable",
+        type: "repeatUntil",
+        name: "Repeat until stable",
+        configuration: {
+          prompt: "Repeat until stable.",
+          automaticRetries: 1,
+          successCondition: {
+            path: "/done",
+            operator: "equals",
+            value: true,
+          },
+          progressPath: "/progress",
+          maxUnchangedIterations: 2,
+          maxIterations: 5,
+          maxDurationMs: 60_000,
+        },
+      },
+    ]);
+    mode = "failure";
+    const response = await createRunForRevision(
+      revision,
+      "execute-repeat-iteration-retry",
+      { maxAttemptsPerNode: 2, maxNodes: 10 },
+      { progress: 0 },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    const detail = await runDetail(runId);
+    expect(detail.nodes[0]).toMatchObject({
+      attemptCount: 4,
+      measuredUsage: { totalTokens: 50 },
+      dependencyState: {
+        repeatUntil: {
+          currentIteration: 4,
+          currentIterationAttemptCount: 0,
+          completedIterations: [
+            { iteration: 1 },
+            { iteration: 2 },
+            { iteration: 3 },
+          ],
+        },
+      },
+    });
+    expect(
+      detail.attempts.map(({ executionUnitKey, status }) => ({
+        executionUnitKey,
+        status,
+      })),
+    ).toEqual([
+      { executionUnitKey: "iteration-1", status: "failed" },
+      { executionUnitKey: "iteration-1", status: "completed" },
+      { executionUnitKey: "iteration-2", status: "completed" },
+      { executionUnitKey: "iteration-3", status: "completed" },
+    ]);
+  });
+
+  it("recovers the current repeat-until iteration without replaying its ledger", async () => {
+    const revision = await createWorkflowRevision("repeat-restart", [
+      {
+        key: "repeat_until_stable",
+        type: "repeatUntil",
+        name: "Repeat until stable",
+        configuration: {
+          prompt: "Repeat until stable.",
+          automaticRetries: 0,
+          successCondition: {
+            path: "/done",
+            operator: "equals",
+            value: true,
+          },
+          progressPath: "/progress",
+          maxUnchangedIterations: 2,
+          maxIterations: 5,
+          maxDurationMs: 60_000,
+        },
+      },
+    ]);
+    connected = false;
+    mode = "success";
+    const response = await createRunForRevision(
+      revision,
+      "execute-repeat-restart",
+      { maxAttemptsPerNode: 2, maxNodes: 10 },
+      { progress: 0 },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).nodes[0]?.dependencyState).toMatchObject({
+        repeatUntil: { currentIteration: 1 },
+      });
+    });
+    const source = await database.repository.getProjectSource(
+      LOCAL_USER_ID,
+      projectId,
+    );
+    const firstCandidate =
+      (await database.repository.workflowRuns.getReadyAgentCandidates(
+        LOCAL_USER_ID,
+        runId,
+      ))![0]!;
+    const firstLease = await database.repository.workflowRuns.claimAgentAttempt(
+      LOCAL_USER_ID,
+      firstCandidate,
+      {
+        cwd: source!.cwd,
+        modelRouteId: DEFAULT_MODEL_ROUTE_ID,
+        permissionProfileId: null,
+        workerId: source!.workerId,
+        worktreeId: source!.worktreeId,
+      },
+    );
+    await database.repository.workflowRuns.completeAgentAttempt(
+      LOCAL_USER_ID,
+      firstLease!,
+      {
+        measuredUsage: {
+          inputTokens: 10,
+          outputTokens: 4,
+          cachedInputTokens: 2,
+          totalTokens: 14,
+          durationMs: 250,
+          estimatedCostUsd: null,
+          costAvailable: false,
+        },
+        structuredResult: { progress: 1, done: false },
+        text: "continue",
+        threadId: `thread-${firstLease!.attemptId}`,
+        turnId: `turn-${firstLease!.attemptId}`,
+      },
+    );
+    const secondCandidate =
+      (await database.repository.workflowRuns.getReadyAgentCandidates(
+        LOCAL_USER_ID,
+        runId,
+      ))![0]!;
+    expect(secondCandidate.repeatUntil?.state.currentIteration).toBe(2);
+    await database.repository.workflowRuns.claimAgentAttempt(
+      LOCAL_USER_ID,
+      secondCandidate,
+      {
+        cwd: source!.cwd,
+        modelRouteId: DEFAULT_MODEL_ROUTE_ID,
+        permissionProfileId: null,
+        workerId: source!.workerId,
+        worktreeId: source!.worktreeId,
+      },
+    );
+
+    await app.close();
+    database = await connectDatabase(config);
+    app = await buildApp({ config, database, logger: false, workerBridge });
+    const recovering = await runDetail(runId);
+    expect(recovering).toMatchObject({
+      run: { status: "recovering", recoveryState: "blocked" },
+      nodes: [
+        {
+          status: "recovering",
+          dependencyState: {
+            repeatUntil: {
+              currentIteration: 2,
+              currentIterationAttemptCount: 1,
+              completedIterations: [
+                { iteration: 1, structuredResult: { progress: 1 } },
+              ],
+            },
+          },
+        },
+      ],
+      attempts: [
+        { executionUnitKey: "iteration-1", status: "completed" },
+        { executionUnitKey: "iteration-2", status: "orphaned" },
+      ],
+    });
+    connected = true;
+    const retry = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/nodes/${recovering.nodes[0]!.id}/retry`,
+      payload: {
+        reason: "Resume the durable repeat iteration.",
+        idempotencyKey: "retry-repeat-after-restart",
+      },
+    });
+    expect(retry.statusCode).toBe(200);
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    const completed = await runDetail(runId);
+    expect(completed.run.structuredResult).toEqual({
+      progress: 3,
+      done: true,
+    });
+    expect(completed.nodes[0]?.dependencyState).toMatchObject({
+      repeatUntil: {
+        currentIteration: 4,
+        completedIterations: [
+          { iteration: 1 },
+          { iteration: 2 },
+          { iteration: 3 },
+        ],
+      },
+    });
+  });
+
+  it("enforces the repeat-until duration ceiling at a completed turn boundary", async () => {
+    const revision = await createWorkflowRevision("repeat-duration-limit", [
+      {
+        key: "repeat_through_duration",
+        type: "repeatUntil",
+        name: "Repeat through duration",
+        configuration: {
+          prompt: "Repeat through duration limit.",
+          successCondition: {
+            path: "/done",
+            operator: "equals",
+            value: true,
+          },
+          progressPath: "/progress",
+          maxUnchangedIterations: 2,
+          maxIterations: 5,
+          maxDurationMs: 1_000,
+        },
+      },
+    ]);
+    mode = "hold-success";
+    const before = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-repeat-duration-limit",
+      { maxNodes: 10 },
+      { progress: 0 },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(() => expect(heldExecution).not.toBeNull());
+    expect(executionCommands[before]!.timeoutMs).toBeGreaterThan(0);
+    expect(executionCommands[before]!.timeoutMs).toBeLessThanOrEqual(1_000);
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    heldExecution?.();
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("failed");
+    });
+    expect((await runDetail(runId)).run).toMatchObject({
+      errorCode: "repeat-duration-limit",
+    });
   });
 
   it("cancels every active and pending map item and interrupts each live turn", async () => {

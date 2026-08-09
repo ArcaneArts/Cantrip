@@ -130,6 +130,27 @@ condition decision and its event are committed atomically, so a restart cannot
 choose a different path. Deterministic condition and gate decisions are final
 and cannot be retried in place.
 
+A `repeatUntil` node initializes a durable loop cursor before its first Codex
+turn. The first iteration receives the node's structured input; each later
+iteration receives the previous committed structured result and resumes the
+same node-owned Codex thread. Successful turns append a bounded iteration
+ledger containing the result, selected progress value, usage, thread and turn
+attribution, and completion time. Execution failures retry within the current
+iteration, so they do not consume an iteration or duplicate a completed ledger
+entry. Startup recovery and operator retry likewise resume the current
+iteration from this persisted boundary.
+
+After each turn, the server resolves `progressPath` and evaluates
+`successCondition` against the structured result. A missing progress value
+fails explicitly. Otherwise success completes the node and releases its
+downstream dependencies. An unsatisfied result schedules another iteration
+only when all four ceilings still allow it: `maxUnchangedIterations`,
+`maxIterations`, `maxDurationMs` measured from loop initialization, and the
+run-wide `maxNodes` budget. Each initialized iteration counts as one logical
+node, and the remaining loop duration also caps the active worker turn. Hard
+loop ceilings fail the run with an auditable reason and cannot be bypassed by
+node retry; a changed limit requires a new run.
+
 Gate nodes create a durable pending approval record and move the node to
 `waiting-for-approval`. The run remains waiting until an idempotent operator
 decision, cancellation, or optional expiry is persisted. Approval passes the
@@ -140,9 +161,7 @@ work without creating a duplicate gate. Cancellation terminalizes pending
 gates, and decisions against cancelled or otherwise incompatible terminal
 states fail with a conflict.
 
-The unsupported dynamic node `repeatUntil` still fails explicitly rather than
-falling back to an agent chat or an unvalidated interpretation.
-Subsequent scheduler changes must preserve this contract, persist every
+Subsequent scheduler changes must preserve these contracts, persist every
 intermediate boundary, and apply the run budget as an additional ceiling over
 node-local concurrency and loop limits.
 
