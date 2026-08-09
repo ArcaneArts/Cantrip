@@ -19,6 +19,7 @@
     "node-pty": "^1.1.0",
     "node-screenshots": "0.2.8",
     "sharp": "0.34.4",
+    "webdav-server": "2.6.3",
     "werift": "^0.24.3",
     "ws": "^8.21.2"
   },
