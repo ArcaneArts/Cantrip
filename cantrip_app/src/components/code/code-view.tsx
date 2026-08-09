@@ -304,7 +304,7 @@ export function CodeView({
       ) : (
         <div className="grid flex-1 place-items-center p-6 text-center">
           <div className="max-w-md">
-            <div className="mx-auto grid size-12 place-items-center rounded-2xl border bg-card">
+            <div className="mx-auto grid size-12 place-items-center">
               {connectError && !retrying ? (
                 <AlertTriangle className="size-5 text-destructive" />
               ) : stopped.current ? (
