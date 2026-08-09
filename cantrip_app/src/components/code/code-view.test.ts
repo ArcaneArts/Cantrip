@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { CantripApiError } from "@/lib/api";
+
 import {
   codeReconnectDelayMs,
   isCodeAttachmentUnavailableMessage,
+  isCodeSessionUnavailableError,
 } from "./code-view";
 
 describe("Cantrip Code reconnect delay", () => {
@@ -29,5 +32,23 @@ describe("Cantrip Code reconnect delay", () => {
       }),
     ).toBe(false);
     expect(isCodeAttachmentUnavailableMessage(null)).toBe(false);
+  });
+
+  it("recovers only from a worker that forgot an existing Code session", () => {
+    expect(
+      isCodeSessionUnavailableError(
+        new CantripApiError("Cantrip Code session session-1 is not open.", 502),
+      ),
+    ).toBe(true);
+    expect(
+      isCodeSessionUnavailableError(
+        new CantripApiError("Cantrip Code failed to start.", 502),
+      ),
+    ).toBe(false);
+    expect(
+      isCodeSessionUnavailableError(
+        new CantripApiError("Cantrip Code session session-1 is not open.", 409),
+      ),
+    ).toBe(false);
   });
 });
