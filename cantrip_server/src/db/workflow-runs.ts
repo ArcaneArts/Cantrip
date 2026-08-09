@@ -47,6 +47,8 @@ import {
   type WorkflowRunEventPage,
   type WorkflowRunEventQuery,
   type WorkflowRunQuery,
+  type WorkflowRunPause,
+  type WorkflowRunResume,
   type WorkflowRunNode,
   type WorkflowRunNodeItem,
   type WorkflowRunNodeItemExecutionState,
@@ -2139,7 +2141,7 @@ export class WorkflowRunRepository {
       const nodeUsage = aggregateWorkflowUsage(
         attemptUsageRows.map(({ measuredUsage: usage }) => usage),
       );
-      const runIsActive = ["queued", "running", "waiting"].includes(
+      const runIsActive = ["queued", "running", "waiting", "paused"].includes(
         lockedRun.status,
       );
       const nodeIsActive = ["running", "waiting-for-approval"].includes(
@@ -2339,6 +2341,8 @@ export class WorkflowRunRepository {
             ),
             errorCode: failed.code.slice(0, 200),
             errorMessage: failed.message.slice(0, 5_000),
+            pauseReason: null,
+            pausedAt: null,
             completedAt: now,
             updatedAt: now,
           })
@@ -2994,7 +2998,9 @@ export class WorkflowRunRepository {
       const runIsActive =
         runs[0] !== undefined &&
         ["queued", "running", "waiting"].includes(runs[0].status);
-      const retryScheduled = retryEligible && runIsActive;
+      const runIsPaused = runs[0]?.status === "paused";
+      const runCanSettle = runIsActive || runIsPaused;
+      const retryScheduled = retryEligible && runCanSettle;
       await transaction
         .update(schema.workflowRunNodes)
         .set({
@@ -3019,7 +3025,7 @@ export class WorkflowRunRepository {
           updatedAt: now,
         })
         .where(eq(schema.workflowRunNodes.id, lease.candidate.node.id));
-      if (runIsActive && !retryScheduled && input.status !== "orphaned") {
+      if (runCanSettle && !retryScheduled && input.status !== "orphaned") {
         await transaction
           .update(schema.workflowRunNodes)
           .set({ status: "skipped", completedAt: now, updatedAt: now })
@@ -3060,7 +3066,9 @@ export class WorkflowRunRepository {
         input.status === "orphaned"
           ? "recovering"
           : retryScheduled
-            ? retryRunStatus
+            ? runIsPaused
+              ? "paused"
+              : retryRunStatus
             : input.status === "interrupted"
               ? "cancelled"
               : "failed";
@@ -3068,6 +3076,9 @@ export class WorkflowRunRepository {
         .update(schema.workflowRuns)
         .set({
           status: runStatus,
+          ...(runStatus === "paused"
+            ? {}
+            : { pauseReason: null, pausedAt: null }),
           measuredUsage: aggregateWorkflowUsage(
             nodes.map(({ measuredUsage }) => measuredUsage),
           ),
@@ -3086,6 +3097,7 @@ export class WorkflowRunRepository {
               "queued",
               "running",
               "waiting",
+              "paused",
             ]),
           ),
         );
@@ -3193,7 +3205,9 @@ export class WorkflowRunRepository {
       const runIsActive =
         runRows[0] !== undefined &&
         ["queued", "running", "waiting"].includes(runRows[0].status);
-      const retryScheduled = retryEligible && runIsActive;
+      const runIsPaused = runRows[0]?.status === "paused";
+      const runCanSettle = runIsActive || runIsPaused;
+      const retryScheduled = retryEligible && runCanSettle;
       const itemRows = await transaction
         .select()
         .from(schema.workflowRunNodeItems)
@@ -3217,7 +3231,7 @@ export class WorkflowRunRepository {
         .update(schema.workflowRunNodeItems)
         .set({
           status:
-            !runIsActive && runRows[0]?.status !== "recovering"
+            !runCanSettle && runRows[0]?.status !== "recovering"
               ? "cancelled"
               : input.status === "orphaned"
                 ? "recovering"
@@ -3236,7 +3250,7 @@ export class WorkflowRunRepository {
           completedAt:
             retryScheduled ||
             (input.status === "orphaned" &&
-              (runIsActive || runRows[0]?.status === "recovering"))
+              (runCanSettle || runRows[0]?.status === "recovering"))
               ? null
               : now,
           updatedAt: now,
@@ -3258,7 +3272,7 @@ export class WorkflowRunRepository {
       const nodeUsage = aggregateWorkflowUsage(
         collectionItems.map(({ measuredUsage: usage }) => usage),
       );
-      if (!runIsActive) {
+      if (!runCanSettle) {
         await transaction
           .update(schema.workflowRunNodes)
           .set({ measuredUsage: nodeUsage, updatedAt: now })
@@ -3302,6 +3316,8 @@ export class WorkflowRunRepository {
             status: "recovering",
             errorCode: input.code.slice(0, 200),
             errorMessage: message,
+            pauseReason: null,
+            pausedAt: null,
             recoveryState: "blocked",
             updatedAt: now,
           })
@@ -3320,7 +3336,7 @@ export class WorkflowRunRepository {
         await transaction
           .update(schema.workflowRuns)
           .set({
-            status: "running",
+            status: runIsPaused ? "paused" : "running",
             errorCode: null,
             errorMessage: null,
             recoveryState: "stable",
@@ -3450,6 +3466,8 @@ export class WorkflowRunRepository {
           status: input.status === "interrupted" ? "cancelled" : "failed",
           errorCode: input.code.slice(0, 200),
           errorMessage: message,
+          pauseReason: null,
+          pausedAt: null,
           recoveryState: "stable",
           completedAt: now,
           updatedAt: now,
@@ -3593,7 +3611,9 @@ export class WorkflowRunRepository {
       const runIsActive =
         runRows[0] !== undefined &&
         ["queued", "running", "waiting"].includes(runRows[0].status);
-      const retryScheduled = retryEligible && runIsActive;
+      const runIsPaused = runRows[0]?.status === "paused";
+      const runCanSettle = runIsActive || runIsPaused;
+      const retryScheduled = retryEligible && runCanSettle;
       await transaction
         .update(schema.workflowRunNodeItems)
         .set({
@@ -3635,7 +3655,7 @@ export class WorkflowRunRepository {
       const itemUsage = aggregateWorkflowUsage(
         itemRows.map(({ measuredUsage: usage }) => usage),
       );
-      if (!runIsActive) {
+      if (!runCanSettle) {
         return {
           retryScheduled: false,
           terminalizedMap: false,
@@ -3657,6 +3677,8 @@ export class WorkflowRunRepository {
             status: "recovering",
             errorCode: input.code.slice(0, 200),
             errorMessage: message,
+            pauseReason: null,
+            pausedAt: null,
             recoveryState: "blocked",
             updatedAt: now,
           })
@@ -3679,7 +3701,7 @@ export class WorkflowRunRepository {
         await transaction
           .update(schema.workflowRuns)
           .set({
-            status: "running",
+            status: runIsPaused ? "paused" : "running",
             errorCode: null,
             errorMessage: null,
             recoveryState: "stable",
@@ -3805,6 +3827,8 @@ export class WorkflowRunRepository {
           status: input.status === "interrupted" ? "cancelled" : "failed",
           errorCode: input.code.slice(0, 200),
           errorMessage: message,
+          pauseReason: null,
+          pausedAt: null,
           recoveryState: "stable",
           completedAt: now,
           updatedAt: now,
@@ -4006,6 +4030,170 @@ export class WorkflowRunRepository {
       );
     }
     return rows.length;
+  }
+
+  async pauseRun(
+    ownerId: string,
+    runId: string,
+    input: WorkflowRunPause,
+  ): Promise<WorkflowRunDetail | null> {
+    const eventKey = `run-pause:${input.idempotencyKey}`;
+    const controlPayload = {
+      reason: input.reason,
+      idempotencyKey: input.idempotencyKey,
+    };
+    const now = new Date();
+    for (let retry = 0; retry < 20; retry += 1) {
+      try {
+        const found = await this.database.transaction(async (transaction) => {
+          const lockedRun = await lockWorkflowRun(transaction, ownerId, runId);
+          if (!lockedRun) return false;
+          const existingEvents = await transaction
+            .select({ payload: schema.workflowRunEvents.payload })
+            .from(schema.workflowRunEvents)
+            .where(
+              and(
+                eq(schema.workflowRunEvents.runId, runId),
+                eq(schema.workflowRunEvents.eventKey, eventKey),
+              ),
+            )
+            .limit(1);
+          if (existingEvents[0]) {
+            const payload = workflowJsonObjectSchema.parse(
+              existingEvents[0].payload,
+            );
+            if (
+              canonicalJson({
+                reason: payload.reason ?? null,
+                idempotencyKey: payload.idempotencyKey,
+              }) !== canonicalJson(controlPayload)
+            ) {
+              throw new WorkflowControlConflictError(
+                "This pause idempotency key was already used with different input.",
+              );
+            }
+            return true;
+          }
+          if (!["queued", "running", "waiting"].includes(lockedRun.status)) {
+            throw new WorkflowControlConflictError(
+              `A ${lockedRun.status} workflow run cannot be paused.`,
+            );
+          }
+          await transaction
+            .update(schema.workflowRuns)
+            .set({
+              status: "paused",
+              pauseReason: input.reason,
+              pausedAt: now,
+              updatedAt: now,
+            })
+            .where(eq(schema.workflowRuns.id, runId));
+          await insertWorkflowRunEvent(transaction, {
+            runId,
+            runNodeId: null,
+            attemptId: null,
+            eventKey,
+            type: "run.paused",
+            payload: controlPayload,
+            actorType: "user",
+            actorId: ownerId,
+          });
+          return true;
+        });
+        if (!found) return null;
+        return this.getRun(ownerId, runId);
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+      }
+    }
+    throw new Error("Workflow pause event contention exceeded its limit.");
+  }
+
+  async resumeRun(
+    ownerId: string,
+    runId: string,
+    input: WorkflowRunResume,
+  ): Promise<WorkflowRunDetail | null> {
+    const eventKey = `run-resume:${input.idempotencyKey}`;
+    const controlPayload = {
+      reason: input.reason,
+      idempotencyKey: input.idempotencyKey,
+    };
+    const now = new Date();
+    for (let retry = 0; retry < 20; retry += 1) {
+      try {
+        const found = await this.database.transaction(async (transaction) => {
+          const lockedRun = await lockWorkflowRun(transaction, ownerId, runId);
+          if (!lockedRun) return false;
+          const existingEvents = await transaction
+            .select({ payload: schema.workflowRunEvents.payload })
+            .from(schema.workflowRunEvents)
+            .where(
+              and(
+                eq(schema.workflowRunEvents.runId, runId),
+                eq(schema.workflowRunEvents.eventKey, eventKey),
+              ),
+            )
+            .limit(1);
+          if (existingEvents[0]) {
+            const payload = workflowJsonObjectSchema.parse(
+              existingEvents[0].payload,
+            );
+            if (
+              canonicalJson({
+                reason: payload.reason ?? null,
+                idempotencyKey: payload.idempotencyKey,
+              }) !== canonicalJson(controlPayload)
+            ) {
+              throw new WorkflowControlConflictError(
+                "This resume idempotency key was already used with different input.",
+              );
+            }
+            return true;
+          }
+          if (lockedRun.status !== "paused") {
+            throw new WorkflowControlConflictError(
+              `A ${lockedRun.status} workflow run cannot be resumed.`,
+            );
+          }
+          await transaction
+            .update(schema.workflowRuns)
+            .set({
+              status: "queued",
+              pauseReason: null,
+              pausedAt: null,
+              updatedAt: now,
+            })
+            .where(eq(schema.workflowRuns.id, runId));
+          const transition = await recomputeWorkflowRun(transaction, {
+            codexThreadId: null,
+            lockedRun: {
+              ...lockedRun,
+              status: "queued",
+              pauseReason: null,
+              pausedAt: null,
+            },
+            now,
+          });
+          await insertWorkflowRunEvent(transaction, {
+            runId,
+            runNodeId: null,
+            attemptId: null,
+            eventKey,
+            type: "run.resumed",
+            payload: { ...controlPayload, runStatus: transition.status },
+            actorType: "user",
+            actorId: ownerId,
+          });
+          return true;
+        });
+        if (!found) return null;
+        return this.getRun(ownerId, runId);
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+      }
+    }
+    throw new Error("Workflow resume event contention exceeded its limit.");
   }
 
   async requestCancellation(
@@ -5404,7 +5592,11 @@ export class WorkflowRunRepository {
                 `A ${lockedGate.status} workflow gate cannot be ${control.outcome}.`,
               );
             }
-            if (!["queued", "running", "waiting"].includes(lockedRun.status)) {
+            if (
+              !["queued", "running", "waiting", "paused"].includes(
+                lockedRun.status,
+              )
+            ) {
               if (control.outcome === "expired") {
                 return { replayed: true, terminalizedRun: true };
               }

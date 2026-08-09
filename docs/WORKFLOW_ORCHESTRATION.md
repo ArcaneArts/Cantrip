@@ -161,6 +161,31 @@ work without creating a duplicate gate. Cancellation terminalizes pending
 gates, and decisions against cancelled or otherwise incompatible terminal
 states fail with a conflict.
 
+## Durable pause and resume
+
+`POST /api/workflow-runs/:runId/pause` is a graceful durable pause. The server
+atomically records the operator reason and idempotency key, changes an active
+run to `paused`, and stops claiming new Codex turns or deterministic control
+nodes. It does not interrupt turns that were already dispatched. Those turns
+may finish at their normal durable boundary; their completed result, failed
+attempt, or scheduled retry is retained while the run remains paused. If that
+boundary terminalizes the entire run, the terminal result wins over the pause.
+Pausing therefore does not spend an attempt merely to stop scheduling.
+
+An approval or denial may still be persisted for a pending gate while its run
+is manually paused. A nonterminal decision can ready downstream work, but the
+work is not dispatched until resume. Cancellation is also valid while paused
+and remains terminal. Recovery or an unrecoverable boundary failure supersedes
+the manual pause and clears its reason.
+
+`POST /api/workflow-runs/:runId/resume` atomically clears the manual pause,
+recomputes the run from persisted nodes and collection items, appends a resume
+event, and queues only the work that is still ready. Neither control mutates
+attempt counters. Both controls require an idempotency key; replay with the
+same payload returns the current run, while reusing the key with different
+input is a conflict. Paused runs are not startup-dispatchable, so they remain
+paused across server restarts until an explicit resume or cancellation.
+
 Subsequent scheduler changes must preserve these contracts, persist every
 intermediate boundary, and apply the run budget as an additional ceiling over
 node-local concurrency and loop limits.

@@ -25,6 +25,8 @@ import {
   workflowRunCreateSchema,
   workflowRunCancelSchema,
   workflowRunDetailSchema,
+  workflowRunPauseSchema,
+  workflowRunResumeSchema,
   workflowRepeatUntilExecutionStateSchema,
   workflowRunNodeItemExecutionStateSchema,
   workflowRunStatusUpdateSchema,
@@ -630,13 +632,25 @@ describe("workflow protocol", () => {
     ).toBe(false);
   });
 
-  it("bounds durable cancellation and explicit retry controls", () => {
+  it("bounds durable run and retry controls", () => {
     expect(
       workflowRunCancelSchema.parse({
         reason: "No longer needed.",
         idempotencyKey: "cancel-1",
       }),
     ).toEqual({ reason: "No longer needed.", idempotencyKey: "cancel-1" });
+    expect(
+      workflowRunPauseSchema.parse({
+        reason: "Inspect the current boundary.",
+        idempotencyKey: "pause-1",
+      }),
+    ).toEqual({
+      reason: "Inspect the current boundary.",
+      idempotencyKey: "pause-1",
+    });
+    expect(
+      workflowRunResumeSchema.parse({ idempotencyKey: "resume-1" }),
+    ).toEqual({ reason: null, idempotencyKey: "resume-1" });
     expect(
       workflowNodeRetrySchema.parse({ idempotencyKey: "retry-1" }),
     ).toEqual({ reason: null, idempotencyKey: "retry-1" });

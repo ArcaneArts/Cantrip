@@ -46,6 +46,7 @@ const deliveredAt = "2026-08-08T17:00:00.000Z";
 type ExecutionMode =
   | "disconnect"
   | "failure"
+  | "hold-failure"
   | "hold-success"
   | "interaction"
   | "map-sibling-failure"
@@ -423,6 +424,14 @@ const workerBridge: WorkerCommandBus = {
         });
         heldExecution = null;
         mode = "success";
+      }
+      if (mode === "hold-failure") {
+        await new Promise<void>((resolve) => {
+          heldExecution = resolve;
+        });
+        heldExecution = null;
+        mode = "success";
+        throw new Error("Codex turn failed after the run was paused.");
       }
       return resultFor(command);
     }
@@ -3114,6 +3123,445 @@ describe.sequential("single-agent workflow execution", () => {
     await vi.waitFor(async () => {
       expect((await runDetail(runId)).run.status).toBe("completed");
     });
+  });
+
+  it("pauses at a durable turn boundary, survives restart, and resumes without duplicate work", async () => {
+    const revision = await createWorkflowRevision(
+      "pause-resume-boundary",
+      [
+        {
+          key: "alpha",
+          type: "agent",
+          name: "Alpha",
+          configuration: { prompt: "Alpha branch." },
+          outputSchema: { type: "object" },
+        },
+        {
+          key: "beta",
+          type: "agent",
+          name: "Beta",
+          configuration: { prompt: "Beta branch." },
+          outputSchema: { type: "object" },
+        },
+      ],
+      [{ from: "alpha", to: "beta" }],
+    );
+    connected = true;
+    mode = "hold-success";
+    const executionsBefore = executionCommands.length;
+    const interruptsBefore = interruptCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-pause-resume-boundary",
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(() => expect(heldExecution).not.toBeNull());
+
+    const pausePayload = {
+      reason: "Pause before the dependent node starts.",
+      idempotencyKey: "pause-boundary-once",
+    };
+    const pause = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/pause`,
+      payload: pausePayload,
+    });
+    expect(pause.statusCode).toBe(200);
+    expect(workflowRunDetailSchema.parse(pause.json())).toMatchObject({
+      run: {
+        status: "paused",
+        pauseReason: pausePayload.reason,
+        pausedAt: expect.any(String),
+      },
+      nodes: [
+        { nodeKey: "alpha", status: "running" },
+        { nodeKey: "beta", status: "blocked" },
+      ],
+      attempts: [{ status: "running" }],
+    });
+    expect(interruptCommands).toHaveLength(interruptsBefore);
+
+    const pauseReplay = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/pause`,
+      payload: pausePayload,
+    });
+    expect(pauseReplay.statusCode).toBe(200);
+    const pauseDrift = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/pause`,
+      payload: { ...pausePayload, reason: "A different pause reason." },
+    });
+    expect(pauseDrift.statusCode).toBe(409);
+
+    heldExecution?.();
+    await vi.waitFor(async () => {
+      expect(await runDetail(runId)).toMatchObject({
+        run: { status: "paused", pauseReason: pausePayload.reason },
+        nodes: [
+          { nodeKey: "alpha", status: "completed" },
+          { nodeKey: "beta", status: "ready" },
+        ],
+        attempts: [{ status: "completed" }],
+      });
+    });
+    expect(executionCommands).toHaveLength(executionsBefore + 1);
+    expect(interruptCommands).toHaveLength(interruptsBefore);
+
+    await app.close();
+    connected = true;
+    database = await connectDatabase(config);
+    app = await buildApp({ config, database, logger: false, workerBridge });
+    expect(await runDetail(runId)).toMatchObject({
+      run: { status: "paused", pauseReason: pausePayload.reason },
+      nodes: [
+        { nodeKey: "alpha", status: "completed" },
+        { nodeKey: "beta", status: "ready" },
+      ],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(executionCommands).toHaveLength(executionsBefore + 1);
+
+    const resumePayload = {
+      reason: "Continue from the persisted boundary.",
+      idempotencyKey: "resume-boundary-once",
+    };
+    const resume = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/resume`,
+      payload: resumePayload,
+    });
+    expect(resume.statusCode).toBe(200);
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    expect(executionCommands).toHaveLength(executionsBefore + 2);
+    expect(interruptCommands).toHaveLength(interruptsBefore);
+
+    const resumeReplay = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/resume`,
+      payload: resumePayload,
+    });
+    expect(resumeReplay.statusCode).toBe(200);
+    const resumeDrift = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/resume`,
+      payload: { ...resumePayload, reason: "A different resume reason." },
+    });
+    expect(resumeDrift.statusCode).toBe(409);
+    expect(executionCommands).toHaveLength(executionsBefore + 2);
+
+    const events = workflowRunEventPageSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/workflow-runs/${runId}/events`,
+        })
+      ).json(),
+    );
+    const eventTypes = events.events.map(({ type }) => type);
+    expect(eventTypes.filter((type) => type === "run.paused")).toHaveLength(1);
+    expect(eventTypes.filter((type) => type === "run.resumed")).toHaveLength(1);
+    expect(eventTypes.indexOf("run.paused")).toBeLessThan(
+      eventTypes.indexOf("run.resumed"),
+    );
+  });
+
+  it("defers an automatic retry that becomes ready while paused", async () => {
+    connected = true;
+    mode = "hold-failure";
+    const executionsBefore = executionCommands.length;
+    const response = await createRun("execute-pause-deferred-retry");
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(() => expect(heldExecution).not.toBeNull());
+
+    const pause = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/pause`,
+      payload: {
+        reason: "Inspect the failed attempt before retrying.",
+        idempotencyKey: "pause-retry-once",
+      },
+    });
+    expect(pause.statusCode).toBe(200);
+    heldExecution?.();
+    await vi.waitFor(async () => {
+      expect(await runDetail(runId)).toMatchObject({
+        run: {
+          status: "paused",
+          pauseReason: "Inspect the failed attempt before retrying.",
+        },
+        nodes: [{ status: "ready", attemptCount: 1 }],
+        attempts: [{ status: "failed" }],
+      });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(executionCommands).toHaveLength(executionsBefore + 1);
+
+    const resume = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/resume`,
+      payload: {
+        reason: "Retry now.",
+        idempotencyKey: "resume-retry-once",
+      },
+    });
+    expect(resume.statusCode).toBe(200);
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    expect(await runDetail(runId)).toMatchObject({
+      nodes: [{ status: "completed", attemptCount: 2 }],
+      attempts: [{ status: "failed" }, { status: "completed" }],
+    });
+    expect(executionCommands).toHaveLength(executionsBefore + 2);
+  });
+
+  it("defers map and pipeline item retries while paused", async () => {
+    const cases = [
+      {
+        primitive: "map",
+        node: {
+          key: "map_items",
+          type: "map",
+          name: "Map items",
+          configuration: {
+            prompt: "Map collection item.",
+            collectionPath: "/values",
+            itemInputKey: "item",
+            maxConcurrency: 1,
+            failurePolicy: "fail-fast",
+            automaticRetries: 1,
+          },
+        },
+      },
+      {
+        primitive: "pipeline",
+        node: {
+          key: "pipeline_items",
+          type: "pipeline",
+          name: "Pipeline items",
+          configuration: {
+            collectionPath: "/values",
+            itemInputKey: "item",
+            maxConcurrency: 1,
+            failurePolicy: "fail-fast",
+            steps: [
+              {
+                key: "inspect",
+                name: "Inspect",
+                prompt: "Pipeline inspect step.",
+                automaticRetries: 1,
+              },
+            ],
+          },
+        },
+      },
+    ] as const;
+
+    for (const { node, primitive } of cases) {
+      const revision = await createWorkflowRevision(
+        `pause-${primitive}-retry`,
+        [node],
+      );
+      connected = true;
+      mode = "hold-failure";
+      const executionsBefore = executionCommands.length;
+      const response = await createRunForRevision(
+        revision,
+        `execute-pause-${primitive}-retry`,
+        {},
+        { values: ["only"] },
+      );
+      const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+      await vi.waitFor(() => expect(heldExecution).not.toBeNull());
+      const pause = await app.inject({
+        method: "POST",
+        url: `/api/workflow-runs/${runId}/pause`,
+        payload: {
+          reason: `Inspect the ${primitive} failure before retrying.`,
+          idempotencyKey: `pause-${primitive}-retry-once`,
+        },
+      });
+      expect(pause.statusCode).toBe(200);
+      heldExecution?.();
+      await vi.waitFor(async () => {
+        expect(await runDetail(runId)).toMatchObject({
+          run: { status: "paused" },
+          nodes: [{ status: "running" }],
+          items: [{ status: "ready", attemptCount: 1 }],
+          attempts: [{ status: "failed" }],
+        });
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(executionCommands).toHaveLength(executionsBefore + 1);
+
+      const resume = await app.inject({
+        method: "POST",
+        url: `/api/workflow-runs/${runId}/resume`,
+        payload: { idempotencyKey: `resume-${primitive}-retry-once` },
+      });
+      expect(resume.statusCode).toBe(200);
+      await vi.waitFor(async () => {
+        expect((await runDetail(runId)).run.status).toBe("completed");
+      });
+      expect(await runDetail(runId)).toMatchObject({
+        items: [{ status: "completed", attemptCount: 2 }],
+        attempts: [{ status: "failed" }, { status: "completed" }],
+      });
+      expect(executionCommands).toHaveLength(executionsBefore + 2);
+    }
+  });
+
+  it("holds the next repeat-until iteration at a paused boundary", async () => {
+    const revision = await createWorkflowRevision("pause-repeat-until", [
+      {
+        key: "repeat_until_stable",
+        type: "repeatUntil",
+        name: "Repeat until stable",
+        configuration: {
+          prompt: "Repeat until stable.",
+          successCondition: {
+            path: "/done",
+            operator: "equals",
+            value: true,
+          },
+          progressPath: "/progress",
+          maxUnchangedIterations: 2,
+          maxIterations: 5,
+          maxDurationMs: 60_000,
+        },
+      },
+    ]);
+    connected = true;
+    mode = "hold-success";
+    const executionsBefore = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-pause-repeat-until",
+      { maxNodes: 10 },
+      { progress: 0 },
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(() => expect(heldExecution).not.toBeNull());
+    const pause = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/pause`,
+      payload: {
+        reason: "Review the first iteration result.",
+        idempotencyKey: "pause-repeat-once",
+      },
+    });
+    expect(pause.statusCode).toBe(200);
+    heldExecution?.();
+    await vi.waitFor(async () => {
+      expect(await runDetail(runId)).toMatchObject({
+        run: { status: "paused" },
+        nodes: [
+          {
+            status: "ready",
+            dependencyState: {
+              repeatUntil: {
+                currentIteration: 2,
+                completedIterations: [{ iteration: 1 }],
+              },
+            },
+          },
+        ],
+        attempts: [{ status: "completed" }],
+      });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(executionCommands).toHaveLength(executionsBefore + 1);
+
+    const resume = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/resume`,
+      payload: { idempotencyKey: "resume-repeat-once" },
+    });
+    expect(resume.statusCode).toBe(200);
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    expect(executionCommands).toHaveLength(executionsBefore + 3);
+  });
+
+  it("records a gate decision while paused without dispatching downstream work", async () => {
+    const revision = await createWorkflowRevision(
+      "pause-gate-decision",
+      [
+        {
+          key: "approval",
+          type: "gate",
+          name: "Approval",
+          configuration: { prompt: "Approve while paused?" },
+        },
+        {
+          key: "continue",
+          type: "agent",
+          name: "Continue",
+          configuration: { prompt: "Continue after paused approval." },
+        },
+      ],
+      [{ from: "approval", to: "continue" }],
+    );
+    connected = true;
+    mode = "success";
+    const executionsBefore = executionCommands.length;
+    const response = await createRunForRevision(
+      revision,
+      "execute-pause-gate-decision",
+    );
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("waiting");
+    });
+    const gateId = (await runDetail(runId)).gates[0]!.id;
+    const pause = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/pause`,
+      payload: {
+        reason: "Hold downstream work after the decision.",
+        idempotencyKey: "pause-gate-once",
+      },
+    });
+    expect(pause.statusCode).toBe(200);
+
+    const decision = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/gates/${gateId}/decision`,
+      payload: {
+        decision: "approved",
+        reason: "Approval is safe to record now.",
+        idempotencyKey: "approve-paused-gate-once",
+      },
+    });
+    expect(decision.statusCode).toBe(200);
+    expect(workflowRunDetailSchema.parse(decision.json())).toMatchObject({
+      run: {
+        status: "paused",
+        pauseReason: "Hold downstream work after the decision.",
+      },
+      nodes: [
+        { nodeKey: "approval", status: "completed" },
+        { nodeKey: "continue", status: "ready" },
+      ],
+      gates: [{ status: "approved" }],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(executionCommands).toHaveLength(executionsBefore);
+
+    const resume = await app.inject({
+      method: "POST",
+      url: `/api/workflow-runs/${runId}/resume`,
+      payload: { idempotencyKey: "resume-gate-once" },
+    });
+    expect(resume.statusCode).toBe(200);
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("completed");
+    });
+    expect(executionCommands).toHaveLength(executionsBefore + 1);
   });
 
   it("persists live cancellation, interrupts once, and lets cancellation win completion races", async () => {
