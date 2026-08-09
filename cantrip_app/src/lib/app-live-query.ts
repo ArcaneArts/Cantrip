@@ -23,15 +23,25 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
     case "project":
       return [["projects"]];
     case "worktree":
-      return projectId ? [["worktrees", projectId]] : [];
+      return projectId
+        ? [["worktrees", projectId]]
+        : event.scope.kind === "current-user"
+          ? [["worktrees"]]
+          : [];
     case "worktree-status":
-      return projectId ? [["worktree-status", projectId]] : [];
+      return projectId
+        ? [["worktree-status", projectId]]
+        : event.scope.kind === "current-user"
+          ? [["worktree-status"]]
+          : [];
     case "chat":
       return projectId
         ? [["chats", projectId]]
         : event.scope.kind === "chat"
           ? [["chat-sync", event.scope.chatId]]
-          : [];
+          : event.scope.kind === "current-user"
+            ? [["chats"]]
+            : [];
     case "chat-message":
       return event.scope.kind === "chat"
         ? [["messages", event.scope.chatId]]
@@ -49,17 +59,44 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         ? [["agent-requests", event.scope.chatId]]
         : [];
     case "terminal":
-      return projectId ? [["terminals", projectId]] : [];
+      return projectId
+        ? [["terminals", projectId]]
+        : event.scope.kind === "current-user"
+          ? [["terminals"]]
+          : [];
     case "explorer":
-      return projectId ? [["explorers", projectId]] : [];
+      return projectId
+        ? [["explorers", projectId]]
+        : event.scope.kind === "current-user"
+          ? [["explorers"]]
+          : [];
     case "browser":
-      return projectId ? [["browsers", projectId]] : [];
+      return projectId
+        ? [["browsers", projectId]]
+        : event.scope.kind === "current-user"
+          ? [["browsers"]]
+          : [];
     case "code-tab":
-      return projectId ? [["code-tabs", projectId]] : [];
+      return projectId
+        ? [["code-tabs", projectId]]
+        : event.scope.kind === "current-user"
+          ? [["code-tabs"]]
+          : [];
     case "project-view":
-      return projectId ? [["project-views", projectId]] : [];
+      return projectId
+        ? [["project-views", projectId]]
+        : event.scope.kind === "current-user"
+          ? [["project-views"]]
+          : [];
     case "remote-desktop":
-      return event.entityId ? [["remote-desktop", event.entityId]] : [];
+      return [
+        ...(projectId ? [["project-views", projectId]] : []),
+        ...(event.entityId
+          ? [["remote-desktop", event.entityId]]
+          : event.scope.kind === "current-user"
+            ? [["remote-desktop"]]
+            : []),
+      ];
     case "workflow-definition":
       return event.entityId
         ? [["workflows"], ["workflow", event.entityId]]

@@ -29,6 +29,30 @@ const config: ServerConfig = {
   port: 4310,
   workerToken: "test-worker-token",
 };
+const liveTestHeartbeat = {
+  workerId: "live-test-worker",
+  name: "Live Test Worker",
+  platform: "darwin",
+  architecture: "arm64",
+  codexVersion: "0.146.1",
+  codexRuntime: unprobedCodexRuntimeReport,
+  code: {
+    available: false as const,
+    version: null,
+    upstreamRevision: null,
+    patchset: 0,
+    transport: "web-proxy" as const,
+    maxSessions: 1,
+    reason: "Not needed by the live API test.",
+  },
+  remoteSurfaces: {
+    browser: false,
+    desktop: false,
+    transports: ["websocket" as const],
+    maxSessions: 1,
+  },
+  startedAt: new Date().toISOString(),
+};
 
 let database: DatabaseConnection;
 let app: Awaited<ReturnType<typeof buildApp>>;
@@ -37,29 +61,7 @@ let chatId: string;
 
 beforeAll(async () => {
   database = await connectDatabase(config);
-  await database.repository.recordWorker({
-    workerId: "live-test-worker",
-    name: "Live Test Worker",
-    platform: "darwin",
-    architecture: "arm64",
-    codexVersion: "0.146.1",
-    codexRuntime: unprobedCodexRuntimeReport,
-    code: {
-      available: false,
-      version: null,
-      upstreamRevision: null,
-      patchset: null,
-      transport: null,
-      maxSessions: 0,
-      reason: "Not needed by the live API test.",
-    },
-    remoteSurfaces: {
-      browser: false,
-      transports: ["websocket"],
-      maxSessions: 0,
-    },
-    startedAt: new Date().toISOString(),
-  });
+  await database.repository.recordWorker(liveTestHeartbeat);
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "live-test-worker",
     repositoryId: "live-test-repository",
@@ -184,6 +186,50 @@ describe.sequential("application live WebSocket", () => {
         }),
       );
     }
+
+    const eventStart = messages.length;
+    expect(
+      await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/terminals`,
+        payload: { title: "Live event terminal" },
+      }),
+    ).toMatchObject({ statusCode: 201 });
+    await vi.waitFor(() =>
+      expect(
+        messages
+          .slice(eventStart)
+          .some(
+            (message) =>
+              message.type === "event" &&
+              message.resource === "terminal" &&
+              message.scope.kind === "project" &&
+              message.scope.projectId === projectId,
+          ),
+      ).toBe(true),
+    );
+
+    const workerEventStart = messages.length;
+    expect(
+      await app.inject({
+        method: "POST",
+        url: "/api/internal/workers/heartbeat",
+        headers: { authorization: `Bearer ${config.workerToken}` },
+        payload: liveTestHeartbeat,
+      }),
+    ).toMatchObject({ statusCode: 202 });
+    await vi.waitFor(() =>
+      expect(
+        messages
+          .slice(workerEventStart)
+          .some(
+            (message) =>
+              message.type === "event" &&
+              message.resource === "worker" &&
+              message.scope.kind === "current-user",
+          ),
+      ).toBe(true),
+    );
 
     socket.terminate();
   });

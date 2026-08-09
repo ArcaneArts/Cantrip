@@ -609,6 +609,7 @@ export class WorkflowExecutor {
       context.worktree.id,
       result.worktree,
     );
+    this.worktreeCoordinator.notifyProjectChanged(projectId);
     if (
       !observed ||
       observed.isPrimary ||

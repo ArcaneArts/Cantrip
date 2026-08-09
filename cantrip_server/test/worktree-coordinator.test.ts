@@ -171,7 +171,12 @@ describe("project worktree coordinator", () => {
         };
       },
     } as unknown as WorkerCommandBus;
-    const coordinator = new ProjectWorktreeCoordinator(repository, bridge);
+    const changedProjects: string[] = [];
+    const coordinator = new ProjectWorktreeCoordinator(
+      repository,
+      bridge,
+      (projectId) => changedProjects.push(projectId),
+    );
 
     await expect(
       coordinator.create("owner-1", "project-1", {
@@ -203,6 +208,7 @@ describe("project worktree coordinator", () => {
         path: "/worker-owned/worktrees/workflow-abc123",
       },
     ]);
+    expect(changedProjects).toEqual(["project-1"]);
   });
 
   it("serializes a project without poisoning its queue after failure", async () => {

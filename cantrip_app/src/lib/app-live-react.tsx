@@ -3,10 +3,11 @@ import {
   createContext,
   useContext,
   useEffect,
+  useState,
   type PropsWithChildren,
 } from "react";
 
-import { AppLiveClient } from "@/lib/app-live-client";
+import { AppLiveClient, type AppLiveClientStatus } from "@/lib/app-live-client";
 
 const AppLiveContext = createContext<AppLiveClient | null>(null);
 
@@ -26,4 +27,20 @@ export function useAppLiveScope(scope: AppLiveScope | null): void {
     if (!client || !scope) return;
     return client.retainScope(scope);
   }, [client, scopeKey]);
+}
+
+export function useAppLiveStatus(): AppLiveClientStatus {
+  const client = useContext(AppLiveContext);
+  const [status, setStatus] = useState<AppLiveClientStatus>(
+    () => client?.snapshot().status ?? "stopped",
+  );
+  useEffect(() => {
+    if (!client) return;
+    return client.subscribe((snapshot) => {
+      setStatus((current) =>
+        current === snapshot.status ? current : snapshot.status,
+      );
+    });
+  }, [client]);
+  return status;
 }

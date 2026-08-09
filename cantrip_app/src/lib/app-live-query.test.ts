@@ -53,6 +53,14 @@ describe("application live query bridge", () => {
     expect(
       appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
     ).toContainEqual(["worktrees", "project-one"]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
+          resource: "terminal",
+          scope: { kind: "current-user" },
+        }),
+      ),
+    ).toEqual([["terminals"]]);
   });
 
   it("coalesces repeated events before invalidating TanStack Query", async () => {

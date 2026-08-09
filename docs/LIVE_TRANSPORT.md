@@ -50,3 +50,10 @@ Polling remains in place until both the server publisher and singleton app
 client exist for a resource. Each resource migration must cover every mutation
 source, retain a disconnected/resync snapshot path, and prove that state
 converges after reconnect before its fixed polling interval is removed.
+
+Project lists, workers, worktree metadata, tabs, terminals, explorers,
+browsers, Code tabs, project views, and Remote Desktop metadata now use live
+invalidations while the connection is healthy. During connection startup,
+reconnect, or resynchronization, the app retains a bounded 10–15 second HTTP
+fallback. The per-worktree external Git-status observer remains a separate
+temporary polling path until its worker-owned reconciliation migration.

@@ -115,7 +115,7 @@ export const DEFAULT_OLLAMA_PROVIDER_ID =
 export const DEFAULT_MODEL_ID = "00000000-0000-0000-0000-000000000020";
 export const DEFAULT_MODEL_ROUTE_ID = "00000000-0000-0000-0000-000000000021";
 const SERVER_ID_STATE_KEY = "server-id";
-const ONLINE_WINDOW_MS = 15_000;
+export const WORKER_ONLINE_WINDOW_MS = 15_000;
 
 type RepositoryDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type ProjectRow = typeof schema.projects.$inferSelect;
@@ -510,7 +510,7 @@ function toWorkerSummary(
     code: worker.codeCapabilities,
     startedAt: toISOString(worker.startedAt),
     lastSeenAt: toISOString(worker.lastSeenAt),
-    online: Date.now() - worker.lastSeenAt.getTime() <= ONLINE_WINDOW_MS,
+    online: Date.now() - worker.lastSeenAt.getTime() <= WORKER_ONLINE_WINDOW_MS,
   };
 }
 

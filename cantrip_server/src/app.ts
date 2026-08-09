@@ -168,10 +168,12 @@ import {
 } from "@cantrip/protocol";
 import Fastify from "fastify";
 import type {
+  AppLiveResource,
   AppLiveScope,
   ChatMessage,
   ChatTurnCreate,
   CodeRuntimeStatus,
+  WorkerSummary,
 } from "@cantrip/protocol";
 import type {
   AgentWorktreeToolCall,
@@ -240,6 +242,7 @@ import {
   CodeCapabilityUnavailableError,
   ExecutionLaneConflictError,
   LOCAL_USER_ID,
+  WORKER_ONLINE_WINDOW_MS,
   type ChatExecutionContext,
   type ModelRuntime,
 } from "./db/repository.js";
@@ -296,6 +299,58 @@ const GOAL_RESUME_PROMPT =
   "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
 const WORKFLOW_GENERATION_TIMEOUT_MS = 2 * 60 * 1_000;
 const WORKFLOW_SCHEDULE_POLL_MS = 1_000;
+function mutationLiveResources(route: string): AppLiveResource[] {
+  if (route === "/api/internal/agent-tools/worktree") return ["worktree"];
+  if (
+    route === "/api/projects/from-github" ||
+    route === "/api/projects/order" ||
+    route === "/api/projects/:projectId" ||
+    route === "/api/projects/:projectId/worktree-policy"
+  ) {
+    return ["project"];
+  }
+  if (route === "/api/projects/:projectId/tabs/order") {
+    return [
+      "chat",
+      "terminal",
+      "explorer",
+      "browser",
+      "code-tab",
+      "project-view",
+    ];
+  }
+  if (route.includes("/worktrees")) return ["worktree"];
+  if (route === "/api/chats/:chatId/console") return ["chat", "terminal"];
+  if (
+    route === "/api/projects/:projectId/chats" ||
+    route.startsWith("/api/chats/")
+  ) {
+    return ["chat"];
+  }
+  if (route.includes("/terminals")) return ["terminal"];
+  if (route.includes("/explorers")) return ["explorer"];
+  if (route.includes("/browsers")) return ["browser"];
+  if (route.includes("/code-tabs")) return ["code-tab"];
+  if (
+    route.includes("/remote-desktops") ||
+    route.includes("/remote-surfaces")
+  ) {
+    return ["browser", "remote-desktop", "project-view"];
+  }
+  if (
+    route === "/api/projects/:projectId/views" ||
+    route.startsWith("/api/project-views/")
+  ) {
+    return ["project-view"];
+  }
+  return [];
+}
+
+function workerPresenceFingerprint(worker: WorkerSummary): string {
+  const { lastSeenAt: _lastSeenAt, ...presence } = worker;
+  return JSON.stringify(presence);
+}
+
 const WORKFLOW_GENERATION_OUTPUT_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -352,9 +407,38 @@ export async function buildApp({
     });
   const surfaceRelay = new RemoteSurfaceRelay(bridge);
   const repository = database.repository;
+  const liveHub = new AppLiveHub();
+  let livePublishingEnabled = true;
+  const publishLiveInvalidation = (
+    resource: AppLiveResource,
+    input: {
+      entityId?: string | null;
+      projectId?: string | null;
+    } = {},
+  ): void => {
+    if (!livePublishingEnabled) return;
+    try {
+      liveHub.publish({
+        scope: input.projectId
+          ? { kind: "project", projectId: input.projectId }
+          : { kind: "current-user" },
+        resource,
+        action: "invalidated",
+        entityId: input.entityId ?? null,
+        revision: null,
+        payload: null,
+      });
+    } catch (error) {
+      app.log.error(
+        { err: error, resource },
+        "Could not publish application live invalidation",
+      );
+    }
+  };
   const worktreeCoordinator = new ProjectWorktreeCoordinator(
     repository,
     bridge,
+    (projectId) => publishLiveInvalidation("worktree", { projectId }),
   );
   const workflowExecutor = new WorkflowExecutor(
     repository,
@@ -387,7 +471,6 @@ export async function buildApp({
   });
   await app.register(websocket);
 
-  const liveHub = new AppLiveHub();
   const authorizeLiveScope = async (scope: AppLiveScope): Promise<boolean> => {
     switch (scope.kind) {
       case "current-user":
@@ -419,12 +502,91 @@ export async function buildApp({
     });
   });
 
+  app.addHook("onResponse", async (request, reply) => {
+    if (
+      ["GET", "HEAD", "OPTIONS"].includes(request.method) ||
+      reply.statusCode >= 400
+    ) {
+      return;
+    }
+    const resources = mutationLiveResources(request.routeOptions.url ?? "");
+    if (resources.length === 0) return;
+    const params = request.params as Record<string, unknown>;
+    const projectId =
+      typeof params.projectId === "string" ? params.projectId : null;
+    const entityId = [
+      params.worktreeId,
+      params.chatId,
+      params.terminalId,
+      params.explorerId,
+      params.browserId,
+      params.codeTabId,
+      params.desktopId,
+      params.surfaceId,
+      params.viewId,
+      params.projectId,
+    ].find((value): value is string => typeof value === "string");
+    for (const resource of resources) {
+      publishLiveInvalidation(resource, { entityId, projectId });
+    }
+  });
+
   const dispatchingChats = new Set<string>();
   const pendingQueueDispatches = new Set<string>();
   const progressingWorktreeTransitions = new Set<string>();
   const projectSetupTasks = new Set<Promise<void>>();
   const routeCooldowns = new Map<string, number>();
   const surfaceAttachmentCounts = new Map<string, number>();
+  const workerOfflineTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const workerPresenceFingerprints = new Map<string, string>();
+
+  const publishWorkerPresence = (worker: WorkerSummary): void => {
+    const fingerprint = workerPresenceFingerprint(worker);
+    if (workerPresenceFingerprints.get(worker.workerId) === fingerprint) return;
+    workerPresenceFingerprints.set(worker.workerId, fingerprint);
+    publishLiveInvalidation("worker", { entityId: worker.workerId });
+  };
+  const scheduleWorkerOfflineInvalidation = (workerId: string): void => {
+    const existing = workerOfflineTimers.get(workerId);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      workerOfflineTimers.delete(workerId);
+      workerPresenceFingerprints.delete(workerId);
+      publishLiveInvalidation("worker", { entityId: workerId });
+    }, WORKER_ONLINE_WINDOW_MS + 50);
+    timer.unref();
+    workerOfflineTimers.set(workerId, timer);
+  };
+  const updateRemoteSurfaceStatus = async (
+    surfaceId: string,
+    status: Parameters<typeof repository.setRemoteSurfaceStatus>[1],
+    error: string | null = null,
+  ) => {
+    const result = await repository.setRemoteSurfaceStatus(
+      surfaceId,
+      status,
+      error,
+    );
+    publishLiveInvalidation("browser", { entityId: surfaceId });
+    publishLiveInvalidation("remote-desktop", { entityId: surfaceId });
+    publishLiveInvalidation("project-view", { entityId: surfaceId });
+    return result;
+  };
+  const updateTerminalStatus = async (
+    terminalId: string,
+    status: Parameters<typeof repository.setTerminalStatus>[1],
+  ) => {
+    const result = await repository.setTerminalStatus(terminalId, status);
+    publishLiveInvalidation("terminal", { entityId: terminalId });
+    return result;
+  };
+  const updateCodeSessionRuntime = async (
+    ...input: Parameters<typeof repository.updateCodeSessionRuntime>
+  ) => {
+    const result = await repository.updateCodeSessionRuntime(...input);
+    publishLiveInvalidation("code-tab");
+    return result;
+  };
 
   const deliverWorkflowTrigger = async ({
     actorId,
@@ -969,6 +1131,8 @@ export async function buildApp({
           input.workerId,
           clone,
         );
+        publishLiveInvalidation("project", { entityId: projectId });
+        publishLiveInvalidation("worktree", { projectId });
       } catch (error) {
         const message =
           errorMessage(error).trim().slice(0, 4_000) ||
@@ -979,6 +1143,7 @@ export async function buildApp({
             projectId,
             message,
           );
+          publishLiveInvalidation("project", { entityId: projectId });
         } catch (persistenceError) {
           app.log.error(
             { error: persistenceError, projectId },
@@ -4673,7 +4838,7 @@ export async function buildApp({
           }),
         );
         if (
-          !(await repository.updateCodeSessionRuntime(
+          !(await updateCodeSessionRuntime(
             LOCAL_USER_ID,
             context.codeTab.id,
             session.id,
@@ -4714,7 +4879,7 @@ export async function buildApp({
           lastActivityAt: new Date().toISOString(),
           lastError: message,
         });
-        await repository.updateCodeSessionRuntime(
+        await updateCodeSessionRuntime(
           LOCAL_USER_ID,
           context.codeTab.id,
           session.id,
@@ -4822,7 +4987,7 @@ export async function buildApp({
           }),
         );
         codeTunnel.revokeSession(session.id);
-        await repository.updateCodeSessionRuntime(
+        await updateCodeSessionRuntime(
           LOCAL_USER_ID,
           context.codeTab.id,
           session.id,
@@ -4872,7 +5037,7 @@ export async function buildApp({
               appearance: input.data.appearance,
             }),
           );
-          await repository.updateCodeSessionRuntime(
+          await updateCodeSessionRuntime(
             LOCAL_USER_ID,
             context.codeTab.id,
             session.id,
@@ -5073,14 +5238,14 @@ export async function buildApp({
             { timeoutMs: 20_000 },
           );
         } catch (error) {
-          await repository.setRemoteSurfaceStatus(
+          await updateRemoteSurfaceStatus(
             context.surface.id,
             "error",
             errorMessage(error),
           );
         }
       } else {
-        await repository.setRemoteSurfaceStatus(
+        await updateRemoteSurfaceStatus(
           context.surface.id,
           "offline",
           "Worker is offline. The saved target will be restored when it reconnects.",
@@ -5238,7 +5403,7 @@ export async function buildApp({
           return reply.code(404).send({ error: "Remote Surface not found." });
         }
         if (!bridge.isConnected(context.workerId)) {
-          await repository.setRemoteSurfaceStatus(
+          await updateRemoteSurfaceStatus(
             context.surface.id,
             "offline",
             "Worker is offline.",
@@ -5250,7 +5415,7 @@ export async function buildApp({
             type: action === "suspend" ? "surface.suspend" : "surface.resume",
             surfaceId: context.surface.id,
           });
-          await repository.setRemoteSurfaceStatus(
+          await updateRemoteSurfaceStatus(
             context.surface.id,
             action === "suspend" ? "suspended" : "active",
           );
@@ -5355,7 +5520,7 @@ export async function buildApp({
             .catch(() => undefined);
         }
         if (remaining === 0) {
-          void repository.setRemoteSurfaceStatus(
+          void updateRemoteSurfaceStatus(
             surfaceId,
             bridge.isConnected(workerId) ? "idle" : "offline",
             bridge.isConnected(workerId) ? null : "Worker is offline.",
@@ -5389,7 +5554,7 @@ export async function buildApp({
                 }))
             : null;
         if (!bridge.isConnected(workerId)) {
-          await repository.setRemoteSurfaceStatus(
+          await updateRemoteSurfaceStatus(
             surfaceId,
             "offline",
             "Worker is offline.",
@@ -5403,7 +5568,7 @@ export async function buildApp({
           return;
         }
 
-        await repository.setRemoteSurfaceStatus(surfaceId, "connecting");
+        await updateRemoteSurfaceStatus(surfaceId, "connecting");
         const webRtcConfiguration =
           context.surface.preferredTransport === "webrtc" &&
           context.remoteSurfaceCapabilities.transports.includes("webrtc") &&
@@ -5452,7 +5617,7 @@ export async function buildApp({
             surfaceId,
             (surfaceAttachmentCounts.get(surfaceId) ?? 0) + 1,
           );
-          await repository.setRemoteSurfaceStatus(surfaceId, "active");
+          await updateRemoteSurfaceStatus(surfaceId, "active");
           send({
             type: "ready",
             surfaceId,
@@ -5463,7 +5628,7 @@ export async function buildApp({
         } catch (error) {
           cleanupRelay();
           const message = errorMessage(error);
-          await repository.setRemoteSurfaceStatus(
+          await updateRemoteSurfaceStatus(
             surfaceId,
             error instanceof WorkerUnavailableError ? "offline" : "error",
             message,
@@ -5776,13 +5941,13 @@ export async function buildApp({
         terminalId = context.terminalId;
         workerId = context.workerId;
         if (!bridge.isConnected(workerId)) {
-          await repository.setTerminalStatus(terminalId, "offline");
+          await updateTerminalStatus(terminalId, "offline");
           send({ type: "error", message: "Project worker is offline." });
           socket.close(1013, "Worker offline");
           return;
         }
         if (closed) {
-          await repository.setTerminalStatus(terminalId, "idle");
+          await updateTerminalStatus(terminalId, "idle");
           return;
         }
         try {
@@ -5836,7 +6001,7 @@ export async function buildApp({
                       });
                       return;
                     }
-                    await repository.setTerminalStatus(terminalId!, "running");
+                    await updateTerminalStatus(terminalId!, "running");
                     send({ type: "ready" });
                   } else if (event.type === "terminal.output") {
                     send({ type: "output", data: event.data });
@@ -5846,11 +6011,11 @@ export async function buildApp({
             ),
           );
           if (result.status === "exited") {
-            await repository.setTerminalStatus(terminalId, "exited");
+            await updateTerminalStatus(terminalId, "exited");
             if (!closed) send({ type: "exit", ...result });
           }
         } catch (error) {
-          await repository.setTerminalStatus(
+          await updateTerminalStatus(
             terminalId,
             error instanceof WorkerUnavailableError ? "offline" : "failed",
           );
@@ -8045,6 +8210,8 @@ export async function buildApp({
         });
       }
       const worker = await repository.recordWorker(heartbeat.data);
+      publishWorkerPresence(worker);
+      scheduleWorkerOfflineInvalidation(worker.workerId);
       void resumePendingWorktreeTransitionsForWorker(heartbeat.data.workerId);
       void workflowExecutor
         .recoverWorktreeLeases(heartbeat.data.workerId)
@@ -8089,9 +8256,12 @@ export async function buildApp({
   );
 
   app.addHook("onClose", async () => {
+    livePublishingEnabled = false;
     clearInterval(agentInteractionExpiryTimer);
     clearInterval(workflowGateExpiryTimer);
     clearInterval(workflowScheduleTimer);
+    for (const timer of workerOfflineTimers.values()) clearTimeout(timer);
+    workerOfflineTimers.clear();
     workflowExecutor.stop();
     liveHub.close();
     codeTunnel.close();
