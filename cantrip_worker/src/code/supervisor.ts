@@ -1,6 +1,13 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { appendFile, mkdir, rename, stat, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  readFile,
+  rename,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { createConnection, createServer } from "node:net";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -19,14 +26,18 @@ import type {
 import {
   codeAgentTurnNotificationResultSchema,
   codeAgentTurnPreparationResultSchema,
+  codeAppearanceSchema,
+  codeThemeModeSchema,
 } from "@cantrip/protocol";
 
 import type { CantripCodeInstallation } from "./installation.js";
+import { spawnGuardedProcess } from "./process-guard.js";
 import { CodeWorkbenchBridge } from "./workbench-bridge.js";
 
 type CodeOpenCommand = Extract<WorkerCommand, { type: "code.open" }>;
 
 interface CodeSession {
+  activeTunnelStreams: Set<string>;
   appearance: CodeAppearance;
   bridgeToken: string;
   bridgeUrl: string;
@@ -34,6 +45,7 @@ interface CodeSession {
   cwd: string;
   lastActivityAt: string;
   lastError: string | null;
+  profileId: string;
   profileKey: string;
   projectId: string;
   projectName: string;
@@ -74,6 +86,8 @@ export interface CodeSupervisorOptions {
   dataDirectory: string;
   installation: CantripCodeInstallation | null;
   bridge?: CodeWorkbenchBridge;
+  idleSweepIntervalMs?: number;
+  idleTimeoutMs?: number;
   readinessTimeoutMs?: number;
   workerId?: string;
   workerName?: string;
@@ -82,6 +96,8 @@ export interface CodeSupervisorOptions {
 const MAX_CRASHES_PER_WINDOW = 5;
 const CRASH_WINDOW_MS = 5 * 60_000;
 const PROCESS_STOP_TIMEOUT_MS = 2_000;
+const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60_000;
+const RUNTIME_STATE_SCHEMA_VERSION = 2;
 
 const THEME_NAMES: Record<CodeAppearance, string> = {
   light: "Cantrip Light",
@@ -161,18 +177,29 @@ export class CodeSupervisor {
   readonly #capabilities: CodeCapabilities;
   readonly #codeRoot: string;
   readonly #installation: CantripCodeInstallation | null;
+  readonly #idleSweepIntervalMs: number;
+  readonly #idleTimeoutMs: number;
   readonly #profiles = new Map<string, ProfileProcess>();
   readonly #readinessTimeoutMs: number;
   readonly #sessions = new Map<string, CodeSession>();
   readonly #workerId: string;
   readonly #workerName: string;
   #closed = false;
+  #idleSweepTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: CodeSupervisorOptions) {
     this.#bridge = options.bridge ?? new CodeWorkbenchBridge();
     this.#capabilities = options.capabilities;
     this.#codeRoot = path.join(options.dataDirectory, "code");
     this.#installation = options.installation;
+    this.#idleTimeoutMs = Math.max(
+      1_000,
+      options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
+    );
+    this.#idleSweepIntervalMs = Math.max(
+      1_000,
+      options.idleSweepIntervalMs ?? Math.min(60_000, this.#idleTimeoutMs / 4),
+    );
     this.#readinessTimeoutMs = options.readinessTimeoutMs ?? 15_000;
     this.#workerId = options.workerId ?? "unknown-worker";
     this.#workerName = options.workerName ?? "Cantrip Worker";
@@ -187,6 +214,11 @@ export class CodeSupervisor {
       mkdir(path.join(this.#codeRoot, "logs"), { recursive: true }),
       this.#bridge.start(),
     ]);
+    await this.#restoreState();
+    this.#idleSweepTimer = setInterval(() => {
+      void this.evictIdleSessions().catch(() => undefined);
+    }, this.#idleSweepIntervalMs);
+    this.#idleSweepTimer.unref();
   }
 
   probe(): CodeProbeResult {
@@ -235,6 +267,7 @@ export class CodeSupervisor {
         `${stableKey(command.worktreeId)}-${sessionKey}.code-workspace`,
       );
       const session: CodeSession = {
+        activeTunnelStreams: new Set(),
         appearance: command.appearance,
         bridgeToken,
         bridgeUrl,
@@ -242,6 +275,7 @@ export class CodeSupervisor {
         cwd,
         lastActivityAt: isoNow(),
         lastError: null,
+        profileId: command.profileId,
         profileKey,
         projectId: command.projectId,
         projectName: command.projectName ?? path.basename(cwd),
@@ -263,6 +297,7 @@ export class CodeSupervisor {
     const session = this.#sessions.get(command.sessionId)!;
     session.appearance = command.appearance;
     session.themeMode = command.themeMode;
+    session.profileId = command.profileId;
     session.projectName = command.projectName ?? session.projectName;
     session.worktreeName = command.worktreeName ?? session.worktreeName;
     session.lastActivityAt = isoNow();
@@ -323,6 +358,7 @@ export class CodeSupervisor {
 
   async prepareAgentTurn(cwd: string): Promise<CodeAgentTurnPreparationResult> {
     const sessions = this.#sessionsForCwd(cwd);
+    for (const session of sessions) session.lastActivityAt = isoNow();
     const prepared = await Promise.all(
       sessions.map((session) =>
         this.#bridge.prepareAgentTurn(session.sessionId),
@@ -340,8 +376,10 @@ export class CodeSupervisor {
     paths: string[],
   ): Promise<CodeAgentTurnNotificationResult> {
     const normalizedPaths = this.#safeRelativePaths(cwd, paths);
+    const sessions = this.#sessionsForCwd(cwd);
+    for (const session of sessions) session.lastActivityAt = isoNow();
     const results = await Promise.all(
-      this.#sessionsForCwd(cwd).map((session) =>
+      sessions.map((session) =>
         this.#bridge.notifyAgentTurn(session.sessionId, phase, normalizedPaths),
       ),
     );
@@ -375,6 +413,7 @@ export class CodeSupervisor {
 
   proxyTarget(sessionId: string): CodeProxyTarget {
     const session = this.#requireSession(sessionId);
+    session.lastActivityAt = isoNow();
     const profile = this.#profiles.get(session.profileKey);
     if (
       !profile?.child ||
@@ -392,21 +431,68 @@ export class CodeSupervisor {
     };
   }
 
+  beginTunnelStream(sessionId: string, streamId: string): void {
+    const session = this.#sessions.get(sessionId);
+    if (!session) return;
+    session.activeTunnelStreams.add(streamId);
+    session.lastActivityAt = isoNow();
+  }
+
+  endTunnelStream(sessionId: string, streamId: string): void {
+    const session = this.#sessions.get(sessionId);
+    if (!session) return;
+    session.activeTunnelStreams.delete(streamId);
+    session.lastActivityAt = isoNow();
+  }
+
+  async evictIdleSessions(now = Date.now()): Promise<string[]> {
+    if (this.#closed) return [];
+    const candidates = [...this.#sessions.values()]
+      .filter((session) => this.#isIdle(session, now))
+      .map((session) => session.sessionId);
+    const evicted: string[] = [];
+    for (const sessionId of candidates) {
+      const session = this.#sessions.get(sessionId);
+      if (!session || !this.#isIdle(session, now)) continue;
+      await this.stop(sessionId);
+      evicted.push(sessionId);
+    }
+    return evicted;
+  }
+
+  #isIdle(session: CodeSession, now: number): boolean {
+    return (
+      session.status !== "starting" &&
+      session.status !== "stopping" &&
+      session.activeTunnelStreams.size === 0 &&
+      now - Date.parse(session.lastActivityAt) >= this.#idleTimeoutMs
+    );
+  }
+
   async close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
-    for (const sessionId of [...this.#sessions.keys()]) {
-      this.#bridge.unregister(sessionId);
+    if (this.#idleSweepTimer) {
+      clearInterval(this.#idleSweepTimer);
+      this.#idleSweepTimer = null;
     }
-    this.#sessions.clear();
+    const now = isoNow();
+    for (const session of this.#sessions.values()) {
+      this.#bridge.unregister(session.sessionId);
+      session.activeTunnelStreams.clear();
+      session.status = "offline";
+      session.lastActivityAt = now;
+      session.lastError = null;
+    }
     await Promise.all(
       [...this.#profiles.values()].map((profile) =>
         this.#terminateProfile(profile),
       ),
     );
+    await this.#persistState();
+    this.#sessions.clear();
     this.#profiles.clear();
     await this.#bridge.close();
-    await this.#persistState();
   }
 
   async #profile(
@@ -484,19 +570,12 @@ export class CodeSupervisor {
       "--log",
       "warn",
     ];
-    const child = spawn(installation.entrypoint, args, {
+    const child = spawnGuardedProcess(installation.entrypoint, args, {
       cwd: installation.root,
-      detached: process.platform !== "win32",
       env: {
         ...process.env,
         CANTRIP_CODE_PROFILE_ID: profile.profileId,
       },
-      shell:
-        process.platform === "win32" &&
-        [".bat", ".cmd"].includes(
-          path.extname(installation.entrypoint).toLowerCase(),
-        ),
-      stdio: ["ignore", "pipe", "pipe"],
     });
     profile.child = child;
     this.#captureOutput(
@@ -683,6 +762,7 @@ export class CodeSupervisor {
     const profile = this.#profiles.get(session.profileKey);
     return {
       sessionId: session.sessionId,
+      workspaceUri: session.workspaceUri,
       status: session.status,
       editorBuild: this.#installation!.editorBuild,
       processInstanceId: profile?.instanceId ?? null,
@@ -720,6 +800,121 @@ export class CodeSupervisor {
       if (relative) result.add(relative);
     }
     return [...result];
+  }
+
+  async #restoreState(): Promise<void> {
+    if (!this.#installation) return;
+    const file = path.join(this.#codeRoot, "state", "runtime.json");
+    let value: unknown;
+    try {
+      value = JSON.parse(await readFile(file, "utf8"));
+    } catch {
+      return;
+    }
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      (value as { schemaVersion?: unknown }).schemaVersion !==
+        RUNTIME_STATE_SCHEMA_VERSION ||
+      !Array.isArray((value as { sessions?: unknown }).sessions)
+    ) {
+      return;
+    }
+    const records = (value as { sessions: unknown[] }).sessions.slice(
+      0,
+      this.#capabilities.maxSessions,
+    );
+    for (const record of records) {
+      if (typeof record !== "object" || record === null) continue;
+      const candidate = record as Record<string, unknown>;
+      const appearance = codeAppearanceSchema.safeParse(candidate.appearance);
+      const themeMode = codeThemeModeSchema.safeParse(candidate.themeMode);
+      const requiredStrings = [
+        "codeTabId",
+        "cwd",
+        "editorFingerprint",
+        "profileId",
+        "projectId",
+        "projectName",
+        "sessionId",
+        "worktreeId",
+        "worktreeName",
+      ] as const;
+      if (
+        !appearance.success ||
+        !themeMode.success ||
+        requiredStrings.some(
+          (field) =>
+            typeof candidate[field] !== "string" ||
+            (candidate[field] as string).length === 0 ||
+            (candidate[field] as string).length > 8_192,
+        ) ||
+        (candidate.profileId as string).length > 200 ||
+        (candidate.projectName as string).length > 200 ||
+        (candidate.worktreeName as string).length > 200 ||
+        candidate.editorFingerprint !==
+          this.#installation.editorBuild.fingerprint ||
+        this.#sessions.has(candidate.sessionId as string)
+      ) {
+        continue;
+      }
+      const cwd = path.resolve(candidate.cwd as string);
+      const cwdStat = await stat(cwd).catch(() => null);
+      if (!cwdStat?.isDirectory()) continue;
+      const profileId = candidate.profileId as string;
+      const profileKey = stableKey(profileId);
+      const sessionId = candidate.sessionId as string;
+      const projectId = candidate.projectId as string;
+      const worktreeId = candidate.worktreeId as string;
+      const sessionKey = stableKey(sessionId);
+      const workspaceDirectory = path.join(
+        this.#codeRoot,
+        "workspaces",
+        stableKey(projectId),
+      );
+      await Promise.all([
+        mkdir(workspaceDirectory, { recursive: true }),
+        mkdir(path.join(this.#codeRoot, "sessions", sessionKey), {
+          recursive: true,
+        }),
+      ]);
+      const bridgeToken = randomBytes(32).toString("hex");
+      const session: CodeSession = {
+        activeTunnelStreams: new Set(),
+        appearance: appearance.data,
+        bridgeToken,
+        bridgeUrl: this.#bridge.register(sessionId, bridgeToken),
+        codeTabId: candidate.codeTabId as string,
+        cwd,
+        lastActivityAt: isoNow(),
+        lastError: null,
+        profileId,
+        profileKey,
+        projectId,
+        projectName: candidate.projectName as string,
+        sessionId,
+        startedAt:
+          typeof candidate.startedAt === "string" &&
+          Number.isFinite(Date.parse(candidate.startedAt))
+            ? candidate.startedAt
+            : null,
+        status: "offline",
+        themeMode: themeMode.data,
+        workspacePath: path.join(
+          workspaceDirectory,
+          `${stableKey(worktreeId)}-${sessionKey}.code-workspace`,
+        ),
+        workspaceUri: "",
+        worktreeId,
+        worktreeName: candidate.worktreeName as string,
+      };
+      session.workspaceUri = pathToFileURL(session.workspacePath).href;
+      this.#sessions.set(sessionId, session);
+      const profile = await this.#profile(profileId, profileKey);
+      profile.sessions.add(sessionId);
+      await this.#writeWorkspace(session);
+    }
+    await this.#persistState();
   }
 
   #assertAvailable(): void {
@@ -771,10 +966,13 @@ export class CodeSupervisor {
     const file = path.join(this.#codeRoot, "state", "runtime.json");
     const temporary = `${file}.${randomUUID()}.tmp`;
     const sessions = [...this.#sessions.values()].map((session) => ({
+      appearance: session.appearance,
       codeTabId: session.codeTabId,
       cwd: session.cwd,
+      editorFingerprint: this.#installation?.editorBuild.fingerprint ?? null,
       lastActivityAt: session.lastActivityAt,
       lastError: session.lastError,
+      profileId: session.profileId,
       profileKey: session.profileKey,
       projectId: session.projectId,
       projectName: session.projectName,
@@ -788,7 +986,7 @@ export class CodeSupervisor {
     }));
     await writeFile(
       temporary,
-      `${JSON.stringify({ schemaVersion: 1, sessions }, null, 2)}\n`,
+      `${JSON.stringify({ schemaVersion: RUNTIME_STATE_SCHEMA_VERSION, sessions }, null, 2)}\n`,
       { encoding: "utf8", mode: 0o600 },
     );
     await rename(temporary, file);

@@ -110,6 +110,7 @@ class LoopbackWorker implements WorkerCommandBus {
 
 const runtime: CodeRuntimeStatus = {
   sessionId: "session-1",
+  workspaceUri: "file:///worker/state/project.code-workspace",
   status: "running",
   editorBuild: {
     version: "1.109.5-cantrip.1",
@@ -154,8 +155,13 @@ describe("Cantrip Code isolated editor surface", () => {
     closers.push(() => closeCodeSurfaceServer(surface));
     const { port } = surface.address() as AddressInfo;
     const attachmentPath = new URL(attachment.url).pathname;
+    expect(new URL(attachment.url).searchParams.get("workspace")).toBe(
+      "/worker/state/project.code-workspace",
+    );
 
-    const response = await fetch(`http://127.0.0.1:${port}${attachmentPath}`);
+    const response = await fetch(
+      `http://127.0.0.1:${port}${attachmentPath}?workspace=${encodeURIComponent("/worker/state/project.code-workspace")}`,
+    );
     expect(await response.text()).toBe("<main>Cantrip Code</main>");
     expect(response.headers.get("set-cookie")).toBeNull();
     expect(response.headers.get("x-frame-options")).toBeNull();

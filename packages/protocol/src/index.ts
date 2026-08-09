@@ -1079,6 +1079,7 @@ export const codeWorkbenchStateSchema = z.object({
 
 export const codeRuntimeStatusSchema = z.object({
   sessionId: z.string().min(1),
+  workspaceUri: z.string().min(1).max(16_384).optional(),
   status: codeSessionStatusSchema,
   editorBuild: codeEditorBuildSchema,
   processInstanceId: z.string().min(1).nullable(),
@@ -1180,6 +1181,8 @@ export const codeTunnelFrameHeaderSchema = z.discriminatedUnion("kind", [
   }),
   codeTunnelFrameBaseSchema.extend({ kind: z.literal("http-response-data") }),
   codeTunnelFrameBaseSchema.extend({ kind: z.literal("http-response-end") }),
+  codeTunnelFrameBaseSchema.extend({ kind: z.literal("http-response-pause") }),
+  codeTunnelFrameBaseSchema.extend({ kind: z.literal("http-response-resume") }),
   codeTunnelFrameBaseSchema.extend({
     kind: z.literal("websocket-open"),
     path: z

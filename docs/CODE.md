@@ -1,6 +1,6 @@
 # Cantrip Code Integration Plan
 
-- Status: end-to-end implementation complete; platform QA and hardening remain
+- Status: implementation complete; multi-platform and manual QA remain
 - Scope: browser-native Code OSS workbench hosted by `cantrip_worker`
 - Source location: `cantrip_code/` in the Cantrip monorepo
 - Immediate upstream: OpenVSCode Server
@@ -277,6 +277,11 @@ When a Code tab opens:
 8. The app embeds that URL and reconnects through the server after transient
    disconnects.
 
+The attachment URL carries the selected generated workspace path as an encoded
+remote-workspace selector. It is not an editor credential; the browser's first
+editor authentication message is translated to the raw process token only at
+the authorized worker-local tunnel boundary.
+
 The editor port is never exposed directly and the server never assumes it can
 open an inbound connection to a worker. The HTTP and WebSocket tunnel is a
 dedicated multiplexed streaming data plane rather than a sequence of ordinary
@@ -300,6 +305,9 @@ Required controls include:
 - map every proxy token to one known worker process and reject arbitrary proxy
   destinations;
 - keep raw editor and extension-host credentials worker-local;
+- translate the browser's initial editor authentication frame only inside the
+  authorized worker tunnel, so attachment clients never receive the raw editor
+  connection token;
 - isolate editor content from the Cantrip application origin;
 - never forward Cantrip application cookies to the editor;
 - preserve workspace trust instead of silently disabling it;
@@ -489,6 +497,15 @@ The current server tunnel revokes an older attachment when another controller
 attaches to the same Code session. Main and desktop pop-out windows additionally
 coordinate ownership in the client, so the first release intentionally favors a
 single writable workbench over concurrent unsynchronized input.
+
+The worker persists only non-secret session identity and reconstructs compatible
+sessions as offline after restart. A new authorized attachment lazily relaunches
+the immutable editor with its existing profile and generated workspace. Active
+tunnel streams prevent eviction; after the last stream closes, the editor stays
+warm for `CANTRIP_CODE_IDLE_TIMEOUT_MS` and is then reclaimed without deleting
+profile, extension, or workspace state. Every editor runs beneath a detached
+process guard that terminates the complete editor process group if its worker
+parent disappears, including abrupt supervisor or desktop-shell termination.
 
 ## 18. Implementation phases
 
