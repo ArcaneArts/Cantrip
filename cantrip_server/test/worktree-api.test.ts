@@ -25,6 +25,7 @@ import {
   gitManagedOperationResponseSchema,
   gitComparisonSchema,
   gitFileDiffSchema,
+  gitForcePushPreviewSchema,
   gitHistorySchema,
   gitPartialPatchPreviewSchema,
   gitRevisionFileDiffSchema,
@@ -174,6 +175,12 @@ const gitManagedOperationCommands: Array<
         | "git.operation.inspect"
         | "git.operation.control";
     }
+  >
+> = [];
+const gitForcePushCommands: Array<
+  Extract<
+    WorkerCommand,
+    { type: "git.force-push.preview" | "git.force-push.apply" }
   >
 > = [];
 const gitConflictCommands: Array<
@@ -900,6 +907,28 @@ const workerBridge = {
       case "git.action":
         gitActionPaths.push(command.cwd);
         return completeGitMutation("done");
+      case "git.force-push.preview":
+        gitForcePushCommands.push(command);
+        return {
+          token: "f".repeat(64),
+          destructive: true,
+          summary: "Replace origin/main with main using force-with-lease.",
+          warnings: ["The lease is exact."],
+          remote: "origin",
+          localBranch: "main",
+          remoteBranch: "main",
+          localHead: "4".repeat(40),
+          expectedRemoteHead: "3".repeat(40),
+          localCommits: [],
+          localCommitCount: 1,
+          localCommitsTruncated: false,
+          remoteCommits: [],
+          remoteCommitCount: 1,
+          remoteCommitsTruncated: false,
+        };
+      case "git.force-push.apply":
+        gitForcePushCommands.push(command);
+        return completeGitMutation("forced with lease");
       case "git.diff":
         gitDiffCommands.push(command);
         return {
@@ -2049,6 +2078,34 @@ describe.sequential("server worktree control plane", () => {
     });
     gitActionResultSchema.parse(actionResponse.json());
     expect(gitActionPaths.at(-1)).toBe(target.path);
+    const forcePreviewResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/force-push/preview`,
+      payload: {},
+    });
+    expect(
+      gitForcePushPreviewSchema.parse(forcePreviewResponse.json()),
+    ).toMatchObject({
+      remote: "origin",
+      expectedRemoteHead: "3".repeat(40),
+    });
+    expect(gitForcePushCommands.at(-1)).toMatchObject({
+      type: "git.force-push.preview",
+      cwd: target.path,
+    });
+    const forceApplyResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/force-push/apply`,
+      payload: { token: "f".repeat(64) },
+    });
+    expect(gitActionResultSchema.parse(forceApplyResponse.json()).output).toBe(
+      "forced with lease",
+    );
+    expect(gitForcePushCommands.at(-1)).toMatchObject({
+      type: "git.force-push.apply",
+      cwd: target.path,
+      token: "f".repeat(64),
+    });
     const diffResponse = await app.inject({
       method: "GET",
       url: `/api/projects/${projectId}/worktrees/${target.id}/git/diff?path=src%2Fapp.ts&scope=unstaged`,

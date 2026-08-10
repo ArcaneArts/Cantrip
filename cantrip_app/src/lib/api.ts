@@ -72,6 +72,7 @@ import {
   gitCommitDetailSchema,
   gitComparisonSchema,
   gitFileDiffSchema,
+  gitForcePushPreviewSchema,
   gitHistorySchema,
   gitPartialPatchPreviewSchema,
   gitStashActionPreviewSchema,
@@ -474,6 +475,31 @@ export async function runProjectWorktreeGitAction(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/actions`,
       action,
+    ),
+  );
+}
+
+export async function previewProjectWorktreeGitForcePush(
+  projectId: string,
+  worktreeId: string,
+) {
+  return gitForcePushPreviewSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/force-push/preview`,
+      {},
+    ),
+  );
+}
+
+export async function applyProjectWorktreeGitForcePush(
+  projectId: string,
+  worktreeId: string,
+  token: string,
+) {
+  return gitActionResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/force-push/apply`,
+      { token },
     ),
   );
 }

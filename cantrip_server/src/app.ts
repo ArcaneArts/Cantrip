@@ -127,6 +127,8 @@ import {
   gitMergeRebaseActionSchema,
   gitDiffScopeSchema,
   gitFileDiffSchema,
+  gitForcePushApplySchema,
+  gitForcePushPreviewSchema,
   gitHistorySchema,
   gitPartialPatchApplySchema,
   gitPartialPatchPreviewSchema,
@@ -6786,6 +6788,90 @@ export async function buildApp({
           },
         );
         return reply.code(201).send(result);
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/force-push/preview",
+    async (request, reply) => {
+      try {
+        const preview = await worktreeCoordinator.serialize(
+          request.params.projectId,
+          async () => {
+            const context = await repository.getProjectWorktreeContext(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (!context) throw new Error("Worktree not found.");
+            return gitForcePushPreviewSchema.parse(
+              await bridge.request(
+                context.workerId,
+                {
+                  type: "git.force-push.preview",
+                  cwd: context.worktree.path,
+                },
+                { timeoutMs: null },
+              ),
+            );
+          },
+        );
+        return reply.send(preview);
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/force-push/apply",
+    async (request, reply) => {
+      const input = gitForcePushApplySchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const result = await worktreeCoordinator.serialize(
+          request.params.projectId,
+          async () => {
+            const context = await repository.getProjectWorktreeContext(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (!context) throw new Error("Worktree not found.");
+            const applied = gitActionResultSchema.parse(
+              await bridge.request(
+                context.workerId,
+                {
+                  type: "git.force-push.apply",
+                  cwd: context.worktree.path,
+                  token: input.data.token,
+                },
+                { timeoutMs: null },
+              ),
+            );
+            await recordLiveWorktreeStatus(
+              request.params.projectId,
+              request.params.worktreeId,
+              worktreeStatusFromGitStatus(context.worktree, applied.status),
+            );
+            publishLiveInvalidation("worktree", {
+              projectId: request.params.projectId,
+            });
+            publishLiveInvalidation("worktree-status", {
+              projectId: request.params.projectId,
+            });
+            void scheduleProjectWorktreeObservation(request.params.projectId);
+            return applied;
+          },
+        );
+        return reply.send(result);
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 409;
         return reply.code(status).send({ error: errorMessage(error) });

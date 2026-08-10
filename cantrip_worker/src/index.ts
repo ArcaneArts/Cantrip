@@ -25,6 +25,7 @@ import {
 import { GithubClient } from "./github.js";
 import {
   amendGitManagedOperation,
+  applyGitForcePush,
   applyGitBranchAction,
   applyGitCommitAction,
   applyGitConflictResolution,
@@ -44,6 +45,7 @@ import {
   previewGitStashAction,
   previewGitTagAction,
   previewGitManagedOperation,
+  previewGitForcePush,
   readGitCommitDetail,
   readGitConflict,
   readGitBranches,
@@ -352,6 +354,10 @@ async function start(): Promise<void> {
         );
       case "git.action":
         return runGitAction(command.cwd, command.action);
+      case "git.force-push.preview":
+        return previewGitForcePush(command.cwd);
+      case "git.force-push.apply":
+        return applyGitForcePush(command.cwd, command.token);
       case "worktree.list":
         return worktrees.list(command.sourcePath);
       case "worktree.reconcile":
