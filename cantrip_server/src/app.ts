@@ -94,6 +94,7 @@ import {
   githubPullRequestCreateResultSchema,
   githubPullRequestCreateSchema,
   githubPullRequestDetailSchema,
+  githubPullRequestReviewActionSchema,
   githubIssueStateSchema,
   githubProjectCreateSchema,
   githubRepositoryListSchema,
@@ -3985,6 +3986,108 @@ export async function buildApp({
         return reply.send(githubPullRequestDetailSchema.parse(pullRequest));
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{
+    Params: {
+      projectId: string;
+      worktreeId: string;
+      pullRequestNumber: string;
+    };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/actions",
+    async (request, reply) => {
+      const pullRequestNumber = Number.parseInt(
+        request.params.pullRequestNumber,
+        10,
+      );
+      if (!Number.isInteger(pullRequestNumber) || pullRequestNumber < 1) {
+        return reply.code(400).send({ error: "Invalid pull request number." });
+      }
+      const action = githubPullRequestReviewActionSchema.safeParse(
+        request.body,
+      );
+      if (!action.success) {
+        return reply.code(400).send(invalidBody(action.error.issues));
+      }
+      try {
+        const result = await worktreeCoordinator.serialize(
+          request.params.projectId,
+          async () => {
+            const [worktree, github] = await Promise.all([
+              repository.getProjectWorktreeContext(
+                LOCAL_USER_ID,
+                request.params.projectId,
+                request.params.worktreeId,
+              ),
+              repository.getGithubProjectExecutionContext(
+                LOCAL_USER_ID,
+                request.params.projectId,
+              ),
+            ]);
+            if (!worktree || !github) {
+              throw new Error("GitHub worktree project not found.");
+            }
+            if (worktree.workerId !== github.workerId) {
+              throw new Error(
+                "The selected worktree and GitHub project belong to different workers.",
+              );
+            }
+            const shared = {
+              cwd: worktree.worktree.path,
+              repository: github.nameWithOwner,
+              number: pullRequestNumber,
+            };
+            const response =
+              action.data.type === "comment"
+                ? await bridge.request(
+                    worktree.workerId,
+                    {
+                      type: "github.pull-request.comment",
+                      ...shared,
+                      body: action.data.body,
+                    },
+                    { timeoutMs: null },
+                  )
+                : action.data.type === "submit-review"
+                  ? await bridge.request(
+                      worktree.workerId,
+                      {
+                        type: "github.pull-request.review.submit",
+                        ...shared,
+                        review: action.data.review,
+                      },
+                      { timeoutMs: null },
+                    )
+                  : action.data.type === "inline-comment"
+                    ? await bridge.request(
+                        worktree.workerId,
+                        {
+                          type: "github.pull-request.review.comment",
+                          ...shared,
+                          comment: action.data.comment,
+                        },
+                        { timeoutMs: null },
+                      )
+                    : await bridge.request(
+                        worktree.workerId,
+                        {
+                          type: "github.pull-request.review.reply",
+                          ...shared,
+                          commentId: action.data.commentId,
+                          body: action.data.body,
+                        },
+                        { timeoutMs: null },
+                      );
+            return githubPullRequestDetailSchema.parse(response);
+          },
+        );
+        return reply.send(result);
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },

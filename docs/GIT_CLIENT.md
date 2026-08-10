@@ -476,6 +476,38 @@ Manual QA:
 5. Disconnect the selected worktree's worker and confirm the dialog reports it
    offline instead of reading through another worker.
 
+### Conversations and reviews
+
+The PR overview supports general comments, approvals with an optional note,
+and change requests with a required explanation. Inline review comments start
+by selecting an old or new line number in the shared Files diff; GitHub
+validates that the path, side, line, and exact PR-head commit still belong to
+the current diff. Existing inline comments are grouped into threads and can be
+replied to from Cantrip. GitHub's REST review-comments API does not expose a
+thread's resolved flag, so Cantrip keeps that state explicitly unknown rather
+than making an unreliable claim.
+
+Every review mutation is validated by the shared protocol, serialized by the
+server for the project, executed with the selected worktree and worker-owned
+GitHub CLI identity, and followed by a complete authoritative PR refresh. The
+app updates only from that worker response and also refreshes the PR list's
+comment counts.
+
+Manual QA:
+
+1. Add a general Markdown comment and verify the new conversation entry and PR
+   list count appear only after GitHub accepts it.
+2. Approve with and without a note, then request changes with an explanation;
+   verify an empty change request is rejected before reaching the worker.
+3. Select an added, deleted, and context line in Files, submit comments on the
+   correct right/left side, and confirm each appears in its GitHub thread.
+4. Reply to an existing inline thread and confirm the authoritative refresh
+   preserves comment order and review state.
+5. Change the PR head after opening its diff and confirm GitHub rejects a stale
+   inline target rather than commenting on a different revision.
+6. Disconnect the selected worker during a submission and confirm the draft
+   remains visible with an error and no fallback worker is used.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport

@@ -2,8 +2,9 @@ import type {
   GithubPullRequestCheck,
   GithubPullRequestDetail,
   GithubPullRequestFile,
+  GithubPullRequestReviewAction,
 } from "@cantrip/protocol";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   CheckCircle2,
@@ -14,6 +15,7 @@ import {
   GitCommitHorizontal,
   Loader2,
   MessageSquare,
+  Send,
   ShieldCheck,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -28,7 +30,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { getGithubPullRequest } from "@/lib/api";
+import {
+  getGithubPullRequest,
+  runGithubPullRequestReviewAction,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 import { GitPatchView } from "./git-patch-view";
@@ -75,7 +80,27 @@ function TruncatedNotice({ children }: { children: string }) {
   );
 }
 
-function Overview({ detail }: { detail: GithubPullRequestDetail }) {
+function Overview({
+  detail,
+  error,
+  onAction,
+  pending,
+}: {
+  detail: GithubPullRequestDetail;
+  error: unknown;
+  onAction(action: GithubPullRequestReviewAction): Promise<void>;
+  pending: boolean;
+}) {
+  const [draft, setDraft] = useState("");
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const submit = async (action: GithubPullRequestReviewAction) => {
+    try {
+      await onAction(action);
+      setDraft("");
+    } catch {
+      // The shared mutation error remains visible beside the review form.
+    }
+  };
   return (
     <div className="space-y-6 overflow-y-auto p-5">
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -151,6 +176,83 @@ function Overview({ detail }: { detail: GithubPullRequestDetail }) {
 
       <section>
         <h3 className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <FileDiff className="size-3.5" /> Inline review threads (
+          {detail.reviewThreads.length})
+        </h3>
+        <div className="space-y-3">
+          {detail.reviewThreads.map((thread) => (
+            <article key={thread.id} className="rounded-lg bg-muted/25 p-3">
+              <p className="mb-2 font-mono text-xs text-muted-foreground">
+                {thread.path}
+                {thread.line ? `:${thread.line}` : ""}
+                {thread.side ? ` · ${thread.side.toLowerCase()}` : ""}
+              </p>
+              <div className="space-y-3">
+                {thread.comments.map((comment) => (
+                  <div key={comment.id}>
+                    <div className="mb-1 flex items-center justify-between gap-2 text-xs">
+                      <span className="font-medium">@{comment.author}</span>
+                      <span className="text-muted-foreground">
+                        {dateFormatter.format(new Date(comment.createdAt))}
+                      </span>
+                    </div>
+                    <Markdown>{comment.body}</Markdown>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 flex gap-2">
+                <input
+                  aria-label={`Reply to thread on ${thread.path}`}
+                  className="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs"
+                  placeholder="Reply to thread…"
+                  value={replyDrafts[thread.id] ?? ""}
+                  onChange={(event) =>
+                    setReplyDrafts({
+                      ...replyDrafts,
+                      [thread.id]: event.target.value,
+                    })
+                  }
+                />
+                <Button
+                  size="sm"
+                  className="h-8"
+                  disabled={pending || !(replyDrafts[thread.id] ?? "").trim()}
+                  onClick={async () => {
+                    const body = (replyDrafts[thread.id] ?? "").trim();
+                    if (!body) return;
+                    try {
+                      await onAction({
+                        type: "reply",
+                        commentId: thread.comments[0]!.id,
+                        body,
+                      });
+                      setReplyDrafts({ ...replyDrafts, [thread.id]: "" });
+                    } catch {
+                      // The shared mutation error remains visible below.
+                    }
+                  }}
+                >
+                  Reply
+                </Button>
+              </div>
+            </article>
+          ))}
+          {detail.reviewThreads.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No inline review threads yet. Select a line in Files to start one.
+            </p>
+          ) : null}
+          {detail.reviewThreadsTruncated ? (
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              Showing the first 100 inline comments. Open GitHub for the full
+              review conversation.
+            </p>
+          ) : null}
+        </div>
+      </section>
+
+      <section>
+        <h3 className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           <MessageSquare className="size-3.5" /> Conversation (
           {detail.commentCount})
         </h3>
@@ -180,63 +282,206 @@ function Overview({ detail }: { detail: GithubPullRequestDetail }) {
           ) : null}
         </div>
       </section>
+
+      {detail.state === "open" && !detail.merged ? (
+        <section>
+          <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Comment or review
+            <textarea
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              className="mt-2 min-h-24 w-full resize-y rounded-lg border bg-background p-3 text-sm font-normal normal-case tracking-normal"
+              placeholder="Leave a general comment, approval note, or requested changes…"
+            />
+          </label>
+          {error ? (
+            <p className="mb-2 text-xs text-destructive">
+              {error instanceof Error ? error.message : "Review action failed."}
+            </p>
+          ) : null}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending || !draft.trim()}
+              onClick={() => submit({ type: "comment", body: draft.trim() })}
+            >
+              <MessageSquare className="size-3.5" /> Comment
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() =>
+                submit({
+                  type: "submit-review",
+                  review: { event: "approve", body: draft.trim() },
+                })
+              }
+            >
+              <CheckCircle2 className="size-3.5" /> Approve
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-destructive/40 text-destructive hover:bg-destructive/10"
+              disabled={pending || !draft.trim()}
+              onClick={() =>
+                submit({
+                  type: "submit-review",
+                  review: { event: "request-changes", body: draft.trim() },
+                })
+              }
+            >
+              <AlertCircle className="size-3.5" /> Request changes
+            </Button>
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
 
-function Files({ detail }: { detail: GithubPullRequestDetail }) {
+function Files({
+  detail,
+  error,
+  onAction,
+  pending,
+}: {
+  detail: GithubPullRequestDetail;
+  error: unknown;
+  onAction(action: GithubPullRequestReviewAction): Promise<void>;
+  pending: boolean;
+}) {
   const [selectedPath, setSelectedPath] = useState<string | null>(
     detail.files[0]?.path ?? null,
   );
+  const [commentTarget, setCommentTarget] = useState<{
+    line: number;
+    path: string;
+    side: "LEFT" | "RIGHT";
+  } | null>(null);
+  const [commentBody, setCommentBody] = useState("");
   const selected =
     detail.files.find((file) => file.path === selectedPath) ?? detail.files[0];
   return (
-    <div className="flex min-h-0 flex-1">
-      <div className="w-72 shrink-0 overflow-y-auto border-r">
-        {detail.filesTruncated ? (
-          <TruncatedNotice>
-            Showing the first 100 changed files.
-          </TruncatedNotice>
-        ) : null}
-        {detail.files.map((file) => (
-          <button
-            key={file.path}
+    <div className="flex min-h-0 flex-1 flex-col">
+      {commentTarget ? (
+        <form
+          className="flex shrink-0 items-start gap-2 border-b bg-muted/20 p-3"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            if (!commentBody.trim()) return;
+            try {
+              await onAction({
+                type: "inline-comment",
+                comment: {
+                  body: commentBody.trim(),
+                  path: commentTarget.path,
+                  line: commentTarget.line,
+                  side: commentTarget.side,
+                  startLine: null,
+                  startSide: null,
+                },
+              });
+              setCommentBody("");
+              setCommentTarget(null);
+            } catch {
+              // The shared mutation error remains visible below the editor.
+            }
+          }}
+        >
+          <div className="min-w-0 flex-1">
+            <p className="mb-1 font-mono text-[10px] text-muted-foreground">
+              {commentTarget.path}:{commentTarget.line} ·{" "}
+              {commentTarget.side.toLowerCase()} side
+            </p>
+            <textarea
+              autoFocus
+              className="min-h-16 w-full resize-y rounded-md border bg-background p-2 text-xs"
+              placeholder="Add an inline review comment…"
+              value={commentBody}
+              onChange={(event) => setCommentBody(event.target.value)}
+            />
+            {error ? (
+              <p className="mt-1 text-xs text-destructive">
+                {error instanceof Error
+                  ? error.message
+                  : "Inline comment failed."}
+              </p>
+            ) : null}
+          </div>
+          <Button
             type="button"
-            onClick={() => setSelectedPath(file.path)}
-            className={cn(
-              "flex h-10 w-full items-center gap-2 px-3 text-left text-xs hover:bg-muted/50",
-              selected?.path === file.path && "bg-muted",
-            )}
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setCommentTarget(null);
+              setCommentBody("");
+            }}
           >
-            <FileDiff className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate font-mono">
-              {file.path}
-            </span>
-            <span className="shrink-0 text-[10px] text-muted-foreground">
-              +{file.additions} −{file.deletions}
-            </span>
-          </button>
-        ))}
-      </div>
-      {selected ? (
-        <GitPatchView
-          error={null}
-          loading={false}
-          newLabel={selected.path}
-          oldLabel={selected.previousPath ?? selected.path}
-          onClose={() => setSelectedPath(null)}
-          originalPath={selected.previousPath}
-          patch={selected.patch ?? undefined}
-          path={selected.path}
-          showClose={false}
-          subtitle={pullRequestFileSubtitle(selected)}
-          truncated={selected.patchTruncated}
-        />
-      ) : (
-        <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
-          No changed files to display.
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            size="sm"
+            disabled={pending || !commentBody.trim()}
+          >
+            <Send className="size-3.5" /> Comment
+          </Button>
+        </form>
+      ) : null}
+      <div className="flex min-h-0 flex-1">
+        <div className="w-72 shrink-0 overflow-y-auto border-r">
+          {detail.filesTruncated ? (
+            <TruncatedNotice>
+              Showing the first 100 changed files.
+            </TruncatedNotice>
+          ) : null}
+          {detail.files.map((file) => (
+            <button
+              key={file.path}
+              type="button"
+              onClick={() => setSelectedPath(file.path)}
+              className={cn(
+                "flex h-10 w-full items-center gap-2 px-3 text-left text-xs hover:bg-muted/50",
+                selected?.path === file.path && "bg-muted",
+              )}
+            >
+              <FileDiff className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate font-mono">
+                {file.path}
+              </span>
+              <span className="shrink-0 text-[10px] text-muted-foreground">
+                +{file.additions} −{file.deletions}
+              </span>
+            </button>
+          ))}
         </div>
-      )}
+        {selected ? (
+          <GitPatchView
+            error={null}
+            loading={false}
+            newLabel={selected.path}
+            oldLabel={selected.previousPath ?? selected.path}
+            onClose={() => setSelectedPath(null)}
+            onCommentLine={(line, side) => {
+              setCommentTarget({ line, side, path: selected.path });
+              setCommentBody("");
+            }}
+            originalPath={selected.previousPath}
+            patch={selected.patch ?? undefined}
+            path={selected.path}
+            showClose={false}
+            subtitle={pullRequestFileSubtitle(selected)}
+            truncated={selected.patchTruncated}
+          />
+        ) : (
+          <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
+            No changed files to display.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -338,11 +583,33 @@ export function GithubPullRequestDialog({
   worktreeId: string;
 }) {
   const [tab, setTab] = useState<PullRequestTab>("overview");
+  const queryClient = useQueryClient();
+  const detailKey = [
+    "github-pull-request",
+    projectId,
+    worktreeId,
+    pullRequestNumber,
+  ];
   const detail = useQuery({
     enabled: pullRequestNumber !== null,
-    queryKey: ["github-pull-request", projectId, worktreeId, pullRequestNumber],
+    queryKey: detailKey,
     queryFn: () =>
       getGithubPullRequest(projectId, worktreeId, pullRequestNumber!),
+  });
+  const action = useMutation({
+    mutationFn: (input: GithubPullRequestReviewAction) =>
+      runGithubPullRequestReviewAction(
+        projectId,
+        worktreeId,
+        pullRequestNumber!,
+        input,
+      ),
+    onSuccess: async (updated) => {
+      queryClient.setQueryData(detailKey, updated);
+      await queryClient.invalidateQueries({
+        queryKey: ["github-issues", projectId, "pull-request"],
+      });
+    },
   });
   useEffect(() => setTab("overview"), [pullRequestNumber]);
 
@@ -418,8 +685,26 @@ export function GithubPullRequestDialog({
               ))}
             </div>
             <div className="flex min-h-0 flex-1 flex-col">
-              {tab === "overview" ? <Overview detail={detail.data} /> : null}
-              {tab === "files" ? <Files detail={detail.data} /> : null}
+              {tab === "overview" ? (
+                <Overview
+                  detail={detail.data}
+                  error={action.error}
+                  pending={action.isPending}
+                  onAction={async (input) => {
+                    await action.mutateAsync(input);
+                  }}
+                />
+              ) : null}
+              {tab === "files" ? (
+                <Files
+                  detail={detail.data}
+                  error={action.error}
+                  pending={action.isPending}
+                  onAction={async (input) => {
+                    await action.mutateAsync(input);
+                  }}
+                />
+              ) : null}
               {tab === "commits" ? <Commits detail={detail.data} /> : null}
               {tab === "checks" ? <Checks detail={detail.data} /> : null}
             </div>

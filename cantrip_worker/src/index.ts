@@ -232,6 +232,35 @@ async function start(): Promise<void> {
           command.cwd,
           command.number,
         );
+      case "github.pull-request.comment":
+        return github.commentOnPullRequest(
+          command.repository,
+          command.cwd,
+          command.number,
+          command.body,
+        );
+      case "github.pull-request.review.submit":
+        return github.submitPullRequestReview(
+          command.repository,
+          command.cwd,
+          command.number,
+          command.review,
+        );
+      case "github.pull-request.review.comment":
+        return github.commentOnPullRequestLine(
+          command.repository,
+          command.cwd,
+          command.number,
+          command.comment,
+        );
+      case "github.pull-request.review.reply":
+        return github.replyToPullRequestReview(
+          command.repository,
+          command.cwd,
+          command.number,
+          command.commentId,
+          command.body,
+        );
       case "github.releases.list":
         return github.listReleases(command.repository);
       case "github.release.get":
