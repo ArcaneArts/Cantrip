@@ -261,6 +261,20 @@ async function start(): Promise<void> {
           command.commentId,
           command.body,
         );
+      case "github.pull-request.lifecycle.preview":
+        return github.previewPullRequestLifecycle(
+          command.repository,
+          command.cwd,
+          command.number,
+          command.action,
+        );
+      case "github.pull-request.lifecycle.apply":
+        return github.applyPullRequestLifecycle(
+          command.repository,
+          command.cwd,
+          command.number,
+          command.request,
+        );
       case "github.releases.list":
         return github.listReleases(command.repository);
       case "github.release.get":

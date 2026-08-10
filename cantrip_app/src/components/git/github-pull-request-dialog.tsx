@@ -2,6 +2,7 @@ import type {
   GithubPullRequestCheck,
   GithubPullRequestDetail,
   GithubPullRequestFile,
+  GithubPullRequestLifecycleAction,
   GithubPullRequestReviewAction,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -37,6 +38,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { GitPatchView } from "./git-patch-view";
+import { GithubPullRequestLifecycleDialog } from "./github-pull-request-lifecycle-dialog";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -583,6 +585,8 @@ export function GithubPullRequestDialog({
   worktreeId: string;
 }) {
   const [tab, setTab] = useState<PullRequestTab>("overview");
+  const [lifecycleAction, setLifecycleAction] =
+    useState<GithubPullRequestLifecycleAction | null>(null);
   const queryClient = useQueryClient();
   const detailKey = [
     "github-pull-request",
@@ -611,106 +615,183 @@ export function GithubPullRequestDialog({
       });
     },
   });
-  useEffect(() => setTab("overview"), [pullRequestNumber]);
+  useEffect(() => {
+    setTab("overview");
+    setLifecycleAction(null);
+  }, [pullRequestNumber]);
 
   return (
-    <Dialog open={pullRequestNumber !== null} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[min(90svh,900px)] w-[min(96vw,1200px)] max-w-none flex-col overflow-hidden p-0">
-        {detail.isLoading ? (
-          <div className="grid flex-1 place-items-center text-muted-foreground">
-            <Loader2 className="size-5 animate-spin" />
-          </div>
-        ) : detail.isError || !detail.data ? (
-          <DialogHeader className="p-6 pr-12">
-            <DialogTitle>Pull request could not be loaded</DialogTitle>
-            <DialogDescription>
-              {detail.error instanceof Error
-                ? detail.error.message
-                : "GitHub request failed."}
-            </DialogDescription>
-          </DialogHeader>
-        ) : (
-          <>
-            <DialogHeader className="shrink-0 border-b px-5 py-4 pr-12">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={detail.data.merged ? "default" : "secondary"}>
-                  {detail.data.merged
-                    ? "merged"
-                    : detail.data.draft
-                      ? "draft"
-                      : detail.data.state}
-                </Badge>
-                <span className="font-mono text-xs text-muted-foreground">
-                  #{detail.data.number}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {detail.data.headRef} → {detail.data.baseRef}
-                </span>
-              </div>
-              <div className="mt-1 flex items-start gap-3">
-                <div className="min-w-0 flex-1">
-                  <DialogTitle className="truncate text-left text-lg">
-                    {detail.data.title}
-                  </DialogTitle>
-                  <DialogDescription className="text-left">
-                    @{detail.data.author} · {detail.data.commitCount} commits ·{" "}
-                    {detail.data.changedFileCount} files
-                  </DialogDescription>
-                </div>
-                <Button size="sm" variant="outline" asChild>
-                  <a href={detail.data.url} target="_blank" rel="noreferrer">
-                    <ExternalLink className="size-3.5" /> GitHub
-                  </a>
-                </Button>
-              </div>
+    <>
+      <Dialog open={pullRequestNumber !== null} onOpenChange={onOpenChange}>
+        <DialogContent className="flex h-[min(90svh,900px)] w-[min(96vw,1200px)] max-w-none flex-col overflow-hidden p-0">
+          {detail.isLoading ? (
+            <div className="grid flex-1 place-items-center text-muted-foreground">
+              <Loader2 className="size-5 animate-spin" />
+            </div>
+          ) : detail.isError || !detail.data ? (
+            <DialogHeader className="p-6 pr-12">
+              <DialogTitle>Pull request could not be loaded</DialogTitle>
+              <DialogDescription>
+                {detail.error instanceof Error
+                  ? detail.error.message
+                  : "GitHub request failed."}
+              </DialogDescription>
             </DialogHeader>
-            <div className="flex h-9 shrink-0 items-end gap-1 border-b px-3">
-              {(
-                ["overview", "files", "commits", "checks"] as PullRequestTab[]
-              ).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setTab(value)}
-                  className={cn(
-                    "h-8 border-b-2 border-transparent px-3 text-xs capitalize text-muted-foreground",
-                    tab === value && "border-foreground text-foreground",
-                  )}
-                >
-                  {value}
-                  {value === "files" ? ` ${detail.data.changedFileCount}` : ""}
-                  {value === "commits" ? ` ${detail.data.commitCount}` : ""}
-                  {value === "checks" ? ` ${detail.data.checks.length}` : ""}
-                </button>
-              ))}
-            </div>
-            <div className="flex min-h-0 flex-1 flex-col">
-              {tab === "overview" ? (
-                <Overview
-                  detail={detail.data}
-                  error={action.error}
-                  pending={action.isPending}
-                  onAction={async (input) => {
-                    await action.mutateAsync(input);
-                  }}
-                />
-              ) : null}
-              {tab === "files" ? (
-                <Files
-                  detail={detail.data}
-                  error={action.error}
-                  pending={action.isPending}
-                  onAction={async (input) => {
-                    await action.mutateAsync(input);
-                  }}
-                />
-              ) : null}
-              {tab === "commits" ? <Commits detail={detail.data} /> : null}
-              {tab === "checks" ? <Checks detail={detail.data} /> : null}
-            </div>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
+          ) : (
+            <>
+              <DialogHeader className="shrink-0 border-b px-5 py-4 pr-12">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={detail.data.merged ? "default" : "secondary"}>
+                    {detail.data.merged
+                      ? "merged"
+                      : detail.data.draft
+                        ? "draft"
+                        : detail.data.state}
+                  </Badge>
+                  <span className="font-mono text-xs text-muted-foreground">
+                    #{detail.data.number}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {detail.data.headRef} → {detail.data.baseRef}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <DialogTitle className="truncate text-left text-lg">
+                      {detail.data.title}
+                    </DialogTitle>
+                    <DialogDescription className="text-left">
+                      @{detail.data.author} · {detail.data.commitCount} commits
+                      · {detail.data.changedFileCount} files
+                    </DialogDescription>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                    {detail.data.state === "open" && detail.data.draft ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setLifecycleAction({ type: "mark-ready" })
+                        }
+                      >
+                        Ready
+                      </Button>
+                    ) : null}
+                    {detail.data.state === "open" &&
+                    !detail.data.draft &&
+                    !detail.data.merged ? (
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          setLifecycleAction({
+                            type: "merge",
+                            method: "squash",
+                            commitTitle: null,
+                            commitMessage: null,
+                          })
+                        }
+                      >
+                        Merge
+                      </Button>
+                    ) : null}
+                    {detail.data.state === "open" && !detail.data.merged ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                        onClick={() => setLifecycleAction({ type: "close" })}
+                      >
+                        Close
+                      </Button>
+                    ) : null}
+                    {detail.data.state === "closed" && !detail.data.merged ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setLifecycleAction({ type: "reopen" })}
+                      >
+                        Reopen
+                      </Button>
+                    ) : null}
+                    <Button size="sm" variant="outline" asChild>
+                      <a
+                        href={detail.data.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <ExternalLink className="size-3.5" /> GitHub
+                      </a>
+                    </Button>
+                  </div>
+                </div>
+              </DialogHeader>
+              <div className="flex h-9 shrink-0 items-end gap-1 border-b px-3">
+                {(
+                  ["overview", "files", "commits", "checks"] as PullRequestTab[]
+                ).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setTab(value)}
+                    className={cn(
+                      "h-8 border-b-2 border-transparent px-3 text-xs capitalize text-muted-foreground",
+                      tab === value && "border-foreground text-foreground",
+                    )}
+                  >
+                    {value}
+                    {value === "files"
+                      ? ` ${detail.data.changedFileCount}`
+                      : ""}
+                    {value === "commits" ? ` ${detail.data.commitCount}` : ""}
+                    {value === "checks" ? ` ${detail.data.checks.length}` : ""}
+                  </button>
+                ))}
+              </div>
+              <div className="flex min-h-0 flex-1 flex-col">
+                {tab === "overview" ? (
+                  <Overview
+                    detail={detail.data}
+                    error={action.error}
+                    pending={action.isPending}
+                    onAction={async (input) => {
+                      await action.mutateAsync(input);
+                    }}
+                  />
+                ) : null}
+                {tab === "files" ? (
+                  <Files
+                    detail={detail.data}
+                    error={action.error}
+                    pending={action.isPending}
+                    onAction={async (input) => {
+                      await action.mutateAsync(input);
+                    }}
+                  />
+                ) : null}
+                {tab === "commits" ? <Commits detail={detail.data} /> : null}
+                {tab === "checks" ? <Checks detail={detail.data} /> : null}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+      {pullRequestNumber !== null ? (
+        <GithubPullRequestLifecycleDialog
+          action={lifecycleAction}
+          onOpenChange={(open) => {
+            if (!open) setLifecycleAction(null);
+          }}
+          projectId={projectId}
+          worktreeId={worktreeId}
+          pullRequestNumber={pullRequestNumber}
+          onApplied={(updated) => {
+            queryClient.setQueryData(detailKey, updated);
+            void queryClient.invalidateQueries({
+              queryKey: ["github-issues", projectId, "pull-request"],
+            });
+          }}
+        />
+      ) : null}
+    </>
   );
 }

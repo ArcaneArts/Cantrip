@@ -500,6 +500,161 @@ describe("GitHub project files", () => {
     ).rejects.toThrow();
   });
 
+  it("previews and safely applies pull request lifecycle actions", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-github-pr-lifecycle-"),
+    );
+    directories.push(dataDirectory);
+    const repository = path.join(dataDirectory, "repository");
+    await execFileAsync("git", ["init", "-b", "feature/lifecycle", repository]);
+    const statePath = path.join(dataDirectory, "state.json");
+    const logPath = path.join(dataDirectory, "gh.log");
+    const originalHead = "5".repeat(40);
+    const initialState = {
+      state: "open",
+      draft: false,
+      merged: false,
+      mergeable: true,
+      head: originalHead,
+      base: "6".repeat(40),
+    };
+    await writeFile(statePath, JSON.stringify(initialState));
+    const binDirectory = path.join(dataDirectory, "bin");
+    await mkdir(binDirectory);
+    const fakeGh = path.join(binDirectory, "gh");
+    await writeFile(
+      fakeGh,
+      [
+        "#!/usr/bin/env node",
+        'const fs = require("node:fs");',
+        `const statePath = ${JSON.stringify(statePath)};`,
+        `const logPath = ${JSON.stringify(logPath)};`,
+        'const args = process.argv.slice(2); fs.appendFileSync(logPath, args.join("\\0") + "\\n");',
+        "let state = JSON.parse(fs.readFileSync(statePath, 'utf8'));",
+        "const save = () => fs.writeFileSync(statePath, JSON.stringify(state));",
+        "const pr = () => ({ number: 44, title: 'Lifecycle', state: state.state, html_url: 'https://github.com/ArcaneArts/Cantrip/pull/44', user: { login: 'author' }, comments: 0, labels: [], created_at: '2026-08-10T12:00:00.000Z', updated_at: '2026-08-10T13:00:00.000Z', closed_at: state.state === 'closed' ? '2026-08-10T14:00:00.000Z' : null, body: 'Lifecycle', draft: state.draft, merged: state.merged, head: { ref: 'feature/lifecycle', sha: state.head }, base: { ref: 'main', sha: state.base }, requested_reviewers: [], mergeable: state.mergeable, mergeable_state: state.mergeable ? 'clean' : 'blocked', additions: 1, deletions: 0, changed_files: 0, commits: 0 });",
+        "if (args[0] === 'pr' && args[1] === 'ready') { state.draft = false; save(); process.exit(0); }",
+        "const route = args[1] || ''; const methodIndex = args.indexOf('--method'); const method = methodIndex >= 0 ? args[methodIndex + 1] : 'GET';",
+        "if (route.endsWith('/pulls/44/merge')) { state.state = 'closed'; state.merged = true; save(); process.stdout.write(JSON.stringify({ merged: true, sha: state.head, message: 'Merged' })); }",
+        "else if (route.endsWith('/pulls/44') && method === 'PATCH') { const next = args.find((arg) => arg.startsWith('state=')); state.state = next?.slice(6) || state.state; save(); process.stdout.write(JSON.stringify(pr())); }",
+        "else if (route.endsWith('/pulls/44')) process.stdout.write(JSON.stringify(pr()));",
+        "else if (route.endsWith('/check-runs')) process.stdout.write(JSON.stringify({ total_count: 0, check_runs: [] }));",
+        "else if (route.endsWith('/status')) process.stdout.write(JSON.stringify({ statuses: [] }));",
+        "else process.stdout.write('[]');",
+      ].join("\n"),
+    );
+    await chmod(fakeGh, 0o755);
+    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+    const github = new GithubClient(dataDirectory);
+
+    const closePreview = await github.previewPullRequestLifecycle(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      { type: "close" },
+    );
+    expect(closePreview).toMatchObject({
+      destructive: true,
+      confirmationPhrase: "close #44",
+      headSha: originalHead,
+    });
+    await expect(
+      github.applyPullRequestLifecycle("ArcaneArts/Cantrip", repository, 44, {
+        action: { type: "close" },
+        token: closePreview.token,
+        confirmation: "wrong",
+      }),
+    ).rejects.toThrow("Type close #44");
+    await expect(
+      github.applyPullRequestLifecycle("ArcaneArts/Cantrip", repository, 44, {
+        action: { type: "close" },
+        token: closePreview.token,
+        confirmation: "close #44",
+      }),
+    ).resolves.toMatchObject({ state: "closed", merged: false });
+
+    const reopenPreview = await github.previewPullRequestLifecycle(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      { type: "reopen" },
+    );
+    await github.applyPullRequestLifecycle(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      {
+        action: { type: "reopen" },
+        token: reopenPreview.token,
+        confirmation: "",
+      },
+    );
+
+    await writeFile(
+      statePath,
+      JSON.stringify({ ...initialState, draft: true }),
+    );
+    const readyPreview = await github.previewPullRequestLifecycle(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      { type: "mark-ready" },
+    );
+    await expect(
+      github.applyPullRequestLifecycle("ArcaneArts/Cantrip", repository, 44, {
+        action: { type: "mark-ready" },
+        token: readyPreview.token,
+        confirmation: "",
+      }),
+    ).resolves.toMatchObject({ draft: false });
+
+    const mergeAction = {
+      type: "merge" as const,
+      method: "squash" as const,
+      commitTitle: "feat: lifecycle",
+      commitMessage: null,
+    };
+    const staleMergePreview = await github.previewPullRequestLifecycle(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      mergeAction,
+    );
+    await writeFile(
+      statePath,
+      JSON.stringify({ ...initialState, head: "7".repeat(40) }),
+    );
+    await expect(
+      github.applyPullRequestLifecycle("ArcaneArts/Cantrip", repository, 44, {
+        action: mergeAction,
+        token: staleMergePreview.token,
+        confirmation: "squash #44",
+      }),
+    ).rejects.toThrow("no longer matches this preview");
+    const mergePreview = await github.previewPullRequestLifecycle(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      mergeAction,
+    );
+    await expect(
+      github.applyPullRequestLifecycle("ArcaneArts/Cantrip", repository, 44, {
+        action: mergeAction,
+        token: mergePreview.token,
+        confirmation: "squash #44",
+      }),
+    ).resolves.toMatchObject({ state: "closed", merged: true });
+    const invocations = await readFile(logPath, "utf8");
+    expect(invocations).toContain("state=closed");
+    expect(invocations).toContain("state=open");
+    expect(invocations).toContain(
+      ["pr", "ready", "44", "--repo", "ArcaneArts/Cantrip"].join("\0"),
+    );
+    expect(invocations).toContain("merge_method=squash");
+    expect(invocations).toContain(`sha=${"7".repeat(40)}`);
+    expect(invocations).toContain("commit_title=feat: lifecycle");
+  });
+
   it("restores the last repository list for the same GitHub login", async () => {
     const dataDirectory = await mkdtemp(
       path.join(tmpdir(), "cantrip-github-cache-test-"),

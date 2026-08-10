@@ -56,6 +56,7 @@ import {
   githubIssueListSchema,
   githubPullRequestCreateResultSchema,
   githubPullRequestDetailSchema,
+  githubPullRequestLifecyclePreviewSchema,
   githubReleaseListSchema,
   githubReleaseSummarySchema,
   githubRepositoryListSchema,
@@ -159,6 +160,8 @@ import type {
   GithubIssueKind,
   GithubIssueState,
   GithubPullRequestCreate,
+  GithubPullRequestLifecycleAction,
+  GithubPullRequestLifecycleApply,
   GithubPullRequestReviewAction,
   GithubReleaseCreate,
   GithubProjectCreate,
@@ -997,6 +1000,34 @@ export async function runGithubPullRequestReviewAction(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/pull-requests/${pullRequestNumber}/actions`,
       action,
+    ),
+  );
+}
+
+export async function previewGithubPullRequestLifecycle(
+  projectId: string,
+  worktreeId: string,
+  pullRequestNumber: number,
+  action: GithubPullRequestLifecycleAction,
+) {
+  return githubPullRequestLifecyclePreviewSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/pull-requests/${pullRequestNumber}/lifecycle/preview`,
+      action,
+    ),
+  );
+}
+
+export async function applyGithubPullRequestLifecycle(
+  projectId: string,
+  worktreeId: string,
+  pullRequestNumber: number,
+  input: GithubPullRequestLifecycleApply,
+) {
+  return githubPullRequestDetailSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/pull-requests/${pullRequestNumber}/lifecycle/apply`,
+      input,
     ),
   );
 }
