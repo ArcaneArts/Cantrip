@@ -3366,13 +3366,48 @@ export const gitSignatureSchema = z.object({
 export const gitAgentDraftTaskSchema = z.enum([
   "summarize-changes",
   "draft-commit-message",
+  "draft-pr-description",
+  "review-commit-range",
+  "explain-conflicts",
+  "summarize-failed-checks",
 ]);
 
-export const gitAgentDraftCreateSchema = z.object({
-  task: gitAgentDraftTaskSchema,
-  modelId: z.string().min(1).max(200).optional(),
-  instructions: z.string().trim().max(2_000).nullable().default(null),
-});
+const gitAgentRevisionSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(1_000)
+  .refine(
+    (value) => !value.startsWith("-") && !/[\0\r\n]/u.test(value),
+    "Expected a safe Git revision.",
+  );
+
+export const gitAgentDraftCreateSchema = z
+  .object({
+    task: gitAgentDraftTaskSchema,
+    modelId: z.string().min(1).max(200).optional(),
+    instructions: z.string().trim().max(2_000).nullable().default(null),
+    baseRevision: gitAgentRevisionSchema.nullable().default(null),
+    headRevision: gitAgentRevisionSchema.nullable().default(null),
+    pullRequestNumber: z.number().int().positive().nullable().default(null),
+  })
+  .superRefine((value, context) => {
+    if (
+      ["draft-pr-description", "review-commit-range"].includes(value.task) &&
+      (!value.baseRevision || !value.headRevision)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "This task requires both base and head revisions.",
+      });
+    }
+    if (value.task === "summarize-failed-checks" && !value.pullRequestNumber) {
+      context.addIssue({
+        code: "custom",
+        message: "This task requires a pull request number.",
+      });
+    }
+  });
 
 export const gitAgentDraftModelOutputSchema = z.object({
   text: z.string().trim().min(1).max(100_000),
@@ -5368,7 +5403,11 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     generationId: z.string().min(1).max(200),
     cwd: z.string().min(1).max(8_192),
     task: gitAgentDraftTaskSchema,
-    instructions: gitAgentDraftCreateSchema.shape.instructions,
+    instructions: z.string().trim().max(2_000).nullable(),
+    baseRevision: gitAgentRevisionSchema.nullable(),
+    headRevision: gitAgentRevisionSchema.nullable(),
+    pullRequestNumber: z.number().int().positive().nullable(),
+    repository: githubRepositorySchema.shape.nameWithOwner.nullable(),
     developerInstructions: z.string().trim().min(1).max(100_000),
     outputSchema: workflowJsonObjectSchema,
     timeoutMs: z

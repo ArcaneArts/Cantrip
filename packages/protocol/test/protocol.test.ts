@@ -144,6 +144,32 @@ describe("Cantrip protocol", () => {
     expect(() =>
       gitAgentDraftCreateSchema.parse({ task: "publish-commit" }),
     ).toThrow();
+    expect(
+      gitAgentDraftCreateSchema.parse({
+        task: "review-commit-range",
+        baseRevision: "origin/main",
+        headRevision: "feature/review",
+      }),
+    ).toMatchObject({
+      task: "review-commit-range",
+      baseRevision: "origin/main",
+      headRevision: "feature/review",
+    });
+    expect(() =>
+      gitAgentDraftCreateSchema.parse({ task: "draft-pr-description" }),
+    ).toThrow();
+    expect(() =>
+      gitAgentDraftCreateSchema.parse({
+        task: "summarize-failed-checks",
+      }),
+    ).toThrow();
+    expect(() =>
+      gitAgentDraftCreateSchema.parse({
+        task: "review-commit-range",
+        baseRevision: "--output=/tmp/pwn",
+        headRevision: "HEAD",
+      }),
+    ).toThrow();
   });
 
   it("validates durable bisect actions and classification controls", () => {

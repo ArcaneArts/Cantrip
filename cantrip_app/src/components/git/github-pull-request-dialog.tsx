@@ -20,6 +20,7 @@ import {
   MessageSquare,
   Send,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -35,12 +36,14 @@ import {
 } from "@/components/ui/dialog";
 import {
   checkoutGithubPullRequest,
+  generateProjectWorktreeGitDraft,
   getGithubPullRequest,
   runGithubPullRequestReviewAction,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 import { GitPatchView } from "./git-patch-view";
+import { GitAgentDraftDialog } from "./git-agent-draft-dialog";
 import { GithubPullRequestLifecycleDialog } from "./github-pull-request-lifecycle-dialog";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -53,6 +56,17 @@ type PullRequestTab = "overview" | "files" | "commits" | "checks";
 export function pullRequestCheckLabel(check: GithubPullRequestCheck): string {
   if (check.status !== "completed") return "Running";
   return (check.conclusion ?? "Completed").replaceAll("_", " ");
+}
+
+export function isFailedPullRequestCheck(
+  check: GithubPullRequestCheck,
+): boolean {
+  return (
+    check.status === "completed" &&
+    ["failure", "error", "timed_out", "cancelled"].includes(
+      check.conclusion ?? "",
+    )
+  );
 }
 
 export function pullRequestFileSubtitle(file: GithubPullRequestFile): string {
@@ -539,9 +553,38 @@ function Commits({ detail }: { detail: GithubPullRequestDetail }) {
   );
 }
 
-function Checks({ detail }: { detail: GithubPullRequestDetail }) {
+function Checks({
+  detail,
+  onSummarize,
+  summarizing,
+}: {
+  detail: GithubPullRequestDetail;
+  onSummarize(): void;
+  summarizing: boolean;
+}) {
+  const failureCount = detail.checks.filter(isFailedPullRequestCheck).length;
   return (
     <div className="overflow-y-auto">
+      {failureCount ? (
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-background/95 px-4 py-2 backdrop-blur">
+          <p className="text-xs text-muted-foreground">
+            {failureCount} failed check{failureCount === 1 ? "" : "s"}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={summarizing}
+            onClick={onSummarize}
+          >
+            {summarizing ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="size-3.5" />
+            )}
+            Summarize failures
+          </Button>
+        </div>
+      ) : null}
       {detail.checksTruncated ? (
         <TruncatedNotice>
           Showing the first 200 check and status results.
@@ -599,6 +642,7 @@ export function GithubPullRequestDialog({
   const [tab, setTab] = useState<PullRequestTab>("overview");
   const [lifecycleAction, setLifecycleAction] =
     useState<GithubPullRequestLifecycleAction | null>(null);
+  const [agentOpen, setAgentOpen] = useState(false);
   const queryClient = useQueryClient();
   const detailKey = [
     "github-pull-request",
@@ -641,9 +685,21 @@ export function GithubPullRequestDialog({
       onCheckedOut(result.worktree.id);
     },
   });
+  const failedCheckSummary = useMutation({
+    mutationFn: () =>
+      generateProjectWorktreeGitDraft(projectId, worktreeId, {
+        task: "summarize-failed-checks",
+        instructions: null,
+        baseRevision: null,
+        headRevision: null,
+        pullRequestNumber,
+      }),
+  });
   useEffect(() => {
     setTab("overview");
     setLifecycleAction(null);
+    setAgentOpen(false);
+    failedCheckSummary.reset();
   }, [pullRequestNumber]);
 
   return (
@@ -815,12 +871,34 @@ export function GithubPullRequestDialog({
                   />
                 ) : null}
                 {tab === "commits" ? <Commits detail={detail.data} /> : null}
-                {tab === "checks" ? <Checks detail={detail.data} /> : null}
+                {tab === "checks" ? (
+                  <Checks
+                    detail={detail.data}
+                    summarizing={failedCheckSummary.isPending}
+                    onSummarize={() => {
+                      setAgentOpen(true);
+                      failedCheckSummary.mutate();
+                    }}
+                  />
+                ) : null}
               </div>
             </>
           )}
         </DialogContent>
       </Dialog>
+      <GitAgentDraftDialog
+        draft={failedCheckSummary.data ?? null}
+        error={
+          failedCheckSummary.error instanceof Error
+            ? failedCheckSummary.error.message
+            : null
+        }
+        loading={failedCheckSummary.isPending}
+        onOpenChange={setAgentOpen}
+        onRegenerate={() => failedCheckSummary.mutate()}
+        open={agentOpen}
+        task="summarize-failed-checks"
+      />
       {pullRequestNumber !== null ? (
         <GithubPullRequestLifecycleDialog
           action={lifecycleAction}

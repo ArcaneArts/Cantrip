@@ -3319,7 +3319,7 @@ describe.sequential("server worktree control plane", () => {
       },
     });
 
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode, response.body).toBe(200);
     expect(gitAgentDraftResultSchema.parse(response.json())).toMatchObject({
       task: "draft-commit-message",
       text: "feat: add Git assistant drafts",
@@ -3329,7 +3329,44 @@ describe.sequential("server worktree control plane", () => {
       cwd: target.path,
       task: "draft-commit-message",
       instructions: "Mention the Git client.",
+      baseRevision: null,
+      headRevision: null,
+      pullRequestNumber: null,
+      repository: null,
       timeoutMs: 120_000,
+    });
+
+    const rangeResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/agent/drafts`,
+      payload: {
+        task: "review-commit-range",
+        baseRevision: "origin/main",
+        headRevision: "feature/review",
+      },
+    });
+    expect(rangeResponse.statusCode).toBe(200);
+    expect(gitAgentCommands.at(-1)).toMatchObject({
+      cwd: target.path,
+      task: "review-commit-range",
+      baseRevision: "origin/main",
+      headRevision: "feature/review",
+    });
+
+    const checksResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/agent/drafts`,
+      payload: {
+        task: "summarize-failed-checks",
+        pullRequestNumber: 42,
+      },
+    });
+    expect(checksResponse.statusCode, checksResponse.body).toBe(200);
+    expect(gitAgentCommands.at(-1)).toMatchObject({
+      cwd: target.path,
+      task: "summarize-failed-checks",
+      pullRequestNumber: 42,
+      repository: "ArcaneArts/Cantrip",
     });
   });
 

@@ -8,5 +8,15 @@ describe("Git agent draft presentation", () => {
     expect(gitAgentTaskLabel("draft-commit-message")).toBe(
       "Draft commit message",
     );
+    expect(gitAgentTaskLabel("draft-pr-description")).toBe(
+      "Draft pull request description",
+    );
+    expect(gitAgentTaskLabel("review-commit-range")).toBe(
+      "Review commit range",
+    );
+    expect(gitAgentTaskLabel("explain-conflicts")).toBe("Explain conflicts");
+    expect(gitAgentTaskLabel("summarize-failed-checks")).toBe(
+      "Summarize failed checks",
+    );
   });
 });
