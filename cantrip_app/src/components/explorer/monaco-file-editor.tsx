@@ -1,11 +1,12 @@
 import Editor, { loader, type OnMount } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
-import CssWorker from "monaco-vs/language/css/css.worker.js?worker";
-import HtmlWorker from "monaco-vs/language/html/html.worker.js?worker";
-import JsonWorker from "monaco-vs/language/json/json.worker.js?worker";
-import TsWorker from "monaco-vs/language/typescript/ts.worker.js?worker";
-import EditorWorker from "monaco-vs/editor/editor.worker.js?worker";
 import { useEffect, useRef, useState } from "react";
+
+import CssWorker from "./monaco-workers/css.worker.js?worker";
+import EditorWorker from "./monaco-workers/editor.worker.js?worker";
+import HtmlWorker from "./monaco-workers/html.worker.js?worker";
+import JsonWorker from "./monaco-workers/json.worker.js?worker";
+import TsWorker from "./monaco-workers/ts.worker.js?worker";
 
 globalThis.MonacoEnvironment = {
   getWorker(_moduleId: string, label: string) {
