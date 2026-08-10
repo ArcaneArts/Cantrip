@@ -235,8 +235,8 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-xl border bg-card">
-      <div className="flex gap-3 border-b px-4 py-3">
+    <section>
+      <div className="flex gap-3 px-4 py-3 sm:px-6">
         <div className="mt-0.5 text-muted-foreground">{icon}</div>
         <div>
           <h2 className="text-sm font-semibold">{title}</h2>
@@ -245,14 +245,14 @@ function Section({
           </p>
         </div>
       </div>
-      <div className="p-4">{children}</div>
+      <div className="border-t px-4 py-4 sm:px-6">{children}</div>
     </section>
   );
 }
 
 function Empty({ children }: { children: ReactNode }) {
   return (
-    <p className="rounded-lg border border-dashed px-3 py-5 text-center text-sm text-muted-foreground">
+    <p className="border-y px-3 py-5 text-center text-sm text-muted-foreground">
       {children}
     </p>
   );
@@ -267,11 +267,11 @@ function Diagnostics({
 }) {
   if (warnings.length === 0 && errors.length === 0) return null;
   return (
-    <div className="mb-3 grid gap-2">
+    <div className="mb-3 divide-y border-y">
       {warnings.map((warning) => (
         <div
           key={warning}
-          className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs leading-5"
+          className="flex gap-2 border-l-2 border-amber-500 px-3 py-2 text-xs leading-5"
         >
           <CircleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
           {warning}
@@ -280,7 +280,7 @@ function Diagnostics({
       {errors.map((error) => (
         <div
           key={`${error.path}:${error.message}`}
-          className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-5"
+          className="border-l-2 border-destructive px-3 py-2 text-xs leading-5 text-destructive"
         >
           <strong>{error.path || "Inventory"}:</strong> {error.message}
         </div>
@@ -296,28 +296,35 @@ function CapabilityInventory({
 }) {
   const rows = customizationCapabilityRows(inventory);
   return (
-    <div className="grid gap-2 sm:grid-cols-2">
-      {rows.map((row) => (
-        <div
-          key={`${row.group}:${row.label}`}
-          className="rounded-lg border p-3"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                {row.group}
-              </p>
-              <p className="mt-0.5 text-sm font-medium">{row.label}</p>
-            </div>
-            <CapabilityBadge capability={row.capability} />
-          </div>
-          {row.capability.reason ? (
-            <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              {row.capability.reason}
+    <div className="border-y">
+      <div className="hidden grid-cols-[7rem_minmax(0,1fr)_auto] gap-3 border-b px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
+        <span>Group</span>
+        <span>Capability</span>
+        <span>Status</span>
+      </div>
+      <div className="divide-y">
+        {rows.map((row) => (
+          <div
+            key={`${row.group}:${row.label}`}
+            className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-1 px-3 py-2.5 sm:grid-cols-[7rem_minmax(0,1fr)_auto] sm:gap-3"
+          >
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              {row.group}
             </p>
-          ) : null}
-        </div>
-      ))}
+            <div className="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:row-start-auto">
+              <p className="text-sm font-medium">{row.label}</p>
+              {row.capability.reason ? (
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {row.capability.reason}
+                </p>
+              ) : null}
+            </div>
+            <div className="col-start-2 row-start-1 justify-self-end sm:col-start-auto sm:row-start-auto">
+              <CapabilityBadge capability={row.capability} />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -339,28 +346,32 @@ function SkillInventory({
       {inventory.skills.items.length === 0 ? (
         <Empty>No skills were reported for this chat runtime.</Empty>
       ) : (
-        <div className="grid gap-2 md:grid-cols-2">
+        <div className="divide-y border-y">
           {inventory.skills.items.map((skill) => (
-            <div key={skill.path} className="rounded-lg border p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <strong className="text-sm">
-                  {skill.displayName ?? skill.name}
-                </strong>
-                <Badge variant={skill.enabled ? "secondary" : "outline"}>
-                  {skill.enabled ? "Enabled" : "Disabled"}
-                </Badge>
-                <Badge variant="outline">{skill.scope}</Badge>
+            <div
+              key={skill.path}
+              className="grid gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <strong className="text-sm">
+                    {skill.displayName ?? skill.name}
+                  </strong>
+                  <Badge variant={skill.enabled ? "secondary" : "outline"}>
+                    {skill.enabled ? "Enabled" : "Disabled"}
+                  </Badge>
+                  <Badge variant="outline">{skill.scope}</Badge>
+                </div>
+                {skill.description ? (
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {skill.description}
+                  </p>
+                ) : null}
+                <code className="mt-1 block break-all text-[11px] text-muted-foreground">
+                  {skill.path}
+                </code>
               </div>
-              {skill.description ? (
-                <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                  {skill.description}
-                </p>
-              ) : null}
-              <code className="mt-2 block break-all text-[11px] text-muted-foreground">
-                {skill.path}
-              </code>
               <Button
-                className="mt-3"
                 size="sm"
                 variant="outline"
                 disabled={
@@ -393,7 +404,7 @@ function SkillInventory({
         </div>
       )}
       {configuration.isError ? (
-        <p className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+        <p className="mt-3 border-l-2 border-destructive px-3 py-2 text-xs text-destructive">
           {errorText(configuration.error)}
         </p>
       ) : null}
@@ -418,7 +429,7 @@ function SkillRootsControl({
   const parsedRoots = parseSkillRootsDraft(draft);
   const tooManyRoots = parsedRoots.length > 32;
   return (
-    <div className="mt-4 rounded-lg border p-3">
+    <div className="mt-4 border-t pt-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="text-sm font-medium">Extra skill roots</p>
@@ -498,12 +509,9 @@ function HookInventory({
       {inventory.hooks.items.length === 0 ? (
         <Empty>No project or managed hooks were reported.</Empty>
       ) : (
-        <div className="grid gap-2">
+        <div className="divide-y border-y">
           {inventory.hooks.items.map((hook) => (
-            <div
-              key={`${hook.key}:${hook.sourcePath}`}
-              className="rounded-lg border p-3"
-            >
+            <div key={`${hook.key}:${hook.sourcePath}`} className="px-3 py-3">
               <div className="flex flex-wrap items-center gap-2">
                 <strong className="text-sm">{hook.key}</strong>
                 <Badge variant={hook.enabled ? "secondary" : "outline"}>
@@ -540,14 +548,11 @@ function ResourceResult({ result }: { result: CodexMcpResourceRead }) {
     return <Empty>The MCP server returned no content.</Empty>;
   }
   return (
-    <div className="grid gap-2">
+    <div className="divide-y border-y">
       {result.contents.map((content, index) => {
         if (content.type === "blob") {
           return (
-            <div
-              key={`${content.uri}:${index}`}
-              className="rounded-lg border p-3"
-            >
+            <div key={`${content.uri}:${index}`} className="px-3 py-3">
               <p className="text-sm font-medium">Binary resource</p>
               <p className="mt-1 break-all text-xs text-muted-foreground">
                 {content.uri} · {content.mimeType ?? "unknown type"} ·{" "}
@@ -561,10 +566,7 @@ function ResourceResult({ result }: { result: CodexMcpResourceRead }) {
         }
         const preview = boundedResourceText(content.text);
         return (
-          <div
-            key={`${content.uri}:${index}`}
-            className="rounded-lg border p-3"
-          >
+          <div key={`${content.uri}:${index}`} className="px-3 py-3">
             <p className="break-all text-xs text-muted-foreground">
               {content.uri} · {content.mimeType ?? "text"}
             </p>
@@ -606,161 +608,161 @@ function McpInventory({
       {inventory.mcpServers.length === 0 ? (
         <Empty>No MCP servers are connected to this chat runtime.</Empty>
       ) : (
-        inventory.mcpServers.map((server) => (
-          <details
-            key={server.name}
-            className="rounded-lg border"
-            open={inventory.mcpServers.length === 1}
-          >
-            <summary className="cursor-pointer list-none px-3 py-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <strong className="text-sm">
-                  {server.serverInfo?.title ?? server.name}
-                </strong>
-                <Badge variant="outline">{server.authStatus}</Badge>
-                <span className="text-xs text-muted-foreground">
-                  {server.tools.length} tools · {server.resources.length}{" "}
-                  resources · {server.resourceTemplates.length} templates
-                </span>
-              </div>
-              {server.serverInfo?.description ? (
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {server.serverInfo.description}
-                </p>
-              ) : null}
-            </summary>
-            <div className="grid gap-4 border-t px-3 py-3">
-              {server.authStatus === "notLoggedIn" ? (
-                <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
-                  <p className="text-xs leading-5 text-muted-foreground">
-                    This server requires OAuth. Cantrip opens the native
-                    authorization page and watches Codex for completion.
-                  </p>
-                  <Button
-                    className="mt-2"
-                    size="sm"
-                    variant="outline"
-                    disabled={
-                      oauth.isPending ||
-                      oauthInProgress ||
-                      !inventory.capabilities.mcp.oauth.available
-                    }
-                    title={
-                      inventory.capabilities.mcp.oauth.reason ??
-                      `Authorize ${server.name}`
-                    }
-                    onClick={() => oauth.mutate({ server: server.name })}
-                  >
-                    {oauth.isPending &&
-                    oauth.variables?.server === server.name ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      <ExternalLink className="size-3.5" />
-                    )}
-                    Authorize
-                  </Button>
+        <div className="divide-y border-y">
+          {inventory.mcpServers.map((server) => (
+            <details key={server.name} open={inventory.mcpServers.length === 1}>
+              <summary className="cursor-pointer list-none px-3 py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <strong className="text-sm">
+                    {server.serverInfo?.title ?? server.name}
+                  </strong>
+                  <Badge variant="outline">{server.authStatus}</Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {server.tools.length} tools · {server.resources.length}{" "}
+                    resources · {server.resourceTemplates.length} templates
+                  </span>
                 </div>
-              ) : null}
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Tools
-                </h3>
-                {server.tools.length === 0 ? (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    None reported.
+                {server.serverInfo?.description ? (
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {server.serverInfo.description}
                   </p>
-                ) : (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {server.tools.map((tool) => (
-                      <span
-                        key={tool.name}
-                        className="rounded-md border px-2 py-1 text-xs"
-                        title={tool.description ?? undefined}
-                      >
-                        {tool.title ?? tool.name}
-                      </span>
-                    ))}
+                ) : null}
+              </summary>
+              <div className="grid gap-4 border-t px-3 py-3">
+                {server.authStatus === "notLoggedIn" ? (
+                  <div className="border-l-2 border-sky-500 pl-3">
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      This server requires OAuth. Cantrip opens the native
+                      authorization page and watches Codex for completion.
+                    </p>
+                    <Button
+                      className="mt-2"
+                      size="sm"
+                      variant="outline"
+                      disabled={
+                        oauth.isPending ||
+                        oauthInProgress ||
+                        !inventory.capabilities.mcp.oauth.available
+                      }
+                      title={
+                        inventory.capabilities.mcp.oauth.reason ??
+                        `Authorize ${server.name}`
+                      }
+                      onClick={() => oauth.mutate({ server: server.name })}
+                    >
+                      {oauth.isPending &&
+                      oauth.variables?.server === server.name ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <ExternalLink className="size-3.5" />
+                      )}
+                      Authorize
+                    </Button>
                   </div>
-                )}
-              </div>
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Resources
-                </h3>
-                {server.resources.length === 0 ? (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    None reported.
-                  </p>
-                ) : (
-                  <div className="mt-2 grid gap-2">
-                    {server.resources.map((item) => (
-                      <div
-                        key={item.uri}
-                        className="flex flex-col gap-2 rounded-md border p-2 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-medium">
-                            {item.title ?? item.name}
-                          </p>
-                          <p className="truncate text-[11px] text-muted-foreground">
-                            {item.uri}
-                          </p>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={
-                            resource.isPending ||
-                            !inventory.capabilities.mcp.resourceRead.available
-                          }
-                          title={
-                            inventory.capabilities.mcp.resourceRead.reason ??
-                            "Read this resource"
-                          }
-                          onClick={() => onReadResource(server.name, item.uri)}
+                ) : null}
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Tools
+                  </h3>
+                  {server.tools.length === 0 ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      None reported.
+                    </p>
+                  ) : (
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                      {server.tools.map((tool) => (
+                        <span
+                          key={tool.name}
+                          className="text-xs"
+                          title={tool.description ?? undefined}
                         >
-                          {resource.isPending &&
-                          resource.variables?.server === server.name &&
-                          resource.variables.uri === item.uri ? (
-                            <Loader2 className="size-3.5 animate-spin" />
-                          ) : (
-                            <FileSearch className="size-3.5" />
-                          )}
-                          Read
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                          {tool.title ?? tool.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Resources
+                  </h3>
+                  {server.resources.length === 0 ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      None reported.
+                    </p>
+                  ) : (
+                    <div className="mt-2 divide-y border-y">
+                      {server.resources.map((item) => (
+                        <div
+                          key={item.uri}
+                          className="flex flex-col gap-2 px-2 py-2 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-medium">
+                              {item.title ?? item.name}
+                            </p>
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              {item.uri}
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={
+                              resource.isPending ||
+                              !inventory.capabilities.mcp.resourceRead.available
+                            }
+                            title={
+                              inventory.capabilities.mcp.resourceRead.reason ??
+                              "Read this resource"
+                            }
+                            onClick={() =>
+                              onReadResource(server.name, item.uri)
+                            }
+                          >
+                            {resource.isPending &&
+                            resource.variables?.server === server.name &&
+                            resource.variables.uri === item.uri ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <FileSearch className="size-3.5" />
+                            )}
+                            Read
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Resource templates
+                  </h3>
+                  {server.resourceTemplates.length === 0 ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      None reported.
+                    </p>
+                  ) : (
+                    <div className="mt-2 grid gap-1">
+                      {server.resourceTemplates.map((template) => (
+                        <code
+                          key={template.uriTemplate}
+                          className="break-all text-[11px] text-muted-foreground"
+                        >
+                          {template.title ?? template.name}:{" "}
+                          {template.uriTemplate}
+                        </code>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Resource templates
-                </h3>
-                {server.resourceTemplates.length === 0 ? (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    None reported.
-                  </p>
-                ) : (
-                  <div className="mt-2 grid gap-1">
-                    {server.resourceTemplates.map((template) => (
-                      <code
-                        key={template.uriTemplate}
-                        className="break-all text-[11px] text-muted-foreground"
-                      >
-                        {template.title ?? template.name}:{" "}
-                        {template.uriTemplate}
-                      </code>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </details>
-        ))
+            </details>
+          ))}
+        </div>
       )}
       {resource.isError ? (
-        <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+        <p className="border-l-2 border-destructive px-3 py-2 text-xs text-destructive">
           {errorText(resource.error)}
         </p>
       ) : null}
@@ -796,7 +798,7 @@ function ExternalImportProgress({
 }) {
   if (status.status === "pending") {
     return (
-      <p className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs text-muted-foreground">
+      <p className="flex items-center gap-2 border-l-2 px-3 py-2 text-xs text-muted-foreground">
         <Loader2 className="size-3.5 animate-spin" /> Codex is importing the
         reviewed configuration…
       </p>
@@ -804,7 +806,7 @@ function ExternalImportProgress({
   }
   if (status.status === "unknown") {
     return (
-      <p className="rounded-lg border px-3 py-2 text-xs text-muted-foreground">
+      <p className="border-l-2 px-3 py-2 text-xs text-muted-foreground">
         This runtime no longer has completion state for import {status.importId}
         .
       </p>
@@ -823,10 +825,8 @@ function ExternalImportProgress({
   return (
     <div
       className={cn(
-        "rounded-lg border p-3 text-xs",
-        failures.length > 0
-          ? "border-amber-500/30 bg-amber-500/5"
-          : "border-emerald-500/30 bg-emerald-500/5",
+        "border-l-2 px-3 py-2 text-xs",
+        failures.length > 0 ? "border-amber-500" : "border-emerald-500",
       )}
     >
       <p className="flex items-center gap-2 font-medium">
@@ -866,7 +866,7 @@ function OauthProgress({
           ? (status.error ?? "Authorization failed")
           : "Authorization state is no longer available";
   return (
-    <p className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs text-muted-foreground">
+    <p className="flex items-center gap-2 border-l-2 px-3 py-2 text-xs text-muted-foreground">
       {status.status === "pending" ? (
         <Loader2 className="size-3.5 animate-spin" />
       ) : status.status === "succeeded" ? (
@@ -1095,8 +1095,8 @@ export function CustomizationPanel({
           </div>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto bg-muted/20 p-4 sm:p-6">
-          <div className="mb-4 flex gap-3 rounded-xl border border-sky-500/30 bg-sky-500/5 p-4 text-sm leading-6">
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+          <div className="flex gap-3 border-b px-4 py-4 text-sm leading-6 sm:px-6">
             <ShieldCheck className="mt-0.5 size-5 shrink-0 text-sky-600" />
             <div>
               <p className="font-medium">Isolated native controls</p>
@@ -1118,7 +1118,7 @@ export function CustomizationPanel({
               </div>
             </div>
           ) : inventory.isError ? (
-            <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+            <div className="border-b px-4 py-5 sm:px-6">
               <p className="font-medium text-destructive">
                 Customization inventory unavailable
               </p>
@@ -1135,9 +1135,9 @@ export function CustomizationPanel({
               </Button>
             </div>
           ) : inventory.data ? (
-            <div className="grid gap-4">
+            <div className="divide-y border-b">
               {refresh.isError ? (
-                <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                <p className="mx-4 my-3 border-l-2 border-destructive px-3 py-2 text-xs text-destructive sm:mx-6">
                   Refresh failed: {errorText(refresh.error)}
                 </p>
               ) : null}
@@ -1211,12 +1211,12 @@ export function CustomizationPanel({
                   ) : null}
                 </div>
                 {mcpReload.isError ? (
-                  <p className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                  <p className="mb-3 border-l-2 border-destructive px-3 py-2 text-xs text-destructive">
                     Reload failed: {errorText(mcpReload.error)}
                   </p>
                 ) : null}
                 {mcpReload.isSuccess ? (
-                  <p className="mb-3 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs">
+                  <p className="mb-3 flex items-center gap-2 border-l-2 border-emerald-500 px-3 py-2 text-xs">
                     <Check className="size-3.5 text-emerald-600" /> MCP servers
                     reloaded.
                   </p>
@@ -1242,12 +1242,12 @@ export function CustomizationPanel({
                   </div>
                 ) : null}
                 {oauthStatus.isError ? (
-                  <p className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                  <p className="mb-3 border-l-2 border-destructive px-3 py-2 text-xs text-destructive">
                     Authorization status failed: {errorText(oauthStatus.error)}
                   </p>
                 ) : null}
                 {mcpOauth.isError ? (
-                  <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs">
+                  <div className="mb-3 border-l-2 border-destructive px-3 py-2 text-xs">
                     <p className="text-destructive">
                       Authorization window failed: {errorText(mcpOauth.error)}
                     </p>
@@ -1283,15 +1283,15 @@ export function CustomizationPanel({
                 title="Agent model"
                 description="Cantrip bridges native collaboration modes, goals, and subagent progress without inventing a second agent runtime."
               >
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <div className="rounded-lg border p-3 text-sm">
+                <div className="divide-y border-y">
+                  <div className="px-3 py-3 text-sm">
                     <p className="font-medium">Native subagents</p>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
                       {inventory.data.capabilities.nativeSubagents.reason ??
                         "Available through Codex App Server thread and item events."}
                     </p>
                   </div>
-                  <div className="rounded-lg border p-3 text-sm">
+                  <div className="px-3 py-3 text-sm">
                     <p className="font-medium">Custom agent definitions</p>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
                       {inventory.data.capabilities.customAgents.reason ??
@@ -1336,7 +1336,7 @@ export function CustomizationPanel({
                   </p>
                 ) : null}
                 {externalPreview.isError ? (
-                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs">
+                  <div className="border-l-2 border-destructive px-3 py-2 text-xs">
                     <p className="text-destructive">
                       {errorText(externalPreview.error)}
                     </p>
@@ -1375,58 +1375,60 @@ export function CustomizationPanel({
                         this project.
                       </Empty>
                     ) : (
-                      externalPreview.data.items.map((item) => {
-                        const selectable = selectableExternalImportIds([
-                          item,
-                        ]).includes(item.id);
-                        const disabled =
-                          !selectable ||
-                          !inventory.data.capabilities.externalImports.apply
-                            .available ||
-                          externalImportInProgress;
-                        return (
-                          <label
-                            key={item.id}
-                            className={cn(
-                              "flex gap-3 rounded-lg border p-3",
-                              disabled && "opacity-70",
-                            )}
-                          >
-                            <input
-                              className="mt-1 size-4 shrink-0 accent-primary"
-                              type="checkbox"
-                              checked={selectedImportIds.has(item.id)}
-                              disabled={disabled}
-                              onChange={() => toggleImportSelection(item.id)}
-                            />
-                            <span className="min-w-0">
-                              <span className="flex flex-wrap items-center gap-2">
-                                <Badge variant="outline">
-                                  {item.itemType.replaceAll("_", " ")}
-                                </Badge>
-                                <span className="text-sm">
-                                  {item.description}
+                      <div className="divide-y border-y">
+                        {externalPreview.data.items.map((item) => {
+                          const selectable = selectableExternalImportIds([
+                            item,
+                          ]).includes(item.id);
+                          const disabled =
+                            !selectable ||
+                            !inventory.data.capabilities.externalImports.apply
+                              .available ||
+                            externalImportInProgress;
+                          return (
+                            <label
+                              key={item.id}
+                              className={cn(
+                                "flex gap-3 px-3 py-3",
+                                disabled && "opacity-70",
+                              )}
+                            >
+                              <input
+                                className="mt-1 size-4 shrink-0 accent-primary"
+                                type="checkbox"
+                                checked={selectedImportIds.has(item.id)}
+                                disabled={disabled}
+                                onChange={() => toggleImportSelection(item.id)}
+                              />
+                              <span className="min-w-0">
+                                <span className="flex flex-wrap items-center gap-2">
+                                  <Badge variant="outline">
+                                    {item.itemType.replaceAll("_", " ")}
+                                  </Badge>
+                                  <span className="text-sm">
+                                    {item.description}
+                                  </span>
                                 </span>
+                                {importDetailLines(item).map((line) => (
+                                  <span
+                                    key={line}
+                                    className="mt-1 block break-words text-xs text-muted-foreground"
+                                  >
+                                    {line}
+                                  </span>
+                                ))}
+                                {!selectable ? (
+                                  <span className="mt-1 block text-xs text-muted-foreground">
+                                    Plugin-bearing imports are disabled because
+                                    native plugin operations are not production
+                                    supported.
+                                  </span>
+                                ) : null}
                               </span>
-                              {importDetailLines(item).map((line) => (
-                                <span
-                                  key={line}
-                                  className="mt-1 block break-words text-xs text-muted-foreground"
-                                >
-                                  {line}
-                                </span>
-                              ))}
-                              {!selectable ? (
-                                <span className="mt-1 block text-xs text-muted-foreground">
-                                  Plugin-bearing imports are disabled because
-                                  native plugin operations are not production
-                                  supported.
-                                </span>
-                              ) : null}
-                            </span>
-                          </label>
-                        );
-                      })
+                            </label>
+                          );
+                        })}
+                      </div>
                     )}
                     {externalPreview.data.items.length > 0 ? (
                       <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -1495,12 +1497,12 @@ export function CustomizationPanel({
                       </p>
                     ) : null}
                     {externalImport.isError ? (
-                      <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                      <p className="border-l-2 border-destructive px-3 py-2 text-xs text-destructive">
                         Import failed: {errorText(externalImport.error)}
                       </p>
                     ) : null}
                     {externalImportStatus.isError ? (
-                      <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                      <p className="border-l-2 border-destructive px-3 py-2 text-xs text-destructive">
                         Import status failed:{" "}
                         {errorText(externalImportStatus.error)}
                       </p>
