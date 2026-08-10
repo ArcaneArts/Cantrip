@@ -11,10 +11,8 @@ use std::{
 use tauri::{Manager, RunEvent, State};
 
 mod project_share;
-mod window_coordinator;
 
 use project_share::ProjectShareMounts;
-use window_coordinator::WindowCoordinator;
 
 struct ManagedRuntime {
     children: Mutex<Vec<Child>>,
@@ -228,18 +226,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             local_server_url,
             project_share::reveal_project_share,
-            window_coordinator::begin_native_tab_drag,
-            window_coordinator::cancel_native_tab_drag,
-            window_coordinator::finish_native_tab_drag,
-            window_coordinator::native_tab_drag_cursor,
-            window_coordinator::register_tab_top_bar,
-            window_coordinator::unregister_tab_top_bar,
         ])
         .setup(|app| {
             let runtime = build_runtime(app).map_err(std::io::Error::other)?;
             app.manage(runtime);
             app.manage(ProjectShareMounts::default());
-            app.manage(WindowCoordinator::default());
             Ok(())
         })
         .build(tauri::generate_context!())
