@@ -15,6 +15,8 @@ import {
   gitBranchListSchema,
   gitBranchMutationResultSchema,
   gitCommitDetailSchema,
+  gitCommitActionPreviewSchema,
+  gitCommitActionResultSchema,
   gitComparisonSchema,
   gitFileDiffSchema,
   gitHistorySchema,
@@ -149,6 +151,12 @@ const gitHistoryCommands: Array<
 > = [];
 const gitCommitCommands: Array<
   Extract<WorkerCommand, { type: "git.commit.get" }>
+> = [];
+const gitCommitActionCommands: Array<
+  Extract<
+    WorkerCommand,
+    { type: "git.commit.action.preview" | "git.commit.action.apply" }
+  >
 > = [];
 const gitRevisionDiffCommands: Array<
   Extract<WorkerCommand, { type: "git.revision.diff" }>
@@ -499,6 +507,85 @@ const workerBridge = {
           additions: 1,
           deletions: 1,
         };
+      case "git.commit.action.preview": {
+        gitCommitActionCommands.push(command);
+        const revisions =
+          command.action.type === "cherryPick"
+            ? command.action.selection.type === "commits"
+              ? command.action.selection.revisions
+              : [
+                  command.action.selection.fromRevision,
+                  command.action.selection.toRevision,
+                ]
+            : command.action.type === "amend"
+              ? ["1".repeat(40)]
+              : [command.action.revision];
+        return completeStashMutation({
+          action: command.action,
+          token: "c".repeat(64),
+          destructive:
+            command.action.type === "revert" || command.action.type === "amend",
+          summary: "Review commit action.",
+          warnings: [],
+          resolvedRevisions: revisions,
+          commits: revisions.map((revision) => ({
+            hash: revision,
+            shortHash: revision.slice(0, 8),
+            subject: "Selected commit",
+            authorName: "Cantrip",
+            authoredAt: "2026-08-10T12:00:00.000Z",
+          })),
+          files: [],
+          patch: "@@ -1 +1 @@\n-old\n+new\n",
+          patchTruncated: false,
+          wouldConflict: false,
+          checkpointRef:
+            command.action.type === "amend"
+              ? "refs/cantrip/checkpoints/amend-test"
+              : null,
+        });
+      }
+      case "git.commit.action.apply": {
+        gitCommitActionCommands.push(command);
+        const revisions =
+          command.action.type === "cherryPick"
+            ? command.action.selection.type === "commits"
+              ? command.action.selection.revisions
+              : [
+                  command.action.selection.fromRevision,
+                  command.action.selection.toRevision,
+                ]
+            : command.action.type === "amend"
+              ? ["1".repeat(40)]
+              : [command.action.revision];
+        return completeStashMutation({
+          output: "commit action complete",
+          status: status(),
+          headBefore: "1".repeat(40),
+          headAfter: "2".repeat(40),
+          checkpointRef:
+            command.action.type === "amend"
+              ? "refs/cantrip/checkpoints/amend-test"
+              : null,
+          operation:
+            command.action.type === "cherryPick" ||
+            command.action.type === "revert"
+              ? {
+                  type:
+                    command.action.type === "cherryPick"
+                      ? "cherry-pick"
+                      : "revert",
+                  state: "completed",
+                  originalHead: "1".repeat(40),
+                  currentHead: "2".repeat(40),
+                  sourceRevisions: revisions,
+                  currentStep: revisions.length,
+                  totalSteps: revisions.length,
+                  conflictedPaths: [],
+                }
+              : null,
+        });
+      }
       case "git.refs.list":
         gitRefsCommands.push(command);
         return [
@@ -2081,6 +2168,82 @@ describe.sequential("server worktree control plane", () => {
         await app.inject({
           method: "GET",
           url: `/api/projects/${projectId}/worktrees/${target.id}/git/tags`,
+        })
+      ).statusCode,
+    ).toBe(503);
+    connected = true;
+    const actionRevision = "3".repeat(40);
+    const commitAction = {
+      type: "cherryPick" as const,
+      selection: {
+        type: "commits" as const,
+        revisions: [actionRevision],
+      },
+    };
+    const commitActionPreviewResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/actions/preview`,
+      payload: commitAction,
+    });
+    expect(
+      gitCommitActionPreviewSchema.parse(commitActionPreviewResponse.json()),
+    ).toMatchObject({
+      action: commitAction,
+      resolvedRevisions: [actionRevision],
+      token: "c".repeat(64),
+    });
+    expect(gitCommitActionCommands.at(-1)).toMatchObject({
+      type: "git.commit.action.preview",
+      cwd: target.path,
+      action: commitAction,
+    });
+    const commitActionApplyResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/actions/apply`,
+      payload: { action: commitAction, token: "c".repeat(64) },
+    });
+    expect(
+      gitCommitActionResultSchema.parse(commitActionApplyResponse.json()),
+    ).toMatchObject({
+      output: "commit action complete",
+      operation: { type: "cherry-pick", state: "completed" },
+    });
+    expect(gitCommitActionCommands.at(-1)).toMatchObject({
+      type: "git.commit.action.apply",
+      cwd: target.path,
+      action: commitAction,
+    });
+    const invalidCommitAction = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/actions/preview`,
+      payload: {
+        type: "revert",
+        revision: "HEAD~1",
+        mainlineParent: null,
+      },
+    });
+    expect(invalidCommitAction.statusCode).toBe(400);
+    maximumConcurrentGitMutations = 0;
+    await Promise.all([
+      app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/actions/preview`,
+        payload: commitAction,
+      }),
+      app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/worktrees/${target.id}/git/actions`,
+        payload: { type: "stageAll" },
+      }),
+    ]);
+    expect(maximumConcurrentGitMutations).toBe(1);
+    connected = false;
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/actions/preview`,
+          payload: commitAction,
         })
       ).statusCode,
     ).toBe(503);

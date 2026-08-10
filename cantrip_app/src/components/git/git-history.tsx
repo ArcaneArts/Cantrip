@@ -64,6 +64,11 @@ import { cn } from "@/lib/utils";
 import { GitChangesPanel } from "./git-changes-panel";
 import { GitBranchPanel } from "./git-branch-panel";
 import { GitCommitInspector } from "./git-commit-inspector";
+import {
+  GitCommitActionDialog,
+  type CommitActionRequest,
+} from "./git-commit-action-dialog";
+import { GitCommitContextMenu } from "./git-commit-actions-menu";
 import { GitComparisonPanel } from "./git-comparison-panel";
 import { GitStashPanel } from "./git-stash-panel";
 import { GitRepositoryPanel } from "./git-repository-panel";
@@ -387,6 +392,8 @@ export function GitHistoryView({
   const [stashesOpen, setStashesOpen] = useState(false);
   const [branchesOpen, setBranchesOpen] = useState(false);
   const [repositoryOpen, setRepositoryOpen] = useState(false);
+  const [commitActionRequest, setCommitActionRequest] =
+    useState<CommitActionRequest | null>(null);
   const [compareLeft, setCompareLeft] = useState<string | null>(null);
   const [compareRight, setCompareRight] = useState<string | null>(null);
   const [issueState, setIssueState] = useState<GithubIssueState>("open");
@@ -623,6 +630,7 @@ export function GitHistoryView({
     setStashesOpen(false);
     setBranchesOpen(false);
     setRepositoryOpen(false);
+    setCommitActionRequest(null);
     setCompareLeft(null);
     setCompareRight(null);
   }, [project.id, worktreeId]);
@@ -1052,176 +1060,189 @@ export function GitHistoryView({
                     displayRows[index - 1]?.graph.commit.hash ===
                       row.commit.hash;
                   return (
-                    <div
+                    <GitCommitContextMenu
                       key={row.commit.hash}
-                      role="button"
-                      tabIndex={0}
-                      data-high-contrast-row
-                      data-current={row.commit.isHead}
-                      className={cn(
-                        "grid h-8 w-full items-center border-b border-border/50 px-4 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50",
-                        selectedHead &&
-                          "bg-cyan-500/[0.07] shadow-[inset_2px_0_0_0_rgb(6_182_212)]",
-                        selectedCommit === row.commit.hash && "bg-muted/70",
-                      )}
-                      style={{ gridTemplateColumns: historyColumns }}
-                      title={`${row.commit.subject}\n${row.commit.hash}\n${fullDateFormatter.format(new Date(row.commit.authoredAt))}`}
-                      onClick={(event) => {
-                        if ((event.target as Element).closest("button")) return;
-                        setChangesOpen(false);
-                        setCompareOpen(false);
-                        setStashesOpen(false);
-                        setBranchesOpen(false);
-                        setRepositoryOpen(false);
-                        setSelectedCommit(row.commit.hash);
+                      target={{
+                        hash: row.commit.hash,
+                        shortHash: row.commit.shortHash,
+                        subject: row.commit.subject,
+                        parents: row.commit.parents,
+                        isHead: row.commit.hash === status?.head,
                       }}
-                      onKeyDown={(event) => {
-                        if (event.target !== event.currentTarget) return;
-                        if (event.key !== "Enter" && event.key !== " ") return;
-                        event.preventDefault();
-                        setChangesOpen(false);
-                        setCompareOpen(false);
-                        setStashesOpen(false);
-                        setBranchesOpen(false);
-                        setRepositoryOpen(false);
-                        setSelectedCommit(row.commit.hash);
-                      }}
+                      onAction={setCommitActionRequest}
                     >
-                      <div className="relative h-8 min-w-0 overflow-visible">
-                        <div className="absolute inset-y-0 left-0 z-[1] flex items-center">
-                          <CommitGraph
-                            row={row}
-                            width={graphWidth}
-                            connectFromTop={connectsFromWip}
-                          />
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        data-high-contrast-row
+                        data-current={row.commit.isHead}
+                        className={cn(
+                          "grid h-8 w-full items-center border-b border-border/50 px-4 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50",
+                          selectedHead &&
+                            "bg-cyan-500/[0.07] shadow-[inset_2px_0_0_0_rgb(6_182_212)]",
+                          selectedCommit === row.commit.hash && "bg-muted/70",
+                        )}
+                        style={{ gridTemplateColumns: historyColumns }}
+                        title={`${row.commit.subject}\n${row.commit.hash}\n${fullDateFormatter.format(new Date(row.commit.authoredAt))}`}
+                        onClick={(event) => {
+                          if ((event.target as Element).closest("button"))
+                            return;
+                          setChangesOpen(false);
+                          setCompareOpen(false);
+                          setStashesOpen(false);
+                          setBranchesOpen(false);
+                          setRepositoryOpen(false);
+                          setSelectedCommit(row.commit.hash);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.target !== event.currentTarget) return;
+                          if (event.key !== "Enter" && event.key !== " ")
+                            return;
+                          event.preventDefault();
+                          setChangesOpen(false);
+                          setCompareOpen(false);
+                          setStashesOpen(false);
+                          setBranchesOpen(false);
+                          setRepositoryOpen(false);
+                          setSelectedCommit(row.commit.hash);
+                        }}
+                      >
+                        <div className="relative h-8 min-w-0 overflow-visible">
+                          <div className="absolute inset-y-0 left-0 z-[1] flex items-center">
+                            <CommitGraph
+                              row={row}
+                              width={graphWidth}
+                              connectFromTop={connectsFromWip}
+                            />
+                          </div>
+                          {displayRow.worktrees.length ? (
+                            <div
+                              className="absolute inset-y-0 z-[2] flex min-w-0 items-center gap-0.5 overflow-hidden pr-1"
+                              style={{
+                                left: Math.max(28, graphWidth - 4),
+                                width: Math.max(
+                                  48,
+                                  graphAreaWidth - graphWidth + 4,
+                                ),
+                              }}
+                            >
+                              {[...displayRow.worktrees]
+                                .sort(
+                                  (left, right) =>
+                                    Number(right.id === worktreeId) -
+                                    Number(left.id === worktreeId),
+                                )
+                                .map((worktree) => {
+                                  const boundChats = chats.filter(
+                                    ({ activeWorktreeId }) =>
+                                      activeWorktreeId === worktree.id,
+                                  );
+                                  return (
+                                    <HistoryWorktreeMarker
+                                      key={worktree.id}
+                                      worktree={worktree}
+                                      worker={workers.find(
+                                        ({ workerId }) =>
+                                          workerId === worktree.workerId,
+                                      )}
+                                      status={statuses[worktree.id]}
+                                      boundChats={boundChats}
+                                      selected={worktree.id === worktreeId}
+                                      onSelect={() =>
+                                        onSelectWorktree(worktree.id)
+                                      }
+                                      onOpenChat={(chatId) =>
+                                        chatId
+                                          ? onOpenChat(chatId)
+                                          : onCreateChat(worktree.id)
+                                      }
+                                      onOpenTerminal={() =>
+                                        onCreateTerminal(worktree.id)
+                                      }
+                                      onOpenExplorer={() =>
+                                        onCreateExplorer(worktree.id)
+                                      }
+                                      onOpenHistory={() =>
+                                        onCreateHistory(worktree.id)
+                                      }
+                                      onLockToggle={() =>
+                                        lockWorktree.mutate(worktree)
+                                      }
+                                      onRemove={() => {
+                                        setForceRemove(false);
+                                        setRemoveTarget(worktree);
+                                      }}
+                                    />
+                                  );
+                                })}
+                            </div>
+                          ) : null}
                         </div>
-                        {displayRow.worktrees.length ? (
-                          <div
-                            className="absolute inset-y-0 z-[2] flex min-w-0 items-center gap-0.5 overflow-hidden pr-1"
-                            style={{
-                              left: Math.max(28, graphWidth - 4),
-                              width: Math.max(
-                                48,
-                                graphAreaWidth - graphWidth + 4,
-                              ),
-                            }}
-                          >
-                            {[...displayRow.worktrees]
-                              .sort(
-                                (left, right) =>
-                                  Number(right.id === worktreeId) -
-                                  Number(left.id === worktreeId),
-                              )
-                              .map((worktree) => {
-                                const boundChats = chats.filter(
-                                  ({ activeWorktreeId }) =>
-                                    activeWorktreeId === worktree.id,
-                                );
+                        <div className="flex min-w-0 items-center gap-2 pr-4">
+                          {compareOpen ? (
+                            <span className="flex shrink-0 items-center gap-0.5">
+                              {(["A", "B"] as const).map((endpoint) => {
+                                const selected =
+                                  endpoint === "A"
+                                    ? compareLeft === row.commit.hash
+                                    : compareRight === row.commit.hash;
                                 return (
-                                  <HistoryWorktreeMarker
-                                    key={worktree.id}
-                                    worktree={worktree}
-                                    worker={workers.find(
-                                      ({ workerId }) =>
-                                        workerId === worktree.workerId,
+                                  <button
+                                    key={endpoint}
+                                    type="button"
+                                    className={cn(
+                                      "grid size-5 place-items-center rounded text-[9px] font-semibold text-muted-foreground hover:bg-muted hover:text-foreground",
+                                      selected &&
+                                        "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
                                     )}
-                                    status={statuses[worktree.id]}
-                                    boundChats={boundChats}
-                                    selected={worktree.id === worktreeId}
-                                    onSelect={() =>
-                                      onSelectWorktree(worktree.id)
-                                    }
-                                    onOpenChat={(chatId) =>
-                                      chatId
-                                        ? onOpenChat(chatId)
-                                        : onCreateChat(worktree.id)
-                                    }
-                                    onOpenTerminal={() =>
-                                      onCreateTerminal(worktree.id)
-                                    }
-                                    onOpenExplorer={() =>
-                                      onCreateExplorer(worktree.id)
-                                    }
-                                    onOpenHistory={() =>
-                                      onCreateHistory(worktree.id)
-                                    }
-                                    onLockToggle={() =>
-                                      lockWorktree.mutate(worktree)
-                                    }
-                                    onRemove={() => {
-                                      setForceRemove(false);
-                                      setRemoveTarget(worktree);
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      if (endpoint === "A")
+                                        setCompareLeft(row.commit.hash);
+                                      else setCompareRight(row.commit.hash);
                                     }}
-                                  />
+                                    title={`Use ${row.commit.shortHash} as comparison ${endpoint}`}
+                                  >
+                                    {endpoint}
+                                  </button>
                                 );
                               })}
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="flex min-w-0 items-center gap-2 pr-4">
-                        {compareOpen ? (
-                          <span className="flex shrink-0 items-center gap-0.5">
-                            {(["A", "B"] as const).map((endpoint) => {
-                              const selected =
-                                endpoint === "A"
-                                  ? compareLeft === row.commit.hash
-                                  : compareRight === row.commit.hash;
-                              return (
-                                <button
-                                  key={endpoint}
-                                  type="button"
-                                  className={cn(
-                                    "grid size-5 place-items-center rounded text-[9px] font-semibold text-muted-foreground hover:bg-muted hover:text-foreground",
-                                    selected &&
-                                      "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
-                                  )}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    if (endpoint === "A")
-                                      setCompareLeft(row.commit.hash);
-                                    else setCompareRight(row.commit.hash);
-                                  }}
-                                  title={`Use ${row.commit.shortHash} as comparison ${endpoint}`}
-                                >
-                                  {endpoint}
-                                </button>
-                              );
-                            })}
+                            </span>
+                          ) : null}
+                          {row.commit.refs.slice(0, 2).map((gitRef) => (
+                            <RefLabel
+                              key={`${gitRef.kind}:${gitRef.name}`}
+                              gitRef={gitRef}
+                            />
+                          ))}
+                          {row.commit.refs.length > 2 ? (
+                            <span
+                              className="shrink-0 text-[9px] text-muted-foreground"
+                              title={row.commit.refs
+                                .slice(2)
+                                .map(({ name }) => name)
+                                .join("\n")}
+                            >
+                              +{row.commit.refs.length - 2}
+                            </span>
+                          ) : null}
+                          <span className="truncate font-medium">
+                            {row.commit.subject}
                           </span>
-                        ) : null}
-                        {row.commit.refs.slice(0, 2).map((gitRef) => (
-                          <RefLabel
-                            key={`${gitRef.kind}:${gitRef.name}`}
-                            gitRef={gitRef}
-                          />
-                        ))}
-                        {row.commit.refs.length > 2 ? (
-                          <span
-                            className="shrink-0 text-[9px] text-muted-foreground"
-                            title={row.commit.refs
-                              .slice(2)
-                              .map(({ name }) => name)
-                              .join("\n")}
-                          >
-                            +{row.commit.refs.length - 2}
-                          </span>
-                        ) : null}
-                        <span className="truncate font-medium">
-                          {row.commit.subject}
+                          <code className="shrink-0 text-[10px] text-muted-foreground/70">
+                            {row.commit.shortHash}
+                          </code>
+                        </div>
+                        <span className="truncate text-muted-foreground">
+                          {row.commit.authorName}
                         </span>
-                        <code className="shrink-0 text-[10px] text-muted-foreground/70">
-                          {row.commit.shortHash}
-                        </code>
+                        <span className="text-right text-[10px] text-muted-foreground">
+                          {day !== previousCommitDay.get(row.commit.hash)
+                            ? relativeDate(row.commit.authoredAt)
+                            : ""}
+                        </span>
                       </div>
-                      <span className="truncate text-muted-foreground">
-                        {row.commit.authorName}
-                      </span>
-                      <span className="text-right text-[10px] text-muted-foreground">
-                        {day !== previousCommitDay.get(row.commit.hash)
-                          ? relativeDate(row.commit.authoredAt)
-                          : ""}
-                      </span>
-                    </div>
+                    </GitCommitContextMenu>
                   );
                 })}
                 <div
@@ -1258,11 +1279,13 @@ export function GitHistoryView({
           ) : null}
           {selectedCommit ? (
             <GitCommitInspector
+              currentHead={status?.head ?? null}
               projectId={project.id}
               worktreeId={worktreeId}
               revision={selectedCommit}
               onClose={() => setSelectedCommit(null)}
               onNavigate={setSelectedCommit}
+              onAction={setCommitActionRequest}
             />
           ) : null}
           {compareOpen ? (
@@ -1300,6 +1323,21 @@ export function GitHistoryView({
           ) : null}
         </div>
       )}
+
+      <GitCommitActionDialog
+        projectId={project.id}
+        worktreeId={worktreeId}
+        request={commitActionRequest}
+        onOpenChange={(open) => !open && setCommitActionRequest(null)}
+        onConflict={() => {
+          setSelectedCommit(null);
+          setCompareOpen(false);
+          setStashesOpen(false);
+          setBranchesOpen(false);
+          setRepositoryOpen(false);
+          setChangesOpen(true);
+        }}
+      />
 
       <WorktreeCreateDialog
         open={createOpen}

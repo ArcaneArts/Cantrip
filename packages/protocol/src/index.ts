@@ -3639,6 +3639,88 @@ export const gitTagMutationResultSchema = z.object({
   tags: gitTagListSchema,
 });
 
+const gitCommitHashInputSchema = z.string().regex(/^[0-9a-f]{40,64}$/u);
+
+export const gitCherryPickSelectionSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("commits"),
+    revisions: z.array(gitCommitHashInputSchema).min(1).max(1_000),
+  }),
+  z.object({
+    type: z.literal("range"),
+    fromRevision: gitCommitHashInputSchema,
+    toRevision: gitCommitHashInputSchema,
+  }),
+]);
+
+export const gitCommitActionSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("cherryPick"),
+    selection: gitCherryPickSelectionSchema,
+  }),
+  z.object({
+    type: z.literal("revert"),
+    revision: gitCommitHashInputSchema,
+    mainlineParent: z.number().int().positive().max(64).nullable(),
+  }),
+  z.object({
+    type: z.literal("amend"),
+    message: z.string().min(1).max(1_000_000).nullable(),
+  }),
+  z.object({
+    type: z.literal("fixup"),
+    revision: gitCommitHashInputSchema,
+  }),
+]);
+
+export const gitOperationSummarySchema = z.object({
+  type: z.enum(["cherry-pick", "revert"]),
+  state: z.enum([
+    "queued",
+    "running",
+    "conflicted",
+    "awaiting-user-action",
+    "completed",
+    "failed",
+    "aborted",
+  ]),
+  originalHead: gitCommitHashInputSchema,
+  currentHead: gitCommitHashInputSchema,
+  sourceRevisions: z.array(gitCommitHashInputSchema).max(1_000),
+  currentStep: z.number().int().nonnegative(),
+  totalSteps: z.number().int().positive().max(1_000),
+  conflictedPaths: z.array(gitRelativePathSchema).max(100_000),
+});
+
+export const gitCommitActionPreviewSchema = z.object({
+  action: gitCommitActionSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+  destructive: z.boolean(),
+  summary: z.string().min(1).max(10_000),
+  warnings: z.array(z.string().max(1_000)).max(100),
+  resolvedRevisions: z.array(gitCommitHashInputSchema).max(1_000),
+  commits: z.array(gitComparisonCommitSchema).max(1_000),
+  files: z.array(gitFileChangeSchema).max(100_000),
+  patch: z.string().max(2_000_000),
+  patchTruncated: z.boolean(),
+  wouldConflict: z.boolean(),
+  checkpointRef: z.string().min(1).max(1_024).nullable(),
+});
+
+export const gitCommitActionApplySchema = z.object({
+  action: gitCommitActionSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+
+export const gitCommitActionResultSchema = z.object({
+  output: z.string().max(1_000_000),
+  status: gitStatusSchema,
+  headBefore: gitCommitHashInputSchema,
+  headAfter: gitCommitHashInputSchema,
+  checkpointRef: z.string().min(1).max(1_024).nullable(),
+  operation: gitOperationSummarySchema.nullable(),
+});
+
 const gitPathsSchema = z.array(gitRelativePathSchema).min(1).max(1_000);
 export const gitActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("stage"), paths: gitPathsSchema }),
@@ -4103,6 +4185,17 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       cwd: z.string().min(1).max(8_192),
     })
     .extend(gitTagActionApplySchema.shape),
+  z.object({
+    type: z.literal("git.commit.action.preview"),
+    cwd: z.string().min(1).max(8_192),
+    action: gitCommitActionSchema,
+  }),
+  z
+    .object({
+      type: z.literal("git.commit.action.apply"),
+      cwd: z.string().min(1).max(8_192),
+    })
+    .extend(gitCommitActionApplySchema.shape),
   z.object({
     type: z.literal("git.action"),
     cwd: z.string().min(1),
@@ -4869,6 +4962,16 @@ export type GitTagAction = z.infer<typeof gitTagActionSchema>;
 export type GitTagActionPreview = z.infer<typeof gitTagActionPreviewSchema>;
 export type GitTagActionApply = z.infer<typeof gitTagActionApplySchema>;
 export type GitTagMutationResult = z.infer<typeof gitTagMutationResultSchema>;
+export type GitCherryPickSelection = z.infer<
+  typeof gitCherryPickSelectionSchema
+>;
+export type GitCommitAction = z.infer<typeof gitCommitActionSchema>;
+export type GitOperationSummary = z.infer<typeof gitOperationSummarySchema>;
+export type GitCommitActionPreview = z.infer<
+  typeof gitCommitActionPreviewSchema
+>;
+export type GitCommitActionApply = z.infer<typeof gitCommitActionApplySchema>;
+export type GitCommitActionResult = z.infer<typeof gitCommitActionResultSchema>;
 export type GitAction = z.infer<typeof gitActionSchema>;
 export type GitActionResult = z.infer<typeof gitActionResultSchema>;
 export type WorkerWorktreeSummary = z.infer<typeof workerWorktreeSummarySchema>;
