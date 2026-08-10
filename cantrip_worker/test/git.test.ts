@@ -8,9 +8,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   readGitCommitDetail,
+  readGitComparison,
   readGitFileDiff,
   readGitHistory,
   readGitRevisionFileDiff,
+  readGitRevisionCandidates,
   readGitStatus,
   runGitAction,
 } from "../src/git.js";
@@ -27,6 +29,138 @@ afterEach(async () => {
 });
 
 describe("Git history", () => {
+  it("lists commit refs and compares direct and merge-base revision ranges", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "base.txt"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Base"]);
+    const base = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await execFileAsync("git", ["-C", directory, "switch", "-c", "feature"]);
+    await writeFile(path.join(directory, "feature.txt"), "feature\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "commit",
+      "-m",
+      "Feature work",
+    ]);
+    const feature = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "tag",
+      "-a",
+      "v1",
+      "-m",
+      "Version one",
+    ]);
+    await execFileAsync("git", ["-C", directory, "switch", "main"]);
+    await writeFile(path.join(directory, "main.txt"), "main\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Main work"]);
+    const main = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+
+    const candidates = await readGitRevisionCandidates(directory);
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "HEAD", hash: main, kind: "head" }),
+        expect.objectContaining({
+          name: "main",
+          hash: main,
+          kind: "local",
+          current: true,
+        }),
+        expect.objectContaining({
+          name: "feature",
+          hash: feature,
+          kind: "local",
+        }),
+        expect.objectContaining({ name: "v1", hash: feature, kind: "tag" }),
+      ]),
+    );
+
+    const direct = await readGitComparison(directory, feature, main, "direct");
+    expect(direct).toMatchObject({
+      left: feature,
+      right: main,
+      mergeBase: base,
+      diffBase: feature,
+      leftAhead: 1,
+      rightAhead: 1,
+      filesChanged: 2,
+    });
+    expect(direct.leftCommits[0]?.subject).toBe("Feature work");
+    expect(direct.rightCommits[0]?.subject).toBe("Main work");
+    expect(direct.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "feature.txt", status: "deleted" }),
+        expect.objectContaining({ path: "main.txt", status: "added" }),
+      ]),
+    );
+
+    const mergeBase = await readGitComparison(
+      directory,
+      feature,
+      main,
+      "merge-base",
+    );
+    expect(mergeBase).toMatchObject({
+      mergeBase: base,
+      diffBase: base,
+      filesChanged: 1,
+    });
+    expect(mergeBase.files[0]).toMatchObject({
+      path: "main.txt",
+      status: "added",
+    });
+    await expect(
+      readGitComparison(directory, "f".repeat(40), main, "direct"),
+    ).rejects.toThrow(/does not exist/u);
+
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "switch",
+      "--orphan",
+      "unrelated",
+    ]);
+    await writeFile(path.join(directory, "unrelated.txt"), "unrelated\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Unrelated"]);
+    const unrelated = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    expect(
+      await readGitComparison(directory, main, unrelated, "direct"),
+    ).toMatchObject({ mergeBase: null, diffBase: main });
+    await expect(
+      readGitComparison(directory, main, unrelated, "merge-base"),
+    ).rejects.toThrow(/do not share a merge base/u);
+  });
+
   it("inspects root, merge, renamed, deleted, and binary commit changes", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
     directories.push(directory);

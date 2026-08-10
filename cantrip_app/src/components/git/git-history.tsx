@@ -22,6 +22,7 @@ import {
   FileDiff,
   GitBranch,
   GitCommitHorizontal,
+  GitCompareArrows,
   GitFork,
   Loader2,
   Plus,
@@ -60,6 +61,7 @@ import { cn } from "@/lib/utils";
 
 import { GitChangesPanel } from "./git-changes-panel";
 import { GitCommitInspector } from "./git-commit-inspector";
+import { GitComparisonPanel } from "./git-comparison-panel";
 import { HistoryWorktreeMarker } from "./history-worktree-marker";
 import { GithubIssuesView } from "./github-issues";
 
@@ -376,6 +378,9 @@ export function GitHistoryView({
   const [section, setSection] = useState<GitViewSection>(view);
   const [changesOpen, setChangesOpen] = useState(false);
   const [selectedCommit, setSelectedCommit] = useState<string | null>(null);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [compareLeft, setCompareLeft] = useState<string | null>(null);
+  const [compareRight, setCompareRight] = useState<string | null>(null);
   const [issueState, setIssueState] = useState<GithubIssueState>("open");
   const [issueRefreshEpoch, setIssueRefreshEpoch] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
@@ -606,6 +611,9 @@ export function GitHistoryView({
   useEffect(() => {
     setChangesOpen(false);
     setSelectedCommit(null);
+    setCompareOpen(false);
+    setCompareLeft(null);
+    setCompareRight(null);
   }, [project.id, worktreeId]);
 
   useEffect(() => {
@@ -697,6 +705,26 @@ export function GitHistoryView({
                 </Button>
               ) : null}
             </>
+          ) : null}
+          {section === "history" ? (
+            <Button
+              size="sm"
+              variant={compareOpen ? "outline" : "ghost"}
+              className="h-6 gap-1 px-2 text-[11px]"
+              disabled={!selectedAvailable}
+              onClick={() => {
+                setChangesOpen(false);
+                setSelectedCommit(null);
+                setCompareOpen((current) => {
+                  if (!current && !compareLeft) {
+                    setCompareLeft(firstPage?.head ?? status?.head ?? null);
+                  }
+                  return !current;
+                });
+              }}
+            >
+              <GitCompareArrows className="size-3" /> Compare
+            </Button>
           ) : null}
           {section !== "history" ? (
             <div className="mr-0.5 flex rounded-md bg-muted/50 p-px">
@@ -880,6 +908,7 @@ export function GitHistoryView({
                         onClick={() => {
                           onSelectWorktree(worktree.id);
                           setSelectedCommit(null);
+                          setCompareOpen(false);
                           setChangesOpen(true);
                         }}
                         title={`Open ${worktree.name} staged and unstaged changes`}
@@ -952,9 +981,10 @@ export function GitHistoryView({
                     displayRows[index - 1]?.graph.commit.hash ===
                       row.commit.hash;
                   return (
-                    <button
+                    <div
                       key={row.commit.hash}
-                      type="button"
+                      role="button"
+                      tabIndex={0}
                       data-high-contrast-row
                       data-current={row.commit.isHead}
                       className={cn(
@@ -965,8 +995,18 @@ export function GitHistoryView({
                       )}
                       style={{ gridTemplateColumns: historyColumns }}
                       title={`${row.commit.subject}\n${row.commit.hash}\n${fullDateFormatter.format(new Date(row.commit.authoredAt))}`}
-                      onClick={() => {
+                      onClick={(event) => {
+                        if ((event.target as Element).closest("button")) return;
                         setChangesOpen(false);
+                        setCompareOpen(false);
+                        setSelectedCommit(row.commit.hash);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return;
+                        if (event.key !== "Enter" && event.key !== " ") return;
+                        event.preventDefault();
+                        setChangesOpen(false);
+                        setCompareOpen(false);
                         setSelectedCommit(row.commit.hash);
                       }}
                     >
@@ -1042,6 +1082,36 @@ export function GitHistoryView({
                         ) : null}
                       </div>
                       <div className="flex min-w-0 items-center gap-2 pr-4">
+                        {compareOpen ? (
+                          <span className="flex shrink-0 items-center gap-0.5">
+                            {(["A", "B"] as const).map((endpoint) => {
+                              const selected =
+                                endpoint === "A"
+                                  ? compareLeft === row.commit.hash
+                                  : compareRight === row.commit.hash;
+                              return (
+                                <button
+                                  key={endpoint}
+                                  type="button"
+                                  className={cn(
+                                    "grid size-5 place-items-center rounded text-[9px] font-semibold text-muted-foreground hover:bg-muted hover:text-foreground",
+                                    selected &&
+                                      "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
+                                  )}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    if (endpoint === "A")
+                                      setCompareLeft(row.commit.hash);
+                                    else setCompareRight(row.commit.hash);
+                                  }}
+                                  title={`Use ${row.commit.shortHash} as comparison ${endpoint}`}
+                                >
+                                  {endpoint}
+                                </button>
+                              );
+                            })}
+                          </span>
+                        ) : null}
                         {row.commit.refs.slice(0, 2).map((gitRef) => (
                           <RefLabel
                             key={`${gitRef.kind}:${gitRef.name}`}
@@ -1074,7 +1144,7 @@ export function GitHistoryView({
                           ? relativeDate(row.commit.authoredAt)
                           : ""}
                       </span>
-                    </button>
+                    </div>
                   );
                 })}
                 <div
@@ -1116,6 +1186,17 @@ export function GitHistoryView({
               revision={selectedCommit}
               onClose={() => setSelectedCommit(null)}
               onNavigate={setSelectedCommit}
+            />
+          ) : null}
+          {compareOpen ? (
+            <GitComparisonPanel
+              projectId={project.id}
+              worktreeId={worktreeId}
+              left={compareLeft}
+              right={compareRight}
+              onLeftChange={setCompareLeft}
+              onRightChange={setCompareRight}
+              onClose={() => setCompareOpen(false)}
             />
           ) : null}
         </div>

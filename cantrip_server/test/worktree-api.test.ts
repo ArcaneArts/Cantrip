@@ -12,9 +12,11 @@ import {
   explorerSummarySchema,
   gitActionResultSchema,
   gitCommitDetailSchema,
+  gitComparisonSchema,
   gitFileDiffSchema,
   gitHistorySchema,
   gitRevisionFileDiffSchema,
+  gitRevisionCandidateListSchema,
   projectViewSummarySchema,
   projectWorktreeListSchema,
   projectWorktreeSummarySchema,
@@ -69,6 +71,12 @@ const gitCommitCommands: Array<
 > = [];
 const gitRevisionDiffCommands: Array<
   Extract<WorkerCommand, { type: "git.revision.diff" }>
+> = [];
+const gitCompareCommands: Array<
+  Extract<WorkerCommand, { type: "git.compare" }>
+> = [];
+const gitRefsCommands: Array<
+  Extract<WorkerCommand, { type: "git.refs.list" }>
 > = [];
 const chatTurnCommands: Array<Extract<WorkerCommand, { type: "chat.turn" }>> =
   [];
@@ -267,6 +275,48 @@ const workerBridge = {
           filesChanged: 1,
           additions: 1,
           deletions: 1,
+        };
+      case "git.refs.list":
+        gitRefsCommands.push(command);
+        return [
+          {
+            revision: "1".repeat(40),
+            hash: "1".repeat(40),
+            shortHash: "1".repeat(10),
+            name: "main",
+            kind: "local",
+            current: true,
+            worktreeId: null,
+            worktreeName: null,
+          },
+        ];
+      case "git.compare":
+        gitCompareCommands.push(command);
+        return {
+          mode: command.mode,
+          left: command.left,
+          right: command.right,
+          mergeBase: command.left,
+          diffBase: command.mode === "direct" ? command.left : command.left,
+          leftAhead: 0,
+          rightAhead: 1,
+          leftCommits: [],
+          rightCommits: [
+            {
+              hash: command.right,
+              shortHash: command.right.slice(0, 8),
+              subject: "Compared change",
+              authorName: "Cantrip",
+              authoredAt: "2026-08-08T12:00:00.000Z",
+            },
+          ],
+          leftCommitsTruncated: false,
+          rightCommitsTruncated: false,
+          files: [],
+          filesTruncated: false,
+          filesChanged: 0,
+          additions: 0,
+          deletions: 0,
         };
       case "git.revision.diff":
         gitRevisionDiffCommands.push(command);
@@ -1306,6 +1356,45 @@ describe.sequential("server worktree control plane", () => {
       url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/${revision}?parent=1oops`,
     });
     expect(invalidParent.statusCode).toBe(400);
+    const refsResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/refs`,
+    });
+    const candidates = gitRevisionCandidateListSchema.parse(
+      refsResponse.json(),
+    );
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "main", kind: "local" }),
+        expect.objectContaining({
+          name: `${target.name} worktree`,
+          kind: "worktree",
+          worktreeId: target.id,
+        }),
+      ]),
+    );
+    expect(gitRefsCommands.at(-1)?.cwd).toBe(target.path);
+    const right = "2".repeat(40);
+    const comparisonResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/compare?left=${revision}&right=${right}&mode=merge-base`,
+    });
+    expect(gitComparisonSchema.parse(comparisonResponse.json())).toMatchObject({
+      left: revision,
+      right,
+      mode: "merge-base",
+    });
+    expect(gitCompareCommands.at(-1)).toMatchObject({
+      cwd: target.path,
+      left: revision,
+      right,
+      mode: "merge-base",
+    });
+    const invalidComparison = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/compare?left=main&right=${right}&mode=direct`,
+    });
+    expect(invalidComparison.statusCode).toBe(400);
   });
 
   it("locks, unlocks, and protects Primary and external removal", async () => {

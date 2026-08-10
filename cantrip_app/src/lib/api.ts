@@ -57,9 +57,11 @@ import {
   githubRepositoryListSchema,
   gitActionResultSchema,
   gitCommitDetailSchema,
+  gitComparisonSchema,
   gitFileDiffSchema,
   gitHistorySchema,
   gitRevisionFileDiffSchema,
+  gitRevisionCandidateListSchema,
   gitStatusSchema,
   modelProfileCreateSchema,
   modelProfileSummarySchema,
@@ -382,6 +384,32 @@ export async function getProjectWorktreeCommit(
   return gitCommitDetailSchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/commits/${encodeURIComponent(revision)}?parent=${parentIndex}`,
+    ),
+  );
+}
+
+export async function getProjectWorktreeRevisionCandidates(
+  projectId: string,
+  worktreeId: string,
+) {
+  return gitRevisionCandidateListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/refs`,
+    ),
+  );
+}
+
+export async function getProjectWorktreeComparison(
+  projectId: string,
+  worktreeId: string,
+  left: string,
+  right: string,
+  mode: "direct" | "merge-base",
+) {
+  const search = new URLSearchParams({ left, right, mode });
+  return gitComparisonSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/compare?${search.toString()}`,
     ),
   );
 }

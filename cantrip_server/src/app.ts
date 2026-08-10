@@ -97,11 +97,14 @@ import {
   githubWorkerRepositoryListSchema,
   gitActionResultSchema,
   gitActionSchema,
+  gitComparisonModeSchema,
+  gitComparisonSchema,
   gitCommitDetailSchema,
   gitDiffScopeSchema,
   gitFileDiffSchema,
   gitHistorySchema,
   gitRevisionFileDiffSchema,
+  gitRevisionCandidateListSchema,
   gitRelativePathSchema,
   gitStatusSchema,
   modelProfileCreateSchema,
@@ -5026,6 +5029,101 @@ export async function buildApp({
           revisions,
         });
         return reply.send(gitCommitDetailSchema.parse(detail));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/refs",
+    async (request, reply) => {
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      try {
+        const [workerCandidates, worktrees] = await Promise.all([
+          bridge.request(context.workerId, {
+            type: "git.refs.list",
+            cwd: context.worktree.path,
+          }),
+          repository.listProjectWorktrees(
+            LOCAL_USER_ID,
+            request.params.projectId,
+          ),
+        ]);
+        const worktreeCandidates = worktrees.flatMap((worktree) =>
+          worktree.head && /^[0-9a-f]{40,64}$/u.test(worktree.head)
+            ? [
+                {
+                  revision: worktree.head,
+                  hash: worktree.head,
+                  shortHash: worktree.head.slice(0, 10),
+                  name: `${worktree.name} worktree`,
+                  kind: "worktree" as const,
+                  current: worktree.id === request.params.worktreeId,
+                  worktreeId: worktree.id,
+                  worktreeName: worktree.name,
+                },
+              ]
+            : [],
+        );
+        const refs = gitRevisionCandidateListSchema.parse(workerCandidates);
+        return reply.send(
+          gitRevisionCandidateListSchema.parse([
+            ...worktreeCandidates,
+            ...refs.slice(0, Math.max(0, 20_000 - worktreeCandidates.length)),
+          ]),
+        );
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string; worktreeId: string };
+    Querystring: { left?: string; right?: string; mode?: string };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/compare",
+    async (request, reply) => {
+      const { left, right } = request.query;
+      const mode = gitComparisonModeSchema.safeParse(request.query.mode);
+      if (
+        !left ||
+        !right ||
+        !/^[0-9a-f]{40,64}$/u.test(left) ||
+        !/^[0-9a-f]{40,64}$/u.test(right) ||
+        !mode.success
+      ) {
+        return reply.code(400).send({
+          error: "Two full commit hashes and a comparison mode are required.",
+        });
+      }
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      try {
+        const comparison = await bridge.request(context.workerId, {
+          type: "git.compare",
+          cwd: context.worktree.path,
+          left,
+          right,
+          mode: mode.data,
+        });
+        return reply.send(gitComparisonSchema.parse(comparison));
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
         return reply.code(status).send({ error: errorMessage(error) });
