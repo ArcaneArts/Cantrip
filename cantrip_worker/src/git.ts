@@ -69,6 +69,7 @@ import {
   type GitConflictResolutionResult,
   type GitConflictStage,
   type GitManagedOperationContext,
+  type GitManagedOperationAction,
   type GitManagedOperationPreview,
   type GitManagedOperationWorkerState,
   type GitMergeRebaseAction,
@@ -3736,6 +3737,11 @@ async function assertNoInProgressGitOperation(cwd: string): Promise<void> {
       "Finish or abort the active Git operation before starting another commit action.",
     );
   }
+  if ((await readGitPathFile(cwd, "BISECT_START")) !== null) {
+    throw new Error(
+      "Finish or reset the active Git bisect before starting another operation.",
+    );
+  }
 }
 
 function requireCleanStatus(status: GitStatus, action: string): void {
@@ -4344,7 +4350,7 @@ async function currentBranchRef(cwd: string): Promise<string> {
   );
   if (!branch.startsWith("refs/heads/")) {
     throw new Error(
-      "Merge and rebase require the selected worktree to be on a local branch.",
+      "This Git operation requires the selected worktree to be on a local branch.",
     );
   }
   return branch;
@@ -4492,7 +4498,7 @@ async function previewManagedOperationEffect(
 }
 
 function managedOperationToken(
-  action: GitMergeRebaseAction,
+  action: GitManagedOperationAction,
   context: GitManagedOperationContext,
   workspace: string,
   patch: string,
@@ -4504,11 +4510,105 @@ function managedOperationToken(
     .digest("hex");
 }
 
+async function previewGitBisectOperation(
+  cwd: string,
+  action: Extract<GitManagedOperationAction, { type: "bisect" }>,
+): Promise<GitManagedOperationPreview> {
+  const [status, originalHead, targetRef, goodRevision, badRevision] =
+    await Promise.all([
+      readGitStatus(cwd),
+      resolveCommit(cwd, "HEAD"),
+      currentBranchRef(cwd),
+      resolveCommit(cwd, action.goodRef),
+      resolveCommit(cwd, action.badRef),
+    ]);
+  requireCleanStatus(status, "Bisect");
+  if (goodRevision === badRevision) {
+    throw new Error("Bisect good and bad revisions must be different.");
+  }
+  if (
+    !(await gitSucceeds(cwd, [
+      "merge-base",
+      "--is-ancestor",
+      goodRevision,
+      badRevision,
+    ]))
+  ) {
+    throw new Error(
+      "The known-good revision must be an ancestor of the known-bad revision.",
+    );
+  }
+  const pendingCommits = await boundedRevisionRange(
+    cwd,
+    `${goodRevision}..${badRevision}`,
+  );
+  if (pendingCommits.length === 0) {
+    throw new Error("No commits exist between the selected bisect bounds.");
+  }
+  const [commits, changed, diff, workspace] = await Promise.all([
+    Promise.all(
+      pendingCommits.map((revision) => commitActionSummary(cwd, revision)),
+    ),
+    readCommitFiles(cwd, goodRevision, badRevision),
+    gitDiffOutput(
+      cwd,
+      ["diff", "--binary", "--no-ext-diff", goodRevision, badRevision],
+      false,
+    ),
+    workspaceFingerprint(cwd),
+  ]);
+  const baseContext: GitManagedOperationContext = {
+    type: "bisect",
+    originalHead,
+    sourceRef: action.goodRef,
+    sourceRevision: goodRevision,
+    targetRef,
+    targetRevision: badRevision,
+    pendingCommits,
+    totalSteps: pendingCommits.length,
+    checkpointRef: null,
+  };
+  const provisionalToken = managedOperationToken(
+    action,
+    baseContext,
+    workspace,
+    diff.output,
+  );
+  const context: GitManagedOperationContext = {
+    ...baseContext,
+    checkpointRef: `refs/cantrip/checkpoints/bisect-${originalHead.slice(0, 12)}-${provisionalToken.slice(0, 12)}`,
+  };
+  return gitManagedOperationPreviewSchema.parse({
+    action,
+    token: managedOperationToken(action, context, workspace, diff.output),
+    destructive: false,
+    summary: `Bisect ${pendingCommits.length} candidate ${pendingCommits.length === 1 ? "commit" : "commits"} between known-good ${goodRevision.slice(0, 10)} and known-bad ${badRevision.slice(0, 10)}.`,
+    warnings: [
+      "Bisect temporarily checks out candidate commits in this worktree. Reset bisect to restore the original branch and HEAD.",
+    ],
+    context,
+    commits,
+    files: changed.files,
+    patch: diff.output.slice(0, DIFF_CHARACTER_LIMIT),
+    patchTruncated:
+      changed.truncated ||
+      diff.truncated ||
+      diff.output.length > DIFF_CHARACTER_LIMIT,
+    wouldConflict: false,
+    todo: [],
+    todoText: "",
+    publishedRefs: [],
+  });
+}
+
 export async function previewGitManagedOperation(
   cwd: string,
-  action: GitMergeRebaseAction,
+  action: GitManagedOperationAction,
 ): Promise<GitManagedOperationPreview> {
   await assertNoInProgressGitOperation(cwd);
+  if (action.type === "bisect") {
+    return previewGitBisectOperation(cwd, action);
+  }
   const sourceRef = interactiveRebaseSourceRef(action);
   const [status, originalHead, targetRef, sourceRevision] = await Promise.all([
     readGitStatus(cwd),
@@ -4665,6 +4765,9 @@ async function hasGitOperationMarker(
   type: GitManagedOperationContext["type"],
 ): Promise<boolean> {
   if (type === "stash") return true;
+  if (type === "bisect") {
+    return (await readGitPathFile(cwd, "BISECT_START")) !== null;
+  }
   if (type === "merge") {
     return gitSucceeds(cwd, ["rev-parse", "--verify", "-q", "MERGE_HEAD"]);
   }
@@ -4686,6 +4789,43 @@ async function managedOperationProgress(
   cwd: string,
   context: GitManagedOperationContext,
 ): Promise<{ currentStep: number; pendingCommits: string[] }> {
+  if (context.type === "bisect") {
+    const bad = await resolveCommit(cwd, "refs/bisect/bad").catch(
+      () => context.targetRevision,
+    );
+    const goods = (
+      await gitRaw(cwd, [
+        "for-each-ref",
+        "--format=%(objectname)",
+        "refs/bisect/good-*",
+      ]).catch(() => "")
+    )
+      .split("\n")
+      .filter(Boolean);
+    const remaining = (
+      await gitOutput(cwd, [
+        "rev-list",
+        "--max-count=10001",
+        bad,
+        ...(goods.length ? ["--not", ...goods] : []),
+      ]).catch(() => "")
+    )
+      .split("\n")
+      .filter((revision) => context.pendingCommits.includes(revision));
+    if (remaining.length > 10_000) {
+      throw new Error("Bisect progress exceeds the supported 10,000 commits.");
+    }
+    const pendingCommits = remaining.length
+      ? remaining
+      : context.pendingCommits;
+    return {
+      currentStep: Math.min(
+        context.totalSteps,
+        Math.max(1, context.totalSteps - pendingCommits.length + 1),
+      ),
+      pendingCommits,
+    };
+  }
   if (
     context.type === "merge" ||
     context.type === "revert" ||
@@ -4772,7 +4912,7 @@ export async function inspectGitManagedOperation(
 
 export async function startGitManagedOperation(
   cwd: string,
-  action: GitMergeRebaseAction,
+  action: GitManagedOperationAction,
   token: string,
 ): Promise<GitManagedOperationWorkerState> {
   const preview = await previewGitManagedOperation(cwd, action);
@@ -4789,6 +4929,22 @@ export async function startGitManagedOperation(
     ]);
   }
   const resolvedAction = preview.action;
+  if (resolvedAction.type === "bisect") {
+    const outcome = await runGitOutcome(cwd, [
+      "bisect",
+      "start",
+      preview.context.targetRevision,
+      preview.context.sourceRevision!,
+    ]);
+    const stillActive = await hasGitOperationMarker(cwd, "bisect");
+    if (outcome.code !== 0 && !stillActive) throw new Error(outcome.output);
+    return inspectGitManagedOperation(
+      cwd,
+      preview.context,
+      outcome.output,
+      stillActive ? null : "completed",
+    );
+  }
   const arguments_ =
     resolvedAction.type === "merge"
       ? ["merge", "--no-edit", preview.context.sourceRevision!]
@@ -4828,12 +4984,38 @@ export async function startGitManagedOperation(
 export async function controlGitManagedOperation(
   cwd: string,
   context: GitManagedOperationContext,
-  action: "continue" | "skip" | "abort",
+  action: "continue" | "skip" | "abort" | "good" | "bad" | "reset",
 ): Promise<GitManagedOperationWorkerState> {
   if (!(await hasGitOperationMarker(cwd, context.type))) {
     return inspectGitManagedOperation(cwd, context);
   }
   const status = await readGitStatus(cwd);
+  if (context.type === "bisect") {
+    if (!["good", "bad", "skip", "reset", "abort"].includes(action)) {
+      throw new Error("Bisect accepts good, bad, skip, or reset controls.");
+    }
+    const reset = action === "reset" || action === "abort";
+    const outcome = await runGitOutcome(cwd, [
+      "bisect",
+      reset ? "reset" : action,
+    ]);
+    const stillActive = await hasGitOperationMarker(cwd, "bisect");
+    const state = await inspectGitManagedOperation(
+      cwd,
+      context,
+      outcome.output,
+      outcome.code === 0 && !stillActive
+        ? action === "abort"
+          ? "aborted"
+          : "completed"
+        : null,
+    );
+    if (outcome.code !== 0) throw new Error(outcome.output);
+    return state;
+  }
+  if (["good", "bad", "reset"].includes(action)) {
+    throw new Error(`${action} is only valid for a bisect operation.`);
+  }
   if (action === "continue" && conflictPaths(status).length > 0) {
     throw new Error(
       "Resolve and stage every conflicted path before continuing this operation.",

@@ -55,6 +55,9 @@ describe("Git operation panel state", () => {
     expect(
       gitOperationControlActions(operation("conflicted", "stash")),
     ).toEqual(["continue", "abort"]);
+    expect(
+      gitOperationControlActions(operation("awaiting-user-action", "bisect")),
+    ).toEqual(["good", "bad", "skip", "reset"]);
     expect(gitOperationControlActions(operation("completed"))).toEqual([]);
   });
 
@@ -75,5 +78,12 @@ describe("Git operation panel state", () => {
     expect(gitOperationEditorRef({ type: "merge", sourceRef: "feature" })).toBe(
       "feature",
     );
+    expect(
+      gitOperationEditorRef({
+        type: "bisect",
+        goodRef: "v1.0.0",
+        badRef: "HEAD",
+      }),
+    ).toBe("v1.0.0");
   });
 });

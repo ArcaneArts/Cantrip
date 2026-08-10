@@ -20,6 +20,7 @@ import {
   controlGitManagedOperation,
   createGitStash,
   gitForcePushArguments,
+  inspectGitManagedOperation,
   previewGitBranchAction,
   previewGitCommitAction,
   previewGitConflictResolution,
@@ -145,6 +146,134 @@ describe("Git history", () => {
         .trim()
         .split(" "),
     ).toHaveLength(3);
+  });
+
+  it("persists bisect progress across inspection and supports good, bad, skip, and reset", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-bisect-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    const commits: string[] = [];
+    for (let index = 0; index < 8; index += 1) {
+      await writeFile(path.join(directory, "value.txt"), `${index}\n`);
+      await execFileAsync("git", ["-C", directory, "add", "."]);
+      await execFileAsync("git", [
+        "-C",
+        directory,
+        "commit",
+        "-m",
+        `Value ${index}`,
+      ]);
+      commits.push(
+        (
+          await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+        ).stdout.trim(),
+      );
+    }
+    const action = {
+      type: "bisect" as const,
+      goodRef: commits[0]!,
+      badRef: commits[7]!,
+    };
+    const preview = await previewGitManagedOperation(directory, action);
+    expect(preview).toMatchObject({
+      action,
+      context: {
+        type: "bisect",
+        originalHead: commits[7],
+        sourceRevision: commits[0],
+        targetRevision: commits[7],
+        totalSteps: 7,
+      },
+      destructive: false,
+      wouldConflict: false,
+    });
+    expect(preview.context.checkpointRef).toContain(
+      "refs/cantrip/checkpoints/bisect-",
+    );
+    let state = await startGitManagedOperation(
+      directory,
+      action,
+      preview.token,
+    );
+    expect(state.state).toBe("awaiting-user-action");
+    expect(state.currentHead).not.toBe(commits[7]);
+    const reconnected = await inspectGitManagedOperation(
+      directory,
+      preview.context,
+    );
+    expect(reconnected).toMatchObject({
+      state: "awaiting-user-action",
+      currentHead: state.currentHead,
+    });
+    await expect(
+      controlGitManagedOperation(directory, preview.context, "continue"),
+    ).rejects.toThrow("Bisect accepts good, bad, skip, or reset");
+
+    for (let step = 0; step < 8; step += 1) {
+      const index = commits.indexOf(state.currentHead);
+      expect(index).toBeGreaterThan(0);
+      state = await controlGitManagedOperation(
+        directory,
+        preview.context,
+        index >= 4 ? "bad" : "good",
+      );
+      if (state.output.includes("is the first bad commit")) break;
+    }
+    expect(state.output).toContain(`${commits[4]} is the first bad commit`);
+    expect(state.currentHead).toBe(commits[4]);
+    expect(state.pendingCommits.length).toBeLessThanOrEqual(1);
+
+    const reset = await controlGitManagedOperation(
+      directory,
+      preview.context,
+      "reset",
+    );
+    expect(reset).toMatchObject({
+      state: "completed",
+      currentHead: commits[7],
+      status: { branch: "main" },
+    });
+
+    const secondPreview = await previewGitManagedOperation(directory, action);
+    state = await startGitManagedOperation(
+      directory,
+      action,
+      secondPreview.token,
+    );
+    const skipped = await controlGitManagedOperation(
+      directory,
+      secondPreview.context,
+      "skip",
+    );
+    expect(skipped.currentHead).not.toBe(state.currentHead);
+    const aborted = await controlGitManagedOperation(
+      directory,
+      secondPreview.context,
+      "abort",
+    );
+    expect(aborted).toMatchObject({
+      state: "aborted",
+      currentHead: commits[7],
+    });
+
+    await writeFile(path.join(directory, "value.txt"), "dirty\n");
+    await expect(previewGitManagedOperation(directory, action)).rejects.toThrow(
+      "Bisect requires a clean selected worktree",
+    );
   });
 
   it("previews, applies, stages, and verifies conflict resolutions", async () => {

@@ -53,6 +53,7 @@ import {
   type WorkerWorktreeSummary,
   type WorkerCommand,
   type AgentWorktreeToolName,
+  type GitManagedOperationContext,
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -340,7 +341,9 @@ const managedOperationContext = {
   checkpointRef: "refs/cantrip/checkpoints/rebase-test",
 };
 
-function managedWorkerState(context = managedOperationContext) {
+function managedWorkerState(
+  context: GitManagedOperationContext = managedOperationContext,
+) {
   const terminal = ["completed", "aborted"].includes(managedOperationState);
   return {
     ...context,
@@ -687,26 +690,46 @@ const workerBridge = {
         const operationSourceRef =
           command.action.type === "interactiveRebase"
             ? command.action.upstreamRef
-            : command.action.sourceRef;
+            : command.action.type === "bisect"
+              ? command.action.goodRef
+              : command.action.sourceRef;
         const operationType =
-          command.action.type === "merge" ? "merge" : "rebase";
+          command.action.type === "merge"
+            ? "merge"
+            : command.action.type === "bisect"
+              ? "bisect"
+              : "rebase";
+        const operationContext: GitManagedOperationContext =
+          command.action.type === "bisect"
+            ? {
+                type: "bisect",
+                originalHead: "1".repeat(40),
+                sourceRef: command.action.goodRef,
+                sourceRevision: "2".repeat(40),
+                targetRef: command.action.badRef,
+                targetRevision: "4".repeat(40),
+                pendingCommits: ["3".repeat(40)],
+                totalSteps: 1,
+                checkpointRef: "refs/cantrip/checkpoints/bisect-test",
+              }
+            : {
+                ...managedOperationContext,
+                type: operationType,
+                sourceRef: operationSourceRef,
+                checkpointRef:
+                  command.action.type === "interactiveRebase"
+                    ? "refs/cantrip/checkpoints/rewrite-test"
+                    : command.action.type === "rebase"
+                      ? managedOperationContext.checkpointRef
+                      : null,
+              };
         return completeStashMutation({
           action: command.action,
           token: "d".repeat(64),
           destructive: command.action.type !== "merge",
           summary: "Review managed Git operation.",
           warnings: [],
-          context: {
-            ...managedOperationContext,
-            type: operationType,
-            sourceRef: operationSourceRef,
-            checkpointRef:
-              command.action.type === "interactiveRebase"
-                ? "refs/cantrip/checkpoints/rewrite-test"
-                : command.action.type === "rebase"
-                  ? managedOperationContext.checkpointRef
-                  : null,
-          },
+          context: operationContext,
           commits: [
             {
               hash: "3".repeat(40),
@@ -746,7 +769,8 @@ const workerBridge = {
       case "git.operation.start": {
         gitManagedOperationCommands.push(command);
         managedOperationState =
-          command.action.type === "interactiveRebase"
+          command.action.type === "interactiveRebase" ||
+          command.action.type === "bisect"
             ? "awaiting-user-action"
             : "conflicted";
         const startContext =
@@ -756,7 +780,19 @@ const workerBridge = {
                 sourceRef: command.action.upstreamRef,
                 checkpointRef: "refs/cantrip/checkpoints/rewrite-test",
               }
-            : managedOperationContext;
+            : command.action.type === "bisect"
+              ? {
+                  type: "bisect" as const,
+                  originalHead: "1".repeat(40),
+                  sourceRef: command.action.goodRef,
+                  sourceRevision: "2".repeat(40),
+                  targetRef: command.action.badRef,
+                  targetRevision: "4".repeat(40),
+                  pendingCommits: ["3".repeat(40)],
+                  totalSteps: 1,
+                  checkpointRef: "refs/cantrip/checkpoints/bisect-test",
+                }
+              : managedOperationContext;
         return completeStashMutation(managedWorkerState(startContext));
       }
       case "git.operation.inspect":
@@ -765,7 +801,15 @@ const workerBridge = {
       case "git.operation.control":
         gitManagedOperationCommands.push(command);
         managedOperationState =
-          command.action === "abort" ? "aborted" : "completed";
+          command.context.type === "bisect"
+            ? command.action === "abort"
+              ? "aborted"
+              : command.action === "reset"
+                ? "completed"
+                : "awaiting-user-action"
+            : command.action === "abort"
+              ? "aborted"
+              : "completed";
         return completeStashMutation(managedWorkerState(command.context));
       case "git.operation.amend":
         gitManagedOperationCommands.push(command);
@@ -2805,6 +2849,83 @@ describe.sequential("server worktree control plane", () => {
       type: "git.operation.amend",
       cwd: target.path,
       message: "Edited through Cantrip",
+    });
+    const bisectAction = {
+      type: "bisect" as const,
+      goodRef: "HEAD~7",
+      badRef: "HEAD",
+    };
+    const bisectPreviewResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/preview`,
+      payload: bisectAction,
+    });
+    expect(
+      gitManagedOperationPreviewSchema.parse(bisectPreviewResponse.json()),
+    ).toMatchObject({
+      action: bisectAction,
+      context: {
+        type: "bisect",
+        sourceRef: "HEAD~7",
+        targetRef: "HEAD",
+      },
+    });
+    const bisectStartResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations`,
+      payload: { action: bisectAction, token: "d".repeat(64) },
+    });
+    expect(bisectStartResponse.statusCode, bisectStartResponse.body).toBe(201);
+    const bisectOperation = gitManagedOperationResponseSchema.parse(
+      bisectStartResponse.json(),
+    ).operation!;
+    expect(bisectOperation).toMatchObject({
+      type: "bisect",
+      state: "awaiting-user-action",
+      workerId: "test-worker",
+      sourceRef: "HEAD~7",
+      targetRef: "HEAD",
+    });
+    connected = false;
+    const offlineBisectResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/current`,
+    });
+    expect(
+      gitManagedOperationResponseSchema.parse(offlineBisectResponse.json())
+        .operation,
+    ).toMatchObject({ id: bisectOperation.id, type: "bisect" });
+    connected = true;
+    const bisectGoodResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/${bisectOperation.id}/control`,
+      payload: { action: "good" },
+    });
+    expect(
+      gitManagedOperationResponseSchema.parse(bisectGoodResponse.json())
+        .operation,
+    ).toMatchObject({
+      id: bisectOperation.id,
+      type: "bisect",
+      state: "awaiting-user-action",
+    });
+    expect(gitManagedOperationCommands.at(-1)).toMatchObject({
+      type: "git.operation.control",
+      cwd: target.path,
+      action: "good",
+    });
+    const bisectResetResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/${bisectOperation.id}/control`,
+      payload: { action: "reset" },
+    });
+    expect(
+      gitManagedOperationResponseSchema.parse(bisectResetResponse.json())
+        .operation,
+    ).toMatchObject({
+      id: bisectOperation.id,
+      type: "bisect",
+      state: "completed",
     });
     const invalidOperation = await app.inject({
       method: "POST",
