@@ -54,6 +54,7 @@ import {
   gitStashActionPreviewSchema,
   gitStashCreateSchema,
   gitStashListSchema,
+  gitStashMutationResultSchema,
   gitTagActionPreviewSchema,
   gitTagListSchema,
   githubReleaseCreateSchema,
@@ -311,6 +312,42 @@ describe("Cantrip protocol", () => {
         token: "b".repeat(64),
       }).type,
     ).toBe("git.conflicts.apply");
+  });
+
+  it("transports conflicted stash operations as resumable worker state", () => {
+    const head = "1".repeat(40);
+    const stash = "9".repeat(40);
+    expect(
+      gitStashMutationResultSchema.parse({
+        output: "CONFLICT",
+        status: {
+          branch: "main",
+          head,
+          upstream: null,
+          ahead: 0,
+          behind: 0,
+          files: [],
+          branches: [],
+        },
+        stash: null,
+        conflictedPaths: ["src/app.ts"],
+        operation: {
+          type: "stash",
+          state: "conflicted",
+          originalHead: head,
+          currentHead: head,
+          sourceRef: "pop:stash@{0}",
+          sourceRevision: stash,
+          targetRef: "refs/heads/main",
+          targetRevision: head,
+          pendingCommits: [stash],
+          currentStep: 1,
+          totalSteps: 1,
+          checkpointRef: "refs/cantrip/checkpoints/stash-test-clean",
+          conflictedPaths: ["src/app.ts"],
+        },
+      }).operation?.type,
+    ).toBe("stash");
   });
 
   it("validates remotes, tags, releases, and destructive review envelopes", () => {

@@ -11,9 +11,12 @@ import {
   ArchiveRestore,
   ArrowLeft,
   GitBranch,
+  AlertTriangle,
   Loader2,
   MoreHorizontal,
   Plus,
+  RotateCcw,
+  Check,
   Trash2,
   X,
 } from "lucide-react";
@@ -31,14 +34,17 @@ import {
 import { Input } from "@/components/ui/input";
 import {
   applyProjectWorktreeStashAction,
+  controlProjectWorktreeGitOperation,
   createProjectWorktreeStash,
   getProjectWorktreeStashFileDiff,
   getProjectWorktreeStashes,
+  getProjectWorktreeGitOperation,
   previewProjectWorktreeStashAction,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 import { GitPatchView } from "./git-patch-view";
+import { GitConflictResolver } from "./git-conflict-resolver";
 
 const relativeTime = new Intl.RelativeTimeFormat(undefined, {
   numeric: "auto",
@@ -198,11 +204,30 @@ export function GitStashPanel({
   );
   const [branchStash, setBranchStash] = useState<GitStashSummary | null>(null);
   const [branchName, setBranchName] = useState("");
-  const [conflictedPaths, setConflictedPaths] = useState<string[]>([]);
   const stashes = useQuery({
     queryKey: ["worktree-stashes", projectId, worktreeId],
     queryFn: () => getProjectWorktreeStashes(projectId, worktreeId),
   });
+  const operation = useQuery({
+    queryKey: ["git-operation", projectId, worktreeId],
+    queryFn: () => getProjectWorktreeGitOperation(projectId, worktreeId),
+    refetchInterval: (query) => {
+      const current = query.state.data?.operation;
+      return current?.type === "stash" &&
+        ["queued", "running", "conflicted", "awaiting-user-action"].includes(
+          current.state,
+        )
+        ? 2_000
+        : false;
+    },
+  });
+  const activeStashOperation =
+    operation.data?.operation?.type === "stash" &&
+    ["queued", "running", "conflicted", "awaiting-user-action"].includes(
+      operation.data.operation.state,
+    )
+      ? operation.data.operation
+      : null;
   const selected =
     stashes.data?.stashes.find(({ hash }) => hash === selectedHash) ?? null;
   useEffect(() => {
@@ -278,9 +303,42 @@ export function GitStashPanel({
     },
     onSuccess: (result) => {
       refreshAfterMutation(result.status);
-      setConflictedPaths(result.conflictedPaths);
+      void queryClient.invalidateQueries({
+        queryKey: ["git-operation", projectId, worktreeId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["git-conflicts", projectId, worktreeId],
+      });
       setReviewedAction(null);
       preview.reset();
+    },
+  });
+  const control = useMutation({
+    mutationFn: (action: "continue" | "abort") => {
+      if (!activeStashOperation) {
+        throw new Error("No active stash operation was found.");
+      }
+      return controlProjectWorktreeGitOperation(
+        projectId,
+        worktreeId,
+        activeStashOperation.id,
+        action,
+      );
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData(
+        ["git-operation", projectId, worktreeId],
+        result,
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["git-conflicts", projectId, worktreeId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["worktree-stashes", projectId, worktreeId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["worktree-status", projectId, worktreeId],
+      });
     },
   });
   const review = (action: GitStashAction) => {
@@ -336,6 +394,12 @@ export function GitStashPanel({
           size="sm"
           variant="outline"
           className="h-7 gap-1 text-xs"
+          disabled={
+            Boolean(activeStashOperation) ||
+            create.isPending ||
+            preview.isPending ||
+            apply.isPending
+          }
           onClick={() => setCreateOpen(true)}
         >
           <Plus className="size-3.5" /> New stash
@@ -346,6 +410,7 @@ export function GitStashPanel({
           className="h-7 text-xs text-destructive hover:text-destructive"
           disabled={
             !stashes.data?.stashes.length ||
+            Boolean(activeStashOperation) ||
             preview.isPending ||
             apply.isPending
           }
@@ -363,10 +428,50 @@ export function GitStashPanel({
           <span className="sr-only">Close stashes</span>
         </Button>
       </div>
-      {conflictedPaths.length ? (
-        <div className="shrink-0 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-          Stash changes produced conflicts in {conflictedPaths.join(", ")}. The
-          stash was kept; resolve these paths in Working changes.
+      {activeStashOperation ? (
+        <div className="max-h-[62vh] shrink-0 space-y-2 overflow-auto border-b p-3">
+          <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
+            <AlertTriangle className="size-4" />
+            <span className="min-w-0 flex-1">
+              The source stash is retained until this operation finishes. Git
+              reports {activeStashOperation.conflictedPaths.length} unresolved
+              path{activeStashOperation.conflictedPaths.length === 1 ? "" : "s"}
+              .
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={
+                control.isPending ||
+                activeStashOperation.conflictedPaths.length > 0
+              }
+              onClick={() => control.mutate("continue")}
+            >
+              <Check className="size-3.5" /> Finish
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-destructive"
+              disabled={control.isPending}
+              onClick={() => control.mutate("abort")}
+            >
+              <RotateCcw className="size-3.5" /> Abort
+            </Button>
+          </div>
+          {activeStashOperation.conflictedPaths.length ? (
+            <GitConflictResolver
+              projectId={projectId}
+              worktreeId={worktreeId}
+            />
+          ) : null}
+          {control.error ? (
+            <p className="text-xs text-destructive">
+              {control.error instanceof Error
+                ? control.error.message
+                : "Stash operation control failed."}
+            </p>
+          ) : null}
         </div>
       ) : null}
       <div className="flex min-h-0 flex-1">
@@ -415,7 +520,11 @@ export function GitStashPanel({
                   </span>
                 </button>
                 <StashActions
-                  disabled={preview.isPending || apply.isPending}
+                  disabled={
+                    Boolean(activeStashOperation) ||
+                    preview.isPending ||
+                    apply.isPending
+                  }
                   stash={stash}
                   onAction={chooseAction}
                 />
@@ -575,6 +684,7 @@ export function GitStashPanel({
               <Button
                 type="submit"
                 disabled={
+                  Boolean(activeStashOperation) ||
                   create.isPending ||
                   !message.trim() ||
                   (!includeStaged && !includeUnstaged && !includeUntracked)

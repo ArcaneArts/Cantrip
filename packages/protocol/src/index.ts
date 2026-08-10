@@ -3334,6 +3334,24 @@ export const gitStashMutationResultSchema = z.object({
   status: gitStatusSchema,
   stash: gitStashSummarySchema.nullable(),
   conflictedPaths: z.array(gitRelativePathSchema).max(100_000),
+  operation: z
+    .object({
+      type: z.literal("stash"),
+      state: z.literal("conflicted"),
+      originalHead: z.string().regex(/^[0-9a-f]{40,64}$/u),
+      currentHead: z.string().regex(/^[0-9a-f]{40,64}$/u),
+      sourceRef: z.string().min(1).max(1_024),
+      sourceRevision: z.string().regex(/^[0-9a-f]{40,64}$/u),
+      targetRef: z.string().min(1).max(1_024).nullable(),
+      targetRevision: z.string().regex(/^[0-9a-f]{40,64}$/u),
+      pendingCommits: z.array(z.string().regex(/^[0-9a-f]{40,64}$/u)).length(1),
+      currentStep: z.literal(1),
+      totalSteps: z.literal(1),
+      checkpointRef: z.string().min(1).max(1_024),
+      conflictedPaths: z.array(gitRelativePathSchema).min(1).max(100_000),
+    })
+    .nullable()
+    .default(null),
 });
 
 export const gitStashFileDiffSchema = z.object({
@@ -3697,6 +3715,7 @@ export const gitManagedOperationTypeSchema = z.enum([
   "rebase",
   "cherry-pick",
   "revert",
+  "stash",
 ]);
 
 export const gitManagedOperationStateSchema = z.enum([

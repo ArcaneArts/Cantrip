@@ -1203,11 +1203,44 @@ describe("Git history", () => {
       popPreview.token,
     );
     expect(result.conflictedPaths).toEqual(["conflict.txt"]);
+    expect(result.operation).toMatchObject({
+      type: "stash",
+      state: "conflicted",
+      sourceRevision: stash.hash,
+      targetRef: "refs/heads/main",
+    });
     expect((await readGitStashes(directory)).stashes).toEqual([
       expect.objectContaining({ hash: stash.hash }),
     ]);
 
+    await writeFile(path.join(directory, "conflict.txt"), "resolved\n");
+    await execFileAsync("git", ["-C", directory, "add", "conflict.txt"]);
+    const completed = await controlGitManagedOperation(
+      directory,
+      {
+        type: "stash",
+        originalHead: result.operation!.originalHead,
+        sourceRef: result.operation!.sourceRef,
+        sourceRevision: result.operation!.sourceRevision,
+        targetRef: result.operation!.targetRef,
+        targetRevision: result.operation!.targetRevision,
+        pendingCommits: result.operation!.pendingCommits,
+        totalSteps: 1,
+        checkpointRef: result.operation!.checkpointRef,
+      },
+      "continue",
+    );
+    expect(completed.state).toBe("completed");
+    expect((await readGitStashes(directory)).stashes).toEqual([]);
+
     await execFileAsync("git", ["-C", directory, "reset", "--hard", "HEAD"]);
+    await writeFile(path.join(directory, "first.txt"), "first\n");
+    await createGitStash(directory, {
+      message: "First shelf",
+      includeStaged: true,
+      includeUnstaged: true,
+      includeUntracked: true,
+    });
     const clearAction = { type: "clear" as const };
     const stalePreview = await previewGitStashAction(directory, clearAction);
     await writeFile(path.join(directory, "second.txt"), "second\n");
@@ -1223,6 +1256,83 @@ describe("Git history", () => {
     const clearPreview = await previewGitStashAction(directory, clearAction);
     await applyGitStashAction(directory, clearAction, clearPreview.token);
     expect((await readGitStashes(directory)).stashes).toEqual([]);
+  });
+
+  it("aborts a conflicted stash and restores staged and untracked work", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "conflict.txt"), "base\n");
+    await writeFile(path.join(directory, "keep.txt"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Initial"]);
+    await writeFile(path.join(directory, "conflict.txt"), "stash\n");
+    const stash = (
+      await createGitStash(directory, {
+        message: "Abort shelf",
+        includeStaged: true,
+        includeUnstaged: true,
+        includeUntracked: false,
+      })
+    ).stash!;
+    await writeFile(path.join(directory, "conflict.txt"), "branch\n");
+    await execFileAsync("git", ["-C", directory, "commit", "-am", "Diverge"]);
+    await writeFile(path.join(directory, "keep.txt"), "preexisting\n");
+    await execFileAsync("git", ["-C", directory, "add", "keep.txt"]);
+    await writeFile(path.join(directory, "untracked.txt"), "preserve\n");
+    const action = { type: "apply" as const, ref: stash.ref, hash: stash.hash };
+    const preview = await previewGitStashAction(directory, action);
+    const applied = await applyGitStashAction(directory, action, preview.token);
+    expect(applied.operation?.checkpointRef).toMatch(/-dirty$/u);
+
+    const aborted = await controlGitManagedOperation(
+      directory,
+      {
+        type: "stash",
+        originalHead: applied.operation!.originalHead,
+        sourceRef: applied.operation!.sourceRef,
+        sourceRevision: applied.operation!.sourceRevision,
+        targetRef: applied.operation!.targetRef,
+        targetRevision: applied.operation!.targetRevision,
+        pendingCommits: applied.operation!.pendingCommits,
+        totalSteps: 1,
+        checkpointRef: applied.operation!.checkpointRef,
+      },
+      "abort",
+    );
+    expect(aborted.state).toBe("aborted");
+    expect(await readFile(path.join(directory, "conflict.txt"), "utf8")).toBe(
+      "branch\n",
+    );
+    expect(await readFile(path.join(directory, "keep.txt"), "utf8")).toBe(
+      "preexisting\n",
+    );
+    expect(await readFile(path.join(directory, "untracked.txt"), "utf8")).toBe(
+      "preserve\n",
+    );
+    expect((await readGitStatus(directory)).files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "keep.txt", staged: true }),
+        expect.objectContaining({ path: "untracked.txt", unstaged: true }),
+      ]),
+    );
+    expect((await readGitStashes(directory)).stashes).toEqual([
+      expect.objectContaining({ hash: stash.hash }),
+    ]);
   });
 
   it("creates staged-only stashes and branches from their base", async () => {

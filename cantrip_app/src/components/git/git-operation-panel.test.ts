@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   gitOperationControlActions,
   gitOperationIsActive,
+  gitOperationSourceLabel,
 } from "./git-operation-panel";
 
 function operation(
@@ -50,6 +51,15 @@ describe("Git operation panel state", () => {
     expect(
       gitOperationControlActions(operation("conflicted", "rebase")),
     ).toEqual(["continue", "skip", "abort"]);
+    expect(
+      gitOperationControlActions(operation("conflicted", "stash")),
+    ).toEqual(["continue", "abort"]);
     expect(gitOperationControlActions(operation("completed"))).toEqual([]);
+  });
+
+  it("formats internal stash metadata for people", () => {
+    const stash = operation("conflicted", "stash");
+    stash.sourceRef = "pop:stash@{0}";
+    expect(gitOperationSourceLabel(stash)).toBe("pop stash@{0}");
   });
 });
