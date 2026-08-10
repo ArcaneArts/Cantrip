@@ -62,6 +62,7 @@ import {
   remoteSurfaceSummarySchema,
   serverBootstrapSchema,
   settingsBundleSchema,
+  scriptCommandListSchema,
   skillListSchema,
   terminalListSchema,
   terminalSummarySchema,
@@ -360,6 +361,17 @@ const workerBridge = {
       case "project.files.delete":
         deletedProjectPaths.push(command.path);
         return { deleted: true };
+      case "project.script-commands":
+        return [
+          {
+            id: "package:package.json:dev",
+            kind: "package",
+            name: "dev",
+            command: "pnpm run dev",
+            description: "vite",
+            source: "package.json",
+          },
+        ];
       case "project.share.open":
         openedProjectShares.push(command);
         return {
@@ -2864,6 +2876,21 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
+    expect(
+      scriptCommandListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/terminals/${reorderedTerminal.id}/script-commands`,
+          })
+        ).json(),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        name: "dev",
+        command: "pnpm run dev",
+      }),
+    ]);
     const explorer = explorerSummarySchema.parse(
       (
         await firstApp.inject({
