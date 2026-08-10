@@ -26,6 +26,7 @@ import { GithubClient } from "./github.js";
 import {
   amendGitManagedOperation,
   applyGitForcePush,
+  applyGitLfsAction,
   applyGitBranchAction,
   applyGitCommitAction,
   applyGitConflictResolution,
@@ -50,6 +51,7 @@ import {
   previewGitTagAction,
   previewGitManagedOperation,
   previewGitForcePush,
+  previewGitLfsAction,
   readGitCommitDetail,
   readGitConflict,
   readGitBranches,
@@ -58,6 +60,7 @@ import {
   readGitFileBlame,
   readGitFileHistory,
   readGitHistory,
+  readGitLfsStatus,
   readGitRemotes,
   readGitRecoveryCandidates,
   readGitRevisionFileDiff,
@@ -425,6 +428,12 @@ async function start(): Promise<void> {
           command.action,
           command.token,
         );
+      case "git.lfs.status":
+        return readGitLfsStatus(command.cwd, command.refreshLocks);
+      case "git.lfs.action.preview":
+        return previewGitLfsAction(command.cwd, command.action);
+      case "git.lfs.action.apply":
+        return applyGitLfsAction(command.cwd, command.action, command.token);
       case "git.tag.list":
         return readGitTags(command.cwd);
       case "git.tag.get":

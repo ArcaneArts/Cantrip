@@ -60,6 +60,8 @@ import {
   gitFileHistorySchema,
   gitBlameSchema,
   gitForcePushPreviewSchema,
+  gitLfsActionPreviewSchema,
+  gitLfsStatusSchema,
   gitPartialPatchPreviewSchema,
   gitStashActionPreviewSchema,
   gitStashCreateSchema,
@@ -727,6 +729,67 @@ describe("Cantrip protocol", () => {
           force: true,
         },
         token: "c".repeat(64),
+      }),
+    ).toThrow(/relative path/iu);
+  });
+
+  it("validates Git LFS capability, pointers, locks, and reviewed actions", () => {
+    const status = gitLfsStatusSchema.parse({
+      available: true,
+      version: "git-lfs/3.7.0",
+      message: null,
+      patterns: [{ pattern: "*.psd", source: ".gitattributes" }],
+      files: [
+        {
+          path: "assets/design.psd",
+          oid: "d".repeat(64),
+          size: 1_048_576,
+          checkedOut: true,
+          downloaded: false,
+          status: "M",
+        },
+      ],
+      filesTruncated: false,
+      missingObjects: 1,
+      pendingPaths: [{ path: "assets/design.psd", status: "M" }],
+      locks: [
+        {
+          id: "lock-1",
+          path: "assets/design.psd",
+          owner: "cantrip",
+          lockedAt: "2026-08-10T12:00:00.000Z",
+          ours: true,
+        },
+      ],
+      locksTruncated: false,
+      locksCached: true,
+      lockError: null,
+      generatedAt: "2026-08-10T12:00:00.000Z",
+    });
+    expect(status.missingObjects).toBe(1);
+    expect(
+      gitLfsActionPreviewSchema.parse({
+        action: { type: "prune", verifyRemote: true },
+        token: "e".repeat(64),
+        destructive: true,
+        summary: "Prune old objects.",
+        warnings: [],
+        status,
+      }).destructive,
+    ).toBe(true);
+    expect(
+      workerCommandSchema.parse({
+        type: "git.lfs.action.preview",
+        cwd: "/repo",
+        action: { type: "track", pattern: "*.psd" },
+      }).type,
+    ).toBe("git.lfs.action.preview");
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "git.lfs.action.apply",
+        cwd: "/repo",
+        action: { type: "lock", path: "../outside" },
+        token: "f".repeat(64),
       }),
     ).toThrow(/relative path/iu);
   });

@@ -711,6 +711,39 @@ Manual QA:
 6. Change module state after preview and verify apply rejects the stale token.
    Disconnect the assigned worker and confirm no action falls back elsewhere.
 
+## Git LFS
+
+Open **Repository → LFS** to inspect Git LFS on the selected worktree's worker.
+The surface reports whether `git-lfs` is installed, its version, tracked
+patterns and their attribute files, reachable pointer files, materialized and
+missing objects, working-tree pointer status, and cached lock ownership.
+Inventories are bounded; missing tooling and unavailable lock remotes remain
+explicit states instead of hiding the rest of the repository.
+
+Cantrip can install repository-local hooks, track and untrack patterns, fetch
+required or all reachable objects, pull and materialize objects, prune unused
+local objects with remote verification, refresh locks, and lock or unlock a
+path. Network work stays on the assigned worker. Every action has an exact
+preview token bound to LFS inventory plus worktree state; changes after preview
+require another review. Untracking, pruning, and force-unlocking are marked
+destructive, with force unlock warning that another user's lock may be removed.
+
+Manual QA:
+
+1. Open repositories with no `git-lfs`, with LFS installed but unused, and with
+   tracked files. Confirm each availability and empty state is intentional.
+2. Track a new pattern, stage a matching file, and verify the pattern source,
+   pointer OID, object size, materialization, and working-tree status.
+3. Remove a local object and confirm it appears missing; fetch and pull it and
+   verify the object and checkout become available again.
+4. Refresh locks against a supporting remote, lock and unlock your path, then
+   inspect a lock owned by another user and confirm force unlock is explicit.
+5. Prune with remote verification and confirm the destructive preview explains
+   that old local objects may require another download.
+6. Change `.gitattributes`, an LFS pointer, or lock state after preview and
+   confirm apply rejects it. Disconnect the worker or LFS remote and confirm
+   the UI degrades without moving credentials or falling back to another lane.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport
