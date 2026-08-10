@@ -613,6 +613,36 @@ Manual QA:
 5. Search an offline selected worktree and confirm Cantrip does not fall back
    to another checkout or worker.
 
+## Recovery tools
+
+The History tab's Recovery inspector pages through reference movements with a
+plain-language explanation of checkout, commit, reset, merge, pull, and rebase
+events. A separate lost-commit view asks the selected worker to find commits
+that are unreachable even when reflogs are ignored. A selected revision can be
+preserved on a new recovery branch, used to restore an existing unowned branch,
+or used for a soft, mixed, or hard reset of the explicit worktree.
+
+Every action has a worker-authored preview bound to the current HEAD, target,
+branch state, index, and working tree. The preview shows commits and files that
+would lose reachability, requires an exact generated confirmation, and is
+recomputed immediately before apply. Branches checked out by any worktree are
+never moved indirectly. Destructive branch restoration and reset create a
+permanent `refs/cantrip/recovery/...` checkpoint before changing the ref.
+
+Manual QA:
+
+1. Create commits, switch branches, reset, merge, and rebase; confirm Recovery
+   explains each resulting movement and paginates without duplicate rows.
+2. Delete an unmerged branch and confirm its commit appears under Lost commits;
+   preserve it with a new recovery branch before repository maintenance.
+3. Preview soft, mixed, and hard resets with staged, unstaged, and untracked
+   files. Confirm the warning and file/commit summary match Git's exact scope.
+4. Change HEAD or a file after preview and confirm apply rejects the stale token.
+5. Restore an unowned branch, then try a branch checked out by this or another
+   worktree and confirm the worker blocks it with a precise explanation.
+6. Apply a destructive action and verify its recovery ref points to the exact
+   previous revision and remains usable after reconnecting the app.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport

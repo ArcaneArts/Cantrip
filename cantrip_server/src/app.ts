@@ -150,6 +150,11 @@ import {
   gitRemoteActionSchema,
   gitRemoteListSchema,
   gitRemoteMutationResultSchema,
+  gitRecoveryActionSchema,
+  gitRecoveryApplySchema,
+  gitRecoveryCandidateListSchema,
+  gitRecoveryPreviewSchema,
+  gitRecoveryResultSchema,
   gitStashActionApplySchema,
   gitStashActionPreviewSchema,
   gitStashActionSchema,
@@ -4499,6 +4504,133 @@ export async function buildApp({
         );
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string; worktreeId: string };
+    Querystring: { cursor?: string; kind?: string; limit?: string };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/recovery",
+    async (request, reply) => {
+      const kind = request.query.kind;
+      if (kind !== "reflog" && kind !== "dangling") {
+        return reply.code(400).send({ error: "Recovery kind is required." });
+      }
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      const limit = Math.min(
+        100,
+        Math.max(1, Number.parseInt(request.query.limit ?? "100", 10) || 100),
+      );
+      const cursor = Math.max(
+        0,
+        Number.parseInt(request.query.cursor ?? "0", 10) || 0,
+      );
+      try {
+        return reply.send(
+          gitRecoveryCandidateListSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "git.recovery.list",
+              cwd: context.worktree.path,
+              kind,
+              cursor,
+              limit,
+            }),
+          ),
+        );
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/recovery/preview",
+    async (request, reply) => {
+      const input = gitRecoveryActionSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      try {
+        return reply.send(
+          gitRecoveryPreviewSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "git.recovery.preview",
+              cwd: context.worktree.path,
+              action: input.data,
+            }),
+          ),
+        );
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/recovery/apply",
+    async (request, reply) => {
+      const input = gitRecoveryApplySchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const result = await worktreeCoordinator.serialize(
+          request.params.projectId,
+          async () => {
+            const context = await repository.getProjectWorktreeContext(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (!context) throw new Error("Worktree not found.");
+            const applied = gitRecoveryResultSchema.parse(
+              await bridge.request(
+                context.workerId,
+                {
+                  type: "git.recovery.apply",
+                  cwd: context.worktree.path,
+                  request: input.data,
+                },
+                { timeoutMs: null },
+              ),
+            );
+            await recordLiveWorktreeStatus(
+              request.params.projectId,
+              request.params.worktreeId,
+              worktreeStatusFromGitStatus(context.worktree, applied.status),
+            );
+            publishLiveInvalidation("worktree", {
+              projectId: request.params.projectId,
+            });
+            publishLiveInvalidation("worktree-status", {
+              projectId: request.params.projectId,
+            });
+            return applied;
+          },
+        );
+        return reply.send(result);
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },

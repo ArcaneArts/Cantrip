@@ -41,6 +41,9 @@ import {
   gitBlameSchema,
   gitFileHistorySchema,
   gitCommitSearchResultSchema,
+  gitRecoveryCandidateListSchema,
+  gitRecoveryPreviewSchema,
+  gitRecoveryResultSchema,
   gitHistorySchema,
   gitStatusSchema,
   githubRepositoryListSchema,
@@ -175,6 +178,14 @@ const gitFileBlameCommands: Array<
 > = [];
 const gitCommitSearchCommands: Array<
   Extract<WorkerCommand, { type: "git.commit.search" }>
+> = [];
+const gitRecoveryCommands: Array<
+  Extract<
+    WorkerCommand,
+    {
+      type: "git.recovery.list" | "git.recovery.preview" | "git.recovery.apply";
+    }
+  >
 > = [];
 function pullRequestDetailFixture(number: number) {
   return {
@@ -675,6 +686,72 @@ const workerBridge = {
           ],
           hasMore: false,
           nextCursor: null,
+        };
+      case "git.recovery.list":
+        gitRecoveryCommands.push(command);
+        return {
+          kind: command.kind,
+          entries: [
+            {
+              kind: command.kind,
+              selector: "HEAD@{0}",
+              hash: "1".repeat(40),
+              shortHash: "1".repeat(8),
+              action: "reset",
+              subject: "reset: moving to HEAD~1",
+              explanation: "HEAD or its branch was reset.",
+              actorName: "Cantrip Test",
+              actorEmail: "test@cantrip.art",
+              occurredAt: "2026-08-10T12:00:00.000Z",
+            },
+          ],
+          hasMore: false,
+          nextCursor: null,
+        };
+      case "git.recovery.preview":
+        gitRecoveryCommands.push(command);
+        return {
+          action: command.action,
+          token: "a".repeat(64),
+          destructive: command.action.type !== "createBranch",
+          summary: "Preview recovery.",
+          warnings: [],
+          confirmation: "RESET --MIXED TO 1111111111",
+          targetRevision: "1".repeat(40),
+          currentHead: "2".repeat(40),
+          branchBefore: null,
+          checkpointRef: "refs/cantrip/recovery/reset-example",
+          commitsRemoved: [],
+          commitsRemovedTruncated: false,
+          files: [],
+          filesTruncated: false,
+          status: {
+            branch: "main",
+            head: "2".repeat(40),
+            upstream: null,
+            ahead: 0,
+            behind: 0,
+            files: [],
+            branches: [],
+          },
+        };
+      case "git.recovery.apply":
+        gitRecoveryCommands.push(command);
+        return {
+          action: command.request.action,
+          output: "",
+          checkpointRef: "refs/cantrip/recovery/reset-example",
+          headBefore: "2".repeat(40),
+          headAfter: "1".repeat(40),
+          status: {
+            branch: "main",
+            head: "1".repeat(40),
+            upstream: null,
+            ahead: 0,
+            behind: 0,
+            files: [],
+            branches: [],
+          },
         };
       case "git.status":
         return {
@@ -2475,6 +2552,65 @@ describe("local server foundation", () => {
       cursor: 10,
       limit: 25,
     });
+    const recoveryBase = `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/git/recovery`;
+    const recoveryList = gitRecoveryCandidateListSchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `${recoveryBase}?kind=reflog&cursor=20&limit=25`,
+        })
+      ).json(),
+    );
+    expect(recoveryList.entries[0]).toMatchObject({ kind: "reflog" });
+    const recoveryAction = {
+      type: "reset" as const,
+      mode: "mixed" as const,
+      target: "1".repeat(40),
+    };
+    const recoveryPreview = gitRecoveryPreviewSchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `${recoveryBase}/preview`,
+          payload: recoveryAction,
+        })
+      ).json(),
+    );
+    const recoveryApply = gitRecoveryResultSchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `${recoveryBase}/apply`,
+          payload: {
+            action: recoveryAction,
+            token: recoveryPreview.token,
+            confirmation: recoveryPreview.confirmation,
+          },
+        })
+      ).json(),
+    );
+    expect(recoveryApply).toMatchObject({
+      action: recoveryAction,
+      headAfter: "1".repeat(40),
+    });
+    expect(gitRecoveryCommands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "git.recovery.list",
+          cwd: primaryWorktree!.path,
+          kind: "reflog",
+          cursor: 20,
+          limit: 25,
+        }),
+        expect.objectContaining({
+          type: "git.recovery.apply",
+          cwd: primaryWorktree!.path,
+        }),
+      ]),
+    );
+    expect(
+      await firstApp.inject({ method: "GET", url: recoveryBase }),
+    ).toMatchObject({ statusCode: 400 });
     expect(
       await firstApp.inject({
         method: "GET",

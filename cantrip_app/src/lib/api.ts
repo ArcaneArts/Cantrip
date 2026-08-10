@@ -91,6 +91,9 @@ import {
   gitRemoteActionPreviewSchema,
   gitRemoteListSchema,
   gitRemoteMutationResultSchema,
+  gitRecoveryCandidateListSchema,
+  gitRecoveryPreviewSchema,
+  gitRecoveryResultSchema,
   gitStatusSchema,
   gitTagActionPreviewSchema,
   gitTagDetailSchema,
@@ -159,6 +162,8 @@ import type {
   GitDiffScope,
   GitPartialPatchRequest,
   GitRemoteAction,
+  GitRecoveryAction,
+  GitRecoveryApply,
   GitStashAction,
   GitStashCreate,
   GitTagAction,
@@ -476,6 +481,50 @@ export async function searchProjectWorktreeCommits(
   return gitCommitSearchResultSchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/commits/search?${search.toString()}`,
+    ),
+  );
+}
+
+export async function getProjectWorktreeRecoveryCandidates(
+  projectId: string,
+  worktreeId: string,
+  kind: "reflog" | "dangling",
+  cursor = 0,
+) {
+  const search = new URLSearchParams({
+    kind,
+    cursor: String(cursor),
+    limit: "100",
+  });
+  return gitRecoveryCandidateListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/recovery?${search.toString()}`,
+    ),
+  );
+}
+
+export async function previewProjectWorktreeRecovery(
+  projectId: string,
+  worktreeId: string,
+  action: GitRecoveryAction,
+) {
+  return gitRecoveryPreviewSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/recovery/preview`,
+      action,
+    ),
+  );
+}
+
+export async function applyProjectWorktreeRecovery(
+  projectId: string,
+  worktreeId: string,
+  recovery: GitRecoveryApply,
+) {
+  return gitRecoveryResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/recovery/apply`,
+      recovery,
     ),
   );
 }
