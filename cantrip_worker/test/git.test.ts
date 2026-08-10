@@ -7,8 +7,10 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  readGitCommitDetail,
   readGitFileDiff,
   readGitHistory,
+  readGitRevisionFileDiff,
   readGitStatus,
   runGitAction,
 } from "../src/git.js";
@@ -25,6 +27,151 @@ afterEach(async () => {
 });
 
 describe("Git history", () => {
+  it("inspects root, merge, renamed, deleted, and binary commit changes", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "README.md"), "Cantrip\n");
+    await writeFile(
+      path.join(directory, "image.bin"),
+      Buffer.from([0, 1, 2, 3, 0, 255]),
+    );
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "commit",
+      "-m",
+      "Initial history",
+      "-m",
+      "A multiline body for the root commit.",
+    ]);
+    const rootHash = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    const root = await readGitCommitDetail(directory, rootHash);
+    expect(root).toMatchObject({
+      hash: rootHash,
+      parents: [],
+      parentIndex: null,
+      baseHash: null,
+      messageTruncated: false,
+      signature: { status: "unsigned" },
+      filesChanged: 2,
+    });
+    expect(root.message).toContain("A multiline body");
+    expect(root.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "README.md",
+          status: "added",
+          additions: 1,
+          deletions: 0,
+          binary: false,
+        }),
+        expect.objectContaining({
+          path: "image.bin",
+          status: "added",
+          additions: null,
+          deletions: null,
+          binary: true,
+        }),
+      ]),
+    );
+    const rootPatch = await readGitRevisionFileDiff(
+      directory,
+      rootHash,
+      null,
+      "README.md",
+    );
+    expect(rootPatch.patch).toContain("+Cantrip");
+
+    await execFileAsync("git", ["-C", directory, "switch", "-c", "feature"]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "mv",
+      "README.md",
+      "GUIDE.md",
+    ]);
+    await execFileAsync("git", ["-C", directory, "rm", "image.bin"]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Move docs"]);
+    const featureHash = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    const feature = await readGitCommitDetail(directory, featureHash);
+    expect(feature.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "GUIDE.md",
+          originalPath: "README.md",
+          status: "renamed",
+        }),
+        expect.objectContaining({ path: "image.bin", status: "deleted" }),
+      ]),
+    );
+    const renamedPatch = await readGitRevisionFileDiff(
+      directory,
+      featureHash,
+      rootHash,
+      "GUIDE.md",
+    );
+    expect(renamedPatch.originalPath).toBe("README.md");
+    expect(renamedPatch.patch).toContain("rename from README.md");
+
+    await execFileAsync("git", ["-C", directory, "switch", "main"]);
+    await writeFile(path.join(directory, "main.txt"), "main\n");
+    await execFileAsync("git", ["-C", directory, "add", "main.txt"]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Main work"]);
+    const mainParent = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "merge",
+      "--no-ff",
+      "feature",
+      "-m",
+      "Merge feature",
+    ]);
+    const mergeHash = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    const mergeFirstParent = await readGitCommitDetail(directory, mergeHash, 0);
+    const mergeSecondParent = await readGitCommitDetail(
+      directory,
+      mergeHash,
+      1,
+    );
+    expect(mergeFirstParent.parents).toEqual([mainParent, featureHash]);
+    expect(mergeFirstParent.baseHash).toBe(mainParent);
+    expect(mergeSecondParent.baseHash).toBe(featureHash);
+    expect(
+      (await readGitCommitDetail(directory, mainParent)).children,
+    ).toContain(mergeHash);
+    await expect(readGitCommitDetail(directory, mergeHash, 2)).rejects.toThrow(
+      /does not have parent 3/u,
+    );
+    await expect(
+      readGitRevisionFileDiff(directory, mergeHash, mainParent, "../secret"),
+    ).rejects.toThrow(/Invalid Git diff path/u);
+  });
+
   it("returns branch and commit metadata", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
     directories.push(directory);

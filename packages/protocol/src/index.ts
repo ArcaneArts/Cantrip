@@ -2993,6 +2993,95 @@ export const gitCommitSchema = z.object({
   isHead: z.boolean(),
 });
 
+export const gitCommitPersonSchema = z.object({
+  name: z.string().min(1),
+  email: z.string(),
+  date: z.string().datetime({ offset: true }),
+});
+
+export const gitSignatureSchema = z.object({
+  status: z.enum([
+    "unsigned",
+    "valid",
+    "valid-unknown",
+    "invalid",
+    "expired",
+    "revoked",
+    "unverifiable",
+  ]),
+  signer: z.string().nullable(),
+  key: z.string().nullable(),
+  fingerprint: z.string().nullable(),
+});
+
+export const gitRelativePathSchema = z
+  .string()
+  .min(1)
+  .max(4_096)
+  .refine(
+    (value) =>
+      !value.startsWith("/") &&
+      !/^[A-Za-z]:[\\/]/u.test(value) &&
+      !value.split(/[\\/]/u).includes("..") &&
+      !value.includes("\0"),
+    "Expected a safe repository-relative path.",
+  );
+
+export const gitCommitFileSchema = z.object({
+  path: gitRelativePathSchema,
+  originalPath: gitRelativePathSchema.nullable(),
+  status: z.enum([
+    "added",
+    "modified",
+    "deleted",
+    "renamed",
+    "copied",
+    "type-changed",
+    "unmerged",
+    "unknown",
+  ]),
+  additions: z.number().int().nonnegative().nullable(),
+  deletions: z.number().int().nonnegative().nullable(),
+  binary: z.boolean(),
+});
+
+export const gitCommitDetailSchema = z.object({
+  hash: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  shortHash: z.string().min(1).max(64),
+  subject: z.string(),
+  message: z.string().max(1_000_000),
+  messageTruncated: z.boolean(),
+  parents: z.array(z.string().regex(/^[0-9a-f]{40,64}$/u)).max(64),
+  children: z.array(z.string().regex(/^[0-9a-f]{40,64}$/u)).max(10_000),
+  parentIndex: z.number().int().nonnegative().nullable(),
+  baseHash: z
+    .string()
+    .regex(/^[0-9a-f]{40,64}$/u)
+    .nullable(),
+  author: gitCommitPersonSchema,
+  committer: gitCommitPersonSchema,
+  signature: gitSignatureSchema,
+  refs: z.array(gitRefSchema).max(10_000),
+  files: z.array(gitCommitFileSchema).max(100_000),
+  filesTruncated: z.boolean(),
+  filesChanged: z.number().int().nonnegative(),
+  additions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+});
+
+export const gitRevisionFileDiffSchema = z.object({
+  revision: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  baseRevision: z
+    .string()
+    .regex(/^[0-9a-f]{40,64}$/u)
+    .nullable(),
+  path: gitRelativePathSchema,
+  originalPath: gitRelativePathSchema.nullable(),
+  patch: z.string().max(2_000_000),
+  truncated: z.boolean(),
+  binary: z.boolean(),
+});
+
 export const gitHistorySchema = z.object({
   branch: z.string(),
   head: z.string().nullable(),
@@ -3032,13 +3121,13 @@ export const gitStatusSchema = z.object({
 export const gitDiffScopeSchema = z.enum(["unstaged", "staged"]);
 
 export const gitFileDiffSchema = z.object({
-  path: z.string().min(1).max(4_096),
+  path: gitRelativePathSchema,
   scope: gitDiffScopeSchema,
   patch: z.string().max(2_000_000),
   truncated: z.boolean(),
 });
 
-const gitPathsSchema = z.array(z.string().min(1).max(4_096)).min(1).max(1_000);
+const gitPathsSchema = z.array(gitRelativePathSchema).min(1).max(1_000);
 export const gitActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("stage"), paths: gitPathsSchema }),
   z.object({ type: z.literal("unstage"), paths: gitPathsSchema }),
@@ -3358,13 +3447,33 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       .default([]),
   }),
   z.object({
+    type: z.literal("git.commit.get"),
+    cwd: z.string().min(1).max(8_192),
+    revision: z.string().regex(/^[0-9a-f]{40,64}$/u),
+    parentIndex: z.number().int().nonnegative().default(0),
+    revisions: z
+      .array(z.string().regex(/^[0-9a-f]{40,64}$/u))
+      .max(500)
+      .default([]),
+  }),
+  z.object({
+    type: z.literal("git.revision.diff"),
+    cwd: z.string().min(1).max(8_192),
+    revision: z.string().regex(/^[0-9a-f]{40,64}$/u),
+    baseRevision: z
+      .string()
+      .regex(/^[0-9a-f]{40,64}$/u)
+      .nullable(),
+    path: gitRelativePathSchema,
+  }),
+  z.object({
     type: z.literal("git.status"),
     cwd: z.string().min(1),
   }),
   z.object({
     type: z.literal("git.diff"),
     cwd: z.string().min(1),
-    path: z.string().min(1).max(4_096),
+    path: gitRelativePathSchema,
     scope: gitDiffScopeSchema,
   }),
   z.object({
@@ -4064,6 +4173,11 @@ export type ProjectRemove = z.infer<typeof projectRemoveSchema>;
 export type GitRef = z.infer<typeof gitRefSchema>;
 export type GitCommit = z.infer<typeof gitCommitSchema>;
 export type GitHistory = z.infer<typeof gitHistorySchema>;
+export type GitCommitPerson = z.infer<typeof gitCommitPersonSchema>;
+export type GitSignature = z.infer<typeof gitSignatureSchema>;
+export type GitCommitFile = z.infer<typeof gitCommitFileSchema>;
+export type GitCommitDetail = z.infer<typeof gitCommitDetailSchema>;
+export type GitRevisionFileDiff = z.infer<typeof gitRevisionFileDiffSchema>;
 export type GitFileChange = z.infer<typeof gitFileChangeSchema>;
 export type GitBranch = z.infer<typeof gitBranchSchema>;
 export type GitStatus = z.infer<typeof gitStatusSchema>;

@@ -97,9 +97,12 @@ import {
   githubWorkerRepositoryListSchema,
   gitActionResultSchema,
   gitActionSchema,
+  gitCommitDetailSchema,
   gitDiffScopeSchema,
   gitFileDiffSchema,
   gitHistorySchema,
+  gitRevisionFileDiffSchema,
+  gitRelativePathSchema,
   gitStatusSchema,
   modelProfileCreateSchema,
   modelProfileSummarySchema,
@@ -4970,6 +4973,100 @@ export async function buildApp({
           revisions,
         });
         return reply.send(gitHistorySchema.parse(history));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string; worktreeId: string; revision: string };
+    Querystring: { parent?: string };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/commits/:revision",
+    async (request, reply) => {
+      if (!/^[0-9a-f]{40,64}$/u.test(request.params.revision)) {
+        return reply
+          .code(400)
+          .send({ error: "A full commit hash is required." });
+      }
+      const parentText = request.query.parent ?? "0";
+      const parsedParent = Number.parseInt(parentText, 10);
+      if (!/^\d+$/u.test(parentText) || !Number.isSafeInteger(parsedParent)) {
+        return reply
+          .code(400)
+          .send({ error: "Parent index must be nonnegative." });
+      }
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      try {
+        const revisions = (
+          await repository.listProjectWorktrees(
+            LOCAL_USER_ID,
+            request.params.projectId,
+          )
+        )
+          .map(({ head }) => head)
+          .filter(
+            (head): head is string =>
+              typeof head === "string" && /^[0-9a-f]{40,64}$/u.test(head),
+          );
+        const detail = await bridge.request(context.workerId, {
+          type: "git.commit.get",
+          cwd: context.worktree.path,
+          revision: request.params.revision,
+          parentIndex: parsedParent,
+          revisions,
+        });
+        return reply.send(gitCommitDetailSchema.parse(detail));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string; worktreeId: string; revision: string };
+    Querystring: { base?: string; path?: string };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/revisions/:revision/diff",
+    async (request, reply) => {
+      const { base, path: filePath } = request.query;
+      const parsedPath = gitRelativePathSchema.safeParse(filePath);
+      if (
+        !/^[0-9a-f]{40,64}$/u.test(request.params.revision) ||
+        (base !== undefined && !/^[0-9a-f]{40,64}$/u.test(base)) ||
+        !parsedPath.success
+      ) {
+        return reply.code(400).send({
+          error: "Valid revisions and a bounded file path are required.",
+        });
+      }
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      try {
+        const diff = await bridge.request(context.workerId, {
+          type: "git.revision.diff",
+          cwd: context.worktree.path,
+          revision: request.params.revision,
+          baseRevision: base ?? null,
+          path: parsedPath.data,
+        });
+        return reply.send(gitRevisionFileDiffSchema.parse(diff));
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
         return reply.code(status).send({ error: errorMessage(error) });

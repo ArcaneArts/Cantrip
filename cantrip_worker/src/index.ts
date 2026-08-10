@@ -24,8 +24,10 @@ import {
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
 import {
+  readGitCommitDetail,
   readGitFileDiff,
   readGitHistory,
+  readGitRevisionFileDiff,
   readGitStatus,
   runGitAction,
 } from "./git.js";
@@ -204,6 +206,20 @@ async function start(): Promise<void> {
           command.limit,
           command.cursor,
           command.revisions,
+        );
+      case "git.commit.get":
+        return readGitCommitDetail(
+          command.cwd,
+          command.revision,
+          command.parentIndex,
+          command.revisions,
+        );
+      case "git.revision.diff":
+        return readGitRevisionFileDiff(
+          command.cwd,
+          command.revision,
+          command.baseRevision,
+          command.path,
         );
       case "git.status":
         return readGitStatus(command.cwd);

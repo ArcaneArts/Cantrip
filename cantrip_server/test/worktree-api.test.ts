@@ -11,8 +11,10 @@ import {
   codeTabSummarySchema,
   explorerSummarySchema,
   gitActionResultSchema,
+  gitCommitDetailSchema,
   gitFileDiffSchema,
   gitHistorySchema,
+  gitRevisionFileDiffSchema,
   projectViewSummarySchema,
   projectWorktreeListSchema,
   projectWorktreeSummarySchema,
@@ -61,6 +63,12 @@ const gitActionPaths: string[] = [];
 const gitDiffCommands: Array<Extract<WorkerCommand, { type: "git.diff" }>> = [];
 const gitHistoryCommands: Array<
   Extract<WorkerCommand, { type: "git.history" }>
+> = [];
+const gitCommitCommands: Array<
+  Extract<WorkerCommand, { type: "git.commit.get" }>
+> = [];
+const gitRevisionDiffCommands: Array<
+  Extract<WorkerCommand, { type: "git.revision.diff" }>
 > = [];
 const chatTurnCommands: Array<Extract<WorkerCommand, { type: "chat.turn" }>> =
   [];
@@ -215,6 +223,61 @@ const workerBridge = {
           ],
           hasMore: false,
           nextCursor: null,
+        };
+      case "git.commit.get":
+        gitCommitCommands.push(command);
+        return {
+          hash: command.revision,
+          shortHash: command.revision.slice(0, 8),
+          subject: "Initial commit",
+          message: "Initial commit\n\nCommit inspector fixture.",
+          messageTruncated: false,
+          parents: [],
+          children: [],
+          parentIndex: null,
+          baseHash: null,
+          author: {
+            name: "Cantrip",
+            email: "test@cantrip.art",
+            date: "2026-08-08T12:00:00.000Z",
+          },
+          committer: {
+            name: "Cantrip",
+            email: "test@cantrip.art",
+            date: "2026-08-08T12:00:00.000Z",
+          },
+          signature: {
+            status: "unsigned",
+            signer: null,
+            key: null,
+            fingerprint: null,
+          },
+          refs: [{ name: "HEAD", kind: "head", current: true }],
+          files: [
+            {
+              path: "src/app.ts",
+              originalPath: null,
+              status: "modified",
+              additions: 1,
+              deletions: 1,
+              binary: false,
+            },
+          ],
+          filesTruncated: false,
+          filesChanged: 1,
+          additions: 1,
+          deletions: 1,
+        };
+      case "git.revision.diff":
+        gitRevisionDiffCommands.push(command);
+        return {
+          revision: command.revision,
+          baseRevision: command.baseRevision,
+          path: command.path,
+          originalPath: null,
+          patch: "@@ -1 +1 @@\n-old\n+new\n",
+          truncated: false,
+          binary: false,
         };
       case "git.action":
         gitActionPaths.push(command.cwd);
@@ -1200,6 +1263,49 @@ describe.sequential("server worktree control plane", () => {
       path: "src/app.ts",
       scope: "unstaged",
     });
+    const revision = "1".repeat(40);
+    const commitResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/${revision}?parent=0`,
+    });
+    expect(gitCommitDetailSchema.parse(commitResponse.json())).toMatchObject({
+      hash: revision,
+      filesChanged: 1,
+    });
+    expect(gitCommitCommands.at(-1)).toMatchObject({
+      cwd: target.path,
+      revision,
+      parentIndex: 0,
+      revisions: expect.arrayContaining([revision]),
+    });
+    const revisionDiffResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/revisions/${revision}/diff?path=src%2Fapp.ts`,
+    });
+    expect(
+      gitRevisionFileDiffSchema.parse(revisionDiffResponse.json()),
+    ).toMatchObject({ revision, path: "src/app.ts", baseRevision: null });
+    expect(gitRevisionDiffCommands.at(-1)).toMatchObject({
+      cwd: target.path,
+      revision,
+      baseRevision: null,
+      path: "src/app.ts",
+    });
+    const invalidRevision = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/HEAD~1`,
+    });
+    expect(invalidRevision.statusCode).toBe(400);
+    const invalidPath = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/revisions/${revision}/diff?path=..%2Fsecret`,
+    });
+    expect(invalidPath.statusCode).toBe(400);
+    const invalidParent = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/${revision}?parent=1oops`,
+    });
+    expect(invalidParent.statusCode).toBe(400);
   });
 
   it("locks, unlocks, and protects Primary and external removal", async () => {
