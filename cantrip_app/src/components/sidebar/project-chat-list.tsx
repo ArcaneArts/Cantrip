@@ -23,6 +23,7 @@ import {
   CircleHelp,
   CirclePause,
   Code2,
+  CopyPlus,
   FolderGit2,
   FolderOpen,
   FolderTree,
@@ -855,15 +856,29 @@ function ProjectViewTab({
 function GroupedSidebarTab({
   active,
   count,
+  editing,
+  onDelete,
+  onDuplicate,
+  onRename,
   onSelect,
+  renameValue,
+  setRenameValue,
   sortId,
+  submitRename,
   title,
   visualKind,
 }: {
   active: boolean;
   count: number;
+  editing: boolean;
+  onDelete(): void;
+  onDuplicate?: () => void;
+  onRename(): void;
   onSelect(): void;
+  renameValue: string;
+  setRenameValue(value: string): void;
   sortId: string;
+  submitRename(): void;
   title: string;
   visualKind: ProjectTabGroupVisualKind;
 }) {
@@ -878,6 +893,7 @@ function GroupedSidebarTab({
     <div
       ref={sortable.setNodeRef}
       style={style}
+      onContextMenu={openActionsMenu}
       className={cn(
         "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
         active && "bg-muted text-foreground",
@@ -887,17 +903,84 @@ function GroupedSidebarTab({
         attributes={sortable.attributes}
         listeners={sortable.listeners}
       />
-      <button
-        type="button"
-        className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-2 text-left"
-        onClick={onSelect}
-      >
-        <ProjectSurfaceIcon kind={visualKind} className="size-3.5 shrink-0" />
-        <span className="truncate">{title}</span>
-        <span className="ml-auto rounded-full bg-background/70 px-1.5 text-[10px] tabular-nums text-muted-foreground">
-          {count}
-        </span>
-      </button>
+      {editing ? (
+        <input
+          autoFocus
+          value={renameValue}
+          onChange={(event) => setRenameValue(event.target.value)}
+          onBlur={submitRename}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") submitRename();
+            if (event.key === "Escape") onRename();
+          }}
+          className="h-7 min-w-0 flex-1 rounded border bg-background px-2 text-xs text-foreground outline-none ring-ring focus:ring-2"
+          aria-label={`Rename ${title}`}
+        />
+      ) : (
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
+          onClick={onSelect}
+          onDoubleClick={(event) => {
+            event.preventDefault();
+            onRename();
+          }}
+        >
+          <ProjectSurfaceIcon kind={visualKind} className="size-3.5 shrink-0" />
+          <span className="truncate">{title}</span>
+        </button>
+      )}
+      {!editing ? (
+        <div className="relative mr-1 size-6 shrink-0">
+          <span className="pointer-events-none absolute inset-0 grid place-items-center rounded-full bg-background/70 text-[10px] tabular-nums text-muted-foreground transition-opacity group-hover:opacity-0 [@media(pointer:coarse)]:opacity-0">
+            {count}
+          </span>
+          <DropdownMenuPrimitive.Root>
+            <DropdownMenuPrimitive.Trigger asChild>
+              <button
+                data-actions-trigger
+                type="button"
+                className="absolute inset-0 grid place-items-center rounded opacity-0 hover:bg-background/70 group-hover:opacity-100 focus:bg-background focus:opacity-100 data-[state=open]:bg-background data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
+                aria-label={`Actions for ${title}`}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <MoreHorizontal className="size-3.5" />
+              </button>
+            </DropdownMenuPrimitive.Trigger>
+            <DropdownMenuPrimitive.Portal>
+              <DropdownMenuPrimitive.Content
+                align="end"
+                className={menuContentClass}
+              >
+                <DropdownMenuPrimitive.Item
+                  className={menuItemClass}
+                  onSelect={onRename}
+                >
+                  <Pencil className="size-4" /> Rename
+                </DropdownMenuPrimitive.Item>
+                {onDuplicate ? (
+                  <DropdownMenuPrimitive.Item
+                    className={menuItemClass}
+                    onSelect={onDuplicate}
+                  >
+                    <CopyPlus className="size-4" /> Duplicate
+                  </DropdownMenuPrimitive.Item>
+                ) : null}
+                <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+                <DropdownMenuPrimitive.Item
+                  className={cn(
+                    menuItemClass,
+                    "text-destructive focus:bg-destructive/10",
+                  )}
+                  onSelect={onDelete}
+                >
+                  <Trash2 className="size-4" /> Delete
+                </DropdownMenuPrimitive.Item>
+              </DropdownMenuPrimitive.Content>
+            </DropdownMenuPrimitive.Portal>
+          </DropdownMenuPrimitive.Root>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1453,6 +1536,42 @@ export function ProjectChatList({
     setEditingProjectViewId(null);
     if (title && title !== view.title) onRenameProjectView(view.id, title);
   };
+  const tabIsEditing = (tab: SidebarTab): boolean =>
+    tab.kind === "chat"
+      ? editingChatId === tab.chat.id
+      : tab.kind === "terminal"
+        ? editingTerminalId === tab.terminal.id
+        : tab.kind === "explorer"
+          ? editingExplorerId === tab.explorer.id
+          : tab.kind === "browser"
+            ? editingBrowserId === tab.browser.id
+            : tab.kind === "code"
+              ? editingCodeId === tab.codeTab.id
+              : editingProjectViewId === tab.view.id;
+  const beginTabRename = (tab: SidebarTab) => {
+    if (tab.kind === "chat") beginRename(tab.chat);
+    else if (tab.kind === "terminal") beginTerminalRename(tab.terminal);
+    else if (tab.kind === "explorer") beginExplorerRename(tab.explorer);
+    else if (tab.kind === "browser") beginBrowserRename(tab.browser);
+    else if (tab.kind === "code") beginCodeRename(tab.codeTab);
+    else beginProjectViewRename(tab.view);
+  };
+  const finishTabRename = (tab: SidebarTab) => {
+    if (tab.kind === "chat") finishRename(tab.chat);
+    else if (tab.kind === "terminal") finishTerminalRename(tab.terminal);
+    else if (tab.kind === "explorer") finishExplorerRename(tab.explorer);
+    else if (tab.kind === "browser") finishBrowserRename(tab.browser);
+    else if (tab.kind === "code") finishCodeRename(tab.codeTab);
+    else finishProjectViewRename(tab.view);
+  };
+  const requestTabDelete = (tab: SidebarTab) => {
+    if (tab.kind === "chat") setDeleteTarget(tab.chat);
+    else if (tab.kind === "terminal") setDeleteTerminalTarget(tab.terminal);
+    else if (tab.kind === "explorer") setDeleteExplorerTarget(tab.explorer);
+    else if (tab.kind === "browser") setDeleteBrowserTarget(tab.browser);
+    else if (tab.kind === "code") setDeleteCodeTarget(tab.codeTab);
+    else setDeleteProjectViewTarget(tab.view);
+  };
   const sidebarDrop = useDroppable({
     id: workspaceSidebarDropId(selectedProjectId ?? "none"),
     disabled: !selectedProjectId || !tabLayout,
@@ -1547,8 +1666,19 @@ export function ProjectChatList({
                               key={group.id}
                               active={group.id === selectedGroupId}
                               count={group.members.length}
+                              editing={tabIsEditing(tab)}
+                              onDelete={() => requestTabDelete(tab)}
+                              onDuplicate={
+                                tab.kind === "chat"
+                                  ? () => onDuplicateChat(tab.chat.id)
+                                  : undefined
+                              }
+                              onRename={() => beginTabRename(tab)}
                               onSelect={selectGroup}
+                              renameValue={renameValue}
+                              setRenameValue={setRenameValue}
                               sortId={group.sortId}
+                              submitRename={() => finishTabRename(tab)}
                               title={tabTitle(tab)}
                               visualKind={
                                 visualKinds.size > 1
