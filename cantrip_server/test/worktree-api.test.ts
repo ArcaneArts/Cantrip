@@ -17,6 +17,10 @@ import {
   gitCommitDetailSchema,
   gitCommitActionPreviewSchema,
   gitCommitActionResultSchema,
+  gitConflictDetailSchema,
+  gitConflictListSchema,
+  gitConflictResolutionPreviewSchema,
+  gitConflictResolutionResultSchema,
   gitManagedOperationPreviewSchema,
   gitManagedOperationResponseSchema,
   gitComparisonSchema,
@@ -172,7 +176,20 @@ const gitManagedOperationCommands: Array<
     }
   >
 > = [];
-let managedOperationState: "conflicted" | "completed" | "aborted" =
+const gitConflictCommands: Array<
+  Extract<
+    WorkerCommand,
+    {
+      type:
+        | "git.conflicts.list"
+        | "git.conflicts.get"
+        | "git.conflicts.preview"
+        | "git.conflicts.apply";
+    }
+  >
+> = [];
+let managedOperationState:
+  "conflicted" | "awaiting-user-action" | "completed" | "aborted" =
   "conflicted";
 const gitRevisionDiffCommands: Array<
   Extract<WorkerCommand, { type: "git.revision.diff" }>
@@ -316,7 +333,7 @@ const managedOperationContext = {
 };
 
 function managedWorkerState() {
-  const terminal = managedOperationState !== "conflicted";
+  const terminal = ["completed", "aborted"].includes(managedOperationState);
   return {
     ...managedOperationContext,
     state: managedOperationState,
@@ -704,6 +721,86 @@ const workerBridge = {
         managedOperationState =
           command.action === "abort" ? "aborted" : "completed";
         return completeStashMutation(managedWorkerState());
+      case "git.conflicts.list":
+        gitConflictCommands.push(command);
+        return {
+          files:
+            managedOperationState === "conflicted"
+              ? [
+                  {
+                    path: "src/app.ts",
+                    code: "UU",
+                    kind: "both-modified",
+                    baseAvailable: true,
+                    oursAvailable: true,
+                    theirsAvailable: true,
+                  },
+                ]
+              : [],
+          truncated: false,
+        };
+      case "git.conflicts.get": {
+        gitConflictCommands.push(command);
+        const stage = {
+          available: true,
+          oid: "1".repeat(40),
+          mode: "100644",
+          size: 5,
+          binary: false,
+          content: "ours\n",
+          truncated: false,
+        };
+        return {
+          path: command.path,
+          code: "UU",
+          kind: "both-modified",
+          baseAvailable: true,
+          oursAvailable: true,
+          theirsAvailable: true,
+          base: stage,
+          ours: stage,
+          theirs: { ...stage, oid: "2".repeat(40), content: "theirs\n" },
+          result: {
+            exists: true,
+            oid: "3".repeat(40),
+            size: 42,
+            binary: false,
+            content: "<<<<<<< ours\n=======\n>>>>>>> theirs\n",
+            truncated: false,
+          },
+        };
+      }
+      case "git.conflicts.preview":
+        gitConflictCommands.push(command);
+        return {
+          request: command.request,
+          token: "e".repeat(64),
+          resultDeleted: false,
+          resultBinary: false,
+          resultContent: command.request.content ?? "ours\n",
+          warnings: [],
+        };
+      case "git.conflicts.apply":
+        gitConflictCommands.push(command);
+        managedOperationState = "awaiting-user-action";
+        return {
+          path: command.request.path,
+          resolved: true,
+          remainingPaths: [],
+          status: {
+            ...status(),
+            files: [
+              {
+                path: command.request.path,
+                originalPath: null,
+                indexStatus: "M",
+                worktreeStatus: " ",
+                staged: true,
+                unstaged: false,
+              },
+            ],
+          },
+        };
       case "git.refs.list":
         gitRefsCommands.push(command);
         return [
@@ -2389,6 +2486,58 @@ describe.sequential("server worktree control plane", () => {
         .operation,
     ).toMatchObject({ id: startedOperation.id, state: "conflicted" });
     connected = true;
+    const conflictListResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/conflicts`,
+    });
+    expect(
+      gitConflictListSchema.parse(conflictListResponse.json()).files[0],
+    ).toMatchObject({ path: "src/app.ts", kind: "both-modified" });
+    const conflictDetailResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/conflicts/detail?path=${encodeURIComponent("src/app.ts")}`,
+    });
+    expect(
+      gitConflictDetailSchema.parse(conflictDetailResponse.json()).theirs
+        .content,
+    ).toBe("theirs\n");
+    const conflictResolution = {
+      path: "src/app.ts",
+      strategy: "manual" as const,
+      content: "resolved\n",
+    };
+    const conflictPreviewResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/conflicts/preview`,
+      payload: conflictResolution,
+    });
+    expect(
+      gitConflictResolutionPreviewSchema.parse(conflictPreviewResponse.json()),
+    ).toMatchObject({ token: "e".repeat(64), request: conflictResolution });
+    const conflictApplyResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/conflicts/apply`,
+      payload: { request: conflictResolution, token: "e".repeat(64) },
+    });
+    expect(
+      gitConflictResolutionResultSchema.parse(conflictApplyResponse.json()),
+    ).toMatchObject({ resolved: true, remainingPaths: [] });
+    expect(gitConflictCommands.at(-1)).toMatchObject({
+      type: "git.conflicts.apply",
+      cwd: target.path,
+      request: conflictResolution,
+    });
+    expect(
+      await database.repository.getLatestGitOperation(
+        LOCAL_USER_ID,
+        projectId,
+        target.id,
+      ),
+    ).toMatchObject({
+      id: startedOperation.id,
+      state: "awaiting-user-action",
+      conflictedPaths: [],
+    });
     const operationControlResponse = await app.inject({
       method: "POST",
       url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/${startedOperation.id}/control`,

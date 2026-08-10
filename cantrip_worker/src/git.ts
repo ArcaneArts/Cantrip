@@ -1,6 +1,13 @@
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+  lstat,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -12,6 +19,10 @@ import {
   gitBranchMutationResultSchema,
   gitCommitActionPreviewSchema,
   gitCommitActionResultSchema,
+  gitConflictDetailSchema,
+  gitConflictListSchema,
+  gitConflictResolutionPreviewSchema,
+  gitConflictResolutionResultSchema,
   gitManagedOperationPreviewSchema,
   gitManagedOperationWorkerStateSchema,
   gitComparisonSchema,
@@ -42,6 +53,13 @@ import {
   type GitCommitAction,
   type GitCommitActionPreview,
   type GitCommitActionResult,
+  type GitConflictDetail,
+  type GitConflictKind,
+  type GitConflictList,
+  type GitConflictResolutionPreview,
+  type GitConflictResolutionRequest,
+  type GitConflictResolutionResult,
+  type GitConflictStage,
   type GitManagedOperationContext,
   type GitManagedOperationPreview,
   type GitManagedOperationWorkerState,
@@ -3669,6 +3687,445 @@ export async function controlGitManagedOperation(
     throw new Error(outcome.output);
   }
   return state;
+}
+
+const MAX_CONFLICT_FILES = 1_000;
+const MAX_CONFLICT_CONTENT_BYTES = 2_000_000;
+
+interface ConflictIndexEntry {
+  mode: string;
+  oid: string;
+  stage: 1 | 2 | 3;
+  path: string;
+}
+
+function gitBuffer(cwd: string, args: string[]): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      "git",
+      ["-C", cwd, ...args],
+      { encoding: "buffer", maxBuffer: GIT_BUFFER },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(
+            new Error(
+              `${Buffer.from(stdout).toString("utf8")}${Buffer.from(stderr).toString("utf8")}`.trim() ||
+                error.message,
+            ),
+          );
+          return;
+        }
+        resolve(Buffer.from(stdout));
+      },
+    );
+  });
+}
+
+async function conflictIndexEntries(
+  cwd: string,
+): Promise<ConflictIndexEntry[]> {
+  const output = await gitBuffer(cwd, ["ls-files", "-u", "-z"]);
+  return output
+    .toString("utf8")
+    .split("\0")
+    .filter(Boolean)
+    .map((record) => {
+      const match = /^(\d{6}) ([0-9a-f]{40,64}) ([123])\t([\s\S]+)$/u.exec(
+        record,
+      );
+      if (!match || !safeGitPath(match[4]!)) {
+        throw new Error("Git returned an invalid unmerged index entry.");
+      }
+      return {
+        mode: match[1]!,
+        oid: match[2]!,
+        stage: Number(match[3]!) as 1 | 2 | 3,
+        path: match[4]!,
+      };
+    });
+}
+
+function conflictKind(code: string): GitConflictKind {
+  return (
+    (
+      {
+        UU: "both-modified",
+        AA: "both-added",
+        DD: "both-deleted",
+        AU: "added-by-ours",
+        UA: "added-by-theirs",
+        DU: "deleted-by-ours",
+        UD: "deleted-by-theirs",
+      } as const
+    )[code as "UU"] ?? "unknown"
+  );
+}
+
+async function conflictGroups(cwd: string): Promise<{
+  groups: Map<string, ConflictIndexEntry[]>;
+  status: GitStatus;
+}> {
+  const [entries, status] = await Promise.all([
+    conflictIndexEntries(cwd),
+    readGitStatus(cwd),
+  ]);
+  const groups = new Map<string, ConflictIndexEntry[]>();
+  for (const entry of entries) {
+    const current = groups.get(entry.path) ?? [];
+    current.push(entry);
+    groups.set(entry.path, current);
+  }
+  return { groups, status };
+}
+
+function conflictSummary(
+  filePath: string,
+  entries: ConflictIndexEntry[],
+  status: GitStatus,
+) {
+  const file = status.files.find(
+    ({ path: candidate }) => candidate === filePath,
+  );
+  const code = file ? `${file.indexStatus}${file.worktreeStatus}` : "UU";
+  return {
+    path: filePath,
+    code,
+    kind: conflictKind(code),
+    baseAvailable: entries.some(({ stage }) => stage === 1),
+    oursAvailable: entries.some(({ stage }) => stage === 2),
+    theirsAvailable: entries.some(({ stage }) => stage === 3),
+  };
+}
+
+export async function listGitConflicts(cwd: string): Promise<GitConflictList> {
+  const { groups, status } = await conflictGroups(cwd);
+  const paths = [...groups.keys()].sort((left, right) =>
+    left.localeCompare(right),
+  );
+  return gitConflictListSchema.parse({
+    files: paths
+      .slice(0, MAX_CONFLICT_FILES)
+      .map((filePath) =>
+        conflictSummary(filePath, groups.get(filePath)!, status),
+      ),
+    truncated: paths.length > MAX_CONFLICT_FILES,
+  });
+}
+
+async function conflictStage(
+  cwd: string,
+  entry: ConflictIndexEntry | undefined,
+): Promise<GitConflictStage> {
+  if (!entry) {
+    return {
+      available: false,
+      oid: null,
+      mode: null,
+      size: null,
+      binary: false,
+      content: null,
+      truncated: false,
+    };
+  }
+  const size = Number.parseInt(
+    await gitOutput(cwd, ["cat-file", "-s", entry.oid]),
+    10,
+  );
+  if (!Number.isSafeInteger(size) || size < 0) {
+    throw new Error("Git returned an invalid conflict blob size.");
+  }
+  if (size > MAX_CONFLICT_CONTENT_BYTES) {
+    return {
+      available: true,
+      oid: entry.oid,
+      mode: entry.mode,
+      size,
+      binary: false,
+      content: null,
+      truncated: true,
+    };
+  }
+  if (entry.mode === "160000") {
+    return {
+      available: true,
+      oid: entry.oid,
+      mode: entry.mode,
+      size,
+      binary: true,
+      content: null,
+      truncated: false,
+    };
+  }
+  const buffer = await gitBuffer(cwd, ["cat-file", "blob", entry.oid]);
+  const binary = buffer.includes(0);
+  return {
+    available: true,
+    oid: entry.oid,
+    mode: entry.mode,
+    size,
+    binary,
+    content: binary ? null : buffer.toString("utf8"),
+    truncated: false,
+  };
+}
+
+async function conflictResult(cwd: string, filePath: string) {
+  const absolute = path.resolve(cwd, filePath);
+  const root = path.resolve(cwd);
+  if (!absolute.startsWith(`${root}${path.sep}`)) {
+    throw new Error("Invalid conflict result path.");
+  }
+  try {
+    const metadata = await lstat(absolute);
+    if (metadata.isSymbolicLink() || !metadata.isFile()) {
+      return {
+        exists: true,
+        oid: await gitOutput(cwd, [
+          "hash-object",
+          "--no-filters",
+          "--",
+          filePath,
+        ]),
+        size: metadata.size,
+        binary: true,
+        content: null,
+        truncated: false,
+      };
+    }
+    if (metadata.size > MAX_CONFLICT_CONTENT_BYTES) {
+      return {
+        exists: true,
+        oid: await gitOutput(cwd, [
+          "hash-object",
+          "--no-filters",
+          "--",
+          filePath,
+        ]),
+        size: metadata.size,
+        binary: false,
+        content: null,
+        truncated: true,
+      };
+    }
+    const buffer = await readFile(absolute);
+    const binary = buffer.includes(0);
+    return {
+      exists: true,
+      oid: await gitOutput(cwd, [
+        "hash-object",
+        "--no-filters",
+        "--",
+        filePath,
+      ]),
+      size: metadata.size,
+      binary,
+      content: binary ? null : buffer.toString("utf8"),
+      truncated: false,
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    return {
+      exists: false,
+      oid: null,
+      size: null,
+      binary: false,
+      content: null,
+      truncated: false,
+    };
+  }
+}
+
+export async function readGitConflict(
+  cwd: string,
+  filePath: string,
+): Promise<GitConflictDetail> {
+  if (!safeGitPath(filePath)) throw new Error("Invalid conflict path.");
+  const { groups, status } = await conflictGroups(cwd);
+  const entries = groups.get(filePath);
+  if (!entries) throw new Error("This path is no longer conflicted.");
+  const [base, ours, theirs, result] = await Promise.all([
+    conflictStage(
+      cwd,
+      entries.find(({ stage }) => stage === 1),
+    ),
+    conflictStage(
+      cwd,
+      entries.find(({ stage }) => stage === 2),
+    ),
+    conflictStage(
+      cwd,
+      entries.find(({ stage }) => stage === 3),
+    ),
+    conflictResult(cwd, filePath),
+  ]);
+  return gitConflictDetailSchema.parse({
+    ...conflictSummary(filePath, entries, status),
+    base,
+    ours,
+    theirs,
+    result,
+  });
+}
+
+function joinConflictSides(ours: string, theirs: string): string {
+  if (!ours) return theirs;
+  if (!theirs) return ours;
+  return `${ours}${ours.endsWith("\n") ? "" : "\n"}${theirs}`;
+}
+
+function conflictResolutionContent(
+  detail: GitConflictDetail,
+  request: GitConflictResolutionRequest,
+): { deleted: boolean; binary: boolean; content: string | null } {
+  if (request.strategy === "delete") {
+    return { deleted: true, binary: false, content: null };
+  }
+  if (request.strategy === "manual") {
+    return { deleted: false, binary: false, content: request.content! };
+  }
+  if (request.strategy === "result") {
+    if (!detail.result.exists) {
+      throw new Error("The worktree result no longer exists.");
+    }
+    return {
+      deleted: false,
+      binary: detail.result.binary,
+      content: detail.result.content,
+    };
+  }
+  const stage = request.strategy === "ours" ? detail.ours : detail.theirs;
+  if (request.strategy === "ours" || request.strategy === "theirs") {
+    if (!stage.available) {
+      return { deleted: true, binary: false, content: null };
+    }
+    return { deleted: false, binary: stage.binary, content: stage.content };
+  }
+  if (!detail.ours.available || !detail.theirs.available) {
+    throw new Error("Both sides are not available for this conflict.");
+  }
+  if (
+    detail.ours.binary ||
+    detail.theirs.binary ||
+    detail.ours.truncated ||
+    detail.theirs.truncated
+  ) {
+    throw new Error("Both can only be combined for bounded text conflicts.");
+  }
+  return {
+    deleted: false,
+    binary: false,
+    content: joinConflictSides(detail.ours.content!, detail.theirs.content!),
+  };
+}
+
+function conflictResolutionToken(
+  detail: GitConflictDetail,
+  request: GitConflictResolutionRequest,
+  result: ReturnType<typeof conflictResolutionContent>,
+): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        request,
+        stages: [detail.base.oid, detail.ours.oid, detail.theirs.oid],
+        currentResult: detail.result,
+        result,
+      }),
+    )
+    .digest("hex");
+}
+
+export async function previewGitConflictResolution(
+  cwd: string,
+  request: GitConflictResolutionRequest,
+): Promise<GitConflictResolutionPreview> {
+  const detail = await readGitConflict(cwd, request.path);
+  const result = conflictResolutionContent(detail, request);
+  const warnings: string[] = [];
+  if (result.deleted) warnings.push("This resolution deletes the path.");
+  if (result.binary)
+    warnings.push("Binary content cannot be previewed as text.");
+  if (request.strategy === "both") {
+    warnings.push("Ours is followed by theirs; review the combined result.");
+  }
+  return gitConflictResolutionPreviewSchema.parse({
+    request,
+    token: conflictResolutionToken(detail, request, result),
+    resultDeleted: result.deleted,
+    resultBinary: result.binary,
+    resultContent: result.content,
+    warnings,
+  });
+}
+
+async function writeConflictResult(
+  cwd: string,
+  filePath: string,
+  content: string,
+): Promise<void> {
+  const root = await realpath(cwd);
+  const absolute = path.resolve(root, filePath);
+  if (!absolute.startsWith(`${root}${path.sep}`)) {
+    throw new Error("Invalid conflict result path.");
+  }
+  const parent = await realpath(path.dirname(absolute));
+  if (parent !== root && !parent.startsWith(`${root}${path.sep}`)) {
+    throw new Error("Conflict result parent escapes the selected worktree.");
+  }
+  try {
+    if ((await lstat(absolute)).isSymbolicLink()) {
+      throw new Error("Refusing to overwrite a symbolic-link conflict path.");
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  await writeFile(absolute, content, "utf8");
+}
+
+export async function applyGitConflictResolution(
+  cwd: string,
+  request: GitConflictResolutionRequest,
+  token: string,
+): Promise<GitConflictResolutionResult> {
+  const preview = await previewGitConflictResolution(cwd, request);
+  if (preview.token !== token) {
+    throw new Error(
+      "The conflict or result changed after this preview. Review it again.",
+    );
+  }
+  if (preview.resultDeleted) {
+    await runGit(cwd, ["rm", "-f", "--ignore-unmatch", "--", request.path]);
+  } else if (request.strategy === "ours" || request.strategy === "theirs") {
+    await runGit(cwd, [
+      "checkout",
+      `--${request.strategy}`,
+      "--",
+      request.path,
+    ]);
+    await runGit(cwd, ["add", "--", request.path]);
+  } else if (request.strategy === "result") {
+    await runGit(cwd, ["add", "--", request.path]);
+  } else {
+    if (preview.resultBinary || preview.resultContent === null) {
+      throw new Error("This resolution cannot be written as text.");
+    }
+    await writeConflictResult(cwd, request.path, preview.resultContent);
+    await runGit(cwd, ["add", "--", request.path]);
+  }
+  const unresolved = await conflictIndexEntries(cwd);
+  const remainingPaths = [
+    ...new Set(unresolved.map(({ path: value }) => value)),
+  ].sort((left, right) => left.localeCompare(right));
+  const resolved = !remainingPaths.includes(request.path);
+  if (!resolved) {
+    throw new Error("Git still reports this path as unmerged in the index.");
+  }
+  return gitConflictResolutionResultSchema.parse({
+    path: request.path,
+    resolved,
+    remainingPaths,
+    status: await readGitStatus(cwd),
+  });
 }
 
 async function unstage(cwd: string, paths: string[] | null): Promise<string> {

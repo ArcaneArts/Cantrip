@@ -73,6 +73,7 @@ export const appLiveResourceSchema = z.enum([
   "worktree",
   "worktree-status",
   "git-operation",
+  "git-conflict",
   "chat",
   "chat-message",
   "chat-queue",

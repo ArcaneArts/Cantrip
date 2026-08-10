@@ -112,6 +112,12 @@ import {
   gitCommitActionResultSchema,
   gitCommitActionSchema,
   gitCommitDetailSchema,
+  gitConflictDetailSchema,
+  gitConflictListSchema,
+  gitConflictResolutionApplySchema,
+  gitConflictResolutionPreviewSchema,
+  gitConflictResolutionRequestSchema,
+  gitConflictResolutionResultSchema,
   gitManagedOperationControlSchema,
   gitManagedOperationPreviewSchema,
   gitManagedOperationResponseSchema,
@@ -3890,6 +3896,179 @@ export async function buildApp({
         return reply.code(status).send({
           error: `Codex could not generate a valid workflow: ${errorMessage(error)}`,
         });
+      }
+    },
+  );
+
+  app.get<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts",
+    async (request, reply) => {
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context)
+        return reply.code(404).send({ error: "Worktree not found." });
+      try {
+        return reply.send(
+          gitConflictListSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "git.conflicts.list",
+              cwd: context.worktree.path,
+            }),
+          ),
+        );
+      } catch (error) {
+        return reply
+          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string; worktreeId: string };
+    Querystring: { path?: string };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts/detail",
+    async (request, reply) => {
+      const parsedPath = gitRelativePathSchema.safeParse(request.query.path);
+      if (!parsedPath.success) {
+        return reply
+          .code(400)
+          .send({ error: "A safe conflict path is required." });
+      }
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context)
+        return reply.code(404).send({ error: "Worktree not found." });
+      try {
+        return reply.send(
+          gitConflictDetailSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "git.conflicts.get",
+              cwd: context.worktree.path,
+              path: parsedPath.data,
+            }),
+          ),
+        );
+      } catch (error) {
+        return reply
+          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts/preview",
+    async (request, reply) => {
+      const input = gitConflictResolutionRequestSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context)
+        return reply.code(404).send({ error: "Worktree not found." });
+      try {
+        return reply.send(
+          gitConflictResolutionPreviewSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "git.conflicts.preview",
+              cwd: context.worktree.path,
+              request: input.data,
+            }),
+          ),
+        );
+      } catch (error) {
+        return reply
+          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts/apply",
+    async (request, reply) => {
+      const input = gitConflictResolutionApplySchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const result = await worktreeCoordinator.serialize(
+          request.params.projectId,
+          async () => {
+            const context = await repository.getProjectWorktreeContext(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (!context) throw new Error("Worktree not found.");
+            const resolved = gitConflictResolutionResultSchema.parse(
+              await bridge.request(context.workerId, {
+                type: "git.conflicts.apply",
+                cwd: context.worktree.path,
+                request: input.data.request,
+                token: input.data.token,
+              }),
+            );
+            await recordLiveWorktreeStatus(
+              request.params.projectId,
+              request.params.worktreeId,
+              worktreeStatusFromGitStatus(context.worktree, resolved.status),
+            );
+            const active = await repository.getActiveGitOperation(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (active) {
+              const workerState = gitManagedOperationWorkerStateSchema.parse(
+                await bridge.request(context.workerId, {
+                  type: "git.operation.inspect",
+                  cwd: context.worktree.path,
+                  context: gitManagedOperationContext(active),
+                }),
+              );
+              await repository.updateGitOperation(
+                LOCAL_USER_ID,
+                request.params.projectId,
+                request.params.worktreeId,
+                active.id,
+                workerState,
+              );
+              publishLiveInvalidation("git-operation", {
+                entityId: active.id,
+                projectId: request.params.projectId,
+              });
+            }
+            publishLiveInvalidation("git-conflict", {
+              entityId: request.params.worktreeId,
+              projectId: request.params.projectId,
+            });
+            publishLiveInvalidation("worktree", {
+              projectId: request.params.projectId,
+            });
+            publishLiveInvalidation("worktree-status", {
+              projectId: request.params.projectId,
+            });
+            return resolved;
+          },
+        );
+        return reply.send(result);
+      } catch (error) {
+        return reply
+          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .send({ error: errorMessage(error) });
       }
     },
   );

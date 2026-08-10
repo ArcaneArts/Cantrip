@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   applyGitBranchAction,
   applyGitCommitAction,
+  applyGitConflictResolution,
   applyGitPartialPatch,
   applyGitRemoteAction,
   applyGitStashAction,
@@ -17,16 +18,19 @@ import {
   createGitStash,
   previewGitBranchAction,
   previewGitCommitAction,
+  previewGitConflictResolution,
   previewGitPartialPatch,
   previewGitRemoteAction,
   previewGitStashAction,
   previewGitTagAction,
   previewGitManagedOperation,
   readGitCommitDetail,
+  readGitConflict,
   readGitBranches,
   readGitComparison,
   readGitFileDiff,
   readGitHistory,
+  listGitConflicts,
   readGitRemotes,
   readGitRevisionFileDiff,
   readGitRevisionCandidates,
@@ -131,6 +135,94 @@ describe("Git history", () => {
         .trim()
         .split(" "),
     ).toHaveLength(3);
+  });
+
+  it("previews, applies, stages, and verifies conflict resolutions", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-conflict-test-"));
+    directories.push(root);
+    const directory = path.join(root, "repo");
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "shared.txt"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Base"]);
+    await execFileAsync("git", ["-C", directory, "switch", "-c", "feature"]);
+    await writeFile(path.join(directory, "shared.txt"), "feature\n");
+    await execFileAsync("git", ["-C", directory, "commit", "-am", "Feature"]);
+    await execFileAsync("git", ["-C", directory, "switch", "main"]);
+    await writeFile(path.join(directory, "shared.txt"), "main\n");
+    await execFileAsync("git", ["-C", directory, "commit", "-am", "Main"]);
+
+    const operation = await previewGitManagedOperation(directory, {
+      type: "merge",
+      sourceRef: "feature",
+    });
+    await startGitManagedOperation(
+      directory,
+      { type: "merge", sourceRef: "feature" },
+      operation.token,
+    );
+    expect(await listGitConflicts(directory)).toMatchObject({
+      files: [
+        {
+          path: "shared.txt",
+          code: "UU",
+          kind: "both-modified",
+          baseAvailable: true,
+          oursAvailable: true,
+          theirsAvailable: true,
+        },
+      ],
+      truncated: false,
+    });
+    const detail = await readGitConflict(directory, "shared.txt");
+    expect(detail.base.content).toBe("base\n");
+    expect(detail.ours.content).toBe("main\n");
+    expect(detail.theirs.content).toBe("feature\n");
+    await expect(readGitConflict(directory, "../outside")).rejects.toThrow(
+      "Invalid conflict path",
+    );
+
+    const request = {
+      path: "shared.txt",
+      strategy: "manual" as const,
+      content: "resolved\n",
+    };
+    let preview = await previewGitConflictResolution(directory, request);
+    await writeFile(path.join(directory, "shared.txt"), "changed\n");
+    await expect(
+      applyGitConflictResolution(directory, request, preview.token),
+    ).rejects.toThrow("changed after this preview");
+    preview = await previewGitConflictResolution(directory, request);
+    const applied = await applyGitConflictResolution(
+      directory,
+      request,
+      preview.token,
+    );
+    expect(applied).toMatchObject({
+      path: "shared.txt",
+      resolved: true,
+      remainingPaths: [],
+    });
+    expect(await readFile(path.join(directory, "shared.txt"), "utf8")).toBe(
+      "resolved\n",
+    );
+    expect(
+      (await execFileAsync("git", ["-C", directory, "ls-files", "-u"])).stdout,
+    ).toBe("");
   });
 
   it("creates a rebase checkpoint and supports skip and abort", async () => {
