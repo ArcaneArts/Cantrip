@@ -20,6 +20,7 @@ import {
 } from "@/lib/api";
 
 const MAX_RECONNECT_DELAY_MS = 15_000;
+const CODE_FRAME_REVEAL_DELAY_MS = 1_500;
 const ATTACHMENT_UNAVAILABLE_MESSAGE = "cantrip-code-attachment-unavailable-v1";
 
 export interface CodeHeaderState {
@@ -85,6 +86,7 @@ export function CodeView({
   const [connectError, setConnectError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [frameLoaded, setFrameLoaded] = useState(false);
+  const [frameReadyToReveal, setFrameReadyToReveal] = useState(false);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [retrying, setRetrying] = useState(false);
   const appearanceRef = useRef(appearance);
@@ -116,6 +118,7 @@ export function CodeView({
     setConnecting(false);
     setRetrying(false);
     setFrameLoaded(false);
+    setFrameReadyToReveal(false);
 
     const connect = async (attempt: number) => {
       if (cancelled || stopped.current) return;
@@ -137,6 +140,7 @@ export function CodeView({
         setConnecting(false);
         setRetrying(false);
         setFrameLoaded(false);
+        setFrameReadyToReveal(false);
         onChangedRef.current?.();
       } catch (error) {
         if (cancelled || generation !== connectionGeneration.current) return;
@@ -210,6 +214,15 @@ export function CodeView({
     return () => clearTimeout(timeout);
   }, [actionMessage]);
 
+  useEffect(() => {
+    if (!frameLoaded) return;
+    const timeout = setTimeout(
+      () => setFrameReadyToReveal(true),
+      CODE_FRAME_REVEAL_DELAY_MS,
+    );
+    return () => clearTimeout(timeout);
+  }, [attachment?.attachmentId, frameLoaded]);
+
   const runAction = useCallback(
     async (name: string, action: () => Promise<void>) => {
       setBusyAction(name);
@@ -257,6 +270,7 @@ export function CodeView({
         }
         setAttachment(null);
         setFrameLoaded(false);
+        setFrameReadyToReveal(false);
         setConnectError(null);
         setActionMessage("Editor stopped.");
       }),
@@ -333,7 +347,7 @@ export function CodeView({
           />
           <SurfaceLoadingVeil
             label="Loading the browser-native workbench…"
-            visible={!frameLoaded}
+            visible={!frameReadyToReveal}
           />
         </>
       ) : (
