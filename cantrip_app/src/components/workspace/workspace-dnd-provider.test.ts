@@ -16,7 +16,7 @@ function collision(
 }
 
 describe("workspace pointer collision filtering", () => {
-  it("returns no target outside every registered drop area", () => {
+  it("returns no target outside the current window's registered drop areas", () => {
     expect(filterWorkspacePointerCollisions([])).toEqual([]);
   });
 

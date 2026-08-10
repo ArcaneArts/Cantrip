@@ -1,8 +1,8 @@
 # Project tab groups
 
 Cantrip stores project navigation as ordered tab groups rather than a single
-flat list. The model is shared by the browser, Capacitor, and Tauri clients;
-only cross-window coordination is desktop-specific.
+flat list. The model and same-window interactions are shared by the browser,
+Capacitor, and Tauri clients.
 
 ## Ownership model
 
@@ -39,7 +39,7 @@ One workspace drag context covers projects, sidebar groups, and top tabs.
 The client applies the same pure legality reducer before optimistic updates.
 The server remains authoritative and atomically rejects stale revisions.
 
-## Tauri pop-outs and cross-window dragging
+## Tauri pop-outs
 
 Pop-out URLs identify a persistent group and initial active member:
 
@@ -52,23 +52,12 @@ desktop owner per group. The main sidebar still lists detached groups and
 focuses their owner instead of mounting a second terminal, browser, Code, or
 Remote Desktop attachment. Closing a window does not mutate the server layout.
 
-Tauri's `WindowCoordinator` registers each visible top bar in physical screen
-coordinates. It converts DOM logical pixels using the current window scale
-factor and refreshes registrations on window movement, resizing, scale changes,
-horizontal scrolling, and tab DOM changes. This supports negative monitor
-coordinates and mixed-DPI layouts without an operating-system-specific hook.
-
-For a grouped tab, a small non-focusable native preview follows the pointer.
-Releasing it above another registered top bar performs the existing atomic
-membership move. Releasing elsewhere first splits the member on the server and
-then opens its authoritative new group at the release point. A singleton
-pop-out uses Tauri's native `startDragging` path to move the existing window.
-Docking that singleton closes its source only after the server move succeeds.
-Mutation failure leaves the source group and window intact.
-
-Web and Capacitor bundles never invoke the coordinator. Their top bars use the
-same React components and server layout API, but a drag cannot cross an OS
-window boundary.
+The explicit pop-out action opens the whole group in its deterministic window.
+Tab dragging remains scoped to the current webview on every platform. Dropping
+a tab outside its current window is cancelled: it does not create a pop-out,
+move an existing pop-out, or dock into another Cantrip window. This keeps Tauri
+behavior aligned with web and Capacitor while preserving ordinary group
+pop-outs and all same-window grouping operations.
 
 ## Manual QA
 
@@ -78,22 +67,15 @@ Before a desktop release, exercise this matrix with `pnpm devtop`:
    verify membership and order survive.
 2. Pop the group out, switch active members, and verify its main-sidebar row
    focuses the existing window.
-3. Detach one member from the multi-tab pop-out. Confirm both windows remain
-   and the detached window appears near the pointer.
-4. Drag a singleton pop-out by its tab. Confirm the existing window moves
-   without creating another group.
-5. Dock that singleton into another pop-out and into the main window. Confirm
-   the source closes only after the destination updates.
-6. Attempt a cross-project drop and confirm it is rejected without moving or
+3. Drag a top tab beyond the main or pop-out window edge. Confirm the drag is
+   cancelled and no window is created, moved, or docked.
+4. Attempt a cross-project drop and confirm it is rejected without moving or
    closing the source.
-7. Repeat a detach/dock across monitors with different scale factors and with a
-   monitor positioned left of the primary display.
-8. Close a pop-out normally, select its sidebar row, and confirm the same group
+5. Close a pop-out normally, select its sidebar row, and confirm the same group
    reopens locally with no data loss.
-9. Leave a Remote Desktop member inactive in a group and confirm it does not
+6. Leave a Remote Desktop member inactive in a group and confirm it does not
    connect until selected.
 
 For non-desktop regression coverage, run `pnpm --filter @cantrip/app build` and
 the Capacitor sync/build path appropriate to the target. Same-window grouping
-must work without a Tauri runtime, and native coordinator functions must remain
-behind the desktop runtime gate.
+must work without a Tauri runtime and must behave the same in Tauri.

@@ -260,12 +260,6 @@ import {
   sidebarWidthFromKey,
   sidebarWidthFromPointer,
 } from "@/lib/sidebar-resize";
-import {
-  focusDesktopWindow,
-  type DesktopNativeDropResolution,
-  type DesktopNativeTabDrag,
-} from "@/lib/desktop-window-coordinator";
-import { planDesktopTabDrop } from "@/lib/desktop-tab-drop-plan";
 import { cn } from "@/lib/utils";
 import {
   applyOptimisticTabLayoutToCache,
@@ -3832,90 +3826,11 @@ export function App() {
     reordered.splice(to, 0, moved);
     reorderProjectsMutation.mutate(reordered.map(({ id }) => id));
   };
-  const handleDesktopTabDrop = async (
-    drag: DesktopNativeTabDrag,
-    resolution: DesktopNativeDropResolution,
-  ) => {
-    const layout = queryClient.getQueryData<ProjectTabLayoutSummary>([
-      "project-tab-layout",
-      drag.projectId,
-    ]);
-    if (!layout) {
-      setWorkspaceDragError("The project tab layout is unavailable.");
-      return;
-    }
-    const plan = planDesktopTabDrop(drag, resolution, layout);
-    if (plan.type === "noop") return;
-    if (plan.type === "invalid") {
-      setWorkspaceDragError(plan.reason);
-      return;
-    }
-    if (tabLayoutMutation.isPending) {
-      setWorkspaceDragError("Wait for the current tab move to finish.");
-      return;
-    }
-    try {
-      if (plan.type === "dock") {
-        await tabLayoutMutation.mutateAsync({
-          projectId: drag.projectId,
-          command: plan.command,
-        });
-        await focusDesktopWindow(plan.targetWindowLabel);
-        if (plan.closeSourceWindow) {
-          await closeCurrentDesktopWindow();
-        } else if (plan.markTargetDetached) {
-          setDetachedGroupId(plan.targetGroupId);
-        }
-        return;
-      }
-
-      if (plan.type === "open-existing") {
-        await openDesktopPopoutGroup(
-          {
-            activeTabKey: drag.surface.tabKey,
-            groupId: drag.groupId,
-            projectId: drag.projectId,
-          },
-          drag.surface.title,
-          plan.position,
-        );
-        setDetachedGroupId(drag.groupId);
-        return;
-      }
-
-      const nextLayout = await tabLayoutMutation.mutateAsync({
-        projectId: drag.projectId,
-        command: plan.command,
-      });
-      const detachedGroup = nextLayout.groups.find(({ members }) =>
-        members.some(({ tabKey }) => tabKey === drag.surface.tabKey),
-      );
-      if (!detachedGroup) {
-        setWorkspaceDragError("The detached tab group could not be resolved.");
-        return;
-      }
-      await openDesktopPopoutGroup(
-        {
-          activeTabKey: drag.surface.tabKey,
-          groupId: detachedGroup.id,
-          projectId: drag.projectId,
-        },
-        drag.surface.title,
-        plan.position,
-      );
-    } catch (error) {
-      setWorkspaceDragError(errorText(error));
-    }
-  };
-
   return (
     <WorkspaceDndProvider
       className="flex h-svh overflow-hidden bg-background text-foreground"
-      desktopRuntime={desktopRuntime}
-      isPopout={isPopout}
       layout={tabLayout.data}
       projects={visibleProjects}
-      onDesktopTabDrop={handleDesktopTabDrop}
       onOperation={handleWorkspaceDrop}
       tauriTitlebar={overlayTitlebar ? "overlay" : undefined}
     >
@@ -4714,7 +4629,6 @@ export function App() {
           <ProjectTabBar
             activeTabKey={selectedTabKey}
             creatingKinds={creatingSurfaceKinds}
-            desktopRuntime={desktopRuntime}
             surfaces={selectedGroupSurfaces}
             onCreate={createSurfaceInSelectedGroup}
             onDelete={deleteSurface}

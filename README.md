@@ -46,13 +46,11 @@ each window.
 
 On Tauri, the pop-out action opens the complete group rather than one isolated
 surface. A group has at most one local pop-out owner; selecting its row in the
-main sidebar focuses that window. Top tabs can be detached into new windows and
-docked into another visible Cantrip top bar. Tauri resolves native drops in
-physical screen coordinates, including negative monitor origins and mixed-DPI
-layouts, and closes a source pop-out only after an atomic server move succeeds
-and leaves the source group empty. Closing an ordinary pop-out never deletes
-its group or tabs. Native cross-window dragging is intentionally desktop-only;
-web and Capacitor clients retain all same-window grouping behavior. See
+main sidebar focuses that window. Closing an ordinary pop-out never deletes its
+group or tabs. Tab dragging is intentionally scoped to the current window on
+every platform: dragging outside a Tauri window neither creates a new pop-out
+nor docks into another window. Use the explicit pop-out action when a group
+needs its own desktop window. See
 [docs/TAB_GROUPS.md](docs/TAB_GROUPS.md) for the model, failure semantics, and
 QA matrix.
 
