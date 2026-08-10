@@ -13,6 +13,7 @@ import {
   applyGitRemoteAction,
   applyGitStashAction,
   applyGitTagAction,
+  controlGitManagedOperation,
   createGitStash,
   previewGitBranchAction,
   previewGitCommitAction,
@@ -20,6 +21,7 @@ import {
   previewGitRemoteAction,
   previewGitStashAction,
   previewGitTagAction,
+  previewGitManagedOperation,
   readGitCommitDetail,
   readGitBranches,
   readGitComparison,
@@ -34,6 +36,7 @@ import {
   readGitTagDetail,
   readGitTags,
   runGitAction,
+  startGitManagedOperation,
 } from "../src/git.js";
 
 const execFileAsync = promisify(execFile);
@@ -48,6 +51,168 @@ afterEach(async () => {
 });
 
 describe("Git history", () => {
+  it("previews, persists, and continues a conflicting merge", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-merge-test-"));
+    directories.push(root);
+    const directory = path.join(root, "repo");
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "shared.txt"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Base"]);
+    await execFileAsync("git", ["-C", directory, "switch", "-c", "feature"]);
+    await writeFile(path.join(directory, "shared.txt"), "feature\n");
+    await execFileAsync("git", ["-C", directory, "commit", "-am", "Feature"]);
+    await execFileAsync("git", ["-C", directory, "switch", "main"]);
+    await writeFile(path.join(directory, "shared.txt"), "main\n");
+    await execFileAsync("git", ["-C", directory, "commit", "-am", "Main"]);
+
+    const action = { type: "merge" as const, sourceRef: "feature" };
+    const preview = await previewGitManagedOperation(directory, action);
+    expect(preview).toMatchObject({
+      action,
+      destructive: false,
+      wouldConflict: true,
+      context: { type: "merge", targetRef: "refs/heads/main" },
+    });
+    await writeFile(
+      path.join(directory, "scratch.txt"),
+      "changed after preview\n",
+    );
+    await execFileAsync("git", ["-C", directory, "add", "scratch.txt"]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Move HEAD"]);
+    await expect(
+      startGitManagedOperation(directory, action, preview.token),
+    ).rejects.toThrow("changed after this preview");
+    const currentPreview = await previewGitManagedOperation(directory, action);
+    const started = await startGitManagedOperation(
+      directory,
+      action,
+      currentPreview.token,
+    );
+    expect(started).toMatchObject({
+      state: "conflicted",
+      conflictedPaths: ["shared.txt"],
+    });
+    await writeFile(path.join(directory, "shared.txt"), "resolved\n");
+    await execFileAsync("git", ["-C", directory, "add", "shared.txt"]);
+    const completed = await controlGitManagedOperation(
+      directory,
+      currentPreview.context,
+      "continue",
+    );
+    expect(completed.state).toBe("completed");
+    expect(completed.pendingCommits).toEqual([]);
+    expect(
+      (
+        await execFileAsync("git", [
+          "-C",
+          directory,
+          "rev-list",
+          "--parents",
+          "-n",
+          "1",
+          "HEAD",
+        ])
+      ).stdout
+        .trim()
+        .split(" "),
+    ).toHaveLength(3);
+  });
+
+  it("creates a rebase checkpoint and supports skip and abort", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-rebase-test-"));
+    directories.push(root);
+    const directory = path.join(root, "repo");
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "shared.txt"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Base"]);
+    await execFileAsync("git", ["-C", directory, "switch", "-c", "feature"]);
+    await writeFile(path.join(directory, "shared.txt"), "feature\n");
+    await execFileAsync("git", ["-C", directory, "commit", "-am", "Feature"]);
+    const featureHead = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await execFileAsync("git", ["-C", directory, "switch", "main"]);
+    await writeFile(path.join(directory, "shared.txt"), "main\n");
+    await execFileAsync("git", ["-C", directory, "commit", "-am", "Main"]);
+    await execFileAsync("git", ["-C", directory, "switch", "feature"]);
+
+    const action = { type: "rebase" as const, sourceRef: "main" };
+    let preview = await previewGitManagedOperation(directory, action);
+    expect(preview.context.checkpointRef).toMatch(
+      /^refs\/cantrip\/checkpoints\/rebase-/u,
+    );
+    let started = await startGitManagedOperation(
+      directory,
+      action,
+      preview.token,
+    );
+    expect(started.state).toBe("conflicted");
+    const skipped = await controlGitManagedOperation(
+      directory,
+      preview.context,
+      "skip",
+    );
+    expect(skipped.state).toBe("completed");
+    expect(
+      (
+        await execFileAsync("git", [
+          "-C",
+          directory,
+          "rev-parse",
+          preview.context.checkpointRef!,
+        ])
+      ).stdout.trim(),
+    ).toBe(featureHead);
+
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "reset",
+      "--hard",
+      featureHead,
+    ]);
+    preview = await previewGitManagedOperation(directory, action);
+    started = await startGitManagedOperation(directory, action, preview.token);
+    expect(started.state).toBe("conflicted");
+    const aborted = await controlGitManagedOperation(
+      directory,
+      preview.context,
+      "abort",
+    );
+    expect(aborted.state).toBe("aborted");
+    expect(aborted.currentHead).toBe(featureHead);
+  });
+
   it("previews and cherry-picks ordered commit ranges on the explicit worktree", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "cantrip-pick-test-"));
     directories.push(root);

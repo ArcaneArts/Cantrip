@@ -39,6 +39,9 @@ import type {
   ExplorerSummary,
   ExplorerUpdate,
   GithubProjectCreate,
+  GitManagedOperationContext,
+  GitManagedOperationRecord,
+  GitManagedOperationWorkerState,
   ModelProfileCreate,
   ModelProfileSummary,
   ModelProfileUpdate,
@@ -125,6 +128,7 @@ type RepositoryDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type ProjectRow = typeof schema.projects.$inferSelect;
 type ProjectSourceRow = typeof schema.projectSources.$inferSelect;
 type ProjectWorktreeRow = typeof schema.projectWorktrees.$inferSelect;
+type GitOperationRow = typeof schema.gitOperations.$inferSelect;
 type ProjectWorkspaceRow = typeof schema.projectWorkspaces.$inferSelect;
 
 export interface ChatExecutionContext {
@@ -372,6 +376,37 @@ function toProjectWorktreeSummary(
       : null,
     createdAt: toISOString(worktree.createdAt),
     updatedAt: toISOString(worktree.updatedAt),
+  };
+}
+
+function toGitManagedOperationRecord(
+  operation: GitOperationRow,
+): GitManagedOperationRecord {
+  return {
+    id: operation.id,
+    projectId: operation.projectId,
+    worktreeId: operation.worktreeId,
+    workerId: operation.workerId,
+    type: operation.type,
+    state: operation.state,
+    originalHead: operation.originalHead,
+    currentHead: operation.currentHead,
+    sourceRef: operation.sourceRef,
+    sourceRevision: operation.sourceRevision,
+    targetRef: operation.targetRef,
+    targetRevision: operation.targetRevision,
+    pendingCommits: operation.pendingCommits,
+    currentStep: operation.currentStep,
+    totalSteps: operation.totalSteps,
+    conflictedPaths: operation.conflictedPaths,
+    output: operation.output,
+    checkpointRef: operation.checkpointRef,
+    error: operation.error,
+    createdAt: toISOString(operation.createdAt),
+    updatedAt: toISOString(operation.updatedAt),
+    completedAt: operation.completedAt
+      ? toISOString(operation.completedAt)
+      : null,
   };
 }
 
@@ -1954,6 +1989,231 @@ export class ServerRepository {
           worktree: toProjectWorktreeSummary(rows[0], projectId),
         }
       : null;
+  }
+
+  async createGitOperation(
+    ownerId: string,
+    projectId: string,
+    worktreeId: string,
+    workerId: string,
+    context: GitManagedOperationContext,
+  ): Promise<GitManagedOperationRecord> {
+    const existing = await this.getActiveGitOperation(
+      ownerId,
+      projectId,
+      worktreeId,
+    );
+    if (existing) {
+      throw new Error(
+        `This worktree already has an active ${existing.type} operation.`,
+      );
+    }
+    const rows = await this.database
+      .insert(schema.gitOperations)
+      .values({
+        id: randomUUID(),
+        ownerId,
+        projectId,
+        worktreeId,
+        workerId,
+        type: context.type,
+        state: "queued",
+        originalHead: context.originalHead,
+        currentHead: context.originalHead,
+        sourceRef: context.sourceRef,
+        sourceRevision: context.sourceRevision,
+        targetRef: context.targetRef,
+        targetRevision: context.targetRevision,
+        pendingCommits: context.pendingCommits,
+        currentStep: 0,
+        totalSteps: context.totalSteps,
+        conflictedPaths: [],
+        output: "",
+        checkpointRef: context.checkpointRef,
+      })
+      .returning();
+    return toGitManagedOperationRecord(
+      firstOrThrow(rows, "creating Git operation"),
+    );
+  }
+
+  async getActiveGitOperation(
+    ownerId: string,
+    projectId: string,
+    worktreeId: string,
+  ): Promise<GitManagedOperationRecord | null> {
+    const rows = await this.database
+      .select({ operation: schema.gitOperations })
+      .from(schema.gitOperations)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.gitOperations.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.gitOperations.projectId, projectId),
+          eq(schema.gitOperations.worktreeId, worktreeId),
+          inArray(schema.gitOperations.state, [
+            "queued",
+            "running",
+            "conflicted",
+            "awaiting-user-action",
+          ]),
+        ),
+      )
+      .orderBy(desc(schema.gitOperations.updatedAt))
+      .limit(1);
+    return rows[0] ? toGitManagedOperationRecord(rows[0].operation) : null;
+  }
+
+  async markGitOperationRunning(
+    operationId: string,
+  ): Promise<GitManagedOperationRecord | null> {
+    const rows = await this.database
+      .update(schema.gitOperations)
+      .set({ state: "running", updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.gitOperations.id, operationId),
+          eq(schema.gitOperations.state, "queued"),
+        ),
+      )
+      .returning();
+    return rows[0] ? toGitManagedOperationRecord(rows[0]) : null;
+  }
+
+  async getGitOperation(
+    ownerId: string,
+    projectId: string,
+    worktreeId: string,
+    operationId: string,
+  ): Promise<GitManagedOperationRecord | null> {
+    const rows = await this.database
+      .select({ operation: schema.gitOperations })
+      .from(schema.gitOperations)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.gitOperations.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.gitOperations.id, operationId),
+          eq(schema.gitOperations.projectId, projectId),
+          eq(schema.gitOperations.worktreeId, worktreeId),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? toGitManagedOperationRecord(rows[0].operation) : null;
+  }
+
+  async getLatestGitOperation(
+    ownerId: string,
+    projectId: string,
+    worktreeId: string,
+  ): Promise<GitManagedOperationRecord | null> {
+    const rows = await this.database
+      .select({ operation: schema.gitOperations })
+      .from(schema.gitOperations)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.gitOperations.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.gitOperations.projectId, projectId),
+          eq(schema.gitOperations.worktreeId, worktreeId),
+        ),
+      )
+      .orderBy(desc(schema.gitOperations.updatedAt))
+      .limit(1);
+    return rows[0] ? toGitManagedOperationRecord(rows[0].operation) : null;
+  }
+
+  async updateGitOperation(
+    ownerId: string,
+    projectId: string,
+    worktreeId: string,
+    operationId: string,
+    state: GitManagedOperationWorkerState,
+  ): Promise<GitManagedOperationRecord | null> {
+    const current = await this.getGitOperation(
+      ownerId,
+      projectId,
+      worktreeId,
+      operationId,
+    );
+    if (!current) return null;
+    if (
+      current.type !== state.type ||
+      current.originalHead !== state.originalHead ||
+      current.sourceRef !== state.sourceRef ||
+      current.sourceRevision !== state.sourceRevision ||
+      current.targetRef !== state.targetRef ||
+      current.targetRevision !== state.targetRevision ||
+      current.checkpointRef !== state.checkpointRef
+    ) {
+      throw new Error(
+        "Worker operation state does not match its durable record.",
+      );
+    }
+    const terminal = ["completed", "failed", "aborted"].includes(state.state);
+    const output = [current.output, state.output]
+      .filter(Boolean)
+      .join("\n")
+      .slice(-1_000_000);
+    const rows = await this.database
+      .update(schema.gitOperations)
+      .set({
+        state: state.state,
+        currentHead: state.currentHead,
+        pendingCommits: state.pendingCommits,
+        currentStep: state.currentStep,
+        totalSteps: state.totalSteps,
+        conflictedPaths: state.conflictedPaths,
+        output,
+        error: null,
+        completedAt: terminal ? new Date() : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.gitOperations.id, operationId))
+      .returning();
+    return rows[0] ? toGitManagedOperationRecord(rows[0]) : null;
+  }
+
+  async failGitOperation(
+    ownerId: string,
+    projectId: string,
+    worktreeId: string,
+    operationId: string,
+    error: string,
+  ): Promise<GitManagedOperationRecord | null> {
+    const current = await this.getGitOperation(
+      ownerId,
+      projectId,
+      worktreeId,
+      operationId,
+    );
+    if (!current) return null;
+    const rows = await this.database
+      .update(schema.gitOperations)
+      .set({
+        state: "failed",
+        error: error.slice(0, 1_000_000),
+        completedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.gitOperations.id, operationId))
+      .returning();
+    return rows[0] ? toGitManagedOperationRecord(rows[0]) : null;
   }
 
   async reconcileProjectWorktrees(

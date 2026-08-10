@@ -8,6 +8,8 @@ import type {
   ChatTurnMode,
   CodeCapabilities,
   CodexRuntimeReport,
+  GitManagedOperationState,
+  GitManagedOperationType,
   PendingPlanQuestion,
   PlanStep,
   RemoteSurfaceCapabilities,
@@ -414,6 +416,65 @@ export const projectWorktrees = pgTable(
     uniqueIndex("project_worktrees_source_default_unique")
       .on(table.projectSourceId)
       .where(sql`${table.isDefault} = true`),
+  ],
+);
+
+export const gitOperations = pgTable(
+  "git_operations",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    worktreeId: text("worktree_id")
+      .notNull()
+      .references(() => projectWorktrees.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    type: text("type").$type<GitManagedOperationType>().notNull(),
+    state: text("state").$type<GitManagedOperationState>().notNull(),
+    originalHead: text("original_head").notNull(),
+    currentHead: text("current_head").notNull(),
+    sourceRef: text("source_ref"),
+    sourceRevision: text("source_revision"),
+    targetRef: text("target_ref"),
+    targetRevision: text("target_revision").notNull(),
+    pendingCommits: jsonb("pending_commits")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    currentStep: integer("current_step").notNull().default(0),
+    totalSteps: integer("total_steps").notNull().default(1),
+    conflictedPaths: jsonb("conflicted_paths")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    output: text("output").notNull().default(""),
+    checkpointRef: text("checkpoint_ref"),
+    error: text("error"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("git_operations_project_worktree_updated_index").on(
+      table.projectId,
+      table.worktreeId,
+      table.updatedAt,
+    ),
+    uniqueIndex("git_operations_worktree_active_unique")
+      .on(table.worktreeId)
+      .where(
+        sql`${table.state} in ('queued', 'running', 'conflicted', 'awaiting-user-action')`,
+      ),
   ],
 );
 

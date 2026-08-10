@@ -3,6 +3,7 @@ import type {
   GitBranchAction,
   GitBranchList,
   GitManagedBranch,
+  GitMergeRebaseAction,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -10,6 +11,8 @@ import {
   CloudUpload,
   GitBranch,
   GitBranchPlus,
+  GitMerge,
+  GitPullRequestArrow,
   Loader2,
   MoreHorizontal,
   RefreshCw,
@@ -162,12 +165,14 @@ function BranchActions({
   disabled,
   inventory,
   onEdit,
+  onOperation,
   onReview,
 }: {
   branch: GitManagedBranch;
   disabled: boolean;
   inventory: GitBranchList;
   onEdit(editor: EditorState): void;
+  onOperation(action: GitMergeRebaseAction): void;
   onReview(action: GitBranchAction): void;
 }) {
   const itemClass =
@@ -194,19 +199,38 @@ function BranchActions({
           className="z-50 min-w-44 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg"
         >
           {!branch.current ? (
-            <DropdownMenuPrimitive.Item
-              className={itemClass}
-              disabled={blockedByWorktree}
-              onSelect={() =>
-                onReview({
-                  type: "switch",
-                  name: branch.name,
-                  kind: branch.kind,
-                })
-              }
-            >
-              <ArrowRightLeft className="size-3.5" /> Switch here
-            </DropdownMenuPrimitive.Item>
+            <>
+              <DropdownMenuPrimitive.Item
+                className={itemClass}
+                disabled={blockedByWorktree}
+                onSelect={() =>
+                  onReview({
+                    type: "switch",
+                    name: branch.name,
+                    kind: branch.kind,
+                  })
+                }
+              >
+                <ArrowRightLeft className="size-3.5" /> Switch here
+              </DropdownMenuPrimitive.Item>
+              <DropdownMenuPrimitive.Item
+                className={itemClass}
+                onSelect={() =>
+                  onOperation({ type: "merge", sourceRef: branch.name })
+                }
+              >
+                <GitMerge className="size-3.5" /> Merge into current
+              </DropdownMenuPrimitive.Item>
+              <DropdownMenuPrimitive.Item
+                className={itemClass}
+                onSelect={() =>
+                  onOperation({ type: "rebase", sourceRef: branch.name })
+                }
+              >
+                <GitPullRequestArrow className="size-3.5" /> Rebase current onto
+              </DropdownMenuPrimitive.Item>
+              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+            </>
           ) : null}
           {branch.kind === "local" ? (
             <>
@@ -278,10 +302,12 @@ function BranchActions({
 
 export function GitBranchPanel({
   onClose,
+  onOperation,
   projectId,
   worktreeId,
 }: {
   onClose(): void;
+  onOperation(action: GitMergeRebaseAction): void;
   projectId: string;
   worktreeId: string;
 }) {
@@ -508,6 +534,7 @@ export function GitBranchPanel({
                 disabled={busy}
                 inventory={branches.data!}
                 onEdit={setEditor}
+                onOperation={onOperation}
                 onReview={review}
               />
             </div>

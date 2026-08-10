@@ -63,6 +63,8 @@ import {
   gitBranchMutationResultSchema,
   gitCommitActionPreviewSchema,
   gitCommitActionResultSchema,
+  gitManagedOperationPreviewSchema,
+  gitManagedOperationResponseSchema,
   gitCommitDetailSchema,
   gitComparisonSchema,
   gitFileDiffSchema,
@@ -139,6 +141,7 @@ import type {
   GitAction,
   GitBranchAction,
   GitCommitAction,
+  GitMergeRebaseAction,
   GitDiffScope,
   GitPartialPatchRequest,
   GitRemoteAction,
@@ -531,6 +534,58 @@ export async function applyProjectWorktreeCommitAction(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/commits/actions/apply`,
       { action, token },
+    ),
+  );
+}
+
+export async function getProjectWorktreeGitOperation(
+  projectId: string,
+  worktreeId: string,
+) {
+  return gitManagedOperationResponseSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/operations/current`,
+    ),
+  );
+}
+
+export async function previewProjectWorktreeGitOperation(
+  projectId: string,
+  worktreeId: string,
+  action: GitMergeRebaseAction,
+) {
+  return gitManagedOperationPreviewSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/operations/preview`,
+      action,
+    ),
+  );
+}
+
+export async function startProjectWorktreeGitOperation(
+  projectId: string,
+  worktreeId: string,
+  action: GitMergeRebaseAction,
+  token: string,
+) {
+  return gitManagedOperationResponseSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/operations`,
+      { action, token },
+    ),
+  );
+}
+
+export async function controlProjectWorktreeGitOperation(
+  projectId: string,
+  worktreeId: string,
+  operationId: string,
+  action: "continue" | "skip" | "abort",
+) {
+  return gitManagedOperationResponseSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/operations/${encodeURIComponent(operationId)}/control`,
+      { action },
     ),
   );
 }

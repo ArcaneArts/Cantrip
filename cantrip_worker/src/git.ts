@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -12,6 +12,8 @@ import {
   gitBranchMutationResultSchema,
   gitCommitActionPreviewSchema,
   gitCommitActionResultSchema,
+  gitManagedOperationPreviewSchema,
+  gitManagedOperationWorkerStateSchema,
   gitComparisonSchema,
   gitCommitDetailSchema,
   gitFileDiffSchema,
@@ -40,6 +42,10 @@ import {
   type GitCommitAction,
   type GitCommitActionPreview,
   type GitCommitActionResult,
+  type GitManagedOperationContext,
+  type GitManagedOperationPreview,
+  type GitManagedOperationWorkerState,
+  type GitMergeRebaseAction,
   type GitComparisonCommit,
   type GitManagedBranch,
   type GitComparison,
@@ -133,12 +139,16 @@ function safeGitPath(candidate: string): boolean {
   );
 }
 
-async function runGit(cwd: string, args: string[]): Promise<string> {
+async function runGit(
+  cwd: string,
+  args: string[],
+  environment: NodeJS.ProcessEnv = process.env,
+): Promise<string> {
   try {
     const { stdout, stderr } = await execFileAsync(
       "git",
       ["-C", cwd, ...args],
-      { encoding: "utf8", maxBuffer: GIT_BUFFER },
+      { encoding: "utf8", env: environment, maxBuffer: GIT_BUFFER },
     );
     return `${stdout}${stderr}`.trim();
   } catch (error) {
@@ -230,9 +240,10 @@ async function gitRawWithEnvironment(
 async function runGitOutcome(
   cwd: string,
   args: string[],
+  environment: NodeJS.ProcessEnv = process.env,
 ): Promise<{ code: number; output: string }> {
   try {
-    return { code: 0, output: await runGit(cwd, args) };
+    return { code: 0, output: await runGit(cwd, args, environment) };
   } catch (error) {
     const failure = error as Error;
     return { code: 1, output: failure.message };
@@ -527,6 +538,7 @@ async function resolveCommit(cwd: string, revision: string): Promise<string> {
   const hash = await gitOutput(cwd, [
     "rev-parse",
     "--verify",
+    "--end-of-options",
     `${revision}^{commit}`,
   ]).catch(() => "");
   if (!/^[0-9a-f]{40,64}$/u.test(hash)) {
@@ -2887,6 +2899,14 @@ async function assertNoInProgressGitOperation(cwd: string): Promise<void> {
       );
     }
   }
+  if (
+    (await readGitPathFile(cwd, "rebase-merge/head-name")) !== null ||
+    (await readGitPathFile(cwd, "rebase-apply/head-name")) !== null
+  ) {
+    throw new Error(
+      "Finish or abort the active Git operation before starting another commit action.",
+    );
+  }
 }
 
 function requireCleanStatus(status: GitStatus, action: string): void {
@@ -3202,6 +3222,453 @@ export async function applyGitCommitAction(
     checkpointRef: preview.checkpointRef,
     operation,
   });
+}
+
+const managedOperationEnvironment: NodeJS.ProcessEnv = {
+  ...process.env,
+  GIT_EDITOR: "true",
+  GIT_SEQUENCE_EDITOR: "true",
+};
+
+async function currentBranchRef(cwd: string): Promise<string> {
+  const branch = await gitOutput(cwd, ["symbolic-ref", "-q", "HEAD"]).catch(
+    () => "",
+  );
+  if (!branch.startsWith("refs/heads/")) {
+    throw new Error(
+      "Merge and rebase require the selected worktree to be on a local branch.",
+    );
+  }
+  return branch;
+}
+
+async function boundedRevisionRange(
+  cwd: string,
+  range: string,
+): Promise<string[]> {
+  const revisions = (await gitOutput(cwd, ["rev-list", "--reverse", range]))
+    .split("\n")
+    .map((revision) => revision.trim())
+    .filter(Boolean);
+  if (revisions.length > 10_000) {
+    throw new Error(
+      "This operation includes more than 10,000 commits. Narrow the selected range first.",
+    );
+  }
+  return revisions;
+}
+
+function previewStatusFiles(
+  status: GitStatus,
+): GitManagedOperationPreview["files"] {
+  return status.files.map((file) => ({
+    path: file.path,
+    originalPath: file.originalPath,
+    status: conflictPaths({ ...status, files: [file] }).length
+      ? "unmerged"
+      : commitFileStatus(
+          file.indexStatus !== " " && file.indexStatus !== "?"
+            ? file.indexStatus
+            : file.worktreeStatus,
+        ),
+    additions: null,
+    deletions: null,
+    binary: false,
+  }));
+}
+
+async function previewManagedOperationEffect(
+  cwd: string,
+  action: GitMergeRebaseAction,
+  head: string,
+  sourceRevision: string,
+): Promise<{
+  files: GitManagedOperationPreview["files"];
+  patch: string;
+  patchTruncated: boolean;
+  wouldConflict: boolean;
+}> {
+  const temporaryRoot = await mkdtemp(
+    path.join(tmpdir(), "cantrip-operation-preview-"),
+  );
+  const previewPath = path.join(temporaryRoot, "worktree");
+  let added = false;
+  try {
+    await runGit(cwd, ["worktree", "add", "--detach", previewPath, head]);
+    added = true;
+    const arguments_ =
+      action.type === "merge"
+        ? [
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "commit.gpgSign=false",
+            "merge",
+            "--no-edit",
+            sourceRevision,
+          ]
+        : [
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "commit.gpgSign=false",
+            "rebase",
+            sourceRevision,
+          ];
+    const outcome = await runGitOutcome(
+      previewPath,
+      arguments_,
+      managedOperationEnvironment,
+    );
+    const status = await readGitStatus(previewPath);
+    const conflicts = conflictPaths(status);
+    if (outcome.code !== 0 && conflicts.length === 0) {
+      throw new Error(outcome.output);
+    }
+    if (conflicts.length > 0) {
+      const diff = await gitDiffOutput(
+        previewPath,
+        ["diff", "--binary", "--no-ext-diff", "HEAD"],
+        false,
+      );
+      return {
+        files: previewStatusFiles(status),
+        patch: diff.output.slice(0, DIFF_CHARACTER_LIMIT),
+        patchTruncated:
+          diff.truncated || diff.output.length > DIFF_CHARACTER_LIMIT,
+        wouldConflict: true,
+      };
+    }
+    const previewHead = await resolveCommit(previewPath, "HEAD");
+    const [changed, diff] = await Promise.all([
+      readCommitFiles(previewPath, head, previewHead),
+      gitDiffOutput(
+        previewPath,
+        ["diff", "--binary", "--no-ext-diff", head, previewHead],
+        false,
+      ),
+    ]);
+    return {
+      files: changed.files,
+      patch: diff.output.slice(0, DIFF_CHARACTER_LIMIT),
+      patchTruncated:
+        changed.truncated ||
+        diff.truncated ||
+        diff.output.length > DIFF_CHARACTER_LIMIT,
+      wouldConflict: false,
+    };
+  } finally {
+    if (added) {
+      await runGitOutcome(previewPath, ["merge", "--abort"]);
+      await runGitOutcome(previewPath, ["rebase", "--abort"]);
+      await runGitOutcome(cwd, ["worktree", "remove", "--force", previewPath]);
+    }
+    await rm(temporaryRoot, { force: true, recursive: true });
+  }
+}
+
+function managedOperationToken(
+  action: GitMergeRebaseAction,
+  context: GitManagedOperationContext,
+  workspace: string,
+  patch: string,
+): string {
+  return createHash("sha256")
+    .update(JSON.stringify({ action, context, workspace }))
+    .update("\0")
+    .update(patch)
+    .digest("hex");
+}
+
+export async function previewGitManagedOperation(
+  cwd: string,
+  action: GitMergeRebaseAction,
+): Promise<GitManagedOperationPreview> {
+  await assertNoInProgressGitOperation(cwd);
+  const [status, originalHead, targetRef, sourceRevision] = await Promise.all([
+    readGitStatus(cwd),
+    resolveCommit(cwd, "HEAD"),
+    currentBranchRef(cwd),
+    resolveCommit(cwd, action.sourceRef),
+  ]);
+  requireCleanStatus(status, action.type === "merge" ? "Merge" : "Rebase");
+  if (sourceRevision === originalHead) {
+    throw new Error(
+      "The selected source already resolves to the current HEAD.",
+    );
+  }
+  const pendingCommits = await boundedRevisionRange(
+    cwd,
+    action.type === "merge"
+      ? `${originalHead}..${sourceRevision}`
+      : `${sourceRevision}..${originalHead}`,
+  );
+  const commits = await Promise.all(
+    pendingCommits.map((revision) => commitActionSummary(cwd, revision)),
+  );
+  const effect = await previewManagedOperationEffect(
+    cwd,
+    action,
+    originalHead,
+    sourceRevision,
+  );
+  const baseContext: GitManagedOperationContext = {
+    type: action.type,
+    originalHead,
+    sourceRef: action.sourceRef,
+    sourceRevision,
+    targetRef,
+    targetRevision: originalHead,
+    pendingCommits,
+    totalSteps: Math.max(1, pendingCommits.length),
+    checkpointRef: null,
+  };
+  const workspace = await workspaceFingerprint(cwd);
+  const provisionalToken = managedOperationToken(
+    action,
+    baseContext,
+    workspace,
+    effect.patch,
+  );
+  const context = {
+    ...baseContext,
+    checkpointRef:
+      action.type === "rebase"
+        ? `refs/cantrip/checkpoints/rebase-${originalHead.slice(0, 12)}-${provisionalToken.slice(0, 12)}`
+        : null,
+  };
+  const token = managedOperationToken(action, context, workspace, effect.patch);
+  const branchName = targetRef.replace(/^refs\/heads\//u, "");
+  const warnings = effect.wouldConflict
+    ? [
+        "The preview found conflicts. Starting leaves the operation resumable in the selected worktree.",
+      ]
+    : [];
+  if (action.type === "rebase") {
+    warnings.push(
+      "Rebase rewrites commit identities. Cantrip creates a recovery reference before it starts.",
+    );
+  }
+  return gitManagedOperationPreviewSchema.parse({
+    action,
+    token,
+    destructive: action.type === "rebase",
+    summary:
+      action.type === "merge"
+        ? `Merge ${action.sourceRef} (${sourceRevision.slice(0, 10)}) into ${branchName}.`
+        : `Rebase ${branchName} onto ${action.sourceRef} (${sourceRevision.slice(0, 10)}).`,
+    warnings,
+    context,
+    commits,
+    ...effect,
+  });
+}
+
+async function readGitPathFile(
+  cwd: string,
+  relativePath: string,
+): Promise<string | null> {
+  const resolved = await gitOutput(cwd, [
+    "rev-parse",
+    "--git-path",
+    relativePath,
+  ]);
+  try {
+    return (
+      await readFile(
+        path.isAbsolute(resolved) ? resolved : path.join(cwd, resolved),
+        "utf8",
+      )
+    ).trim();
+  } catch {
+    return null;
+  }
+}
+
+async function hasGitOperationMarker(
+  cwd: string,
+  type: GitManagedOperationContext["type"],
+): Promise<boolean> {
+  if (type === "merge") {
+    return gitSucceeds(cwd, ["rev-parse", "--verify", "-q", "MERGE_HEAD"]);
+  }
+  if (type === "rebase") {
+    return (
+      (await readGitPathFile(cwd, "rebase-merge/head-name")) !== null ||
+      (await readGitPathFile(cwd, "rebase-apply/head-name")) !== null
+    );
+  }
+  return gitSucceeds(cwd, [
+    "rev-parse",
+    "--verify",
+    "-q",
+    type === "cherry-pick" ? "CHERRY_PICK_HEAD" : "REVERT_HEAD",
+  ]);
+}
+
+async function managedOperationProgress(
+  cwd: string,
+  context: GitManagedOperationContext,
+): Promise<{ currentStep: number; pendingCommits: string[] }> {
+  if (context.type === "merge" || context.type === "revert") {
+    return {
+      currentStep: 1,
+      pendingCommits: context.pendingCommits,
+    };
+  }
+  const todo =
+    context.type === "rebase"
+      ? ((await readGitPathFile(cwd, "rebase-merge/git-rebase-todo")) ??
+        (await readGitPathFile(cwd, "rebase-apply/git-rebase-todo")))
+      : await readGitPathFile(cwd, "sequencer/todo");
+  const todoRevisions = (
+    await Promise.all(
+      (todo ?? "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith("#"))
+        .map((line) => line.split(/\s+/u)[1] ?? "")
+        .filter(Boolean)
+        .map((revision) => resolveCommit(cwd, revision).catch(() => null)),
+    )
+  ).filter((revision): revision is string => revision !== null);
+  const currentMarker =
+    context.type === "rebase" ? "REBASE_HEAD" : "CHERRY_PICK_HEAD";
+  const current = await resolveCommit(cwd, currentMarker).catch(() => null);
+  const pendingCommits = [current, ...todoRevisions].filter(
+    (revision, index, all): revision is string =>
+      revision !== null && all.indexOf(revision) === index,
+  );
+  if (pendingCommits.length === 0)
+    pendingCommits.push(...context.pendingCommits);
+  const currentStep = Math.min(
+    context.totalSteps,
+    Math.max(1, context.totalSteps - pendingCommits.length + 1),
+  );
+  return {
+    currentStep,
+    pendingCommits,
+  };
+}
+
+export async function inspectGitManagedOperation(
+  cwd: string,
+  context: GitManagedOperationContext,
+  output = "",
+  terminalHint: "completed" | "aborted" | null = null,
+): Promise<GitManagedOperationWorkerState> {
+  const [status, currentHead, active, progress] = await Promise.all([
+    readGitStatus(cwd),
+    resolveCommit(cwd, "HEAD"),
+    hasGitOperationMarker(cwd, context.type),
+    managedOperationProgress(cwd, context),
+  ]);
+  const conflicts = conflictPaths(status);
+  const state = active
+    ? conflicts.length
+      ? "conflicted"
+      : "awaiting-user-action"
+    : terminalHint
+      ? terminalHint
+      : currentHead === context.originalHead
+        ? "aborted"
+        : "completed";
+  return gitManagedOperationWorkerStateSchema.parse({
+    ...context,
+    state,
+    currentHead,
+    currentStep:
+      state === "completed" ? context.totalSteps : progress.currentStep,
+    pendingCommits: state === "completed" ? [] : progress.pendingCommits,
+    conflictedPaths: conflicts,
+    output: output.slice(-1_000_000),
+    status,
+  });
+}
+
+export async function startGitManagedOperation(
+  cwd: string,
+  action: GitMergeRebaseAction,
+  token: string,
+): Promise<GitManagedOperationWorkerState> {
+  const preview = await previewGitManagedOperation(cwd, action);
+  if (preview.token !== token) {
+    throw new Error(
+      "The worktree or selected revisions changed after this preview. Review the operation again.",
+    );
+  }
+  if (preview.context.checkpointRef) {
+    await runGit(cwd, [
+      "update-ref",
+      preview.context.checkpointRef,
+      preview.context.originalHead,
+    ]);
+  }
+  const arguments_ =
+    action.type === "merge"
+      ? ["merge", "--no-edit", preview.context.sourceRevision!]
+      : ["rebase", preview.context.sourceRevision!];
+  const outcome = await runGitOutcome(
+    cwd,
+    arguments_,
+    managedOperationEnvironment,
+  );
+  const state = await inspectGitManagedOperation(
+    cwd,
+    preview.context,
+    outcome.output,
+    outcome.code === 0 ? "completed" : null,
+  );
+  if (outcome.code !== 0 && state.state === "aborted") {
+    throw new Error(outcome.output);
+  }
+  return state;
+}
+
+export async function controlGitManagedOperation(
+  cwd: string,
+  context: GitManagedOperationContext,
+  action: "continue" | "skip" | "abort",
+): Promise<GitManagedOperationWorkerState> {
+  if (!(await hasGitOperationMarker(cwd, context.type))) {
+    return inspectGitManagedOperation(cwd, context);
+  }
+  const status = await readGitStatus(cwd);
+  if (action === "continue" && conflictPaths(status).length > 0) {
+    throw new Error(
+      "Resolve and stage every conflicted path before continuing this operation.",
+    );
+  }
+  if (action === "skip" && context.type === "merge") {
+    throw new Error("Merge operations cannot skip a commit.");
+  }
+  const arguments_ =
+    action === "abort"
+      ? [context.type, "--abort"]
+      : action === "skip"
+        ? [context.type, "--skip"]
+        : context.type === "merge"
+          ? ["merge", "--continue"]
+          : [context.type, "--continue"];
+  const outcome = await runGitOutcome(
+    cwd,
+    arguments_,
+    managedOperationEnvironment,
+  );
+  const state = await inspectGitManagedOperation(
+    cwd,
+    context,
+    outcome.output,
+    outcome.code === 0 ? (action === "abort" ? "aborted" : "completed") : null,
+  );
+  if (
+    outcome.code !== 0 &&
+    state.state !== "conflicted" &&
+    state.state !== "awaiting-user-action"
+  ) {
+    throw new Error(outcome.output);
+  }
+  return state;
 }
 
 async function unstage(cwd: string, paths: string[] | null): Promise<string> {

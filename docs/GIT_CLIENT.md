@@ -254,6 +254,52 @@ Manual QA:
    rejects the stale review. Disconnect the worker and confirm no action falls
    back to another worktree.
 
+## Resumable merge and rebase operations
+
+Open **Operations** from a History tab, or choose **Merge into current** or
+**Rebase current onto** from a branch row. Both workflows remain bound to the
+History tab's explicit worktree. The worker resolves the selected source and
+current local branch, requires a clean worktree, and runs a detached temporary
+worktree preview before the real mutation. Cantrip shows the affected commits,
+files, exact bounded patch, predicted conflicts, and stale-review token. Rebase
+also creates a `refs/cantrip/checkpoints/rebase-...` recovery reference before
+rewriting commit identities.
+
+The server records an operation before asking the worker to mutate Git. Its
+durable row includes worker/worktree ownership, source and target refs and
+revisions, original and current HEAD, current/total steps, pending commits,
+conflicted paths, bounded command output, checkpoint, and timestamps. Active
+states are unique per worktree and survive app or server reconnection. The
+server refreshes them against Git's merge, rebase, cherry-pick, or revert
+sequencer state when the assigned worker is available; while it is offline the
+last authoritative state remains visible instead of falling back to another
+worker.
+
+**Continue** is enabled once Git's index has no unresolved entries. Rebase,
+cherry-pick, and revert can **Skip** where Git permits it, while every active
+operation can **Abort**. Completion, failure, and abort are terminal durable
+states. Status, history, branch, and operation queries are invalidated only
+after authoritative worker results, and project worktree observation refreshes
+all affected lanes.
+
+Manual QA:
+
+1. Merge a clean, divergent branch and confirm preview files and patch match
+   the resulting merge. Repeat with a fast-forward merge.
+2. Preview a conflicting merge, start it, reload the app, and confirm source,
+   target, original HEAD, step, output, and conflicted paths remain visible.
+3. Resolve and stage all merge paths in Working changes, return to Operations,
+   continue, and confirm history and every worktree marker refresh.
+4. Rebase a multi-commit branch onto a divergent ref, verify the recovery ref,
+   then continue through one conflict and skip a later commit.
+5. Start another rebase, restart the server or disconnect/reconnect the worker,
+   and confirm the same durable operation resumes without targeting Primary.
+6. Abort merge, rebase, cherry-pick, and revert conflicts and confirm each
+   selected worktree returns to its recorded original HEAD.
+7. Change HEAD or the worktree after preview and confirm start rejects the stale
+   token. Try starting a second mutation while one is active and confirm it is
+   blocked with the active operation named.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport
@@ -263,7 +309,7 @@ Manual QA:
 - [x] Complete branch management
 - [x] Remotes, tags, and GitHub releases
 - [x] Commit and history actions
-- [ ] Resumable merge and rebase operations
+- [x] Resumable merge and rebase operations
 - [ ] Conflict resolution
 - [ ] Advanced history rewriting
 - [ ] Full GitHub pull-request workflow
