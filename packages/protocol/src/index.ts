@@ -3349,6 +3349,18 @@ export const gitSignatureSchema = z.object({
   signer: z.string().nullable(),
   key: z.string().nullable(),
   fingerprint: z.string().nullable(),
+  format: z.enum(["gpg", "ssh", "x509", "unknown"]).nullable().default(null),
+  verification: z
+    .enum([
+      "available",
+      "missing-key",
+      "missing-config",
+      "missing-tool",
+      "error",
+      "not-applicable",
+    ])
+    .default("not-applicable"),
+  verificationMessage: z.string().max(10_000).nullable().default(null),
 });
 
 export const gitRelativePathSchema = z

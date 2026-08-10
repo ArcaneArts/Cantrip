@@ -20,6 +20,9 @@ const tag: GitTagSummary = {
     signer: "Cantrip",
     key: "ABC123",
     fingerprint: "DEF456",
+    format: "ssh",
+    verification: "available",
+    verificationMessage: "Good SSH signature",
   },
   publishedRemotes: ["origin"],
 };
