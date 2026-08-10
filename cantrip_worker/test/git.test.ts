@@ -8,7 +8,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   applyGitPartialPatch,
+  applyGitStashAction,
+  createGitStash,
   previewGitPartialPatch,
+  previewGitStashAction,
   readGitCommitDetail,
   readGitComparison,
   readGitFileDiff,
@@ -16,6 +19,8 @@ import {
   readGitRevisionFileDiff,
   readGitRevisionCandidates,
   readGitStatus,
+  readGitStashes,
+  readGitStashFileDiff,
   runGitAction,
 } from "../src/git.js";
 
@@ -31,6 +36,237 @@ afterEach(async () => {
 });
 
 describe("Git history", () => {
+  it("creates, lists, previews, applies, and drops scoped stashes", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "staged.txt"), "base\n");
+    await writeFile(path.join(directory, "working.txt"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Initial"]);
+
+    await writeFile(path.join(directory, "staged.txt"), "staged\n");
+    await execFileAsync("git", ["-C", directory, "add", "staged.txt"]);
+    await writeFile(path.join(directory, "working.txt"), "working\n");
+    await writeFile(path.join(directory, "untracked.txt"), "untracked\n");
+    const created = await createGitStash(directory, {
+      message: "Working shelf",
+      includeStaged: false,
+      includeUnstaged: true,
+      includeUntracked: true,
+    });
+    expect(created.stash).toMatchObject({
+      message: "Working shelf",
+      includesUntracked: true,
+    });
+    expect(created.stash?.files.map(({ path }) => path).sort()).toEqual([
+      "untracked.txt",
+      "working.txt",
+    ]);
+    expect(await readFile(path.join(directory, "working.txt"), "utf8")).toBe(
+      "base\n",
+    );
+    await expect(
+      readFile(path.join(directory, "untracked.txt")),
+    ).rejects.toThrow();
+    expect((await readGitStatus(directory)).files).toEqual([
+      expect.objectContaining({ path: "staged.txt", staged: true }),
+    ]);
+
+    const untrackedDiff = await readGitStashFileDiff(
+      directory,
+      created.stash!.hash,
+      "untracked.txt",
+    );
+    expect(untrackedDiff.patch).toContain("+untracked");
+    const applyAction = {
+      type: "apply" as const,
+      ref: created.stash!.ref,
+      hash: created.stash!.hash,
+    };
+    const applyPreview = await previewGitStashAction(directory, applyAction);
+    expect(applyPreview.destructive).toBe(false);
+    expect(applyPreview.warnings).toHaveLength(1);
+    const applied = await applyGitStashAction(
+      directory,
+      applyAction,
+      applyPreview.token,
+    );
+    expect(applied.conflictedPaths).toEqual([]);
+    expect(await readFile(path.join(directory, "working.txt"), "utf8")).toBe(
+      "working\n",
+    );
+    expect(await readFile(path.join(directory, "untracked.txt"), "utf8")).toBe(
+      "untracked\n",
+    );
+
+    const dropAction = {
+      type: "drop" as const,
+      ref: created.stash!.ref,
+      hash: created.stash!.hash,
+    };
+    const dropPreview = await previewGitStashAction(directory, dropAction);
+    expect(dropPreview.destructive).toBe(true);
+    await applyGitStashAction(directory, dropAction, dropPreview.token);
+    expect((await readGitStashes(directory)).stashes).toEqual([]);
+    await execFileAsync("git", ["-C", directory, "reset", "--hard", "HEAD"]);
+    await execFileAsync("git", ["-C", directory, "clean", "-fd"]);
+    await expect(
+      createGitStash(directory, {
+        message: "Nothing",
+        includeStaged: true,
+        includeUnstaged: false,
+        includeUntracked: false,
+      }),
+    ).rejects.toThrow(/did not create|no local changes/u);
+    await expect(
+      readGitStashFileDiff(directory, created.stash!.hash, "../secret"),
+    ).rejects.toThrow(/invalid stash diff path/iu);
+  });
+
+  it("keeps conflicted stashes recoverable and rejects stale clear previews", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "conflict.txt"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Initial"]);
+
+    await writeFile(path.join(directory, "conflict.txt"), "stash\n");
+    const stash = (
+      await createGitStash(directory, {
+        message: "Conflict shelf",
+        includeStaged: true,
+        includeUnstaged: true,
+        includeUntracked: false,
+      })
+    ).stash!;
+    await writeFile(path.join(directory, "conflict.txt"), "branch\n");
+    await execFileAsync("git", ["-C", directory, "commit", "-am", "Diverge"]);
+    const popAction = {
+      type: "pop" as const,
+      ref: stash.ref,
+      hash: stash.hash,
+    };
+    const popPreview = await previewGitStashAction(directory, popAction);
+    const result = await applyGitStashAction(
+      directory,
+      popAction,
+      popPreview.token,
+    );
+    expect(result.conflictedPaths).toEqual(["conflict.txt"]);
+    expect((await readGitStashes(directory)).stashes).toEqual([
+      expect.objectContaining({ hash: stash.hash }),
+    ]);
+
+    await execFileAsync("git", ["-C", directory, "reset", "--hard", "HEAD"]);
+    const clearAction = { type: "clear" as const };
+    const stalePreview = await previewGitStashAction(directory, clearAction);
+    await writeFile(path.join(directory, "second.txt"), "second\n");
+    await createGitStash(directory, {
+      message: "Second shelf",
+      includeStaged: true,
+      includeUnstaged: true,
+      includeUntracked: true,
+    });
+    await expect(
+      applyGitStashAction(directory, clearAction, stalePreview.token),
+    ).rejects.toThrow(/no longer match/u);
+    const clearPreview = await previewGitStashAction(directory, clearAction);
+    await applyGitStashAction(directory, clearAction, clearPreview.token);
+    expect((await readGitStashes(directory)).stashes).toEqual([]);
+  });
+
+  it("creates staged-only stashes and branches from their base", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "staged.txt"), "base\n");
+    await writeFile(path.join(directory, "working.txt"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Initial"]);
+
+    await writeFile(path.join(directory, "staged.txt"), "staged\n");
+    await execFileAsync("git", ["-C", directory, "add", "staged.txt"]);
+    await writeFile(path.join(directory, "working.txt"), "working\n");
+    const stash = (
+      await createGitStash(directory, {
+        message: "Staged shelf",
+        includeStaged: true,
+        includeUnstaged: false,
+        includeUntracked: false,
+      })
+    ).stash!;
+    expect(stash.files.map(({ path }) => path)).toEqual(["staged.txt"]);
+    expect(await readFile(path.join(directory, "working.txt"), "utf8")).toBe(
+      "working\n",
+    );
+    expect((await readGitStatus(directory)).files).toEqual([
+      expect.objectContaining({ path: "working.txt", unstaged: true }),
+    ]);
+
+    await execFileAsync("git", ["-C", directory, "reset", "--hard", "HEAD"]);
+    const branchAction = {
+      type: "branch" as const,
+      ref: stash.ref,
+      hash: stash.hash,
+      branch: "from-stash",
+    };
+    const preview = await previewGitStashAction(directory, branchAction);
+    const result = await applyGitStashAction(
+      directory,
+      branchAction,
+      preview.token,
+    );
+    expect(result.status.branch).toBe("from-stash");
+    expect(await readFile(path.join(directory, "staged.txt"), "utf8")).toBe(
+      "staged\n",
+    );
+    expect((await readGitStashes(directory)).stashes).toEqual([]);
+  });
+
   it("previews and applies exact line selections for stage, unstage, and discard", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
     directories.push(directory);

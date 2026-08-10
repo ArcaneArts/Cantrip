@@ -1,5 +1,8 @@
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { promisify } from "node:util";
 
 import {
@@ -9,6 +12,10 @@ import {
   gitFileDiffSchema,
   gitHistorySchema,
   gitPartialPatchPreviewSchema,
+  gitStashActionPreviewSchema,
+  gitStashFileDiffSchema,
+  gitStashListSchema,
+  gitStashMutationResultSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
   gitStatusSchema,
@@ -24,6 +31,14 @@ import {
   type GitHistory,
   type GitPartialPatchPreview,
   type GitPartialPatchRequest,
+  type GitStashAction,
+  type GitStashActionPreview,
+  type GitStashCreate,
+  type GitStashFile,
+  type GitStashFileDiff,
+  type GitStashList,
+  type GitStashMutationResult,
+  type GitStashSummary,
   type GitRef,
   type GitRevisionFileDiff,
   type GitRevisionCandidate,
@@ -124,9 +139,11 @@ async function runGitWithInput(
   cwd: string,
   args: string[],
   input: string,
+  environment: NodeJS.ProcessEnv = process.env,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn("git", ["-C", cwd, ...args], {
+      env: environment,
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -162,6 +179,31 @@ async function runGitWithInput(
     });
     child.stdin.end(input);
   });
+}
+
+async function gitRawWithEnvironment(
+  cwd: string,
+  args: string[],
+  environment: NodeJS.ProcessEnv,
+): Promise<string> {
+  const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
+    encoding: "utf8",
+    env: environment,
+    maxBuffer: GIT_BUFFER,
+  });
+  return stdout;
+}
+
+async function runGitOutcome(
+  cwd: string,
+  args: string[],
+): Promise<{ code: number; output: string }> {
+  try {
+    return { code: 0, output: await runGit(cwd, args) };
+  } catch (error) {
+    const failure = error as Error;
+    return { code: 1, output: failure.message };
+  }
 }
 
 function parseRefs(
@@ -1220,6 +1262,397 @@ export async function applyGitPartialPatch(
   return gitActionResultSchema.parse({
     output,
     status: await readGitStatus(cwd),
+  });
+}
+
+const STASH_LIMIT = 200;
+const STASH_FILE_LIMIT = 2_000;
+
+function stashMessage(subject: string): string {
+  const separator = subject.indexOf(": ");
+  return separator >= 0 ? subject.slice(separator + 2) : subject;
+}
+
+function parseStashNumstat(output: string): {
+  files: GitStashFile[];
+  total: number;
+} {
+  const stats = parseNumstat(output);
+  const files = [...stats.entries()]
+    .slice(0, STASH_FILE_LIMIT)
+    .map(([filePath, stat]) => ({
+      path: filePath,
+      additions: stat.additions,
+      deletions: stat.deletions,
+      binary: stat.additions === null || stat.deletions === null,
+    }));
+  return { files, total: stats.size };
+}
+
+async function readStashSummary(
+  cwd: string,
+  input: {
+    ref: string;
+    hash: string;
+    shortHash: string;
+    parents: string;
+    createdAt: string;
+    subject: string;
+  },
+): Promise<GitStashSummary> {
+  const numstat = parseStashNumstat(
+    await gitRaw(cwd, [
+      "stash",
+      "show",
+      "--include-untracked",
+      "--numstat",
+      "-z",
+      input.hash,
+    ]),
+  );
+  const parents = input.parents.split(" ").filter(Boolean);
+  return {
+    ref: input.ref,
+    hash: input.hash,
+    shortHash: input.shortHash,
+    message: stashMessage(input.subject),
+    createdAt: input.createdAt,
+    baseHash: parents[0] ?? null,
+    files: numstat.files,
+    filesChanged: numstat.total,
+    filesTruncated: numstat.total > STASH_FILE_LIMIT,
+    additions: numstat.files.reduce(
+      (total, file) => total + (file.additions ?? 0),
+      0,
+    ),
+    deletions: numstat.files.reduce(
+      (total, file) => total + (file.deletions ?? 0),
+      0,
+    ),
+    includesUntracked: parents.length >= 3,
+  };
+}
+
+export async function readGitStashes(cwd: string): Promise<GitStashList> {
+  const output = await gitRaw(cwd, [
+    "stash",
+    "list",
+    `--max-count=${STASH_LIMIT + 1}`,
+    "--format=%gd%x00%H%x00%h%x00%P%x00%aI%x00%gs%x1e",
+  ]);
+  const records = output
+    .split("\x1e")
+    .map((record) => record.trim())
+    .filter(Boolean)
+    .flatMap((record) => {
+      const [ref, hash, shortHash, parents, createdAt, subject] =
+        record.split("\0");
+      return ref && hash && shortHash && parents && createdAt && subject
+        ? [{ ref, hash, shortHash, parents, createdAt, subject }]
+        : [];
+    });
+  const stashes: GitStashSummary[] = [];
+  for (const record of records.slice(0, STASH_LIMIT)) {
+    stashes.push(await readStashSummary(cwd, record));
+  }
+  return gitStashListSchema.parse({
+    stashes,
+    truncated: records.length > STASH_LIMIT,
+  });
+}
+
+async function createUnstagedShelf(
+  cwd: string,
+  request: GitStashCreate,
+): Promise<string> {
+  const status = await readGitStatus(cwd);
+  const trackedPaths = status.files
+    .filter((file) => file.unstaged && file.indexStatus !== "?")
+    .map(({ path }) => path);
+  const untrackedPaths = request.includeUntracked
+    ? status.files
+        .filter(
+          (file) => file.indexStatus === "?" && file.worktreeStatus === "?",
+        )
+        .map(({ path }) => path)
+    : [];
+  if (trackedPaths.length === 0 && untrackedPaths.length === 0) {
+    throw new Error("No matching unstaged or untracked changes to stash.");
+  }
+  const temporaryDirectory = await mkdtemp(
+    path.join(tmpdir(), "cantrip-stash-index-"),
+  );
+  const temporaryIndex = path.join(temporaryDirectory, "index");
+  const environment = { ...process.env, GIT_INDEX_FILE: temporaryIndex };
+  try {
+    const head = await resolveCommit(cwd, "HEAD");
+    await gitRawWithEnvironment(cwd, ["read-tree", "HEAD"], environment);
+    if (trackedPaths.length > 0) {
+      const patch = await gitRaw(cwd, [
+        "diff",
+        "--binary",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--",
+        ...trackedPaths,
+      ]);
+      try {
+        await runGitWithInput(
+          cwd,
+          ["apply", "--cached", "--binary", "-"],
+          patch,
+          environment,
+        );
+      } catch (error) {
+        throw new Error(
+          `The unstaged changes overlap staged content and cannot be shelved independently: ${(error as Error).message}`,
+        );
+      }
+    }
+    const worktreeTree = (
+      await gitRawWithEnvironment(cwd, ["write-tree"], environment)
+    ).trim();
+    await gitRawWithEnvironment(cwd, ["read-tree", "HEAD"], environment);
+    const baseTree = (
+      await gitRawWithEnvironment(cwd, ["write-tree"], environment)
+    ).trim();
+    const indexCommit = (
+      await gitRaw(cwd, [
+        "commit-tree",
+        baseTree,
+        "-p",
+        head,
+        "-m",
+        `index on ${head.slice(0, 12)}`,
+      ])
+    ).trim();
+    const parents = ["-p", head, "-p", indexCommit];
+    if (untrackedPaths.length > 0) {
+      await gitRawWithEnvironment(cwd, ["read-tree", "--empty"], environment);
+      await gitRawWithEnvironment(
+        cwd,
+        ["add", "--", ...untrackedPaths],
+        environment,
+      );
+      const untrackedTree = (
+        await gitRawWithEnvironment(cwd, ["write-tree"], environment)
+      ).trim();
+      const untrackedCommit = (
+        await gitRaw(cwd, [
+          "commit-tree",
+          untrackedTree,
+          "-p",
+          head,
+          "-m",
+          `untracked files on ${head.slice(0, 12)}`,
+        ])
+      ).trim();
+      parents.push("-p", untrackedCommit);
+    }
+    const stashCommit = (
+      await gitRaw(cwd, [
+        "commit-tree",
+        worktreeTree,
+        ...parents,
+        "-m",
+        `On ${await gitOutput(cwd, ["branch", "--show-current"])}: ${request.message}`,
+      ])
+    ).trim();
+    await runGit(cwd, ["stash", "store", "-m", request.message, stashCommit]);
+    if (trackedPaths.length > 0) {
+      await runGit(cwd, ["checkout", "--", ...trackedPaths]);
+    }
+    if (untrackedPaths.length > 0) {
+      await runGit(cwd, ["clean", "-f", "--", ...untrackedPaths]);
+    }
+    return "Saved selected unstaged changes";
+  } finally {
+    await rm(temporaryDirectory, { force: true, recursive: true });
+  }
+}
+
+export async function createGitStash(
+  cwd: string,
+  request: GitStashCreate,
+): Promise<GitStashMutationResult> {
+  const before = await readGitStashes(cwd);
+  let output: string;
+  if (!request.includeStaged) {
+    output = await createUnstagedShelf(cwd, request);
+  } else {
+    const args = ["stash", "push", "-m", request.message];
+    if (!request.includeUnstaged) args.push("--staged");
+    if (request.includeUntracked) args.push("--include-untracked");
+    output = await runGit(cwd, args);
+  }
+  const after = await readGitStashes(cwd);
+  const stash = after.stashes.find(
+    ({ hash }) => !before.stashes.some((existing) => existing.hash === hash),
+  );
+  if (!stash) throw new Error("Git did not create a stash for this selection.");
+  return gitStashMutationResultSchema.parse({
+    output,
+    status: await readGitStatus(cwd),
+    stash,
+    conflictedPaths: [],
+  });
+}
+
+export async function readGitStashFileDiff(
+  cwd: string,
+  hash: string,
+  filePath: string,
+): Promise<GitStashFileDiff> {
+  if (!safeGitPath(filePath)) throw new Error("Invalid stash diff path.");
+  const list = await readGitStashes(cwd);
+  const stash = list.stashes.find((candidate) => candidate.hash === hash);
+  const file = stash?.files.find((candidate) => candidate.path === filePath);
+  if (!stash || !file)
+    throw new Error(`No stash change exists for ${filePath}.`);
+  const untracked = stash.includesUntracked
+    ? await gitSucceeds(cwd, ["cat-file", "-e", `${hash}^3:${filePath}`])
+    : false;
+  const base = `${hash}^1`;
+  const target = untracked ? `${hash}^3` : hash;
+  const result = await gitDiffOutput(
+    cwd,
+    [
+      "diff",
+      "--no-color",
+      "--no-ext-diff",
+      "--no-textconv",
+      "--unified=3",
+      base,
+      target,
+      "--",
+      filePath,
+    ],
+    false,
+  );
+  const truncated =
+    result.truncated || result.output.length > DIFF_CHARACTER_LIMIT;
+  return gitStashFileDiffSchema.parse({
+    hash,
+    path: filePath,
+    patch: result.output.slice(0, DIFF_CHARACTER_LIMIT),
+    truncated,
+    binary: file.binary,
+  });
+}
+
+function stashActionToken(
+  action: GitStashAction,
+  stashes: GitStashSummary[],
+  workspaceFingerprint: string,
+): string {
+  return createHash("sha256")
+    .update(JSON.stringify(action))
+    .update("\0")
+    .update(stashes.map(({ ref, hash }) => `${ref}:${hash}`).join("\0"))
+    .update("\0")
+    .update(workspaceFingerprint)
+    .digest("hex");
+}
+
+async function workspaceFingerprint(cwd: string): Promise<string> {
+  const [status, patch] = await Promise.all([
+    gitRaw(cwd, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]),
+    gitRaw(cwd, ["diff", "--binary", "HEAD"]),
+  ]);
+  return createHash("sha256")
+    .update(status)
+    .update("\0")
+    .update(patch)
+    .digest("hex");
+}
+
+export async function previewGitStashAction(
+  cwd: string,
+  action: GitStashAction,
+): Promise<GitStashActionPreview> {
+  const list = await readGitStashes(cwd);
+  if (action.type === "clear" && list.truncated) {
+    throw new Error(
+      "The stash list exceeds the bounded preview. Drop stashes individually before clearing all.",
+    );
+  }
+  const selected =
+    action.type === "clear"
+      ? list.stashes
+      : list.stashes.filter(
+          ({ ref, hash }) => ref === action.ref && hash === action.hash,
+        );
+  if (selected.length === 0) {
+    throw new Error(
+      action.type === "clear"
+        ? "There are no stashes to clear."
+        : "The selected stash no longer exists at that position.",
+    );
+  }
+  if (action.type === "branch") {
+    await runGit(cwd, ["check-ref-format", "--branch", action.branch]);
+  }
+  const fingerprint = await workspaceFingerprint(cwd);
+  const status = await readGitStatus(cwd);
+  const warnings = status.files.length
+    ? [
+        "The selected worktree has local changes; applying this stash may conflict.",
+      ]
+    : [];
+  return gitStashActionPreviewSchema.parse({
+    action,
+    stashes: selected,
+    destructive: ["pop", "drop", "clear", "branch"].includes(action.type),
+    token: stashActionToken(action, selected, fingerprint),
+    warnings,
+  });
+}
+
+export async function applyGitStashAction(
+  cwd: string,
+  action: GitStashAction,
+  token: string,
+): Promise<GitStashMutationResult> {
+  const preview = await previewGitStashAction(cwd, action);
+  if (preview.token !== token) {
+    throw new Error(
+      "The stash or working changes no longer match this preview. Review the action again.",
+    );
+  }
+  const args =
+    action.type === "clear"
+      ? ["stash", "clear"]
+      : action.type === "branch"
+        ? ["stash", "branch", action.branch, action.ref]
+        : [
+            "stash",
+            action.type,
+            action.type === "apply" ? action.hash : action.ref,
+          ];
+  const outcome = await runGitOutcome(cwd, args);
+  const status = await readGitStatus(cwd);
+  const conflictedPaths = status.files
+    .filter(
+      (file) =>
+        file.indexStatus === "U" ||
+        file.worktreeStatus === "U" ||
+        ["DD", "AA"].includes(`${file.indexStatus}${file.worktreeStatus}`),
+    )
+    .map(({ path }) => path);
+  if (outcome.code !== 0 && conflictedPaths.length === 0) {
+    throw new Error(outcome.output || "Git stash action failed.");
+  }
+  const stash =
+    action.type === "apply"
+      ? ((await readGitStashes(cwd)).stashes.find(
+          ({ hash }) => hash === action.hash,
+        ) ?? null)
+      : null;
+  return gitStashMutationResultSchema.parse({
+    output: outcome.output,
+    status,
+    stash,
+    conflictedPaths,
   });
 }
 

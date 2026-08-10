@@ -18,6 +18,10 @@ import {
   gitPartialPatchPreviewSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
+  gitStashActionPreviewSchema,
+  gitStashFileDiffSchema,
+  gitStashListSchema,
+  gitStashMutationResultSchema,
   projectViewSummarySchema,
   projectWorktreeListSchema,
   projectWorktreeSummarySchema,
@@ -71,6 +75,19 @@ const gitPatchPreviewCommands: Array<
 > = [];
 const gitPatchApplyCommands: Array<
   Extract<WorkerCommand, { type: "git.patch.apply" }>
+> = [];
+const gitStashCommands: Array<
+  Extract<
+    WorkerCommand,
+    {
+      type:
+        | "git.stash.list"
+        | "git.stash.create"
+        | "git.stash.diff"
+        | "git.stash.action.preview"
+        | "git.stash.action.apply";
+    }
+  >
 > = [];
 const gitHistoryCommands: Array<
   Extract<WorkerCommand, { type: "git.history" }>
@@ -140,6 +157,28 @@ function status(branch = "main") {
   };
 }
 
+const stashFixture = {
+  ref: "stash@{0}",
+  hash: "9".repeat(40),
+  shortHash: "9".repeat(8),
+  message: "Review work",
+  createdAt: "2026-08-10T12:00:00.000Z",
+  baseHash: "1".repeat(40),
+  files: [
+    {
+      path: "src/app.ts",
+      additions: 1,
+      deletions: 1,
+      binary: false,
+    },
+  ],
+  filesChanged: 1,
+  filesTruncated: false,
+  additions: 1,
+  deletions: 1,
+  includesUntracked: false,
+};
+
 async function completeGitMutation(output: string) {
   activeGitMutations += 1;
   maximumConcurrentGitMutations = Math.max(
@@ -149,6 +188,17 @@ async function completeGitMutation(output: string) {
   await new Promise((resolve) => setTimeout(resolve, 5));
   activeGitMutations -= 1;
   return { status: status(), output };
+}
+
+async function completeStashMutation<T>(result: T): Promise<T> {
+  activeGitMutations += 1;
+  maximumConcurrentGitMutations = Math.max(
+    maximumConcurrentGitMutations,
+    activeGitMutations,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  activeGitMutations -= 1;
+  return result;
 }
 
 const workerBridge = {
@@ -376,6 +426,43 @@ const workerBridge = {
       case "git.patch.apply":
         gitPatchApplyCommands.push(command);
         return completeGitMutation("applied");
+      case "git.stash.list":
+        gitStashCommands.push(command);
+        return { stashes: [stashFixture], truncated: false };
+      case "git.stash.create":
+        gitStashCommands.push(command);
+        return completeStashMutation({
+          output: "saved",
+          status: status(),
+          stash: { ...stashFixture, message: command.request.message },
+          conflictedPaths: [],
+        });
+      case "git.stash.diff":
+        gitStashCommands.push(command);
+        return {
+          hash: command.hash,
+          path: command.path,
+          patch: "@@ -1 +1 @@\n-old\n+new\n",
+          truncated: false,
+          binary: false,
+        };
+      case "git.stash.action.preview":
+        gitStashCommands.push(command);
+        return {
+          action: command.action,
+          stashes: [stashFixture],
+          destructive: command.action.type !== "apply",
+          token: "e".repeat(64),
+          warnings: [],
+        };
+      case "git.stash.action.apply":
+        gitStashCommands.push(command);
+        return completeStashMutation({
+          output: "stash action complete",
+          status: status(),
+          stash: command.action.type === "apply" ? stashFixture : null,
+          conflictedPaths: [],
+        });
       case "code.prepareAgentTurn":
         return { prepared: true, sessions: [] };
       case "code.agentTurnState":
@@ -1412,6 +1499,105 @@ describe.sequential("server worktree control plane", () => {
       payload: patchRequest,
     });
     expect(offlinePatchPreview.statusCode).toBe(503);
+    connected = true;
+    const stashListResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes`,
+    });
+    expect(gitStashListSchema.parse(stashListResponse.json()).stashes).toEqual([
+      expect.objectContaining({ hash: stashFixture.hash }),
+    ]);
+    expect(gitStashCommands.at(-1)).toMatchObject({
+      type: "git.stash.list",
+      cwd: target.path,
+    });
+    const stashCreateResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes`,
+      payload: {
+        message: "Scoped shelf",
+        includeStaged: false,
+        includeUnstaged: true,
+        includeUntracked: true,
+      },
+    });
+    expect(
+      gitStashMutationResultSchema.parse(stashCreateResponse.json()),
+    ).toMatchObject({ stash: { message: "Scoped shelf" } });
+    expect(gitStashCommands.at(-1)).toMatchObject({
+      type: "git.stash.create",
+      cwd: target.path,
+      request: { message: "Scoped shelf" },
+    });
+    const stashDiffResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes/${stashFixture.hash}/diff?path=src%2Fapp.ts`,
+    });
+    expect(
+      gitStashFileDiffSchema.parse(stashDiffResponse.json()),
+    ).toMatchObject({
+      hash: stashFixture.hash,
+      path: "src/app.ts",
+    });
+    const popAction = {
+      type: "pop" as const,
+      ref: stashFixture.ref,
+      hash: stashFixture.hash,
+    };
+    const stashPreviewResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes/actions/preview`,
+      payload: popAction,
+    });
+    expect(
+      gitStashActionPreviewSchema.parse(stashPreviewResponse.json()),
+    ).toMatchObject({ action: popAction, token: "e".repeat(64) });
+    const stashApplyResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes/actions/apply`,
+      payload: { action: popAction, token: "e".repeat(64) },
+    });
+    expect(
+      gitStashMutationResultSchema.parse(stashApplyResponse.json()),
+    ).toMatchObject({ output: "stash action complete" });
+    expect(gitStashCommands.at(-1)).toMatchObject({
+      type: "git.stash.action.apply",
+      cwd: target.path,
+      action: popAction,
+    });
+    maximumConcurrentGitMutations = 0;
+    await Promise.all([
+      app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes`,
+        payload: {
+          message: "Serialized shelf",
+          includeStaged: true,
+          includeUnstaged: true,
+          includeUntracked: false,
+        },
+      }),
+      app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes/actions/apply`,
+        payload: { action: popAction, token: "e".repeat(64) },
+      }),
+    ]);
+    expect(maximumConcurrentGitMutations).toBe(1);
+    const invalidStashDiff = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes/not-a-hash/diff?path=..%2Fsecret`,
+    });
+    expect(invalidStashDiff.statusCode).toBe(400);
+    connected = false;
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes`,
+        })
+      ).statusCode,
+    ).toBe(503);
     connected = true;
     const revision = "1".repeat(40);
     const commitResponse = await app.inject({

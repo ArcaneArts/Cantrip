@@ -19,6 +19,7 @@ import {
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  Archive,
   FileDiff,
   GitBranch,
   GitCommitHorizontal,
@@ -62,6 +63,7 @@ import { cn } from "@/lib/utils";
 import { GitChangesPanel } from "./git-changes-panel";
 import { GitCommitInspector } from "./git-commit-inspector";
 import { GitComparisonPanel } from "./git-comparison-panel";
+import { GitStashPanel } from "./git-stash-panel";
 import { HistoryWorktreeMarker } from "./history-worktree-marker";
 import { GithubIssuesView } from "./github-issues";
 
@@ -379,6 +381,7 @@ export function GitHistoryView({
   const [changesOpen, setChangesOpen] = useState(false);
   const [selectedCommit, setSelectedCommit] = useState<string | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
+  const [stashesOpen, setStashesOpen] = useState(false);
   const [compareLeft, setCompareLeft] = useState<string | null>(null);
   const [compareRight, setCompareRight] = useState<string | null>(null);
   const [issueState, setIssueState] = useState<GithubIssueState>("open");
@@ -612,6 +615,7 @@ export function GitHistoryView({
     setChangesOpen(false);
     setSelectedCommit(null);
     setCompareOpen(false);
+    setStashesOpen(false);
     setCompareLeft(null);
     setCompareRight(null);
   }, [project.id, worktreeId]);
@@ -709,12 +713,29 @@ export function GitHistoryView({
           {section === "history" ? (
             <Button
               size="sm"
+              variant={stashesOpen ? "outline" : "ghost"}
+              className="h-6 gap-1 px-2 text-[11px]"
+              disabled={!selectedAvailable}
+              onClick={() => {
+                setChangesOpen(false);
+                setSelectedCommit(null);
+                setCompareOpen(false);
+                setStashesOpen((current) => !current);
+              }}
+            >
+              <Archive className="size-3" /> Stashes
+            </Button>
+          ) : null}
+          {section === "history" ? (
+            <Button
+              size="sm"
               variant={compareOpen ? "outline" : "ghost"}
               className="h-6 gap-1 px-2 text-[11px]"
               disabled={!selectedAvailable}
               onClick={() => {
                 setChangesOpen(false);
                 setSelectedCommit(null);
+                setStashesOpen(false);
                 setCompareOpen((current) => {
                   if (!current && !compareLeft) {
                     setCompareLeft(firstPage?.head ?? status?.head ?? null);
@@ -909,6 +930,7 @@ export function GitHistoryView({
                           onSelectWorktree(worktree.id);
                           setSelectedCommit(null);
                           setCompareOpen(false);
+                          setStashesOpen(false);
                           setChangesOpen(true);
                         }}
                         title={`Open ${worktree.name} staged and unstaged changes`}
@@ -999,6 +1021,7 @@ export function GitHistoryView({
                         if ((event.target as Element).closest("button")) return;
                         setChangesOpen(false);
                         setCompareOpen(false);
+                        setStashesOpen(false);
                         setSelectedCommit(row.commit.hash);
                       }}
                       onKeyDown={(event) => {
@@ -1007,6 +1030,7 @@ export function GitHistoryView({
                         event.preventDefault();
                         setChangesOpen(false);
                         setCompareOpen(false);
+                        setStashesOpen(false);
                         setSelectedCommit(row.commit.hash);
                       }}
                     >
@@ -1197,6 +1221,13 @@ export function GitHistoryView({
               onLeftChange={setCompareLeft}
               onRightChange={setCompareRight}
               onClose={() => setCompareOpen(false)}
+            />
+          ) : null}
+          {stashesOpen ? (
+            <GitStashPanel
+              projectId={project.id}
+              worktreeId={worktreeId}
+              onClose={() => setStashesOpen(false)}
             />
           ) : null}
         </div>

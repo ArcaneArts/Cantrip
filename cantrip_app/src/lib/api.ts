@@ -61,6 +61,10 @@ import {
   gitFileDiffSchema,
   gitHistorySchema,
   gitPartialPatchPreviewSchema,
+  gitStashActionPreviewSchema,
+  gitStashFileDiffSchema,
+  gitStashListSchema,
+  gitStashMutationResultSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
   gitStatusSchema,
@@ -121,6 +125,8 @@ import type {
   GitAction,
   GitDiffScope,
   GitPartialPatchRequest,
+  GitStashAction,
+  GitStashCreate,
   GithubIssueKind,
   GithubIssueState,
   GithubProjectCreate,
@@ -468,6 +474,70 @@ export async function applyProjectWorktreePartialPatch(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/patch/apply`,
       { request, token },
+    ),
+  );
+}
+
+export async function getProjectWorktreeStashes(
+  projectId: string,
+  worktreeId: string,
+) {
+  return gitStashListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/stashes`,
+    ),
+  );
+}
+
+export async function createProjectWorktreeStash(
+  projectId: string,
+  worktreeId: string,
+  input: GitStashCreate,
+) {
+  return gitStashMutationResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/stashes`,
+      input,
+    ),
+  );
+}
+
+export async function getProjectWorktreeStashFileDiff(
+  projectId: string,
+  worktreeId: string,
+  hash: string,
+  path: string,
+) {
+  return gitStashFileDiffSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/stashes/${encodeURIComponent(hash)}/diff?path=${encodeURIComponent(path)}`,
+    ),
+  );
+}
+
+export async function previewProjectWorktreeStashAction(
+  projectId: string,
+  worktreeId: string,
+  action: GitStashAction,
+) {
+  return gitStashActionPreviewSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/stashes/actions/preview`,
+      action,
+    ),
+  );
+}
+
+export async function applyProjectWorktreeStashAction(
+  projectId: string,
+  worktreeId: string,
+  action: GitStashAction,
+  token: string,
+) {
+  return gitStashMutationResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/stashes/actions/apply`,
+      { action, token },
     ),
   );
 }
