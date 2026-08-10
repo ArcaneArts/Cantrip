@@ -209,6 +209,51 @@ Manual QA:
 8. Disconnect the selected worker and confirm remotes, remote tag checks, and
    releases fail explicitly without falling back to another worktree.
 
+## Commit and history actions
+
+Right-click a commit row, or open its inspector and choose the actions menu, to
+cherry-pick, revert, create a fixup commit, or amend current HEAD. All actions
+run against the selected worktree through its assigned worker. Cherry-pick can
+target one commit or an inclusive, ancestry-validated range of full commit
+hashes; the worker resolves the range oldest-first and rejects merge commits
+that would need an ambiguous mainline. Merge reverts require an explicit
+mainline parent and show which parent Git keeps.
+
+Before apply, Cantrip creates a detached temporary worktree at current HEAD and
+runs cherry-pick or revert without committing. The resulting aggregate patch,
+affected files, and predicted conflicts are shown in the shared diff viewer.
+The real worktree must remain clean, and apply recomputes the preview so changed
+refs, index state, or working files invalidate the review token. Amend and
+fixup use only staged changes and block when unstaged or conflicted files are
+present. An amend creates a `refs/cantrip/checkpoints/...` recovery reference to
+the original HEAD before rewriting it.
+
+If cherry-pick or revert conflicts, Cantrip does not claim success or clean up
+the Git sequencer. The result records the operation type, original/current HEAD,
+source sequence, current step, and conflicted paths, then directs the user to
+Working changes. This shared operation envelope is the basis for the resumable
+continue/skip/abort controls in the next Git milestone.
+
+Manual QA:
+
+1. Right-click a normal commit and cherry-pick it into another clean worktree;
+   confirm the exact preview patch matches the resulting commit.
+2. Cherry-pick an inclusive two-or-more commit ancestry range and confirm the
+   commits apply oldest-first. Try unrelated endpoints and confirm preview is
+   rejected.
+3. Preview a conflicting cherry-pick and confirm the warning appears before
+   apply. Apply it, verify the sequencer remains active, and open its conflicted
+   files through Working changes.
+4. Revert a normal commit, then revert a merge while selecting each possible
+   mainline parent. Confirm a merge revert cannot proceed without that choice.
+5. Stage a change and create a fixup commit. Verify its subject targets the
+   selected commit and unstaged changes block the action.
+6. Stage a change, amend HEAD, and confirm the original commit remains
+   reachable at the displayed Cantrip recovery ref.
+7. Open a preview, change HEAD or the working copy elsewhere, and confirm apply
+   rejects the stale review. Disconnect the worker and confirm no action falls
+   back to another worktree.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport
@@ -217,7 +262,7 @@ Manual QA:
 - [x] Stash/shelf management
 - [x] Complete branch management
 - [x] Remotes, tags, and GitHub releases
-- [ ] Commit and history actions
+- [x] Commit and history actions
 - [ ] Resumable merge and rebase operations
 - [ ] Conflict resolution
 - [ ] Advanced history rewriting

@@ -10,6 +10,8 @@ import {
   gitBranchActionPreviewSchema,
   gitBranchListSchema,
   gitBranchMutationResultSchema,
+  gitCommitActionPreviewSchema,
+  gitCommitActionResultSchema,
   gitComparisonSchema,
   gitCommitDetailSchema,
   gitFileDiffSchema,
@@ -35,9 +37,12 @@ import {
   type GitBranchActionPreview,
   type GitBranchList,
   type GitBranchMutationResult,
+  type GitCommitAction,
+  type GitCommitActionPreview,
+  type GitCommitActionResult,
+  type GitComparisonCommit,
   type GitManagedBranch,
   type GitComparison,
-  type GitComparisonCommit,
   type GitComparisonMode,
   type GitCommitDetail,
   type GitCommitFile,
@@ -2787,6 +2792,415 @@ export async function applyGitTagAction(
     output: outcome.output,
     status: await readGitStatus(cwd),
     tags: await readGitTags(cwd),
+  });
+}
+
+async function resolveCherryPickRevisions(
+  cwd: string,
+  action: Extract<GitCommitAction, { type: "cherryPick" }>,
+): Promise<string[]> {
+  let revisions: string[];
+  if (action.selection.type === "commits") {
+    revisions = await Promise.all(
+      action.selection.revisions.map((revision) =>
+        resolveCommit(cwd, revision),
+      ),
+    );
+  } else {
+    const from = await resolveCommit(cwd, action.selection.fromRevision);
+    const to = await resolveCommit(cwd, action.selection.toRevision);
+    if (from === to) return [from];
+    const ancestor = await runGitOutcome(cwd, [
+      "merge-base",
+      "--is-ancestor",
+      from,
+      to,
+    ]);
+    if (ancestor.code !== 0) {
+      throw new Error(
+        "The first range commit must be an ancestor of the last commit.",
+      );
+    }
+    revisions = [
+      from,
+      ...(await gitOutput(cwd, [
+        "rev-list",
+        "--reverse",
+        "--ancestry-path",
+        `${from}..${to}`,
+      ]).then((value) => value.split("\n").filter(Boolean))),
+    ];
+  }
+  revisions = [...new Set(revisions)];
+  if (revisions.length > 1_000) {
+    throw new Error("Cherry-pick ranges are limited to 1,000 commits.");
+  }
+  for (const revision of revisions) {
+    const parents = (
+      await gitOutput(cwd, ["show", "-s", "--format=%P", revision])
+    )
+      .split(" ")
+      .filter(Boolean);
+    if (parents.length > 1) {
+      throw new Error(
+        `Merge commit ${revision.slice(0, 10)} needs an explicit mainline and cannot be included in a cherry-pick range.`,
+      );
+    }
+  }
+  return revisions;
+}
+
+async function commitActionSummary(
+  cwd: string,
+  revision: string,
+): Promise<GitComparisonCommit> {
+  const output = await gitRaw(cwd, [
+    "show",
+    "-s",
+    "--date=iso-strict",
+    "--format=%H%x00%h%x00%s%x00%an%x00%aI",
+    revision,
+  ]);
+  const [hash, shortHash, subject, authorName, authoredAt] = output
+    .trimEnd()
+    .split("\0");
+  if (!hash || !shortHash || !authorName || !authoredAt) {
+    throw new Error(`Commit ${revision} could not be inspected.`);
+  }
+  return { hash, shortHash, subject: subject ?? "", authorName, authoredAt };
+}
+
+function conflictPaths(status: GitStatus): string[] {
+  return status.files
+    .filter(({ indexStatus, worktreeStatus }) => {
+      const pair = `${indexStatus}${worktreeStatus}`;
+      return /U/u.test(pair) || ["AA", "DD"].includes(pair);
+    })
+    .map(({ path: filePath }) => filePath);
+}
+
+async function assertNoInProgressGitOperation(cwd: string): Promise<void> {
+  for (const marker of ["CHERRY_PICK_HEAD", "REVERT_HEAD", "MERGE_HEAD"]) {
+    if (await gitSucceeds(cwd, ["rev-parse", "--verify", "-q", marker])) {
+      throw new Error(
+        "Finish or abort the active Git operation before starting another commit action.",
+      );
+    }
+  }
+}
+
+function requireCleanStatus(status: GitStatus, action: string): void {
+  if (status.files.length > 0) {
+    throw new Error(
+      `${action} requires a clean selected worktree. Commit, stash, or discard its changes first.`,
+    );
+  }
+}
+
+async function previewAppliedCommitAction(
+  cwd: string,
+  head: string,
+  args: string[],
+): Promise<{
+  files: GitStatus["files"];
+  patch: string;
+  patchTruncated: boolean;
+  wouldConflict: boolean;
+}> {
+  const temporaryRoot = await mkdtemp(
+    path.join(tmpdir(), "cantrip-commit-preview-"),
+  );
+  const previewPath = path.join(temporaryRoot, "worktree");
+  let added = false;
+  try {
+    await runGit(cwd, ["worktree", "add", "--detach", previewPath, head]);
+    added = true;
+    const outcome = await runGitOutcome(previewPath, args);
+    const status = await readGitStatus(previewPath);
+    const conflicts = conflictPaths(status);
+    if (outcome.code !== 0 && conflicts.length === 0) {
+      throw new Error(outcome.output);
+    }
+    const diff = await gitDiffOutput(
+      previewPath,
+      ["diff", "--binary", "--no-ext-diff", "HEAD"],
+      false,
+    );
+    return {
+      files: status.files,
+      patch: diff.output.slice(0, DIFF_CHARACTER_LIMIT),
+      patchTruncated:
+        diff.truncated || diff.output.length > DIFF_CHARACTER_LIMIT,
+      wouldConflict: conflicts.length > 0,
+    };
+  } finally {
+    if (added) {
+      await runGitOutcome(previewPath, ["cherry-pick", "--abort"]);
+      await runGitOutcome(previewPath, ["revert", "--abort"]);
+      await runGitOutcome(cwd, ["worktree", "remove", "--force", previewPath]);
+    }
+    await rm(temporaryRoot, { force: true, recursive: true });
+  }
+}
+
+async function commitActionResolvedRevisions(
+  cwd: string,
+  action: GitCommitAction,
+): Promise<string[]> {
+  switch (action.type) {
+    case "cherryPick":
+      return resolveCherryPickRevisions(cwd, action);
+    case "revert":
+    case "fixup":
+      return [await resolveCommit(cwd, action.revision)];
+    case "amend":
+      return [await resolveCommit(cwd, "HEAD")];
+  }
+}
+
+function commitActionToken(
+  action: GitCommitAction,
+  head: string,
+  revisions: string[],
+  workspace: string,
+  patch: string,
+): string {
+  return createHash("sha256")
+    .update(JSON.stringify({ action, head, revisions, workspace }))
+    .update("\0")
+    .update(patch)
+    .digest("hex");
+}
+
+export async function previewGitCommitAction(
+  cwd: string,
+  action: GitCommitAction,
+): Promise<GitCommitActionPreview> {
+  await assertNoInProgressGitOperation(cwd);
+  const [status, head] = await Promise.all([
+    readGitStatus(cwd),
+    resolveCommit(cwd, "HEAD"),
+  ]);
+  const revisions = await commitActionResolvedRevisions(cwd, action);
+  const commits = await Promise.all(
+    revisions.map((revision) => commitActionSummary(cwd, revision)),
+  );
+  const warnings: string[] = [];
+  let summary: string;
+  let patch: string;
+  let patchTruncated: boolean;
+  let files: GitStatus["files"];
+  let wouldConflict = false;
+  if (action.type === "cherryPick") {
+    requireCleanStatus(status, "Cherry-pick");
+    const effect = await previewAppliedCommitAction(cwd, head, [
+      "cherry-pick",
+      "--no-commit",
+      ...revisions,
+    ]);
+    ({ files, patch, patchTruncated, wouldConflict } = effect);
+    summary = `Cherry-pick ${revisions.length} ${revisions.length === 1 ? "commit" : "commits"} onto ${head.slice(0, 10)}.`;
+  } else if (action.type === "revert") {
+    requireCleanStatus(status, "Revert");
+    const detail = await readGitCommitDetail(cwd, revisions[0]!);
+    if (detail.parents.length > 1) {
+      if (
+        action.mainlineParent === null ||
+        action.mainlineParent > detail.parents.length
+      ) {
+        throw new Error(
+          `Merge commit ${detail.shortHash} requires a mainline parent between 1 and ${detail.parents.length}.`,
+        );
+      }
+      warnings.push(
+        `Parent ${action.mainlineParent} is treated as the mainline for this merge revert.`,
+      );
+    } else if (action.mainlineParent !== null) {
+      throw new Error("Only merge commits accept a mainline parent.");
+    }
+    const effect = await previewAppliedCommitAction(cwd, head, [
+      "revert",
+      "--no-commit",
+      ...(action.mainlineParent === null
+        ? []
+        : ["-m", String(action.mainlineParent)]),
+      revisions[0]!,
+    ]);
+    ({ files, patch, patchTruncated, wouldConflict } = effect);
+    summary = `Revert ${commits[0]!.shortHash} on ${head.slice(0, 10)}.`;
+  } else {
+    const unstaged = status.files.filter(({ unstaged }) => unstaged);
+    const staged = status.files.filter(({ staged }) => staged);
+    if (unstaged.length > 0) {
+      throw new Error(
+        `${action.type === "amend" ? "Amend" : "Fixup"} is blocked while the selected worktree has unstaged or conflicted changes.`,
+      );
+    }
+    if (action.type === "fixup" && staged.length === 0) {
+      throw new Error("A fixup commit requires staged changes.");
+    }
+    if (action.type === "amend" && staged.length === 0 && !action.message) {
+      throw new Error(
+        "Amend requires staged changes or a replacement message.",
+      );
+    }
+    const effect = await gitDiffOutput(
+      cwd,
+      ["diff", "--cached", "--binary", "--no-ext-diff", "HEAD"],
+      false,
+    );
+    files = staged;
+    patch = effect.output.slice(0, DIFF_CHARACTER_LIMIT);
+    patchTruncated =
+      effect.truncated || effect.output.length > DIFF_CHARACTER_LIMIT;
+    if (action.type === "amend") {
+      warnings.push(
+        "Amending replaces HEAD. Cantrip creates a recovery reference before committing.",
+      );
+      summary = `${action.message ? "Replace the message and amend" : "Amend"} ${head.slice(0, 10)} with ${staged.length} staged ${staged.length === 1 ? "file" : "files"}.`;
+    } else {
+      summary = `Create a fixup commit for ${commits[0]!.shortHash} from ${staged.length} staged ${staged.length === 1 ? "file" : "files"}.`;
+    }
+  }
+  if (wouldConflict) {
+    warnings.push(
+      "The preview found conflicts. Applying starts a resumable Git operation and leaves conflicts in Working changes.",
+    );
+  }
+  const workspace = await workspaceFingerprint(cwd);
+  const token = commitActionToken(action, head, revisions, workspace, patch);
+  return gitCommitActionPreviewSchema.parse({
+    action,
+    token,
+    destructive: action.type === "revert" || action.type === "amend",
+    summary,
+    warnings,
+    resolvedRevisions: revisions,
+    commits,
+    files,
+    patch,
+    patchTruncated,
+    wouldConflict,
+    checkpointRef:
+      action.type === "amend"
+        ? `refs/cantrip/checkpoints/amend-${head.slice(0, 12)}-${token.slice(0, 12)}`
+        : null,
+  });
+}
+
+export async function applyGitCommitAction(
+  cwd: string,
+  action: GitCommitAction,
+  token: string,
+): Promise<GitCommitActionResult> {
+  const preview = await previewGitCommitAction(cwd, action);
+  if (preview.token !== token) {
+    throw new Error(
+      "The worktree, selected commits, or staged patch changed after this preview. Review the action again.",
+    );
+  }
+  const headBefore = await resolveCommit(cwd, "HEAD");
+  let output = "";
+  let operation: GitCommitActionResult["operation"] = null;
+  if (action.type === "cherryPick") {
+    const outcome = await runGitOutcome(cwd, [
+      "cherry-pick",
+      ...preview.resolvedRevisions,
+    ]);
+    output = outcome.output;
+    const status = await readGitStatus(cwd);
+    const conflicts = conflictPaths(status);
+    if (outcome.code !== 0) {
+      const resumable = await gitSucceeds(cwd, [
+        "rev-parse",
+        "--verify",
+        "-q",
+        "CHERRY_PICK_HEAD",
+      ]);
+      if (!resumable) throw new Error(outcome.output);
+    }
+    const currentRevision =
+      outcome.code === 0
+        ? null
+        : await resolveCommit(cwd, "CHERRY_PICK_HEAD").catch(() => null);
+    const currentIndex = currentRevision
+      ? preview.resolvedRevisions.indexOf(currentRevision)
+      : -1;
+    operation = {
+      type: "cherry-pick",
+      state:
+        outcome.code === 0
+          ? "completed"
+          : conflicts.length
+            ? "conflicted"
+            : "awaiting-user-action",
+      originalHead: headBefore,
+      currentHead: await resolveCommit(cwd, "HEAD"),
+      sourceRevisions: preview.resolvedRevisions,
+      currentStep:
+        outcome.code === 0
+          ? preview.resolvedRevisions.length
+          : Math.max(1, currentIndex + 1),
+      totalSteps: preview.resolvedRevisions.length,
+      conflictedPaths: conflicts,
+    };
+  } else if (action.type === "revert") {
+    const outcome = await runGitOutcome(cwd, [
+      "revert",
+      "--no-edit",
+      ...(action.mainlineParent === null
+        ? []
+        : ["-m", String(action.mainlineParent)]),
+      preview.resolvedRevisions[0]!,
+    ]);
+    output = outcome.output;
+    const status = await readGitStatus(cwd);
+    const conflicts = conflictPaths(status);
+    if (outcome.code !== 0) {
+      const resumable = await gitSucceeds(cwd, [
+        "rev-parse",
+        "--verify",
+        "-q",
+        "REVERT_HEAD",
+      ]);
+      if (!resumable) throw new Error(outcome.output);
+    }
+    operation = {
+      type: "revert",
+      state:
+        outcome.code === 0
+          ? "completed"
+          : conflicts.length
+            ? "conflicted"
+            : "awaiting-user-action",
+      originalHead: headBefore,
+      currentHead: await resolveCommit(cwd, "HEAD"),
+      sourceRevisions: preview.resolvedRevisions,
+      currentStep: 1,
+      totalSteps: 1,
+      conflictedPaths: conflicts,
+    };
+  } else if (action.type === "amend") {
+    await runGit(cwd, ["update-ref", preview.checkpointRef!, headBefore, ""]);
+    output = await runGit(cwd, [
+      "commit",
+      "--amend",
+      ...(action.message ? ["-m", action.message] : ["--no-edit"]),
+    ]);
+  } else {
+    output = await runGit(cwd, [
+      "commit",
+      `--fixup=${preview.resolvedRevisions[0]!}`,
+    ]);
+  }
+  const status = await readGitStatus(cwd);
+  return gitCommitActionResultSchema.parse({
+    output,
+    status,
+    headBefore,
+    headAfter: await resolveCommit(cwd, "HEAD"),
+    checkpointRef: preview.checkpointRef,
+    operation,
   });
 }
 

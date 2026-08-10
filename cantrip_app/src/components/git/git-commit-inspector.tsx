@@ -29,6 +29,8 @@ import {
 import { cn } from "@/lib/utils";
 
 import { GitPatchView } from "./git-patch-view";
+import { GitCommitActionsDropdown } from "./git-commit-actions-menu";
+import type { CommitActionRequest } from "./git-commit-action-dialog";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -316,12 +318,16 @@ function CommitOverview({
 }
 
 export function GitCommitInspector({
+  currentHead,
+  onAction,
   onClose,
   onNavigate,
   projectId,
   revision,
   worktreeId,
 }: {
+  currentHead: string | null;
+  onAction(request: CommitActionRequest): void;
   onClose(): void;
   onNavigate(revision: string): void;
   projectId: string;
@@ -381,6 +387,18 @@ export function GitCommitInspector({
               {detail.data?.hash ?? revision}
             </p>
           </div>
+          {detail.data ? (
+            <GitCommitActionsDropdown
+              target={{
+                hash: detail.data.hash,
+                shortHash: detail.data.shortHash,
+                subject: detail.data.subject,
+                parents: detail.data.parents,
+                isHead: detail.data.hash === currentHead,
+              }}
+              onAction={onAction}
+            />
+          ) : null}
           <Button
             size="icon"
             variant="ghost"

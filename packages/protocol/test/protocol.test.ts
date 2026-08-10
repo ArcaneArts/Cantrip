@@ -39,6 +39,8 @@ import {
   gitActionSchema,
   gitBranchActionPreviewSchema,
   gitBranchListSchema,
+  gitCommitActionPreviewSchema,
+  gitCommitActionResultSchema,
   gitRemoteActionPreviewSchema,
   gitRemoteListSchema,
   gitCommitDetailSchema,
@@ -89,6 +91,99 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("validates reviewed commit actions and resumable conflict state", () => {
+    const head = "1".repeat(40);
+    const revision = "2".repeat(40);
+    const action = {
+      type: "cherryPick" as const,
+      selection: {
+        type: "range" as const,
+        fromRevision: revision,
+        toRevision: "3".repeat(40),
+      },
+    };
+    expect(
+      gitCommitActionPreviewSchema.parse({
+        action,
+        token: "a".repeat(64),
+        destructive: false,
+        summary: "Cherry-pick two commits.",
+        warnings: ["Conflicts are expected."],
+        resolvedRevisions: [revision, "3".repeat(40)],
+        commits: [
+          {
+            hash: revision,
+            shortHash: revision.slice(0, 8),
+            subject: "Selected commit",
+            authorName: "Cantrip",
+            authoredAt: "2026-08-10T12:00:00.000Z",
+          },
+        ],
+        files: [
+          {
+            path: "src/app.ts",
+            originalPath: null,
+            indexStatus: "U",
+            worktreeStatus: "U",
+            staged: true,
+            unstaged: true,
+          },
+        ],
+        patch: "@@ -1 +1 @@\n-old\n+new\n",
+        patchTruncated: false,
+        wouldConflict: true,
+        checkpointRef: null,
+      }).wouldConflict,
+    ).toBe(true);
+    expect(
+      gitCommitActionResultSchema.parse({
+        output: "conflict",
+        status: {
+          branch: "main",
+          head,
+          upstream: null,
+          ahead: 0,
+          behind: 0,
+          files: [
+            {
+              path: "src/app.ts",
+              originalPath: null,
+              indexStatus: "U",
+              worktreeStatus: "U",
+              staged: true,
+              unstaged: true,
+            },
+          ],
+          branches: [],
+        },
+        headBefore: head,
+        headAfter: head,
+        checkpointRef: null,
+        operation: {
+          type: "cherry-pick",
+          state: "conflicted",
+          originalHead: head,
+          currentHead: head,
+          sourceRevisions: [revision],
+          currentStep: 1,
+          totalSteps: 1,
+          conflictedPaths: ["src/app.ts"],
+        },
+      }).operation?.state,
+    ).toBe("conflicted");
+    expect(
+      workerCommandSchema.safeParse({
+        type: "git.commit.action.preview",
+        cwd: "/repo",
+        action: {
+          type: "revert",
+          revision: "HEAD~1",
+          mainlineParent: null,
+        },
+      }).success,
+    ).toBe(false);
+  });
+
   it("validates remotes, tags, releases, and destructive review envelopes", () => {
     const hash = "d".repeat(40);
     const signature = {

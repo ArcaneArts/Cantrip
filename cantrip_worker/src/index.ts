@@ -25,12 +25,14 @@ import {
 import { GithubClient } from "./github.js";
 import {
   applyGitBranchAction,
+  applyGitCommitAction,
   applyGitPartialPatch,
   applyGitRemoteAction,
   applyGitStashAction,
   applyGitTagAction,
   createGitStash,
   previewGitBranchAction,
+  previewGitCommitAction,
   previewGitPartialPatch,
   previewGitRemoteAction,
   previewGitStashAction,
@@ -301,6 +303,10 @@ async function start(): Promise<void> {
         return previewGitTagAction(command.cwd, command.action);
       case "git.tag.action.apply":
         return applyGitTagAction(command.cwd, command.action, command.token);
+      case "git.commit.action.preview":
+        return previewGitCommitAction(command.cwd, command.action);
+      case "git.commit.action.apply":
+        return applyGitCommitAction(command.cwd, command.action, command.token);
       case "git.action":
         return runGitAction(command.cwd, command.action);
       case "worktree.list":

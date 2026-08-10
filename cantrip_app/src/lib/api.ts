@@ -61,6 +61,8 @@ import {
   gitBranchActionPreviewSchema,
   gitBranchListSchema,
   gitBranchMutationResultSchema,
+  gitCommitActionPreviewSchema,
+  gitCommitActionResultSchema,
   gitCommitDetailSchema,
   gitComparisonSchema,
   gitFileDiffSchema,
@@ -136,6 +138,7 @@ import type {
   CodexSkillRootsUpdate,
   GitAction,
   GitBranchAction,
+  GitCommitAction,
   GitDiffScope,
   GitPartialPatchRequest,
   GitRemoteAction,
@@ -500,6 +503,33 @@ export async function applyProjectWorktreeBranchAction(
   return gitBranchMutationResultSchema.parse(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/branches/actions/apply`,
+      { action, token },
+    ),
+  );
+}
+
+export async function previewProjectWorktreeCommitAction(
+  projectId: string,
+  worktreeId: string,
+  action: GitCommitAction,
+) {
+  return gitCommitActionPreviewSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/commits/actions/preview`,
+      action,
+    ),
+  );
+}
+
+export async function applyProjectWorktreeCommitAction(
+  projectId: string,
+  worktreeId: string,
+  action: GitCommitAction,
+  token: string,
+) {
+  return gitCommitActionResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/commits/actions/apply`,
       { action, token },
     ),
   );

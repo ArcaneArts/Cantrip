@@ -8,12 +8,14 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   applyGitBranchAction,
+  applyGitCommitAction,
   applyGitPartialPatch,
   applyGitRemoteAction,
   applyGitStashAction,
   applyGitTagAction,
   createGitStash,
   previewGitBranchAction,
+  previewGitCommitAction,
   previewGitPartialPatch,
   previewGitRemoteAction,
   previewGitStashAction,
@@ -46,6 +48,268 @@ afterEach(async () => {
 });
 
 describe("Git history", () => {
+  it("previews and cherry-picks ordered commit ranges on the explicit worktree", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-pick-test-"));
+    directories.push(root);
+    const directory = path.join(root, "repo");
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "base.txt"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Base"]);
+    await execFileAsync("git", ["-C", directory, "switch", "-c", "source"]);
+    await writeFile(path.join(directory, "one.txt"), "one\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "One"]);
+    const first = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await writeFile(path.join(directory, "two.txt"), "two\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Two"]);
+    const last = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await writeFile(path.join(directory, "three.txt"), "three\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Three"]);
+    const third = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await execFileAsync("git", ["-C", directory, "switch", "main"]);
+
+    const action = {
+      type: "cherryPick" as const,
+      selection: {
+        type: "range" as const,
+        fromRevision: first,
+        toRevision: last,
+      },
+    };
+    const preview = await previewGitCommitAction(directory, action);
+    expect(preview.resolvedRevisions).toEqual([first, last]);
+    expect(preview.patch).toContain("one.txt");
+    expect(preview.patch).toContain("two.txt");
+    expect(preview.wouldConflict).toBe(false);
+    const result = await applyGitCommitAction(directory, action, preview.token);
+    expect(result.operation).toMatchObject({
+      type: "cherry-pick",
+      state: "completed",
+      currentStep: 2,
+      totalSteps: 2,
+    });
+    expect(await readFile(path.join(directory, "two.txt"), "utf8")).toBe(
+      "two\n",
+    );
+    const staleAction = {
+      type: "cherryPick" as const,
+      selection: { type: "commits" as const, revisions: [third] },
+    };
+    const stalePreview = await previewGitCommitAction(directory, staleAction);
+    await writeFile(path.join(directory, "main-only.txt"), "main\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Main only"]);
+    await expect(
+      applyGitCommitAction(directory, staleAction, stalePreview.token),
+    ).rejects.toThrow("changed after this preview");
+  });
+
+  it("keeps conflicting cherry-picks resumable and blocks dirty previews", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-pick-conflict-"));
+    directories.push(root);
+    const directory = path.join(root, "repo");
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "conflict.txt"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Base"]);
+    await execFileAsync("git", ["-C", directory, "switch", "-c", "source"]);
+    await writeFile(path.join(directory, "conflict.txt"), "source\n");
+    await execFileAsync("git", ["-C", directory, "commit", "-am", "Source"]);
+    const source = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await execFileAsync("git", ["-C", directory, "switch", "main"]);
+    await writeFile(path.join(directory, "conflict.txt"), "main\n");
+    await execFileAsync("git", ["-C", directory, "commit", "-am", "Main"]);
+    const action = {
+      type: "cherryPick" as const,
+      selection: { type: "commits" as const, revisions: [source] },
+    };
+    const preview = await previewGitCommitAction(directory, action);
+    expect(preview.wouldConflict).toBe(true);
+    const result = await applyGitCommitAction(directory, action, preview.token);
+    expect(result.operation).toMatchObject({
+      state: "conflicted",
+      conflictedPaths: ["conflict.txt"],
+    });
+    await execFileAsync("git", ["-C", directory, "cherry-pick", "--abort"]);
+    await writeFile(path.join(directory, "dirty.txt"), "dirty\n");
+    await expect(previewGitCommitAction(directory, action)).rejects.toThrow(
+      "requires a clean selected worktree",
+    );
+  });
+
+  it("requires a mainline to preview and revert merge commits", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-revert-test-"));
+    directories.push(root);
+    const directory = path.join(root, "repo");
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "base.txt"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Base"]);
+    await execFileAsync("git", ["-C", directory, "switch", "-c", "feature"]);
+    await writeFile(path.join(directory, "feature.txt"), "feature\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Feature"]);
+    await execFileAsync("git", ["-C", directory, "switch", "main"]);
+    await writeFile(path.join(directory, "main.txt"), "main\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Main"]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "merge",
+      "--no-ff",
+      "feature",
+      "-m",
+      "Merge feature",
+    ]);
+    const merge = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await expect(
+      previewGitCommitAction(directory, {
+        type: "revert",
+        revision: merge,
+        mainlineParent: null,
+      }),
+    ).rejects.toThrow("requires a mainline parent");
+    const action = {
+      type: "revert" as const,
+      revision: merge,
+      mainlineParent: 1,
+    };
+    const preview = await previewGitCommitAction(directory, action);
+    expect(preview.destructive).toBe(true);
+    const result = await applyGitCommitAction(directory, action, preview.token);
+    expect(result.operation?.state).toBe("completed");
+    await expect(
+      readFile(path.join(directory, "feature.txt"), "utf8"),
+    ).rejects.toThrow();
+  });
+
+  it("creates fixup commits and checkpoints amended HEAD", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-amend-test-"));
+    directories.push(root);
+    const directory = path.join(root, "repo");
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "base.txt"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Base"]);
+    const base = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await writeFile(path.join(directory, "large.txt"), "x".repeat(2_010_000));
+    await execFileAsync("git", ["-C", directory, "add", "large.txt"]);
+    const largePreview = await previewGitCommitAction(directory, {
+      type: "fixup",
+      revision: base,
+    });
+    expect(largePreview.patchTruncated).toBe(true);
+    expect(largePreview.patch.length).toBeLessThanOrEqual(2_000_000);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "reset",
+      "HEAD",
+      "--",
+      "large.txt",
+    ]);
+    await rm(path.join(directory, "large.txt"));
+    await writeFile(path.join(directory, "fix.txt"), "fix\n");
+    await execFileAsync("git", ["-C", directory, "add", "fix.txt"]);
+    const fixup = { type: "fixup" as const, revision: base };
+    let preview = await previewGitCommitAction(directory, fixup);
+    await applyGitCommitAction(directory, fixup, preview.token);
+    const fixupSubject = (
+      await execFileAsync("git", ["-C", directory, "show", "-s", "--format=%s"])
+    ).stdout.trim();
+    expect(fixupSubject).toBe("fixup! Base");
+
+    await writeFile(path.join(directory, "amend.txt"), "amend\n");
+    await execFileAsync("git", ["-C", directory, "add", "amend.txt"]);
+    const amend = { type: "amend" as const, message: "Amended fixup" };
+    preview = await previewGitCommitAction(directory, amend);
+    expect(preview.checkpointRef).toMatch(/^refs\/cantrip\/checkpoints\//u);
+    const amended = await applyGitCommitAction(directory, amend, preview.token);
+    expect(amended.checkpointRef).toBe(preview.checkpointRef);
+    expect(
+      (
+        await execFileAsync("git", [
+          "-C",
+          directory,
+          "rev-parse",
+          preview.checkpointRef!,
+        ])
+      ).stdout.trim(),
+    ).toBe(amended.headBefore);
+  });
+
   it("manages sanitized remotes, defaults, fetch, edit, and removal through reviewed actions", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "cantrip-remote-test-"));
     directories.push(root);
