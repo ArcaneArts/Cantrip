@@ -3174,6 +3174,39 @@ export const gitFileDiffSchema = z.object({
   truncated: z.boolean(),
 });
 
+export const gitPartialPatchOperationSchema = z.enum([
+  "stage",
+  "unstage",
+  "discard",
+]);
+
+export const gitPartialPatchHunkSelectionSchema = z.object({
+  hunkIndex: z.number().int().nonnegative(),
+  lineIndexes: z.array(z.number().int().nonnegative()).max(100_000).nullable(),
+});
+
+export const gitPartialPatchRequestSchema = z.object({
+  operation: gitPartialPatchOperationSchema,
+  path: gitRelativePathSchema,
+  hunks: z.array(gitPartialPatchHunkSelectionSchema).min(1).max(10_000),
+});
+
+export const gitPartialPatchPreviewSchema = z.object({
+  operation: gitPartialPatchOperationSchema,
+  path: gitRelativePathSchema,
+  scope: gitDiffScopeSchema,
+  patch: z.string().min(1).max(2_000_000),
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+  selectedHunks: z.number().int().positive(),
+  selectedLines: z.number().int().nonnegative(),
+  warnings: z.array(z.string().max(1_000)).max(100),
+});
+
+export const gitPartialPatchApplySchema = z.object({
+  request: gitPartialPatchRequestSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+
 const gitPathsSchema = z.array(gitRelativePathSchema).min(1).max(1_000);
 export const gitActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("stage"), paths: gitPathsSchema }),
@@ -3534,6 +3567,17 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     path: gitRelativePathSchema,
     scope: gitDiffScopeSchema,
   }),
+  z.object({
+    type: z.literal("git.patch.preview"),
+    cwd: z.string().min(1).max(8_192),
+    request: gitPartialPatchRequestSchema,
+  }),
+  z
+    .object({
+      type: z.literal("git.patch.apply"),
+      cwd: z.string().min(1).max(8_192),
+    })
+    .extend(gitPartialPatchApplySchema.shape),
   z.object({
     type: z.literal("git.action"),
     cwd: z.string().min(1),
@@ -4245,6 +4289,16 @@ export type GitBranch = z.infer<typeof gitBranchSchema>;
 export type GitStatus = z.infer<typeof gitStatusSchema>;
 export type GitDiffScope = z.infer<typeof gitDiffScopeSchema>;
 export type GitFileDiff = z.infer<typeof gitFileDiffSchema>;
+export type GitPartialPatchOperation = z.infer<
+  typeof gitPartialPatchOperationSchema
+>;
+export type GitPartialPatchRequest = z.infer<
+  typeof gitPartialPatchRequestSchema
+>;
+export type GitPartialPatchPreview = z.infer<
+  typeof gitPartialPatchPreviewSchema
+>;
+export type GitPartialPatchApply = z.infer<typeof gitPartialPatchApplySchema>;
 export type GitAction = z.infer<typeof gitActionSchema>;
 export type GitActionResult = z.infer<typeof gitActionResultSchema>;
 export type WorkerWorktreeSummary = z.infer<typeof workerWorktreeSummarySchema>;

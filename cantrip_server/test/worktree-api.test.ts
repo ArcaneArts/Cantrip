@@ -15,6 +15,7 @@ import {
   gitComparisonSchema,
   gitFileDiffSchema,
   gitHistorySchema,
+  gitPartialPatchPreviewSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
   projectViewSummarySchema,
@@ -61,8 +62,16 @@ const config: ServerConfig = {
 let connected = true;
 let activeCreates = 0;
 let maximumConcurrentCreates = 0;
+let activeGitMutations = 0;
+let maximumConcurrentGitMutations = 0;
 const gitActionPaths: string[] = [];
 const gitDiffCommands: Array<Extract<WorkerCommand, { type: "git.diff" }>> = [];
+const gitPatchPreviewCommands: Array<
+  Extract<WorkerCommand, { type: "git.patch.preview" }>
+> = [];
+const gitPatchApplyCommands: Array<
+  Extract<WorkerCommand, { type: "git.patch.apply" }>
+> = [];
 const gitHistoryCommands: Array<
   Extract<WorkerCommand, { type: "git.history" }>
 > = [];
@@ -129,6 +138,17 @@ function status(branch = "main") {
       },
     ],
   };
+}
+
+async function completeGitMutation(output: string) {
+  activeGitMutations += 1;
+  maximumConcurrentGitMutations = Math.max(
+    maximumConcurrentGitMutations,
+    activeGitMutations,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  activeGitMutations -= 1;
+  return { status: status(), output };
 }
 
 const workerBridge = {
@@ -331,7 +351,7 @@ const workerBridge = {
         };
       case "git.action":
         gitActionPaths.push(command.cwd);
-        return { status: status(), output: "done" };
+        return completeGitMutation("done");
       case "git.diff":
         gitDiffCommands.push(command);
         return {
@@ -340,6 +360,22 @@ const workerBridge = {
           patch: "@@ -1 +1 @@\n-old\n+new\n",
           truncated: false,
         };
+      case "git.patch.preview":
+        gitPatchPreviewCommands.push(command);
+        return {
+          operation: command.request.operation,
+          path: command.request.path,
+          scope:
+            command.request.operation === "unstage" ? "staged" : "unstaged",
+          patch: "@@ -1 +1 @@\n-old\n+new\n",
+          token: "a".repeat(64),
+          selectedHunks: command.request.hunks.length,
+          selectedLines: 2,
+          warnings: [],
+        };
+      case "git.patch.apply":
+        gitPatchApplyCommands.push(command);
+        return completeGitMutation("applied");
       case "code.prepareAgentTurn":
         return { prepared: true, sessions: [] };
       case "code.agentTurnState":
@@ -1313,6 +1349,70 @@ describe.sequential("server worktree control plane", () => {
       path: "src/app.ts",
       scope: "unstaged",
     });
+    const patchRequest = {
+      operation: "stage" as const,
+      path: "src/app.ts",
+      hunks: [{ hunkIndex: 0, lineIndexes: [0, 1] }],
+    };
+    const patchPreviewResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/patch/preview`,
+      payload: patchRequest,
+    });
+    expect(
+      gitPartialPatchPreviewSchema.parse(patchPreviewResponse.json()),
+    ).toMatchObject({
+      operation: "stage",
+      path: "src/app.ts",
+      token: "a".repeat(64),
+    });
+    expect(gitPatchPreviewCommands.at(-1)).toMatchObject({
+      cwd: target.path,
+      request: patchRequest,
+    });
+    const patchApplyResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/patch/apply`,
+      payload: { request: patchRequest, token: "a".repeat(64) },
+    });
+    expect(
+      gitActionResultSchema.parse(patchApplyResponse.json()),
+    ).toMatchObject({
+      output: "applied",
+    });
+    expect(gitPatchApplyCommands.at(-1)).toMatchObject({
+      cwd: target.path,
+      request: patchRequest,
+      token: "a".repeat(64),
+    });
+    maximumConcurrentGitMutations = 0;
+    await Promise.all([
+      app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/worktrees/${target.id}/git/patch/apply`,
+        payload: { request: patchRequest, token: "a".repeat(64) },
+      }),
+      app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/worktrees/${target.id}/git/actions`,
+        payload: { type: "stageAll" },
+      }),
+    ]);
+    expect(maximumConcurrentGitMutations).toBe(1);
+    const invalidPatchPath = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/patch/preview`,
+      payload: { ...patchRequest, path: "../secret" },
+    });
+    expect(invalidPatchPath.statusCode).toBe(400);
+    connected = false;
+    const offlinePatchPreview = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/patch/preview`,
+      payload: patchRequest,
+    });
+    expect(offlinePatchPreview.statusCode).toBe(503);
+    connected = true;
     const revision = "1".repeat(40);
     const commitResponse = await app.inject({
       method: "GET",
