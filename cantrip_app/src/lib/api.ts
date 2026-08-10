@@ -63,6 +63,10 @@ import {
   gitBranchMutationResultSchema,
   gitCommitActionPreviewSchema,
   gitCommitActionResultSchema,
+  gitConflictDetailSchema,
+  gitConflictListSchema,
+  gitConflictResolutionPreviewSchema,
+  gitConflictResolutionResultSchema,
   gitManagedOperationPreviewSchema,
   gitManagedOperationResponseSchema,
   gitCommitDetailSchema,
@@ -141,6 +145,7 @@ import type {
   GitAction,
   GitBranchAction,
   GitCommitAction,
+  GitConflictResolutionRequest,
   GitMergeRebaseAction,
   GitDiffScope,
   GitPartialPatchRequest,
@@ -586,6 +591,56 @@ export async function controlProjectWorktreeGitOperation(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/operations/${encodeURIComponent(operationId)}/control`,
       { action },
+    ),
+  );
+}
+
+export async function getProjectWorktreeGitConflicts(
+  projectId: string,
+  worktreeId: string,
+) {
+  return gitConflictListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/conflicts`,
+    ),
+  );
+}
+
+export async function getProjectWorktreeGitConflict(
+  projectId: string,
+  worktreeId: string,
+  path: string,
+) {
+  return gitConflictDetailSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/conflicts/detail?path=${encodeURIComponent(path)}`,
+    ),
+  );
+}
+
+export async function previewProjectWorktreeGitConflictResolution(
+  projectId: string,
+  worktreeId: string,
+  resolution: GitConflictResolutionRequest,
+) {
+  return gitConflictResolutionPreviewSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/conflicts/preview`,
+      resolution,
+    ),
+  );
+}
+
+export async function applyProjectWorktreeGitConflictResolution(
+  projectId: string,
+  worktreeId: string,
+  resolution: GitConflictResolutionRequest,
+  token: string,
+) {
+  return gitConflictResolutionResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/conflicts/apply`,
+      { request: resolution, token },
     ),
   );
 }

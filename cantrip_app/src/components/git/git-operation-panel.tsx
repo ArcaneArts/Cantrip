@@ -35,6 +35,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { GitPatchView } from "./git-patch-view";
+import { GitConflictResolver } from "./git-conflict-resolver";
 
 export function gitOperationIsActive(
   operation: GitManagedOperationRecord | null | undefined,
@@ -299,17 +300,14 @@ export function GitOperationPanel({
             </div>
 
             {current.conflictedPaths.length ? (
-              <div className="rounded-xl bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-200">
-                <p className="flex items-center gap-2 font-medium">
-                  <AlertTriangle className="size-4" /> Resolve and stage
-                  conflicts
-                </p>
-                <p className="mt-2 break-all font-mono text-xs">
-                  {current.conflictedPaths.join("\n")}
-                </p>
+              <div className="space-y-2">
+                <GitConflictResolver
+                  projectId={projectId}
+                  worktreeId={worktreeId}
+                />
                 <Button
-                  className="mt-3"
                   size="sm"
+                  variant="ghost"
                   onClick={onOpenWorkingChanges}
                 >
                   Open Working changes

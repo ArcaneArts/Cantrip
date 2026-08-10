@@ -300,6 +300,45 @@ Manual QA:
    token. Try starting a second mutation while one is active and confirm it is
    blocked with the active operation named.
 
+## Conflict resolution
+
+When a durable merge, rebase, cherry-pick, or revert reports unmerged index
+entries, the Operations panel opens a compact conflict resolver. Its path list
+comes from `git ls-files -u`, not from conflict markers. Each row identifies the
+Git conflict kind and exposes the available base, ours, and theirs stages. Text
+stages and the worktree result are bounded to 2 MB; binary and oversized content
+remain resolvable without pretending that they can be rendered.
+
+The result editor supports whole-file ours, theirs, both, current-result,
+manual, and delete choices. Standard and diff3 conflict blocks can also be
+resolved one block at a time before reviewing the combined manual result. Every
+choice receives an exact preview and a token bound to all three index-stage
+object IDs plus the current worktree result. A changed conflict invalidates the
+review. After apply, the worker stages the path and re-reads the unmerged index;
+Cantrip reports success only when that path has no stage 1/2/3 entries.
+
+Conflict reads and writes always target the selected project worktree through
+its assigned worker. The server serializes mutations, persists the owning
+operation's updated conflict state, publishes live invalidations, and keeps
+continue disabled until every unmerged path is verified resolved. Stash
+conflicts are integrated with the same durable resolver in the following
+conflict-workflow pass.
+
+Manual QA:
+
+1. Create a text merge conflict and verify base, ours, theirs, result, conflict
+   kind, and path all match `git ls-files -u` and the worktree.
+2. Resolve separate blocks with ours, theirs, and both; edit the final result,
+   review it, apply it, and confirm the file is staged with no unmerged entries.
+3. Resolve modify/delete, add/add, both-deleted, mode, rename-related, binary,
+   and no-newline conflicts using applicable whole-file actions.
+4. Open a resolution preview, change the result or index elsewhere, and confirm
+   apply rejects the stale token.
+5. Resolve every path, reload or reconnect another client, and confirm the
+   durable operation becomes awaiting-user-action and Continue is enabled.
+6. Disconnect the assigned worker and confirm conflict detail and mutations
+   fail explicitly without falling back to Primary or another worktree.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport

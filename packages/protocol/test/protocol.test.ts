@@ -41,6 +41,8 @@ import {
   gitBranchListSchema,
   gitCommitActionPreviewSchema,
   gitCommitActionResultSchema,
+  gitConflictDetailSchema,
+  gitConflictResolutionRequestSchema,
   gitManagedOperationPreviewSchema,
   gitManagedOperationRecordSchema,
   gitRemoteActionPreviewSchema,
@@ -256,6 +258,59 @@ describe("Cantrip protocol", () => {
         },
       }).success,
     ).toBe(false);
+  });
+
+  it("validates bounded conflict detail and exact resolution commands", () => {
+    const oid = "a".repeat(40);
+    const stage = {
+      available: true,
+      oid,
+      mode: "100644",
+      size: 5,
+      binary: false,
+      content: "ours\n",
+      truncated: false,
+    };
+    expect(
+      gitConflictDetailSchema.parse({
+        path: "src/app.ts",
+        code: "UU",
+        kind: "both-modified",
+        baseAvailable: true,
+        oursAvailable: true,
+        theirsAvailable: true,
+        base: stage,
+        ours: stage,
+        theirs: { ...stage, content: "theirs\n" },
+        result: {
+          exists: true,
+          oid,
+          size: 42,
+          binary: false,
+          content: "<<<<<<< ours\n=======\n>>>>>>> theirs\n",
+          truncated: false,
+        },
+      }).kind,
+    ).toBe("both-modified");
+    expect(
+      gitConflictResolutionRequestSchema.safeParse({
+        path: "src/app.ts",
+        strategy: "manual",
+        content: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      workerCommandSchema.parse({
+        type: "git.conflicts.apply",
+        cwd: "/repo",
+        request: {
+          path: "src/app.ts",
+          strategy: "ours",
+          content: null,
+        },
+        token: "b".repeat(64),
+      }).type,
+    ).toBe("git.conflicts.apply");
   });
 
   it("validates remotes, tags, releases, and destructive review envelopes", () => {

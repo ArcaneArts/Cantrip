@@ -26,6 +26,7 @@ import { GithubClient } from "./github.js";
 import {
   applyGitBranchAction,
   applyGitCommitAction,
+  applyGitConflictResolution,
   applyGitPartialPatch,
   applyGitRemoteAction,
   applyGitStashAction,
@@ -33,14 +34,17 @@ import {
   controlGitManagedOperation,
   createGitStash,
   inspectGitManagedOperation,
+  listGitConflicts,
   previewGitBranchAction,
   previewGitCommitAction,
+  previewGitConflictResolution,
   previewGitPartialPatch,
   previewGitRemoteAction,
   previewGitStashAction,
   previewGitTagAction,
   previewGitManagedOperation,
   readGitCommitDetail,
+  readGitConflict,
   readGitBranches,
   readGitComparison,
   readGitFileDiff,
@@ -326,6 +330,18 @@ async function start(): Promise<void> {
           command.cwd,
           command.context,
           command.action,
+        );
+      case "git.conflicts.list":
+        return listGitConflicts(command.cwd);
+      case "git.conflicts.get":
+        return readGitConflict(command.cwd, command.path);
+      case "git.conflicts.preview":
+        return previewGitConflictResolution(command.cwd, command.request);
+      case "git.conflicts.apply":
+        return applyGitConflictResolution(
+          command.cwd,
+          command.request,
+          command.token,
         );
       case "git.action":
         return runGitAction(command.cwd, command.action);

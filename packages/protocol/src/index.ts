@@ -3787,6 +3787,111 @@ export const gitManagedOperationResponseSchema = z.object({
   operation: gitManagedOperationRecordSchema.nullable(),
 });
 
+export const gitConflictKindSchema = z.enum([
+  "both-modified",
+  "both-added",
+  "both-deleted",
+  "added-by-ours",
+  "added-by-theirs",
+  "deleted-by-ours",
+  "deleted-by-theirs",
+  "unknown",
+]);
+
+export const gitConflictStageSchema = z.object({
+  available: z.boolean(),
+  oid: gitCommitHashInputSchema.nullable(),
+  mode: z
+    .string()
+    .regex(/^[0-7]{6}$/u)
+    .nullable(),
+  size: z.number().int().nonnegative().nullable(),
+  binary: z.boolean(),
+  content: z.string().max(2_000_000).nullable(),
+  truncated: z.boolean(),
+});
+
+export const gitConflictSummarySchema = z.object({
+  path: gitRelativePathSchema,
+  code: z.string().length(2),
+  kind: gitConflictKindSchema,
+  baseAvailable: z.boolean(),
+  oursAvailable: z.boolean(),
+  theirsAvailable: z.boolean(),
+});
+
+export const gitConflictListSchema = z.object({
+  files: z.array(gitConflictSummarySchema).max(100_000),
+  truncated: z.boolean(),
+});
+
+export const gitConflictDetailSchema = gitConflictSummarySchema.extend({
+  base: gitConflictStageSchema,
+  ours: gitConflictStageSchema,
+  theirs: gitConflictStageSchema,
+  result: z.object({
+    exists: z.boolean(),
+    oid: gitCommitHashInputSchema.nullable(),
+    size: z.number().int().nonnegative().nullable(),
+    binary: z.boolean(),
+    content: z.string().max(2_000_000).nullable(),
+    truncated: z.boolean(),
+  }),
+});
+
+export const gitConflictResolutionStrategySchema = z.enum([
+  "ours",
+  "theirs",
+  "both",
+  "result",
+  "manual",
+  "delete",
+]);
+
+export const gitConflictResolutionRequestSchema = z
+  .object({
+    path: gitRelativePathSchema,
+    strategy: gitConflictResolutionStrategySchema,
+    content: z.string().max(2_000_000).nullable().default(null),
+  })
+  .superRefine((value, context) => {
+    if (value.strategy === "manual" && value.content === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["content"],
+        message: "Manual conflict resolution requires result content.",
+      });
+    }
+    if (value.strategy !== "manual" && value.content !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["content"],
+        message: "Only manual conflict resolution accepts result content.",
+      });
+    }
+  });
+
+export const gitConflictResolutionPreviewSchema = z.object({
+  request: gitConflictResolutionRequestSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+  resultDeleted: z.boolean(),
+  resultBinary: z.boolean(),
+  resultContent: z.string().max(2_000_000).nullable(),
+  warnings: z.array(z.string().max(1_000)).max(100),
+});
+
+export const gitConflictResolutionApplySchema = z.object({
+  request: gitConflictResolutionRequestSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+
+export const gitConflictResolutionResultSchema = z.object({
+  path: gitRelativePathSchema,
+  resolved: z.boolean(),
+  remainingPaths: z.array(gitRelativePathSchema).max(100_000),
+  status: gitStatusSchema,
+});
+
 export const gitCommitActionPreviewSchema = z.object({
   action: gitCommitActionSchema,
   token: z.string().regex(/^[0-9a-f]{64}$/u),
@@ -4313,6 +4418,26 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     context: gitManagedOperationContextSchema,
     action: gitManagedOperationControlSchema.shape.action,
   }),
+  z.object({
+    type: z.literal("git.conflicts.list"),
+    cwd: z.string().min(1).max(8_192),
+  }),
+  z.object({
+    type: z.literal("git.conflicts.get"),
+    cwd: z.string().min(1).max(8_192),
+    path: gitRelativePathSchema,
+  }),
+  z.object({
+    type: z.literal("git.conflicts.preview"),
+    cwd: z.string().min(1).max(8_192),
+    request: gitConflictResolutionRequestSchema,
+  }),
+  z
+    .object({
+      type: z.literal("git.conflicts.apply"),
+      cwd: z.string().min(1).max(8_192),
+    })
+    .extend(gitConflictResolutionApplySchema.shape),
   z.object({
     type: z.literal("git.action"),
     cwd: z.string().min(1),
@@ -5111,6 +5236,26 @@ export type GitManagedOperationRecord = z.infer<
 >;
 export type GitManagedOperationResponse = z.infer<
   typeof gitManagedOperationResponseSchema
+>;
+export type GitConflictKind = z.infer<typeof gitConflictKindSchema>;
+export type GitConflictStage = z.infer<typeof gitConflictStageSchema>;
+export type GitConflictSummary = z.infer<typeof gitConflictSummarySchema>;
+export type GitConflictList = z.infer<typeof gitConflictListSchema>;
+export type GitConflictDetail = z.infer<typeof gitConflictDetailSchema>;
+export type GitConflictResolutionStrategy = z.infer<
+  typeof gitConflictResolutionStrategySchema
+>;
+export type GitConflictResolutionRequest = z.infer<
+  typeof gitConflictResolutionRequestSchema
+>;
+export type GitConflictResolutionPreview = z.infer<
+  typeof gitConflictResolutionPreviewSchema
+>;
+export type GitConflictResolutionApply = z.infer<
+  typeof gitConflictResolutionApplySchema
+>;
+export type GitConflictResolutionResult = z.infer<
+  typeof gitConflictResolutionResultSchema
 >;
 export type GitCommitActionPreview = z.infer<
   typeof gitCommitActionPreviewSchema
