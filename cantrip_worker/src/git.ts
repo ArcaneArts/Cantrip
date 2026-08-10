@@ -3,13 +3,18 @@ import { promisify } from "node:util";
 
 import {
   gitActionResultSchema,
+  gitComparisonSchema,
   gitCommitDetailSchema,
   gitFileDiffSchema,
   gitHistorySchema,
   gitRevisionFileDiffSchema,
+  gitRevisionCandidateListSchema,
   gitStatusSchema,
   type GitAction,
   type GitActionResult,
+  type GitComparison,
+  type GitComparisonCommit,
+  type GitComparisonMode,
   type GitCommitDetail,
   type GitCommitFile,
   type GitDiffScope,
@@ -17,6 +22,7 @@ import {
   type GitHistory,
   type GitRef,
   type GitRevisionFileDiff,
+  type GitRevisionCandidate,
   type GitSignature,
   type GitStatus,
 } from "@cantrip/protocol";
@@ -521,6 +527,161 @@ export async function readGitCommitDetail(
     filesChanged: total,
     additions: files.reduce((sum, file) => sum + (file.additions ?? 0), 0),
     deletions: files.reduce((sum, file) => sum + (file.deletions ?? 0), 0),
+  });
+}
+
+export async function readGitRevisionCandidates(
+  cwd: string,
+): Promise<GitRevisionCandidate[]> {
+  const [head, refs] = await Promise.all([
+    resolveCommit(cwd, "HEAD").catch(() => ""),
+    gitRaw(cwd, [
+      "for-each-ref",
+      "--format=%(refname)%00%(refname:short)%00%(objectname)%00%(objecttype)%00%(*objectname)%00%(*objecttype)%00%(HEAD)",
+      "refs/heads",
+      "refs/remotes",
+      "refs/tags",
+    ]),
+  ]);
+  const candidates: GitRevisionCandidate[] = [];
+  if (head) {
+    candidates.push({
+      revision: head,
+      hash: head,
+      shortHash: head.slice(0, 10),
+      name: "HEAD",
+      kind: "head",
+      current: true,
+      worktreeId: null,
+      worktreeName: null,
+    });
+  }
+  for (const line of refs.split("\n")) {
+    if (!line) continue;
+    const [
+      refName,
+      shortName,
+      objectHash,
+      objectType,
+      peeledHash,
+      peeledType,
+      current,
+    ] = line.split("\0");
+    const hash = peeledType === "commit" ? peeledHash : objectHash;
+    if (
+      !refName ||
+      !shortName ||
+      (peeledType !== "commit" && objectType !== "commit") ||
+      !hash ||
+      !/^[0-9a-f]{40,64}$/u.test(hash)
+    ) {
+      continue;
+    }
+    candidates.push({
+      revision: hash,
+      hash,
+      shortHash: hash.slice(0, 10),
+      name: shortName,
+      kind: refName.startsWith("refs/tags/")
+        ? "tag"
+        : refName.startsWith("refs/remotes/")
+          ? "remote"
+          : "local",
+      current: current === "*",
+      worktreeId: null,
+      worktreeName: null,
+    });
+    if (candidates.length >= 20_000) break;
+  }
+  return gitRevisionCandidateListSchema.parse(candidates);
+}
+
+async function readComparisonCommits(
+  cwd: string,
+  include: string,
+  exclude: string,
+): Promise<{ commits: GitComparisonCommit[]; truncated: boolean }> {
+  const output = await gitRaw(cwd, [
+    "log",
+    "--topo-order",
+    "--date=iso-strict",
+    "--max-count=101",
+    "--pretty=format:%H%x00%h%x00%an%x00%aI%x00%s%x1e",
+    include,
+    `^${exclude}`,
+  ]);
+  const parsed = output
+    .split("\x1e")
+    .map((record) => record.trim())
+    .filter(Boolean)
+    .flatMap((record): GitComparisonCommit[] => {
+      const [hash, shortHash, authorName, authoredAt, subject = ""] =
+        record.split("\0");
+      return hash && shortHash && authorName && authoredAt
+        ? [{ hash, shortHash, authorName, authoredAt, subject }]
+        : [];
+    });
+  return {
+    commits: parsed.slice(0, 100),
+    truncated: parsed.length > 100,
+  };
+}
+
+export async function readGitComparison(
+  cwd: string,
+  leftRevision: string,
+  rightRevision: string,
+  mode: GitComparisonMode,
+): Promise<GitComparison> {
+  const [left, right] = await Promise.all([
+    resolveCommit(cwd, leftRevision),
+    resolveCommit(cwd, rightRevision),
+  ]);
+  const mergeBase = await gitOutput(cwd, ["merge-base", left, right]).catch(
+    () => "",
+  );
+  const hasMergeBase = /^[0-9a-f]{40,64}$/u.test(mergeBase);
+  if (mode === "merge-base" && !hasMergeBase) {
+    throw new Error("The selected revisions do not share a merge base.");
+  }
+  const diffBase = mode === "merge-base" ? mergeBase : left;
+  const [counts, leftRange, rightRange, fileResult] = await Promise.all([
+    gitOutput(cwd, [
+      "rev-list",
+      "--left-right",
+      "--count",
+      `${left}...${right}`,
+    ]),
+    readComparisonCommits(cwd, left, right),
+    readComparisonCommits(cwd, right, left),
+    readCommitFiles(cwd, diffBase, right),
+  ]);
+  const [leftAheadText, rightAheadText] = counts.split(/\s+/u);
+  const additions = fileResult.files.reduce(
+    (sum, file) => sum + (file.additions ?? 0),
+    0,
+  );
+  const deletions = fileResult.files.reduce(
+    (sum, file) => sum + (file.deletions ?? 0),
+    0,
+  );
+  return gitComparisonSchema.parse({
+    mode,
+    left,
+    right,
+    mergeBase: hasMergeBase ? mergeBase : null,
+    diffBase,
+    leftAhead: Number.parseInt(leftAheadText ?? "0", 10) || 0,
+    rightAhead: Number.parseInt(rightAheadText ?? "0", 10) || 0,
+    leftCommits: leftRange.commits,
+    rightCommits: rightRange.commits,
+    leftCommitsTruncated: leftRange.truncated,
+    rightCommitsTruncated: rightRange.truncated,
+    files: fileResult.files,
+    filesTruncated: fileResult.truncated,
+    filesChanged: fileResult.total,
+    additions,
+    deletions,
   });
 }
 

@@ -38,8 +38,10 @@ import {
   remoteSurfaceWebRtcSignalSchema,
   gitActionSchema,
   gitCommitDetailSchema,
+  gitComparisonSchema,
   gitFileDiffSchema,
   gitRevisionFileDiffSchema,
+  gitRevisionCandidateListSchema,
   mentionedSkillNames,
   MIN_SIDEBAR_WIDTH,
   normalizeResponsesBaseUrl,
@@ -168,6 +170,74 @@ describe("Cantrip protocol", () => {
         binary: false,
       }).revision,
     ).toBe(revision);
+  });
+
+  it("validates bounded revision candidates and arbitrary comparisons", () => {
+    const left = "a".repeat(40);
+    const right = "b".repeat(40);
+    expect(
+      workerCommandSchema.parse({ type: "git.refs.list", cwd: "/repo" }),
+    ).toMatchObject({ type: "git.refs.list" });
+    expect(
+      workerCommandSchema.parse({
+        type: "git.compare",
+        cwd: "/repo",
+        left,
+        right,
+        mode: "merge-base",
+      }),
+    ).toMatchObject({ type: "git.compare", mode: "merge-base" });
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "git.compare",
+        cwd: "/repo",
+        left: "main",
+        right,
+        mode: "direct",
+      }),
+    ).toThrow();
+    expect(
+      gitRevisionCandidateListSchema.parse([
+        {
+          revision: left,
+          hash: left,
+          shortHash: left.slice(0, 10),
+          name: "main",
+          kind: "local",
+          current: true,
+          worktreeId: null,
+          worktreeName: null,
+        },
+      ]),
+    ).toHaveLength(1);
+    expect(
+      gitComparisonSchema.parse({
+        mode: "direct",
+        left,
+        right,
+        mergeBase: left,
+        diffBase: left,
+        leftAhead: 0,
+        rightAhead: 1,
+        leftCommits: [],
+        rightCommits: [
+          {
+            hash: right,
+            shortHash: right.slice(0, 8),
+            subject: "Right work",
+            authorName: "Cantrip",
+            authoredAt: "2026-08-10T12:00:00.000Z",
+          },
+        ],
+        leftCommitsTruncated: false,
+        rightCommitsTruncated: false,
+        files: [],
+        filesTruncated: false,
+        filesChanged: 0,
+        additions: 0,
+        deletions: 0,
+      }).rightAhead,
+    ).toBe(1);
   });
 
   it("bounds discovered script commands and their terminal-safe invocation", () => {

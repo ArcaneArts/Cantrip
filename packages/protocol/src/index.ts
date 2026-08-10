@@ -3082,6 +3082,53 @@ export const gitRevisionFileDiffSchema = z.object({
   binary: z.boolean(),
 });
 
+export const gitRevisionCandidateSchema = z.object({
+  revision: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  hash: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  shortHash: z.string().min(1).max(64),
+  name: z.string().min(1).max(1_024),
+  kind: z.enum(["head", "local", "remote", "tag", "worktree"]),
+  current: z.boolean(),
+  worktreeId: z.string().min(1).nullable(),
+  worktreeName: z.string().min(1).nullable(),
+});
+
+export const gitRevisionCandidateListSchema = z
+  .array(gitRevisionCandidateSchema)
+  .max(20_000);
+
+export const gitComparisonModeSchema = z.enum(["direct", "merge-base"]);
+
+export const gitComparisonCommitSchema = z.object({
+  hash: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  shortHash: z.string().min(1).max(64),
+  subject: z.string(),
+  authorName: z.string().min(1),
+  authoredAt: z.string().datetime({ offset: true }),
+});
+
+export const gitComparisonSchema = z.object({
+  mode: gitComparisonModeSchema,
+  left: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  right: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  mergeBase: z
+    .string()
+    .regex(/^[0-9a-f]{40,64}$/u)
+    .nullable(),
+  diffBase: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  leftAhead: z.number().int().nonnegative(),
+  rightAhead: z.number().int().nonnegative(),
+  leftCommits: z.array(gitComparisonCommitSchema).max(100),
+  rightCommits: z.array(gitComparisonCommitSchema).max(100),
+  leftCommitsTruncated: z.boolean(),
+  rightCommitsTruncated: z.boolean(),
+  files: z.array(gitCommitFileSchema).max(100_000),
+  filesTruncated: z.boolean(),
+  filesChanged: z.number().int().nonnegative(),
+  additions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+});
+
 export const gitHistorySchema = z.object({
   branch: z.string(),
   head: z.string().nullable(),
@@ -3455,6 +3502,17 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       .array(z.string().regex(/^[0-9a-f]{40,64}$/u))
       .max(500)
       .default([]),
+  }),
+  z.object({
+    type: z.literal("git.refs.list"),
+    cwd: z.string().min(1).max(8_192),
+  }),
+  z.object({
+    type: z.literal("git.compare"),
+    cwd: z.string().min(1).max(8_192),
+    left: z.string().regex(/^[0-9a-f]{40,64}$/u),
+    right: z.string().regex(/^[0-9a-f]{40,64}$/u),
+    mode: gitComparisonModeSchema,
   }),
   z.object({
     type: z.literal("git.revision.diff"),
@@ -4178,6 +4236,10 @@ export type GitSignature = z.infer<typeof gitSignatureSchema>;
 export type GitCommitFile = z.infer<typeof gitCommitFileSchema>;
 export type GitCommitDetail = z.infer<typeof gitCommitDetailSchema>;
 export type GitRevisionFileDiff = z.infer<typeof gitRevisionFileDiffSchema>;
+export type GitRevisionCandidate = z.infer<typeof gitRevisionCandidateSchema>;
+export type GitComparisonMode = z.infer<typeof gitComparisonModeSchema>;
+export type GitComparisonCommit = z.infer<typeof gitComparisonCommitSchema>;
+export type GitComparison = z.infer<typeof gitComparisonSchema>;
 export type GitFileChange = z.infer<typeof gitFileChangeSchema>;
 export type GitBranch = z.infer<typeof gitBranchSchema>;
 export type GitStatus = z.infer<typeof gitStatusSchema>;

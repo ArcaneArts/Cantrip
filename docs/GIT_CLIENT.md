@@ -33,10 +33,37 @@ Manual QA:
 5. Repeat with the worker offline and confirm an error appears without falling
    back to another worktree.
 
+## Arbitrary comparisons
+
+Open a History tab and choose **Compare**. Endpoint A and endpoint B can be
+selected from a searchable list of local branches, remote branches, tags,
+HEAD, and every known project worktree HEAD. While the comparison is open, the
+compact A/B controls on commit rows can assign either endpoint directly from
+the graph.
+
+Direct mode shows the patch needed to transform A into B. Merge-base mode
+shows changes introduced on B since the common ancestor of A and B. The panel
+always states that direction, reports commits unique to either side and
+ahead/behind counts, and exposes bounded changed-file stats and lazy per-file
+patches through the shared diff viewer.
+
+Manual QA:
+
+1. Compare two divergent local branches in direct mode and confirm files from
+   both sides appear as additions/deletions as appropriate.
+2. Switch to merge-base mode and confirm only B-side changes since the common
+   ancestor are shown.
+3. Select a tag, remote branch, and named worktree HEAD through search.
+4. Assign A and B from graph rows and confirm the direction and result update.
+5. Open a comparison file patch, then reverse A and B and confirm the patch
+   direction changes.
+6. Compare unrelated histories directly, then confirm merge-base mode reports
+   the missing common ancestor intentionally.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport
-- [ ] Arbitrary revision comparison
+- [x] Arbitrary revision comparison
 - [ ] Hunk and selected-line staging
 - [ ] Stash/shelf management
 - [ ] Complete branch management

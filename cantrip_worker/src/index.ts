@@ -25,9 +25,11 @@ import {
 import { GithubClient } from "./github.js";
 import {
   readGitCommitDetail,
+  readGitComparison,
   readGitFileDiff,
   readGitHistory,
   readGitRevisionFileDiff,
+  readGitRevisionCandidates,
   readGitStatus,
   runGitAction,
 } from "./git.js";
@@ -213,6 +215,15 @@ async function start(): Promise<void> {
           command.revision,
           command.parentIndex,
           command.revisions,
+        );
+      case "git.refs.list":
+        return readGitRevisionCandidates(command.cwd);
+      case "git.compare":
+        return readGitComparison(
+          command.cwd,
+          command.left,
+          command.right,
+          command.mode,
         );
       case "git.revision.diff":
         return readGitRevisionFileDiff(
