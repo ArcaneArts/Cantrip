@@ -6,6 +6,7 @@ import type {
 import { describe, expect, it } from "vitest";
 
 import {
+  isFailedPullRequestCheck,
   pullRequestCheckLabel,
   pullRequestFileSubtitle,
   mergeCheckedOutWorktree,
@@ -32,6 +33,20 @@ describe("GitHub pull request review presentation", () => {
         conclusion: "timed_out",
       }),
     ).toBe("timed out");
+    expect(
+      isFailedPullRequestCheck({
+        ...check,
+        status: "completed",
+        conclusion: "timed_out",
+      }),
+    ).toBe(true);
+    expect(
+      isFailedPullRequestCheck({
+        ...check,
+        status: "completed",
+        conclusion: "success",
+      }),
+    ).toBe(false);
   });
 
   it("includes rename and bounded change stats in file subtitles", () => {

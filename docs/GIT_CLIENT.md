@@ -775,13 +775,28 @@ Manual QA:
 6. Disconnect the assigned worker and confirm signature inspection does not
    fall back to another worker or expose worker-local trust configuration.
 
-## Agent-assisted working changes
+## Agent-assisted Git workflows
 
 The Working Changes panel offers optional **Summarize** and **Draft message**
 actions. The assigned worker collects a bounded staged/unstaged status and
 patch snapshot, then runs the account's default model in a read-only,
 network-disabled generation turn. Repository content is treated as untrusted
 evidence rather than instructions.
+
+The same reviewed-draft boundary applies to four additional surfaces:
+
+- pull-request creation can draft a Markdown description from a bounded
+  base-to-head commit range;
+- revision comparison can produce a peer-review preview for its selected
+  range;
+- the conflict resolver can explain unmerged index stages and the combined
+  conflict patch without choosing or applying a resolution; and
+- a pull request's Checks tab can summarize its failed GitHub checks from the
+  worker-fetched, bounded check summaries while preserving direct check links.
+
+GitHub credentials remain worker-local. The server supplies the project's
+authoritative repository identity, and only the worker gathers GitHub check
+evidence before the model runs with network access disabled.
 
 Every result opens in an editable review dialog. Summaries can be copied.
 Commit-message drafts enter the ordinary commit-message field only after
@@ -802,6 +817,14 @@ Manual QA:
    usable; configured fallback routes are attempted in priority order.
 5. Put instruction-like text in a changed file and confirm the model treats it
    as repository evidence rather than an instruction to mutate or publish.
+6. Draft a pull-request description and use the reviewed text. Confirm the
+   body changes but the pull request is not created until the ordinary form is
+   submitted.
+7. Review a comparison range and explain an active conflict. Confirm the
+   generated text is copy-only and neither operation changes Git state.
+8. Open a pull request with failed checks and summarize them. Confirm only
+   failures are discussed, check links remain available, and no GitHub state
+   changes.
 
 ## Evolution checklist
 
@@ -819,7 +842,7 @@ Manual QA:
 - [x] File history, blame, and repository search
 - [x] Recovery tools and bisect
 - [x] Repository-system support
-- [ ] Agent-assisted Git workflows
+- [x] Agent-assisted Git workflows
 
 Each checklist item is delivered through its own isolated worktree and pull
 request based on the latest merged `origin/main`.

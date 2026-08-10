@@ -13,9 +13,14 @@ import {
 } from "@/components/ui/dialog";
 
 export function gitAgentTaskLabel(task: GitAgentDraftTask): string {
-  return task === "draft-commit-message"
-    ? "Draft commit message"
-    : "Summarize changes";
+  return {
+    "summarize-changes": "Summarize changes",
+    "draft-commit-message": "Draft commit message",
+    "draft-pr-description": "Draft pull request description",
+    "review-commit-range": "Review commit range",
+    "explain-conflicts": "Explain conflicts",
+    "summarize-failed-checks": "Summarize failed checks",
+  }[task];
 }
 
 export function GitAgentDraftDialog({

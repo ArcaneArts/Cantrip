@@ -1,11 +1,12 @@
 import {
+  type GitAgentDraftResult,
   githubPullRequestCreateSchema,
   type GitStatus,
   type GithubPullRequestCreate,
   type GithubPullRequestSummary,
 } from "@cantrip/protocol";
 import { useMutation } from "@tanstack/react-query";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { ExternalLink, Loader2, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { createGithubPullRequest } from "@/lib/api";
+import {
+  createGithubPullRequest,
+  generateProjectWorktreeGitDraft,
+} from "@/lib/api";
+
+import { GitAgentDraftDialog } from "./git-agent-draft-dialog";
 
 export function parsePullRequestCsv(value: string): string[] {
   return [
@@ -102,6 +108,10 @@ export function GithubPullRequestCreateDialog({
     pullRequest: GithubPullRequestSummary;
     warnings: string[];
   } | null>(null);
+  const [agentOpen, setAgentOpen] = useState(false);
+  const [agentDraft, setAgentDraft] = useState<GitAgentDraftResult | null>(
+    null,
+  );
   const linkedIssueNumbers = parseLinkedIssueNumbers(form.linkedIssues);
   const request = githubPullRequestCreateSchema.safeParse({
     base: form.base,
@@ -121,6 +131,17 @@ export function GithubPullRequestCreateDialog({
       onCreated(result.pullRequest);
     },
   });
+  const generateDraft = useMutation({
+    mutationFn: () =>
+      generateProjectWorktreeGitDraft(projectId, worktreeId, {
+        task: "draft-pr-description",
+        baseRevision: form.base,
+        headRevision: form.head,
+        instructions: null,
+        pullRequestNumber: null,
+      }),
+    onSuccess: setAgentDraft,
+  });
   useEffect(() => {
     if (open) {
       setForm({
@@ -130,6 +151,9 @@ export function GithubPullRequestCreateDialog({
       });
       setCreated(null);
       create.reset();
+      generateDraft.reset();
+      setAgentDraft(null);
+      setAgentOpen(false);
     }
   }, [open, branches.initialBase, branches.initialHead]);
   const submit = (event: FormEvent) => {
@@ -230,16 +254,32 @@ export function GithubPullRequestCreateDialog({
                 }
               />
             </label>
-            <label className="block text-xs font-medium">
-              Markdown body
+            <div className="block text-xs font-medium">
+              <div className="flex items-center justify-between gap-2">
+                <span>Markdown body</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7"
+                  disabled={!form.base || !form.head || generateDraft.isPending}
+                  onClick={() => {
+                    setAgentOpen(true);
+                    generateDraft.mutate();
+                  }}
+                >
+                  <Sparkles className="size-3.5" /> Draft description
+                </Button>
+              </div>
               <textarea
+                aria-label="Markdown body"
                 className="mt-1 min-h-40 w-full resize-y rounded-md border bg-background p-3 text-sm"
                 value={form.body}
                 onChange={(event) =>
                   setForm({ ...form, body: event.target.value })
                 }
               />
-            </label>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-xs font-medium">
                 Labels (comma separated)
@@ -331,6 +371,16 @@ export function GithubPullRequestCreateDialog({
             </DialogFooter>
           </form>
         )}
+        <GitAgentDraftDialog
+          draft={agentDraft}
+          error={generateDraft.error ? errorText(generateDraft.error) : null}
+          loading={generateDraft.isPending}
+          onApply={(text) => setForm((current) => ({ ...current, body: text }))}
+          onOpenChange={setAgentOpen}
+          onRegenerate={() => generateDraft.mutate()}
+          open={agentOpen}
+          task="draft-pr-description"
+        />
       </DialogContent>
     </Dialog>
   );

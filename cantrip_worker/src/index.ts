@@ -23,7 +23,10 @@ import {
   writeExplorerFile,
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
-import { buildGitAgentPrompt } from "./git-agent.js";
+import {
+  buildGitAgentPrompt,
+  failedPullRequestChecksEvidence,
+} from "./git-agent.js";
 import {
   amendGitManagedOperation,
   applyGitForcePush,
@@ -487,7 +490,19 @@ async function start(): Promise<void> {
         return previewGitForcePush(command.cwd);
       case "git.force-push.apply":
         return applyGitForcePush(command.cwd, command.token);
-      case "git.agent.generate":
+      case "git.agent.generate": {
+        const failedChecksEvidence =
+          command.task === "summarize-failed-checks" &&
+          command.repository &&
+          command.pullRequestNumber
+            ? failedPullRequestChecksEvidence(
+                await github.getPullRequest(
+                  command.repository,
+                  command.cwd,
+                  command.pullRequestNumber,
+                ),
+              )
+            : null;
         return runtimeFor(command).runWorkflowNode({
           workflowRunId: `git-agent:${command.generationId}`,
           runNodeId: command.task,
@@ -498,8 +513,14 @@ async function start(): Promise<void> {
           threadId: null,
           prompt: await buildGitAgentPrompt(
             command.cwd,
-            command.task,
-            command.instructions,
+            {
+              task: command.task,
+              instructions: command.instructions,
+              baseRevision: command.baseRevision,
+              headRevision: command.headRevision,
+              pullRequestNumber: command.pullRequestNumber,
+            },
+            failedChecksEvidence,
           ),
           developerInstructions: command.developerInstructions,
           skillNames: [],
@@ -512,6 +533,7 @@ async function start(): Promise<void> {
           model: command.model,
           provider: command.provider,
         });
+      }
       case "worktree.list":
         return worktrees.list(command.sourcePath);
       case "worktree.reconcile":

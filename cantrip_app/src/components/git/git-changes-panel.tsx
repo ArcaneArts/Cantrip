@@ -319,6 +319,9 @@ export function GitChangesPanel({
       generateProjectWorktreeGitDraft(projectId, worktreeId, {
         task,
         instructions: null,
+        baseRevision: null,
+        headRevision: null,
+        pullRequestNumber: null,
       }),
     onSuccess: setAgentDraft,
   });

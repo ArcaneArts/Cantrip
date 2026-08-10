@@ -2,7 +2,7 @@ import type {
   GitComparisonMode,
   GitRevisionCandidate,
 } from "@cantrip/protocol";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowLeftRight,
   Binary,
@@ -15,6 +15,7 @@ import {
   GitCompareArrows,
   Loader2,
   Search,
+  Sparkles,
   Tag,
   Trees,
   X,
@@ -23,6 +24,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
+  generateProjectWorktreeGitDraft,
   getProjectWorktreeComparison,
   getProjectWorktreeRevisionCandidates,
   getProjectWorktreeRevisionDiff,
@@ -30,6 +32,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { commitFileStatusLabel } from "./git-commit-inspector";
+import { GitAgentDraftDialog } from "./git-agent-draft-dialog";
 import { GitPatchView } from "./git-patch-view";
 
 export function filterRevisionCandidates(
@@ -219,6 +222,7 @@ export function GitComparisonPanel({
 }) {
   const [mode, setMode] = useState<GitComparisonMode>("direct");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [agentOpen, setAgentOpen] = useState(false);
   const refs = useQuery({
     queryFn: () => getProjectWorktreeRevisionCandidates(projectId, worktreeId),
     queryKey: ["worktree-revision-candidates", projectId, worktreeId],
@@ -263,6 +267,16 @@ export function GitComparisonPanel({
     ],
   });
   const candidates = refs.data ?? [];
+  const agentReview = useMutation({
+    mutationFn: () =>
+      generateProjectWorktreeGitDraft(projectId, worktreeId, {
+        task: "review-commit-range",
+        baseRevision: left,
+        headRevision: right,
+        instructions: null,
+        pullRequestNumber: null,
+      }),
+  });
 
   return (
     <aside className="absolute inset-y-0 right-0 z-20 flex w-full max-w-5xl border-l bg-background shadow-2xl md:relative md:z-auto md:w-[min(68vw,72rem)] md:shadow-none">
@@ -280,6 +294,18 @@ export function GitComparisonPanel({
               Select A and B here or use the A/B controls on graph rows
             </p>
           </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8"
+            disabled={!left || !right || agentReview.isPending}
+            onClick={() => {
+              setAgentOpen(true);
+              agentReview.mutate();
+            }}
+          >
+            <Sparkles className="size-3.5" /> Review range
+          </Button>
           <Button
             size="icon"
             variant="ghost"
@@ -513,6 +539,17 @@ export function GitComparisonPanel({
           truncated={fileDiff.data?.truncated ?? false}
         />
       ) : null}
+      <GitAgentDraftDialog
+        draft={agentReview.data ?? null}
+        error={
+          agentReview.error instanceof Error ? agentReview.error.message : null
+        }
+        loading={agentReview.isPending}
+        onOpenChange={setAgentOpen}
+        onRegenerate={() => agentReview.mutate()}
+        open={agentOpen}
+        task="review-commit-range"
+      />
     </aside>
   );
 }

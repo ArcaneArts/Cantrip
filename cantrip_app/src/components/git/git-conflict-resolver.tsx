@@ -3,7 +3,14 @@ import type {
   GitConflictResolutionRequest,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, FileDiff, Loader2, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  FileDiff,
+  Loader2,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -17,11 +24,14 @@ import {
 } from "@/components/ui/dialog";
 import {
   applyProjectWorktreeGitConflictResolution,
+  generateProjectWorktreeGitDraft,
   getProjectWorktreeGitConflict,
   getProjectWorktreeGitConflicts,
   previewProjectWorktreeGitConflictResolution,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+
+import { GitAgentDraftDialog } from "./git-agent-draft-dialog";
 
 export interface ConflictMarkerSection {
   start: number;
@@ -141,6 +151,7 @@ export function GitConflictResolver({
     "result",
   );
   const [draft, setDraft] = useState("");
+  const [agentOpen, setAgentOpen] = useState(false);
   const [reviewed, setReviewed] = useState<GitConflictResolutionRequest | null>(
     null,
   );
@@ -204,6 +215,16 @@ export function GitConflictResolver({
       });
     },
   });
+  const agentExplain = useMutation({
+    mutationFn: () =>
+      generateProjectWorktreeGitDraft(projectId, worktreeId, {
+        task: "explain-conflicts",
+        instructions: null,
+        baseRevision: null,
+        headRevision: null,
+        pullRequestNumber: null,
+      }),
+  });
   const review = (request: GitConflictResolutionRequest) => {
     setReviewed(request);
     preview.reset();
@@ -246,6 +267,18 @@ export function GitConflictResolver({
             First 1,000 shown
           </span>
         ) : null}
+        <Button
+          size="sm"
+          variant="ghost"
+          className="ml-auto h-7"
+          disabled={agentExplain.isPending}
+          onClick={() => {
+            setAgentOpen(true);
+            agentExplain.mutate();
+          }}
+        >
+          <Sparkles className="size-3.5" /> Explain
+        </Button>
       </div>
       <div className="grid min-h-[28rem] grid-cols-[13rem_minmax(0,1fr)]">
         <div className="overflow-auto border-r p-1">
@@ -522,6 +555,19 @@ export function GitConflictResolver({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <GitAgentDraftDialog
+        draft={agentExplain.data ?? null}
+        error={
+          agentExplain.error instanceof Error
+            ? agentExplain.error.message
+            : null
+        }
+        loading={agentExplain.isPending}
+        onOpenChange={setAgentOpen}
+        onRegenerate={() => agentExplain.mutate()}
+        open={agentOpen}
+        task="explain-conflicts"
+      />
     </div>
   );
 }
