@@ -56,6 +56,9 @@ import {
   githubIssueListSchema,
   githubRepositoryListSchema,
   gitActionResultSchema,
+  gitBranchActionPreviewSchema,
+  gitBranchListSchema,
+  gitBranchMutationResultSchema,
   gitCommitDetailSchema,
   gitComparisonSchema,
   gitFileDiffSchema,
@@ -123,6 +126,7 @@ import type {
   CodexSkillConfigUpdate,
   CodexSkillRootsUpdate,
   GitAction,
+  GitBranchAction,
   GitDiffScope,
   GitPartialPatchRequest,
   GitStashAction,
@@ -447,6 +451,44 @@ export async function runProjectWorktreeGitAction(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/actions`,
       action,
+    ),
+  );
+}
+
+export async function getProjectWorktreeBranches(
+  projectId: string,
+  worktreeId: string,
+) {
+  return gitBranchListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/branches`,
+    ),
+  );
+}
+
+export async function previewProjectWorktreeBranchAction(
+  projectId: string,
+  worktreeId: string,
+  action: GitBranchAction,
+) {
+  return gitBranchActionPreviewSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/branches/actions/preview`,
+      action,
+    ),
+  );
+}
+
+export async function applyProjectWorktreeBranchAction(
+  projectId: string,
+  worktreeId: string,
+  action: GitBranchAction,
+  token: string,
+) {
+  return gitBranchMutationResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/branches/actions/apply`,
+      { action, token },
     ),
   );
 }

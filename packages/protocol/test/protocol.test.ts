@@ -37,6 +37,8 @@ import {
   remoteSurfaceWebRtcConfigurationSchema,
   remoteSurfaceWebRtcSignalSchema,
   gitActionSchema,
+  gitBranchActionPreviewSchema,
+  gitBranchListSchema,
   gitCommitDetailSchema,
   gitComparisonSchema,
   gitFileDiffSchema,
@@ -81,6 +83,83 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("validates bounded branch inventory and reviewed branch actions", () => {
+    const hash = "a".repeat(40);
+    const branch = {
+      name: "feature/branches",
+      fullRef: "refs/heads/feature/branches",
+      kind: "local" as const,
+      current: false,
+      hash,
+      upstream: "origin/feature/branches",
+      upstreamGone: false,
+      ahead: 2,
+      behind: 1,
+      mergedIntoHead: false,
+      remoteName: "origin",
+      remoteAvailable: true,
+      trackingLocalBranches: [],
+      worktree: { label: "review-lane", current: false },
+      lastCommit: {
+        hash,
+        shortHash: "aaaaaaa",
+        subject: "Add branches",
+        authorName: "Cantrip",
+        authoredAt: "2026-08-10T12:00:00.000Z",
+      },
+    };
+    expect(
+      gitBranchListSchema.parse({
+        currentBranch: "main",
+        head: hash,
+        detached: false,
+        defaultRemote: "origin",
+        remotes: ["origin"],
+        pullStrategy: {
+          mode: "fast-forward-only",
+          description: "Pulls must fast-forward.",
+        },
+        branches: [branch],
+        truncated: false,
+        generatedAt: "2026-08-10T12:00:00.000Z",
+      }).branches,
+    ).toHaveLength(1);
+    expect(
+      gitBranchActionPreviewSchema.parse({
+        action: {
+          type: "deleteRemote",
+          remote: "origin",
+          name: "feature/branches",
+        },
+        token: "b".repeat(64),
+        destructive: true,
+        summary: "Delete origin/feature/branches.",
+        warnings: ["This removes the remote ref."],
+        branch,
+      }).destructive,
+    ).toBe(true);
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "git.branch.action.preview",
+        cwd: "/repo",
+        action: { type: "fetch", remote: "--upload-pack=oops", prune: true },
+      }),
+    ).toThrow();
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "git.branch.action.apply",
+        cwd: "/repo",
+        action: {
+          type: "create",
+          name: "topic",
+          startPoint: "--exec=oops",
+          checkout: true,
+        },
+        token: "c".repeat(64),
+      }),
+    ).toThrow();
+  });
+
   it("validates bounded commit inspection and revision diff commands", () => {
     const revision = "a".repeat(40);
     const parent = "b".repeat(40);

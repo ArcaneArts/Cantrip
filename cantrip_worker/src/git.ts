@@ -7,6 +7,9 @@ import { promisify } from "node:util";
 
 import {
   gitActionResultSchema,
+  gitBranchActionPreviewSchema,
+  gitBranchListSchema,
+  gitBranchMutationResultSchema,
   gitComparisonSchema,
   gitCommitDetailSchema,
   gitFileDiffSchema,
@@ -21,6 +24,11 @@ import {
   gitStatusSchema,
   type GitAction,
   type GitActionResult,
+  type GitBranchAction,
+  type GitBranchActionPreview,
+  type GitBranchList,
+  type GitBranchMutationResult,
+  type GitManagedBranch,
   type GitComparison,
   type GitComparisonCommit,
   type GitComparisonMode,
@@ -51,6 +59,7 @@ const GIT_BUFFER = 16 * 1024 * 1024;
 const DIFF_CHARACTER_LIMIT = 2_000_000;
 const COMMIT_MESSAGE_CHARACTER_LIMIT = 1_000_000;
 const COMMIT_FILE_LIMIT = 100_000;
+const BRANCH_LIMIT = 20_000;
 
 async function gitOutput(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
@@ -1653,6 +1662,488 @@ export async function applyGitStashAction(
     status,
     stash,
     conflictedPaths,
+  });
+}
+
+function parseTrackingCounts(track: string): {
+  ahead: number;
+  behind: number;
+  gone: boolean;
+} {
+  const ahead = Number.parseInt(/ahead (\d+)/u.exec(track)?.[1] ?? "0", 10);
+  const behind = Number.parseInt(/behind (\d+)/u.exec(track)?.[1] ?? "0", 10);
+  return {
+    ahead: Number.isFinite(ahead) ? ahead : 0,
+    behind: Number.isFinite(behind) ? behind : 0,
+    gone: track.includes("gone"),
+  };
+}
+
+async function readBranchWorktreeOwners(
+  cwd: string,
+): Promise<Map<string, { label: string; current: boolean }>> {
+  const output = await gitRaw(cwd, ["worktree", "list", "--porcelain", "-z"]);
+  const owners = new Map<string, { label: string; current: boolean }>();
+  let worktreePath = "";
+  const currentPath = path.resolve(cwd);
+  for (const record of output.split("\0")) {
+    if (record.startsWith("worktree ")) {
+      worktreePath = record.slice("worktree ".length);
+      continue;
+    }
+    if (record.startsWith("branch refs/heads/") && worktreePath) {
+      owners.set(record.slice("branch refs/heads/".length), {
+        label: path.basename(worktreePath) || worktreePath,
+        current: path.resolve(worktreePath) === currentPath,
+      });
+    }
+  }
+  return owners;
+}
+
+function pullStrategyDescription(): GitBranchList["pullStrategy"] {
+  return {
+    mode: "fast-forward-only",
+    description:
+      "Cantrip pulls with --ff-only after fetching, so it never creates an implicit merge or rebase.",
+  };
+}
+
+export async function readGitBranches(cwd: string): Promise<GitBranchList> {
+  const head = await gitOutput(cwd, ["rev-parse", "--verify", "HEAD"]).catch(
+    () => "",
+  );
+  const [currentBranch, remoteOutput, refOutput, owners, mergedOutput] =
+    await Promise.all([
+      gitOutput(cwd, ["branch", "--show-current"]),
+      gitOutput(cwd, ["remote"]),
+      gitRaw(cwd, [
+        "for-each-ref",
+        "--format=%(refname)%00%(refname:short)%00%(objectname)%00%(upstream:short)%00%(upstream:track)%00%(authorname)%00%(authordate:iso-strict)%00%(subject)",
+        "refs/heads",
+        "refs/remotes",
+      ]),
+      readBranchWorktreeOwners(cwd),
+      head
+        ? Promise.all([
+            gitOutput(cwd, [
+              "branch",
+              "--format=%(refname:short)",
+              "--merged",
+              "HEAD",
+            ]),
+            gitOutput(cwd, [
+              "branch",
+              "-r",
+              "--format=%(refname:short)",
+              "--merged",
+              "HEAD",
+            ]),
+          ])
+        : Promise.resolve(["", ""]),
+    ]);
+  const remotes = remoteOutput.split("\n").filter(Boolean).sort();
+  const remoteSet = new Set(remotes);
+  const merged = new Set(
+    mergedOutput.flatMap((value) => value.split("\n")).filter(Boolean),
+  );
+  const parsed = refOutput
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter(Boolean)
+    .flatMap((line): GitManagedBranch[] => {
+      const [
+        fullRef,
+        name,
+        hash,
+        upstream = "",
+        track = "",
+        authorName = "Unknown",
+        authoredAt = "",
+        subject = "",
+      ] = line.split("\0");
+      if (!fullRef || !name || !hash || !authoredAt) return [];
+      if (fullRef.endsWith("/HEAD")) return [];
+      const kind = fullRef.startsWith("refs/remotes/") ? "remote" : "local";
+      const remoteName =
+        kind === "remote"
+          ? (name.split("/")[0] ?? null)
+          : upstream
+            ? (upstream.split("/")[0] ?? null)
+            : null;
+      const counts = parseTrackingCounts(track);
+      return [
+        {
+          name,
+          fullRef,
+          kind,
+          current: kind === "local" && name === currentBranch,
+          hash,
+          upstream: upstream || null,
+          upstreamGone: counts.gone,
+          ahead: counts.ahead,
+          behind: counts.behind,
+          mergedIntoHead: head ? merged.has(name) : null,
+          remoteName,
+          remoteAvailable:
+            kind === "remote"
+              ? Boolean(remoteName && remoteSet.has(remoteName))
+              : Boolean(upstream && !counts.gone),
+          trackingLocalBranches: [],
+          worktree: kind === "local" ? (owners.get(name) ?? null) : null,
+          lastCommit: {
+            hash,
+            shortHash: hash.slice(0, 8),
+            subject,
+            authorName: authorName || "Unknown",
+            authoredAt,
+          },
+        },
+      ];
+    });
+  const localBranches = parsed.filter(({ kind }) => kind === "local");
+  for (const branch of parsed) {
+    if (branch.kind === "remote") {
+      branch.trackingLocalBranches = localBranches
+        .filter(({ upstream }) => upstream === branch.name)
+        .map(({ name }) => name);
+    }
+  }
+  const branches = parsed
+    .sort((left, right) => {
+      if (left.current !== right.current) return left.current ? -1 : 1;
+      if (left.kind !== right.kind) return left.kind === "local" ? -1 : 1;
+      return left.name.localeCompare(right.name);
+    })
+    .slice(0, BRANCH_LIMIT);
+  const configuredRemote = currentBranch
+    ? await gitOutput(cwd, [
+        "config",
+        "--get",
+        `branch.${currentBranch}.remote`,
+      ]).catch(() => "")
+    : "";
+  const defaultRemote =
+    configuredRemote && configuredRemote !== "."
+      ? configuredRemote
+      : remotes.includes("origin")
+        ? "origin"
+        : (remotes[0] ?? null);
+  return gitBranchListSchema.parse({
+    currentBranch: currentBranch || null,
+    head: head || null,
+    detached: !currentBranch,
+    defaultRemote,
+    remotes,
+    pullStrategy: pullStrategyDescription(),
+    branches,
+    truncated: parsed.length > BRANCH_LIMIT,
+    generatedAt: new Date().toISOString(),
+  });
+}
+
+function branchActionToken(
+  action: GitBranchAction,
+  inventory: GitBranchList,
+  workspace: string,
+): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        action,
+        head: inventory.head,
+        refs: inventory.branches.map(
+          ({ fullRef, hash, upstream, worktree }) => ({
+            fullRef,
+            hash,
+            upstream,
+            worktree,
+          }),
+        ),
+        workspace,
+      }),
+    )
+    .digest("hex");
+}
+
+function branchByName(
+  inventory: GitBranchList,
+  name: string,
+  kind?: "local" | "remote",
+): GitManagedBranch | null {
+  return (
+    inventory.branches.find(
+      (branch) => branch.name === name && (!kind || branch.kind === kind),
+    ) ?? null
+  );
+}
+
+async function validateBranchAction(
+  cwd: string,
+  action: GitBranchAction,
+  inventory: GitBranchList,
+): Promise<{
+  branch: GitManagedBranch | null;
+  summary: string;
+  warnings: string[];
+}> {
+  const warnings: string[] = [];
+  let branch: GitManagedBranch | null = null;
+  const requireRemote = (name: string) => {
+    if (!inventory.remotes.includes(name)) {
+      throw new Error(`Git remote ${name} does not exist.`);
+    }
+  };
+  const requireLocal = (name: string) => {
+    const selected = branchByName(inventory, name, "local");
+    if (!selected) throw new Error(`Local branch ${name} does not exist.`);
+    return selected;
+  };
+  if ("name" in action && action.type !== "switch") {
+    await runGit(cwd, ["check-ref-format", "--branch", action.name]);
+  }
+  switch (action.type) {
+    case "create": {
+      if (branchByName(inventory, action.name, "local")) {
+        throw new Error(`Local branch ${action.name} already exists.`);
+      }
+      if (!action.startPoint && !inventory.head) {
+        throw new Error(
+          "An unborn repository needs an existing start point before a branch can be created.",
+        );
+      }
+      if (action.startPoint) {
+        await runGit(cwd, [
+          "rev-parse",
+          "--verify",
+          "--end-of-options",
+          `${action.startPoint}^{commit}`,
+        ]);
+      }
+      if (action.checkout && (await readGitStatus(cwd)).files.length > 0) {
+        warnings.push(
+          "Local changes will remain in the worktree while switching to the new branch.",
+        );
+      }
+      return {
+        branch: null,
+        summary: `${action.checkout ? "Create and switch to" : "Create"} local branch ${action.name}${action.startPoint ? ` at ${action.startPoint}` : " at the current HEAD"}.`,
+        warnings,
+      };
+    }
+    case "switch": {
+      await runGit(cwd, ["check-ref-format", "--branch", action.name]);
+      branch = branchByName(inventory, action.name, action.kind);
+      if (!branch) throw new Error(`Branch ${action.name} does not exist.`);
+      if (
+        branch.kind === "local" &&
+        branch.worktree &&
+        !branch.worktree.current
+      ) {
+        throw new Error(
+          `${action.name} is checked out in worktree ${branch.worktree.label}. Switch to that worktree instead.`,
+        );
+      }
+      if ((await readGitStatus(cwd)).files.length > 0) {
+        warnings.push(
+          "Local changes must be compatible with the target branch or Git will refuse the switch.",
+        );
+      }
+      return {
+        branch,
+        summary: `Switch this worktree to ${action.name}.`,
+        warnings,
+      };
+    }
+    case "publish":
+      branch = requireLocal(action.name);
+      requireRemote(action.remote);
+      return {
+        branch,
+        summary: `Push ${action.name} to ${action.remote} and set ${action.remote}/${action.name} as its upstream.`,
+        warnings,
+      };
+    case "rename":
+      branch = requireLocal(action.name);
+      await runGit(cwd, ["check-ref-format", "--branch", action.newName]);
+      if (branchByName(inventory, action.newName, "local")) {
+        throw new Error(`Local branch ${action.newName} already exists.`);
+      }
+      if (branch.worktree && !branch.worktree.current) {
+        throw new Error(
+          `${action.name} is checked out in worktree ${branch.worktree.label} and cannot be renamed here.`,
+        );
+      }
+      if (branch.upstream) {
+        warnings.push(
+          `The upstream remains ${branch.upstream}; renaming does not rename the remote branch.`,
+        );
+      }
+      return {
+        branch,
+        summary: `Rename local branch ${action.name} to ${action.newName}.`,
+        warnings,
+      };
+    case "deleteLocal":
+      branch = requireLocal(action.name);
+      if (branch.current)
+        throw new Error("The current branch cannot be deleted.");
+      if (branch.worktree) {
+        throw new Error(
+          `${action.name} is checked out in worktree ${branch.worktree.label} and cannot be deleted.`,
+        );
+      }
+      if (!branch.mergedIntoHead && action.force) {
+        warnings.push(
+          "This branch is not merged into the current HEAD. Its commits may become reachable only through the reflog.",
+        );
+      }
+      return {
+        branch,
+        summary: `Delete local branch ${action.name}${action.force ? " even though it is unmerged" : " if it is merged"}.`,
+        warnings,
+      };
+    case "deleteRemote": {
+      requireRemote(action.remote);
+      await runGit(cwd, ["check-ref-format", "--branch", action.name]);
+      branch = branchByName(
+        inventory,
+        `${action.remote}/${action.name}`,
+        "remote",
+      );
+      if (!branch) {
+        throw new Error(
+          `Remote branch ${action.remote}/${action.name} does not exist locally. Fetch before retrying.`,
+        );
+      }
+      warnings.push(
+        "This deletes the branch for every collaborator using this remote.",
+      );
+      return {
+        branch,
+        summary: `Delete remote branch ${action.remote}/${action.name}.`,
+        warnings,
+      };
+    }
+    case "setUpstream":
+      branch = requireLocal(action.name);
+      if (action.upstream) {
+        const upstream = branchByName(inventory, action.upstream, "remote");
+        if (!upstream)
+          throw new Error(`Remote branch ${action.upstream} does not exist.`);
+      } else if (!branch.upstream) {
+        throw new Error(`${action.name} does not have an upstream to unset.`);
+      }
+      return {
+        branch,
+        summary: action.upstream
+          ? `Set ${action.upstream} as the upstream for ${action.name}.`
+          : `Unset the upstream for ${action.name}.`,
+        warnings,
+      };
+    case "fetch":
+      if (action.remote) requireRemote(action.remote);
+      if (action.prune) {
+        warnings.push(
+          "Prune removes local remote-tracking refs that no longer exist on the remote.",
+        );
+      }
+      return {
+        branch: null,
+        summary: `${action.prune ? "Fetch and prune" : "Fetch"} ${action.remote ?? "all remotes"}.`,
+        warnings,
+      };
+  }
+}
+
+export async function previewGitBranchAction(
+  cwd: string,
+  action: GitBranchAction,
+): Promise<GitBranchActionPreview> {
+  const inventory = await readGitBranches(cwd);
+  const validation = await validateBranchAction(cwd, action, inventory);
+  const workspace = await workspaceFingerprint(cwd);
+  return gitBranchActionPreviewSchema.parse({
+    action,
+    token: branchActionToken(action, inventory, workspace),
+    destructive:
+      action.type === "deleteLocal" ||
+      action.type === "deleteRemote" ||
+      (action.type === "fetch" && action.prune),
+    ...validation,
+  });
+}
+
+export async function applyGitBranchAction(
+  cwd: string,
+  action: GitBranchAction,
+  token: string,
+): Promise<GitBranchMutationResult> {
+  const preview = await previewGitBranchAction(cwd, action);
+  if (preview.token !== token) {
+    throw new Error(
+      "The branches or worktree changed after this preview. Review the action again.",
+    );
+  }
+  let args: string[];
+  switch (action.type) {
+    case "create":
+      args = action.checkout
+        ? [
+            "switch",
+            "-c",
+            action.name,
+            ...(action.startPoint ? [action.startPoint] : []),
+          ]
+        : [
+            "branch",
+            action.name,
+            ...(action.startPoint ? [action.startPoint] : []),
+          ];
+      break;
+    case "switch": {
+      const selected = preview.branch!;
+      if (selected.kind === "local") args = ["switch", selected.name];
+      else {
+        const localName = selected.name.split("/").slice(1).join("/");
+        if (!localName)
+          throw new Error("The remote branch has no local branch name.");
+        args = ["switch", "--track", "-c", localName, selected.name];
+      }
+      break;
+    }
+    case "publish":
+      args = ["push", "--set-upstream", action.remote, action.name];
+      break;
+    case "rename":
+      args = preview.branch?.current
+        ? ["branch", "-m", action.newName]
+        : ["branch", "-m", action.name, action.newName];
+      break;
+    case "deleteLocal":
+      args = ["branch", action.force ? "-D" : "-d", action.name];
+      break;
+    case "deleteRemote":
+      args = ["push", action.remote, "--delete", action.name];
+      break;
+    case "setUpstream":
+      args = action.upstream
+        ? ["branch", `--set-upstream-to=${action.upstream}`, action.name]
+        : ["branch", "--unset-upstream", action.name];
+      break;
+    case "fetch":
+      args = [
+        "fetch",
+        ...(action.remote ? [action.remote] : ["--all"]),
+        ...(action.prune ? ["--prune"] : []),
+      ];
+      break;
+  }
+  const output = await runGit(cwd, args);
+  return gitBranchMutationResultSchema.parse({
+    output,
+    status: await readGitStatus(cwd),
+    branches: await readGitBranches(cwd),
   });
 }
 

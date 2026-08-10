@@ -24,12 +24,15 @@ import {
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
 import {
+  applyGitBranchAction,
   applyGitPartialPatch,
   applyGitStashAction,
   createGitStash,
+  previewGitBranchAction,
   previewGitPartialPatch,
   previewGitStashAction,
   readGitCommitDetail,
+  readGitBranches,
   readGitComparison,
   readGitFileDiff,
   readGitHistory,
@@ -261,6 +264,12 @@ async function start(): Promise<void> {
         return previewGitStashAction(command.cwd, command.action);
       case "git.stash.action.apply":
         return applyGitStashAction(command.cwd, command.action, command.token);
+      case "git.branch.list":
+        return readGitBranches(command.cwd);
+      case "git.branch.action.preview":
+        return previewGitBranchAction(command.cwd, command.action);
+      case "git.branch.action.apply":
+        return applyGitBranchAction(command.cwd, command.action, command.token);
       case "git.action":
         return runGitAction(command.cwd, command.action);
       case "worktree.list":
