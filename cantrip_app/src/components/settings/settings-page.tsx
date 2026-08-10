@@ -487,8 +487,12 @@ export function SettingsPage({
         <Button
           type="button"
           size="sm"
-          variant={section === "general" ? "outline" : "ghost"}
-          className="h-7 px-2.5 text-xs"
+          variant="ghost"
+          className={`h-10 rounded-none border-b-2 px-2.5 text-xs ${
+            section === "general"
+              ? "border-foreground text-foreground"
+              : "border-transparent text-muted-foreground"
+          }`}
           onClick={() => setSection("general")}
         >
           <SlidersHorizontal className="size-3.5" />
@@ -497,8 +501,12 @@ export function SettingsPage({
         <Button
           type="button"
           size="sm"
-          variant={section === "workspaces" ? "outline" : "ghost"}
-          className="h-7 px-2.5 text-xs"
+          variant="ghost"
+          className={`h-10 rounded-none border-b-2 px-2.5 text-xs ${
+            section === "workspaces"
+              ? "border-foreground text-foreground"
+              : "border-transparent text-muted-foreground"
+          }`}
           onClick={() => setSection("workspaces")}
         >
           <Layers3 className="size-3.5" />
@@ -507,7 +515,7 @@ export function SettingsPage({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
         <div
-          className={`${section === "general" ? "grid" : "hidden"} mx-auto max-w-6xl gap-5`}
+          className={`${section === "general" ? "grid" : "hidden"} mx-auto max-w-6xl gap-4`}
         >
           <div className="relative max-w-xl">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -540,310 +548,328 @@ export function SettingsPage({
             </p>
           ) : null}
 
-          {appearanceMatches ? (
-            <section className="overflow-hidden rounded-lg border bg-card/30">
-              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
-                <div>
-                  <h2 className="text-sm font-semibold">Appearance</h2>
-                  <p className="text-xs text-muted-foreground">
-                    System follows the operating system.
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <div className="flex rounded-md bg-muted/50 p-0.5">
-                    {(
-                      [
-                        ["system", Monitor],
-                        ["light", Sun],
-                        ["dark", Moon],
-                      ] as const
-                    ).map(([theme, Icon]) => (
-                      <Button
-                        key={theme}
-                        type="button"
-                        size="sm"
-                        className="h-7 px-2.5 text-xs"
-                        variant={
-                          settings.data?.preferences.theme === theme
-                            ? "default"
-                            : "ghost"
-                        }
-                        disabled={preferences.isPending}
-                        onClick={() =>
-                          preferences.mutate({
-                            theme: theme as ThemePreference,
-                          })
-                        }
-                      >
-                        <Icon className="size-3.5" />
-                        <span className="capitalize">{theme}</span>
-                      </Button>
-                    ))}
-                  </div>
-                  <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
-                    <input
-                      type="checkbox"
-                      className="size-3.5 accent-primary"
-                      checked={settings.data?.preferences.highContrast ?? false}
-                      disabled={preferences.isPending}
-                      onChange={(event) =>
-                        preferences.mutate({
-                          highContrast: event.target.checked,
-                        })
-                      }
-                    />
-                    High contrast
-                  </label>
-                </div>
-              </div>
-            </section>
-          ) : null}
-
-          {desktopStreamingMatches ? (
-            <section className="overflow-hidden rounded-lg border bg-card/30">
-              <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5">
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <Gauge className="size-4 shrink-0 text-muted-foreground" />
-                  <div>
-                    <h2 className="text-sm font-semibold">Remote Desktop</h2>
-                    <p className="text-xs text-muted-foreground">
-                      Higher rates are best effort; adaptive quality keeps the
-                      newest frame responsive.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <label className="flex items-center gap-2 text-xs">
-                    <span className="text-muted-foreground">Frame rate</span>
-                    <select
-                      className="h-8 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2"
-                      aria-label="Remote Desktop frame rate"
-                      value={settings.data?.preferences.desktopFrameRate ?? 30}
-                      disabled={preferences.isPending}
-                      onChange={(event) =>
-                        preferences.mutate({
-                          desktopFrameRate: Number(event.target.value) as
-                            15 | 30 | 60,
-                        })
-                      }
-                    >
-                      <option value={15}>15 FPS</option>
-                      <option value={30}>30 FPS</option>
-                      <option value={60}>60 FPS max</option>
-                    </select>
-                  </label>
-                  <label className="flex items-center gap-2 text-xs">
-                    <span className="text-muted-foreground">Quality</span>
-                    <select
-                      className="h-8 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2"
-                      aria-label="Remote Desktop stream quality"
-                      value={
-                        settings.data?.preferences.desktopStreamQuality ??
-                        "adaptive"
-                      }
-                      disabled={preferences.isPending}
-                      onChange={(event) =>
-                        preferences.mutate({
-                          desktopStreamQuality: event.target
-                            .value as UserSettings["desktopStreamQuality"],
-                        })
-                      }
-                    >
-                      <option value="adaptive">Adaptive</option>
-                      <option value="data-saver">Data saver</option>
-                      <option value="balanced">Balanced</option>
-                      <option value="sharp">Sharp</option>
-                    </select>
-                  </label>
-                </div>
-              </div>
-            </section>
-          ) : null}
-
-          {providersMatch ? (
-            <section className="overflow-hidden rounded-lg border bg-card/30">
-              <div className="flex items-center justify-between gap-3 px-3 py-2.5">
-                <div className="min-w-0">
-                  <div className="flex items-baseline gap-2">
-                    <h2 className="text-sm font-semibold">Providers</h2>
-                    <span className="text-xs text-muted-foreground">
-                      {visibleProviders.length}
-                      {search && visibleProviders.length !== providers.length
-                        ? ` of ${providers.length}`
-                        : ""}
-                    </span>
-                  </div>
-                  <p className="truncate text-xs text-muted-foreground">
-                    Ollama, compatible APIs, and isolated ChatGPT accounts.
-                  </p>
-                </div>
-                <Button
-                  className="size-8"
-                  size="icon"
-                  variant="outline"
-                  onClick={() => openProviderDialog(null)}
-                >
-                  <Plus className="size-3.5" />
-                  <span className="sr-only">Add provider</span>
-                </Button>
-              </div>
-              <div className="hidden grid-cols-[minmax(0,1.1fr)_minmax(0,1.7fr)_auto_72px] gap-3 bg-muted/35 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
-                <span>Provider</span>
-                <span>Connection</span>
-                <span>Type</span>
-                <span className="text-right">Actions</span>
-              </div>
-              <div className="[&>[data-high-contrast-row]:nth-child(even)]:bg-muted/20">
-                {visibleProviders.map((provider) => (
-                  <ProviderRow
-                    key={provider.id}
-                    provider={provider}
-                    workerId={worker?.workerId ?? null}
-                    removing={removeProvider.isPending}
-                    onEdit={() => openProviderDialog(provider)}
-                    onRemove={() => removeProvider.mutate(provider.id)}
-                  />
-                ))}
-                {!visibleProviders.length ? (
-                  <p className="px-3 py-5 text-center text-sm text-muted-foreground">
-                    No providers match “{searchQuery.trim()}”.
-                  </p>
-                ) : null}
-              </div>
-              {removeProvider.isError ? (
-                <p className="px-3 pb-3 text-sm text-destructive">
-                  {errorText(removeProvider.error)}
-                </p>
-              ) : null}
-            </section>
-          ) : null}
-
-          {modelsMatch ? (
-            <section className="overflow-hidden rounded-lg border bg-card/30">
-              <div className="flex items-center justify-between gap-3 px-3 py-2.5">
-                <div className="min-w-0">
-                  <div className="flex items-baseline gap-2">
-                    <h2 className="text-sm font-semibold">Models</h2>
-                    <span className="text-xs text-muted-foreground">
-                      {visibleModels.length}
-                      {search && visibleModels.length !== models.length
-                        ? ` of ${models.length}`
-                        : ""}
-                    </span>
-                  </div>
-                  <p className="truncate text-xs text-muted-foreground">
-                    Logical models with ordered provider failover routes.
-                  </p>
-                </div>
-                <Button
-                  className="size-8"
-                  size="icon"
-                  variant="outline"
-                  disabled={!providers.length}
-                  onClick={() => openModelDialog(null)}
-                >
-                  <Plus className="size-3.5" />
-                  <span className="sr-only">Add model</span>
-                </Button>
-              </div>
-
-              <label className="flex flex-wrap items-center justify-between gap-2 bg-muted/15 px-3 py-2 text-xs">
-                <span className="font-medium">Default for new chats</span>
-                <select
-                  value={settings.data?.preferences.defaultModelId ?? ""}
-                  onChange={(event) =>
-                    preferences.mutate({ defaultModelId: event.target.value })
-                  }
-                  className="h-8 min-w-0 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2 sm:w-72"
-                  disabled={preferences.isPending}
-                >
-                  {models.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_72px] gap-3 bg-muted/35 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
-                <span>Model</span>
-                <span>Routes</span>
-                <span>Configuration</span>
-                <span className="text-right">Actions</span>
-              </div>
-              <div className="[&>[data-high-contrast-row]:nth-child(even)]:bg-muted/20">
-                {visibleModels.map((model) => (
-                  <div
-                    key={model.id}
-                    data-high-contrast-row
-                    className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-2.5 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_72px]"
-                  >
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <Cpu className="size-4 shrink-0 text-muted-foreground" />
-                      <p className="truncate text-sm font-medium">
-                        {model.name}
+          {hasSearchResults ? (
+            <div className="divide-y border-y">
+              {appearanceMatches ? (
+                <section>
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-3">
+                    <div>
+                      <h2 className="text-sm font-semibold">Appearance</h2>
+                      <p className="text-xs text-muted-foreground">
+                        System follows the operating system.
                       </p>
-                      {settings.data?.preferences.defaultModelId ===
-                      model.id ? (
-                        <Badge className="sm:hidden" variant="secondary">
-                          Default
-                        </Badge>
-                      ) : null}
                     </div>
-                    <p className="col-span-2 truncate pl-6 text-xs text-muted-foreground sm:col-span-1 sm:pl-0">
-                      {model.routes
-                        .filter((route) => route.enabled)
-                        .map((route) => route.providerName)
-                        .join(" → ")}
-                      <span className="sm:hidden">
-                        {` · ${model.routes.filter((route) => route.enabled).length} enabled`}
-                      </span>
-                    </p>
-                    <div className="hidden items-center justify-end gap-2 text-xs text-muted-foreground sm:flex">
-                      <span>
-                        {model.routes.filter((route) => route.enabled).length}{" "}
-                        enabled
-                      </span>
-                      {settings.data?.preferences.defaultModelId ===
-                      model.id ? (
-                        <Badge variant="secondary">Default</Badge>
-                      ) : null}
-                    </div>
-                    <div className="col-start-2 row-start-1 flex items-center justify-end sm:col-auto sm:row-auto">
-                      <Button
-                        className="size-8"
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => openModelDialog(model)}
-                      >
-                        <Pencil className="size-3.5" />
-                        <span className="sr-only">Edit {model.name}</span>
-                      </Button>
-                      <Button
-                        className="size-8"
-                        size="icon"
-                        variant="ghost"
-                        disabled={removeModel.isPending}
-                        onClick={() => removeModel.mutate(model.id)}
-                      >
-                        <Trash2 className="size-3.5" />
-                        <span className="sr-only">Delete {model.name}</span>
-                      </Button>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <div className="flex rounded-md bg-muted/50 p-0.5">
+                        {(
+                          [
+                            ["system", Monitor],
+                            ["light", Sun],
+                            ["dark", Moon],
+                          ] as const
+                        ).map(([theme, Icon]) => (
+                          <Button
+                            key={theme}
+                            type="button"
+                            size="sm"
+                            className="h-7 px-2.5 text-xs"
+                            variant={
+                              settings.data?.preferences.theme === theme
+                                ? "default"
+                                : "ghost"
+                            }
+                            disabled={preferences.isPending}
+                            onClick={() =>
+                              preferences.mutate({
+                                theme: theme as ThemePreference,
+                              })
+                            }
+                          >
+                            <Icon className="size-3.5" />
+                            <span className="capitalize">{theme}</span>
+                          </Button>
+                        ))}
+                      </div>
+                      <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
+                        <input
+                          type="checkbox"
+                          className="size-3.5 accent-primary"
+                          checked={
+                            settings.data?.preferences.highContrast ?? false
+                          }
+                          disabled={preferences.isPending}
+                          onChange={(event) =>
+                            preferences.mutate({
+                              highContrast: event.target.checked,
+                            })
+                          }
+                        />
+                        High contrast
+                      </label>
                     </div>
                   </div>
-                ))}
-                {!visibleModels.length ? (
-                  <p className="px-3 py-5 text-center text-sm text-muted-foreground">
-                    No models match “{searchQuery.trim()}”.
-                  </p>
-                ) : null}
-              </div>
-              {removeModel.isError ? (
-                <p className="px-3 pb-3 text-sm text-destructive">
-                  {errorText(removeModel.error)}
-                </p>
+                </section>
               ) : null}
-            </section>
+
+              {desktopStreamingMatches ? (
+                <section>
+                  <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <Gauge className="size-4 shrink-0 text-muted-foreground" />
+                      <div>
+                        <h2 className="text-sm font-semibold">
+                          Remote Desktop
+                        </h2>
+                        <p className="text-xs text-muted-foreground">
+                          Higher rates are best effort; adaptive quality keeps
+                          the newest frame responsive.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <label className="flex items-center gap-2 text-xs">
+                        <span className="text-muted-foreground">
+                          Frame rate
+                        </span>
+                        <select
+                          className="h-8 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2"
+                          aria-label="Remote Desktop frame rate"
+                          value={
+                            settings.data?.preferences.desktopFrameRate ?? 30
+                          }
+                          disabled={preferences.isPending}
+                          onChange={(event) =>
+                            preferences.mutate({
+                              desktopFrameRate: Number(event.target.value) as
+                                15 | 30 | 60,
+                            })
+                          }
+                        >
+                          <option value={15}>15 FPS</option>
+                          <option value={30}>30 FPS</option>
+                          <option value={60}>60 FPS max</option>
+                        </select>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs">
+                        <span className="text-muted-foreground">Quality</span>
+                        <select
+                          className="h-8 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2"
+                          aria-label="Remote Desktop stream quality"
+                          value={
+                            settings.data?.preferences.desktopStreamQuality ??
+                            "adaptive"
+                          }
+                          disabled={preferences.isPending}
+                          onChange={(event) =>
+                            preferences.mutate({
+                              desktopStreamQuality: event.target
+                                .value as UserSettings["desktopStreamQuality"],
+                            })
+                          }
+                        >
+                          <option value="adaptive">Adaptive</option>
+                          <option value="data-saver">Data saver</option>
+                          <option value="balanced">Balanced</option>
+                          <option value="sharp">Sharp</option>
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                </section>
+              ) : null}
+
+              {providersMatch ? (
+                <section>
+                  <div className="flex items-center justify-between gap-3 px-3 py-3">
+                    <div className="min-w-0">
+                      <div className="flex items-baseline gap-2">
+                        <h2 className="text-sm font-semibold">Providers</h2>
+                        <span className="text-xs text-muted-foreground">
+                          {visibleProviders.length}
+                          {search &&
+                          visibleProviders.length !== providers.length
+                            ? ` of ${providers.length}`
+                            : ""}
+                        </span>
+                      </div>
+                      <p className="truncate text-xs text-muted-foreground">
+                        Ollama, compatible APIs, and isolated ChatGPT accounts.
+                      </p>
+                    </div>
+                    <Button
+                      className="size-8"
+                      size="icon"
+                      variant="outline"
+                      onClick={() => openProviderDialog(null)}
+                    >
+                      <Plus className="size-3.5" />
+                      <span className="sr-only">Add provider</span>
+                    </Button>
+                  </div>
+                  <div className="hidden grid-cols-[minmax(0,1.1fr)_minmax(0,1.7fr)_auto_72px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
+                    <span>Provider</span>
+                    <span>Connection</span>
+                    <span>Type</span>
+                    <span className="text-right">Actions</span>
+                  </div>
+                  <div className="divide-y border-t sm:border-t-0">
+                    {visibleProviders.map((provider) => (
+                      <ProviderRow
+                        key={provider.id}
+                        provider={provider}
+                        workerId={worker?.workerId ?? null}
+                        removing={removeProvider.isPending}
+                        onEdit={() => openProviderDialog(provider)}
+                        onRemove={() => removeProvider.mutate(provider.id)}
+                      />
+                    ))}
+                    {!visibleProviders.length ? (
+                      <p className="px-3 py-5 text-center text-sm text-muted-foreground">
+                        No providers match “{searchQuery.trim()}”.
+                      </p>
+                    ) : null}
+                  </div>
+                  {removeProvider.isError ? (
+                    <p className="border-t px-3 py-3 text-sm text-destructive">
+                      {errorText(removeProvider.error)}
+                    </p>
+                  ) : null}
+                </section>
+              ) : null}
+
+              {modelsMatch ? (
+                <section>
+                  <div className="flex items-center justify-between gap-3 px-3 py-3">
+                    <div className="min-w-0">
+                      <div className="flex items-baseline gap-2">
+                        <h2 className="text-sm font-semibold">Models</h2>
+                        <span className="text-xs text-muted-foreground">
+                          {visibleModels.length}
+                          {search && visibleModels.length !== models.length
+                            ? ` of ${models.length}`
+                            : ""}
+                        </span>
+                      </div>
+                      <p className="truncate text-xs text-muted-foreground">
+                        Logical models with ordered provider failover routes.
+                      </p>
+                    </div>
+                    <Button
+                      className="size-8"
+                      size="icon"
+                      variant="outline"
+                      disabled={!providers.length}
+                      onClick={() => openModelDialog(null)}
+                    >
+                      <Plus className="size-3.5" />
+                      <span className="sr-only">Add model</span>
+                    </Button>
+                  </div>
+
+                  <label className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2.5 text-xs">
+                    <span className="font-medium">Default for new chats</span>
+                    <select
+                      value={settings.data?.preferences.defaultModelId ?? ""}
+                      onChange={(event) =>
+                        preferences.mutate({
+                          defaultModelId: event.target.value,
+                        })
+                      }
+                      className="h-8 min-w-0 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2 sm:w-72"
+                      disabled={preferences.isPending}
+                    >
+                      {models.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_72px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
+                    <span>Model</span>
+                    <span>Routes</span>
+                    <span>Configuration</span>
+                    <span className="text-right">Actions</span>
+                  </div>
+                  <div className="divide-y border-t sm:border-t-0">
+                    {visibleModels.map((model) => (
+                      <div
+                        key={model.id}
+                        data-high-contrast-row
+                        className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-2.5 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_72px]"
+                      >
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <Cpu className="size-4 shrink-0 text-muted-foreground" />
+                          <p className="truncate text-sm font-medium">
+                            {model.name}
+                          </p>
+                          {settings.data?.preferences.defaultModelId ===
+                          model.id ? (
+                            <Badge className="sm:hidden" variant="secondary">
+                              Default
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <p className="col-span-2 truncate pl-6 text-xs text-muted-foreground sm:col-span-1 sm:pl-0">
+                          {model.routes
+                            .filter((route) => route.enabled)
+                            .map((route) => route.providerName)
+                            .join(" → ")}
+                          <span className="sm:hidden">
+                            {` · ${model.routes.filter((route) => route.enabled).length} enabled`}
+                          </span>
+                        </p>
+                        <div className="hidden items-center justify-end gap-2 text-xs text-muted-foreground sm:flex">
+                          <span>
+                            {
+                              model.routes.filter((route) => route.enabled)
+                                .length
+                            }{" "}
+                            enabled
+                          </span>
+                          {settings.data?.preferences.defaultModelId ===
+                          model.id ? (
+                            <Badge variant="secondary">Default</Badge>
+                          ) : null}
+                        </div>
+                        <div className="col-start-2 row-start-1 flex items-center justify-end sm:col-auto sm:row-auto">
+                          <Button
+                            className="size-8"
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => openModelDialog(model)}
+                          >
+                            <Pencil className="size-3.5" />
+                            <span className="sr-only">Edit {model.name}</span>
+                          </Button>
+                          <Button
+                            className="size-8"
+                            size="icon"
+                            variant="ghost"
+                            disabled={removeModel.isPending}
+                            onClick={() => removeModel.mutate(model.id)}
+                          >
+                            <Trash2 className="size-3.5" />
+                            <span className="sr-only">Delete {model.name}</span>
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    {!visibleModels.length ? (
+                      <p className="px-3 py-5 text-center text-sm text-muted-foreground">
+                        No models match “{searchQuery.trim()}”.
+                      </p>
+                    ) : null}
+                  </div>
+                  {removeModel.isError ? (
+                    <p className="border-t px-3 py-3 text-sm text-destructive">
+                      {errorText(removeModel.error)}
+                    </p>
+                  ) : null}
+                </section>
+              ) : null}
+            </div>
           ) : null}
 
           {!hasSearchResults ? (
