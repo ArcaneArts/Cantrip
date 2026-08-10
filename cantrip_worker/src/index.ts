@@ -33,6 +33,7 @@ import {
   applyGitRemoteAction,
   applyGitRecoveryAction,
   applyGitStashAction,
+  applyGitSubmoduleAction,
   applyGitTagAction,
   controlGitManagedOperation,
   createGitStash,
@@ -45,6 +46,7 @@ import {
   previewGitRemoteAction,
   previewGitRecoveryAction,
   previewGitStashAction,
+  previewGitSubmoduleAction,
   previewGitTagAction,
   previewGitManagedOperation,
   previewGitForcePush,
@@ -63,6 +65,7 @@ import {
   readGitStatus,
   readGitStashes,
   readGitStashFileDiff,
+  readGitSubmodules,
   readGitTagDetail,
   readGitTags,
   searchGitCommits,
@@ -412,6 +415,16 @@ async function start(): Promise<void> {
         return previewGitRemoteAction(command.cwd, command.action);
       case "git.remote.action.apply":
         return applyGitRemoteAction(command.cwd, command.action, command.token);
+      case "git.submodule.list":
+        return readGitSubmodules(command.cwd);
+      case "git.submodule.action.preview":
+        return previewGitSubmoduleAction(command.cwd, command.action);
+      case "git.submodule.action.apply":
+        return applyGitSubmoduleAction(
+          command.cwd,
+          command.action,
+          command.token,
+        );
       case "git.tag.list":
         return readGitTags(command.cwd);
       case "git.tag.get":

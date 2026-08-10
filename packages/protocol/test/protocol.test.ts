@@ -65,6 +65,8 @@ import {
   gitStashCreateSchema,
   gitStashListSchema,
   gitStashMutationResultSchema,
+  gitSubmoduleActionPreviewSchema,
+  gitSubmoduleListSchema,
   gitTagActionPreviewSchema,
   gitTagListSchema,
   githubReleaseCreateSchema,
@@ -666,6 +668,67 @@ describe("Cantrip protocol", () => {
         prerelease: false,
       }).draft,
     ).toBe(true);
+  });
+
+  it("validates bounded submodule inventory and reviewed actions", () => {
+    const hash = "a".repeat(40);
+    const module = {
+      name: "library",
+      path: "modules/library",
+      url: "https://github.com/ArcaneArts/library.git",
+      branch: "main",
+      expectedHash: hash,
+      currentHash: hash,
+      initialized: true,
+      dirty: false,
+      nested: false,
+      state: "clean" as const,
+    };
+    expect(
+      gitSubmoduleListSchema.parse({
+        submodules: [module],
+        truncated: false,
+        generatedAt: "2026-08-10T12:00:00.000Z",
+      }).submodules,
+    ).toEqual([module]);
+    expect(
+      gitSubmoduleActionPreviewSchema.parse({
+        action: {
+          type: "deinitialize",
+          path: "modules/library",
+          force: false,
+        },
+        token: "b".repeat(64),
+        destructive: true,
+        summary: "Deinitialize modules/library.",
+        warnings: [],
+        targets: [module],
+      }).destructive,
+    ).toBe(true);
+    expect(
+      workerCommandSchema.parse({
+        type: "git.submodule.action.preview",
+        cwd: "/repo",
+        action: {
+          type: "update",
+          path: null,
+          recursive: true,
+          remote: false,
+        },
+      }).type,
+    ).toBe("git.submodule.action.preview");
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "git.submodule.action.apply",
+        cwd: "/repo",
+        action: {
+          type: "deinitialize",
+          path: "../outside",
+          force: true,
+        },
+        token: "c".repeat(64),
+      }),
+    ).toThrow(/relative path/iu);
   });
 
   it("validates bounded branch inventory and reviewed branch actions", () => {

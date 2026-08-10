@@ -678,6 +678,39 @@ Manual QA:
    managed operation, and an offline worker; confirm each fails without
    mutating or falling back to another worktree.
 
+## Submodule management
+
+Open **Repository → Submodules** from a History tab to inspect the submodules
+configured by the selected worktree. Each row identifies its path, redacted
+URL, configured branch, recorded commit, checked-out commit, nested status, and
+whether the checkout is uninitialized, changed, conflicted, missing, or dirty.
+Inventory is bounded and nested modules are discovered recursively once their
+parent checkout is initialized.
+
+Cantrip can initialize modules at the commits recorded by the superproject,
+update one or all modules to those recorded commits, deliberately follow each
+module's configured remote branch, synchronize changed URLs, and deinitialize
+one checkout. Every mutation receives a worker-authored preview token bound to
+the selected worktree, `.gitmodules` inventory, Git links, and local module
+state. Remote updates warn that they may differ from the recorded Git link.
+Deinitialization is destructive and refuses local submodule changes unless the
+review explicitly uses force.
+
+Manual QA:
+
+1. Open a repository with initialized and uninitialized modules. Confirm paths,
+   URLs, branches, expected/current commits, and status match Git.
+2. Initialize one module and all modules recursively, then reload and confirm
+   nested modules appear without changing another worktree.
+3. Advance a module remote, compare recorded update with remote update, and
+   verify the changed-commit state is explicit.
+4. Change `.gitmodules`, synchronize URLs, and confirm credentials are redacted
+   before the inventory reaches the app.
+5. Modify a submodule checkout and confirm ordinary deinitialize is refused.
+   Force it only after the destructive warning, then reinitialize it.
+6. Change module state after preview and verify apply rejects the stale token.
+   Disconnect the assigned worker and confirm no action falls back elsewhere.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport

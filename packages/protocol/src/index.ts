@@ -4030,6 +4030,75 @@ export const gitRemoteMutationResultSchema = z.object({
   remotes: gitRemoteListSchema,
 });
 
+export const gitSubmoduleSummarySchema = z.object({
+  name: z.string().min(1).max(1_024),
+  path: gitRelativePathSchema,
+  url: z.string().min(1).max(8_192),
+  branch: z.string().min(1).max(1_024).nullable(),
+  expectedHash: z
+    .string()
+    .regex(/^[0-9a-f]{40,64}$/u)
+    .nullable(),
+  currentHash: z
+    .string()
+    .regex(/^[0-9a-f]{40,64}$/u)
+    .nullable(),
+  initialized: z.boolean(),
+  dirty: z.boolean(),
+  nested: z.boolean(),
+  state: z.enum(["clean", "uninitialized", "changed", "conflicted", "missing"]),
+});
+
+export const gitSubmoduleListSchema = z.object({
+  submodules: z.array(gitSubmoduleSummarySchema).max(10_000),
+  truncated: z.boolean(),
+  generatedAt: z.string().datetime({ offset: true }),
+});
+
+export const gitSubmoduleActionSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("initialize"),
+    path: gitRelativePathSchema.nullable(),
+    recursive: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("update"),
+    path: gitRelativePathSchema.nullable(),
+    recursive: z.boolean(),
+    remote: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("sync"),
+    path: gitRelativePathSchema.nullable(),
+    recursive: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("deinitialize"),
+    path: gitRelativePathSchema,
+    force: z.boolean(),
+  }),
+]);
+
+export const gitSubmoduleActionPreviewSchema = z.object({
+  action: gitSubmoduleActionSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+  destructive: z.boolean(),
+  summary: z.string().min(1).max(10_000),
+  warnings: z.array(z.string().max(1_000)).max(100),
+  targets: z.array(gitSubmoduleSummarySchema).max(10_000),
+});
+
+export const gitSubmoduleActionApplySchema = z.object({
+  action: gitSubmoduleActionSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+
+export const gitSubmoduleMutationResultSchema = z.object({
+  output: z.string().max(1_000_000),
+  status: gitStatusSchema,
+  submodules: gitSubmoduleListSchema,
+});
+
 export const gitTagNameInputSchema = z
   .string()
   .trim()
@@ -5036,6 +5105,21 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     })
     .extend(gitRemoteActionApplySchema.shape),
   z.object({
+    type: z.literal("git.submodule.list"),
+    cwd: z.string().min(1).max(8_192),
+  }),
+  z.object({
+    type: z.literal("git.submodule.action.preview"),
+    cwd: z.string().min(1).max(8_192),
+    action: gitSubmoduleActionSchema,
+  }),
+  z
+    .object({
+      type: z.literal("git.submodule.action.apply"),
+      cwd: z.string().min(1).max(8_192),
+    })
+    .extend(gitSubmoduleActionApplySchema.shape),
+  z.object({
     type: z.literal("git.tag.list"),
     cwd: z.string().min(1).max(8_192),
   }),
@@ -5949,6 +6033,18 @@ export type GitRemoteActionPreview = z.infer<
 export type GitRemoteActionApply = z.infer<typeof gitRemoteActionApplySchema>;
 export type GitRemoteMutationResult = z.infer<
   typeof gitRemoteMutationResultSchema
+>;
+export type GitSubmoduleSummary = z.infer<typeof gitSubmoduleSummarySchema>;
+export type GitSubmoduleList = z.infer<typeof gitSubmoduleListSchema>;
+export type GitSubmoduleAction = z.infer<typeof gitSubmoduleActionSchema>;
+export type GitSubmoduleActionPreview = z.infer<
+  typeof gitSubmoduleActionPreviewSchema
+>;
+export type GitSubmoduleActionApply = z.infer<
+  typeof gitSubmoduleActionApplySchema
+>;
+export type GitSubmoduleMutationResult = z.infer<
+  typeof gitSubmoduleMutationResultSchema
 >;
 export type GitTagSummary = z.infer<typeof gitTagSummarySchema>;
 export type GitTagDetail = z.infer<typeof gitTagDetailSchema>;

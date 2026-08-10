@@ -43,7 +43,9 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-type Section = "remotes" | "tags" | "releases";
+import { GitSubmodulePanel } from "./git-submodule-panel";
+
+type Section = "remotes" | "submodules" | "tags" | "releases";
 type ReviewedAction =
   | { kind: "remote"; action: GitRemoteAction }
   | { kind: "tag"; action: GitTagAction };
@@ -150,7 +152,8 @@ export function GitRepositoryPanel({
     queryFn: () => getProjectWorktreeRemotes(projectId, worktreeId),
   });
   const tags = useQuery({
-    enabled: section !== "remotes" || selectedTag !== null,
+    enabled:
+      section === "tags" || section === "releases" || selectedTag !== null,
     queryKey: ["worktree-tags", projectId, worktreeId],
     queryFn: () => getProjectWorktreeTags(projectId, worktreeId),
   });
@@ -294,7 +297,7 @@ export function GitRepositoryPanel({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold">Repository</p>
           <p className="truncate text-[10px] text-muted-foreground">
-            Remotes, tags, signatures, and GitHub releases
+            Remotes, submodules, tags, signatures, and GitHub releases
           </p>
         </div>
         <Button
@@ -309,21 +312,23 @@ export function GitRepositoryPanel({
       </div>
       <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
         <div className="flex rounded-md bg-muted/50 p-px">
-          {(["remotes", "tags", "releases"] as const).map((candidate) => (
-            <button
-              key={candidate}
-              type="button"
-              disabled={candidate === "releases" && !githubEnabled}
-              className={cn(
-                "h-7 rounded px-3 text-xs capitalize text-muted-foreground disabled:opacity-40",
-                candidate === section &&
-                  "bg-background font-medium text-foreground shadow-sm",
-              )}
-              onClick={() => setSection(candidate)}
-            >
-              {candidate}
-            </button>
-          ))}
+          {(["remotes", "submodules", "tags", "releases"] as const).map(
+            (candidate) => (
+              <button
+                key={candidate}
+                type="button"
+                disabled={candidate === "releases" && !githubEnabled}
+                className={cn(
+                  "h-7 rounded px-3 text-xs capitalize text-muted-foreground disabled:opacity-40",
+                  candidate === section &&
+                    "bg-background font-medium text-foreground shadow-sm",
+                )}
+                onClick={() => setSection(candidate)}
+              >
+                {candidate}
+              </button>
+            ),
+          )}
         </div>
         {section === "tags" ? (
           <label className="relative min-w-0 flex-1">
@@ -378,6 +383,8 @@ export function GitRepositoryPanel({
               <Plus className="size-3" /> Remote
             </Button>
           </>
+        ) : section === "submodules" ? (
+          <span className="flex-1" />
         ) : section === "tags" ? (
           <Button
             size="sm"
@@ -519,6 +526,8 @@ export function GitRepositoryPanel({
           ) : (
             <Empty>No remotes are configured.</Empty>
           )
+        ) : section === "submodules" ? (
+          <GitSubmodulePanel projectId={projectId} worktreeId={worktreeId} />
         ) : section === "tags" ? (
           tags.isLoading ? (
             <Loading />
