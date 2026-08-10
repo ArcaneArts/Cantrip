@@ -11,6 +11,9 @@ import {
   codeTabSummarySchema,
   explorerSummarySchema,
   gitActionResultSchema,
+  gitBranchActionPreviewSchema,
+  gitBranchListSchema,
+  gitBranchMutationResultSchema,
   gitCommitDetailSchema,
   gitComparisonSchema,
   gitFileDiffSchema,
@@ -86,6 +89,17 @@ const gitStashCommands: Array<
         | "git.stash.diff"
         | "git.stash.action.preview"
         | "git.stash.action.apply";
+    }
+  >
+> = [];
+const gitBranchCommands: Array<
+  Extract<
+    WorkerCommand,
+    {
+      type:
+        | "git.branch.list"
+        | "git.branch.action.preview"
+        | "git.branch.action.apply";
     }
   >
 > = [];
@@ -178,6 +192,47 @@ const stashFixture = {
   deletions: 1,
   includesUntracked: false,
 };
+
+const branchFixture = {
+  name: "main",
+  fullRef: "refs/heads/main",
+  kind: "local" as const,
+  current: true,
+  hash: "1".repeat(40),
+  upstream: "origin/main",
+  upstreamGone: false,
+  ahead: 0,
+  behind: 0,
+  mergedIntoHead: true,
+  remoteName: "origin",
+  remoteAvailable: true,
+  trackingLocalBranches: [],
+  worktree: { label: "Cantrip", current: true },
+  lastCommit: {
+    hash: "1".repeat(40),
+    shortHash: "1".repeat(8),
+    subject: "Initial",
+    authorName: "Cantrip",
+    authoredAt: "2026-08-10T12:00:00.000Z",
+  },
+};
+
+function branchList() {
+  return {
+    currentBranch: "main",
+    head: "1".repeat(40),
+    detached: false,
+    defaultRemote: "origin",
+    remotes: ["origin"],
+    pullStrategy: {
+      mode: "fast-forward-only" as const,
+      description: "Cantrip pulls with --ff-only.",
+    },
+    branches: [branchFixture],
+    truncated: false,
+    generatedAt: "2026-08-10T12:00:00.000Z",
+  };
+}
 
 async function completeGitMutation(output: string) {
   activeGitMutations += 1;
@@ -462,6 +517,29 @@ const workerBridge = {
           status: status(),
           stash: command.action.type === "apply" ? stashFixture : null,
           conflictedPaths: [],
+        });
+      case "git.branch.list":
+        gitBranchCommands.push(command);
+        return branchList();
+      case "git.branch.action.preview":
+        gitBranchCommands.push(command);
+        return {
+          action: command.action,
+          token: "f".repeat(64),
+          destructive:
+            command.action.type === "deleteLocal" ||
+            command.action.type === "deleteRemote" ||
+            (command.action.type === "fetch" && command.action.prune),
+          summary: "Review branch action.",
+          warnings: [],
+          branch: "name" in command.action ? branchFixture : null,
+        };
+      case "git.branch.action.apply":
+        gitBranchCommands.push(command);
+        return completeStashMutation({
+          output: "branch action complete",
+          status: status(),
+          branches: branchList(),
         });
       case "code.prepareAgentTurn":
         return { prepared: true, sessions: [] };
@@ -1595,6 +1673,74 @@ describe.sequential("server worktree control plane", () => {
         await app.inject({
           method: "GET",
           url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes`,
+        })
+      ).statusCode,
+    ).toBe(503);
+    connected = true;
+    const branchListResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/branches`,
+    });
+    expect(gitBranchListSchema.parse(branchListResponse.json())).toMatchObject({
+      currentBranch: "main",
+      defaultRemote: "origin",
+    });
+    expect(gitBranchCommands.at(-1)).toMatchObject({
+      type: "git.branch.list",
+      cwd: target.path,
+    });
+    const fetchAction = { type: "fetch" as const, remote: null, prune: true };
+    const branchPreviewResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/branches/actions/preview`,
+      payload: fetchAction,
+    });
+    expect(
+      gitBranchActionPreviewSchema.parse(branchPreviewResponse.json()),
+    ).toMatchObject({
+      action: fetchAction,
+      destructive: true,
+      token: "f".repeat(64),
+    });
+    const branchApplyResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/branches/actions/apply`,
+      payload: { action: fetchAction, token: "f".repeat(64) },
+    });
+    expect(
+      gitBranchMutationResultSchema.parse(branchApplyResponse.json()),
+    ).toMatchObject({ output: "branch action complete" });
+    expect(gitBranchCommands.at(-1)).toMatchObject({
+      type: "git.branch.action.apply",
+      cwd: target.path,
+      action: fetchAction,
+    });
+    const invalidBranchAction = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/branches/actions/preview`,
+      payload: { type: "fetch", remote: "--upload-pack=bad", prune: false },
+    });
+    expect(invalidBranchAction.statusCode).toBe(400);
+    maximumConcurrentGitMutations = 0;
+    await Promise.all([
+      app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/worktrees/${target.id}/git/branches/actions/apply`,
+        payload: { action: fetchAction, token: "f".repeat(64) },
+      }),
+      app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/worktrees/${target.id}/git/actions`,
+        payload: { type: "stageAll" },
+      }),
+    ]);
+    expect(maximumConcurrentGitMutations).toBe(1);
+    connected = false;
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/worktrees/${target.id}/git/branches`,
         })
       ).statusCode,
     ).toBe(503);

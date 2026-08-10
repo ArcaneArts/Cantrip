@@ -61,6 +61,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { GitChangesPanel } from "./git-changes-panel";
+import { GitBranchPanel } from "./git-branch-panel";
 import { GitCommitInspector } from "./git-commit-inspector";
 import { GitComparisonPanel } from "./git-comparison-panel";
 import { GitStashPanel } from "./git-stash-panel";
@@ -382,6 +383,7 @@ export function GitHistoryView({
   const [selectedCommit, setSelectedCommit] = useState<string | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
   const [stashesOpen, setStashesOpen] = useState(false);
+  const [branchesOpen, setBranchesOpen] = useState(false);
   const [compareLeft, setCompareLeft] = useState<string | null>(null);
   const [compareRight, setCompareRight] = useState<string | null>(null);
   const [issueState, setIssueState] = useState<GithubIssueState>("open");
@@ -616,6 +618,7 @@ export function GitHistoryView({
     setSelectedCommit(null);
     setCompareOpen(false);
     setStashesOpen(false);
+    setBranchesOpen(false);
     setCompareLeft(null);
     setCompareRight(null);
   }, [project.id, worktreeId]);
@@ -713,6 +716,23 @@ export function GitHistoryView({
           {section === "history" ? (
             <Button
               size="sm"
+              variant={branchesOpen ? "outline" : "ghost"}
+              className="h-6 gap-1 px-2 text-[11px]"
+              disabled={!selectedAvailable}
+              onClick={() => {
+                setChangesOpen(false);
+                setSelectedCommit(null);
+                setCompareOpen(false);
+                setStashesOpen(false);
+                setBranchesOpen((current) => !current);
+              }}
+            >
+              <GitBranch className="size-3" /> Branches
+            </Button>
+          ) : null}
+          {section === "history" ? (
+            <Button
+              size="sm"
               variant={stashesOpen ? "outline" : "ghost"}
               className="h-6 gap-1 px-2 text-[11px]"
               disabled={!selectedAvailable}
@@ -720,6 +740,7 @@ export function GitHistoryView({
                 setChangesOpen(false);
                 setSelectedCommit(null);
                 setCompareOpen(false);
+                setBranchesOpen(false);
                 setStashesOpen((current) => !current);
               }}
             >
@@ -736,6 +757,7 @@ export function GitHistoryView({
                 setChangesOpen(false);
                 setSelectedCommit(null);
                 setStashesOpen(false);
+                setBranchesOpen(false);
                 setCompareOpen((current) => {
                   if (!current && !compareLeft) {
                     setCompareLeft(firstPage?.head ?? status?.head ?? null);
@@ -931,6 +953,7 @@ export function GitHistoryView({
                           setSelectedCommit(null);
                           setCompareOpen(false);
                           setStashesOpen(false);
+                          setBranchesOpen(false);
                           setChangesOpen(true);
                         }}
                         title={`Open ${worktree.name} staged and unstaged changes`}
@@ -1022,6 +1045,7 @@ export function GitHistoryView({
                         setChangesOpen(false);
                         setCompareOpen(false);
                         setStashesOpen(false);
+                        setBranchesOpen(false);
                         setSelectedCommit(row.commit.hash);
                       }}
                       onKeyDown={(event) => {
@@ -1031,6 +1055,7 @@ export function GitHistoryView({
                         setChangesOpen(false);
                         setCompareOpen(false);
                         setStashesOpen(false);
+                        setBranchesOpen(false);
                         setSelectedCommit(row.commit.hash);
                       }}
                     >
@@ -1228,6 +1253,13 @@ export function GitHistoryView({
               projectId={project.id}
               worktreeId={worktreeId}
               onClose={() => setStashesOpen(false)}
+            />
+          ) : null}
+          {branchesOpen ? (
+            <GitBranchPanel
+              projectId={project.id}
+              worktreeId={worktreeId}
+              onClose={() => setBranchesOpen(false)}
             />
           ) : null}
         </div>

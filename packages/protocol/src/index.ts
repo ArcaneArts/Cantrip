@@ -3318,6 +3318,136 @@ export const gitStashFileDiffSchema = z.object({
   binary: z.boolean(),
 });
 
+export const gitBranchCommitSummarySchema = z.object({
+  hash: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  shortHash: z.string().min(7).max(64),
+  subject: z.string().max(100_000),
+  authorName: z.string().min(1).max(10_000),
+  authoredAt: z.string().datetime({ offset: true }),
+});
+
+const gitBranchDisplayNameSchema = z.string().min(1).max(1_000);
+
+export const gitManagedBranchSchema = z.object({
+  name: gitBranchDisplayNameSchema,
+  fullRef: z.string().min(1).max(1_000),
+  kind: z.enum(["local", "remote"]),
+  current: z.boolean(),
+  hash: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  upstream: z.string().min(1).max(1_000).nullable(),
+  upstreamGone: z.boolean(),
+  ahead: z.number().int().nonnegative(),
+  behind: z.number().int().nonnegative(),
+  mergedIntoHead: z.boolean().nullable(),
+  remoteName: z.string().min(1).max(255).nullable(),
+  remoteAvailable: z.boolean(),
+  trackingLocalBranches: z.array(gitBranchDisplayNameSchema).max(10_000),
+  worktree: z
+    .object({
+      label: z.string().min(1).max(1_000),
+      current: z.boolean(),
+    })
+    .nullable(),
+  lastCommit: gitBranchCommitSummarySchema,
+});
+
+export const gitPullStrategySchema = z.object({
+  mode: z.enum(["fast-forward-only", "rebase", "merge", "unspecified"]),
+  description: z.string().min(1).max(1_000),
+});
+
+export const gitBranchListSchema = z.object({
+  currentBranch: gitBranchDisplayNameSchema.nullable(),
+  head: z
+    .string()
+    .regex(/^[0-9a-f]{40,64}$/u)
+    .nullable(),
+  detached: z.boolean(),
+  defaultRemote: z.string().min(1).max(255).nullable(),
+  remotes: z.array(z.string().min(1).max(255)).max(1_000),
+  pullStrategy: gitPullStrategySchema,
+  branches: z.array(gitManagedBranchSchema).max(20_000),
+  truncated: z.boolean(),
+  generatedAt: z.string().datetime({ offset: true }),
+});
+
+const gitRemoteNameInputSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(255)
+  .regex(/^[^-\0\r\n][^\0\r\n]*$/u);
+const gitRevisionInputSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(1_000)
+  .regex(/^[^-\0\r\n][^\0\r\n]*$/u);
+
+export const gitBranchActionSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("create"),
+    name: gitBranchNameInputSchema,
+    startPoint: gitRevisionInputSchema.nullable(),
+    checkout: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("switch"),
+    name: gitBranchNameInputSchema,
+    kind: z.enum(["local", "remote"]),
+  }),
+  z.object({
+    type: z.literal("publish"),
+    name: gitBranchNameInputSchema,
+    remote: gitRemoteNameInputSchema,
+  }),
+  z.object({
+    type: z.literal("rename"),
+    name: gitBranchNameInputSchema,
+    newName: gitBranchNameInputSchema,
+  }),
+  z.object({
+    type: z.literal("deleteLocal"),
+    name: gitBranchNameInputSchema,
+    force: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("deleteRemote"),
+    remote: gitRemoteNameInputSchema,
+    name: gitBranchNameInputSchema,
+  }),
+  z.object({
+    type: z.literal("setUpstream"),
+    name: gitBranchNameInputSchema,
+    upstream: z.string().trim().min(1).max(1_000).nullable(),
+  }),
+  z.object({
+    type: z.literal("fetch"),
+    remote: gitRemoteNameInputSchema.nullable(),
+    prune: z.boolean(),
+  }),
+]);
+
+export const gitBranchActionPreviewSchema = z.object({
+  action: gitBranchActionSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+  destructive: z.boolean(),
+  summary: z.string().min(1).max(10_000),
+  warnings: z.array(z.string().max(1_000)).max(100),
+  branch: gitManagedBranchSchema.nullable(),
+});
+
+export const gitBranchActionApplySchema = z.object({
+  action: gitBranchActionSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+
+export const gitBranchMutationResultSchema = z.object({
+  output: z.string().max(1_000_000),
+  status: gitStatusSchema,
+  branches: gitBranchListSchema,
+});
+
 const gitPathsSchema = z.array(gitRelativePathSchema).min(1).max(1_000);
 export const gitActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("stage"), paths: gitPathsSchema }),
@@ -3715,6 +3845,21 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       cwd: z.string().min(1).max(8_192),
     })
     .extend(gitStashActionApplySchema.shape),
+  z.object({
+    type: z.literal("git.branch.list"),
+    cwd: z.string().min(1).max(8_192),
+  }),
+  z.object({
+    type: z.literal("git.branch.action.preview"),
+    cwd: z.string().min(1).max(8_192),
+    action: gitBranchActionSchema,
+  }),
+  z
+    .object({
+      type: z.literal("git.branch.action.apply"),
+      cwd: z.string().min(1).max(8_192),
+    })
+    .extend(gitBranchActionApplySchema.shape),
   z.object({
     type: z.literal("git.action"),
     cwd: z.string().min(1),
@@ -4447,6 +4592,20 @@ export type GitStashMutationResult = z.infer<
   typeof gitStashMutationResultSchema
 >;
 export type GitStashFileDiff = z.infer<typeof gitStashFileDiffSchema>;
+export type GitBranchCommitSummary = z.infer<
+  typeof gitBranchCommitSummarySchema
+>;
+export type GitManagedBranch = z.infer<typeof gitManagedBranchSchema>;
+export type GitPullStrategy = z.infer<typeof gitPullStrategySchema>;
+export type GitBranchList = z.infer<typeof gitBranchListSchema>;
+export type GitBranchAction = z.infer<typeof gitBranchActionSchema>;
+export type GitBranchActionPreview = z.infer<
+  typeof gitBranchActionPreviewSchema
+>;
+export type GitBranchActionApply = z.infer<typeof gitBranchActionApplySchema>;
+export type GitBranchMutationResult = z.infer<
+  typeof gitBranchMutationResultSchema
+>;
 export type GitAction = z.infer<typeof gitActionSchema>;
 export type GitActionResult = z.infer<typeof gitActionResultSchema>;
 export type WorkerWorktreeSummary = z.infer<typeof workerWorktreeSummarySchema>;

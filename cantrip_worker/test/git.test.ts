@@ -7,12 +7,15 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  applyGitBranchAction,
   applyGitPartialPatch,
   applyGitStashAction,
   createGitStash,
+  previewGitBranchAction,
   previewGitPartialPatch,
   previewGitStashAction,
   readGitCommitDetail,
+  readGitBranches,
   readGitComparison,
   readGitFileDiff,
   readGitHistory,
@@ -36,6 +39,270 @@ afterEach(async () => {
 });
 
 describe("Git history", () => {
+  it("manages local, tracked, published, renamed, and remote branches through reviewed actions", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-branch-test-"));
+    directories.push(root);
+    const directory = path.join(root, "repo");
+    const remote = path.join(root, "remote.git");
+    await execFileAsync("git", ["init", "--bare", remote]);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "README.md"), "Cantrip\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Initial"]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "remote",
+      "add",
+      "origin",
+      remote,
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "push",
+      "-u",
+      "origin",
+      "main",
+    ]);
+
+    let inventory = await readGitBranches(directory);
+    expect(inventory).toMatchObject({
+      currentBranch: "main",
+      defaultRemote: "origin",
+      pullStrategy: { mode: "fast-forward-only" },
+    });
+    expect(
+      inventory.branches.find(({ name }) => name === "main"),
+    ).toMatchObject({
+      upstream: "origin/main",
+      remoteAvailable: true,
+      ahead: 0,
+      behind: 0,
+    });
+
+    const create = {
+      type: "create" as const,
+      name: "topic",
+      startPoint: null,
+      checkout: false,
+    };
+    let preview = await previewGitBranchAction(directory, create);
+    expect(preview.destructive).toBe(false);
+    await applyGitBranchAction(directory, create, preview.token);
+    const switchTopic = {
+      type: "switch" as const,
+      name: "topic",
+      kind: "local" as const,
+    };
+    preview = await previewGitBranchAction(directory, switchTopic);
+    expect(
+      (await applyGitBranchAction(directory, switchTopic, preview.token)).status
+        .branch,
+    ).toBe("topic");
+    const switchMain = {
+      type: "switch" as const,
+      name: "main",
+      kind: "local" as const,
+    };
+    preview = await previewGitBranchAction(directory, switchMain);
+    await applyGitBranchAction(directory, switchMain, preview.token);
+
+    const publish = {
+      type: "publish" as const,
+      name: "topic",
+      remote: "origin",
+    };
+    preview = await previewGitBranchAction(directory, publish);
+    inventory = (await applyGitBranchAction(directory, publish, preview.token))
+      .branches;
+    expect(
+      inventory.branches.find(({ name }) => name === "topic"),
+    ).toMatchObject({
+      upstream: "origin/topic",
+      remoteAvailable: true,
+    });
+
+    const rename = {
+      type: "rename" as const,
+      name: "topic",
+      newName: "renamed",
+    };
+    preview = await previewGitBranchAction(directory, rename);
+    expect(preview.warnings.join(" ")).toMatch(/upstream remains/iu);
+    await applyGitBranchAction(directory, rename, preview.token);
+    const unset = {
+      type: "setUpstream" as const,
+      name: "renamed",
+      upstream: null,
+    };
+    preview = await previewGitBranchAction(directory, unset);
+    await applyGitBranchAction(directory, unset, preview.token);
+
+    const deleteRemote = {
+      type: "deleteRemote" as const,
+      remote: "origin",
+      name: "topic",
+    };
+    preview = await previewGitBranchAction(directory, deleteRemote);
+    expect(preview.destructive).toBe(true);
+    await applyGitBranchAction(directory, deleteRemote, preview.token);
+    const remove = {
+      type: "deleteLocal" as const,
+      name: "renamed",
+      force: false,
+    };
+    preview = await previewGitBranchAction(directory, remove);
+    inventory = (await applyGitBranchAction(directory, remove, preview.token))
+      .branches;
+    expect(inventory.branches.some(({ name }) => name === "renamed")).toBe(
+      false,
+    );
+
+    const fetch = { type: "fetch" as const, remote: null, prune: true };
+    preview = await previewGitBranchAction(directory, fetch);
+    expect(preview.destructive).toBe(true);
+    await expect(
+      applyGitBranchAction(directory, fetch, preview.token),
+    ).resolves.toMatchObject({
+      status: { branch: "main" },
+    });
+  });
+
+  it("blocks branch mutations owned by another worktree and rejects stale previews", async () => {
+    const root = await mkdtemp(
+      path.join(tmpdir(), "cantrip-branch-worktree-test-"),
+    );
+    directories.push(root);
+    const directory = path.join(root, "repo");
+    const other = path.join(root, "other-lane");
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "README.md"), "Cantrip\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Initial"]);
+    await execFileAsync("git", ["-C", directory, "branch", "owned"]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "worktree",
+      "add",
+      other,
+      "owned",
+    ]);
+
+    const owned = (await readGitBranches(directory)).branches.find(
+      ({ name }) => name === "owned",
+    );
+    expect(owned?.worktree).toEqual({ label: "other-lane", current: false });
+    await expect(
+      previewGitBranchAction(directory, {
+        type: "switch",
+        name: "owned",
+        kind: "local",
+      }),
+    ).rejects.toThrow(/other-lane/u);
+    await expect(
+      previewGitBranchAction(directory, {
+        type: "deleteLocal",
+        name: "owned",
+        force: true,
+      }),
+    ).rejects.toThrow(/other-lane/u);
+
+    const create = {
+      type: "create" as const,
+      name: "stale",
+      startPoint: null,
+      checkout: false,
+    };
+    const preview = await previewGitBranchAction(directory, create);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "branch",
+      "changed-after-preview",
+    ]);
+    await expect(
+      applyGitBranchAction(directory, create, preview.token),
+    ).rejects.toThrow(/changed after this preview/iu);
+  });
+
+  it("reports unmerged branches and requires force for destructive deletion", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-branch-test-"),
+    );
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "base.txt"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Initial"]);
+    await execFileAsync("git", ["-C", directory, "switch", "-c", "unmerged"]);
+    await writeFile(path.join(directory, "topic.txt"), "topic\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Topic"]);
+    await execFileAsync("git", ["-C", directory, "switch", "main"]);
+
+    const branch = (await readGitBranches(directory)).branches.find(
+      ({ name }) => name === "unmerged",
+    );
+    expect(branch?.mergedIntoHead).toBe(false);
+    const safeAction = {
+      type: "deleteLocal" as const,
+      name: "unmerged",
+      force: false,
+    };
+    const safePreview = await previewGitBranchAction(directory, safeAction);
+    await expect(
+      applyGitBranchAction(directory, safeAction, safePreview.token),
+    ).rejects.toThrow(/not fully merged/iu);
+    const forceAction = { ...safeAction, force: true };
+    const forcePreview = await previewGitBranchAction(directory, forceAction);
+    expect(forcePreview.warnings.join(" ")).toMatch(/not merged/iu);
+    await applyGitBranchAction(directory, forceAction, forcePreview.token);
+  });
+
   it("creates, lists, previews, applies, and drops scoped stashes", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
     directories.push(directory);

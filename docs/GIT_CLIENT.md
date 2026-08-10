@@ -131,13 +131,48 @@ Manual QA:
 7. Disconnect the selected worktree's worker and confirm the list and actions
    fail without targeting another worktree.
 
+## Branch management
+
+Open a History tab and choose **Branches**. The compact, searchable inspector
+separates local and remote refs while keeping the selected worktree explicit.
+Each row shows its latest commit, merged state, upstream availability,
+ahead/behind counts, and any worktree that currently owns the local branch.
+The header explains that Cantrip pulls are fast-forward-only; fetch and explicit
+fetch-plus-prune remain separate reviewed actions.
+
+Branch actions are worker-owned and use bounded Git argument arrays. Cantrip can
+create or switch branches, track a remote branch, publish, rename, set/change/
+unset upstreams, and delete local or remote refs. Every mutation receives a
+fresh authoritative preview token. Git refs, HEAD, index, or working-copy
+changes invalidate stale confirmations. Local deletion is merged-only unless
+the user explicitly chooses force deletion, while remote deletion and pruning
+always receive destructive confirmation. A branch checked out in another
+worktree cannot be switched to, renamed, or deleted from the selected lane.
+
+Manual QA:
+
+1. Create a branch from HEAD and from another local or remote ref, both with
+   and without switching the selected worktree.
+2. Publish a local branch, change and unset its upstream, then confirm the row
+   updates ahead/behind and remote availability without a full page reload.
+3. Rename a current and an inactive local branch. Confirm an upstream is not
+   silently renamed and the review warns about that distinction.
+4. Attempt to switch, rename, or delete a branch checked out in another
+   worktree and confirm Cantrip identifies its owning lane and refuses.
+5. Delete a merged local branch, then review an unmerged branch and confirm
+   force deletion requires a separate explicit choice.
+6. Delete a remote branch and run fetch-plus-prune, confirming each review
+   names the exact remote/ref scope before it runs.
+7. Change a ref after opening a preview and confirm apply rejects the stale
+   token. Disconnect the worker and confirm no operation falls back to Primary.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport
 - [x] Arbitrary revision comparison
 - [x] Hunk and selected-line staging
 - [x] Stash/shelf management
-- [ ] Complete branch management
+- [x] Complete branch management
 - [ ] Remotes, tags, and GitHub releases
 - [ ] Commit and history actions
 - [ ] Resumable merge and rebase operations
