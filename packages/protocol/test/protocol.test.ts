@@ -60,6 +60,7 @@ import {
   gitTagListSchema,
   githubReleaseCreateSchema,
   githubPullRequestCreateResultSchema,
+  githubPullRequestCheckoutPreparedSchema,
   githubPullRequestDetailSchema,
   githubPullRequestLifecyclePreviewSchema,
   githubReleaseListSchema,
@@ -287,6 +288,39 @@ describe("Cantrip protocol", () => {
         },
       }).request,
     ).toMatchObject({ confirmation: "squash #44" });
+    const checkout = githubPullRequestCheckoutPreparedSchema.parse({
+      pullRequest: {
+        number: 44,
+        title: "Review pull requests",
+        state: "open",
+        url: "https://github.com/ArcaneArts/Cantrip/pull/44",
+        author: "reviewer",
+        commentCount: 2,
+        labels: [],
+        createdAt: "2026-08-10T00:00:00.000Z",
+        updatedAt: "2026-08-10T01:00:00.000Z",
+        closedAt: null,
+        body: null,
+        draft: false,
+        merged: false,
+        headRef: "feature/review",
+        headSha: "1".repeat(40),
+        baseRef: "main",
+        baseSha: "2".repeat(40),
+      },
+      branch: "cantrip/pr/44-feature-review-11111111",
+      name: "PR #44 Review pull requests",
+      headSha: "1".repeat(40),
+      remote: "origin",
+    });
+    expect(
+      workerCommandSchema.parse({
+        type: "github.pull-request.checkout.prepare",
+        cwd: "/repo",
+        repository: "ArcaneArts/Cantrip",
+        number: 44,
+      }),
+    ).toMatchObject({ number: checkout.pullRequest.number });
   });
 
   it("validates reviewed commit actions and resumable conflict state", () => {

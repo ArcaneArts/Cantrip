@@ -275,6 +275,12 @@ async function start(): Promise<void> {
           command.number,
           command.request,
         );
+      case "github.pull-request.checkout.prepare":
+        return github.preparePullRequestCheckout(
+          command.repository,
+          command.cwd,
+          command.number,
+        );
       case "github.releases.list":
         return github.listReleases(command.repository);
       case "github.release.get":

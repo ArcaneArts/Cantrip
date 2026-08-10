@@ -1,11 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import {
+  githubPullRequestCheckoutPreparedSchema,
+  githubPullRequestCheckoutResultSchema,
   worktreeCreateResultSchema,
   worktreeInventorySchema,
   worktreeRemoveResultSchema,
   worktreeStatusResultSchema,
   type ProjectWorktreeSummary,
+  type GithubPullRequestCheckoutResult,
   type WorktreeCreateMode,
 } from "@cantrip/protocol";
 import type {
@@ -25,6 +28,7 @@ type WorktreeRepository = Pick<
   ServerRepository,
   | "getProjectSource"
   | "getProjectWorktreeContext"
+  | "listProjectWorktrees"
   | "observeProjectWorktree"
   | "reconcileProjectWorktrees"
   | "workflowRuns"
@@ -133,6 +137,68 @@ export class ProjectWorktreeCoordinator {
     return this.serialize(projectId, () =>
       this.createInProject(ownerId, projectId, input),
     );
+  }
+
+  async checkoutPullRequest(
+    ownerId: string,
+    projectId: string,
+    sourceWorktreeId: string,
+    repository: string,
+    pullRequestNumber: number,
+  ): Promise<GithubPullRequestCheckoutResult | null> {
+    return this.serialize(projectId, async () => {
+      const context = await this.repository.getProjectWorktreeContext(
+        ownerId,
+        projectId,
+        sourceWorktreeId,
+      );
+      if (!context) return null;
+      if (context.worktree.lifecycleState !== "ready") {
+        throw new Error("The selected worktree is not ready.");
+      }
+      const prepared = githubPullRequestCheckoutPreparedSchema.parse(
+        await this.bridge.request(context.workerId, {
+          type: "github.pull-request.checkout.prepare",
+          cwd: context.worktree.path,
+          repository,
+          number: pullRequestNumber,
+        }),
+      );
+      const existing = (
+        await this.repository.listProjectWorktrees(ownerId, projectId)
+      ).find(({ branch }) => branch === prepared.branch);
+      if (existing) {
+        if (
+          existing.lifecycleState !== "ready" ||
+          existing.head !== prepared.headSha ||
+          existing.workerId !== context.workerId
+        ) {
+          throw new Error(
+            `The checkout branch ${prepared.branch} already belongs to a different or unavailable worktree.`,
+          );
+        }
+        return githubPullRequestCheckoutResultSchema.parse({
+          pullRequest: prepared.pullRequest,
+          worktree: existing,
+          reused: true,
+        });
+      }
+      const worktree = await this.createInProject(ownerId, projectId, {
+        name: prepared.name,
+        origin: "user",
+        mode: {
+          type: "newBranch",
+          branch: prepared.branch,
+          startPoint: prepared.headSha,
+        },
+      });
+      if (!worktree) return null;
+      return githubPullRequestCheckoutResultSchema.parse({
+        pullRequest: prepared.pullRequest,
+        worktree,
+        reused: false,
+      });
+    });
   }
 
   async allocateWorkflowLane(

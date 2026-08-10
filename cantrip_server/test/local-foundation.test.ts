@@ -44,6 +44,7 @@ import {
   githubIssueDetailSchema,
   githubIssueListSchema,
   githubPullRequestCreateResultSchema,
+  githubPullRequestCheckoutResultSchema,
   githubPullRequestDetailSchema,
   githubPullRequestLifecyclePreviewSchema,
   modelProfileSummarySchema,
@@ -156,6 +157,12 @@ const pullRequestLifecyclePreviewCommands: Array<
 > = [];
 const pullRequestLifecycleApplyCommands: Array<
   Extract<WorkerCommand, { type: "github.pull-request.lifecycle.apply" }>
+> = [];
+const pullRequestCheckoutCommands: Array<
+  Extract<WorkerCommand, { type: "github.pull-request.checkout.prepare" }>
+> = [];
+const pullRequestWorktreeCommands: Array<
+  Extract<WorkerCommand, { type: "worktree.create" }>
 > = [];
 function pullRequestDetailFixture(number: number) {
   return {
@@ -476,6 +483,60 @@ const workerBridge = {
           : command.request.action.type === "close"
             ? { ...detail, state: "closed" }
             : detail;
+      }
+      case "github.pull-request.checkout.prepare": {
+        pullRequestCheckoutCommands.push(command);
+        const pullRequest = pullRequestDetailFixture(command.number);
+        return {
+          pullRequest,
+          branch: `cantrip/pr/${command.number}-feature-review-44444444`,
+          name: `PR #${command.number} ${pullRequest.title}`,
+          headSha: pullRequest.headSha,
+          remote: "origin",
+        };
+      }
+      case "worktree.create": {
+        pullRequestWorktreeCommands.push(command);
+        if (command.mode.type !== "newBranch") {
+          throw new Error("Expected a new pull request branch.");
+        }
+        const createdPath = path.join(
+          dataDirectory,
+          "worktrees",
+          command.worktreeId,
+        );
+        const primary = {
+          path: command.sourcePath,
+          head: "3".repeat(40),
+          branch: "main",
+          detached: false,
+          isPrimary: true,
+          managed: false,
+          locked: false,
+          lockReason: null,
+          prunable: false,
+          pruneReason: null,
+          missing: false,
+        };
+        const worktree = {
+          ...primary,
+          path: createdPath,
+          head: command.mode.startPoint,
+          branch: command.mode.branch,
+          isPrimary: false,
+          managed: true,
+        };
+        return {
+          worktree,
+          inventory: {
+            sourcePath: command.sourcePath,
+            primaryPath: command.sourcePath,
+            gitCommonDir: path.join(command.sourcePath, ".git"),
+            managedRoot: path.join(dataDirectory, "worktrees"),
+            repositoryFingerprint: "a".repeat(64),
+            worktrees: [primary, worktree],
+          },
+        };
       }
       case "project.clone":
         if (command.repository.nameWithOwner === heldProjectCloneName) {
@@ -2237,6 +2298,38 @@ describe("local server foundation", () => {
       request: {
         token: "9".repeat(64),
         confirmation: "squash #44",
+      },
+    });
+    const checkoutResponse = await firstApp.inject({
+      method: "POST",
+      url: `${pullRequestBaseUrl}/checkout`,
+      payload: {},
+    });
+    expect(checkoutResponse.statusCode).toBe(200);
+    expect(
+      githubPullRequestCheckoutResultSchema.parse(checkoutResponse.json()),
+    ).toMatchObject({
+      pullRequest: { number: 44 },
+      worktree: {
+        name: "PR #44 Review pull requests",
+        branch: "cantrip/pr/44-feature-review-44444444",
+        head: "4".repeat(40),
+        isPrimary: false,
+        origin: "user",
+      },
+      reused: false,
+    });
+    expect(pullRequestCheckoutCommands.at(-1)).toMatchObject({
+      cwd: primaryWorktree!.path,
+      repository: "ArcaneArts/Cantrip",
+      number: 44,
+    });
+    expect(pullRequestWorktreeCommands.at(-1)).toMatchObject({
+      sourcePath: primaryWorktree!.path,
+      mode: {
+        type: "newBranch",
+        branch: "cantrip/pr/44-feature-review-44444444",
+        startPoint: "4".repeat(40),
       },
     });
     const history = gitHistorySchema.parse(

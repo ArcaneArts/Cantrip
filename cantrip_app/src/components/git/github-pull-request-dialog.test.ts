@@ -1,12 +1,14 @@
 import type {
   GithubPullRequestCheck,
   GithubPullRequestFile,
+  ProjectWorktreeSummary,
 } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import {
   pullRequestCheckLabel,
   pullRequestFileSubtitle,
+  mergeCheckedOutWorktree,
 } from "./github-pull-request-dialog";
 
 describe("GitHub pull request review presentation", () => {
@@ -47,5 +49,33 @@ describe("GitHub pull request review presentation", () => {
       patchTruncated: false,
     } satisfies GithubPullRequestFile;
     expect(pullRequestFileSubtitle(file)).toBe("src/old.ts → renamed · +5 −2");
+  });
+
+  it("authoritatively inserts or replaces a checked-out PR worktree", () => {
+    const worktree = {
+      id: "pr-worktree",
+      projectSourceId: "source",
+      projectId: "project",
+      workerId: "worker",
+      name: "PR #44 Review",
+      path: "/repo/pr-44",
+      displayPath: "PR #44 Review",
+      isPrimary: false,
+      isDefault: false,
+      origin: "user",
+      lifecycleState: "ready",
+      branch: "cantrip/pr/44-review-11111111",
+      head: "1".repeat(40),
+      detached: false,
+      locked: false,
+      lockReason: null,
+      lastScannedAt: "2026-08-10T12:00:00.000Z",
+      createdAt: "2026-08-10T12:00:00.000Z",
+      updatedAt: "2026-08-10T12:00:00.000Z",
+    } satisfies ProjectWorktreeSummary;
+    expect(mergeCheckedOutWorktree([], worktree)).toEqual([worktree]);
+    expect(
+      mergeCheckedOutWorktree([{ ...worktree, name: "Stale" }], worktree),
+    ).toEqual([worktree]);
   });
 });

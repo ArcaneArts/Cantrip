@@ -55,6 +55,7 @@ import {
   githubIssueDetailSchema,
   githubIssueListSchema,
   githubPullRequestCreateResultSchema,
+  githubPullRequestCheckoutResultSchema,
   githubPullRequestDetailSchema,
   githubPullRequestLifecyclePreviewSchema,
   githubReleaseListSchema,
@@ -986,6 +987,19 @@ export async function getGithubPullRequest(
   return githubPullRequestDetailSchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/pull-requests/${pullRequestNumber}`,
+    ),
+  );
+}
+
+export async function checkoutGithubPullRequest(
+  projectId: string,
+  worktreeId: string,
+  pullRequestNumber: number,
+) {
+  return githubPullRequestCheckoutResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/pull-requests/${pullRequestNumber}/checkout`,
+      {},
     ),
   );
 }
