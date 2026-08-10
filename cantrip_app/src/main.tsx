@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { AppLiveClient, appLiveWebSocketUrl } from "@/lib/app-live-client";
 import { AppLiveQueryBridge } from "@/lib/app-live-query";
 import { AppLiveProvider } from "@/lib/app-live-react";
+import { installDesktopClientLogRelay } from "@/lib/client-log-relay";
 import { router } from "@/router";
 import {
   getActiveServerConnection,
@@ -13,6 +14,8 @@ import {
 } from "@/lib/server-connections";
 
 import "./index.css";
+
+installDesktopClientLogRelay();
 
 const queryClient = new QueryClient({
   defaultOptions: {

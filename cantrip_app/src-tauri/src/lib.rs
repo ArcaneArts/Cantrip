@@ -24,6 +24,42 @@ fn local_server_url(runtime: State<'_, ManagedRuntime>) -> String {
     runtime.server_url.clone()
 }
 
+#[cfg(debug_assertions)]
+fn sanitize_client_log(message: &str) -> String {
+    message
+        .chars()
+        .take(16_384)
+        .map(|character| match character {
+            '\n' | '\t' => character,
+            character if character.is_control() => '�',
+            character => character,
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn relay_client_log(level: String, message: String) {
+    #[cfg(debug_assertions)]
+    {
+        let level = match level.as_str() {
+            "debug" => "debug",
+            "error" => "error",
+            "info" => "info",
+            "warn" => "warn",
+            _ => "log",
+        };
+        let prefix = format!("[client:{level}]");
+        let message = sanitize_client_log(&message).replace('\n', &format!("\n{prefix} "));
+        if matches!(level, "error" | "warn") {
+            eprintln!("{prefix} {message}");
+        } else {
+            println!("{prefix} {message}");
+        }
+    }
+    #[cfg(not(debug_assertions))]
+    let _ = (level, message);
+}
+
 fn open_log(path: &Path) -> Result<File, String> {
     OpenOptions::new()
         .create(true)
@@ -225,6 +261,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             local_server_url,
+            relay_client_log,
             project_share::reveal_project_share,
         ])
         .setup(|app| {
