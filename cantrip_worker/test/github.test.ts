@@ -500,6 +500,84 @@ describe("GitHub project files", () => {
     ).rejects.toThrow();
   });
 
+  it("fetches an exact pull request head without switching the selected worktree", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-github-pr-checkout-"),
+    );
+    directories.push(dataDirectory);
+    const repository = path.join(dataDirectory, "repository");
+    const binDirectory = path.join(dataDirectory, "bin");
+    const gitLog = path.join(dataDirectory, "git.log");
+    await mkdir(repository);
+    await mkdir(binDirectory);
+    const head = "7".repeat(40);
+    const pullRequest = {
+      number: 44,
+      title: "Checkout pull requests",
+      state: "open",
+      html_url: "https://github.com/ArcaneArts/Cantrip/pull/44",
+      user: { login: "author" },
+      comments: 0,
+      labels: [],
+      created_at: "2026-08-10T12:00:00.000Z",
+      updated_at: "2026-08-10T13:00:00.000Z",
+      closed_at: null,
+      body: "Checkout this.",
+      draft: false,
+      merged: false,
+      head: { ref: "feature/checkout", sha: head },
+      base: { ref: "main", sha: "8".repeat(40) },
+    };
+    const fakeGh = path.join(binDirectory, "gh");
+    await writeFile(
+      fakeGh,
+      [
+        "#!/usr/bin/env node",
+        `process.stdout.write(${JSON.stringify(JSON.stringify(pullRequest))});`,
+      ].join("\n"),
+    );
+    const fakeGit = path.join(binDirectory, "git");
+    await writeFile(
+      fakeGit,
+      [
+        "#!/usr/bin/env node",
+        'const fs = require("node:fs");',
+        `const log = ${JSON.stringify(gitLog)};`,
+        'const args = process.argv.slice(2); fs.appendFileSync(log, args.join("\\0") + "\\n");',
+        "if (args.includes('--git-dir')) process.stdout.write('.git\\n');",
+        "else if (args.at(-1) === 'remote') process.stdout.write('upstream\\norigin\\n');",
+        "else if (args.includes('get-url') && args.at(-1) === 'origin') process.stdout.write('git@github.com:ArcaneArts/Cantrip.git\\n');",
+        "else if (args.includes('get-url')) process.stdout.write('https://github.com/someone/fork.git\\n');",
+        `else if (args.includes('FETCH_HEAD^{commit}')) process.stdout.write(${JSON.stringify(`${head}\n`)});`,
+      ].join("\n"),
+    );
+    await Promise.all([chmod(fakeGh, 0o755), chmod(fakeGit, 0o755)]);
+    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+
+    const prepared = await new GithubClient(
+      dataDirectory,
+    ).preparePullRequestCheckout("ArcaneArts/Cantrip", repository, 44);
+    expect(prepared).toMatchObject({
+      branch: "cantrip/pr/44-feature-checkout-77777777",
+      headSha: head,
+      remote: "origin",
+      pullRequest: { number: 44 },
+    });
+    const invocations = await readFile(gitLog, "utf8");
+    expect(invocations).toContain(
+      [
+        "-C",
+        repository,
+        "fetch",
+        "--no-tags",
+        "origin",
+        "refs/pull/44/head",
+      ].join("\0"),
+    );
+    expect(invocations).not.toContain("\0checkout\0");
+    expect(invocations).not.toContain("\0switch\0");
+  });
+
   it("previews and safely applies pull request lifecycle actions", async () => {
     const dataDirectory = await mkdtemp(
       path.join(tmpdir(), "cantrip-github-pr-lifecycle-"),

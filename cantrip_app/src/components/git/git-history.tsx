@@ -942,6 +942,7 @@ export function GitHistoryView({
           status={status}
           worktreeId={worktreeId}
           onLoadMore={() => void issues.fetchNextPage()}
+          onSelectWorktree={onSelectWorktree}
         />
       ) : (
         <div className="relative flex min-h-0 flex-1">

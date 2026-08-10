@@ -93,6 +93,7 @@ import {
   githubIssueListSchema,
   githubPullRequestCreateResultSchema,
   githubPullRequestCreateSchema,
+  githubPullRequestCheckoutResultSchema,
   githubPullRequestDetailSchema,
   githubPullRequestLifecycleApplySchema,
   githubPullRequestLifecycleActionSchema,
@@ -3933,6 +3934,62 @@ export async function buildApp({
         return reply
           .code(error instanceof WorkerUnavailableError ? 503 : 409)
           .send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{
+    Params: {
+      projectId: string;
+      worktreeId: string;
+      pullRequestNumber: string;
+    };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/checkout",
+    async (request, reply) => {
+      const pullRequestNumber = Number.parseInt(
+        request.params.pullRequestNumber,
+        10,
+      );
+      if (!Number.isInteger(pullRequestNumber) || pullRequestNumber < 1) {
+        return reply.code(400).send({ error: "Invalid pull request number." });
+      }
+      const [worktree, github] = await Promise.all([
+        repository.getProjectWorktreeContext(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          request.params.worktreeId,
+        ),
+        repository.getGithubProjectExecutionContext(
+          LOCAL_USER_ID,
+          request.params.projectId,
+        ),
+      ]);
+      if (!worktree || !github) {
+        return reply
+          .code(404)
+          .send({ error: "GitHub worktree project not found." });
+      }
+      if (worktree.workerId !== github.workerId) {
+        return reply.code(409).send({
+          error:
+            "The selected worktree and GitHub project belong to different workers.",
+        });
+      }
+      try {
+        const result = await worktreeCoordinator.checkoutPullRequest(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          request.params.worktreeId,
+          github.nameWithOwner,
+          pullRequestNumber,
+        );
+        return result
+          ? reply.send(githubPullRequestCheckoutResultSchema.parse(result))
+          : reply.code(404).send({ error: "Project worktree not found." });
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
       }
     },
   );

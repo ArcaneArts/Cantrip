@@ -17,6 +17,7 @@ import {
   githubIssueDetailSchema,
   githubIssueListSchema,
   githubPullRequestCreateResultSchema,
+  githubPullRequestCheckoutPreparedSchema,
   githubPullRequestDetailSchema,
   githubPullRequestLifecyclePreviewSchema,
   githubPullRequestSummarySchema,
@@ -33,6 +34,7 @@ import {
   type GithubIssueSummary,
   type GithubPullRequestCreate,
   type GithubPullRequestCreateResult,
+  type GithubPullRequestCheckoutPrepared,
   type GithubPullRequestDetail,
   type GithubPullRequestCheck,
   type GithubPullRequestInlineCommentCreate,
@@ -276,6 +278,43 @@ function repositorySegments(nameWithOwner: string): [string, string] {
     throw new Error(`Invalid GitHub repository name: ${nameWithOwner}`);
   }
   return [parts[0], parts[1]];
+}
+
+function githubRepositoryFromRemoteUrl(value: string): string | null {
+  const trimmed = value.trim();
+  const scp = /^git@github\.com:([^/]+)\/(.+)$/iu.exec(trimmed);
+  if (scp) {
+    return `${scp[1]}/${scp[2]!.replace(/\.git$/iu, "")}`.toLowerCase();
+  }
+  try {
+    const remote = new URL(trimmed);
+    if (remote.hostname.toLowerCase() !== "github.com") return null;
+    const segments = remote.pathname
+      .replace(/^\/+|\/+$/gu, "")
+      .replace(/\.git$/iu, "")
+      .split("/");
+    return segments.length === 2
+      ? `${segments[0]}/${segments[1]}`.toLowerCase()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function pullRequestCheckoutIdentity(pullRequest: GithubPullRequestSummary): {
+  branch: string;
+  name: string;
+} {
+  const slug = pullRequest.headRef
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, 48);
+  return {
+    branch: `cantrip/pr/${pullRequest.number}-${slug || "head"}-${pullRequest.headSha.slice(0, 8)}`,
+    name: `PR #${pullRequest.number} ${pullRequest.title}`.slice(0, 200),
+  };
 }
 
 function parseRepository(value: GithubApiRepository): GithubWorkerRepository {
@@ -1139,6 +1178,74 @@ export class GithubClient {
       reviewThreads,
       reviewThreadsTruncated:
         rawReviewComments.length >= 100 || reviewThreads.length >= 100,
+    });
+  }
+
+  async preparePullRequestCheckout(
+    nameWithOwner: string,
+    cwd: string,
+    pullRequestNumber: number,
+  ): Promise<GithubPullRequestCheckoutPrepared> {
+    await this.verifyWorktree(cwd);
+    const rawPullRequest = (await this.api(
+      `${this.repositoryApiPath(nameWithOwner)}/pulls/${pullRequestNumber}`,
+    )) as GithubApiPullRequest;
+    const pullRequest = parsePullRequest(rawPullRequest);
+    const expectedRepository = nameWithOwner.toLowerCase();
+    const { stdout: remoteOutput } = await execFileAsync("git", [
+      "-C",
+      cwd,
+      "remote",
+    ]);
+    const remoteNames = remoteOutput
+      .split("\n")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const matches: string[] = [];
+    for (const remote of remoteNames) {
+      const { stdout } = await execFileAsync("git", [
+        "-C",
+        cwd,
+        "remote",
+        "get-url",
+        remote,
+      ]);
+      if (githubRepositoryFromRemoteUrl(stdout) === expectedRepository) {
+        matches.push(remote);
+      }
+    }
+    const remote = matches.includes("origin") ? "origin" : matches[0];
+    if (!remote) {
+      throw new Error(
+        `No Git remote in this project points to ${nameWithOwner}. Add the GitHub repository as a remote before checking out its pull requests.`,
+      );
+    }
+    await execFileAsync("git", [
+      "-C",
+      cwd,
+      "fetch",
+      "--no-tags",
+      remote,
+      `refs/pull/${pullRequestNumber}/head`,
+    ]);
+    const { stdout: fetchedOutput } = await execFileAsync("git", [
+      "-C",
+      cwd,
+      "rev-parse",
+      "--verify",
+      "FETCH_HEAD^{commit}",
+    ]);
+    const headSha = fetchedOutput.trim();
+    if (headSha !== pullRequest.headSha) {
+      throw new Error(
+        "The pull request changed while its checkout was prepared. Retry to use the latest head commit.",
+      );
+    }
+    return githubPullRequestCheckoutPreparedSchema.parse({
+      pullRequest,
+      ...pullRequestCheckoutIdentity(pullRequest),
+      headSha,
+      remote,
     });
   }
 

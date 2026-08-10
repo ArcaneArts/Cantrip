@@ -4,6 +4,7 @@ import type {
   GithubPullRequestFile,
   GithubPullRequestLifecycleAction,
   GithubPullRequestReviewAction,
+  ProjectWorktreeSummary,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -14,6 +15,7 @@ import {
   ExternalLink,
   FileDiff,
   GitCommitHorizontal,
+  GitBranch,
   Loader2,
   MessageSquare,
   Send,
@@ -32,6 +34,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  checkoutGithubPullRequest,
   getGithubPullRequest,
   runGithubPullRequestReviewAction,
 } from "@/lib/api";
@@ -55,6 +58,13 @@ export function pullRequestCheckLabel(check: GithubPullRequestCheck): string {
 export function pullRequestFileSubtitle(file: GithubPullRequestFile): string {
   const rename = file.previousPath ? `${file.previousPath} → ` : "";
   return `${rename}${file.status} · +${file.additions} −${file.deletions}`;
+}
+
+export function mergeCheckedOutWorktree(
+  current: ProjectWorktreeSummary[],
+  worktree: ProjectWorktreeSummary,
+): ProjectWorktreeSummary[] {
+  return [...current.filter(({ id }) => id !== worktree.id), worktree];
 }
 
 function CheckIcon({ check }: { check: GithubPullRequestCheck }) {
@@ -574,11 +584,13 @@ function Checks({ detail }: { detail: GithubPullRequestDetail }) {
 }
 
 export function GithubPullRequestDialog({
+  onCheckedOut,
   onOpenChange,
   projectId,
   pullRequestNumber,
   worktreeId,
 }: {
+  onCheckedOut(worktreeId: string): void;
   onOpenChange(open: boolean): void;
   projectId: string;
   pullRequestNumber: number | null;
@@ -613,6 +625,20 @@ export function GithubPullRequestDialog({
       await queryClient.invalidateQueries({
         queryKey: ["github-issues", projectId, "pull-request"],
       });
+    },
+  });
+  const checkout = useMutation({
+    mutationFn: () =>
+      checkoutGithubPullRequest(projectId, worktreeId, pullRequestNumber!),
+    onSuccess: (result) => {
+      queryClient.setQueryData<ProjectWorktreeSummary[]>(
+        ["worktrees", projectId],
+        (current = []) => mergeCheckedOutWorktree(current, result.worktree),
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["worktree-status", projectId],
+      });
+      onCheckedOut(result.worktree.id);
     },
   });
   useEffect(() => {
@@ -666,6 +692,19 @@ export function GithubPullRequestDialog({
                     </DialogDescription>
                   </div>
                   <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={checkout.isPending}
+                      onClick={() => checkout.mutate()}
+                    >
+                      {checkout.isPending ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <GitBranch className="size-3.5" />
+                      )}
+                      Checkout
+                    </Button>
                     {detail.data.state === "open" && detail.data.draft ? (
                       <Button
                         size="sm"
@@ -724,6 +763,13 @@ export function GithubPullRequestDialog({
                     </Button>
                   </div>
                 </div>
+                {checkout.error ? (
+                  <p className="mt-2 text-left text-xs text-destructive">
+                    {checkout.error instanceof Error
+                      ? checkout.error.message
+                      : "Pull request checkout failed."}
+                  </p>
+                ) : null}
               </DialogHeader>
               <div className="flex h-9 shrink-0 items-end gap-1 border-b px-3">
                 {(

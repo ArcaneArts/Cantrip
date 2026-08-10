@@ -1042,6 +1042,14 @@ export const githubPullRequestLifecycleApplySchema = z.object({
   confirmation: z.string().max(100).default(""),
 });
 
+export const githubPullRequestCheckoutPreparedSchema = z.object({
+  pullRequest: githubPullRequestSummarySchema,
+  branch: z.string().trim().min(1).max(255),
+  name: z.string().trim().min(1).max(200),
+  headSha: z.string().regex(/^[0-9a-f]{40}$/u),
+  remote: z.string().trim().min(1).max(255),
+});
+
 export const githubPullRequestDetailSchema =
   githubPullRequestSummarySchema.extend({
     comments: z.array(githubIssueCommentSchema).max(100),
@@ -1184,6 +1192,12 @@ export const projectWorktreeSummarySchema = z.object({
 });
 
 export const projectWorktreeListSchema = z.array(projectWorktreeSummarySchema);
+
+export const githubPullRequestCheckoutResultSchema = z.object({
+  pullRequest: githubPullRequestSummarySchema,
+  worktree: projectWorktreeSummarySchema,
+  reused: z.boolean(),
+});
 
 export const projectSetupStatusSchema = z.enum(["cloning", "ready", "failed"]);
 
@@ -4645,6 +4659,12 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     request: githubPullRequestLifecycleApplySchema,
   }),
   z.object({
+    type: z.literal("github.pull-request.checkout.prepare"),
+    cwd: z.string().min(1).max(8_192),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+    number: z.number().int().positive(),
+  }),
+  z.object({
     type: z.literal("github.releases.list"),
     cwd: z.string().min(1).max(8_192),
     repository: githubRepositorySchema.shape.nameWithOwner,
@@ -5624,6 +5644,12 @@ export type GithubPullRequestLifecyclePreview = z.infer<
 >;
 export type GithubPullRequestLifecycleApply = z.infer<
   typeof githubPullRequestLifecycleApplySchema
+>;
+export type GithubPullRequestCheckoutPrepared = z.infer<
+  typeof githubPullRequestCheckoutPreparedSchema
+>;
+export type GithubPullRequestCheckoutResult = z.infer<
+  typeof githubPullRequestCheckoutResultSchema
 >;
 export type GithubPullRequestDetail = z.infer<
   typeof githubPullRequestDetailSchema

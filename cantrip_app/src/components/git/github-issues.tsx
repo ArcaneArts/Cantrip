@@ -273,6 +273,7 @@ export function GithubIssuesView({
   issues,
   kind,
   onLoadMore,
+  onSelectWorktree,
   project,
   status,
   worktreeId,
@@ -284,6 +285,7 @@ export function GithubIssuesView({
   issues: GithubIssueList | undefined;
   kind: GithubIssueKind;
   onLoadMore(): void;
+  onSelectWorktree(worktreeId: string): void;
   project: ProjectSummary;
   status: GitStatus | undefined;
   worktreeId: string;
@@ -423,6 +425,7 @@ export function GithubIssuesView({
           pullRequestNumber={selectedIssue}
           projectId={project.id}
           worktreeId={worktreeId}
+          onCheckedOut={onSelectWorktree}
           onOpenChange={(open) => {
             if (!open) setSelectedIssue(null);
           }}

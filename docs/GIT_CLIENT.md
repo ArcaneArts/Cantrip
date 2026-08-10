@@ -542,6 +542,31 @@ Manual QA:
 6. Disconnect the selected worker and confirm preview/apply fail without using
    another worktree or exposing GitHub credentials.
 
+### Pull request worktrees
+
+Checkout in the PR inspector fetches GitHub's exact `refs/pull/N/head` through
+the matching repository remote and creates a new Cantrip-managed worktree and
+local `cantrip/pr/...` branch at that immutable commit. The selected worktree
+is used only as the explicit worker/repository context: its branch, index, and
+files are never switched or modified. Repeating checkout for the same PR head
+reuses the already cataloged worktree, while a newer PR head receives a new
+SHA-qualified branch so existing review work remains recoverable.
+
+Manual QA:
+
+1. Open a PR from the Primary worktree, click Checkout, and confirm Cantrip
+   selects a new user-managed worktree while Primary remains on its branch.
+2. Repeat checkout for the same head and confirm the existing worktree is
+   selected instead of creating a duplicate.
+3. Push another commit to the PR and checkout again; confirm a new worktree is
+   created at the new exact SHA and the previous checkout remains unchanged.
+4. Test a PR from a fork, a closed PR, and a private repository authenticated
+   through the worker's GitHub CLI.
+5. Remove or rename the matching GitHub remote and confirm checkout explains
+   the missing remote without switching the selected worktree.
+6. Disconnect the selected worker and confirm no fallback worker is used and
+   no partial server worktree record is created.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport
@@ -554,7 +579,7 @@ Manual QA:
 - [x] Resumable merge and rebase operations
 - [x] Conflict resolution
 - [x] Advanced history rewriting
-- [ ] Full GitHub pull-request workflow
+- [x] Full GitHub pull-request workflow
 - [ ] File history, blame, and repository search
 - [ ] Recovery tools and bisect
 - [ ] Repository-system support
