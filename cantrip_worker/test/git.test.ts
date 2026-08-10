@@ -14,6 +14,7 @@ import {
   applyGitConflictResolution,
   applyGitPartialPatch,
   applyGitRemoteAction,
+  applyGitRecoveryAction,
   applyGitStashAction,
   applyGitTagAction,
   controlGitManagedOperation,
@@ -24,6 +25,7 @@ import {
   previewGitConflictResolution,
   previewGitPartialPatch,
   previewGitRemoteAction,
+  previewGitRecoveryAction,
   previewGitStashAction,
   previewGitTagAction,
   previewGitManagedOperation,
@@ -38,6 +40,7 @@ import {
   readGitHistory,
   listGitConflicts,
   readGitRemotes,
+  readGitRecoveryCandidates,
   readGitRevisionFileDiff,
   readGitRevisionCandidates,
   readGitStatus,
@@ -2724,6 +2727,167 @@ describe("Git history", () => {
         )
       ).commits.map(({ hash }) => hash),
     ).toEqual([base]);
+  });
+
+  it("lists reflog and lost commits and applies checkpointed recovery actions", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-recovery-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "README.md"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Base"]);
+    const base = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await writeFile(path.join(directory, "README.md"), "second\n");
+    await execFileAsync("git", ["-C", directory, "commit", "-am", "Second"]);
+    const second = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+
+    const reflog = await readGitRecoveryCandidates(directory, "reflog", 1);
+    expect(reflog.entries[0]).toMatchObject({
+      kind: "reflog",
+      hash: second,
+      action: "commit",
+    });
+    expect(reflog.hasMore).toBe(true);
+    expect(reflog.nextCursor).toBe(1);
+
+    let reset = await previewGitRecoveryAction(directory, {
+      type: "reset",
+      mode: "hard",
+      target: base,
+    });
+    expect(reset).toMatchObject({
+      destructive: true,
+      currentHead: second,
+      targetRevision: base,
+    });
+    await expect(
+      applyGitRecoveryAction(
+        directory,
+        reset.action,
+        reset.token,
+        "wrong confirmation",
+      ),
+    ).rejects.toThrow("Type RESET --HARD");
+    await writeFile(
+      path.join(directory, "README.md"),
+      "changed after preview\n",
+    );
+    await expect(
+      applyGitRecoveryAction(
+        directory,
+        reset.action,
+        reset.token,
+        reset.confirmation,
+      ),
+    ).rejects.toThrow("changed after this preview");
+    await writeFile(path.join(directory, "README.md"), "second\n");
+    reset = await previewGitRecoveryAction(directory, reset.action);
+    const resetResult = await applyGitRecoveryAction(
+      directory,
+      reset.action,
+      reset.token,
+      reset.confirmation,
+    );
+    expect(resetResult).toMatchObject({ headBefore: second, headAfter: base });
+    expect(resetResult.checkpointRef).toContain("refs/cantrip/recovery/reset-");
+    expect(
+      (
+        await execFileAsync("git", [
+          "-C",
+          directory,
+          "rev-parse",
+          resetResult.checkpointRef!,
+        ])
+      ).stdout.trim(),
+    ).toBe(second);
+
+    const create = await previewGitRecoveryAction(directory, {
+      type: "createBranch",
+      branch: "recovery/second",
+      target: second,
+    });
+    await applyGitRecoveryAction(
+      directory,
+      create.action,
+      create.token,
+      create.confirmation,
+    );
+    expect(
+      (
+        await execFileAsync("git", [
+          "-C",
+          directory,
+          "rev-parse",
+          "recovery/second",
+        ])
+      ).stdout.trim(),
+    ).toBe(second);
+    await expect(
+      previewGitRecoveryAction(directory, {
+        type: "restoreBranch",
+        branch: "main",
+        target: second,
+      }),
+    ).rejects.toThrow("Use a reset");
+
+    await execFileAsync("git", ["-C", directory, "branch", "legacy", base]);
+    const restore = await previewGitRecoveryAction(directory, {
+      type: "restoreBranch",
+      branch: "legacy",
+      target: second,
+    });
+    const restoreResult = await applyGitRecoveryAction(
+      directory,
+      restore.action,
+      restore.token,
+      restore.confirmation,
+    );
+    expect(restoreResult.checkpointRef).toContain(
+      "refs/cantrip/recovery/branch-",
+    );
+    expect(
+      (
+        await execFileAsync("git", ["-C", directory, "rev-parse", "legacy"])
+      ).stdout.trim(),
+    ).toBe(second);
+
+    await execFileAsync("git", ["-C", directory, "switch", "-c", "lost"]);
+    await writeFile(path.join(directory, "lost.txt"), "lost\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Lost"]);
+    const lost = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await execFileAsync("git", ["-C", directory, "switch", "main"]);
+    await execFileAsync("git", ["-C", directory, "branch", "-D", "lost"]);
+    const dangling = await readGitRecoveryCandidates(
+      directory,
+      "dangling",
+      100,
+    );
+    expect(dangling.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "dangling", hash: lost }),
+      ]),
+    );
   });
 
   it("paginates commits from every branch", async () => {

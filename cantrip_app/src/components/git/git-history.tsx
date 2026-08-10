@@ -32,6 +32,7 @@ import {
   Loader2,
   Plus,
   RefreshCw,
+  RotateCcw,
   ScanLine,
   Search,
   Server,
@@ -82,6 +83,7 @@ import {
 } from "./git-force-push-dialog";
 import { GitFileHistoryDialog } from "./git-file-history-dialog";
 import { GitCommitSearchDialog } from "./git-commit-search-dialog";
+import { GitRecoveryDialog } from "./git-recovery-dialog";
 import { GitStashPanel } from "./git-stash-panel";
 import { GitRepositoryPanel } from "./git-repository-panel";
 import { GitOperationPanel, gitOperationIsActive } from "./git-operation-panel";
@@ -409,6 +411,7 @@ export function GitHistoryView({
   const [forcePushOpen, setForcePushOpen] = useState(false);
   const [fileHistoryOpen, setFileHistoryOpen] = useState(false);
   const [commitSearchOpen, setCommitSearchOpen] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [operationPreset, setOperationPreset] =
     useState<GitMergeRebaseAction | null>(null);
   const [commitActionRequest, setCommitActionRequest] =
@@ -886,6 +889,17 @@ export function GitHistoryView({
               onClick={() => setCommitSearchOpen(true)}
             >
               <Search className="size-3" /> Search
+            </Button>
+          ) : null}
+          {section === "history" ? (
+            <Button
+              size="sm"
+              variant={recoveryOpen ? "outline" : "ghost"}
+              className="h-6 gap-1 px-2 text-[11px]"
+              disabled={!selectedAvailable}
+              onClick={() => setRecoveryOpen(true)}
+            >
+              <RotateCcw className="size-3" /> Recovery
             </Button>
           ) : null}
           {section !== "history" ? (
@@ -1602,6 +1616,12 @@ export function GitHistoryView({
           setCompareOpen(false);
           setSelectedCommit(revision);
         }}
+      />
+      <GitRecoveryDialog
+        open={recoveryOpen}
+        onOpenChange={setRecoveryOpen}
+        projectId={project.id}
+        worktreeId={worktreeId}
       />
     </div>
   );

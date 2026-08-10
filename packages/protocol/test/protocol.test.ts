@@ -49,6 +49,9 @@ import {
   gitManagedOperationRecordSchema,
   gitRemoteActionPreviewSchema,
   gitRemoteListSchema,
+  gitRecoveryActionSchema,
+  gitRecoveryCandidateListSchema,
+  gitRecoveryPreviewSchema,
   gitCommitDetailSchema,
   gitComparisonSchema,
   gitFileDiffSchema,
@@ -1022,6 +1025,79 @@ describe("Cantrip protocol", () => {
         message: "test",
         dateFrom: "2026-08-10",
         dateTo: "2026-08-01",
+      }),
+    ).toThrow();
+  });
+
+  it("validates paginated recovery candidates and confirmed reset previews", () => {
+    const hash = "1".repeat(40);
+    expect(
+      gitRecoveryCandidateListSchema.parse({
+        kind: "reflog",
+        entries: [
+          {
+            kind: "reflog",
+            selector: "HEAD@{0}",
+            hash,
+            shortHash: hash.slice(0, 8),
+            action: "reset",
+            subject: "reset: moving to HEAD~1",
+            explanation: "HEAD was reset.",
+            actorName: "Cantrip Test",
+            actorEmail: "test@cantrip.art",
+            occurredAt: "2026-08-10T12:00:00.000Z",
+          },
+        ],
+        hasMore: false,
+        nextCursor: null,
+      }).entries,
+    ).toHaveLength(1);
+    const action = gitRecoveryActionSchema.parse({
+      type: "reset",
+      mode: "hard",
+      target: hash,
+    });
+    expect(
+      gitRecoveryPreviewSchema.parse({
+        action,
+        token: "a".repeat(64),
+        destructive: true,
+        summary: "Reset this worktree.",
+        warnings: ["Tracked changes will be overwritten."],
+        confirmation: `RESET --HARD TO ${hash.slice(0, 10)}`,
+        targetRevision: hash,
+        currentHead: "2".repeat(40),
+        branchBefore: null,
+        checkpointRef: "refs/cantrip/recovery/reset-example",
+        commitsRemoved: [],
+        commitsRemovedTruncated: false,
+        files: [],
+        filesTruncated: false,
+        status: {
+          branch: "main",
+          head: "2".repeat(40),
+          upstream: null,
+          ahead: 0,
+          behind: 0,
+          files: [],
+          branches: [],
+        },
+      }).confirmation,
+    ).toContain("RESET --HARD");
+    expect(
+      workerCommandSchema.parse({
+        type: "git.recovery.list",
+        cwd: "/repo",
+        kind: "dangling",
+        cursor: 0,
+        limit: 50,
+      }),
+    ).toMatchObject({ type: "git.recovery.list", kind: "dangling" });
+    expect(() =>
+      gitRecoveryActionSchema.parse({
+        type: "createBranch",
+        branch: "unsafe\nbranch",
+        target: hash,
       }),
     ).toThrow();
   });

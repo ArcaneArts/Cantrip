@@ -3560,6 +3560,80 @@ export const gitCommitSearchResultSchema = z.object({
   nextCursor: z.number().int().nonnegative().nullable(),
 });
 
+export const gitRecoveryCandidateSchema = z.object({
+  kind: z.enum(["reflog", "dangling"]),
+  selector: z.string().min(1).max(1_024),
+  hash: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  shortHash: z.string().min(1).max(64),
+  action: z.string().min(1).max(100),
+  subject: z.string().max(10_000),
+  explanation: z.string().min(1).max(10_000),
+  actorName: z.string().max(1_000).nullable(),
+  actorEmail: z.string().max(1_000).nullable(),
+  occurredAt: z.string().datetime({ offset: true }).nullable(),
+});
+
+export const gitRecoveryCandidateListSchema = z.object({
+  kind: z.enum(["reflog", "dangling"]),
+  entries: z.array(gitRecoveryCandidateSchema).max(100),
+  hasMore: z.boolean(),
+  nextCursor: z.number().int().nonnegative().nullable(),
+});
+
+export const gitRecoveryActionSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("createBranch"),
+    branch: z.lazy(() => gitBranchNameInputSchema),
+    target: z.lazy(() => gitRevisionInputSchema),
+  }),
+  z.object({
+    type: z.literal("restoreBranch"),
+    branch: z.lazy(() => gitBranchNameInputSchema),
+    target: z.lazy(() => gitRevisionInputSchema),
+  }),
+  z.object({
+    type: z.literal("reset"),
+    mode: z.enum(["soft", "mixed", "hard"]),
+    target: z.lazy(() => gitRevisionInputSchema),
+  }),
+]);
+
+export const gitRecoveryPreviewSchema = z.object({
+  action: gitRecoveryActionSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+  destructive: z.boolean(),
+  summary: z.string().min(1).max(10_000),
+  warnings: z.array(z.string().min(1).max(1_000)).max(100),
+  confirmation: z.string().min(1).max(1_000),
+  targetRevision: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  currentHead: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  branchBefore: z
+    .string()
+    .regex(/^[0-9a-f]{40,64}$/u)
+    .nullable(),
+  checkpointRef: z.string().min(1).max(1_024).nullable(),
+  commitsRemoved: z.array(gitComparisonCommitSchema).max(200),
+  commitsRemovedTruncated: z.boolean(),
+  files: z.array(gitCommitFileSchema).max(100_000),
+  filesTruncated: z.boolean(),
+  status: z.lazy(() => gitStatusSchema),
+});
+
+export const gitRecoveryApplySchema = z.object({
+  action: gitRecoveryActionSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+  confirmation: z.string().min(1).max(1_000),
+});
+
+export const gitRecoveryResultSchema = z.object({
+  action: gitRecoveryActionSchema,
+  output: z.string().max(1_000_000),
+  checkpointRef: z.string().min(1).max(1_024).nullable(),
+  headBefore: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  headAfter: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  status: z.lazy(() => gitStatusSchema),
+});
+
 export const gitFileChangeSchema = z.object({
   path: z.string().min(1),
   originalPath: z.string().min(1).nullable(),
@@ -4825,6 +4899,23 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     limit: z.number().int().min(1).max(100).default(100),
   }),
   z.object({
+    type: z.literal("git.recovery.list"),
+    cwd: z.string().min(1).max(8_192),
+    kind: z.enum(["reflog", "dangling"]),
+    cursor: z.number().int().nonnegative().default(0),
+    limit: z.number().int().min(1).max(100).default(100),
+  }),
+  z.object({
+    type: z.literal("git.recovery.preview"),
+    cwd: z.string().min(1).max(8_192),
+    action: gitRecoveryActionSchema,
+  }),
+  z.object({
+    type: z.literal("git.recovery.apply"),
+    cwd: z.string().min(1).max(8_192),
+    request: gitRecoveryApplySchema,
+  }),
+  z.object({
     type: z.literal("git.commit.get"),
     cwd: z.string().min(1).max(8_192),
     revision: z.string().regex(/^[0-9a-f]{40,64}$/u),
@@ -5780,6 +5871,14 @@ export type GitBlameRange = z.infer<typeof gitBlameRangeSchema>;
 export type GitBlame = z.infer<typeof gitBlameSchema>;
 export type GitCommitSearchQuery = z.infer<typeof gitCommitSearchQuerySchema>;
 export type GitCommitSearchResult = z.infer<typeof gitCommitSearchResultSchema>;
+export type GitRecoveryCandidate = z.infer<typeof gitRecoveryCandidateSchema>;
+export type GitRecoveryCandidateList = z.infer<
+  typeof gitRecoveryCandidateListSchema
+>;
+export type GitRecoveryAction = z.infer<typeof gitRecoveryActionSchema>;
+export type GitRecoveryPreview = z.infer<typeof gitRecoveryPreviewSchema>;
+export type GitRecoveryApply = z.infer<typeof gitRecoveryApplySchema>;
+export type GitRecoveryResult = z.infer<typeof gitRecoveryResultSchema>;
 export type GitCommitPerson = z.infer<typeof gitCommitPersonSchema>;
 export type GitSignature = z.infer<typeof gitSignatureSchema>;
 export type GitCommitFile = z.infer<typeof gitCommitFileSchema>;

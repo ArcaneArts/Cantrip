@@ -38,6 +38,9 @@ import {
   gitRemoteActionPreviewSchema,
   gitRemoteListSchema,
   gitRemoteMutationResultSchema,
+  gitRecoveryCandidateListSchema,
+  gitRecoveryPreviewSchema,
+  gitRecoveryResultSchema,
   gitStashActionPreviewSchema,
   gitStashFileDiffSchema,
   gitStashListSchema,
@@ -91,6 +94,11 @@ import {
   type GitRemoteActionPreview,
   type GitRemoteList,
   type GitRemoteMutationResult,
+  type GitRecoveryAction,
+  type GitRecoveryCandidate,
+  type GitRecoveryCandidateList,
+  type GitRecoveryPreview,
+  type GitRecoveryResult,
   type GitStashAction,
   type GitStashActionPreview,
   type GitStashCreate,
@@ -662,6 +670,375 @@ export async function searchGitCommits(
     commits,
     hasMore,
     nextCursor: hasMore ? cursor + commits.length : null,
+  });
+}
+
+function recoveryExplanation(subject: string): {
+  action: string;
+  explanation: string;
+} {
+  const separator = subject.indexOf(":");
+  const action = (separator >= 0 ? subject.slice(0, separator) : subject)
+    .trim()
+    .toLowerCase();
+  const detail = (
+    separator >= 0 ? subject.slice(separator + 1) : subject
+  ).trim();
+  if (action === "checkout") {
+    return {
+      action,
+      explanation: detail.startsWith("moving from ")
+        ? `The worktree switched ${detail}.`
+        : "The worktree changed its checked-out revision.",
+    };
+  }
+  if (action === "reset") {
+    return {
+      action,
+      explanation: detail
+        ? `HEAD or its branch was reset (${detail}).`
+        : "HEAD or its branch was reset to another revision.",
+    };
+  }
+  if (action.startsWith("commit")) {
+    return {
+      action,
+      explanation: detail
+        ? `A commit was recorded: ${detail}`
+        : "A commit moved the current branch forward.",
+    };
+  }
+  if (action.startsWith("rebase")) {
+    return {
+      action,
+      explanation: detail
+        ? `A rebase moved this reference (${detail}).`
+        : "A rebase rewrote or moved this reference.",
+    };
+  }
+  if (action === "merge") {
+    return {
+      action,
+      explanation: detail
+        ? `A merge moved this reference (${detail}).`
+        : "A merge moved this reference.",
+    };
+  }
+  if (action === "pull") {
+    return {
+      action,
+      explanation: detail
+        ? `A pull updated this reference (${detail}).`
+        : "A pull updated this reference from a remote.",
+    };
+  }
+  return {
+    action: action || "reflog",
+    explanation: subject
+      ? `Git recorded this reference movement: ${subject}`
+      : "Git recorded a reference movement to this commit.",
+  };
+}
+
+function parseRawReflogDate(selector: string): string | null {
+  const match = /@\{(\d+)\s+[+-]\d{4}\}$/u.exec(selector);
+  if (!match) return null;
+  const seconds = Number.parseInt(match[1]!, 10);
+  return Number.isFinite(seconds)
+    ? new Date(seconds * 1_000).toISOString()
+    : null;
+}
+
+export async function readGitRecoveryCandidates(
+  cwd: string,
+  kind: "reflog" | "dangling",
+  limit: number,
+  cursor = 0,
+): Promise<GitRecoveryCandidateList> {
+  let parsed: GitRecoveryCandidate[];
+  if (kind === "reflog") {
+    const output = await gitRaw(cwd, [
+      "log",
+      "-g",
+      "--all",
+      "--date=raw",
+      `--skip=${cursor}`,
+      `--max-count=${limit + 1}`,
+      "--format=%H%x00%h%x00%gD%x00%gs%x00%gn%x00%ge%x1e",
+    ]).catch((error) => {
+      const stderr = (error as { stderr?: string }).stderr ?? "";
+      if (stderr.includes("does not have any commits yet")) return "";
+      throw error;
+    });
+    parsed = output
+      .split("\x1e")
+      .map((record) => record.trim())
+      .filter(Boolean)
+      .flatMap((record): GitRecoveryCandidate[] => {
+        const [hash, shortHash, selector, subject = "", actorName, actorEmail] =
+          record.split("\0");
+        if (!hash || !shortHash || !selector) return [];
+        const movement = recoveryExplanation(subject);
+        return [
+          {
+            kind,
+            selector,
+            hash,
+            shortHash,
+            subject,
+            ...movement,
+            actorName: actorName || null,
+            actorEmail: actorEmail || null,
+            occurredAt: parseRawReflogDate(selector),
+          },
+        ];
+      });
+  } else {
+    const output = await gitRaw(cwd, [
+      "fsck",
+      "--no-reflogs",
+      "--unreachable",
+      "--no-progress",
+    ]).catch((error) => (error as { stdout?: string }).stdout ?? "");
+    const hashes = output
+      .split("\n")
+      .flatMap((line) => {
+        const match =
+          /^(?:dangling|unreachable) commit ([0-9a-f]{40,64})$/u.exec(
+            line.trim(),
+          );
+        return match ? [match[1]!] : [];
+      })
+      .sort()
+      .slice(cursor, cursor + limit + 1);
+    parsed = await Promise.all(
+      hashes.map(async (hash): Promise<GitRecoveryCandidate> => {
+        const output = await gitRaw(cwd, [
+          "show",
+          "-s",
+          "--date=iso-strict",
+          "--format=%h%x00%s%x00%an%x00%ae%x00%aI",
+          hash,
+        ]);
+        const [shortHash, subject = "", actorName, actorEmail, occurredAt] =
+          output.trimEnd().split("\0");
+        return {
+          kind,
+          selector: hash,
+          hash,
+          shortHash: shortHash || hash.slice(0, 10),
+          action: "unreachable",
+          subject,
+          explanation:
+            "This commit is not reachable from a current ref or reflog and may be recoverable until Git prunes it.",
+          actorName: actorName || null,
+          actorEmail: actorEmail || null,
+          occurredAt: occurredAt || null,
+        };
+      }),
+    );
+  }
+  const hasMore = parsed.length > limit;
+  const entries = parsed.slice(0, limit);
+  return gitRecoveryCandidateListSchema.parse({
+    kind,
+    entries,
+    hasMore,
+    nextCursor: hasMore ? cursor + entries.length : null,
+  });
+}
+
+function recoveryCheckpointRef(
+  action: GitRecoveryAction,
+  revision: string,
+  token: string,
+): string | null {
+  if (action.type === "createBranch") return null;
+  const scope = action.type === "reset" ? "reset" : "branch";
+  return `refs/cantrip/recovery/${scope}-${revision.slice(0, 12)}-${token.slice(0, 12)}`;
+}
+
+export async function previewGitRecoveryAction(
+  cwd: string,
+  action: GitRecoveryAction,
+): Promise<GitRecoveryPreview> {
+  await assertNoInProgressGitOperation(cwd);
+  const [currentHead, targetRevision, status, fingerprint] = await Promise.all([
+    resolveCommit(cwd, "HEAD"),
+    resolveCommit(cwd, action.target),
+    readGitStatus(cwd),
+    workspaceFingerprint(cwd),
+  ]);
+  const warnings: string[] = [];
+  let branchBefore: string | null = null;
+  if (action.type === "createBranch") {
+    await runGit(cwd, ["check-ref-format", "--branch", action.branch]);
+    if (
+      await gitSucceeds(cwd, [
+        "show-ref",
+        "--verify",
+        "--quiet",
+        `refs/heads/${action.branch}`,
+      ])
+    ) {
+      throw new Error(`Local branch ${action.branch} already exists.`);
+    }
+  } else if (action.type === "restoreBranch") {
+    await runGit(cwd, ["check-ref-format", "--branch", action.branch]);
+    branchBefore = await resolveCommit(
+      cwd,
+      `refs/heads/${action.branch}`,
+    ).catch(() => null);
+    if (!branchBefore) {
+      throw new Error(`Local branch ${action.branch} does not exist.`);
+    }
+    const owner = (await readBranchWorktreeOwners(cwd)).get(action.branch);
+    if (owner) {
+      throw new Error(
+        owner.current
+          ? `${action.branch} is checked out in this worktree. Use a reset to restore its HEAD.`
+          : `${action.branch} is checked out in worktree ${owner.label} and cannot be moved here.`,
+      );
+    }
+    warnings.push(
+      `The branch ref moves from ${branchBefore.slice(0, 10)} to ${targetRevision.slice(0, 10)} without changing this worktree.`,
+    );
+  } else {
+    if (action.mode === "hard" && status.files.length > 0) {
+      warnings.push(
+        `Hard reset overwrites tracked changes in ${status.files.length} changed path${status.files.length === 1 ? "" : "s"}; untracked files remain.`,
+      );
+    } else if (
+      action.mode === "mixed" &&
+      status.files.some(({ staged }) => staged)
+    ) {
+      warnings.push(
+        "Mixed reset removes staged changes from the index but keeps their working-tree content.",
+      );
+    } else if (action.mode === "soft") {
+      warnings.push(
+        "Soft reset moves HEAD while preserving the index and working tree.",
+      );
+    }
+  }
+  const comparisonBase =
+    action.type === "restoreBranch" ? branchBefore! : currentHead;
+  const [removed, fileResult] = await Promise.all([
+    readComparisonCommits(cwd, comparisonBase, targetRevision),
+    readCommitFiles(cwd, targetRevision, comparisonBase),
+  ]);
+  if (removed.commits.length > 0) {
+    warnings.push(
+      `${removed.commits.length}${removed.truncated ? "+" : ""} commit${removed.commits.length === 1 ? "" : "s"} would no longer be reachable from the moved ref.`,
+    );
+  }
+  const token = createHash("sha256")
+    .update(
+      JSON.stringify({ action, currentHead, targetRevision, branchBefore }),
+    )
+    .update("\0")
+    .update(fingerprint)
+    .digest("hex");
+  const checkpointRef = recoveryCheckpointRef(action, comparisonBase, token);
+  const confirmation =
+    action.type === "createBranch"
+      ? `CREATE ${action.branch} AT ${targetRevision.slice(0, 10)}`
+      : action.type === "restoreBranch"
+        ? `RESTORE ${action.branch} TO ${targetRevision.slice(0, 10)}`
+        : `RESET --${action.mode.toUpperCase()} TO ${targetRevision.slice(0, 10)}`;
+  const summary =
+    action.type === "createBranch"
+      ? `Create recovery branch ${action.branch} at ${targetRevision.slice(0, 10)}.`
+      : action.type === "restoreBranch"
+        ? `Restore local branch ${action.branch} to ${targetRevision.slice(0, 10)}.`
+        : `Reset this worktree from ${currentHead.slice(0, 10)} to ${targetRevision.slice(0, 10)} using --${action.mode}.`;
+  return gitRecoveryPreviewSchema.parse({
+    action,
+    token,
+    destructive: action.type !== "createBranch",
+    summary,
+    warnings,
+    confirmation,
+    targetRevision,
+    currentHead,
+    branchBefore,
+    checkpointRef,
+    commitsRemoved: removed.commits,
+    commitsRemovedTruncated: removed.truncated,
+    files: fileResult.files,
+    filesTruncated: fileResult.truncated,
+    status,
+  });
+}
+
+export async function applyGitRecoveryAction(
+  cwd: string,
+  action: GitRecoveryAction,
+  token: string,
+  confirmation: string,
+): Promise<GitRecoveryResult> {
+  const preview = await previewGitRecoveryAction(cwd, action);
+  if (preview.token !== token) {
+    throw new Error(
+      "The worktree or selected revision changed after this preview. Review the recovery action again.",
+    );
+  }
+  if (preview.confirmation !== confirmation) {
+    throw new Error(
+      `Type ${preview.confirmation} exactly to confirm this recovery action.`,
+    );
+  }
+  if (preview.checkpointRef) {
+    const checkpointTarget =
+      action.type === "restoreBranch"
+        ? preview.branchBefore!
+        : preview.currentHead;
+    const existing = await resolveCommit(cwd, preview.checkpointRef).catch(
+      () => null,
+    );
+    if (existing && existing !== checkpointTarget) {
+      throw new Error(
+        "The generated recovery checkpoint already points elsewhere.",
+      );
+    }
+    if (!existing) {
+      await runGit(cwd, [
+        "update-ref",
+        preview.checkpointRef,
+        checkpointTarget,
+        "",
+      ]);
+    }
+  }
+  let output: string;
+  if (action.type === "createBranch") {
+    output = await runGit(cwd, [
+      "branch",
+      action.branch,
+      preview.targetRevision,
+    ]);
+  } else if (action.type === "restoreBranch") {
+    output = await runGit(cwd, [
+      "update-ref",
+      `refs/heads/${action.branch}`,
+      preview.targetRevision,
+      preview.branchBefore!,
+    ]);
+  } else {
+    output = await runGit(cwd, [
+      "reset",
+      `--${action.mode}`,
+      preview.targetRevision,
+    ]);
+  }
+  const headAfter = await resolveCommit(cwd, "HEAD");
+  return gitRecoveryResultSchema.parse({
+    action,
+    output,
+    checkpointRef: preview.checkpointRef,
+    headBefore: preview.currentHead,
+    headAfter,
+    status: await readGitStatus(cwd),
   });
 }
 
@@ -2170,16 +2547,19 @@ async function readBranchWorktreeOwners(
   const output = await gitRaw(cwd, ["worktree", "list", "--porcelain", "-z"]);
   const owners = new Map<string, { label: string; current: boolean }>();
   let worktreePath = "";
-  const currentPath = path.resolve(cwd);
+  const currentPath = await realpath(cwd).catch(() => path.resolve(cwd));
   for (const record of output.split("\0")) {
     if (record.startsWith("worktree ")) {
       worktreePath = record.slice("worktree ".length);
       continue;
     }
     if (record.startsWith("branch refs/heads/") && worktreePath) {
+      const resolvedWorktreePath = await realpath(worktreePath).catch(() =>
+        path.resolve(worktreePath),
+      );
       owners.set(record.slice("branch refs/heads/".length), {
         label: path.basename(worktreePath) || worktreePath,
-        current: path.resolve(worktreePath) === currentPath,
+        current: resolvedWorktreePath === currentPath,
       });
     }
   }

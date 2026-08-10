@@ -31,6 +31,7 @@ import {
   applyGitConflictResolution,
   applyGitPartialPatch,
   applyGitRemoteAction,
+  applyGitRecoveryAction,
   applyGitStashAction,
   applyGitTagAction,
   controlGitManagedOperation,
@@ -42,6 +43,7 @@ import {
   previewGitConflictResolution,
   previewGitPartialPatch,
   previewGitRemoteAction,
+  previewGitRecoveryAction,
   previewGitStashAction,
   previewGitTagAction,
   previewGitManagedOperation,
@@ -55,6 +57,7 @@ import {
   readGitFileHistory,
   readGitHistory,
   readGitRemotes,
+  readGitRecoveryCandidates,
   readGitRevisionFileDiff,
   readGitRevisionCandidates,
   readGitStatus,
@@ -335,6 +338,22 @@ async function start(): Promise<void> {
           command.query,
           command.limit,
           command.cursor,
+        );
+      case "git.recovery.list":
+        return readGitRecoveryCandidates(
+          command.cwd,
+          command.kind,
+          command.limit,
+          command.cursor,
+        );
+      case "git.recovery.preview":
+        return previewGitRecoveryAction(command.cwd, command.action);
+      case "git.recovery.apply":
+        return applyGitRecoveryAction(
+          command.cwd,
+          command.request.action,
+          command.request.token,
+          command.request.confirmation,
         );
       case "git.commit.get":
         return readGitCommitDetail(
