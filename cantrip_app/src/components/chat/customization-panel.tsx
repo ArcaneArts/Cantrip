@@ -1071,7 +1071,7 @@ export function CustomizationPanel({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="flex max-h-[calc(100svh-2rem)] max-w-5xl flex-col gap-0 overflow-hidden p-0">
+      <DialogContent className="flex max-h-[calc(100svh-2rem)] max-w-5xl flex-col gap-0 overflow-hidden p-0 subpixel-antialiased">
         <DialogHeader className="shrink-0 border-b px-6 py-5">
           <div className="flex flex-wrap items-start justify-between gap-3 pr-6">
             <div>
