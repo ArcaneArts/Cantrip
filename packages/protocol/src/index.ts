@@ -3475,6 +3475,43 @@ export const gitHistorySchema = z.object({
   nextCursor: z.number().int().nonnegative().nullable(),
 });
 
+export const gitFileHistoryEntrySchema = z.object({
+  hash: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  shortHash: z.string().min(1).max(64),
+  subject: z.string(),
+  authorName: z.string().min(1),
+  authorEmail: z.string(),
+  authoredAt: z.string().datetime({ offset: true }),
+});
+
+export const gitFileHistorySchema = z.object({
+  path: gitRelativePathSchema,
+  revision: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  commits: z.array(gitFileHistoryEntrySchema).max(100),
+  hasMore: z.boolean(),
+  nextCursor: z.number().int().nonnegative().nullable(),
+});
+
+export const gitBlameRangeSchema = z.object({
+  commit: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  shortCommit: z.string().min(1).max(64),
+  authorName: z.string().min(1),
+  authorEmail: z.string(),
+  authoredAt: z.string().datetime(),
+  summary: z.string(),
+  startLine: z.number().int().positive(),
+  endLine: z.number().int().positive(),
+  lines: z.array(z.string()).min(1).max(501),
+});
+
+export const gitBlameSchema = z.object({
+  path: gitRelativePathSchema,
+  revision: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  ranges: z.array(gitBlameRangeSchema).max(501),
+  hasMore: z.boolean(),
+  nextCursor: z.number().int().nonnegative().nullable(),
+});
+
 export const gitFileChangeSchema = z.object({
   path: z.string().min(1),
   originalPath: z.string().min(1).nullable(),
@@ -4717,6 +4754,22 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       .default([]),
   }),
   z.object({
+    type: z.literal("git.file.history"),
+    cwd: z.string().min(1).max(8_192),
+    path: gitRelativePathSchema,
+    revision: z.string().trim().min(1).max(1_024).default("HEAD"),
+    cursor: z.number().int().nonnegative().default(0),
+    limit: z.number().int().min(1).max(100).default(100),
+  }),
+  z.object({
+    type: z.literal("git.file.blame"),
+    cwd: z.string().min(1).max(8_192),
+    path: gitRelativePathSchema,
+    revision: z.string().trim().min(1).max(1_024).default("HEAD"),
+    cursor: z.number().int().nonnegative().default(0),
+    limit: z.number().int().min(1).max(500).default(200),
+  }),
+  z.object({
     type: z.literal("git.commit.get"),
     cwd: z.string().min(1).max(8_192),
     revision: z.string().regex(/^[0-9a-f]{40,64}$/u),
@@ -5666,6 +5719,10 @@ export type ProjectRemove = z.infer<typeof projectRemoveSchema>;
 export type GitRef = z.infer<typeof gitRefSchema>;
 export type GitCommit = z.infer<typeof gitCommitSchema>;
 export type GitHistory = z.infer<typeof gitHistorySchema>;
+export type GitFileHistoryEntry = z.infer<typeof gitFileHistoryEntrySchema>;
+export type GitFileHistory = z.infer<typeof gitFileHistorySchema>;
+export type GitBlameRange = z.infer<typeof gitBlameRangeSchema>;
+export type GitBlame = z.infer<typeof gitBlameSchema>;
 export type GitCommitPerson = z.infer<typeof gitCommitPersonSchema>;
 export type GitSignature = z.infer<typeof gitSignatureSchema>;
 export type GitCommitFile = z.infer<typeof gitCommitFileSchema>;

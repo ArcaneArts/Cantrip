@@ -135,6 +135,8 @@ import {
   gitMergeRebaseActionSchema,
   gitDiffScopeSchema,
   gitFileDiffSchema,
+  gitFileHistorySchema,
+  gitBlameSchema,
   gitForcePushApplySchema,
   gitForcePushPreviewSchema,
   gitHistorySchema,
@@ -4325,6 +4327,110 @@ export async function buildApp({
         return reply
           .code(error instanceof WorkerUnavailableError ? 503 : 409)
           .send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string; worktreeId: string };
+    Querystring: {
+      cursor?: string;
+      limit?: string;
+      path?: string;
+      revision?: string;
+    };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/files/history",
+    async (request, reply) => {
+      const filePath = gitRelativePathSchema.safeParse(request.query.path);
+      const revision = (request.query.revision ?? "HEAD").trim();
+      if (!filePath.success || !revision || revision.length > 1_024) {
+        return reply.code(400).send({ error: "Invalid file history query." });
+      }
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      const limit = Math.min(
+        100,
+        Math.max(1, Number.parseInt(request.query.limit ?? "100", 10) || 100),
+      );
+      const cursor = Math.max(
+        0,
+        Number.parseInt(request.query.cursor ?? "0", 10) || 0,
+      );
+      try {
+        return reply.send(
+          gitFileHistorySchema.parse(
+            await bridge.request(context.workerId, {
+              type: "git.file.history",
+              cwd: context.worktree.path,
+              path: filePath.data,
+              revision,
+              cursor,
+              limit,
+            }),
+          ),
+        );
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string; worktreeId: string };
+    Querystring: {
+      cursor?: string;
+      limit?: string;
+      path?: string;
+      revision?: string;
+    };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/files/blame",
+    async (request, reply) => {
+      const filePath = gitRelativePathSchema.safeParse(request.query.path);
+      const revision = (request.query.revision ?? "HEAD").trim();
+      if (!filePath.success || !revision || revision.length > 1_024) {
+        return reply.code(400).send({ error: "Invalid file blame query." });
+      }
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      const limit = Math.min(
+        500,
+        Math.max(1, Number.parseInt(request.query.limit ?? "200", 10) || 200),
+      );
+      const cursor = Math.max(
+        0,
+        Number.parseInt(request.query.cursor ?? "0", 10) || 0,
+      );
+      try {
+        return reply.send(
+          gitBlameSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "git.file.blame",
+              cwd: context.worktree.path,
+              path: filePath.data,
+              revision,
+              cursor,
+              limit,
+            }),
+          ),
+        );
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
       }
     },
   );

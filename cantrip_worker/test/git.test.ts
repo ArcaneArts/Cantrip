@@ -33,6 +33,8 @@ import {
   readGitBranches,
   readGitComparison,
   readGitFileDiff,
+  readGitFileBlame,
+  readGitFileHistory,
   readGitHistory,
   listGitConflicts,
   readGitRemotes,
@@ -2526,6 +2528,84 @@ describe("Git history", () => {
         expect.objectContaining({ name: "main", kind: "local", current: true }),
       ]),
     );
+  });
+
+  it("follows file renames and paginates blame without reading the whole file", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-file-log-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "old.txt"), "one\ntwo\nthree\n");
+    await execFileAsync("git", ["-C", directory, "add", "old.txt"]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Add old"]);
+    await execFileAsync("git", ["-C", directory, "mv", "old.txt", "new.txt"]);
+    await execFileAsync("git", ["-C", directory, "commit", "-am", "Rename"]);
+    await writeFile(path.join(directory, "new.txt"), "first\ntwo\nthree\n");
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "commit",
+      "-am",
+      "Edit first",
+    ]);
+
+    const firstHistory = await readGitFileHistory(
+      directory,
+      "new.txt",
+      "HEAD",
+      1,
+    );
+    const remainingHistory = await readGitFileHistory(
+      directory,
+      "new.txt",
+      "HEAD",
+      10,
+      firstHistory.nextCursor!,
+    );
+    expect(firstHistory).toMatchObject({
+      path: "new.txt",
+      hasMore: true,
+      commits: [{ subject: "Edit first" }],
+    });
+    expect(remainingHistory.commits.map(({ subject }) => subject)).toEqual([
+      "Rename",
+      "Add old",
+    ]);
+
+    const firstBlame = await readGitFileBlame(directory, "new.txt", "HEAD", 2);
+    expect(firstBlame.hasMore).toBe(true);
+    expect(firstBlame.nextCursor).toBe(2);
+    expect(firstBlame.ranges.flatMap(({ lines }) => lines)).toEqual([
+      "first",
+      "two",
+    ]);
+    const finalBlame = await readGitFileBlame(
+      directory,
+      "new.txt",
+      "HEAD",
+      2,
+      firstBlame.nextCursor!,
+    );
+    expect(finalBlame.hasMore).toBe(false);
+    expect(finalBlame.ranges).toMatchObject([
+      { startLine: 3, endLine: 3, lines: ["three"] },
+    ]);
+    await expect(
+      readGitFileHistory(directory, "../secret", "HEAD", 10),
+    ).rejects.toThrow("Invalid Git history path");
   });
 
   it("paginates commits from every branch", async () => {

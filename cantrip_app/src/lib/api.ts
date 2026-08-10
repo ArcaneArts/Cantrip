@@ -76,6 +76,8 @@ import {
   gitCommitDetailSchema,
   gitComparisonSchema,
   gitFileDiffSchema,
+  gitFileHistorySchema,
+  gitBlameSchema,
   gitForcePushPreviewSchema,
   gitHistorySchema,
   gitPartialPatchPreviewSchema,
@@ -415,6 +417,46 @@ export async function getProjectWorktreeHistory(
   return gitHistorySchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/history?cursor=${cursor}&limit=100`,
+    ),
+  );
+}
+
+export async function getProjectWorktreeFileHistory(
+  projectId: string,
+  worktreeId: string,
+  path: string,
+  revision = "HEAD",
+  cursor = 0,
+) {
+  const search = new URLSearchParams({
+    path,
+    revision,
+    cursor: String(cursor),
+    limit: "100",
+  });
+  return gitFileHistorySchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/files/history?${search.toString()}`,
+    ),
+  );
+}
+
+export async function getProjectWorktreeFileBlame(
+  projectId: string,
+  worktreeId: string,
+  path: string,
+  revision = "HEAD",
+  cursor = 0,
+) {
+  const search = new URLSearchParams({
+    path,
+    revision,
+    cursor: String(cursor),
+    limit: "200",
+  });
+  return gitBlameSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/files/blame?${search.toString()}`,
     ),
   );
 }

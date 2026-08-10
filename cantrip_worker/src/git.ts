@@ -29,6 +29,8 @@ import {
   gitComparisonSchema,
   gitCommitDetailSchema,
   gitFileDiffSchema,
+  gitFileHistorySchema,
+  gitBlameSchema,
   gitForcePushPreviewSchema,
   gitHistorySchema,
   gitPartialPatchPreviewSchema,
@@ -76,6 +78,8 @@ import {
   type GitCommitFile,
   type GitDiffScope,
   type GitFileDiff,
+  type GitFileHistory,
+  type GitBlame,
   type GitForcePushPreview,
   type GitHistory,
   type GitPartialPatchPreview,
@@ -403,6 +407,164 @@ export async function readGitHistory(
     commits,
     hasMore,
     nextCursor: hasMore ? cursor + commits.length : null,
+  });
+}
+
+export async function readGitFileHistory(
+  cwd: string,
+  filePath: string,
+  revision: string,
+  limit: number,
+  cursor = 0,
+): Promise<GitFileHistory> {
+  if (!safeGitPath(filePath)) throw new Error("Invalid Git history path.");
+  const hash = await resolveCommit(cwd, revision);
+  const output = await gitRaw(cwd, [
+    "log",
+    "--follow",
+    "--date=iso-strict",
+    `--skip=${cursor}`,
+    `--max-count=${limit + 1}`,
+    "--format=%H%x00%h%x00%an%x00%ae%x00%aI%x00%s%x1e",
+    hash,
+    "--",
+    filePath,
+  ]);
+  const parsed = output
+    .split("\x1e")
+    .map((record) => record.trim())
+    .filter(Boolean)
+    .flatMap((record) => {
+      const [commit, shortHash, authorName, authorEmail, authoredAt, subject] =
+        record.split("\0");
+      return commit && shortHash && authorName && authoredAt
+        ? [
+            {
+              hash: commit,
+              shortHash,
+              subject: subject ?? "",
+              authorName,
+              authorEmail: authorEmail ?? "",
+              authoredAt,
+            },
+          ]
+        : [];
+    });
+  const hasMore = parsed.length > limit;
+  const commits = parsed.slice(0, limit);
+  return gitFileHistorySchema.parse({
+    path: filePath,
+    revision: hash,
+    commits,
+    hasMore,
+    nextCursor: hasMore ? cursor + commits.length : null,
+  });
+}
+
+interface ParsedBlameLine {
+  commit: string;
+  authorName: string;
+  authorEmail: string;
+  authoredAt: string;
+  summary: string;
+  line: number;
+  content: string;
+}
+
+function parseBlamePorcelain(output: string): ParsedBlameLine[] {
+  const lines = output.split("\n");
+  const parsed: ParsedBlameLine[] = [];
+  for (let index = 0; index < lines.length;) {
+    const header = /^([0-9a-f]{40,64})\s+\d+\s+(\d+)(?:\s+\d+)?$/u.exec(
+      lines[index++] ?? "",
+    );
+    if (!header) continue;
+    let authorName = "Unknown";
+    let authorEmail = "";
+    let authoredAt = new Date(0).toISOString();
+    let summary = "";
+    let content = "";
+    while (index < lines.length) {
+      const line = lines[index++] ?? "";
+      if (line.startsWith("\t")) {
+        content = line.slice(1);
+        break;
+      }
+      if (line.startsWith("author ")) authorName = line.slice(7) || "Unknown";
+      else if (line.startsWith("author-mail ")) {
+        authorEmail = line.slice(12).replace(/^<|>$/gu, "");
+      } else if (line.startsWith("author-time ")) {
+        const seconds = Number.parseInt(line.slice(12), 10);
+        if (Number.isFinite(seconds)) {
+          authoredAt = new Date(seconds * 1_000).toISOString();
+        }
+      } else if (line.startsWith("summary ")) summary = line.slice(8);
+    }
+    parsed.push({
+      commit: header[1]!,
+      authorName,
+      authorEmail,
+      authoredAt,
+      summary,
+      line: Number.parseInt(header[2]!, 10),
+      content,
+    });
+  }
+  return parsed;
+}
+
+export async function readGitFileBlame(
+  cwd: string,
+  filePath: string,
+  revision: string,
+  limit: number,
+  cursor = 0,
+): Promise<GitBlame> {
+  if (!safeGitPath(filePath)) throw new Error("Invalid Git blame path.");
+  const hash = await resolveCommit(cwd, revision);
+  const parsed = parseBlamePorcelain(
+    await gitRaw(cwd, [
+      "blame",
+      "--line-porcelain",
+      "-L",
+      `${cursor + 1},+${limit + 1}`,
+      hash,
+      "--",
+      filePath,
+    ]),
+  );
+  const hasMore = parsed.length > limit;
+  const visible = parsed.slice(0, limit);
+  const ranges: GitBlame["ranges"] = [];
+  for (const line of visible) {
+    const previous = ranges.at(-1);
+    if (
+      previous &&
+      previous.commit === line.commit &&
+      previous.endLine + 1 === line.line
+    ) {
+      previous.endLine = line.line;
+      previous.lines.push(line.content);
+      continue;
+    }
+    ranges.push({
+      commit: line.commit,
+      shortCommit: line.commit.slice(0, 10),
+      authorName: line.authorName,
+      authorEmail: line.authorEmail,
+      authoredAt: line.authoredAt,
+      summary: line.summary,
+      startLine: line.line,
+      endLine: line.line,
+      lines: [line.content],
+    });
+  }
+  return gitBlameSchema.parse({
+    path: filePath,
+    revision: hash,
+    ranges,
+    hasMore,
+    nextCursor: hasMore ? cursor + visible.length : null,
   });
 }
 
