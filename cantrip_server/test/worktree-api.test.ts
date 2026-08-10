@@ -21,10 +21,19 @@ import {
   gitPartialPatchPreviewSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
+  gitRemoteActionPreviewSchema,
+  gitRemoteListSchema,
+  gitRemoteMutationResultSchema,
   gitStashActionPreviewSchema,
   gitStashFileDiffSchema,
   gitStashListSchema,
   gitStashMutationResultSchema,
+  gitTagActionPreviewSchema,
+  gitTagDetailSchema,
+  gitTagListSchema,
+  gitTagMutationResultSchema,
+  githubReleaseListSchema,
+  githubReleaseSummarySchema,
   projectViewSummarySchema,
   projectWorktreeListSchema,
   projectWorktreeSummarySchema,
@@ -100,6 +109,38 @@ const gitBranchCommands: Array<
         | "git.branch.list"
         | "git.branch.action.preview"
         | "git.branch.action.apply";
+    }
+  >
+> = [];
+const gitRemoteCommands: Array<
+  Extract<
+    WorkerCommand,
+    {
+      type:
+        | "git.remote.list"
+        | "git.remote.action.preview"
+        | "git.remote.action.apply";
+    }
+  >
+> = [];
+const gitTagCommands: Array<
+  Extract<
+    WorkerCommand,
+    {
+      type:
+        | "git.tag.list"
+        | "git.tag.get"
+        | "git.tag.action.preview"
+        | "git.tag.action.apply";
+    }
+  >
+> = [];
+const githubReleaseCommands: Array<
+  Extract<
+    WorkerCommand,
+    {
+      type:
+        "github.releases.list" | "github.release.get" | "github.release.create";
     }
   >
 > = [];
@@ -233,6 +274,63 @@ function branchList() {
     generatedAt: "2026-08-10T12:00:00.000Z",
   };
 }
+
+const remoteFixture = {
+  name: "origin",
+  fetchUrl: "https://github.com/ArcaneArts/Cantrip.git",
+  fetchUrlRedacted: false,
+  pushUrl: "git@github.com:ArcaneArts/Cantrip.git",
+  pushUrlRedacted: false,
+  defaultFetch: true,
+  defaultPush: true,
+};
+
+function remoteList() {
+  return {
+    remotes: [remoteFixture],
+    generatedAt: "2026-08-10T12:00:00.000Z",
+  };
+}
+
+const tagFixture = {
+  name: "v1.0.0",
+  hash: "2".repeat(40),
+  targetHash: "1".repeat(40),
+  targetType: "commit" as const,
+  annotated: true,
+  subject: "Cantrip 1.0.0",
+  taggerName: "Cantrip",
+  createdAt: "2026-08-10T12:00:00.000Z",
+  signature: {
+    status: "valid" as const,
+    signer: "Cantrip <test@cantrip.art>",
+    key: "ABC123",
+    fingerprint: "DEF456",
+  },
+  publishedRemotes: ["origin"],
+};
+
+function tagList() {
+  return {
+    tags: [tagFixture],
+    truncated: false,
+    remoteChecks: [{ remote: "origin", available: true, error: null }],
+    generatedAt: "2026-08-10T12:00:00.000Z",
+  };
+}
+
+const releaseFixture = {
+  id: 42,
+  tagName: "v1.0.0",
+  name: "Cantrip 1.0.0",
+  body: "Release notes",
+  url: "https://github.com/ArcaneArts/Cantrip/releases/tag/v1.0.0",
+  author: "cantrip-bot",
+  draft: false,
+  prerelease: false,
+  createdAt: "2026-08-10T12:00:00.000Z",
+  publishedAt: "2026-08-10T12:01:00.000Z",
+};
 
 async function completeGitMutation(output: string) {
   activeGitMutations += 1;
@@ -540,6 +638,80 @@ const workerBridge = {
           output: "branch action complete",
           status: status(),
           branches: branchList(),
+        });
+      case "git.remote.list":
+        gitRemoteCommands.push(command);
+        return remoteList();
+      case "git.remote.action.preview":
+        gitRemoteCommands.push(command);
+        return {
+          action: command.action,
+          token: "a".repeat(64),
+          destructive:
+            command.action.type === "remove" ||
+            (command.action.type === "fetch" && command.action.prune),
+          summary: "Review remote action.",
+          warnings: [],
+          remote:
+            "name" in command.action && command.action.name === "origin"
+              ? remoteFixture
+              : null,
+        };
+      case "git.remote.action.apply":
+        gitRemoteCommands.push(command);
+        return completeStashMutation({
+          output: "remote action complete",
+          status: status(),
+          remotes: remoteList(),
+        });
+      case "git.tag.list":
+        gitTagCommands.push(command);
+        return tagList();
+      case "git.tag.get":
+        gitTagCommands.push(command);
+        return {
+          ...tagFixture,
+          name: command.name,
+          message: "Cantrip 1.0.0\n\nSigned release.",
+          messageTruncated: false,
+        };
+      case "git.tag.action.preview":
+        gitTagCommands.push(command);
+        return {
+          action: command.action,
+          token: "b".repeat(64),
+          destructive:
+            command.action.type === "deleteLocal" ||
+            command.action.type === "deleteRemote",
+          summary: "Review tag action.",
+          warnings: [],
+          tag:
+            "name" in command.action && command.action.name === tagFixture.name
+              ? tagFixture
+              : null,
+        };
+      case "git.tag.action.apply":
+        gitTagCommands.push(command);
+        return completeStashMutation({
+          output: "tag action complete",
+          status: status(),
+          tags: tagList(),
+        });
+      case "github.releases.list":
+        githubReleaseCommands.push(command);
+        return { releases: [releaseFixture], truncated: false };
+      case "github.release.get":
+        githubReleaseCommands.push(command);
+        return { ...releaseFixture, id: command.releaseId };
+      case "github.release.create":
+        githubReleaseCommands.push(command);
+        return completeStashMutation({
+          ...releaseFixture,
+          name: command.request.name,
+          tagName: command.request.tagName,
+          body: command.request.body,
+          draft: command.request.draft,
+          prerelease: command.request.prerelease,
         });
       case "code.prepareAgentTurn":
         return { prepared: true, sessions: [] };
@@ -1741,6 +1913,174 @@ describe.sequential("server worktree control plane", () => {
         await app.inject({
           method: "GET",
           url: `/api/projects/${projectId}/worktrees/${target.id}/git/branches`,
+        })
+      ).statusCode,
+    ).toBe(503);
+    connected = true;
+    const remoteListResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/remotes`,
+    });
+    expect(gitRemoteListSchema.parse(remoteListResponse.json())).toMatchObject({
+      remotes: [expect.objectContaining({ name: "origin" })],
+    });
+    expect(gitRemoteCommands.at(-1)).toMatchObject({
+      type: "git.remote.list",
+      cwd: target.path,
+    });
+    const remoteAction = {
+      type: "fetch" as const,
+      remote: "origin",
+      prune: true,
+    };
+    const remotePreviewResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/remotes/actions/preview`,
+      payload: remoteAction,
+    });
+    expect(
+      gitRemoteActionPreviewSchema.parse(remotePreviewResponse.json()),
+    ).toMatchObject({ action: remoteAction, destructive: true });
+    const remoteApplyResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/remotes/actions/apply`,
+      payload: { action: remoteAction, token: "a".repeat(64) },
+    });
+    expect(
+      gitRemoteMutationResultSchema.parse(remoteApplyResponse.json()),
+    ).toMatchObject({ output: "remote action complete" });
+    expect(gitRemoteCommands.at(-1)).toMatchObject({
+      type: "git.remote.action.apply",
+      cwd: target.path,
+      action: remoteAction,
+    });
+    const invalidRemoteResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/remotes/actions/preview`,
+      payload: {
+        type: "add",
+        name: "evil",
+        fetchUrl: "--upload-pack=bad",
+        pushUrl: null,
+      },
+    });
+    expect(invalidRemoteResponse.statusCode).toBe(400);
+
+    const tagListResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/tags`,
+    });
+    expect(tagListResponse.statusCode, tagListResponse.body).toBe(200);
+    expect(gitTagListSchema.parse(tagListResponse.json())).toMatchObject({
+      tags: [expect.objectContaining({ name: tagFixture.name })],
+    });
+    expect(gitTagCommands.at(-1)).toMatchObject({
+      type: "git.tag.list",
+      cwd: target.path,
+    });
+    const tagDetailResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/tags/${encodeURIComponent(tagFixture.name)}`,
+    });
+    expect(gitTagDetailSchema.parse(tagDetailResponse.json())).toMatchObject({
+      name: tagFixture.name,
+      message: expect.stringContaining("Signed release"),
+    });
+    const tagAction = {
+      type: "push" as const,
+      name: tagFixture.name,
+      remote: "origin",
+    };
+    const tagPreviewResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/tags/actions/preview`,
+      payload: tagAction,
+    });
+    expect(
+      gitTagActionPreviewSchema.parse(tagPreviewResponse.json()),
+    ).toMatchObject({ action: tagAction });
+    const tagApplyResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/tags/actions/apply`,
+      payload: { action: tagAction, token: "b".repeat(64) },
+    });
+    expect(
+      gitTagMutationResultSchema.parse(tagApplyResponse.json()),
+    ).toMatchObject({ output: "tag action complete" });
+    const invalidTagResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/tags/actions/preview`,
+      payload: {
+        type: "create",
+        name: "v2",
+        target: null,
+        annotated: true,
+        message: null,
+      },
+    });
+    expect(invalidTagResponse.statusCode).toBe(400);
+
+    const releaseListResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/github/releases`,
+    });
+    expect(
+      githubReleaseListSchema.parse(releaseListResponse.json()),
+    ).toMatchObject({ releases: [expect.objectContaining({ id: 42 })] });
+    expect(githubReleaseCommands.at(-1)).toMatchObject({
+      type: "github.releases.list",
+      cwd: target.path,
+      repository: "ArcaneArts/Cantrip",
+    });
+    const releaseDetailResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/github/releases/42`,
+    });
+    expect(
+      githubReleaseSummarySchema.parse(releaseDetailResponse.json()),
+    ).toMatchObject({ id: 42, tagName: tagFixture.name });
+    const releaseCreate = {
+      tagName: tagFixture.name,
+      name: "Cantrip stable",
+      body: "## Changes\n\n- Git client",
+      draft: true,
+      prerelease: false,
+    };
+    const releaseCreateResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/github/releases`,
+      payload: releaseCreate,
+    });
+    expect(releaseCreateResponse.statusCode).toBe(201);
+    expect(
+      githubReleaseSummarySchema.parse(releaseCreateResponse.json()),
+    ).toMatchObject(releaseCreate);
+    expect(githubReleaseCommands.at(-1)).toMatchObject({
+      type: "github.release.create",
+      cwd: target.path,
+      repository: "ArcaneArts/Cantrip",
+      request: releaseCreate,
+    });
+    maximumConcurrentGitMutations = 0;
+    await Promise.all([
+      app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/worktrees/${target.id}/git/remotes/actions/apply`,
+        payload: { action: remoteAction, token: "a".repeat(64) },
+      }),
+      app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/worktrees/${target.id}/github/releases`,
+        payload: releaseCreate,
+      }),
+    ]);
+    expect(maximumConcurrentGitMutations).toBe(1);
+    connected = false;
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/worktrees/${target.id}/git/tags`,
         })
       ).statusCode,
     ).toBe(503);

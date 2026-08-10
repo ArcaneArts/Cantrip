@@ -15,6 +15,8 @@ import {
   githubAuthStatusSchema,
   githubIssueDetailSchema,
   githubIssueListSchema,
+  githubReleaseListSchema,
+  githubReleaseSummarySchema,
   githubWorkerRepositoryListSchema,
   projectCloneResultSchema,
   worktreePolicySchema,
@@ -24,6 +26,9 @@ import {
   type GithubIssueList,
   type GithubIssueState,
   type GithubIssueSummary,
+  type GithubReleaseCreate,
+  type GithubReleaseList,
+  type GithubReleaseSummary,
   type GithubWorkerRepository,
   type ProjectCloneResult,
   type WorktreePolicy,
@@ -124,6 +129,19 @@ interface GithubApiIssueComment {
   user?: unknown;
 }
 
+interface GithubApiRelease {
+  author?: unknown;
+  body?: unknown;
+  created_at?: unknown;
+  draft?: unknown;
+  html_url?: unknown;
+  id?: unknown;
+  name?: unknown;
+  prerelease?: unknown;
+  published_at?: unknown;
+  tag_name?: unknown;
+}
+
 interface RepositoryCache {
   login: string;
   repositories: GithubWorkerRepository[];
@@ -207,6 +225,26 @@ function parseIssueComment(value: GithubApiIssueComment) {
     createdAt: String(value.created_at),
     updatedAt: String(value.updated_at),
   };
+}
+
+function parseRelease(value: GithubApiRelease): GithubReleaseSummary {
+  const tagName = String(value.tag_name);
+  return githubReleaseSummarySchema.parse({
+    id: Number(value.id),
+    tagName,
+    name:
+      typeof value.name === "string" && value.name.trim()
+        ? value.name
+        : tagName,
+    body: typeof value.body === "string" ? value.body : "",
+    url: String(value.html_url),
+    author: githubLogin(value.author),
+    draft: value.draft === true,
+    prerelease: value.prerelease === true,
+    createdAt: String(value.created_at),
+    publishedAt:
+      typeof value.published_at === "string" ? value.published_at : null,
+  });
 }
 
 export class GithubClient {
@@ -437,6 +475,64 @@ export class GithubClient {
     }
     await this.api(issuePath, ["--method", "PATCH", "-f", "state=closed"]);
     return this.getIssue(nameWithOwner, issueNumber);
+  }
+
+  async listReleases(nameWithOwner: string): Promise<GithubReleaseList> {
+    const values = (await this.api(
+      `${this.repositoryApiPath(nameWithOwner)}/releases`,
+      ["--method", "GET", "-f", "per_page=100", "-f", "page=1"],
+    )) as GithubApiRelease[];
+    return githubReleaseListSchema.parse({
+      releases: values.map(parseRelease),
+      truncated: values.length >= 100,
+    });
+  }
+
+  async getRelease(
+    nameWithOwner: string,
+    releaseId: number,
+  ): Promise<GithubReleaseSummary> {
+    return parseRelease(
+      (await this.api(
+        `${this.repositoryApiPath(nameWithOwner)}/releases/${releaseId}`,
+      )) as GithubApiRelease,
+    );
+  }
+
+  async createRelease(
+    nameWithOwner: string,
+    cwd: string,
+    request: GithubReleaseCreate,
+  ): Promise<GithubReleaseSummary> {
+    try {
+      await execFileAsync("git", [
+        "-C",
+        cwd,
+        "show-ref",
+        "--verify",
+        `refs/tags/${request.tagName}`,
+      ]);
+    } catch {
+      throw new Error(
+        `Local tag ${request.tagName} does not exist in the selected worktree repository.`,
+      );
+    }
+    return parseRelease(
+      (await this.api(`${this.repositoryApiPath(nameWithOwner)}/releases`, [
+        "--method",
+        "POST",
+        "-f",
+        `tag_name=${request.tagName}`,
+        "-f",
+        `name=${request.name}`,
+        "-f",
+        `body=${request.body}`,
+        "-F",
+        `draft=${request.draft}`,
+        "-F",
+        `prerelease=${request.prerelease}`,
+      ])) as GithubApiRelease,
+    );
   }
 
   async cloneRepository(nameWithOwner: string): Promise<ProjectCloneResult> {

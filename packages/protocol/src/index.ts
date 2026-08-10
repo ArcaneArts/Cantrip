@@ -776,6 +776,32 @@ export const githubIssueCloseSchema = z.object({
   comment: z.string().trim().min(1).max(65_536).nullable().default(null),
 });
 
+export const githubReleaseSummarySchema = z.object({
+  id: z.number().int().positive(),
+  tagName: z.string().min(1).max(1_000),
+  name: z.string().min(1).max(10_000),
+  body: z.string().max(1_000_000),
+  url: z.url(),
+  author: z.string().min(1),
+  draft: z.boolean(),
+  prerelease: z.boolean(),
+  createdAt: z.string().datetime(),
+  publishedAt: z.string().datetime().nullable(),
+});
+
+export const githubReleaseListSchema = z.object({
+  releases: z.array(githubReleaseSummarySchema).max(100),
+  truncated: z.boolean(),
+});
+
+export const githubReleaseCreateSchema = z.object({
+  tagName: z.string().trim().min(1).max(1_000),
+  name: z.string().trim().min(1).max(10_000),
+  body: z.string().max(1_000_000),
+  draft: z.boolean(),
+  prerelease: z.boolean(),
+});
+
 export const githubProjectCreateSchema = z.object({
   workerId: z.string().min(1),
   repositoryId: z.string().min(1),
@@ -3448,6 +3474,171 @@ export const gitBranchMutationResultSchema = z.object({
   branches: gitBranchListSchema,
 });
 
+export const gitRemoteSummarySchema = z.object({
+  name: z.string().min(1).max(255),
+  fetchUrl: z.string().min(1).max(8_192),
+  fetchUrlRedacted: z.boolean(),
+  pushUrl: z.string().min(1).max(8_192),
+  pushUrlRedacted: z.boolean(),
+  defaultFetch: z.boolean(),
+  defaultPush: z.boolean(),
+});
+
+export const gitRemoteListSchema = z.object({
+  remotes: z.array(gitRemoteSummarySchema).max(1_000),
+  generatedAt: z.string().datetime({ offset: true }),
+});
+
+const gitRemoteUrlInputSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(8_192)
+  .regex(/^[^-\0\r\n][^\0\r\n]*$/u);
+
+export const gitRemoteActionSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("add"),
+    name: gitRemoteNameInputSchema,
+    fetchUrl: gitRemoteUrlInputSchema,
+    pushUrl: gitRemoteUrlInputSchema.nullable(),
+  }),
+  z.object({
+    type: z.literal("edit"),
+    name: gitRemoteNameInputSchema,
+    fetchUrl: gitRemoteUrlInputSchema,
+    pushUrl: gitRemoteUrlInputSchema.nullable(),
+  }),
+  z.object({ type: z.literal("remove"), name: gitRemoteNameInputSchema }),
+  z.object({
+    type: z.literal("setDefaults"),
+    fetchRemote: gitRemoteNameInputSchema.nullable(),
+    pushRemote: gitRemoteNameInputSchema.nullable(),
+  }),
+  z.object({
+    type: z.literal("fetch"),
+    remote: gitRemoteNameInputSchema,
+    prune: z.boolean(),
+  }),
+]);
+
+export const gitRemoteActionPreviewSchema = z.object({
+  action: gitRemoteActionSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+  destructive: z.boolean(),
+  summary: z.string().min(1).max(10_000),
+  warnings: z.array(z.string().max(1_000)).max(100),
+  remote: gitRemoteSummarySchema.nullable(),
+});
+
+export const gitRemoteActionApplySchema = z.object({
+  action: gitRemoteActionSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+
+export const gitRemoteMutationResultSchema = z.object({
+  output: z.string().max(1_000_000),
+  status: gitStatusSchema,
+  remotes: gitRemoteListSchema,
+});
+
+export const gitTagNameInputSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(1_000)
+  .regex(/^[^-\0\r\n][^\0\r\n]*$/u);
+
+export const gitTagSummarySchema = z.object({
+  name: z.string().min(1).max(1_000),
+  hash: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  targetHash: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  targetType: z.enum(["commit", "tree", "blob", "tag", "other"]),
+  annotated: z.boolean(),
+  subject: z.string().max(100_000),
+  taggerName: z.string().min(1).max(10_000).nullable(),
+  createdAt: z.string().datetime({ offset: true }).nullable(),
+  signature: gitSignatureSchema,
+  publishedRemotes: z.array(z.string().min(1).max(255)).max(1_000),
+});
+
+export const gitTagDetailSchema = gitTagSummarySchema.extend({
+  message: z.string().max(1_000_000),
+  messageTruncated: z.boolean(),
+});
+
+export const gitTagListSchema = z.object({
+  tags: z.array(gitTagSummarySchema).max(10_000),
+  truncated: z.boolean(),
+  remoteChecks: z.array(
+    z.object({
+      remote: z.string().min(1).max(255),
+      available: z.boolean(),
+      error: z.string().max(1_000).nullable(),
+    }),
+  ),
+  generatedAt: z.string().datetime({ offset: true }),
+});
+
+export const gitTagActionSchema = z
+  .discriminatedUnion("type", [
+    z.object({
+      type: z.literal("create"),
+      name: gitTagNameInputSchema,
+      target: gitRevisionInputSchema.nullable(),
+      annotated: z.boolean(),
+      message: z.string().trim().min(1).max(1_000_000).nullable(),
+    }),
+    z.object({
+      type: z.literal("push"),
+      name: gitTagNameInputSchema,
+      remote: gitRemoteNameInputSchema,
+    }),
+    z.object({ type: z.literal("deleteLocal"), name: gitTagNameInputSchema }),
+    z.object({
+      type: z.literal("deleteRemote"),
+      name: gitTagNameInputSchema,
+      remote: gitRemoteNameInputSchema,
+    }),
+  ])
+  .superRefine((action, context) => {
+    if (action.type !== "create") return;
+    if (action.annotated && !action.message) {
+      context.addIssue({
+        code: "custom",
+        path: ["message"],
+        message: "Annotated tags require a message.",
+      });
+    }
+    if (!action.annotated && action.message) {
+      context.addIssue({
+        code: "custom",
+        path: ["message"],
+        message: "Lightweight tags do not have a tag message.",
+      });
+    }
+  });
+
+export const gitTagActionPreviewSchema = z.object({
+  action: gitTagActionSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+  destructive: z.boolean(),
+  summary: z.string().min(1).max(10_000),
+  warnings: z.array(z.string().max(1_000)).max(100),
+  tag: gitTagSummarySchema.nullable(),
+});
+
+export const gitTagActionApplySchema = z.object({
+  action: gitTagActionSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+
+export const gitTagMutationResultSchema = z.object({
+  output: z.string().max(1_000_000),
+  status: gitStatusSchema,
+  tags: gitTagListSchema,
+});
+
 const gitPathsSchema = z.array(gitRelativePathSchema).min(1).max(1_000);
 export const gitActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("stage"), paths: gitPathsSchema }),
@@ -3733,6 +3924,23 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     comment: z.string().trim().min(1).max(65_536).nullable(),
   }),
   z.object({
+    type: z.literal("github.releases.list"),
+    cwd: z.string().min(1).max(8_192),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+  }),
+  z.object({
+    type: z.literal("github.release.get"),
+    cwd: z.string().min(1).max(8_192),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+    releaseId: z.number().int().positive(),
+  }),
+  z.object({
+    type: z.literal("github.release.create"),
+    cwd: z.string().min(1).max(8_192),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+    request: githubReleaseCreateSchema,
+  }),
+  z.object({
     type: z.literal("project.clone"),
     repository: z.object({
       nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
@@ -3860,6 +4068,41 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       cwd: z.string().min(1).max(8_192),
     })
     .extend(gitBranchActionApplySchema.shape),
+  z.object({
+    type: z.literal("git.remote.list"),
+    cwd: z.string().min(1).max(8_192),
+  }),
+  z.object({
+    type: z.literal("git.remote.action.preview"),
+    cwd: z.string().min(1).max(8_192),
+    action: gitRemoteActionSchema,
+  }),
+  z
+    .object({
+      type: z.literal("git.remote.action.apply"),
+      cwd: z.string().min(1).max(8_192),
+    })
+    .extend(gitRemoteActionApplySchema.shape),
+  z.object({
+    type: z.literal("git.tag.list"),
+    cwd: z.string().min(1).max(8_192),
+  }),
+  z.object({
+    type: z.literal("git.tag.get"),
+    cwd: z.string().min(1).max(8_192),
+    name: gitTagNameInputSchema,
+  }),
+  z.object({
+    type: z.literal("git.tag.action.preview"),
+    cwd: z.string().min(1).max(8_192),
+    action: gitTagActionSchema,
+  }),
+  z
+    .object({
+      type: z.literal("git.tag.action.apply"),
+      cwd: z.string().min(1).max(8_192),
+    })
+    .extend(gitTagActionApplySchema.shape),
   z.object({
     type: z.literal("git.action"),
     cwd: z.string().min(1),
@@ -4548,6 +4791,9 @@ export type GithubIssueSummary = z.infer<typeof githubIssueSummarySchema>;
 export type GithubIssueList = z.infer<typeof githubIssueListSchema>;
 export type GithubIssueComment = z.infer<typeof githubIssueCommentSchema>;
 export type GithubIssueDetail = z.infer<typeof githubIssueDetailSchema>;
+export type GithubReleaseSummary = z.infer<typeof githubReleaseSummarySchema>;
+export type GithubReleaseList = z.infer<typeof githubReleaseListSchema>;
+export type GithubReleaseCreate = z.infer<typeof githubReleaseCreateSchema>;
 export type GithubWorkerRepository = z.infer<
   typeof githubWorkerRepositorySchema
 >;
@@ -4606,6 +4852,23 @@ export type GitBranchActionApply = z.infer<typeof gitBranchActionApplySchema>;
 export type GitBranchMutationResult = z.infer<
   typeof gitBranchMutationResultSchema
 >;
+export type GitRemoteSummary = z.infer<typeof gitRemoteSummarySchema>;
+export type GitRemoteList = z.infer<typeof gitRemoteListSchema>;
+export type GitRemoteAction = z.infer<typeof gitRemoteActionSchema>;
+export type GitRemoteActionPreview = z.infer<
+  typeof gitRemoteActionPreviewSchema
+>;
+export type GitRemoteActionApply = z.infer<typeof gitRemoteActionApplySchema>;
+export type GitRemoteMutationResult = z.infer<
+  typeof gitRemoteMutationResultSchema
+>;
+export type GitTagSummary = z.infer<typeof gitTagSummarySchema>;
+export type GitTagDetail = z.infer<typeof gitTagDetailSchema>;
+export type GitTagList = z.infer<typeof gitTagListSchema>;
+export type GitTagAction = z.infer<typeof gitTagActionSchema>;
+export type GitTagActionPreview = z.infer<typeof gitTagActionPreviewSchema>;
+export type GitTagActionApply = z.infer<typeof gitTagActionApplySchema>;
+export type GitTagMutationResult = z.infer<typeof gitTagMutationResultSchema>;
 export type GitAction = z.infer<typeof gitActionSchema>;
 export type GitActionResult = z.infer<typeof gitActionResultSchema>;
 export type WorkerWorktreeSummary = z.infer<typeof workerWorktreeSummarySchema>;

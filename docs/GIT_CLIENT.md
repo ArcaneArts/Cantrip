@@ -166,6 +166,49 @@ Manual QA:
 7. Change a ref after opening a preview and confirm apply rejects the stale
    token. Disconnect the worker and confirm no operation falls back to Primary.
 
+## Remotes, tags, and GitHub releases
+
+Open a History tab and choose **Repository**. Remotes, tags, and releases stay
+scoped to the selected worktree and its assigned worker. Remote rows expose
+separate fetch and push URLs, explicit default fetch/push selection, and
+individual fetch or fetch-plus-prune. Cantrip strips URL credentials before a
+remote ever crosses the worker boundary, including credentials in URL query
+parameters. Add, edit, remove, default, and prune operations use authoritative
+preview tokens; destructive or credential-changing operations are called out
+before apply.
+
+The searchable tag list distinguishes lightweight and annotated tags, shows
+the peeled target and remote publication state, and lazily loads full annotation
+messages. Signature status, signer, key, and fingerprint are retained when Git
+can verify them. Creating, pushing, deleting locally, and deleting from a named
+remote are reviewed operations. Remote discovery is bounded and a failed remote
+is reported without hiding local tags.
+
+GitHub-backed projects also list releases and can create one from an existing
+local tag. The form supports a title, Markdown notes, draft state, and
+prerelease state; existing releases link to GitHub for the complete hosted
+view. Release calls run on the selected worktree's worker so its GitHub identity
+and local tag inventory stay authoritative.
+
+Manual QA:
+
+1. Add a remote with different fetch and push URLs, edit both, select default
+   fetch/push remotes, and confirm the compact list updates after each review.
+2. Configure a credential-bearing HTTPS URL and confirm credentials never
+   appear in the app, server response, warnings, or logs.
+3. Fetch one remote, then fetch-plus-prune it; verify prune is marked
+   destructive and a changed remote invalidates an open preview.
+4. Create lightweight and annotated tags at HEAD and another revision. Confirm
+   messages appear only on annotated tags and signature state is explicit.
+5. Push a tag, delete it from the remote, and then delete it locally. Confirm
+   each operation names the exact tag and remote before it runs.
+6. Inspect a signed and unsigned tag and verify signer/key/fingerprint metadata
+   is shown only when Git provides it.
+7. Create draft, prerelease, and published GitHub releases from local tags, then
+   open each hosted release in GitHub.
+8. Disconnect the selected worker and confirm remotes, remote tag checks, and
+   releases fail explicitly without falling back to another worktree.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport
@@ -173,7 +216,7 @@ Manual QA:
 - [x] Hunk and selected-line staging
 - [x] Stash/shelf management
 - [x] Complete branch management
-- [ ] Remotes, tags, and GitHub releases
+- [x] Remotes, tags, and GitHub releases
 - [ ] Commit and history actions
 - [ ] Resumable merge and rebase operations
 - [ ] Conflict resolution

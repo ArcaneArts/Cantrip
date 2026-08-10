@@ -54,6 +54,8 @@ import {
   githubAuthStatusSchema,
   githubIssueDetailSchema,
   githubIssueListSchema,
+  githubReleaseListSchema,
+  githubReleaseSummarySchema,
   githubRepositoryListSchema,
   gitActionResultSchema,
   gitBranchActionPreviewSchema,
@@ -70,7 +72,14 @@ import {
   gitStashMutationResultSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
+  gitRemoteActionPreviewSchema,
+  gitRemoteListSchema,
+  gitRemoteMutationResultSchema,
   gitStatusSchema,
+  gitTagActionPreviewSchema,
+  gitTagDetailSchema,
+  gitTagListSchema,
+  gitTagMutationResultSchema,
   modelProfileCreateSchema,
   modelProfileSummarySchema,
   modelProfileUpdateSchema,
@@ -129,10 +138,13 @@ import type {
   GitBranchAction,
   GitDiffScope,
   GitPartialPatchRequest,
+  GitRemoteAction,
   GitStashAction,
   GitStashCreate,
+  GitTagAction,
   GithubIssueKind,
   GithubIssueState,
+  GithubReleaseCreate,
   GithubProjectCreate,
   ModelProfileCreate,
   ModelProfileUpdate,
@@ -489,6 +501,130 @@ export async function applyProjectWorktreeBranchAction(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/branches/actions/apply`,
       { action, token },
+    ),
+  );
+}
+
+export async function getProjectWorktreeRemotes(
+  projectId: string,
+  worktreeId: string,
+) {
+  return gitRemoteListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/remotes`,
+    ),
+  );
+}
+
+export async function previewProjectWorktreeRemoteAction(
+  projectId: string,
+  worktreeId: string,
+  action: GitRemoteAction,
+) {
+  return gitRemoteActionPreviewSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/remotes/actions/preview`,
+      action,
+    ),
+  );
+}
+
+export async function applyProjectWorktreeRemoteAction(
+  projectId: string,
+  worktreeId: string,
+  action: GitRemoteAction,
+  token: string,
+) {
+  return gitRemoteMutationResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/remotes/actions/apply`,
+      { action, token },
+    ),
+  );
+}
+
+export async function getProjectWorktreeTags(
+  projectId: string,
+  worktreeId: string,
+) {
+  return gitTagListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/tags`,
+    ),
+  );
+}
+
+export async function getProjectWorktreeTag(
+  projectId: string,
+  worktreeId: string,
+  name: string,
+) {
+  return gitTagDetailSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/tags/${encodeURIComponent(name)}`,
+    ),
+  );
+}
+
+export async function previewProjectWorktreeTagAction(
+  projectId: string,
+  worktreeId: string,
+  action: GitTagAction,
+) {
+  return gitTagActionPreviewSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/tags/actions/preview`,
+      action,
+    ),
+  );
+}
+
+export async function applyProjectWorktreeTagAction(
+  projectId: string,
+  worktreeId: string,
+  action: GitTagAction,
+  token: string,
+) {
+  return gitTagMutationResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/tags/actions/apply`,
+      { action, token },
+    ),
+  );
+}
+
+export async function getProjectWorktreeGithubReleases(
+  projectId: string,
+  worktreeId: string,
+) {
+  return githubReleaseListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/releases`,
+    ),
+  );
+}
+
+export async function getProjectWorktreeGithubRelease(
+  projectId: string,
+  worktreeId: string,
+  releaseId: number,
+) {
+  return githubReleaseSummarySchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/releases/${releaseId}`,
+    ),
+  );
+}
+
+export async function createProjectWorktreeGithubRelease(
+  projectId: string,
+  worktreeId: string,
+  input: GithubReleaseCreate,
+) {
+  return githubReleaseSummarySchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/releases`,
+      input,
     ),
   );
 }
