@@ -16,6 +16,7 @@ import {
   githubIssueDetailSchema,
   githubIssueListSchema,
   githubPullRequestCreateResultSchema,
+  githubPullRequestDetailSchema,
   githubPullRequestSummarySchema,
   githubReleaseListSchema,
   githubReleaseSummarySchema,
@@ -30,6 +31,9 @@ import {
   type GithubIssueSummary,
   type GithubPullRequestCreate,
   type GithubPullRequestCreateResult,
+  type GithubPullRequestDetail,
+  type GithubPullRequestCheck,
+  type GithubPullRequestReview,
   type GithubPullRequestSummary,
   type GithubReleaseCreate,
   type GithubReleaseList,
@@ -135,10 +139,78 @@ interface GithubApiIssueComment {
 }
 
 interface GithubApiPullRequest extends GithubApiIssue {
+  additions?: unknown;
   base?: unknown;
+  changed_files?: unknown;
+  commits?: unknown;
+  deletions?: unknown;
   draft?: unknown;
   head?: unknown;
+  mergeable?: unknown;
+  mergeable_state?: unknown;
   merged?: unknown;
+  requested_reviewers?: unknown;
+}
+
+interface GithubApiPullRequestCommit {
+  author?: unknown;
+  commit?: unknown;
+  html_url?: unknown;
+  sha?: unknown;
+}
+
+interface GithubApiPullRequestFile {
+  additions?: unknown;
+  blob_url?: unknown;
+  changes?: unknown;
+  deletions?: unknown;
+  filename?: unknown;
+  patch?: unknown;
+  previous_filename?: unknown;
+  raw_url?: unknown;
+  sha?: unknown;
+  status?: unknown;
+}
+
+interface GithubApiCheckRun {
+  completed_at?: unknown;
+  conclusion?: unknown;
+  details_url?: unknown;
+  html_url?: unknown;
+  id?: unknown;
+  name?: unknown;
+  output?: unknown;
+  started_at?: unknown;
+  status?: unknown;
+}
+
+interface GithubApiCheckRuns {
+  check_runs?: unknown;
+  total_count?: unknown;
+}
+
+interface GithubApiCommitStatus {
+  context?: unknown;
+  created_at?: unknown;
+  description?: unknown;
+  id?: unknown;
+  state?: unknown;
+  target_url?: unknown;
+  updated_at?: unknown;
+}
+
+interface GithubApiCombinedStatus {
+  statuses?: unknown;
+}
+
+interface GithubApiPullRequestReview {
+  body?: unknown;
+  commit_id?: unknown;
+  html_url?: unknown;
+  id?: unknown;
+  state?: unknown;
+  submitted_at?: unknown;
+  user?: unknown;
 }
 
 interface GithubApiGitRef {
@@ -267,6 +339,190 @@ function parsePullRequest(
     baseRef: base.ref,
     baseSha: base.sha,
   });
+}
+
+function boundedText(value: unknown, limit: number): string {
+  return typeof value === "string" ? value.slice(0, limit) : "";
+}
+
+function nullableUrl(value: unknown): string | null {
+  return typeof value === "string" && /^https?:\/\//u.test(value)
+    ? value
+    : null;
+}
+
+function nullableDate(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function parsePullRequestCommit(value: GithubApiPullRequestCommit) {
+  const sha = String(value.sha);
+  const commit =
+    value.commit && typeof value.commit === "object"
+      ? (value.commit as { author?: unknown; message?: unknown })
+      : {};
+  const author =
+    commit.author && typeof commit.author === "object"
+      ? (commit.author as { date?: unknown; name?: unknown })
+      : {};
+  return {
+    sha,
+    shortSha: sha.slice(0, 7),
+    message: boundedText(commit.message, 1_000_000),
+    author:
+      typeof author.name === "string" && author.name
+        ? author.name
+        : githubLogin(value.author),
+    authoredAt: nullableDate(author.date),
+    url: String(value.html_url),
+  };
+}
+
+function parsePullRequestFile(value: GithubApiPullRequestFile) {
+  const rawPatch = typeof value.patch === "string" ? value.patch : null;
+  return {
+    sha: String(value.sha),
+    path: String(value.filename),
+    previousPath:
+      typeof value.previous_filename === "string"
+        ? value.previous_filename
+        : null,
+    status: String(value.status),
+    additions: Number(value.additions) || 0,
+    deletions: Number(value.deletions) || 0,
+    changes: Number(value.changes) || 0,
+    blobUrl: String(value.blob_url),
+    rawUrl: nullableUrl(value.raw_url),
+    patch: rawPatch?.slice(0, 1_000_000) ?? null,
+    patchTruncated: rawPatch !== null && rawPatch.length > 1_000_000,
+  };
+}
+
+function parseCheckRun(value: GithubApiCheckRun): GithubPullRequestCheck {
+  const output =
+    value.output && typeof value.output === "object"
+      ? (value.output as { summary?: unknown; text?: unknown; title?: unknown })
+      : {};
+  const rawStatus = String(value.status).toLowerCase();
+  const status =
+    rawStatus === "completed"
+      ? "completed"
+      : rawStatus === "in_progress"
+        ? "in-progress"
+        : "queued";
+  const summary = [output.title, output.summary, output.text]
+    .filter((part): part is string => typeof part === "string" && Boolean(part))
+    .join("\n\n")
+    .slice(0, 100_000);
+  return {
+    id: String(value.id),
+    name: String(value.name),
+    source: "check-run",
+    status,
+    conclusion: typeof value.conclusion === "string" ? value.conclusion : null,
+    url: nullableUrl(value.details_url) ?? nullableUrl(value.html_url),
+    startedAt: nullableDate(value.started_at),
+    completedAt: nullableDate(value.completed_at),
+    summary: summary || null,
+  };
+}
+
+function parseCommitStatus(
+  value: GithubApiCommitStatus,
+): GithubPullRequestCheck {
+  const state = String(value.state).toLowerCase();
+  return {
+    id: `status-${String(value.id)}`,
+    name: String(value.context),
+    source: "commit-status",
+    status: state === "pending" ? "in-progress" : "completed",
+    conclusion: state === "pending" ? null : state,
+    url: nullableUrl(value.target_url),
+    startedAt: nullableDate(value.created_at),
+    completedAt: state === "pending" ? null : nullableDate(value.updated_at),
+    summary:
+      typeof value.description === "string"
+        ? value.description.slice(0, 100_000)
+        : null,
+  };
+}
+
+function reviewState(state: unknown): GithubPullRequestReview["state"] {
+  switch (String(state).toUpperCase()) {
+    case "APPROVED":
+      return "approved";
+    case "CHANGES_REQUESTED":
+      return "changes-requested";
+    case "DISMISSED":
+      return "dismissed";
+    case "PENDING":
+      return "pending";
+    default:
+      return "commented";
+  }
+}
+
+function parsePullRequestReview(
+  value: GithubApiPullRequestReview,
+): GithubPullRequestReview {
+  const commitSha =
+    typeof value.commit_id === "string" &&
+    /^[0-9a-f]{40}$/u.test(value.commit_id)
+      ? value.commit_id
+      : null;
+  return {
+    id: String(value.id),
+    author: githubLogin(value.user),
+    state: reviewState(value.state),
+    body: boundedText(value.body, 1_000_000),
+    commitSha,
+    submittedAt: nullableDate(value.submitted_at),
+    url: nullableUrl(value.html_url),
+  };
+}
+
+function deriveReviewDecision(
+  reviews: GithubPullRequestReview[],
+  requestedReviewers: string[],
+): GithubPullRequestDetail["reviewDecision"] {
+  const actionable = new Map<string, GithubPullRequestReview["state"]>();
+  for (const review of reviews) {
+    if (
+      review.state === "approved" ||
+      review.state === "changes-requested" ||
+      review.state === "dismissed"
+    ) {
+      actionable.set(review.author, review.state);
+    }
+  }
+  const states = [...actionable.values()];
+  if (states.includes("changes-requested")) return "changes-requested";
+  if (states.includes("approved")) return "approved";
+  if (requestedReviewers.length > 0) return "review-required";
+  if (reviews.length > 0) return "reviewed";
+  return "none";
+}
+
+function deriveChecksState(
+  checks: GithubPullRequestCheck[],
+): GithubPullRequestDetail["checksState"] {
+  if (checks.length === 0) return "none";
+  if (
+    checks.some((check) =>
+      [
+        "failure",
+        "error",
+        "timed_out",
+        "cancelled",
+        "action_required",
+      ].includes(check.conclusion ?? ""),
+    )
+  ) {
+    return "failure";
+  }
+  if (checks.some((check) => check.status !== "completed")) return "pending";
+  if (checks.every((check) => check.conclusion === "success")) return "success";
+  return "neutral";
 }
 
 function encodedRefPath(branch: string): string {
@@ -633,6 +889,123 @@ export class GithubClient {
     return githubPullRequestCreateResultSchema.parse({
       pullRequest,
       warnings,
+    });
+  }
+
+  async getPullRequest(
+    nameWithOwner: string,
+    cwd: string,
+    pullRequestNumber: number,
+  ): Promise<GithubPullRequestDetail> {
+    await execFileAsync("git", ["-C", cwd, "rev-parse", "--git-dir"]);
+    const repositoryPath = this.repositoryApiPath(nameWithOwner);
+    const pullRequestPath = `${repositoryPath}/pulls/${pullRequestNumber}`;
+    const rawPullRequest = (await this.api(
+      pullRequestPath,
+    )) as GithubApiPullRequest;
+    const summary = parsePullRequest(rawPullRequest);
+    const issuePath = `${repositoryPath}/issues/${pullRequestNumber}`;
+    const [
+      rawComments,
+      rawCommits,
+      rawFiles,
+      rawCheckRuns,
+      rawStatuses,
+      rawReviews,
+    ] = await Promise.all([
+      this.api(`${issuePath}/comments`, [
+        "--method",
+        "GET",
+        "-f",
+        "per_page=100",
+      ]) as Promise<GithubApiIssueComment[]>,
+      this.api(`${pullRequestPath}/commits`, [
+        "--method",
+        "GET",
+        "-f",
+        "per_page=100",
+      ]) as Promise<GithubApiPullRequestCommit[]>,
+      this.api(`${pullRequestPath}/files`, [
+        "--method",
+        "GET",
+        "-f",
+        "per_page=100",
+      ]) as Promise<GithubApiPullRequestFile[]>,
+      this.api(`${repositoryPath}/commits/${summary.headSha}/check-runs`, [
+        "--method",
+        "GET",
+        "-f",
+        "per_page=100",
+      ]) as Promise<GithubApiCheckRuns>,
+      this.api(`${repositoryPath}/commits/${summary.headSha}/status`, [
+        "--method",
+        "GET",
+        "-f",
+        "per_page=100",
+      ]) as Promise<GithubApiCombinedStatus>,
+      this.api(`${pullRequestPath}/reviews`, [
+        "--method",
+        "GET",
+        "-f",
+        "per_page=100",
+      ]) as Promise<GithubApiPullRequestReview[]>,
+    ]);
+    const commits = rawCommits.slice(0, 100).map(parsePullRequestCommit);
+    const files = rawFiles.slice(0, 100).map(parsePullRequestFile);
+    const checkRuns = Array.isArray(rawCheckRuns.check_runs)
+      ? (rawCheckRuns.check_runs as GithubApiCheckRun[])
+          .slice(0, 100)
+          .map(parseCheckRun)
+      : [];
+    const statuses = Array.isArray(rawStatuses.statuses)
+      ? (rawStatuses.statuses as GithubApiCommitStatus[])
+          .slice(0, 100)
+          .map(parseCommitStatus)
+      : [];
+    const checks = [...checkRuns, ...statuses].slice(0, 200);
+    const reviews = rawReviews.slice(0, 100).map(parsePullRequestReview);
+    const requestedReviewers = Array.isArray(rawPullRequest.requested_reviewers)
+      ? [
+          ...new Set(
+            rawPullRequest.requested_reviewers.map((reviewer) =>
+              githubLogin(reviewer),
+            ),
+          ),
+        ]
+      : [];
+    const commitCount = Number(rawPullRequest.commits) || commits.length;
+    const changedFileCount =
+      Number(rawPullRequest.changed_files) || files.length;
+    return githubPullRequestDetailSchema.parse({
+      ...summary,
+      comments: rawComments.slice(0, 100).map(parseIssueComment),
+      commentsTruncated: summary.commentCount > rawComments.length,
+      requestedReviewers,
+      mergeable:
+        typeof rawPullRequest.mergeable === "boolean"
+          ? rawPullRequest.mergeable
+          : null,
+      mergeableState:
+        typeof rawPullRequest.mergeable_state === "string"
+          ? rawPullRequest.mergeable_state
+          : "unknown",
+      reviewDecision: deriveReviewDecision(reviews, requestedReviewers),
+      checksState: deriveChecksState(checks),
+      additions: Number(rawPullRequest.additions) || 0,
+      deletions: Number(rawPullRequest.deletions) || 0,
+      changedFileCount,
+      commitCount,
+      commits,
+      commitsTruncated: commitCount > commits.length,
+      files,
+      filesTruncated: changedFileCount > files.length,
+      checks,
+      checksTruncated:
+        Number(rawCheckRuns.total_count) > checkRuns.length ||
+        (Array.isArray(rawStatuses.statuses) &&
+          rawStatuses.statuses.length >= 100),
+      reviews,
+      reviewsTruncated: rawReviews.length >= 100,
     });
   }
 

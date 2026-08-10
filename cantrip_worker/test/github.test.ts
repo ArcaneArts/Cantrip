@@ -252,6 +252,173 @@ describe("GitHub project files", () => {
     ).rejects.toThrow("local and GitHub branch tips must match");
   });
 
+  it("loads a bounded pull request review surface from the selected worktree", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-github-pr-detail-"),
+    );
+    directories.push(dataDirectory);
+    const repository = path.join(dataDirectory, "repository");
+    await execFileAsync("git", ["init", "-b", "feature/review", repository]);
+    const head = "1".repeat(40);
+    const base = "2".repeat(40);
+    const pullRequest = {
+      number: 44,
+      title: "Review pull requests",
+      state: "open",
+      html_url: "https://github.com/ArcaneArts/Cantrip/pull/44",
+      user: { login: "author" },
+      comments: 1,
+      labels: [{ name: "feature", color: "22d3ee" }],
+      created_at: "2026-08-10T12:00:00.000Z",
+      updated_at: "2026-08-10T13:00:00.000Z",
+      closed_at: null,
+      body: "Please review.",
+      draft: false,
+      merged: false,
+      head: { ref: "feature/review", sha: head },
+      base: { ref: "main", sha: base },
+      requested_reviewers: [{ login: "second-reviewer" }],
+      mergeable: false,
+      mergeable_state: "blocked",
+      additions: 12,
+      deletions: 3,
+      changed_files: 101,
+      commits: 101,
+    };
+    const comments = [
+      {
+        id: 9,
+        user: { login: "commenter" },
+        body: "General feedback",
+        html_url:
+          "https://github.com/ArcaneArts/Cantrip/pull/44#issuecomment-9",
+        created_at: "2026-08-10T12:10:00.000Z",
+        updated_at: "2026-08-10T12:10:00.000Z",
+      },
+    ];
+    const commits = [
+      {
+        sha: head,
+        html_url: `https://github.com/ArcaneArts/Cantrip/commit/${head}`,
+        author: { login: "author" },
+        commit: {
+          message: "feat: review pull requests\n\nDetails",
+          author: {
+            name: "Cantrip Author",
+            date: "2026-08-10T12:00:00.000Z",
+          },
+        },
+      },
+    ];
+    const files = [
+      {
+        sha: "3".repeat(40),
+        filename: "src/review.ts",
+        previous_filename: "src/old-review.ts",
+        status: "renamed",
+        additions: 12,
+        deletions: 3,
+        changes: 15,
+        blob_url:
+          "https://github.com/ArcaneArts/Cantrip/blob/feature/review/src/review.ts",
+        raw_url: null,
+        patch: "@@ -1 +1 @@\n-old\n+new",
+      },
+    ];
+    const checkRuns = {
+      total_count: 1,
+      check_runs: [
+        {
+          id: 10,
+          name: "test",
+          status: "completed",
+          conclusion: "failure",
+          details_url: "https://github.com/ArcaneArts/Cantrip/actions/runs/10",
+          started_at: "2026-08-10T12:01:00.000Z",
+          completed_at: "2026-08-10T12:03:00.000Z",
+          output: { title: "Tests failed", summary: "One failure" },
+        },
+      ],
+    };
+    const statuses = {
+      statuses: [
+        {
+          id: 11,
+          context: "deploy",
+          state: "pending",
+          description: "Waiting",
+          target_url: "https://github.com/ArcaneArts/Cantrip/deployments/11",
+          created_at: "2026-08-10T12:02:00.000Z",
+          updated_at: "2026-08-10T12:02:00.000Z",
+        },
+      ],
+    };
+    const reviews = [
+      {
+        id: 12,
+        user: { login: "reviewer" },
+        state: "CHANGES_REQUESTED",
+        body: "Please revise this.",
+        commit_id: head,
+        html_url:
+          "https://github.com/ArcaneArts/Cantrip/pull/44#pullrequestreview-12",
+        submitted_at: "2026-08-10T12:30:00.000Z",
+      },
+    ];
+    const binDirectory = path.join(dataDirectory, "bin");
+    const logPath = path.join(dataDirectory, "gh.log");
+    await mkdir(binDirectory);
+    const fakeGh = path.join(binDirectory, "gh");
+    await writeFile(
+      fakeGh,
+      [
+        "#!/usr/bin/env node",
+        'const fs = require("node:fs");',
+        `const log = ${JSON.stringify(logPath)};`,
+        'const args = process.argv.slice(2); fs.appendFileSync(log, args.join("\\0") + "\\n");',
+        'const route = args[1] || "";',
+        `if (route.endsWith("/pulls/44")) process.stdout.write(${JSON.stringify(JSON.stringify(pullRequest))});`,
+        `else if (route.endsWith("/issues/44/comments")) process.stdout.write(${JSON.stringify(JSON.stringify(comments))});`,
+        `else if (route.endsWith("/pulls/44/commits")) process.stdout.write(${JSON.stringify(JSON.stringify(commits))});`,
+        `else if (route.endsWith("/pulls/44/files")) process.stdout.write(${JSON.stringify(JSON.stringify(files))});`,
+        `else if (route.endsWith("/check-runs")) process.stdout.write(${JSON.stringify(JSON.stringify(checkRuns))});`,
+        `else if (route.endsWith("/status")) process.stdout.write(${JSON.stringify(JSON.stringify(statuses))});`,
+        `else if (route.endsWith("/pulls/44/reviews")) process.stdout.write(${JSON.stringify(JSON.stringify(reviews))});`,
+        'else process.stdout.write("{}");',
+      ].join("\n"),
+    );
+    await chmod(fakeGh, 0o755);
+    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+
+    const github = new GithubClient(dataDirectory);
+    await expect(
+      github.getPullRequest("ArcaneArts/Cantrip", repository, 44),
+    ).resolves.toMatchObject({
+      number: 44,
+      mergeable: false,
+      reviewDecision: "changes-requested",
+      checksState: "failure",
+      commitCount: 101,
+      commitsTruncated: true,
+      changedFileCount: 101,
+      filesTruncated: true,
+      comments: [{ author: "commenter" }],
+      commits: [{ author: "Cantrip Author" }],
+      files: [{ path: "src/review.ts", previousPath: "src/old-review.ts" }],
+      checks: [
+        { name: "test", conclusion: "failure" },
+        { name: "deploy", status: "in-progress" },
+      ],
+      reviews: [{ author: "reviewer", state: "changes-requested" }],
+    });
+    const invocations = await readFile(logPath, "utf8");
+    expect(invocations).toContain(`/commits/${head}/check-runs`);
+    expect(invocations).toContain("per_page=100");
+    await expect(
+      github.getPullRequest("ArcaneArts/Cantrip", "/missing/worktree", 44),
+    ).rejects.toThrow();
+  });
+
   it("restores the last repository list for the same GitHub login", async () => {
     const dataDirectory = await mkdtemp(
       path.join(tmpdir(), "cantrip-github-cache-test-"),

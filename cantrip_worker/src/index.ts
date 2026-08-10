@@ -226,6 +226,12 @@ async function start(): Promise<void> {
           command.cwd,
           command.request,
         );
+      case "github.pull-request.get":
+        return github.getPullRequest(
+          command.repository,
+          command.cwd,
+          command.number,
+        );
       case "github.releases.list":
         return github.listReleases(command.repository);
       case "github.release.get":

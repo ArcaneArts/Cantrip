@@ -32,6 +32,7 @@ import {
   getGithubIssue,
 } from "@/lib/api";
 import { GithubPullRequestCreateDialog } from "./github-pull-request-create-dialog";
+import { GithubPullRequestDialog } from "./github-pull-request-dialog";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -417,14 +418,25 @@ export function GithubIssuesView({
         )}
       </div>
 
-      <IssueDialog
-        issueNumber={selectedIssue}
-        kind={kind}
-        project={project}
-        onOpenChange={(open) => {
-          if (!open) setSelectedIssue(null);
-        }}
-      />
+      {kind === "pull-request" ? (
+        <GithubPullRequestDialog
+          pullRequestNumber={selectedIssue}
+          projectId={project.id}
+          worktreeId={worktreeId}
+          onOpenChange={(open) => {
+            if (!open) setSelectedIssue(null);
+          }}
+        />
+      ) : (
+        <IssueDialog
+          issueNumber={selectedIssue}
+          kind={kind}
+          project={project}
+          onOpenChange={(open) => {
+            if (!open) setSelectedIssue(null);
+          }}
+        />
+      )}
       {status ? (
         <GithubPullRequestCreateDialog
           open={createOpen}

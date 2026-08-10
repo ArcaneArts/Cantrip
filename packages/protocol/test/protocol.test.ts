@@ -60,6 +60,7 @@ import {
   gitTagListSchema,
   githubReleaseCreateSchema,
   githubPullRequestCreateResultSchema,
+  githubPullRequestDetailSchema,
   githubReleaseListSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
@@ -1145,6 +1146,63 @@ describe("Cantrip protocol", () => {
         warnings: [],
       }).pullRequest.headRef,
     ).toBe("feature/pr-ui");
+    expect(
+      workerCommandSchema.parse({
+        type: "github.pull-request.get",
+        cwd: "/repo/worktrees/feature",
+        repository: "ArcaneArts/Cantrip",
+        number: 44,
+      }),
+    ).toMatchObject({ number: 44, cwd: "/repo/worktrees/feature" });
+    expect(
+      githubPullRequestDetailSchema.parse({
+        number: 44,
+        title: "Add PR review",
+        state: "open",
+        url: "https://github.com/ArcaneArts/Cantrip/pull/44",
+        author: "octocat",
+        commentCount: 1,
+        labels: [],
+        createdAt: "2026-08-10T12:00:00.000Z",
+        updatedAt: "2026-08-10T13:00:00.000Z",
+        closedAt: null,
+        body: "Ready for review.",
+        draft: false,
+        merged: false,
+        headRef: "feature/pr-review",
+        headSha: "1".repeat(40),
+        baseRef: "main",
+        baseSha: "2".repeat(40),
+        comments: [],
+        commentsTruncated: false,
+        requestedReviewers: ["reviewer"],
+        mergeable: true,
+        mergeableState: "clean",
+        reviewDecision: "review-required",
+        checksState: "success",
+        additions: 10,
+        deletions: 2,
+        changedFileCount: 1,
+        commitCount: 1,
+        commits: [
+          {
+            sha: "1".repeat(40),
+            shortSha: "1".repeat(7),
+            message: "feat: review pull requests",
+            author: "Cantrip",
+            authoredAt: "2026-08-10T12:00:00.000Z",
+            url: "https://github.com/ArcaneArts/Cantrip/commit/1111111",
+          },
+        ],
+        commitsTruncated: false,
+        files: [],
+        filesTruncated: false,
+        checks: [],
+        checksTruncated: false,
+        reviews: [],
+        reviewsTruncated: false,
+      }).reviewDecision,
+    ).toBe("review-required");
   });
 
   it("validates worker-owned authenticated project share lifecycles", () => {

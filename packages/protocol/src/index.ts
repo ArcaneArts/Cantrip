@@ -832,6 +832,89 @@ export const githubPullRequestCreateResultSchema = z.object({
   warnings: z.array(z.string().min(1).max(1_000)).max(100),
 });
 
+export const githubPullRequestCommitSchema = z.object({
+  sha: z.string().regex(/^[0-9a-f]{40}$/u),
+  shortSha: z.string().regex(/^[0-9a-f]{7,12}$/u),
+  message: z.string().max(1_000_000),
+  author: z.string().min(1).max(1_000),
+  authoredAt: z.string().datetime().nullable(),
+  url: z.url(),
+});
+
+export const githubPullRequestFileSchema = z.object({
+  sha: z.string().regex(/^[0-9a-f]{40}$/u),
+  path: z.string().min(1).max(8_192),
+  previousPath: z.string().min(1).max(8_192).nullable(),
+  status: z.string().min(1).max(64),
+  additions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+  changes: z.number().int().nonnegative(),
+  blobUrl: z.url(),
+  rawUrl: z.url().nullable(),
+  patch: z.string().max(1_000_000).nullable(),
+  patchTruncated: z.boolean(),
+});
+
+export const githubPullRequestCheckSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).max(1_000),
+  source: z.enum(["check-run", "commit-status"]),
+  status: z.enum(["queued", "in-progress", "completed"]),
+  conclusion: z.string().min(1).max(100).nullable(),
+  url: z.url().nullable(),
+  startedAt: z.string().datetime().nullable(),
+  completedAt: z.string().datetime().nullable(),
+  summary: z.string().max(100_000).nullable(),
+});
+
+export const githubPullRequestReviewSchema = z.object({
+  id: z.string().min(1),
+  author: z.string().min(1),
+  state: z.enum([
+    "approved",
+    "changes-requested",
+    "commented",
+    "dismissed",
+    "pending",
+  ]),
+  body: z.string().max(1_000_000),
+  commitSha: z
+    .string()
+    .regex(/^[0-9a-f]{40}$/u)
+    .nullable(),
+  submittedAt: z.string().datetime().nullable(),
+  url: z.url().nullable(),
+});
+
+export const githubPullRequestDetailSchema =
+  githubPullRequestSummarySchema.extend({
+    comments: z.array(githubIssueCommentSchema).max(100),
+    commentsTruncated: z.boolean(),
+    requestedReviewers: z.array(z.string().min(1)).max(100),
+    mergeable: z.boolean().nullable(),
+    mergeableState: z.string().min(1).max(100),
+    reviewDecision: z.enum([
+      "approved",
+      "changes-requested",
+      "review-required",
+      "reviewed",
+      "none",
+    ]),
+    checksState: z.enum(["success", "failure", "pending", "neutral", "none"]),
+    additions: z.number().int().nonnegative(),
+    deletions: z.number().int().nonnegative(),
+    changedFileCount: z.number().int().nonnegative(),
+    commitCount: z.number().int().nonnegative(),
+    commits: z.array(githubPullRequestCommitSchema).max(100),
+    commitsTruncated: z.boolean(),
+    files: z.array(githubPullRequestFileSchema).max(100),
+    filesTruncated: z.boolean(),
+    checks: z.array(githubPullRequestCheckSchema).max(200),
+    checksTruncated: z.boolean(),
+    reviews: z.array(githubPullRequestReviewSchema).max(100),
+    reviewsTruncated: z.boolean(),
+  });
+
 export const githubReleaseSummarySchema = z.object({
   id: z.number().int().positive(),
   tagName: z.string().min(1).max(1_000),
@@ -4355,6 +4438,12 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     request: githubPullRequestCreateSchema,
   }),
   z.object({
+    type: z.literal("github.pull-request.get"),
+    cwd: z.string().min(1).max(8_192),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+    number: z.number().int().positive(),
+  }),
+  z.object({
     type: z.literal("github.releases.list"),
     cwd: z.string().min(1).max(8_192),
     repository: githubRepositorySchema.shape.nameWithOwner,
@@ -5300,6 +5389,19 @@ export type GithubPullRequestSummary = z.infer<
 >;
 export type GithubPullRequestCreateResult = z.infer<
   typeof githubPullRequestCreateResultSchema
+>;
+export type GithubPullRequestCommit = z.infer<
+  typeof githubPullRequestCommitSchema
+>;
+export type GithubPullRequestFile = z.infer<typeof githubPullRequestFileSchema>;
+export type GithubPullRequestCheck = z.infer<
+  typeof githubPullRequestCheckSchema
+>;
+export type GithubPullRequestReview = z.infer<
+  typeof githubPullRequestReviewSchema
+>;
+export type GithubPullRequestDetail = z.infer<
+  typeof githubPullRequestDetailSchema
 >;
 export type GithubReleaseSummary = z.infer<typeof githubReleaseSummarySchema>;
 export type GithubReleaseList = z.infer<typeof githubReleaseListSchema>;

@@ -55,6 +55,7 @@ import {
   githubIssueDetailSchema,
   githubIssueListSchema,
   githubPullRequestCreateResultSchema,
+  githubPullRequestDetailSchema,
   githubReleaseListSchema,
   githubReleaseSummarySchema,
   githubRepositoryListSchema,
@@ -969,6 +970,18 @@ export async function createGithubPullRequest(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/pull-requests`,
       request,
+    ),
+  );
+}
+
+export async function getGithubPullRequest(
+  projectId: string,
+  worktreeId: string,
+  pullRequestNumber: number,
+) {
+  return githubPullRequestDetailSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/pull-requests/${pullRequestNumber}`,
     ),
   );
 }

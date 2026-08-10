@@ -93,6 +93,7 @@ import {
   githubIssueListSchema,
   githubPullRequestCreateResultSchema,
   githubPullRequestCreateSchema,
+  githubPullRequestDetailSchema,
   githubIssueStateSchema,
   githubProjectCreateSchema,
   githubRepositoryListSchema,
@@ -3928,6 +3929,63 @@ export async function buildApp({
         return reply
           .code(error instanceof WorkerUnavailableError ? 503 : 409)
           .send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{
+    Params: {
+      projectId: string;
+      worktreeId: string;
+      pullRequestNumber: string;
+    };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber",
+    async (request, reply) => {
+      const pullRequestNumber = Number.parseInt(
+        request.params.pullRequestNumber,
+        10,
+      );
+      if (!Number.isInteger(pullRequestNumber) || pullRequestNumber < 1) {
+        return reply.code(400).send({ error: "Invalid pull request number." });
+      }
+      const [worktree, github] = await Promise.all([
+        repository.getProjectWorktreeContext(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          request.params.worktreeId,
+        ),
+        repository.getGithubProjectExecutionContext(
+          LOCAL_USER_ID,
+          request.params.projectId,
+        ),
+      ]);
+      if (!worktree || !github) {
+        return reply
+          .code(404)
+          .send({ error: "GitHub worktree project not found." });
+      }
+      if (worktree.workerId !== github.workerId) {
+        return reply.code(409).send({
+          error:
+            "The selected worktree and GitHub project belong to different workers.",
+        });
+      }
+      try {
+        const pullRequest = await bridge.request(
+          worktree.workerId,
+          {
+            type: "github.pull-request.get",
+            cwd: worktree.worktree.path,
+            repository: github.nameWithOwner,
+            number: pullRequestNumber,
+          },
+          { timeoutMs: null },
+        );
+        return reply.send(githubPullRequestDetailSchema.parse(pullRequest));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
       }
     },
   );
