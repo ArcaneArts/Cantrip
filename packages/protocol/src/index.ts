@@ -3728,6 +3728,38 @@ export const gitManagedOperationStateSchema = z.enum([
   "aborted",
 ]);
 
+export const gitInteractiveRebaseTodoActionSchema = z.enum([
+  "pick",
+  "reword",
+  "edit",
+  "squash",
+  "fixup",
+  "drop",
+]);
+
+export const gitInteractiveRebaseTodoItemSchema = z
+  .object({
+    action: gitInteractiveRebaseTodoActionSchema,
+    revision: gitCommitHashInputSchema,
+    message: z.string().trim().min(1).max(1_000_000).nullable().default(null),
+  })
+  .superRefine((item, context) => {
+    if (item.action === "reword" && !item.message) {
+      context.addIssue({
+        code: "custom",
+        path: ["message"],
+        message: "Reword steps require a replacement commit message.",
+      });
+    }
+    if (item.action !== "reword" && item.message) {
+      context.addIssue({
+        code: "custom",
+        path: ["message"],
+        message: "Only reword steps accept a replacement commit message.",
+      });
+    }
+  });
+
 export const gitMergeRebaseActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("merge"),
@@ -3736,6 +3768,11 @@ export const gitMergeRebaseActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("rebase"),
     sourceRef: gitRevisionInputSchema,
+  }),
+  z.object({
+    type: z.literal("interactiveRebase"),
+    upstreamRef: gitRevisionInputSchema,
+    todo: z.array(gitInteractiveRebaseTodoItemSchema).max(10_000).default([]),
   }),
 ]);
 
@@ -3760,6 +3797,7 @@ export const gitManagedOperationWorkerStateSchema =
     conflictedPaths: z.array(gitRelativePathSchema).max(100_000),
     output: z.string().max(1_000_000),
     status: gitStatusSchema,
+    pausedAction: gitInteractiveRebaseTodoActionSchema.nullable().optional(),
   });
 
 export const gitManagedOperationPreviewSchema = z.object({
@@ -3774,6 +3812,8 @@ export const gitManagedOperationPreviewSchema = z.object({
   patch: z.string().max(2_000_000),
   patchTruncated: z.boolean(),
   wouldConflict: z.boolean(),
+  todo: z.array(gitInteractiveRebaseTodoItemSchema).max(10_000).default([]),
+  todoText: z.string().max(2_000_000).default(""),
 });
 
 export const gitManagedOperationStartSchema = z.object({
@@ -3783,6 +3823,10 @@ export const gitManagedOperationStartSchema = z.object({
 
 export const gitManagedOperationControlSchema = z.object({
   action: z.enum(["continue", "skip", "abort"]),
+});
+
+export const gitManagedOperationAmendSchema = z.object({
+  message: z.string().trim().min(1).max(1_000_000).nullable().default(null),
 });
 
 export const gitManagedOperationRecordSchema =
@@ -3800,6 +3844,7 @@ export const gitManagedOperationRecordSchema =
     createdAt: z.string().datetime({ offset: true }),
     updatedAt: z.string().datetime({ offset: true }),
     completedAt: z.string().datetime({ offset: true }).nullable(),
+    pausedAction: gitInteractiveRebaseTodoActionSchema.nullable().optional(),
   });
 
 export const gitManagedOperationResponseSchema = z.object({
@@ -4437,6 +4482,13 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     context: gitManagedOperationContextSchema,
     action: gitManagedOperationControlSchema.shape.action,
   }),
+  z
+    .object({
+      type: z.literal("git.operation.amend"),
+      cwd: z.string().min(1).max(8_192),
+      context: gitManagedOperationContextSchema,
+    })
+    .extend(gitManagedOperationAmendSchema.shape),
   z.object({
     type: z.literal("git.conflicts.list"),
     cwd: z.string().min(1).max(8_192),
@@ -5235,6 +5287,12 @@ export type GitManagedOperationState = z.infer<
   typeof gitManagedOperationStateSchema
 >;
 export type GitMergeRebaseAction = z.infer<typeof gitMergeRebaseActionSchema>;
+export type GitInteractiveRebaseTodoAction = z.infer<
+  typeof gitInteractiveRebaseTodoActionSchema
+>;
+export type GitInteractiveRebaseTodoItem = z.infer<
+  typeof gitInteractiveRebaseTodoItemSchema
+>;
 export type GitManagedOperationContext = z.infer<
   typeof gitManagedOperationContextSchema
 >;
@@ -5249,6 +5307,9 @@ export type GitManagedOperationStart = z.infer<
 >;
 export type GitManagedOperationControl = z.infer<
   typeof gitManagedOperationControlSchema
+>;
+export type GitManagedOperationAmend = z.infer<
+  typeof gitManagedOperationAmendSchema
 >;
 export type GitManagedOperationRecord = z.infer<
   typeof gitManagedOperationRecordSchema

@@ -288,6 +288,13 @@
       "when": 1786348286875,
       "tag": "0040_nifty_ironclad",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1786354412899,
+      "tag": "0041_outgoing_snowbird",
+      "breakpoints": true
     }
   ]
 }

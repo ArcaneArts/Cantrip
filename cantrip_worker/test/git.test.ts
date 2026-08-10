@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  amendGitManagedOperation,
   applyGitBranchAction,
   applyGitCommitAction,
   applyGitConflictResolution,
@@ -303,6 +304,282 @@ describe("Git history", () => {
     );
     expect(aborted.state).toBe("aborted");
     expect(aborted.currentHead).toBe(featureHead);
+  });
+
+  it("validates and executes an exact interactive rebase todo", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-rewrite-test-"));
+    directories.push(root);
+    const directory = path.join(root, "repo");
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "base.txt"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Base"]);
+    const upstream = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    const revisions: string[] = [];
+    for (const name of ["A", "B", "C", "D", "E"]) {
+      await writeFile(path.join(directory, `${name}.txt`), `${name}\n`);
+      await execFileAsync("git", ["-C", directory, "add", "."]);
+      await execFileAsync("git", ["-C", directory, "commit", "-m", name]);
+      revisions.push(
+        (
+          await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+        ).stdout.trim(),
+      );
+    }
+    const originalHead = revisions.at(-1)!;
+    const initial = await previewGitManagedOperation(directory, {
+      type: "interactiveRebase",
+      upstreamRef: upstream,
+      todo: [],
+    });
+    expect(initial.todo.map(({ revision }) => revision)).toEqual(revisions);
+    expect(initial.todo.every(({ action }) => action === "pick")).toBe(true);
+    const action = {
+      type: "interactiveRebase" as const,
+      upstreamRef: upstream,
+      todo: [
+        { action: "pick" as const, revision: revisions[1]!, message: null },
+        { action: "squash" as const, revision: revisions[2]!, message: null },
+        { action: "fixup" as const, revision: revisions[3]!, message: null },
+        { action: "drop" as const, revision: revisions[4]!, message: null },
+        {
+          action: "reword" as const,
+          revision: revisions[0]!,
+          message: "A rewritten",
+        },
+      ],
+    };
+    const preview = await previewGitManagedOperation(directory, action);
+    expect(
+      preview.todoText.split("\n").map((line) => line.split(" ")[0]),
+    ).toEqual(["pick", "squash", "fixup", "drop", "reword"]);
+    expect(preview.context).toMatchObject({
+      type: "rebase",
+      originalHead,
+      sourceRef: upstream,
+    });
+    expect(preview.context.checkpointRef).toMatch(
+      /^refs\/cantrip\/checkpoints\/rewrite-/u,
+    );
+    const completed = await startGitManagedOperation(
+      directory,
+      action,
+      preview.token,
+    );
+    expect(completed.state).toBe("completed");
+    expect(
+      (
+        await execFileAsync("git", [
+          "-C",
+          directory,
+          "log",
+          "--format=%s",
+          "--reverse",
+          `${upstream}..HEAD`,
+        ])
+      ).stdout
+        .trim()
+        .split("\n"),
+    ).toEqual(["B", "A rewritten"]);
+    await expect(
+      readFile(path.join(directory, "E.txt"), "utf8"),
+    ).rejects.toThrow();
+    expect(
+      (
+        await execFileAsync("git", [
+          "-C",
+          directory,
+          "rev-parse",
+          preview.context.checkpointRef!,
+        ])
+      ).stdout.trim(),
+    ).toBe(originalHead);
+
+    await expect(
+      previewGitManagedOperation(directory, {
+        type: "interactiveRebase",
+        upstreamRef: upstream,
+        todo: [action.todo[1]!],
+      }),
+    ).rejects.toThrow("every selected commit");
+  });
+
+  it("pauses an interactive edit step and amends it before continuing", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-edit-test-"));
+    directories.push(root);
+    const directory = path.join(root, "repo");
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "file.txt"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Base"]);
+    const upstream = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await writeFile(path.join(directory, "file.txt"), "first\n");
+    await execFileAsync("git", ["-C", directory, "commit", "-am", "First"]);
+    const revision = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    const action = {
+      type: "interactiveRebase" as const,
+      upstreamRef: upstream,
+      todo: [{ action: "edit" as const, revision, message: null }],
+    };
+    const preview = await previewGitManagedOperation(directory, action);
+    const paused = await startGitManagedOperation(
+      directory,
+      action,
+      preview.token,
+    );
+    expect(paused).toMatchObject({
+      state: "awaiting-user-action",
+      pausedAction: "edit",
+    });
+    await writeFile(path.join(directory, "file.txt"), "edited\n");
+    await execFileAsync("git", ["-C", directory, "add", "file.txt"]);
+    const completed = await amendGitManagedOperation(
+      directory,
+      preview.context,
+      "Edited commit",
+    );
+    expect(completed.state).toBe("completed");
+    expect(await readFile(path.join(directory, "file.txt"), "utf8")).toBe(
+      "edited\n",
+    );
+    expect(
+      (
+        await execFileAsync("git", [
+          "-C",
+          directory,
+          "log",
+          "-1",
+          "--format=%s",
+        ])
+      ).stdout.trim(),
+    ).toBe("Edited commit");
+  });
+
+  it("resumes a queued reword after an interactive rebase conflict", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-rewrite-resume-"));
+    directories.push(root);
+    const directory = path.join(root, "repo");
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "shared.txt"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Base"]);
+    const upstream = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await writeFile(path.join(directory, "shared.txt"), "feature\n");
+    await execFileAsync("git", ["-C", directory, "commit", "-am", "Feature A"]);
+    const first = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await writeFile(path.join(directory, "shared.txt"), "later\n");
+    await execFileAsync("git", ["-C", directory, "commit", "-am", "Feature B"]);
+    const second = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    const action = {
+      type: "interactiveRebase" as const,
+      upstreamRef: upstream,
+      todo: [
+        { action: "pick" as const, revision: second, message: null },
+        {
+          action: "reword" as const,
+          revision: first,
+          message: "Feature A rewritten after conflict",
+        },
+      ],
+    };
+    const preview = await previewGitManagedOperation(directory, action);
+    expect(preview.wouldConflict).toBe(true);
+    const conflicted = await startGitManagedOperation(
+      directory,
+      action,
+      preview.token,
+    );
+    expect(conflicted.state).toBe("conflicted");
+    await expect(
+      amendGitManagedOperation(directory, preview.context, "Wrong step"),
+    ).rejects.toThrow("not paused at an edit step");
+    await writeFile(path.join(directory, "shared.txt"), "later\n");
+    await execFileAsync("git", ["-C", directory, "add", "shared.txt"]);
+    let resumed = conflicted;
+    for (
+      let attempt = 0;
+      attempt < 4 && resumed.state !== "completed";
+      attempt += 1
+    ) {
+      if (resumed.state === "conflicted") {
+        await writeFile(
+          path.join(directory, "shared.txt"),
+          attempt === 0 ? "later\n" : "feature\n",
+        );
+        await execFileAsync("git", ["-C", directory, "add", "shared.txt"]);
+      }
+      resumed = await controlGitManagedOperation(
+        directory,
+        preview.context,
+        "continue",
+      );
+    }
+    expect(resumed.state, resumed.output).toBe("completed");
+    expect(
+      (
+        await execFileAsync("git", [
+          "-C",
+          directory,
+          "log",
+          "-1",
+          "--format=%s",
+        ])
+      ).stdout.trim(),
+    ).toBe("Feature A rewritten after conflict");
   });
 
   it("previews and cherry-picks ordered commit ranges on the explicit worktree", async () => {

@@ -595,6 +595,20 @@ export async function controlProjectWorktreeGitOperation(
   );
 }
 
+export async function amendProjectWorktreeGitOperation(
+  projectId: string,
+  worktreeId: string,
+  operationId: string,
+  message: string | null,
+) {
+  return gitManagedOperationResponseSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/operations/${encodeURIComponent(operationId)}/amend`,
+      { message },
+    ),
+  );
+}
+
 export async function getProjectWorktreeGitConflicts(
   projectId: string,
   worktreeId: string,

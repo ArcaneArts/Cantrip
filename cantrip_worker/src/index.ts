@@ -24,6 +24,7 @@ import {
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
 import {
+  amendGitManagedOperation,
   applyGitBranchAction,
   applyGitCommitAction,
   applyGitConflictResolution,
@@ -330,6 +331,12 @@ async function start(): Promise<void> {
           command.cwd,
           command.context,
           command.action,
+        );
+      case "git.operation.amend":
+        return amendGitManagedOperation(
+          command.cwd,
+          command.context,
+          command.message,
         );
       case "git.conflicts.list":
         return listGitConflicts(command.cwd);

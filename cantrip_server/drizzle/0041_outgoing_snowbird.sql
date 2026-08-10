@@ -1,0 +1,1 @@
+ALTER TABLE "git_operations" ADD COLUMN "paused_action" text;

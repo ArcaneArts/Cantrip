@@ -346,6 +346,46 @@ Manual QA:
    and untracked changes. Resolve and finish one run, abort another, and verify
    the source stash and checkpoint semantics in both cases.
 
+## Interactive history rewriting
+
+Choose **Rewrite** in the History tab's Operations panel, then select an
+ancestor of the current branch. The worker resolves every commit after that
+upstream and returns a complete pick-only plan. Each commit must remain in the
+todo exactly once, but the plan can reorder it or change its action to pick,
+reword, edit, squash, fixup, or drop. Reword requires its replacement message;
+squash and fixup require an earlier retained commit; dropping every commit is
+rejected. The exact validated Git todo is shown before Start becomes available.
+
+Preview runs the complete plan in a detached temporary worktree. Edit steps are
+continued without changes for preview purposes, while conflicts remain visible
+as a bounded patch. Apply recomputes the plan and selected-worktree fingerprint,
+so changed commits, refs, files, or plan contents invalidate the token. Before
+the real rewrite, Cantrip preserves original HEAD under a
+`refs/cantrip/checkpoints/rewrite-...` recovery ref.
+
+Sequence and reword editor state lives under the repository's private Git
+directory rather than the source tree, allowing reword, squash, and conflict
+continuation after worker or server reconnects. An explicit edit step pauses as
+awaiting user action. Stage changes through Working changes and use **Amend and
+continue** with an optional replacement message, or continue without amending.
+The normal conflict resolver, skip, continue, and abort controls remain durable
+through the server-owned operation record.
+
+Manual QA:
+
+1. Load a five-commit plan, reorder it, reword one commit, squash and fixup two,
+   drop one, validate, and compare the displayed todo with the resulting log.
+2. Change a plan after validation and confirm Start remains disabled until the
+   exact todo and patch are recomputed.
+3. Pause at an edit step, change and stage a file, amend the commit message,
+   reconnect the app, and continue the remaining plan.
+4. Cause a conflict after a reword step, restart the worker, resolve it, and
+   verify later queued reword messages still apply to their intended commits.
+5. Abort an edit or conflict and verify HEAD returns to the recovery ref's
+   commit while the recovery ref itself remains inspectable.
+6. Attempt a missing, duplicated, all-drop, or leading squash/fixup todo and
+   confirm the worker rejects it without mutating the selected worktree.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport

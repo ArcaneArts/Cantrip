@@ -166,6 +166,57 @@ describe("Cantrip protocol", () => {
         action: { type: "merge", sourceRef: "bad\nref" },
       }).success,
     ).toBe(false);
+    const rewrite = gitManagedOperationPreviewSchema.parse({
+      action: {
+        type: "interactiveRebase",
+        upstreamRef: "origin/main",
+        todo: [
+          {
+            action: "reword",
+            revision: head,
+            message: "Clearer feature message",
+          },
+        ],
+      },
+      token: "b".repeat(64),
+      destructive: true,
+      summary: "Rewrite feature history.",
+      warnings: ["Commit identities change."],
+      context,
+      commits: [],
+      files: [],
+      patch: "",
+      patchTruncated: false,
+      wouldConflict: false,
+      todo: [
+        {
+          action: "reword",
+          revision: head,
+          message: "Clearer feature message",
+        },
+      ],
+      todoText: `reword ${head} Feature work`,
+    });
+    expect(rewrite.todo[0]?.action).toBe("reword");
+    expect(
+      workerCommandSchema.parse({
+        type: "git.operation.amend",
+        cwd: "/repo",
+        context,
+        message: "Edited during rebase",
+      }).message,
+    ).toBe("Edited during rebase");
+    expect(
+      workerCommandSchema.safeParse({
+        type: "git.operation.preview",
+        cwd: "/repo",
+        action: {
+          type: "interactiveRebase",
+          upstreamRef: "origin/main",
+          todo: [{ action: "reword", revision: head, message: null }],
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("validates reviewed commit actions and resumable conflict state", () => {

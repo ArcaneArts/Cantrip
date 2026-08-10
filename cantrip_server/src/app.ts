@@ -118,6 +118,7 @@ import {
   gitConflictResolutionPreviewSchema,
   gitConflictResolutionRequestSchema,
   gitConflictResolutionResultSchema,
+  gitManagedOperationAmendSchema,
   gitManagedOperationControlSchema,
   gitManagedOperationPreviewSchema,
   gitManagedOperationResponseSchema,
@@ -5666,6 +5667,101 @@ export async function buildApp({
                     cwd: context.worktree.path,
                     context: gitManagedOperationContext(durable),
                     action: input.data.action,
+                  },
+                  { timeoutMs: null },
+                ),
+              );
+            } finally {
+              runningGitOperationRequests.delete(durable.id);
+            }
+            const updated = await repository.updateGitOperation(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+              durable.id,
+              workerState,
+            );
+            if (!updated) throw new Error("Git operation record disappeared.");
+            await recordLiveWorktreeStatus(
+              request.params.projectId,
+              request.params.worktreeId,
+              worktreeStatusFromGitStatus(context.worktree, workerState.status),
+            );
+            publishLiveInvalidation("git-operation", {
+              entityId: durable.id,
+              projectId: request.params.projectId,
+            });
+            publishLiveInvalidation("worktree", {
+              projectId: request.params.projectId,
+            });
+            publishLiveInvalidation("worktree-status", {
+              projectId: request.params.projectId,
+            });
+            void scheduleProjectWorktreeObservation(request.params.projectId);
+            return updated;
+          },
+        );
+        return reply.send(
+          gitManagedOperationResponseSchema.parse({ operation }),
+        );
+      } catch (error) {
+        return reply
+          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{
+    Params: { projectId: string; worktreeId: string; operationId: string };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/operations/:operationId/amend",
+    async (request, reply) => {
+      const input = gitManagedOperationAmendSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const operation = await worktreeCoordinator.serialize(
+          request.params.projectId,
+          async () => {
+            const [context, durable] = await Promise.all([
+              repository.getProjectWorktreeContext(
+                LOCAL_USER_ID,
+                request.params.projectId,
+                request.params.worktreeId,
+              ),
+              repository.getGitOperation(
+                LOCAL_USER_ID,
+                request.params.projectId,
+                request.params.worktreeId,
+                request.params.operationId,
+              ),
+            ]);
+            if (!context || !durable) {
+              throw new Error("Git operation not found.");
+            }
+            if (durable.workerId !== context.workerId) {
+              throw new Error(
+                "The Git operation belongs to a different worker than this worktree.",
+              );
+            }
+            if (["completed", "failed", "aborted"].includes(durable.state)) {
+              throw new Error(
+                `This Git operation is already ${durable.state}.`,
+              );
+            }
+            runningGitOperationRequests.add(durable.id);
+            let workerState: GitManagedOperationWorkerState;
+            try {
+              workerState = gitManagedOperationWorkerStateSchema.parse(
+                await bridge.request(
+                  context.workerId,
+                  {
+                    type: "git.operation.amend",
+                    cwd: context.worktree.path,
+                    context: gitManagedOperationContext(durable),
+                    message: input.data.message,
                   },
                   { timeoutMs: null },
                 ),
