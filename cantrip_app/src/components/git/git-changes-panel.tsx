@@ -33,6 +33,10 @@ import { cn } from "@/lib/utils";
 
 import { buildGitChangeTree, type GitChangeTreeNode } from "./git-change-tree";
 import { GitFileDiffView } from "./git-file-diff-view";
+import {
+  GitForcePushDialog,
+  gitPushRequiresLease,
+} from "./git-force-push-dialog";
 
 type ChangeScope = "unstaged" | "staged";
 
@@ -259,6 +263,7 @@ export function GitChangesPanel({
   const [newBranchOpen, setNewBranchOpen] = useState(false);
   const [newBranchName, setNewBranchName] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const [forcePushOpen, setForcePushOpen] = useState(false);
   const [selected, setSelected] = useState<SelectedChange | null>(null);
   const action = useMutation({
     mutationFn: (input: GitAction) =>
@@ -360,6 +365,13 @@ export function GitChangesPanel({
     action.reset();
     setNotice(null);
     setDiscardTarget(target);
+  };
+  const requestPush = () => {
+    if (gitPushRequiresLease(status)) {
+      setForcePushOpen(true);
+      return;
+    }
+    action.mutate({ type: "push" });
   };
 
   return (
@@ -494,7 +506,7 @@ export function GitChangesPanel({
                 variant="outline"
                 className="min-w-0 overflow-hidden"
                 disabled={busy}
-                onClick={() => action.mutate({ type: "push" })}
+                onClick={requestPush}
               >
                 <ArrowUpFromLine className="size-3.5" />
                 <span className="truncate">
@@ -708,6 +720,16 @@ export function GitChangesPanel({
           </form>
         </DialogContent>
       </Dialog>
+
+      <GitForcePushDialog
+        open={forcePushOpen}
+        onOpenChange={setForcePushOpen}
+        projectId={projectId}
+        worktreeId={worktreeId}
+        onApplied={(result) => {
+          setNotice(result.output || "Force push complete.");
+        }}
+      />
     </aside>
   );
 }

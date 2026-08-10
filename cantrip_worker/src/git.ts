@@ -29,6 +29,7 @@ import {
   gitComparisonSchema,
   gitCommitDetailSchema,
   gitFileDiffSchema,
+  gitForcePushPreviewSchema,
   gitHistorySchema,
   gitPartialPatchPreviewSchema,
   gitRemoteActionPreviewSchema,
@@ -75,6 +76,7 @@ import {
   type GitCommitFile,
   type GitDiffScope,
   type GitFileDiff,
+  type GitForcePushPreview,
   type GitHistory,
   type GitPartialPatchPreview,
   type GitPartialPatchRequest,
@@ -111,6 +113,7 @@ const COMMIT_FILE_LIMIT = 100_000;
 const BRANCH_LIMIT = 20_000;
 const TAG_LIMIT = 10_000;
 const REMOTE_TIMEOUT_MS = 30_000;
+const FORCE_PUSH_COMMIT_LIMIT = 100;
 
 async function gitOutput(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
@@ -3428,6 +3431,52 @@ function interactiveRebaseSourceRef(action: GitMergeRebaseAction): string {
     : action.sourceRef;
 }
 
+async function publishedRemoteRefs(
+  cwd: string,
+  baseRevision: string,
+  originalHead: string,
+): Promise<string[]> {
+  const output = await gitRaw(cwd, [
+    "for-each-ref",
+    "--format=%(refname:short)%00%(objectname)%00%(symref)",
+    "refs/remotes",
+  ]).catch(() => "");
+  const refs = output
+    .split("\n")
+    .filter(Boolean)
+    .flatMap((line) => {
+      const [name, revision, symbolicTarget] = line.split("\0");
+      return name && revision && !symbolicTarget ? [{ name, revision }] : [];
+    })
+    .slice(0, 1_000);
+  const published = new Set<string>();
+  for (let offset = 0; offset < refs.length; offset += 16) {
+    const batch = refs.slice(offset, offset + 16);
+    await Promise.all(
+      batch.map(async (ref) => {
+        const mergeBase = await gitOutput(cwd, [
+          "merge-base",
+          originalHead,
+          ref.revision,
+        ]).catch(() => "");
+        if (
+          mergeBase &&
+          mergeBase !== baseRevision &&
+          (await gitSucceeds(cwd, [
+            "merge-base",
+            "--is-ancestor",
+            baseRevision,
+            mergeBase,
+          ]))
+        ) {
+          published.add(ref.name);
+        }
+      }),
+    );
+  }
+  return [...published].sort((left, right) => left.localeCompare(right));
+}
+
 async function normalizeInteractiveRebaseTodo(
   cwd: string,
   action: GitInteractiveRebaseAction,
@@ -3867,6 +3916,10 @@ export async function previewGitManagedOperation(
     originalHead,
     sourceRevision,
   );
+  const publishedRefs =
+    action.type === "interactiveRebase"
+      ? await publishedRemoteRefs(cwd, sourceRevision, originalHead)
+      : [];
   const baseContext: GitManagedOperationContext = {
     type: action.type === "merge" ? "merge" : "rebase",
     originalHead,
@@ -3909,6 +3962,11 @@ export async function previewGitManagedOperation(
       "Rebase rewrites commit identities. Cantrip creates a recovery reference before it starts.",
     );
   }
+  if (publishedRefs.length > 0) {
+    warnings.push(
+      `This plan rewrites commits already reachable from ${publishedRefs.length === 1 ? "remote-tracking ref" : "remote-tracking refs"} ${publishedRefs.join(", ")}. Updating the remote requires a separately reviewed force-with-lease push.`,
+    );
+  }
   return gitManagedOperationPreviewSchema.parse({
     action: resolvedAction,
     token,
@@ -3924,6 +3982,7 @@ export async function previewGitManagedOperation(
     commits,
     todo,
     todoText,
+    publishedRefs,
     ...effect,
   });
 }
@@ -4803,6 +4862,199 @@ async function discardUnstaged(
     );
   }
   return output.filter(Boolean).join("\n");
+}
+
+async function forcePushCommitRange(
+  cwd: string,
+  range: string,
+): Promise<{
+  commits: GitComparisonCommit[];
+  count: number;
+  truncated: boolean;
+}> {
+  const [countText, revisionsText] = await Promise.all([
+    gitOutput(cwd, ["rev-list", "--count", range]),
+    gitOutput(cwd, [
+      "rev-list",
+      "--reverse",
+      `--max-count=${FORCE_PUSH_COMMIT_LIMIT + 1}`,
+      range,
+    ]).catch(() => ""),
+  ]);
+  const count = Number.parseInt(countText, 10) || 0;
+  const revisions = revisionsText.split("\n").filter(Boolean);
+  return {
+    commits: await Promise.all(
+      revisions
+        .slice(0, FORCE_PUSH_COMMIT_LIMIT)
+        .map((revision) => commitActionSummary(cwd, revision)),
+    ),
+    count,
+    truncated: count > FORCE_PUSH_COMMIT_LIMIT,
+  };
+}
+
+async function currentRemotePushTarget(cwd: string): Promise<{
+  localBranch: string;
+  remote: string;
+  remoteBranch: string;
+  upstream: string;
+}> {
+  const status = await readGitStatus(cwd);
+  if (!status.branch) throw new Error("Cannot force-push a detached HEAD.");
+  if (!status.upstream) {
+    throw new Error(
+      "This branch has no upstream. Publish it with a normal push first.",
+    );
+  }
+  const remotes = (await gitOutput(cwd, ["remote"]))
+    .split("\n")
+    .filter(Boolean)
+    .sort((left, right) => right.length - left.length);
+  const remote = remotes.find((name) =>
+    status.upstream!.startsWith(`${name}/`),
+  );
+  if (!remote) {
+    throw new Error(
+      `Upstream ${status.upstream} is not owned by a configured remote.`,
+    );
+  }
+  const remoteBranch = status.upstream.slice(remote.length + 1);
+  if (!remoteBranch) throw new Error("The upstream branch name is invalid.");
+  await Promise.all([
+    runGit(cwd, ["check-ref-format", "--branch", status.branch]),
+    runGit(cwd, ["check-ref-format", "--branch", remoteBranch]),
+  ]);
+  return {
+    localBranch: status.branch,
+    remote,
+    remoteBranch,
+    upstream: status.upstream,
+  };
+}
+
+export async function previewGitForcePush(
+  cwd: string,
+): Promise<GitForcePushPreview> {
+  await assertNoInProgressGitOperation(cwd);
+  const target = await currentRemotePushTarget(cwd);
+  const remoteRef = `refs/heads/${target.remoteBranch}`;
+  const trackingRef = `refs/remotes/${target.remote}/${target.remoteBranch}`;
+  await runGit(cwd, [
+    "fetch",
+    "--no-tags",
+    target.remote,
+    `+${remoteRef}:${trackingRef}`,
+  ]);
+  const [localHead, expectedRemoteHead] = await Promise.all([
+    resolveCommit(cwd, "HEAD"),
+    resolveCommit(cwd, trackingRef),
+  ]);
+  if (
+    await gitSucceeds(cwd, [
+      "merge-base",
+      "--is-ancestor",
+      expectedRemoteHead,
+      localHead,
+    ])
+  ) {
+    throw new Error(
+      "The remote branch is an ancestor of this branch. Use a normal push.",
+    );
+  }
+  if (
+    await gitSucceeds(cwd, [
+      "merge-base",
+      "--is-ancestor",
+      localHead,
+      expectedRemoteHead,
+    ])
+  ) {
+    throw new Error(
+      "This branch has no replacement commits and is only behind its remote. Pull or rebase instead.",
+    );
+  }
+  const [local, remote, commonBase] = await Promise.all([
+    forcePushCommitRange(cwd, `${expectedRemoteHead}..${localHead}`),
+    forcePushCommitRange(cwd, `${localHead}..${expectedRemoteHead}`),
+    gitOutput(cwd, ["merge-base", localHead, expectedRemoteHead]).catch(
+      () => "",
+    ),
+  ]);
+  if (remote.count === 0) {
+    throw new Error(
+      "The remote branch has no commits to replace. Use a normal push.",
+    );
+  }
+  const warnings = [
+    `${remote.count} remote ${remote.count === 1 ? "commit" : "commits"} will no longer be reachable from ${target.remote}/${target.remoteBranch}.`,
+    `The lease is pinned to remote commit ${expectedRemoteHead.slice(0, 12)}. The push will fail safely if the remote moves after this preview.`,
+  ];
+  if (!commonBase) {
+    warnings.unshift(
+      "The local and remote histories are unrelated. This replacement is especially destructive.",
+    );
+  }
+  const token = createHash("sha256")
+    .update(
+      JSON.stringify({
+        localBranch: target.localBranch,
+        localHead,
+        remote: target.remote,
+        remoteBranch: target.remoteBranch,
+        expectedRemoteHead,
+      }),
+    )
+    .digest("hex");
+  return gitForcePushPreviewSchema.parse({
+    token,
+    destructive: true,
+    summary: `Replace ${target.remote}/${target.remoteBranch} with ${target.localBranch} using force-with-lease.`,
+    warnings,
+    remote: target.remote,
+    localBranch: target.localBranch,
+    remoteBranch: target.remoteBranch,
+    localHead,
+    expectedRemoteHead,
+    localCommits: local.commits,
+    localCommitCount: local.count,
+    localCommitsTruncated: local.truncated,
+    remoteCommits: remote.commits,
+    remoteCommitCount: remote.count,
+    remoteCommitsTruncated: remote.truncated,
+  });
+}
+
+export async function applyGitForcePush(
+  cwd: string,
+  token: string,
+): Promise<GitActionResult> {
+  const preview = await previewGitForcePush(cwd);
+  if (preview.token !== token) {
+    throw new Error(
+      "The local or remote branch moved after this preview. Review the force push again.",
+    );
+  }
+  const output = await runGit(cwd, gitForcePushArguments(preview));
+  return gitActionResultSchema.parse({
+    status: await readGitStatus(cwd),
+    output,
+  });
+}
+
+export function gitForcePushArguments(
+  preview: Pick<
+    GitForcePushPreview,
+    "expectedRemoteHead" | "remote" | "remoteBranch"
+  >,
+): string[] {
+  const remoteRef = `refs/heads/${preview.remoteBranch}`;
+  return [
+    "push",
+    `--force-with-lease=${remoteRef}:${preview.expectedRemoteHead}`,
+    preview.remote,
+    `HEAD:${remoteRef}`,
+  ];
 }
 
 export async function runGitAction(

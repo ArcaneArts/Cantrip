@@ -3814,6 +3814,7 @@ export const gitManagedOperationPreviewSchema = z.object({
   wouldConflict: z.boolean(),
   todo: z.array(gitInteractiveRebaseTodoItemSchema).max(10_000).default([]),
   todoText: z.string().max(2_000_000).default(""),
+  publishedRefs: z.array(z.string().min(1).max(1_024)).max(1_000).default([]),
 });
 
 export const gitManagedOperationStartSchema = z.object({
@@ -4013,6 +4014,28 @@ export const gitActionSchema = z.discriminatedUnion("type", [
 export const gitActionResultSchema = z.object({
   status: gitStatusSchema,
   output: z.string(),
+});
+
+export const gitForcePushPreviewSchema = z.object({
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+  destructive: z.literal(true),
+  summary: z.string().min(1).max(10_000),
+  warnings: z.array(z.string().min(1).max(1_000)).max(100),
+  remote: gitRemoteNameInputSchema,
+  localBranch: gitBranchNameInputSchema,
+  remoteBranch: gitBranchNameInputSchema,
+  localHead: gitCommitHashInputSchema,
+  expectedRemoteHead: gitCommitHashInputSchema,
+  localCommits: z.array(gitComparisonCommitSchema).max(200),
+  localCommitCount: z.number().int().nonnegative(),
+  localCommitsTruncated: z.boolean(),
+  remoteCommits: z.array(gitComparisonCommitSchema).max(200),
+  remoteCommitCount: z.number().int().positive(),
+  remoteCommitsTruncated: z.boolean(),
+});
+
+export const gitForcePushApplySchema = z.object({
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
 });
 
 export const workerWorktreeSummarySchema = z.object({
@@ -4514,6 +4537,16 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     cwd: z.string().min(1),
     action: gitActionSchema,
   }),
+  z.object({
+    type: z.literal("git.force-push.preview"),
+    cwd: z.string().min(1).max(8_192),
+  }),
+  z
+    .object({
+      type: z.literal("git.force-push.apply"),
+      cwd: z.string().min(1).max(8_192),
+    })
+    .extend(gitForcePushApplySchema.shape),
   z.object({
     type: z.literal("worktree.list"),
     sourcePath: z.string().min(1),
@@ -5344,6 +5377,8 @@ export type GitCommitActionApply = z.infer<typeof gitCommitActionApplySchema>;
 export type GitCommitActionResult = z.infer<typeof gitCommitActionResultSchema>;
 export type GitAction = z.infer<typeof gitActionSchema>;
 export type GitActionResult = z.infer<typeof gitActionResultSchema>;
+export type GitForcePushPreview = z.infer<typeof gitForcePushPreviewSchema>;
+export type GitForcePushApply = z.infer<typeof gitForcePushApplySchema>;
 export type WorkerWorktreeSummary = z.infer<typeof workerWorktreeSummarySchema>;
 export type WorktreeInventory = z.infer<typeof worktreeInventorySchema>;
 export type WorktreeCreateMode = z.infer<typeof worktreeCreateModeSchema>;

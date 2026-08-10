@@ -612,6 +612,20 @@ export function GitOperationPanel({
             </div>
           ) : preview.data ? (
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+              {preview.data.publishedRefs.length > 0 ? (
+                <div className="shrink-0 rounded-lg border border-destructive/50 bg-destructive/5 p-3 text-sm">
+                  <p className="flex items-center gap-2 font-semibold text-destructive">
+                    <AlertTriangle className="size-4" /> Published history will
+                    be rewritten
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    These commits are already reachable from{" "}
+                    {preview.data.publishedRefs.join(", ")}. Cantrip will not
+                    update those refs automatically; doing so requires a
+                    separate reviewed force-with-lease push.
+                  </p>
+                </div>
+              ) : null}
               {reviewedAction?.type === "interactiveRebase" ? (
                 <div className="min-h-0 shrink overflow-auto rounded-lg border">
                   <div className="sticky top-0 z-10 flex items-center gap-2 border-b bg-background px-3 py-2">

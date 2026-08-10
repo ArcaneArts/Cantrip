@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   amendGitManagedOperation,
+  applyGitForcePush,
   applyGitBranchAction,
   applyGitCommitAction,
   applyGitConflictResolution,
@@ -17,6 +18,7 @@ import {
   applyGitTagAction,
   controlGitManagedOperation,
   createGitStash,
+  gitForcePushArguments,
   previewGitBranchAction,
   previewGitCommitAction,
   previewGitConflictResolution,
@@ -25,6 +27,7 @@ import {
   previewGitStashAction,
   previewGitTagAction,
   previewGitManagedOperation,
+  previewGitForcePush,
   readGitCommitDetail,
   readGitConflict,
   readGitBranches,
@@ -418,6 +421,142 @@ describe("Git history", () => {
         todo: [action.todo[1]!],
       }),
     ).rejects.toThrow("every selected commit");
+  });
+
+  it("warns about published rewrites and force-pushes with an exact lease", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-force-lease-"));
+    directories.push(root);
+    const directory = path.join(root, "repo");
+    const remote = path.join(root, "remote.git");
+    await execFileAsync("git", ["init", "--bare", "-b", "main", remote]);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "file.txt"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Base"]);
+    const base = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "remote",
+      "add",
+      "origin",
+      remote,
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "push",
+      "-u",
+      "origin",
+      "main",
+    ]);
+    await writeFile(path.join(directory, "file.txt"), "published\n");
+    await execFileAsync("git", ["-C", directory, "commit", "-am", "Published"]);
+    const published = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await execFileAsync("git", ["-C", directory, "push"]);
+    await expect(previewGitForcePush(directory)).rejects.toThrow(
+      "Use a normal push",
+    );
+
+    const rewrite = await previewGitManagedOperation(directory, {
+      type: "interactiveRebase",
+      upstreamRef: base,
+      todo: [
+        {
+          action: "reword",
+          revision: published,
+          message: "Published rewritten",
+        },
+      ],
+    });
+    expect(rewrite.publishedRefs).toContain("origin/main");
+    expect(rewrite.warnings.join(" ")).toContain("force-with-lease");
+
+    await execFileAsync("git", ["-C", directory, "reset", "--hard", base]);
+    await writeFile(path.join(directory, "file.txt"), "rewritten\n");
+    await execFileAsync("git", ["-C", directory, "commit", "-am", "Rewritten"]);
+    const localHead = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    const preview = await previewGitForcePush(directory);
+    expect(preview).toMatchObject({
+      remote: "origin",
+      remoteBranch: "main",
+      expectedRemoteHead: published,
+      localHead,
+      localCommitCount: 1,
+      remoteCommitCount: 1,
+    });
+    expect(gitForcePushArguments(preview)).toEqual([
+      "push",
+      `--force-with-lease=refs/heads/main:${published}`,
+      "origin",
+      "HEAD:refs/heads/main",
+    ]);
+    const applied = await applyGitForcePush(directory, preview.token);
+    expect(applied.status).toMatchObject({ ahead: 0, behind: 0 });
+    expect(
+      (
+        await execFileAsync("git", [
+          "--git-dir",
+          remote,
+          "rev-parse",
+          "refs/heads/main",
+        ])
+      ).stdout.trim(),
+    ).toBe(localHead);
+
+    await execFileAsync("git", ["-C", directory, "reset", "--hard", base]);
+    await writeFile(path.join(directory, "file.txt"), "second rewrite\n");
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "commit",
+      "-am",
+      "Second rewrite",
+    ]);
+    const stalePreview = await previewGitForcePush(directory);
+    const other = path.join(root, "other");
+    await execFileAsync("git", ["clone", remote, other]);
+    await execFileAsync("git", [
+      "-C",
+      other,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      other,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(other, "other.txt"), "remote moved\n");
+    await execFileAsync("git", ["-C", other, "add", "."]);
+    await execFileAsync("git", ["-C", other, "commit", "-m", "Remote moved"]);
+    await execFileAsync("git", ["-C", other, "push"]);
+    await expect(
+      applyGitForcePush(directory, stalePreview.token),
+    ).rejects.toThrow("moved after this preview");
   });
 
   it("pauses an interactive edit step and amends it before continuing", async () => {

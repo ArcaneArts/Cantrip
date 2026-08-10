@@ -50,6 +50,7 @@ import {
   gitCommitDetailSchema,
   gitComparisonSchema,
   gitFileDiffSchema,
+  gitForcePushPreviewSchema,
   gitPartialPatchPreviewSchema,
   gitStashActionPreviewSchema,
   gitStashCreateSchema,
@@ -196,8 +197,36 @@ describe("Cantrip protocol", () => {
         },
       ],
       todoText: `reword ${head} Feature work`,
+      publishedRefs: ["origin/main"],
     });
     expect(rewrite.todo[0]?.action).toBe("reword");
+    expect(rewrite.publishedRefs).toEqual(["origin/main"]);
+    expect(
+      gitForcePushPreviewSchema.parse({
+        token: "c".repeat(64),
+        destructive: true,
+        summary: "Replace origin/main with main.",
+        warnings: ["The lease is exact."],
+        remote: "origin",
+        localBranch: "main",
+        remoteBranch: "main",
+        localHead: head,
+        expectedRemoteHead: source,
+        localCommits: [],
+        localCommitCount: 2,
+        localCommitsTruncated: false,
+        remoteCommits: [],
+        remoteCommitCount: 1,
+        remoteCommitsTruncated: false,
+      }).expectedRemoteHead,
+    ).toBe(source);
+    expect(
+      workerCommandSchema.parse({
+        type: "git.force-push.apply",
+        cwd: "/repo",
+        token: "c".repeat(64),
+      }).token,
+    ).toBe("c".repeat(64));
     expect(
       workerCommandSchema.parse({
         type: "git.operation.amend",

@@ -386,6 +386,35 @@ Manual QA:
 6. Attempt a missing, duplicated, all-drop, or leading squash/fixup todo and
    confirm the worker rejects it without mutating the selected worktree.
 
+### Published-history protection
+
+Interactive rewrite previews compare the selected range with every local
+remote-tracking ref. If a remote ref already reaches the range, the review
+shows a prominent published-history warning and names those refs. Completing a
+rewrite never pushes automatically.
+
+When the current branch has both outgoing and remote-only commits, **Push**
+opens a separate destructive review. The worker fetches the configured
+upstream, records its authoritative commit as an exact lease, and returns
+bounded lists of the local commits to publish and remote commits that will stop
+being reachable from that branch. The user must type the exact
+`remote/branch` before apply is enabled. Apply recomputes the preview and then
+uses `--force-with-lease=refs/heads/<branch>:<expected-oid>`; any local or
+remote movement invalidates the token or lease rather than overwriting newer
+work. Fast-forward pushes continue to use the normal Push action.
+
+Manual QA:
+
+1. Rewrite a commit already present on the upstream branch and verify the plan
+   names the published remote-tracking ref before Start.
+2. Complete the rewrite, choose Push, and verify the dialog lists both the
+   commits removed from the remote branch and the replacement local commits.
+3. Confirm the destructive button stays disabled until the exact remote/branch
+   text is entered, then push and verify ahead/behind returns to zero.
+4. Preview a force push, advance the remote from another clone, and verify
+   apply refuses to overwrite the new remote commit.
+5. Verify an ordinary ahead-only branch pushes without the destructive dialog.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport
@@ -397,7 +426,7 @@ Manual QA:
 - [x] Commit and history actions
 - [x] Resumable merge and rebase operations
 - [x] Conflict resolution
-- [ ] Advanced history rewriting
+- [x] Advanced history rewriting
 - [ ] Full GitHub pull-request workflow
 - [ ] File history, blame, and repository search
 - [ ] Recovery tools and bisect

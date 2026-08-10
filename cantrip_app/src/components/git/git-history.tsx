@@ -74,6 +74,10 @@ import {
 } from "./git-commit-action-dialog";
 import { GitCommitContextMenu } from "./git-commit-actions-menu";
 import { GitComparisonPanel } from "./git-comparison-panel";
+import {
+  GitForcePushDialog,
+  gitPushRequiresLease,
+} from "./git-force-push-dialog";
 import { GitStashPanel } from "./git-stash-panel";
 import { GitRepositoryPanel } from "./git-repository-panel";
 import { GitOperationPanel, gitOperationIsActive } from "./git-operation-panel";
@@ -398,6 +402,7 @@ export function GitHistoryView({
   const [branchesOpen, setBranchesOpen] = useState(false);
   const [repositoryOpen, setRepositoryOpen] = useState(false);
   const [operationsOpen, setOperationsOpen] = useState(false);
+  const [forcePushOpen, setForcePushOpen] = useState(false);
   const [operationPreset, setOperationPreset] =
     useState<GitMergeRebaseAction | null>(null);
   const [commitActionRequest, setCommitActionRequest] =
@@ -468,6 +473,13 @@ export function GitHistoryView({
       });
     },
   });
+  const requestPush = useCallback(() => {
+    if (gitPushRequiresLease(status)) {
+      setForcePushOpen(true);
+      return;
+    }
+    gitAction.mutate("push");
+  }, [gitAction.mutate, status?.ahead, status?.behind]);
   const reconcile = useMutation({
     mutationFn: () => reconcileProjectWorktrees(project.id),
     onSuccess: (next) => {
@@ -596,7 +608,7 @@ export function GitHistoryView({
       isGitActionPending: gitAction.isPending,
       section,
       pull: () => gitAction.mutate("pull"),
-      push: () => gitAction.mutate("push"),
+      push: requestPush,
       refresh: () => {
         if (section === "history") {
           reconcile.mutate();
@@ -621,6 +633,7 @@ export function GitHistoryView({
     onHeaderChange,
     project.id,
     queryClient,
+    requestPush,
     refreshIssues,
     reconcile.isPending,
     reconcile.mutate,
@@ -646,6 +659,7 @@ export function GitHistoryView({
     setBranchesOpen(false);
     setRepositoryOpen(false);
     setOperationsOpen(false);
+    setForcePushOpen(false);
     setOperationPreset(null);
     setCommitActionRequest(null);
     setCompareLeft(null);
@@ -735,7 +749,7 @@ export function GitHistoryView({
                   variant="ghost"
                   className="h-6 gap-1 px-2 text-[11px]"
                   disabled={gitAction.isPending}
-                  onClick={() => gitAction.mutate("push")}
+                  onClick={requestPush}
                 >
                   <ArrowUpFromLine className="size-3" /> Push
                 </Button>
@@ -1529,6 +1543,13 @@ export function GitHistoryView({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <GitForcePushDialog
+        open={forcePushOpen}
+        onOpenChange={setForcePushOpen}
+        projectId={project.id}
+        worktreeId={worktreeId}
+      />
     </div>
   );
 }
