@@ -25,7 +25,10 @@ import {
 import { GithubClient } from "./github.js";
 import {
   applyGitPartialPatch,
+  applyGitStashAction,
+  createGitStash,
   previewGitPartialPatch,
+  previewGitStashAction,
   readGitCommitDetail,
   readGitComparison,
   readGitFileDiff,
@@ -33,6 +36,8 @@ import {
   readGitRevisionFileDiff,
   readGitRevisionCandidates,
   readGitStatus,
+  readGitStashes,
+  readGitStashFileDiff,
   runGitAction,
 } from "./git.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
@@ -246,6 +251,16 @@ async function start(): Promise<void> {
           command.request,
           command.token,
         );
+      case "git.stash.list":
+        return readGitStashes(command.cwd);
+      case "git.stash.create":
+        return createGitStash(command.cwd, command.request);
+      case "git.stash.diff":
+        return readGitStashFileDiff(command.cwd, command.hash, command.path);
+      case "git.stash.action.preview":
+        return previewGitStashAction(command.cwd, command.action);
+      case "git.stash.action.apply":
+        return applyGitStashAction(command.cwd, command.action, command.token);
       case "git.action":
         return runGitAction(command.cwd, command.action);
       case "worktree.list":

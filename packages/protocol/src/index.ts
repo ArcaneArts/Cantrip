@@ -3207,6 +3207,117 @@ export const gitPartialPatchApplySchema = z.object({
   token: z.string().regex(/^[0-9a-f]{64}$/u),
 });
 
+export const gitStashFileSchema = z.object({
+  path: gitRelativePathSchema,
+  additions: z.number().int().nonnegative().nullable(),
+  deletions: z.number().int().nonnegative().nullable(),
+  binary: z.boolean(),
+});
+
+export const gitStashSummarySchema = z.object({
+  ref: z.string().regex(/^stash@\{\d+\}$/u),
+  hash: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  shortHash: z.string().min(7).max(64),
+  message: z.string().max(10_000),
+  createdAt: z.string().datetime({ offset: true }),
+  baseHash: z
+    .string()
+    .regex(/^[0-9a-f]{40,64}$/u)
+    .nullable(),
+  files: z.array(gitStashFileSchema).max(10_000),
+  filesChanged: z.number().int().nonnegative(),
+  filesTruncated: z.boolean(),
+  additions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+  includesUntracked: z.boolean(),
+});
+
+export const gitStashListSchema = z.object({
+  stashes: z.array(gitStashSummarySchema).max(10_000),
+  truncated: z.boolean(),
+});
+
+export const gitStashCreateSchema = z
+  .object({
+    message: z.string().trim().min(1).max(10_000),
+    includeStaged: z.boolean(),
+    includeUnstaged: z.boolean(),
+    includeUntracked: z.boolean(),
+  })
+  .superRefine((value, context) => {
+    if (
+      !value.includeStaged &&
+      !value.includeUnstaged &&
+      !value.includeUntracked
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Select at least one change scope.",
+      });
+    }
+    if (
+      value.includeStaged &&
+      !value.includeUnstaged &&
+      value.includeUntracked
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Git cannot combine staged-only and untracked stash scopes.",
+      });
+    }
+  });
+
+const gitStashIdentitySchema = z.object({
+  ref: z.string().regex(/^stash@\{\d+\}$/u),
+  hash: z.string().regex(/^[0-9a-f]{40,64}$/u),
+});
+
+export const gitBranchNameInputSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(255)
+  .regex(/^[^\0\r\n]+$/u);
+
+export const gitStashActionSchema = z.discriminatedUnion("type", [
+  gitStashIdentitySchema.extend({ type: z.literal("apply") }),
+  gitStashIdentitySchema.extend({ type: z.literal("pop") }),
+  gitStashIdentitySchema.extend({ type: z.literal("drop") }),
+  z.object({ type: z.literal("clear") }),
+  gitStashIdentitySchema.extend({
+    type: z.literal("branch"),
+    branch: gitBranchNameInputSchema,
+  }),
+]);
+
+export const gitStashActionPreviewSchema = z.object({
+  action: gitStashActionSchema,
+  stashes: z.array(gitStashSummarySchema).min(1).max(10_000),
+  destructive: z.boolean(),
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+  warnings: z.array(z.string().max(1_000)).max(100),
+});
+
+export const gitStashActionApplySchema = z.object({
+  action: gitStashActionSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+
+export const gitStashMutationResultSchema = z.object({
+  output: z.string().max(1_000_000),
+  status: gitStatusSchema,
+  stash: gitStashSummarySchema.nullable(),
+  conflictedPaths: z.array(gitRelativePathSchema).max(100_000),
+});
+
+export const gitStashFileDiffSchema = z.object({
+  hash: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  path: gitRelativePathSchema,
+  patch: z.string().max(2_000_000),
+  truncated: z.boolean(),
+  binary: z.boolean(),
+});
+
 const gitPathsSchema = z.array(gitRelativePathSchema).min(1).max(1_000);
 export const gitActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("stage"), paths: gitPathsSchema }),
@@ -3578,6 +3689,32 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       cwd: z.string().min(1).max(8_192),
     })
     .extend(gitPartialPatchApplySchema.shape),
+  z.object({
+    type: z.literal("git.stash.list"),
+    cwd: z.string().min(1).max(8_192),
+  }),
+  z.object({
+    type: z.literal("git.stash.create"),
+    cwd: z.string().min(1).max(8_192),
+    request: gitStashCreateSchema,
+  }),
+  z.object({
+    type: z.literal("git.stash.diff"),
+    cwd: z.string().min(1).max(8_192),
+    hash: z.string().regex(/^[0-9a-f]{40,64}$/u),
+    path: gitRelativePathSchema,
+  }),
+  z.object({
+    type: z.literal("git.stash.action.preview"),
+    cwd: z.string().min(1).max(8_192),
+    action: gitStashActionSchema,
+  }),
+  z
+    .object({
+      type: z.literal("git.stash.action.apply"),
+      cwd: z.string().min(1).max(8_192),
+    })
+    .extend(gitStashActionApplySchema.shape),
   z.object({
     type: z.literal("git.action"),
     cwd: z.string().min(1),
@@ -4299,6 +4436,17 @@ export type GitPartialPatchPreview = z.infer<
   typeof gitPartialPatchPreviewSchema
 >;
 export type GitPartialPatchApply = z.infer<typeof gitPartialPatchApplySchema>;
+export type GitStashFile = z.infer<typeof gitStashFileSchema>;
+export type GitStashSummary = z.infer<typeof gitStashSummarySchema>;
+export type GitStashList = z.infer<typeof gitStashListSchema>;
+export type GitStashCreate = z.infer<typeof gitStashCreateSchema>;
+export type GitStashAction = z.infer<typeof gitStashActionSchema>;
+export type GitStashActionPreview = z.infer<typeof gitStashActionPreviewSchema>;
+export type GitStashActionApply = z.infer<typeof gitStashActionApplySchema>;
+export type GitStashMutationResult = z.infer<
+  typeof gitStashMutationResultSchema
+>;
+export type GitStashFileDiff = z.infer<typeof gitStashFileDiffSchema>;
 export type GitAction = z.infer<typeof gitActionSchema>;
 export type GitActionResult = z.infer<typeof gitActionResultSchema>;
 export type WorkerWorktreeSummary = z.infer<typeof workerWorktreeSummarySchema>;

@@ -95,12 +95,48 @@ Manual QA:
 6. Stop the selected worktree's worker and confirm preview/apply reports the
    offline worker without falling back to another worktree.
 
+## Stashes and shelves
+
+Open a History tab and choose **Stashes**. The compact inspector lists the
+selected worktree repository's bounded stash stack with names, timestamps,
+file counts, aggregate stats, changed files, and lazy per-file patches in the
+shared diff viewer. New stashes can include staged changes, unstaged changes,
+and untracked files. A staged-only stash uses native Git behavior. When staged
+changes are excluded, the worker builds an isolated shelf with a temporary Git
+index so the real index remains untouched and the saved patch does not silently
+include staged content.
+
+Apply keeps the stash. Pop removes it only after a successful apply. A stash
+can also create a branch from its base commit. Drop and clear are destructive;
+all actions first show an authoritative worker preview, and apply requires its
+matching token. Moving stash positions or changing the working copy invalidates
+that token. If apply, pop, or branch produces conflicts, Cantrip reports the
+conflicted paths in the common Working changes surface and keeps the stash
+recoverable.
+
+Manual QA:
+
+1. Create full, staged-only, unstaged-only, and unstaged-plus-untracked stashes
+   and confirm excluded scopes remain in the selected worktree.
+2. Inspect tracked, untracked, binary, and large stash files and confirm lazy
+   patches and intentional binary/truncation states.
+3. Apply a stash and confirm it remains; pop a clean stash and confirm it is
+   removed only after its changes appear.
+4. Create a branch from a stash and confirm the branch starts at the recorded
+   base, receives the stash, and becomes the selected worktree branch.
+5. Create a conflicting change, pop the stash, and confirm its paths appear as
+   conflicts while the stash remains in the list.
+6. Preview a drop or clear, mutate the stash stack elsewhere, and confirm the
+   stale action is rejected before deletion.
+7. Disconnect the selected worktree's worker and confirm the list and actions
+   fail without targeting another worktree.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport
 - [x] Arbitrary revision comparison
 - [x] Hunk and selected-line staging
-- [ ] Stash/shelf management
+- [x] Stash/shelf management
 - [ ] Complete branch management
 - [ ] Remotes, tags, and GitHub releases
 - [ ] Commit and history actions

@@ -106,6 +106,13 @@ import {
   gitPartialPatchApplySchema,
   gitPartialPatchPreviewSchema,
   gitPartialPatchRequestSchema,
+  gitStashActionApplySchema,
+  gitStashActionPreviewSchema,
+  gitStashActionSchema,
+  gitStashCreateSchema,
+  gitStashFileDiffSchema,
+  gitStashListSchema,
+  gitStashMutationResultSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
   gitRelativePathSchema,
@@ -5233,6 +5240,195 @@ export async function buildApp({
                 type: "git.patch.apply",
                 cwd: context.worktree.path,
                 request: input.data.request,
+                token: input.data.token,
+              }),
+            );
+            await recordLiveWorktreeStatus(
+              request.params.projectId,
+              request.params.worktreeId,
+              worktreeStatusFromGitStatus(context.worktree, applied.status),
+            );
+            return applied;
+          },
+        );
+        return reply.send(result);
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/stashes",
+    async (request, reply) => {
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context)
+        return reply.code(404).send({ error: "Worktree not found." });
+      try {
+        return reply.send(
+          gitStashListSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "git.stash.list",
+              cwd: context.worktree.path,
+            }),
+          ),
+        );
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/stashes",
+    async (request, reply) => {
+      const input = gitStashCreateSchema.safeParse(request.body);
+      if (!input.success)
+        return reply.code(400).send(invalidBody(input.error.issues));
+      const existing = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!existing)
+        return reply.code(404).send({ error: "Worktree not found." });
+      try {
+        const result = await worktreeCoordinator.serialize(
+          request.params.projectId,
+          async () => {
+            const context = await repository.getProjectWorktreeContext(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (!context) throw new Error("Worktree not found.");
+            const created = gitStashMutationResultSchema.parse(
+              await bridge.request(context.workerId, {
+                type: "git.stash.create",
+                cwd: context.worktree.path,
+                request: input.data,
+              }),
+            );
+            await recordLiveWorktreeStatus(
+              request.params.projectId,
+              request.params.worktreeId,
+              worktreeStatusFromGitStatus(context.worktree, created.status),
+            );
+            return created;
+          },
+        );
+        return reply.send(result);
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string; worktreeId: string; hash: string };
+    Querystring: { path?: string };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/stashes/:hash/diff",
+    async (request, reply) => {
+      const filePath = gitRelativePathSchema.safeParse(request.query.path);
+      if (
+        !/^[0-9a-f]{40,64}$/u.test(request.params.hash) ||
+        !filePath.success
+      ) {
+        return reply
+          .code(400)
+          .send({ error: "A valid stash hash and path are required." });
+      }
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context)
+        return reply.code(404).send({ error: "Worktree not found." });
+      try {
+        return reply.send(
+          gitStashFileDiffSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "git.stash.diff",
+              cwd: context.worktree.path,
+              hash: request.params.hash,
+              path: filePath.data,
+            }),
+          ),
+        );
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/stashes/actions/preview",
+    async (request, reply) => {
+      const action = gitStashActionSchema.safeParse(request.body);
+      if (!action.success)
+        return reply.code(400).send(invalidBody(action.error.issues));
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context)
+        return reply.code(404).send({ error: "Worktree not found." });
+      try {
+        return reply.send(
+          gitStashActionPreviewSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "git.stash.action.preview",
+              cwd: context.worktree.path,
+              action: action.data,
+            }),
+          ),
+        );
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/stashes/actions/apply",
+    async (request, reply) => {
+      const input = gitStashActionApplySchema.safeParse(request.body);
+      if (!input.success)
+        return reply.code(400).send(invalidBody(input.error.issues));
+      const existing = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!existing)
+        return reply.code(404).send({ error: "Worktree not found." });
+      try {
+        const result = await worktreeCoordinator.serialize(
+          request.params.projectId,
+          async () => {
+            const context = await repository.getProjectWorktreeContext(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (!context) throw new Error("Worktree not found.");
+            const applied = gitStashMutationResultSchema.parse(
+              await bridge.request(context.workerId, {
+                type: "git.stash.action.apply",
+                cwd: context.worktree.path,
+                action: input.data.action,
                 token: input.data.token,
               }),
             );

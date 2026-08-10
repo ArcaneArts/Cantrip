@@ -41,6 +41,9 @@ import {
   gitComparisonSchema,
   gitFileDiffSchema,
   gitPartialPatchPreviewSchema,
+  gitStashActionPreviewSchema,
+  gitStashCreateSchema,
+  gitStashListSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
   mentionedSkillNames,
@@ -283,6 +286,94 @@ describe("Cantrip protocol", () => {
         type: "git.patch.preview",
         cwd: "/repo",
         request: { ...request, path: "../secret" },
+      }),
+    ).toThrow();
+  });
+
+  it("validates scoped stash creation, bounded lists, and reviewed actions", () => {
+    expect(
+      gitStashCreateSchema.parse({
+        message: "Review work",
+        includeStaged: false,
+        includeUnstaged: true,
+        includeUntracked: true,
+      }),
+    ).toMatchObject({ message: "Review work", includeUntracked: true });
+    expect(
+      workerCommandSchema.parse({
+        type: "git.stash.create",
+        cwd: "/repo",
+        request: {
+          message: "Review work",
+          includeStaged: false,
+          includeUnstaged: true,
+          includeUntracked: true,
+        },
+      }),
+    ).toMatchObject({ type: "git.stash.create" });
+    expect(() =>
+      gitStashCreateSchema.parse({
+        message: "Invalid",
+        includeStaged: true,
+        includeUnstaged: false,
+        includeUntracked: true,
+      }),
+    ).toThrow();
+    const stash = {
+      ref: "stash@{0}",
+      hash: "a".repeat(40),
+      shortHash: "a".repeat(8),
+      message: "Review work",
+      createdAt: "2026-08-10T12:00:00.000Z",
+      baseHash: "b".repeat(40),
+      files: [
+        {
+          path: "src/index.ts",
+          additions: 2,
+          deletions: 1,
+          binary: false,
+        },
+      ],
+      filesChanged: 1,
+      filesTruncated: false,
+      additions: 2,
+      deletions: 1,
+      includesUntracked: false,
+    };
+    expect(
+      gitStashListSchema.parse({ stashes: [stash], truncated: false }).stashes,
+    ).toHaveLength(1);
+    expect(
+      workerCommandSchema.parse({
+        type: "git.stash.diff",
+        cwd: "/repo",
+        hash: stash.hash,
+        path: "src/index.ts",
+      }),
+    ).toMatchObject({ type: "git.stash.diff", hash: stash.hash });
+    const action = { type: "pop" as const, ref: stash.ref, hash: stash.hash };
+    expect(
+      workerCommandSchema.parse({
+        type: "git.stash.action.apply",
+        cwd: "/repo",
+        action,
+        token: "c".repeat(64),
+      }),
+    ).toMatchObject({ type: "git.stash.action.apply", action });
+    expect(
+      gitStashActionPreviewSchema.parse({
+        action,
+        stashes: [stash],
+        destructive: true,
+        token: "d".repeat(64),
+        warnings: [],
+      }).destructive,
+    ).toBe(true);
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "git.stash.action.preview",
+        cwd: "/repo",
+        action: { type: "drop", ref: "stash@{0}", hash: "not-a-hash" },
       }),
     ).toThrow();
   });
