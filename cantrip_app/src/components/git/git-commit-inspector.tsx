@@ -59,23 +59,43 @@ export function commitFileStatusLabel(status: GitCommitFile["status"]): string {
 }
 
 export function signatureLabel(signature: GitSignature): string {
+  const format = signature.format
+    ? `${signature.format === "x509" ? "X.509" : signature.format.toUpperCase()} `
+    : "";
   switch (signature.status) {
     case "valid":
       return signature.signer
-        ? `Verified signature from ${signature.signer}`
-        : "Verified signature";
+        ? `Verified ${format}signature from ${signature.signer}`
+        : `Verified ${format}signature`;
     case "valid-unknown":
-      return "Valid signature from an untrusted key";
+      return `Valid ${format}signature from an untrusted key`;
     case "invalid":
-      return "Invalid signature";
+      return `Invalid ${format}signature`;
     case "expired":
-      return "Signature or signing key expired";
+      return `${format}signature or signing key expired`;
     case "revoked":
-      return "Signing key revoked";
+      return `${format}signing key revoked`;
     case "unverifiable":
-      return "Signature could not be verified";
+      return `${format}signature could not be verified`;
     default:
       return "Unsigned commit";
+  }
+}
+
+export function signatureVerificationLabel(
+  signature: GitSignature,
+): string | null {
+  switch (signature.verification) {
+    case "missing-key":
+      return "The verification key is unavailable on this worker.";
+    case "missing-config":
+      return "SSH allowed-signers verification is not configured on this worker.";
+    case "missing-tool":
+      return "The required signature verification tool is not installed on this worker.";
+    case "error":
+      return "Git could not complete signature verification on this worker.";
+    default:
+      return null;
   }
 }
 
@@ -99,10 +119,20 @@ function SignatureSummary({ signature }: { signature: GitSignature }) {
       <Icon className="mt-0.5 size-3.5 shrink-0" />
       <div className="min-w-0">
         <p>{signatureLabel(signature)}</p>
+        {signatureVerificationLabel(signature) ? (
+          <p className="mt-0.5 text-[10px] text-muted-foreground">
+            {signatureVerificationLabel(signature)}
+          </p>
+        ) : null}
         {signature.key || signature.fingerprint ? (
           <p className="mt-0.5 flex items-center gap-1 truncate font-mono text-[10px] text-muted-foreground">
             <KeyRound className="size-3 shrink-0" />
             {signature.fingerprint ?? signature.key}
+          </p>
+        ) : null}
+        {signature.verificationMessage ? (
+          <p className="mt-1 line-clamp-2 whitespace-pre-wrap font-mono text-[9px] text-muted-foreground">
+            {signature.verificationMessage}
           </p>
         ) : null}
       </div>

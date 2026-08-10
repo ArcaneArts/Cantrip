@@ -744,6 +744,37 @@ Manual QA:
    confirm apply rejects it. Disconnect the worker or LFS remote and confirm
    the UI degrades without moving credentials or falling back to another lane.
 
+## Commit and tag signatures
+
+Commit inspectors and annotated-tag details show the signature format, signer,
+key or fingerprint, and Git's bounded verification output. GPG, SSH, and X.509
+signatures are identified separately. A cryptographically invalid signature is
+not conflated with an otherwise-valid signature that the worker cannot verify:
+the UI calls out a missing public key, missing SSH allowed-signers
+configuration, missing verification tooling, or another Git verification
+error.
+
+Verification always runs on the worker that owns the selected checkout. Its
+GPG keyring, SSH allowed-signers file, and verification programs never move to
+the server or app. Unsigned commits and lightweight tags remain an intentional
+state, while older Git versions that cannot grade a present signature surface
+it as unverifiable instead of silently calling it unsigned.
+
+Manual QA:
+
+1. Inspect GPG- and SSH-signed commits and annotated tags. Confirm the format,
+   signer, fingerprint, and valid state match command-line Git on the worker.
+2. Remove the verification public key and confirm Cantrip reports a missing
+   key without claiming the signature is invalid.
+3. For SSH signing, unset `gpg.ssh.allowedSignersFile` and confirm the missing
+   configuration is explained. Restore it and verify the same object again.
+4. Stop or hide the configured verification executable and confirm missing
+   tooling is distinct from a bad signature.
+5. Inspect an unsigned commit, lightweight tag, expired/revoked key, and
+   deliberately corrupted signature. Confirm every state remains distinct.
+6. Disconnect the assigned worker and confirm signature inspection does not
+   fall back to another worker or expose worker-local trust configuration.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport
@@ -759,7 +790,7 @@ Manual QA:
 - [x] Full GitHub pull-request workflow
 - [x] File history, blame, and repository search
 - [x] Recovery tools and bisect
-- [ ] Repository-system support
+- [x] Repository-system support
 - [ ] Agent-assisted Git workflows
 
 Each checklist item is delivered through its own isolated worktree and pull

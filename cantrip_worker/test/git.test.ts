@@ -21,6 +21,7 @@ import {
   applyGitTagAction,
   controlGitManagedOperation,
   createGitStash,
+  detectGitSignatureFormat,
   gitForcePushArguments,
   inspectGitManagedOperation,
   previewGitBranchAction,
@@ -1593,6 +1594,9 @@ describe("Git history", () => {
             signer: null,
             key: null,
             fingerprint: null,
+            format: null,
+            verification: "not-applicable",
+            verificationMessage: null,
           },
         }),
       ]),
@@ -1628,6 +1632,99 @@ describe("Git history", () => {
     await expect(
       applyGitTagAction(directory, stale, stalePreview.token),
     ).rejects.toThrow(/changed after this preview/iu);
+  });
+
+  it("detects and verifies SSH signatures for commits and annotated tags", async () => {
+    expect(
+      detectGitSignatureFormat(
+        "-----BEGIN PGP SIGNATURE-----\nplaceholder\n-----END PGP SIGNATURE-----",
+      ),
+    ).toBe("gpg");
+    expect(
+      detectGitSignatureFormat(
+        "-----BEGIN SSH SIGNATURE-----\nplaceholder\n-----END SSH SIGNATURE-----",
+      ),
+    ).toBe("ssh");
+    expect(detectGitSignatureFormat("unsigned object")).toBeNull();
+
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-signature-test-"));
+    directories.push(root);
+    const directory = path.join(root, "repo");
+    const keyPath = path.join(root, "signing-key");
+    try {
+      await execFileAsync("ssh-keygen", [
+        "-q",
+        "-t",
+        "ed25519",
+        "-N",
+        "",
+        "-f",
+        keyPath,
+      ]);
+    } catch {
+      return;
+    }
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    const publicKey = (await readFile(`${keyPath}.pub`, "utf8")).trim();
+    const allowedSigners = path.join(root, "allowed_signers");
+    await writeFile(allowedSigners, `test@cantrip.art ${publicKey}\n`, "utf8");
+    for (const [key, value] of [
+      ["user.name", "Cantrip Test"],
+      ["user.email", "test@cantrip.art"],
+      ["gpg.format", "ssh"],
+      ["user.signingkey", keyPath],
+      ["gpg.ssh.allowedSignersFile", allowedSigners],
+      ["commit.gpgsign", "true"],
+    ]) {
+      await execFileAsync("git", ["-C", directory, "config", key, value]);
+    }
+    await writeFile(path.join(directory, "README.md"), "signed\n");
+    await execFileAsync("git", ["-C", directory, "add", "README.md"]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Signed"]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "tag",
+      "-s",
+      "v-signed",
+      "-m",
+      "Signed release",
+    ]);
+
+    expect(
+      (await readGitCommitDetail(directory, "HEAD")).signature,
+    ).toMatchObject({
+      status: "valid",
+      format: "ssh",
+      verification: "available",
+    });
+    expect(
+      (await readGitTags(directory)).tags.find(
+        ({ name }) => name === "v-signed",
+      )?.signature,
+    ).toMatchObject({ status: "unverifiable", format: "ssh" });
+    expect(
+      (await readGitTagDetail(directory, "v-signed")).signature,
+    ).toMatchObject({
+      status: "valid",
+      format: "ssh",
+      verification: "available",
+    });
+
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "--unset",
+      "gpg.ssh.allowedSignersFile",
+    ]);
+    expect(
+      (await readGitCommitDetail(directory, "HEAD")).signature,
+    ).toMatchObject({
+      status: "unverifiable",
+      format: "ssh",
+      verification: "missing-config",
+    });
   });
 
   it("manages local, tracked, published, renamed, and remote branches through reviewed actions", async () => {
@@ -2774,6 +2871,13 @@ describe("Git history", () => {
       "config",
       "user.email",
       "test@cantrip.art",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "commit.gpgsign",
+      "false",
     ]);
     await writeFile(path.join(directory, "README.md"), "Cantrip\n");
     await writeFile(

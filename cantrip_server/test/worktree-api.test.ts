@@ -475,6 +475,9 @@ const tagFixture = {
     signer: "Cantrip <test@cantrip.art>",
     key: "ABC123",
     fingerprint: "DEF456",
+    format: "ssh" as const,
+    verification: "available" as const,
+    verificationMessage: "Good SSH signature",
   },
   publishedRemotes: ["origin"],
 };
@@ -651,6 +654,9 @@ const workerBridge = {
             signer: null,
             key: null,
             fingerprint: null,
+            format: null,
+            verification: "not-applicable",
+            verificationMessage: null,
           },
           refs: [{ name: "HEAD", kind: "head", current: true }],
           files: [

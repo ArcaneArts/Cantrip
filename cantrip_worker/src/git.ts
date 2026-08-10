@@ -1074,9 +1074,66 @@ function signatureStatus(code: string): GitSignature["status"] {
       return "revoked";
     case "E":
       return "unverifiable";
-    default:
+    case "N":
       return "unsigned";
+    default:
+      return "unverifiable";
   }
+}
+
+export function detectGitSignatureFormat(
+  value: string,
+): GitSignature["format"] {
+  if (/-----BEGIN PGP SIGNATURE-----/u.test(value)) return "gpg";
+  if (/-----BEGIN SSH SIGNATURE-----/u.test(value)) return "ssh";
+  if (/-----BEGIN (?:SIGNED MESSAGE|CMS|PKCS7|X509)-----/u.test(value)) {
+    return "x509";
+  }
+  return /-----BEGIN [^-]+ SIGNATURE-----/u.test(value) ? "unknown" : null;
+}
+
+function signatureVerification(
+  code: string,
+  message: string,
+): GitSignature["verification"] {
+  if (code === "N") return "not-applicable";
+  if (["G", "U", "B", "X", "Y", "R"].includes(code)) return "available";
+  if (/no public key|unknown key|could not find.*key/iu.test(message)) {
+    return "missing-key";
+  }
+  if (
+    /allowedsignersfile|allowed signers|principal.*not found/iu.test(message)
+  ) {
+    return "missing-config";
+  }
+  if (/cannot run|not found|no such file|failed to execute/iu.test(message)) {
+    return "missing-tool";
+  }
+  return "error";
+}
+
+function signatureDetails(
+  code: string,
+  signer: string,
+  key: string,
+  fingerprint: string,
+  signedObject: string,
+  verificationMessage = "",
+): GitSignature {
+  const format = detectGitSignatureFormat(signedObject);
+  const reportedCode = code || (format ? "E" : "N");
+  const effectiveCode = reportedCode === "N" && format ? "E" : reportedCode;
+  const status = signatureStatus(effectiveCode);
+  const message = verificationMessage.trim().slice(0, 10_000);
+  return {
+    status,
+    signer: signer || null,
+    key: key || null,
+    fingerprint: fingerprint || null,
+    format: status === "unsigned" ? null : format,
+    verification: signatureVerification(effectiveCode, message),
+    verificationMessage: status === "unsigned" ? null : message || null,
+  };
 }
 
 function commitFileStatus(code: string): GitCommitFile["status"] {
@@ -1267,12 +1324,16 @@ export async function readGitCommitDetail(
   revisions: string[] = [],
 ): Promise<GitCommitDetail> {
   const hash = await resolveCommit(cwd, revision);
-  const metadata = await gitRaw(cwd, [
-    "show",
-    "-s",
-    "--date=iso-strict",
-    "--format=%H%x00%h%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s%x00%B%x00%D%x00%G?%x00%GS%x00%GK%x00%GF",
-    hash,
+  const [metadata, signedObject, verification] = await Promise.all([
+    gitRaw(cwd, [
+      "show",
+      "-s",
+      "--date=iso-strict",
+      "--format=%H%x00%h%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s%x00%B%x00%D%x00%G?%x00%GS%x00%GK%x00%GF%x00%GG",
+      hash,
+    ]),
+    gitRaw(cwd, ["cat-file", "commit", hash]),
+    runGitOutcomeBounded(cwd, ["verify-commit", "--raw", hash]),
   ]);
   const [
     fullHash,
@@ -1291,6 +1352,7 @@ export async function readGitCommitDetail(
     signatureSigner = "",
     signatureKey = "",
     signatureFingerprint = "",
+    signatureVerificationMessage = "",
   ] = metadata.trimEnd().split("\0");
   const parents = (parentText ?? "").split(" ").filter(Boolean);
   if (parents.length > 0 && parentIndex >= parents.length) {
@@ -1327,12 +1389,14 @@ export async function readGitCommitDetail(
       email: committerEmail,
       date: committedAt,
     },
-    signature: {
-      status: signatureStatus(signatureCode),
-      signer: signatureSigner || null,
-      key: signatureKey || null,
-      fingerprint: signatureFingerprint || null,
-    },
+    signature: signatureDetails(
+      verification.code === 0 ? "G" : signatureCode,
+      signatureSigner,
+      signatureKey,
+      signatureFingerprint,
+      signedObject,
+      verification.output || signatureVerificationMessage,
+    ),
     refs: parseRefs(decorations, branch, remotes),
     files,
     filesTruncated: truncated,
@@ -4061,7 +4125,7 @@ async function readRemoteTags(
 
 async function tagRefOutput(cwd: string): Promise<string> {
   const signatureFormat =
-    "%(refname:short)%00%(objectname)%00%(objecttype)%00%(*objectname)%00%(*objecttype)%00%(contents:subject)%00%(taggername)%00%(creatordate:iso-strict)%00%(signature:grade)%00%(signature:signer)%00%(signature:key)%00%(signature:fingerprint)";
+    "%(refname:short)%00%(objectname)%00%(objecttype)%00%(*objectname)%00%(*objecttype)%00%(contents:subject)%00%(taggername)%00%(creatordate:iso-strict)%00%(signature:grade)%00%(signature:signer)%00%(signature:key)%00%(signature:fingerprint)%00%(contents:signature)%1e";
   try {
     return await gitRaw(cwd, [
       "for-each-ref",
@@ -4071,7 +4135,7 @@ async function tagRefOutput(cwd: string): Promise<string> {
   } catch {
     return gitRaw(cwd, [
       "for-each-ref",
-      "--format=%(refname:short)%00%(objectname)%00%(objecttype)%00%(*objectname)%00%(*objecttype)%00%(contents:subject)%00%(taggername)%00%(creatordate:iso-strict)%00N%00%00%00",
+      "--format=%(refname:short)%00%(objectname)%00%(objecttype)%00%(*objectname)%00%(*objecttype)%00%(contents:subject)%00%(taggername)%00%(creatordate:iso-strict)%00N%00%00%00%00%(contents:signature)%1e",
       "refs/tags",
     ]);
   }
@@ -4086,8 +4150,8 @@ export async function readGitTags(cwd: string): Promise<GitTagList> {
   ]);
   const remoteTags = await readRemoteTags(cwd, remotes);
   const parsed = refOutput
-    .split("\n")
-    .map((line) => line.trimEnd())
+    .split("\x1e")
+    .map((line) => line.replace(/^\n/u, "").trimEnd())
     .filter(Boolean)
     .flatMap((line): GitTagSummary[] => {
       const [
@@ -4103,6 +4167,7 @@ export async function readGitTags(cwd: string): Promise<GitTagList> {
         signatureSigner = "",
         signatureKey = "",
         signatureFingerprint = "",
+        signatureBlock = "",
       ] = line.split("\0");
       if (!name || !hash || !objectType) return [];
       const annotated = objectType === "tag";
@@ -4116,12 +4181,13 @@ export async function readGitTags(cwd: string): Promise<GitTagList> {
           subject,
           taggerName: taggerName || null,
           createdAt: createdAt || null,
-          signature: {
-            status: signatureStatus(signatureCode),
-            signer: signatureSigner || null,
-            key: signatureKey || null,
-            fingerprint: signatureFingerprint || null,
-          },
+          signature: signatureDetails(
+            signatureCode,
+            signatureSigner,
+            signatureKey,
+            signatureFingerprint,
+            signatureBlock,
+          ),
           publishedRemotes: [...(remoteTags.tags.get(name) ?? [])].sort(),
         },
       ];
@@ -4147,15 +4213,32 @@ export async function readGitTagDetail(
   const list = await readGitTags(cwd);
   const tag = list.tags.find((candidate) => candidate.name === name);
   if (!tag) throw new Error(`Tag ${name} does not exist.`);
-  const message = tag.annotated
-    ? await gitRaw(cwd, [
-        "for-each-ref",
-        "--format=%(contents:subject)%0a%0a%(contents:body)",
-        `refs/tags/${name}`,
+  const [message, verification] = tag.annotated
+    ? await Promise.all([
+        gitRaw(cwd, [
+          "for-each-ref",
+          "--format=%(contents:subject)%0a%0a%(contents:body)",
+          `refs/tags/${name}`,
+        ]),
+        runGitOutcomeBounded(cwd, ["verify-tag", "--raw", name]),
       ])
-    : "";
+    : ["", null];
+  const verificationMessage = verification?.output.slice(0, 10_000) ?? null;
+  const verificationState =
+    tag.signature.status === "unsigned"
+      ? "not-applicable"
+      : ["invalid", "expired", "revoked"].includes(tag.signature.status) ||
+          verification?.code === 0
+        ? "available"
+        : signatureVerification("E", verificationMessage ?? "");
   return gitTagDetailSchema.parse({
     ...tag,
+    signature: {
+      ...tag.signature,
+      status: verification?.code === 0 ? "valid" : tag.signature.status,
+      verification: verificationState,
+      verificationMessage,
+    },
     message: message.slice(0, COMMIT_MESSAGE_CHARACTER_LIMIT),
     messageTruncated: message.length > COMMIT_MESSAGE_CHARACTER_LIMIT,
   });

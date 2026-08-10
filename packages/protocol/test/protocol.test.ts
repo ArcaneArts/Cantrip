@@ -552,6 +552,9 @@ describe("Cantrip protocol", () => {
       signer: null,
       key: null,
       fingerprint: null,
+      format: null,
+      verification: "not-applicable" as const,
+      verificationMessage: null,
     };
     expect(
       gitRemoteListSchema.parse({
@@ -599,14 +602,14 @@ describe("Cantrip protocol", () => {
       signature,
       publishedRemotes: ["origin"],
     };
-    expect(
-      gitTagListSchema.parse({
-        tags: [tag],
-        truncated: false,
-        remoteChecks: [{ remote: "origin", available: true, error: null }],
-        generatedAt: "2026-08-10T12:00:00.000Z",
-      }).tags,
-    ).toHaveLength(1);
+    const parsedTags = gitTagListSchema.parse({
+      tags: [tag],
+      truncated: false,
+      remoteChecks: [{ remote: "origin", available: true, error: null }],
+      generatedAt: "2026-08-10T12:00:00.000Z",
+    }).tags;
+    expect(parsedTags).toHaveLength(1);
+    expect(parsedTags[0]?.signature.verification).toBe("not-applicable");
     expect(
       gitTagActionPreviewSchema.parse({
         action: { type: "deleteRemote", name: "v1.0.0", remote: "origin" },
@@ -935,6 +938,9 @@ describe("Cantrip protocol", () => {
           signer: "Cantrip",
           key: "ABC123",
           fingerprint: null,
+          format: "gpg",
+          verification: "available",
+          verificationMessage: "Good signature from Cantrip",
         },
         refs: [],
         files: [
@@ -951,8 +957,15 @@ describe("Cantrip protocol", () => {
         filesChanged: 1,
         additions: 4,
         deletions: 1,
-      }).files[0]?.status,
-    ).toBe("modified");
+      }),
+    ).toMatchObject({
+      signature: {
+        format: "gpg",
+        verification: "available",
+        verificationMessage: "Good signature from Cantrip",
+      },
+      files: [{ status: "modified" }],
+    });
     expect(
       gitRevisionFileDiffSchema.parse({
         revision,

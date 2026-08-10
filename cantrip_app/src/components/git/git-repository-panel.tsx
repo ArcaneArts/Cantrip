@@ -112,15 +112,22 @@ function remoteActionFromEditor(editor: RemoteEditor): GitRemoteAction {
 }
 
 function signatureLabel(tag: GitTagSummary): string {
+  const format = tag.signature.format
+    ? tag.signature.format === "x509"
+      ? "X.509"
+      : tag.signature.format.toUpperCase()
+    : null;
   switch (tag.signature.status) {
     case "valid":
-      return "verified";
+      return format ? `${format} verified` : "verified";
     case "valid-unknown":
-      return "valid signature";
+      return format ? `${format} untrusted` : "valid signature";
     case "unsigned":
       return "unsigned";
     default:
-      return tag.signature.status;
+      return format
+        ? `${format} ${tag.signature.status}`
+        : tag.signature.status;
   }
 }
 
@@ -831,10 +838,19 @@ export function GitRepositoryPanel({
                 {tagDetail.data.signature.key ? (
                   <Pill>key {tagDetail.data.signature.key}</Pill>
                 ) : null}
+                {tagDetail.data.signature.verification !== "available" &&
+                tagDetail.data.signature.verification !== "not-applicable" ? (
+                  <Pill>{tagDetail.data.signature.verification}</Pill>
+                ) : null}
               </div>
               {tagDetail.data.signature.fingerprint ? (
                 <p className="break-all font-mono text-muted-foreground">
                   Fingerprint {tagDetail.data.signature.fingerprint}
+                </p>
+              ) : null}
+              {tagDetail.data.signature.verificationMessage ? (
+                <p className="whitespace-pre-wrap rounded-md bg-muted/35 px-3 py-2 font-mono text-[10px] text-muted-foreground">
+                  {tagDetail.data.signature.verificationMessage}
                 </p>
               ) : null}
             </div>
