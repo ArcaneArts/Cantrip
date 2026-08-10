@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   access,
   lstat,
@@ -17,6 +18,7 @@ import {
   githubIssueListSchema,
   githubPullRequestCreateResultSchema,
   githubPullRequestDetailSchema,
+  githubPullRequestLifecyclePreviewSchema,
   githubPullRequestSummarySchema,
   githubReleaseListSchema,
   githubReleaseSummarySchema,
@@ -34,6 +36,9 @@ import {
   type GithubPullRequestDetail,
   type GithubPullRequestCheck,
   type GithubPullRequestInlineCommentCreate,
+  type GithubPullRequestLifecycleAction,
+  type GithubPullRequestLifecycleApply,
+  type GithubPullRequestLifecyclePreview,
   type GithubPullRequestReview,
   type GithubPullRequestReviewComment,
   type GithubPullRequestReviewSubmit,
@@ -610,6 +615,29 @@ function deriveChecksState(
   if (checks.some((check) => check.status !== "completed")) return "pending";
   if (checks.every((check) => check.conclusion === "success")) return "success";
   return "neutral";
+}
+
+function pullRequestLifecycleToken(
+  detail: GithubPullRequestDetail,
+  action: GithubPullRequestLifecycleAction,
+): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        action,
+        number: detail.number,
+        state: detail.state,
+        draft: detail.draft,
+        merged: detail.merged,
+        headSha: detail.headSha,
+        baseSha: detail.baseSha,
+        mergeable: detail.mergeable,
+        mergeableState: detail.mergeableState,
+        checksState: detail.checksState,
+        reviewDecision: detail.reviewDecision,
+      }),
+    )
+    .digest("hex");
 }
 
 function encodedRefPath(branch: string): string {
@@ -1192,6 +1220,182 @@ export class GithubClient {
       `${this.repositoryApiPath(nameWithOwner)}/pulls/${pullRequestNumber}/comments/${commentId}/replies`,
       ["--method", "POST", "-f", `body=${body}`],
     );
+    return this.getPullRequest(nameWithOwner, cwd, pullRequestNumber);
+  }
+
+  async previewPullRequestLifecycle(
+    nameWithOwner: string,
+    cwd: string,
+    pullRequestNumber: number,
+    action: GithubPullRequestLifecycleAction,
+  ): Promise<GithubPullRequestLifecyclePreview> {
+    const detail = await this.getPullRequest(
+      nameWithOwner,
+      cwd,
+      pullRequestNumber,
+    );
+    const warnings: string[] = [];
+    let destructive = false;
+    let confirmationPhrase: string | null = null;
+    switch (action.type) {
+      case "close":
+        if (detail.state !== "open" || detail.merged) {
+          throw new Error("Only an open, unmerged pull request can be closed.");
+        }
+        destructive = true;
+        confirmationPhrase = `close #${detail.number}`;
+        warnings.push(
+          `This closes #${detail.number} without merging ${detail.headRef} into ${detail.baseRef}.`,
+        );
+        break;
+      case "reopen":
+        if (detail.state !== "closed" || detail.merged) {
+          throw new Error(
+            "Only a closed, unmerged pull request can be reopened.",
+          );
+        }
+        break;
+      case "mark-ready":
+        if (detail.state !== "open" || !detail.draft || detail.merged) {
+          throw new Error(
+            "Only an open draft pull request can be marked ready.",
+          );
+        }
+        warnings.push(
+          "GitHub will notify requested reviewers that this draft is ready for review.",
+        );
+        break;
+      case "merge":
+        if (detail.state !== "open" || detail.draft || detail.merged) {
+          throw new Error(
+            "Only an open, non-draft pull request can be merged.",
+          );
+        }
+        if (detail.mergeable === null) {
+          throw new Error(
+            "GitHub is still calculating mergeability. Refresh and try again.",
+          );
+        }
+        if (!detail.mergeable) {
+          throw new Error(
+            `GitHub reports this pull request is not mergeable (${detail.mergeableState}).`,
+          );
+        }
+        destructive = true;
+        confirmationPhrase = `${action.method} #${detail.number}`;
+        warnings.push(
+          `${action.method} will integrate ${detail.headRef} (${detail.headSha.slice(0, 7)}) into ${detail.baseRef} at ${detail.baseSha.slice(0, 7)}.`,
+        );
+        if (detail.checksState !== "success" && detail.checksState !== "none") {
+          warnings.push(`Checks currently report ${detail.checksState}.`);
+        }
+        if (detail.reviewDecision === "changes-requested") {
+          warnings.push("At least one latest review requests changes.");
+        } else if (detail.reviewDecision === "review-required") {
+          warnings.push("Requested reviews are still outstanding.");
+        }
+        break;
+    }
+    return githubPullRequestLifecyclePreviewSchema.parse({
+      action,
+      number: detail.number,
+      title: detail.title,
+      state: detail.state,
+      draft: detail.draft,
+      headRef: detail.headRef,
+      headSha: detail.headSha,
+      baseRef: detail.baseRef,
+      baseSha: detail.baseSha,
+      mergeable: detail.mergeable,
+      mergeableState: detail.mergeableState,
+      checksState: detail.checksState,
+      reviewDecision: detail.reviewDecision,
+      destructive,
+      confirmationPhrase,
+      warnings,
+      token: pullRequestLifecycleToken(detail, action),
+    });
+  }
+
+  async applyPullRequestLifecycle(
+    nameWithOwner: string,
+    cwd: string,
+    pullRequestNumber: number,
+    request: GithubPullRequestLifecycleApply,
+  ): Promise<GithubPullRequestDetail> {
+    const preview = await this.previewPullRequestLifecycle(
+      nameWithOwner,
+      cwd,
+      pullRequestNumber,
+      request.action,
+    );
+    if (preview.token !== request.token) {
+      throw new Error(
+        "The pull request no longer matches this preview. Review the action again.",
+      );
+    }
+    if (
+      preview.confirmationPhrase !== null &&
+      request.confirmation !== preview.confirmationPhrase
+    ) {
+      throw new Error(
+        `Type ${preview.confirmationPhrase} to confirm this action.`,
+      );
+    }
+    const pullRequestPath = `${this.repositoryApiPath(nameWithOwner)}/pulls/${pullRequestNumber}`;
+    switch (request.action.type) {
+      case "close":
+        await this.api(pullRequestPath, [
+          "--method",
+          "PATCH",
+          "-f",
+          "state=closed",
+        ]);
+        break;
+      case "reopen":
+        await this.api(pullRequestPath, [
+          "--method",
+          "PATCH",
+          "-f",
+          "state=open",
+        ]);
+        break;
+      case "mark-ready":
+        await execFileAsync(
+          "gh",
+          ["pr", "ready", String(pullRequestNumber), "--repo", nameWithOwner],
+          { maxBuffer: 4 * 1024 * 1024 },
+        );
+        break;
+      case "merge": {
+        const args = [
+          "--method",
+          "PUT",
+          "-f",
+          `merge_method=${request.action.method}`,
+          "-f",
+          `sha=${preview.headSha}`,
+        ];
+        if (request.action.commitTitle) {
+          args.push("-f", `commit_title=${request.action.commitTitle}`);
+        }
+        if (request.action.commitMessage) {
+          args.push("-f", `commit_message=${request.action.commitMessage}`);
+        }
+        const response = (await this.api(`${pullRequestPath}/merge`, args)) as {
+          merged?: unknown;
+          message?: unknown;
+        };
+        if (response.merged !== true) {
+          throw new Error(
+            typeof response.message === "string"
+              ? response.message
+              : "GitHub did not merge the pull request.",
+          );
+        }
+        break;
+      }
+    }
     return this.getPullRequest(nameWithOwner, cwd, pullRequestNumber);
   }
 

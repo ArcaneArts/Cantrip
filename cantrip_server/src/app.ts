@@ -94,6 +94,9 @@ import {
   githubPullRequestCreateResultSchema,
   githubPullRequestCreateSchema,
   githubPullRequestDetailSchema,
+  githubPullRequestLifecycleApplySchema,
+  githubPullRequestLifecycleActionSchema,
+  githubPullRequestLifecyclePreviewSchema,
   githubPullRequestReviewActionSchema,
   githubIssueStateSchema,
   githubProjectCreateSchema,
@@ -3930,6 +3933,145 @@ export async function buildApp({
         return reply
           .code(error instanceof WorkerUnavailableError ? 503 : 409)
           .send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{
+    Params: {
+      projectId: string;
+      worktreeId: string;
+      pullRequestNumber: string;
+    };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/lifecycle/preview",
+    async (request, reply) => {
+      const pullRequestNumber = Number.parseInt(
+        request.params.pullRequestNumber,
+        10,
+      );
+      const action = githubPullRequestLifecycleActionSchema.safeParse(
+        request.body,
+      );
+      if (
+        !Number.isInteger(pullRequestNumber) ||
+        pullRequestNumber < 1 ||
+        !action.success
+      ) {
+        return reply.code(400).send({ error: "Invalid lifecycle preview." });
+      }
+      const [worktree, github] = await Promise.all([
+        repository.getProjectWorktreeContext(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          request.params.worktreeId,
+        ),
+        repository.getGithubProjectExecutionContext(
+          LOCAL_USER_ID,
+          request.params.projectId,
+        ),
+      ]);
+      if (!worktree || !github) {
+        return reply
+          .code(404)
+          .send({ error: "GitHub worktree project not found." });
+      }
+      if (worktree.workerId !== github.workerId) {
+        return reply.code(409).send({
+          error:
+            "The selected worktree and GitHub project belong to different workers.",
+        });
+      }
+      try {
+        return reply.send(
+          githubPullRequestLifecyclePreviewSchema.parse(
+            await bridge.request(
+              worktree.workerId,
+              {
+                type: "github.pull-request.lifecycle.preview",
+                cwd: worktree.worktree.path,
+                repository: github.nameWithOwner,
+                number: pullRequestNumber,
+                action: action.data,
+              },
+              { timeoutMs: null },
+            ),
+          ),
+        );
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{
+    Params: {
+      projectId: string;
+      worktreeId: string;
+      pullRequestNumber: string;
+    };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/lifecycle/apply",
+    async (request, reply) => {
+      const pullRequestNumber = Number.parseInt(
+        request.params.pullRequestNumber,
+        10,
+      );
+      const input = githubPullRequestLifecycleApplySchema.safeParse(
+        request.body,
+      );
+      if (
+        !Number.isInteger(pullRequestNumber) ||
+        pullRequestNumber < 1 ||
+        !input.success
+      ) {
+        return reply
+          .code(400)
+          .send({ error: "Invalid lifecycle apply request." });
+      }
+      try {
+        const result = await worktreeCoordinator.serialize(
+          request.params.projectId,
+          async () => {
+            const [worktree, github] = await Promise.all([
+              repository.getProjectWorktreeContext(
+                LOCAL_USER_ID,
+                request.params.projectId,
+                request.params.worktreeId,
+              ),
+              repository.getGithubProjectExecutionContext(
+                LOCAL_USER_ID,
+                request.params.projectId,
+              ),
+            ]);
+            if (!worktree || !github) {
+              throw new Error("GitHub worktree project not found.");
+            }
+            if (worktree.workerId !== github.workerId) {
+              throw new Error(
+                "The selected worktree and GitHub project belong to different workers.",
+              );
+            }
+            return githubPullRequestDetailSchema.parse(
+              await bridge.request(
+                worktree.workerId,
+                {
+                  type: "github.pull-request.lifecycle.apply",
+                  cwd: worktree.worktree.path,
+                  repository: github.nameWithOwner,
+                  number: pullRequestNumber,
+                  request: input.data,
+                },
+                { timeoutMs: null },
+              ),
+            );
+          },
+        );
+        return reply.send(result);
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
       }
     },
   );

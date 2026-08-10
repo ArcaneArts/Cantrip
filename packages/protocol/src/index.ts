@@ -989,6 +989,59 @@ export const githubPullRequestReviewActionSchema = z.discriminatedUnion(
   ],
 );
 
+export const githubPullRequestLifecycleActionSchema = z.discriminatedUnion(
+  "type",
+  [
+    z.object({ type: z.literal("close") }),
+    z.object({ type: z.literal("reopen") }),
+    z.object({ type: z.literal("mark-ready") }),
+    z.object({
+      type: z.literal("merge"),
+      method: z.enum(["merge", "squash", "rebase"]),
+      commitTitle: z.string().trim().min(1).max(256).nullable().default(null),
+      commitMessage: z
+        .string()
+        .trim()
+        .min(1)
+        .max(1_000_000)
+        .nullable()
+        .default(null),
+    }),
+  ],
+);
+
+export const githubPullRequestLifecyclePreviewSchema = z.object({
+  action: githubPullRequestLifecycleActionSchema,
+  number: z.number().int().positive(),
+  title: z.string().min(1).max(10_000),
+  state: githubIssueStateSchema,
+  draft: z.boolean(),
+  headRef: z.string().min(1),
+  headSha: z.string().regex(/^[0-9a-f]{40}$/u),
+  baseRef: z.string().min(1),
+  baseSha: z.string().regex(/^[0-9a-f]{40}$/u),
+  mergeable: z.boolean().nullable(),
+  mergeableState: z.string().min(1).max(100),
+  checksState: z.enum(["success", "failure", "pending", "neutral", "none"]),
+  reviewDecision: z.enum([
+    "approved",
+    "changes-requested",
+    "review-required",
+    "reviewed",
+    "none",
+  ]),
+  destructive: z.boolean(),
+  confirmationPhrase: z.string().min(1).max(100).nullable(),
+  warnings: z.array(z.string().min(1).max(1_000)).max(100),
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+
+export const githubPullRequestLifecycleApplySchema = z.object({
+  action: githubPullRequestLifecycleActionSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+  confirmation: z.string().max(100).default(""),
+});
+
 export const githubPullRequestDetailSchema =
   githubPullRequestSummarySchema.extend({
     comments: z.array(githubIssueCommentSchema).max(100),
@@ -4578,6 +4631,20 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     body: githubIssueCommentCreateSchema.shape.body,
   }),
   z.object({
+    type: z.literal("github.pull-request.lifecycle.preview"),
+    cwd: z.string().min(1).max(8_192),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+    number: z.number().int().positive(),
+    action: githubPullRequestLifecycleActionSchema,
+  }),
+  z.object({
+    type: z.literal("github.pull-request.lifecycle.apply"),
+    cwd: z.string().min(1).max(8_192),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+    number: z.number().int().positive(),
+    request: githubPullRequestLifecycleApplySchema,
+  }),
+  z.object({
     type: z.literal("github.releases.list"),
     cwd: z.string().min(1).max(8_192),
     repository: githubRepositorySchema.shape.nameWithOwner,
@@ -5548,6 +5615,15 @@ export type GithubPullRequestInlineCommentCreate = z.infer<
 >;
 export type GithubPullRequestReviewAction = z.infer<
   typeof githubPullRequestReviewActionSchema
+>;
+export type GithubPullRequestLifecycleAction = z.infer<
+  typeof githubPullRequestLifecycleActionSchema
+>;
+export type GithubPullRequestLifecyclePreview = z.infer<
+  typeof githubPullRequestLifecyclePreviewSchema
+>;
+export type GithubPullRequestLifecycleApply = z.infer<
+  typeof githubPullRequestLifecycleApplySchema
 >;
 export type GithubPullRequestDetail = z.infer<
   typeof githubPullRequestDetailSchema

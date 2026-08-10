@@ -508,6 +508,40 @@ Manual QA:
 6. Disconnect the selected worker during a submission and confirm the draft
    remains visible with an error and no fallback worker is used.
 
+### Pull request lifecycle and merge
+
+Open PRs can be closed, closed unmerged PRs can be reopened, and drafts can be
+marked ready for review. An open ready PR can be merged with GitHub's merge,
+squash, or rebase method, including optional commit title and message where
+GitHub supports them. Cantrip does not bypass branch protection: GitHub remains
+authoritative for required checks, reviews, allowed merge methods, and other
+repository rules.
+
+Every lifecycle operation has a worker-authored preview bound to the PR number,
+exact head/base commits, open/draft/merged state, mergeability, checks, review
+decision, and requested action. Close and merge require typing the displayed
+phrase. Apply re-fetches and recomputes the preview; any changed state rejects
+the token. Merge also sends the reviewed head SHA to GitHub's merge endpoint,
+closing the remaining race between validation and mutation. The app updates
+only from the complete post-action PR response.
+
+Manual QA:
+
+1. Preview and close an open PR, type an incorrect phrase, then the exact
+   `close #N` phrase; reopen it and verify the hosted state after each action.
+2. Mark a draft ready and confirm GitHub notifies reviewers and the draft badge
+   disappears only after the authoritative refresh.
+3. Preview merge, squash, and rebase with optional commit title/message; verify
+   the dialog names exact head/base SHAs, checks, reviews, and mergeability.
+4. Advance the PR head after preview and confirm apply rejects the stale token;
+   advance it between apply validation and merge and confirm GitHub's exact SHA
+   guard rejects the mutation.
+5. Try blocked mergeability, pending/failed checks, requested changes, and a
+   repository that disallows one merge method. Confirm warnings are precise
+   and GitHub protection is never bypassed.
+6. Disconnect the selected worker and confirm preview/apply fail without using
+   another worktree or exposing GitHub credentials.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport

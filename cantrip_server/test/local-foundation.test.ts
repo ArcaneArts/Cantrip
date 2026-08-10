@@ -45,6 +45,7 @@ import {
   githubIssueListSchema,
   githubPullRequestCreateResultSchema,
   githubPullRequestDetailSchema,
+  githubPullRequestLifecyclePreviewSchema,
   modelProfileSummarySchema,
   modelProviderSummarySchema,
   projectListSchema,
@@ -150,6 +151,12 @@ const pullRequestGetCommands: Array<
   Extract<WorkerCommand, { type: "github.pull-request.get" }>
 > = [];
 const pullRequestReviewCommands: WorkerCommand[] = [];
+const pullRequestLifecyclePreviewCommands: Array<
+  Extract<WorkerCommand, { type: "github.pull-request.lifecycle.preview" }>
+> = [];
+const pullRequestLifecycleApplyCommands: Array<
+  Extract<WorkerCommand, { type: "github.pull-request.lifecycle.apply" }>
+> = [];
 function pullRequestDetailFixture(number: number) {
   return {
     number,
@@ -432,6 +439,44 @@ const workerBridge = {
       case "github.pull-request.review.reply":
         pullRequestReviewCommands.push(command);
         return pullRequestDetailFixture(command.number);
+      case "github.pull-request.lifecycle.preview": {
+        pullRequestLifecyclePreviewCommands.push(command);
+        const detail = pullRequestDetailFixture(command.number);
+        return {
+          action: command.action,
+          number: detail.number,
+          title: detail.title,
+          state: detail.state,
+          draft: detail.draft,
+          headRef: detail.headRef,
+          headSha: detail.headSha,
+          baseRef: detail.baseRef,
+          baseSha: detail.baseSha,
+          mergeable: detail.mergeable,
+          mergeableState: detail.mergeableState,
+          checksState: detail.checksState,
+          reviewDecision: detail.reviewDecision,
+          destructive:
+            command.action.type === "close" || command.action.type === "merge",
+          confirmationPhrase:
+            command.action.type === "close"
+              ? `close #${command.number}`
+              : command.action.type === "merge"
+                ? `${command.action.method} #${command.number}`
+                : null,
+          warnings: [],
+          token: "9".repeat(64),
+        };
+      }
+      case "github.pull-request.lifecycle.apply": {
+        pullRequestLifecycleApplyCommands.push(command);
+        const detail = pullRequestDetailFixture(command.number);
+        return command.request.action.type === "merge"
+          ? { ...detail, state: "closed", merged: true }
+          : command.request.action.type === "close"
+            ? { ...detail, state: "closed" }
+            : detail;
+      }
       case "project.clone":
         if (command.repository.nameWithOwner === heldProjectCloneName) {
           await new Promise<void>((resolve) => {
@@ -2088,7 +2133,8 @@ describe("local server foundation", () => {
         url: `/api/projects/${project.id}/worktrees/missing-worktree/github/pull-requests/44`,
       }),
     ).toMatchObject({ statusCode: 404 });
-    const pullRequestActionUrl = `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/github/pull-requests/44/actions`;
+    const pullRequestBaseUrl = `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/github/pull-requests/44`;
+    const pullRequestActionUrl = `${pullRequestBaseUrl}/actions`;
     for (const payload of [
       { type: "comment", body: "General feedback" },
       {
@@ -2147,6 +2193,52 @@ describe("local server foundation", () => {
         },
       }),
     ).toMatchObject({ statusCode: 400 });
+    const lifecyclePreviewResponse = await firstApp.inject({
+      method: "POST",
+      url: `${pullRequestBaseUrl}/lifecycle/preview`,
+      payload: {
+        type: "merge",
+        method: "squash",
+        commitTitle: "feat: lifecycle",
+        commitMessage: null,
+      },
+    });
+    expect(lifecyclePreviewResponse.statusCode).toBe(200);
+    const lifecyclePreview = githubPullRequestLifecyclePreviewSchema.parse(
+      lifecyclePreviewResponse.json(),
+    );
+    expect(lifecyclePreview).toMatchObject({
+      confirmationPhrase: "squash #44",
+      destructive: true,
+    });
+    const lifecycleApplyResponse = await firstApp.inject({
+      method: "POST",
+      url: `${pullRequestBaseUrl}/lifecycle/apply`,
+      payload: {
+        action: lifecyclePreview.action,
+        token: lifecyclePreview.token,
+        confirmation: "squash #44",
+      },
+    });
+    expect(lifecycleApplyResponse.statusCode).toBe(200);
+    expect(
+      githubPullRequestDetailSchema.parse(lifecycleApplyResponse.json()),
+    ).toMatchObject({ state: "closed", merged: true });
+    expect(pullRequestLifecyclePreviewCommands.at(-1)).toMatchObject({
+      cwd: primaryWorktree!.path,
+      repository: "ArcaneArts/Cantrip",
+      number: 44,
+      action: { type: "merge", method: "squash" },
+    });
+    expect(pullRequestLifecycleApplyCommands.at(-1)).toMatchObject({
+      cwd: primaryWorktree!.path,
+      repository: "ArcaneArts/Cantrip",
+      number: 44,
+      request: {
+        token: "9".repeat(64),
+        confirmation: "squash #44",
+      },
+    });
     const history = gitHistorySchema.parse(
       (
         await firstApp.inject({

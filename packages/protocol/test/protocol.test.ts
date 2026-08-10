@@ -61,6 +61,7 @@ import {
   githubReleaseCreateSchema,
   githubPullRequestCreateResultSchema,
   githubPullRequestDetailSchema,
+  githubPullRequestLifecyclePreviewSchema,
   githubReleaseListSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
@@ -248,6 +249,44 @@ describe("Cantrip protocol", () => {
         },
       }).success,
     ).toBe(false);
+    const lifecyclePreview = githubPullRequestLifecyclePreviewSchema.parse({
+      action: {
+        type: "merge",
+        method: "squash",
+        commitTitle: null,
+        commitMessage: null,
+      },
+      number: 44,
+      title: "Review pull requests",
+      state: "open",
+      draft: false,
+      headRef: "feature/review",
+      headSha: "1".repeat(40),
+      baseRef: "main",
+      baseSha: "2".repeat(40),
+      mergeable: true,
+      mergeableState: "clean",
+      checksState: "success",
+      reviewDecision: "approved",
+      destructive: true,
+      confirmationPhrase: "squash #44",
+      warnings: ["This merges the reviewed head."],
+      token: "3".repeat(64),
+    });
+    expect(lifecyclePreview.confirmationPhrase).toBe("squash #44");
+    expect(
+      workerCommandSchema.parse({
+        type: "github.pull-request.lifecycle.apply",
+        cwd: "/repo",
+        repository: "ArcaneArts/Cantrip",
+        number: 44,
+        request: {
+          action: lifecyclePreview.action,
+          token: lifecyclePreview.token,
+          confirmation: "squash #44",
+        },
+      }).request,
+    ).toMatchObject({ confirmation: "squash #44" });
   });
 
   it("validates reviewed commit actions and resumable conflict state", () => {
