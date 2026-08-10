@@ -982,6 +982,33 @@ export const terminalSummarySchema = z.object({
 
 export const terminalListSchema = z.array(terminalSummarySchema);
 
+export const scriptCommandKindSchema = z.enum([
+  "package",
+  "dart",
+  "just",
+  "cargo",
+  "gradle",
+  "make",
+]);
+
+const scriptCommandTextSchema = z
+  .string()
+  .min(1)
+  .refine((value) => !/[\u0000-\u001f\u007f]/u.test(value), {
+    message: "Script command text cannot contain control characters.",
+  });
+
+export const scriptCommandSchema = z.object({
+  id: z.string().min(1).max(512),
+  kind: scriptCommandKindSchema,
+  name: scriptCommandTextSchema.max(200),
+  command: scriptCommandTextSchema.max(4_096),
+  description: scriptCommandTextSchema.max(4_096).nullable(),
+  source: scriptCommandTextSchema.max(512),
+});
+
+export const scriptCommandListSchema = z.array(scriptCommandSchema).max(500);
+
 export const explorerCreateSchema = z.object({
   title: z.string().trim().min(1).max(200).default("Explorer"),
   worktreeId: z.string().min(1).optional(),
@@ -3306,6 +3333,10 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     path: z.string().min(1),
   }),
   z.object({
+    type: z.literal("project.script-commands"),
+    cwd: z.string().min(1).max(8_192),
+  }),
+  z.object({
     type: z.literal("project.share.open"),
     shareId: z.string().min(1).max(200),
     root: z.string().min(1).max(8_192),
@@ -4082,6 +4113,8 @@ export type ChatPermissionProfileUpdate = z.infer<
 export type TerminalCreate = z.infer<typeof terminalCreateSchema>;
 export type TerminalUpdate = z.infer<typeof terminalUpdateSchema>;
 export type TerminalSummary = z.infer<typeof terminalSummarySchema>;
+export type ScriptCommandKind = z.infer<typeof scriptCommandKindSchema>;
+export type ScriptCommand = z.infer<typeof scriptCommandSchema>;
 export type ExplorerCreate = z.infer<typeof explorerCreateSchema>;
 export type ExplorerUpdate = z.infer<typeof explorerUpdateSchema>;
 export type ExplorerSummary = z.infer<typeof explorerSummarySchema>;

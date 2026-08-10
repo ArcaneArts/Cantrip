@@ -8,6 +8,9 @@ import { useEffect, useRef, useState } from "react";
 import { terminalWebSocketUrl } from "@/lib/api";
 import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
 
+import { terminalCommandInput } from "./terminal-command-palette";
+import { TerminalScriptCommandDialog } from "./terminal-script-command-dialog";
+
 import "@xterm/xterm/css/xterm.css";
 
 const loadedTerminalIds = new Set<string>();
@@ -23,15 +26,21 @@ function terminalTheme() {
 }
 
 export function TerminalView({
+  commandPaletteOpen = false,
+  onCommandPaletteOpenChange,
   terminal,
   onExit,
 }: {
+  commandPaletteOpen?: boolean;
+  onCommandPaletteOpenChange?(open: boolean): void;
   terminal: TerminalSummary;
   onExit?(): void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputSenderRef = useRef<((data: string) => boolean) | null>(null);
   const reconnectAttemptRef = useRef(0);
   const terminalIdRef = useRef(terminal.id);
+  const xtermRef = useRef<Terminal | null>(null);
   const onExitRef = useRef(onExit);
   const [connectionKey, setConnectionKey] = useState(0);
   const [state, setState] = useState<"connecting" | "reconnecting" | "ready">(
@@ -67,6 +76,7 @@ export function TerminalView({
     const fit = new FitAddon();
     xterm.loadAddon(fit);
     xterm.open(container);
+    xtermRef.current = xterm;
 
     const socket = new WebSocket(terminalWebSocketUrl(terminal.id));
     let ready = false;
@@ -106,11 +116,15 @@ export function TerminalView({
       attributeFilter: ["class", "style"],
       attributes: true,
     });
-    const input = xterm.onData((data) => {
+    const sendInput = (data: string) => {
       if (ready && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: "input", data }));
+        return true;
       }
-    });
+      return false;
+    };
+    inputSenderRef.current = sendInput;
+    const input = xterm.onData(sendInput);
 
     socket.addEventListener("message", (event) => {
       let message: TerminalServerMessage;
@@ -167,12 +181,19 @@ export function TerminalView({
       disposed = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       input.dispose();
+      if (inputSenderRef.current === sendInput) inputSenderRef.current = null;
+      if (xtermRef.current === xterm) xtermRef.current = null;
       resizeObserver.disconnect();
       themeObserver.disconnect();
       socket.close(1000, "Terminal view closed");
       xterm.dispose();
     };
   }, [connectionKey, terminal.id]);
+
+  const setCommandPaletteOpen = (open: boolean) => {
+    onCommandPaletteOpenChange?.(open);
+    if (!open) requestAnimationFrame(() => xtermRef.current?.focus());
+  };
 
   return (
     <div className="relative flex min-h-0 flex-1 bg-background">
@@ -196,6 +217,18 @@ export function TerminalView({
               ? `${error} Retrying…`
               : "Reconnecting…"}
         </div>
+      ) : null}
+      {onCommandPaletteOpenChange ? (
+        <TerminalScriptCommandDialog
+          terminalId={terminal.id}
+          open={commandPaletteOpen}
+          onOpenChange={setCommandPaletteOpen}
+          onRun={(command) =>
+            inputSenderRef.current?.(terminalCommandInput(command))
+              ? null
+              : "The terminal is reconnecting. Try again when it is ready."
+          }
+        />
       ) : null}
     </div>
   );

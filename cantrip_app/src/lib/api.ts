@@ -84,6 +84,7 @@ import {
   remoteDesktopSummarySchema,
   serverBootstrapSchema,
   settingsBundleSchema,
+  scriptCommandListSchema,
   skillListSchema,
   systemHealthSchema,
   tabGroupMemberMoveSchema,
@@ -622,6 +623,14 @@ export async function createChat(
 export async function getTerminals(projectId: string) {
   return terminalListSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/terminals`),
+  );
+}
+
+export async function getTerminalScriptCommands(terminalId: string) {
+  return scriptCommandListSchema.parse(
+    await request(
+      `/api/terminals/${encodeURIComponent(terminalId)}/script-commands`,
+    ),
   );
 }
 

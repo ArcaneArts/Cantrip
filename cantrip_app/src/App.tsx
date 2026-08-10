@@ -49,6 +49,7 @@ import {
   PanelLeft,
   PanelLeftClose,
   PanelLeftOpen,
+  Palette,
   Pause,
   Play,
   Power,
@@ -2400,6 +2401,10 @@ export function App() {
   const [codeHeader, setCodeHeader] = useState<CodeHeaderState | null>(null);
   const [popoutPending, setPopoutPending] = useState(false);
   const [popoutError, setPopoutError] = useState<string | null>(null);
+  const [
+    terminalCommandPaletteTerminalId,
+    setTerminalCommandPaletteTerminalId,
+  ] = useState<string | null>(null);
   const [detachedGroupId, setDetachedGroupId] = useState<string | null>(null);
   const [worktreeCreateTarget, setWorktreeCreateTarget] =
     useState<WorktreeBindingTarget | null>(null);
@@ -4385,6 +4390,25 @@ export function App() {
               {selectedCodeTab ? (
                 <CodeHeaderActions header={codeHeader} />
               ) : null}
+              {selectedStandaloneTerminal ? (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-pressed={
+                    terminalCommandPaletteTerminalId ===
+                    selectedStandaloneTerminal.id
+                  }
+                  onClick={() =>
+                    setTerminalCommandPaletteTerminalId(
+                      selectedStandaloneTerminal.id,
+                    )
+                  }
+                  title="Run a project command"
+                >
+                  <Palette className="size-4" />
+                  <span className="sr-only">Run a project command</span>
+                </Button>
+              ) : null}
               {activePopout ? (
                 <Button
                   size="icon"
@@ -4535,6 +4559,25 @@ export function App() {
               ) : null}
               {selectedCodeTab ? (
                 <CodeHeaderActions header={codeHeader} />
+              ) : null}
+              {selectedStandaloneTerminal ? (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-pressed={
+                    terminalCommandPaletteTerminalId ===
+                    selectedStandaloneTerminal.id
+                  }
+                  onClick={() =>
+                    setTerminalCommandPaletteTerminalId(
+                      selectedStandaloneTerminal.id,
+                    )
+                  }
+                  title="Run a project command"
+                >
+                  <Palette className="size-4" />
+                  <span className="sr-only">Run a project command</span>
+                </Button>
               ) : null}
               {activePopout ? (
                 <Button
@@ -4946,7 +4989,17 @@ export function App() {
                 onExit={() => setChatConsoleChatId(null)}
               />
             ) : (
-              <TerminalView terminal={selectedTerminal} />
+              <TerminalView
+                terminal={selectedTerminal}
+                commandPaletteOpen={
+                  terminalCommandPaletteTerminalId === selectedTerminal.id
+                }
+                onCommandPaletteOpenChange={(open) =>
+                  setTerminalCommandPaletteTerminalId(
+                    open ? selectedTerminal.id : null,
+                  )
+                }
+              />
             )}
           </Suspense>
         ) : selectedChat ? (

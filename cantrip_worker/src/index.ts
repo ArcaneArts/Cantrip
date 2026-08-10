@@ -32,6 +32,7 @@ import {
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
 import { ProjectShareManager } from "./project-share-manager.js";
 import { ProjectShareTunnelProxy } from "./project-share-tunnel-proxy.js";
+import { discoverScriptCommands } from "./script-command-discovery.js";
 import { TerminalManager } from "./terminal-manager.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
 import { WorkerConnection } from "./transport.js";
@@ -189,6 +190,8 @@ async function start(): Promise<void> {
         return github.cloneRepository(command.repository.nameWithOwner);
       case "project.files.delete":
         return github.deleteRepository(command.path);
+      case "project.script-commands":
+        return discoverScriptCommands(command.cwd);
       case "project.share.open":
         return projectShares.open(command);
       case "project.share.close":

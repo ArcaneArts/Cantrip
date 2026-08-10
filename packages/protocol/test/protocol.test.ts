@@ -53,6 +53,7 @@ import {
   remoteDesktopSummarySchema,
   remoteDesktopTargetInventorySchema,
   remoteDesktopUpdateSchema,
+  scriptCommandListSchema,
   serverBootstrapSchema,
   systemHealthSchema,
   terminalClientMessageSchema,
@@ -72,6 +73,39 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("bounds discovered script commands and their terminal-safe invocation", () => {
+    expect(
+      scriptCommandListSchema.parse([
+        {
+          id: "package:package.json:dev",
+          kind: "package",
+          name: "dev",
+          command: "pnpm run dev",
+          description: "vite --host 0.0.0.0",
+          source: "package.json",
+        },
+      ]),
+    ).toHaveLength(1);
+    expect(() =>
+      scriptCommandListSchema.parse([
+        {
+          id: "dart:pubspec.yaml:release",
+          kind: "dart",
+          name: "release",
+          command: "dart run release\nrm -rf build",
+          description: null,
+          source: "pubspec.yaml",
+        },
+      ]),
+    ).toThrow(/control characters/u);
+    expect(
+      workerCommandSchema.parse({
+        type: "project.script-commands",
+        cwd: "/worker/projects/cantrip",
+      }).type,
+    ).toBe("project.script-commands");
+  });
+
   it("bounds version-checked explorer file writes", () => {
     const version = "a".repeat(64);
     expect(

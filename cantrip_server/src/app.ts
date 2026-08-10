@@ -150,6 +150,7 @@ import {
   remoteSurfaceViewportSchema,
   serverBootstrapSchema,
   settingsBundleSchema,
+  scriptCommandListSchema,
   skillListSchema,
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
@@ -5512,6 +5513,33 @@ export async function buildApp({
       return terminal
         ? reply.code(201).send(terminalSummarySchema.parse(terminal))
         : reply.code(404).send({ error: "Project source not found." });
+    },
+  );
+
+  app.get<{ Params: { terminalId: string } }>(
+    "/api/terminals/:terminalId/script-commands",
+    async (request, reply) => {
+      const context = await repository.getTerminalExecutionContext(
+        LOCAL_USER_ID,
+        request.params.terminalId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Terminal not found." });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const commands = await bridge.request(
+          context.workerId,
+          { type: "project.script-commands", cwd: context.cwd },
+          { timeoutMs: 30_000 },
+        );
+        return reply.send(scriptCommandListSchema.parse(commands));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
     },
   );
 
