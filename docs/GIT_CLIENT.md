@@ -444,6 +444,38 @@ Manual QA:
 5. Disconnect the selected worker and confirm creation fails without falling
    back to another worktree or moving credentials through the app/server.
 
+### Pull request review surface
+
+Click a pull request row to open its worktree-scoped review dialog. Overview
+shows draft/open/merged state, head and base, mergeability, aggregate changes,
+requested reviewers, review decisions, and the bounded general conversation.
+Commits and changed files are capped at 100 entries, reviews at 100, and checks
+plus commit statuses at 200; the UI identifies an incomplete result and links
+to GitHub rather than silently presenting it as complete. Changed-file patches
+use Cantrip's shared side-by-side diff viewer. Binary, unavailable, and absent
+GitHub patches intentionally render as having no textual line changes.
+
+The Checks view combines GitHub check runs and legacy commit statuses for the
+exact PR head. It displays running/conclusion state, a bounded summary, and the
+hosted details link, which provides logs for failed checks without transporting
+unbounded log output through Cantrip. All reads route app → server → the
+selected worktree's worker, where GitHub CLI authentication remains.
+
+Manual QA:
+
+1. Open a clean, conflicted, draft, and merged pull request; confirm head/base,
+   mergeability, review state, requested reviewers, and aggregate stats match
+   GitHub.
+2. Inspect normal, renamed, deleted, binary, and large changed files and verify
+   patches use the shared diff viewer with intentional unavailable/truncated
+   states.
+3. Open a PR with more than 100 commits or files and confirm the bounded notice
+   appears without freezing the app.
+4. Inspect successful, failed, cancelled, and running checks plus a legacy
+   commit status. Follow the hosted link for a failed check's full log.
+5. Disconnect the selected worktree's worker and confirm the dialog reports it
+   offline instead of reading through another worker.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport

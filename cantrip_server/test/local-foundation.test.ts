@@ -44,6 +44,7 @@ import {
   githubIssueDetailSchema,
   githubIssueListSchema,
   githubPullRequestCreateResultSchema,
+  githubPullRequestDetailSchema,
   modelProfileSummarySchema,
   modelProviderSummarySchema,
   projectListSchema,
@@ -144,6 +145,9 @@ const issueListRequests: Array<{
 const closedIssues: Array<{ comment: string | null; number: number }> = [];
 const pullRequestCreateCommands: Array<
   Extract<WorkerCommand, { type: "github.pull-request.create" }>
+> = [];
+const pullRequestGetCommands: Array<
+  Extract<WorkerCommand, { type: "github.pull-request.get" }>
 > = [];
 const relayedSurfaceFrames: Array<{
   workerId: string;
@@ -375,6 +379,46 @@ const workerBridge = {
             baseSha: "3".repeat(40),
           },
           warnings: [],
+        };
+      case "github.pull-request.get":
+        pullRequestGetCommands.push(command);
+        return {
+          number: command.number,
+          title: "Review pull requests",
+          state: "open",
+          url: `https://github.com/ArcaneArts/Cantrip/pull/${command.number}`,
+          author: "cantrip-test",
+          commentCount: 1,
+          labels: [{ name: "feature", color: "22d3ee" }],
+          createdAt: "2026-08-10T12:00:00.000Z",
+          updatedAt: "2026-08-10T13:00:00.000Z",
+          closedAt: null,
+          body: "Please review.",
+          draft: false,
+          merged: false,
+          headRef: "feature/review",
+          headSha: "4".repeat(40),
+          baseRef: "main",
+          baseSha: "3".repeat(40),
+          comments: [],
+          commentsTruncated: false,
+          requestedReviewers: ["reviewer"],
+          mergeable: true,
+          mergeableState: "clean",
+          reviewDecision: "review-required",
+          checksState: "success",
+          additions: 4,
+          deletions: 1,
+          changedFileCount: 1,
+          commitCount: 1,
+          commits: [],
+          commitsTruncated: false,
+          files: [],
+          filesTruncated: false,
+          checks: [],
+          checksTruncated: false,
+          reviews: [],
+          reviewsTruncated: false,
         };
       case "project.clone":
         if (command.repository.nameWithOwner === heldProjectCloneName) {
@@ -2002,6 +2046,36 @@ describe("local server foundation", () => {
         linkedIssueNumbers: [42],
       },
     });
+    const pullRequestDetailResponse = await firstApp.inject({
+      method: "GET",
+      url: `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/github/pull-requests/44`,
+    });
+    expect(pullRequestDetailResponse.statusCode).toBe(200);
+    expect(
+      githubPullRequestDetailSchema.parse(pullRequestDetailResponse.json()),
+    ).toMatchObject({
+      number: 44,
+      mergeable: true,
+      reviewDecision: "review-required",
+      checksState: "success",
+    });
+    expect(pullRequestGetCommands.at(-1)).toMatchObject({
+      cwd: primaryWorktree!.path,
+      repository: "ArcaneArts/Cantrip",
+      number: 44,
+    });
+    expect(
+      await firstApp.inject({
+        method: "GET",
+        url: `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/github/pull-requests/not-a-number`,
+      }),
+    ).toMatchObject({ statusCode: 400 });
+    expect(
+      await firstApp.inject({
+        method: "GET",
+        url: `/api/projects/${project.id}/worktrees/missing-worktree/github/pull-requests/44`,
+      }),
+    ).toMatchObject({ statusCode: 404 });
     const history = gitHistorySchema.parse(
       (
         await firstApp.inject({
