@@ -1682,17 +1682,42 @@ export async function applyGitStashAction(
       "The stash or working changes no longer match this preview. Review the action again.",
     );
   }
-  const args =
-    action.type === "clear"
-      ? ["stash", "clear"]
-      : action.type === "branch"
-        ? ["stash", "branch", action.branch, action.ref]
-        : [
-            "stash",
-            action.type,
-            action.type === "apply" ? action.hash : action.ref,
-          ];
-  const outcome = await runGitOutcome(cwd, args);
+  const resumable = ["apply", "pop", "branch"].includes(action.type);
+  const originalHead = resumable ? await resolveCommit(cwd, "HEAD") : null;
+  const targetRef = resumable
+    ? await gitOutput(cwd, ["symbolic-ref", "-q", "HEAD"]).catch(() => null)
+    : null;
+  const checkpointRef = resumable
+    ? await createStashOperationCheckpoint(cwd, originalHead!, preview.token)
+    : null;
+  let outcome: Awaited<ReturnType<typeof runGitOutcome>>;
+  if (action.type === "clear") {
+    outcome = await runGitOutcome(cwd, ["stash", "clear"]);
+  } else if (action.type === "drop") {
+    outcome = await runGitOutcome(cwd, ["stash", "drop", action.ref]);
+  } else if (action.type === "branch") {
+    const create = await runGitOutcome(cwd, [
+      "branch",
+      action.branch,
+      `${action.hash}^1`,
+    ]);
+    if (create.code !== 0) {
+      await restoreStashOperationCheckpoint(cwd, {
+        originalHead: originalHead!,
+        targetRef,
+        checkpointRef: checkpointRef!,
+        branch: action.branch,
+      });
+      throw new Error(create.output);
+    }
+    const switched = await runGitOutcome(cwd, ["switch", action.branch]);
+    outcome =
+      switched.code === 0
+        ? await runGitOutcome(cwd, ["stash", "apply", action.hash])
+        : switched;
+  } else {
+    outcome = await runGitOutcome(cwd, ["stash", "apply", action.hash]);
+  }
   const status = await readGitStatus(cwd);
   const conflictedPaths = status.files
     .filter(
@@ -1703,7 +1728,24 @@ export async function applyGitStashAction(
     )
     .map(({ path }) => path);
   if (outcome.code !== 0 && conflictedPaths.length === 0) {
+    if (resumable) {
+      await restoreStashOperationCheckpoint(cwd, {
+        originalHead: originalHead!,
+        targetRef,
+        checkpointRef: checkpointRef!,
+        branch: action.type === "branch" ? action.branch : null,
+      });
+    }
     throw new Error(outcome.output || "Git stash action failed.");
+  }
+  if (
+    outcome.code === 0 &&
+    (action.type === "pop" || action.type === "branch")
+  ) {
+    await dropStashByHash(cwd, action.hash);
+  }
+  if (outcome.code === 0 && checkpointRef) {
+    await runGit(cwd, ["update-ref", "-d", checkpointRef]);
   }
   const stash =
     action.type === "apply"
@@ -1716,7 +1758,131 @@ export async function applyGitStashAction(
     status,
     stash,
     conflictedPaths,
+    operation:
+      conflictedPaths.length && originalHead && checkpointRef
+        ? {
+            type: "stash",
+            state: "conflicted",
+            originalHead,
+            currentHead: await resolveCommit(cwd, "HEAD"),
+            sourceRef: stashOperationSource(action),
+            sourceRevision:
+              action.type === "clear" ? originalHead : action.hash,
+            targetRef,
+            targetRevision: originalHead,
+            pendingCommits: [
+              action.type === "clear" ? originalHead : action.hash,
+            ],
+            currentStep: 1,
+            totalSteps: 1,
+            checkpointRef,
+            conflictedPaths,
+          }
+        : null,
   });
+}
+
+async function dropStashByHash(cwd: string, hash: string): Promise<string> {
+  const stash = (await readGitStashes(cwd)).stashes.find(
+    (candidate) => candidate.hash === hash,
+  );
+  if (!stash) return "The source stash was already absent.";
+  return runGit(cwd, ["stash", "drop", stash.ref]);
+}
+
+function stashOperationSource(action: GitStashAction): string {
+  if (action.type === "apply" || action.type === "pop") {
+    return `${action.type}:${action.ref}`;
+  }
+  if (action.type === "branch") {
+    return `branch:${action.branch}:${action.ref}`;
+  }
+  throw new Error("This stash action cannot create a resumable operation.");
+}
+
+function parseStashOperationSource(source: string | null): {
+  action: "apply" | "pop" | "branch";
+  branch: string | null;
+} {
+  if (source?.startsWith("apply:")) return { action: "apply", branch: null };
+  if (source?.startsWith("pop:")) return { action: "pop", branch: null };
+  if (source?.startsWith("branch:")) {
+    const branch = source.slice("branch:".length).split(":", 1)[0];
+    if (!branch) throw new Error("The stash branch operation is invalid.");
+    return { action: "branch", branch };
+  }
+  throw new Error("The durable stash operation metadata is invalid.");
+}
+
+async function createStashOperationCheckpoint(
+  cwd: string,
+  originalHead: string,
+  token: string,
+): Promise<string> {
+  const dirty = (await readGitStatus(cwd)).files.length > 0;
+  const checkpointRef = `refs/cantrip/checkpoints/stash-${originalHead.slice(0, 12)}-${token.slice(0, 12)}-${dirty ? "dirty" : "clean"}`;
+  if (!dirty) {
+    await runGit(cwd, ["update-ref", checkpointRef, originalHead, ""]);
+    return checkpointRef;
+  }
+  const before = await readGitStashes(cwd);
+  await runGit(cwd, [
+    "stash",
+    "push",
+    "--include-untracked",
+    "--message",
+    `Cantrip recovery ${token.slice(0, 12)}`,
+  ]);
+  const created = (await readGitStashes(cwd)).stashes.find(
+    ({ hash }) => !before.stashes.some((stash) => stash.hash === hash),
+  );
+  if (!created) throw new Error("Git did not create the stash recovery point.");
+  await runGit(cwd, ["update-ref", checkpointRef, created.hash, ""]);
+  await runGit(cwd, ["stash", "apply", "--index", checkpointRef]);
+  await dropStashByHash(cwd, created.hash);
+  return checkpointRef;
+}
+
+async function restoreStashOperationCheckpoint(
+  cwd: string,
+  input: {
+    originalHead: string;
+    targetRef: string | null;
+    checkpointRef: string;
+    branch: string | null;
+  },
+): Promise<string> {
+  const output: string[] = [];
+  output.push(await runGit(cwd, ["reset", "--hard", input.originalHead]));
+  output.push(await runGit(cwd, ["clean", "-fd"]));
+  if (input.branch) {
+    output.push(
+      await runGit(
+        cwd,
+        input.targetRef
+          ? ["switch", input.targetRef.replace(/^refs\/heads\//u, "")]
+          : ["switch", "--detach", input.originalHead],
+      ),
+    );
+    output.push(await runGit(cwd, ["reset", "--hard", input.originalHead]));
+    output.push(await runGit(cwd, ["clean", "-fd"]));
+    if (
+      await gitSucceeds(cwd, [
+        "show-ref",
+        "--verify",
+        "--quiet",
+        `refs/heads/${input.branch}`,
+      ])
+    ) {
+      output.push(await runGit(cwd, ["branch", "-D", input.branch]));
+    }
+  }
+  if (input.checkpointRef.endsWith("-dirty")) {
+    output.push(
+      await runGit(cwd, ["stash", "apply", "--index", input.checkpointRef]),
+    );
+  }
+  return output.filter(Boolean).join("\n");
 }
 
 function parseTrackingCounts(track: string): {
@@ -3507,6 +3673,7 @@ async function hasGitOperationMarker(
   cwd: string,
   type: GitManagedOperationContext["type"],
 ): Promise<boolean> {
+  if (type === "stash") return true;
   if (type === "merge") {
     return gitSucceeds(cwd, ["rev-parse", "--verify", "-q", "MERGE_HEAD"]);
   }
@@ -3528,7 +3695,11 @@ async function managedOperationProgress(
   cwd: string,
   context: GitManagedOperationContext,
 ): Promise<{ currentStep: number; pendingCommits: string[] }> {
-  if (context.type === "merge" || context.type === "revert") {
+  if (
+    context.type === "merge" ||
+    context.type === "revert" ||
+    context.type === "stash"
+  ) {
     return {
       currentStep: 1,
       pendingCommits: context.pendingCommits,
@@ -3575,12 +3746,13 @@ export async function inspectGitManagedOperation(
   output = "",
   terminalHint: "completed" | "aborted" | null = null,
 ): Promise<GitManagedOperationWorkerState> {
-  const [status, currentHead, active, progress] = await Promise.all([
+  const [status, currentHead, operationMarker, progress] = await Promise.all([
     readGitStatus(cwd),
     resolveCommit(cwd, "HEAD"),
     hasGitOperationMarker(cwd, context.type),
     managedOperationProgress(cwd, context),
   ]);
+  const active = terminalHint === null && operationMarker;
   const conflicts = conflictPaths(status);
   const state = active
     ? conflicts.length
@@ -3659,6 +3831,36 @@ export async function controlGitManagedOperation(
   }
   if (action === "skip" && context.type === "merge") {
     throw new Error("Merge operations cannot skip a commit.");
+  }
+  if (action === "skip" && context.type === "stash") {
+    throw new Error("Stash operations cannot skip a step.");
+  }
+  if (context.type === "stash") {
+    if (!context.checkpointRef || !context.sourceRevision) {
+      throw new Error(
+        "The durable stash operation is missing recovery metadata and cannot be controlled safely.",
+      );
+    }
+    const source = parseStashOperationSource(context.sourceRef);
+    let output = "";
+    if (action === "abort") {
+      output = await restoreStashOperationCheckpoint(cwd, {
+        originalHead: context.originalHead,
+        targetRef: context.targetRef,
+        checkpointRef: context.checkpointRef,
+        branch: source.branch,
+      });
+    } else {
+      if (source.action === "pop" || source.action === "branch") {
+        output = await dropStashByHash(cwd, context.sourceRevision);
+      }
+    }
+    return inspectGitManagedOperation(
+      cwd,
+      context,
+      output,
+      action === "abort" ? "aborted" : "completed",
+    );
   }
   const arguments_ =
     action === "abort"

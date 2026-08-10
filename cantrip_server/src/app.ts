@@ -6026,6 +6026,16 @@ export async function buildApp({
               request.params.worktreeId,
             );
             if (!context) throw new Error("Worktree not found.");
+            const active = await repository.getActiveGitOperation(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (active) {
+              throw new Error(
+                `Finish or abort the active ${active.type} operation first.`,
+              );
+            }
             const created = gitStashMutationResultSchema.parse(
               await bridge.request(context.workerId, {
                 type: "git.stash.create",
@@ -6103,6 +6113,16 @@ export async function buildApp({
       if (!context)
         return reply.code(404).send({ error: "Worktree not found." });
       try {
+        const active = await repository.getActiveGitOperation(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          request.params.worktreeId,
+        );
+        if (active) {
+          throw new Error(
+            `Finish or abort the active ${active.type} operation first.`,
+          );
+        }
         return reply.send(
           gitStashActionPreviewSchema.parse(
             await bridge.request(context.workerId, {
@@ -6142,6 +6162,16 @@ export async function buildApp({
               request.params.worktreeId,
             );
             if (!context) throw new Error("Worktree not found.");
+            const active = await repository.getActiveGitOperation(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (active) {
+              throw new Error(
+                `Finish or abort the active ${active.type} operation first.`,
+              );
+            }
             const applied = gitStashMutationResultSchema.parse(
               await bridge.request(context.workerId, {
                 type: "git.stash.action.apply",
@@ -6155,6 +6185,57 @@ export async function buildApp({
               request.params.worktreeId,
               worktreeStatusFromGitStatus(context.worktree, applied.status),
             );
+            if (applied.operation) {
+              const operationContext: GitManagedOperationContext = {
+                type: "stash",
+                originalHead: applied.operation.originalHead,
+                sourceRef: applied.operation.sourceRef,
+                sourceRevision: applied.operation.sourceRevision,
+                targetRef: applied.operation.targetRef,
+                targetRevision: applied.operation.targetRevision,
+                pendingCommits: applied.operation.pendingCommits,
+                totalSteps: 1,
+                checkpointRef: applied.operation.checkpointRef,
+              };
+              const durable = await repository.createGitOperation(
+                LOCAL_USER_ID,
+                request.params.projectId,
+                request.params.worktreeId,
+                context.workerId,
+                operationContext,
+              );
+              await repository.markGitOperationRunning(durable.id);
+              await repository.updateGitOperation(
+                LOCAL_USER_ID,
+                request.params.projectId,
+                request.params.worktreeId,
+                durable.id,
+                gitManagedOperationWorkerStateSchema.parse({
+                  ...operationContext,
+                  state: "conflicted",
+                  currentHead: applied.operation.currentHead,
+                  currentStep: 1,
+                  pendingCommits: applied.operation.pendingCommits,
+                  conflictedPaths: applied.operation.conflictedPaths,
+                  output: applied.output,
+                  status: applied.status,
+                }),
+              );
+              publishLiveInvalidation("git-operation", {
+                entityId: durable.id,
+                projectId: request.params.projectId,
+              });
+              publishLiveInvalidation("git-conflict", {
+                entityId: request.params.worktreeId,
+                projectId: request.params.projectId,
+              });
+            }
+            publishLiveInvalidation("worktree", {
+              projectId: request.params.projectId,
+            });
+            publishLiveInvalidation("worktree-status", {
+              projectId: request.params.projectId,
+            });
             return applied;
           },
         );

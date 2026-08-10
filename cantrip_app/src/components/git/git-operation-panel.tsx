@@ -52,9 +52,20 @@ export function gitOperationControlActions(
   operation: GitManagedOperationRecord,
 ): Array<"continue" | "skip" | "abort"> {
   if (!gitOperationIsActive(operation)) return [];
-  return operation.type === "merge"
+  return operation.type === "merge" || operation.type === "stash"
     ? ["continue", "abort"]
     : ["continue", "skip", "abort"];
+}
+
+export function gitOperationSourceLabel(
+  operation: GitManagedOperationRecord,
+): string {
+  if (operation.type !== "stash") {
+    return operation.sourceRef ?? operation.sourceRevision ?? "Recorded action";
+  }
+  const source = operation.sourceRef ?? "stash";
+  const [action, ...rest] = source.split(":");
+  return `${action === "branch" ? "Create branch from" : action} ${rest.at(-1) ?? "stash"}`;
 }
 
 function OperationState({
@@ -215,7 +226,7 @@ export function GitOperationPanel({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold">Git operations</p>
           <p className="truncate text-[10px] text-muted-foreground">
-            Durable merge, rebase, and conflict progress for this worktree
+            Durable merge, rebase, stash, and conflict progress
           </p>
         </div>
         {!active ? (
@@ -273,9 +284,7 @@ export function GitOperationPanel({
                 </span>
               </div>
               <p className="mt-2 break-all text-xs text-muted-foreground">
-                {current.sourceRef ??
-                  current.sourceRevision ??
-                  "Recorded commit action"}
+                {gitOperationSourceLabel(current)}
                 {current.targetRef
                   ? ` → ${current.targetRef.replace(/^refs\/heads\//u, "")}`
                   : ""}

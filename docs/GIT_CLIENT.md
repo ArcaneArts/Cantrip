@@ -321,8 +321,12 @@ Conflict reads and writes always target the selected project worktree through
 its assigned worker. The server serializes mutations, persists the owning
 operation's updated conflict state, publishes live invalidations, and keeps
 continue disabled until every unmerged path is verified resolved. Stash
-conflicts are integrated with the same durable resolver in the following
-conflict-workflow pass.
+apply, pop, and branch conflicts enter the same durable resolver. Before a
+stash mutation, the worker records a Cantrip checkpoint that includes existing
+staged, unstaged, and untracked work. **Finish** keeps an applied stash or drops
+the source only for pop/branch semantics; **Abort** resets the attempted result
+and restores the exact checkpoint. A conflicted pop never removes its source
+stash early.
 
 Manual QA:
 
@@ -338,6 +342,9 @@ Manual QA:
    durable operation becomes awaiting-user-action and Continue is enabled.
 6. Disconnect the assigned worker and confirm conflict detail and mutations
    fail explicitly without falling back to Primary or another worktree.
+7. Apply and pop a conflicting stash over a worktree with staged, unstaged,
+   and untracked changes. Resolve and finish one run, abort another, and verify
+   the source stash and checkpoint semantics in both cases.
 
 ## Evolution checklist
 
@@ -349,7 +356,7 @@ Manual QA:
 - [x] Remotes, tags, and GitHub releases
 - [x] Commit and history actions
 - [x] Resumable merge and rebase operations
-- [ ] Conflict resolution
+- [x] Conflict resolution
 - [ ] Advanced history rewriting
 - [ ] Full GitHub pull-request workflow
 - [ ] File history, blame, and repository search

@@ -191,6 +191,7 @@ const gitConflictCommands: Array<
 let managedOperationState:
   "conflicted" | "awaiting-user-action" | "completed" | "aborted" =
   "conflicted";
+let stashActionConflicts = false;
 const gitRevisionDiffCommands: Array<
   Extract<WorkerCommand, { type: "git.revision.diff" }>
 > = [];
@@ -332,14 +333,14 @@ const managedOperationContext = {
   checkpointRef: "refs/cantrip/checkpoints/rebase-test",
 };
 
-function managedWorkerState() {
+function managedWorkerState(context = managedOperationContext) {
   const terminal = ["completed", "aborted"].includes(managedOperationState);
   return {
-    ...managedOperationContext,
+    ...context,
     state: managedOperationState,
     currentHead: terminal ? "4".repeat(40) : "1".repeat(40),
     currentStep: terminal ? 1 : 1,
-    pendingCommits: terminal ? [] : managedOperationContext.pendingCommits,
+    pendingCommits: terminal ? [] : context.pendingCommits,
     conflictedPaths:
       managedOperationState === "conflicted" ? ["src/app.ts"] : [],
     output:
@@ -715,12 +716,12 @@ const workerBridge = {
         return completeStashMutation(managedWorkerState());
       case "git.operation.inspect":
         gitManagedOperationCommands.push(command);
-        return managedWorkerState();
+        return managedWorkerState(command.context);
       case "git.operation.control":
         gitManagedOperationCommands.push(command);
         managedOperationState =
           command.action === "abort" ? "aborted" : "completed";
-        return completeStashMutation(managedWorkerState());
+        return completeStashMutation(managedWorkerState(command.context));
       case "git.conflicts.list":
         gitConflictCommands.push(command);
         return {
@@ -914,9 +915,40 @@ const workerBridge = {
         gitStashCommands.push(command);
         return completeStashMutation({
           output: "stash action complete",
-          status: status(),
+          status: stashActionConflicts
+            ? {
+                ...status(),
+                files: [
+                  {
+                    path: "src/app.ts",
+                    originalPath: null,
+                    indexStatus: "U",
+                    worktreeStatus: "U",
+                    staged: true,
+                    unstaged: true,
+                  },
+                ],
+              }
+            : status(),
           stash: command.action.type === "apply" ? stashFixture : null,
-          conflictedPaths: [],
+          conflictedPaths: stashActionConflicts ? ["src/app.ts"] : [],
+          operation: stashActionConflicts
+            ? {
+                type: "stash",
+                state: "conflicted",
+                originalHead: "1".repeat(40),
+                currentHead: "1".repeat(40),
+                sourceRef: `pop:${stashFixture.ref}`,
+                sourceRevision: stashFixture.hash,
+                targetRef: "refs/heads/main",
+                targetRevision: "1".repeat(40),
+                pendingCommits: [stashFixture.hash],
+                currentStep: 1,
+                totalSteps: 1,
+                checkpointRef: "refs/cantrip/checkpoints/stash-test-clean",
+                conflictedPaths: ["src/app.ts"],
+              }
+            : null,
         });
       case "git.branch.list":
         gitBranchCommands.push(command);
@@ -2117,6 +2149,68 @@ describe.sequential("server worktree control plane", () => {
       cwd: target.path,
       action: popAction,
     });
+    stashActionConflicts = true;
+    managedOperationState = "conflicted";
+    const stashConflictPreviewResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes/actions/preview`,
+      payload: popAction,
+    });
+    expect(stashConflictPreviewResponse.statusCode).toBe(200);
+    const stashConflictApplyResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes/actions/apply`,
+      payload: { action: popAction, token: "e".repeat(64) },
+    });
+    expect(
+      gitStashMutationResultSchema.parse(stashConflictApplyResponse.json()),
+    ).toMatchObject({
+      operation: { type: "stash", state: "conflicted" },
+      conflictedPaths: ["src/app.ts"],
+    });
+    const stashOperation = await database.repository.getActiveGitOperation(
+      LOCAL_USER_ID,
+      projectId,
+      target.id,
+    );
+    expect(stashOperation).toMatchObject({
+      type: "stash",
+      state: "conflicted",
+      sourceRevision: stashFixture.hash,
+    });
+    const blockedStashCreate = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes`,
+      payload: {
+        message: "Blocked while resolving",
+        includeStaged: true,
+        includeUnstaged: true,
+        includeUntracked: false,
+      },
+    });
+    expect(blockedStashCreate.statusCode).toBe(409);
+    expect(blockedStashCreate.json()).toMatchObject({
+      error: "Finish or abort the active stash operation first.",
+    });
+    const blockedStashPreview = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes/actions/preview`,
+      payload: popAction,
+    });
+    expect(blockedStashPreview.statusCode).toBe(409);
+    expect(blockedStashPreview.json()).toMatchObject({
+      error: "Finish or abort the active stash operation first.",
+    });
+    const abortStashResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/${stashOperation!.id}/control`,
+      payload: { action: "abort" },
+    });
+    expect(
+      gitManagedOperationResponseSchema.parse(abortStashResponse.json())
+        .operation,
+    ).toMatchObject({ type: "stash", state: "aborted" });
+    stashActionConflicts = false;
     maximumConcurrentGitMutations = 0;
     await Promise.all([
       app.inject({
