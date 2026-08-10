@@ -776,6 +776,62 @@ export const githubIssueCloseSchema = z.object({
   comment: z.string().trim().min(1).max(65_536).nullable().default(null),
 });
 
+export const githubPullRequestCreateSchema = z
+  .object({
+    base: z
+      .string()
+      .trim()
+      .min(1)
+      .max(255)
+      .refine((value) => !/[\u0000-\u001f\u007f]/u.test(value), {
+        message: "Base branch cannot contain control characters.",
+      }),
+    head: z
+      .string()
+      .trim()
+      .min(1)
+      .max(255)
+      .refine((value) => !/[\u0000-\u001f\u007f]/u.test(value), {
+        message: "Head branch cannot contain control characters.",
+      }),
+    title: z.string().trim().min(1).max(256),
+    body: z.string().max(1_000_000).default(""),
+    draft: z.boolean().default(false),
+    labels: z.array(z.string().trim().min(1).max(100)).max(100).default([]),
+    reviewers: z
+      .array(z.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/u))
+      .max(100)
+      .default([]),
+    linkedIssueNumbers: z
+      .array(z.number().int().positive())
+      .max(100)
+      .default([]),
+  })
+  .superRefine((request, context) => {
+    if (request.base === request.head) {
+      context.addIssue({
+        code: "custom",
+        path: ["head"],
+        message: "Pull request head and base branches must differ.",
+      });
+    }
+  });
+
+export const githubPullRequestSummarySchema = githubIssueSummarySchema.extend({
+  body: z.string().nullable(),
+  draft: z.boolean(),
+  merged: z.boolean(),
+  headRef: z.string().min(1),
+  headSha: z.string().regex(/^[0-9a-f]{40}$/u),
+  baseRef: z.string().min(1),
+  baseSha: z.string().regex(/^[0-9a-f]{40}$/u),
+});
+
+export const githubPullRequestCreateResultSchema = z.object({
+  pullRequest: githubPullRequestSummarySchema,
+  warnings: z.array(z.string().min(1).max(1_000)).max(100),
+});
+
 export const githubReleaseSummarySchema = z.object({
   id: z.number().int().positive(),
   tagName: z.string().min(1).max(1_000),
@@ -4293,6 +4349,12 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     comment: z.string().trim().min(1).max(65_536).nullable(),
   }),
   z.object({
+    type: z.literal("github.pull-request.create"),
+    cwd: z.string().min(1).max(8_192),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+    request: githubPullRequestCreateSchema,
+  }),
+  z.object({
     type: z.literal("github.releases.list"),
     cwd: z.string().min(1).max(8_192),
     repository: githubRepositorySchema.shape.nameWithOwner,
@@ -5230,6 +5292,15 @@ export type GithubIssueSummary = z.infer<typeof githubIssueSummarySchema>;
 export type GithubIssueList = z.infer<typeof githubIssueListSchema>;
 export type GithubIssueComment = z.infer<typeof githubIssueCommentSchema>;
 export type GithubIssueDetail = z.infer<typeof githubIssueDetailSchema>;
+export type GithubPullRequestCreate = z.infer<
+  typeof githubPullRequestCreateSchema
+>;
+export type GithubPullRequestSummary = z.infer<
+  typeof githubPullRequestSummarySchema
+>;
+export type GithubPullRequestCreateResult = z.infer<
+  typeof githubPullRequestCreateResultSchema
+>;
 export type GithubReleaseSummary = z.infer<typeof githubReleaseSummarySchema>;
 export type GithubReleaseList = z.infer<typeof githubReleaseListSchema>;
 export type GithubReleaseCreate = z.infer<typeof githubReleaseCreateSchema>;

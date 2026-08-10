@@ -43,6 +43,7 @@ import {
   githubRepositoryListSchema,
   githubIssueDetailSchema,
   githubIssueListSchema,
+  githubPullRequestCreateResultSchema,
   modelProfileSummarySchema,
   modelProviderSummarySchema,
   projectListSchema,
@@ -141,6 +142,9 @@ const issueListRequests: Array<{
   page: number;
 }> = [];
 const closedIssues: Array<{ comment: string | null; number: number }> = [];
+const pullRequestCreateCommands: Array<
+  Extract<WorkerCommand, { type: "github.pull-request.create" }>
+> = [];
 const relayedSurfaceFrames: Array<{
   workerId: string;
   sequence: number;
@@ -345,6 +349,33 @@ const workerBridge = {
           ],
         };
       }
+      case "github.pull-request.create":
+        pullRequestCreateCommands.push(command);
+        return {
+          pullRequest: {
+            number: 44,
+            title: command.request.title,
+            state: "open",
+            url: "https://github.com/ArcaneArts/Cantrip/pull/44",
+            author: "cantrip-test",
+            commentCount: 0,
+            labels: command.request.labels.map((name) => ({
+              name,
+              color: "22d3ee",
+            })),
+            createdAt: "2026-08-10T12:00:00.000Z",
+            updatedAt: "2026-08-10T12:00:00.000Z",
+            closedAt: null,
+            body: command.request.body,
+            draft: command.request.draft,
+            merged: false,
+            headRef: command.request.head,
+            headSha: "4".repeat(40),
+            baseRef: command.request.base,
+            baseSha: "3".repeat(40),
+          },
+          warnings: [],
+        };
       case "project.clone":
         if (command.repository.nameWithOwner === heldProjectCloneName) {
           await new Promise<void>((resolve) => {
@@ -1923,6 +1954,53 @@ describe("local server foundation", () => {
     expect(closedIssues).toContainEqual({
       number: 42,
       comment: "Closing from Cantrip",
+    });
+    const [primaryWorktree] =
+      await firstDatabase.repository.listProjectWorktrees(
+        LOCAL_USER_ID,
+        project.id,
+      );
+    expect(primaryWorktree).toBeDefined();
+    const pullRequestCreateResponse = await firstApp.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/github/pull-requests`,
+      payload: {
+        base: "main",
+        head: "feature/pr-ui",
+        title: "feat: add pull request creation",
+        body: "Creates pull requests from Cantrip.",
+        draft: true,
+        labels: ["feature"],
+        reviewers: ["reviewer"],
+        linkedIssueNumbers: [42],
+      },
+    });
+    expect(pullRequestCreateResponse.statusCode).toBe(201);
+    expect(
+      githubPullRequestCreateResultSchema.parse(
+        pullRequestCreateResponse.json(),
+      ),
+    ).toMatchObject({
+      pullRequest: {
+        number: 44,
+        draft: true,
+        headRef: "feature/pr-ui",
+        baseRef: "main",
+      },
+      warnings: [],
+    });
+    expect(pullRequestCreateCommands.at(-1)).toMatchObject({
+      cwd: primaryWorktree!.path,
+      repository: "ArcaneArts/Cantrip",
+      request: {
+        base: "main",
+        head: "feature/pr-ui",
+        title: "feat: add pull request creation",
+        draft: true,
+        labels: ["feature"],
+        reviewers: ["reviewer"],
+        linkedIssueNumbers: [42],
+      },
     });
     const history = gitHistorySchema.parse(
       (

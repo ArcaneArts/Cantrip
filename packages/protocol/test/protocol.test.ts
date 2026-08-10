@@ -59,6 +59,7 @@ import {
   gitTagActionPreviewSchema,
   gitTagListSchema,
   githubReleaseCreateSchema,
+  githubPullRequestCreateResultSchema,
   githubReleaseListSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
@@ -1095,6 +1096,55 @@ describe("Cantrip protocol", () => {
         limit: 101,
       }),
     ).toThrow();
+    expect(
+      workerCommandSchema.parse({
+        type: "github.pull-request.create",
+        cwd: "/repo",
+        repository: "ArcaneArts/Cantrip",
+        request: {
+          base: "main",
+          head: "feature/pr-ui",
+          title: "Add PR creation",
+          body: "Ready for review.",
+          draft: true,
+          labels: ["feature"],
+          reviewers: ["octocat"],
+          linkedIssueNumbers: [42],
+        },
+      }).request,
+    ).toMatchObject({ draft: true, linkedIssueNumbers: [42] });
+    expect(
+      workerCommandSchema.safeParse({
+        type: "github.pull-request.create",
+        cwd: "/repo",
+        repository: "ArcaneArts/Cantrip",
+        request: { base: "main", head: "main", title: "Invalid" },
+      }).success,
+    ).toBe(false);
+    expect(
+      githubPullRequestCreateResultSchema.parse({
+        pullRequest: {
+          number: 44,
+          title: "Add PR creation",
+          state: "open",
+          url: "https://github.com/ArcaneArts/Cantrip/pull/44",
+          author: "octocat",
+          commentCount: 0,
+          labels: [],
+          createdAt: "2026-08-10T12:00:00.000Z",
+          updatedAt: "2026-08-10T12:00:00.000Z",
+          closedAt: null,
+          body: "Ready for review.",
+          draft: true,
+          merged: false,
+          headRef: "feature/pr-ui",
+          headSha: "1".repeat(40),
+          baseRef: "main",
+          baseSha: "2".repeat(40),
+        },
+        warnings: [],
+      }).pullRequest.headRef,
+    ).toBe("feature/pr-ui");
   });
 
   it("validates worker-owned authenticated project share lifecycles", () => {

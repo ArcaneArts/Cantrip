@@ -415,6 +415,35 @@ Manual QA:
    apply refuses to overwrite the new remote commit.
 5. Verify an ordinary ahead-only branch pushes without the destructive dialog.
 
+## GitHub pull request creation
+
+Open a project's Issues tab in **Pull requests** mode and choose **Pull
+request**. Creation remains bound to the History tab's explicitly selected
+worktree. The head selector contains only local branches; the worker refuses
+to create the pull request until that exact local tip is already published to
+the same-named GitHub branch. Cantrip never silently pushes, changes branches,
+or substitutes the Primary worktree.
+
+The form supports a base branch, title, Markdown body, draft state, labels,
+reviewers, and linked issue numbers. Linked issues are appended to the body as
+GitHub closing references. Pull request creation happens first; labels and
+reviewers are best-effort enrichment. If either enrichment fails, Cantrip
+returns the created pull request and a warning instead of encouraging a retry
+that could create a duplicate.
+
+Manual QA:
+
+1. Publish a local feature branch, select its owning worktree, and create both
+   ready and draft pull requests targeting `main`.
+2. Add Markdown, labels, reviewers, and duplicate linked issue numbers. Confirm
+   labels/reviewers are deduplicated and each `Closes #N` line appears once.
+3. Advance the local branch without pushing and confirm creation is rejected
+   with an exact local-versus-GitHub tip mismatch.
+4. Make label or reviewer assignment fail after creation and confirm the
+   hosted pull request is returned with a warning rather than retried.
+5. Disconnect the selected worker and confirm creation fails without falling
+   back to another worktree or moving credentials through the app/server.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport

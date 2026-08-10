@@ -1,6 +1,15 @@
-import { chmod, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import {
+  chmod,
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -8,6 +17,7 @@ import { GithubClient, readProjectWorktreePolicy } from "../src/github.js";
 
 const directories: string[] = [];
 const originalPath = process.env.PATH;
+const execFileAsync = promisify(execFile);
 
 afterEach(async () => {
   process.env.PATH = originalPath;
@@ -123,6 +133,123 @@ describe("GitHub project files", () => {
     await expect(
       github.closeIssue("ArcaneArts/Cantrip", 42, "Closing"),
     ).resolves.toMatchObject({ number: 42 });
+  });
+
+  it("creates pull requests only from an exactly published local branch", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-github-pr-create-"),
+    );
+    directories.push(dataDirectory);
+    const repository = path.join(dataDirectory, "repository");
+    await execFileAsync("git", ["init", "-b", "feature/pr-ui", repository]);
+    await execFileAsync("git", [
+      "-C",
+      repository,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      repository,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(repository, "README.md"), "Cantrip\n");
+    await execFileAsync("git", ["-C", repository, "add", "."]);
+    await execFileAsync("git", ["-C", repository, "commit", "-m", "Feature"]);
+    const head = (
+      await execFileAsync("git", ["-C", repository, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    const base = "2".repeat(40);
+    const pullRequest = {
+      number: 44,
+      title: "Add PR creation",
+      state: "open",
+      html_url: "https://github.com/ArcaneArts/Cantrip/pull/44",
+      user: { login: "author" },
+      comments: 0,
+      labels: [],
+      created_at: "2026-08-10T12:00:00.000Z",
+      updated_at: "2026-08-10T12:00:00.000Z",
+      closed_at: null,
+      body: "Ready for review.\n\nCloses #42",
+      draft: true,
+      merged: false,
+      head: { ref: "feature/pr-ui", sha: head },
+      base: { ref: "main", sha: base },
+    };
+    const binDirectory = path.join(dataDirectory, "bin");
+    const logPath = path.join(dataDirectory, "gh.log");
+    await mkdir(binDirectory);
+    const fakeGh = path.join(binDirectory, "gh");
+    await writeFile(
+      fakeGh,
+      [
+        "#!/usr/bin/env node",
+        'const fs = require("node:fs");',
+        `const log = ${JSON.stringify(logPath)};`,
+        'const args = process.argv.slice(2); fs.appendFileSync(log, args.join("\\0") + "\\n");',
+        'const path = args[1] || "";',
+        `if (path.includes("/git/ref/heads/feature/pr-ui")) process.stdout.write(${JSON.stringify(JSON.stringify({ object: { sha: head } }))});`,
+        `else if (path.endsWith("/pulls")) process.stdout.write(${JSON.stringify(JSON.stringify(pullRequest))});`,
+        'else process.stdout.write("{}");',
+      ].join("\n"),
+    );
+    await chmod(fakeGh, 0o755);
+    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+
+    const github = new GithubClient(dataDirectory);
+    const created = await github.createPullRequest(
+      "ArcaneArts/Cantrip",
+      repository,
+      {
+        base: "main",
+        head: "feature/pr-ui",
+        title: "Add PR creation",
+        body: "Ready for review.",
+        draft: true,
+        labels: ["feature", "feature"],
+        reviewers: ["reviewer"],
+        linkedIssueNumbers: [42, 42],
+      },
+    );
+    expect(created).toMatchObject({
+      pullRequest: {
+        number: 44,
+        draft: true,
+        headRef: "feature/pr-ui",
+        baseRef: "main",
+      },
+      warnings: [],
+    });
+    const invocations = await readFile(logPath, "utf8");
+    expect(invocations).toContain("body=Ready for review.\n\nCloses #42");
+    expect(invocations).toContain("draft=true");
+    expect(invocations.match(/labels\[\]=feature/gu)).toHaveLength(1);
+    expect(invocations).toContain("reviewers[]=reviewer");
+
+    await writeFile(path.join(repository, "README.md"), "Changed locally\n");
+    await execFileAsync("git", [
+      "-C",
+      repository,
+      "commit",
+      "-am",
+      "Local only",
+    ]);
+    await expect(
+      github.createPullRequest("ArcaneArts/Cantrip", repository, {
+        base: "main",
+        head: "feature/pr-ui",
+        title: "Stale head",
+        body: "",
+        draft: false,
+        labels: [],
+        reviewers: [],
+        linkedIssueNumbers: [],
+      }),
+    ).rejects.toThrow("local and GitHub branch tips must match");
   });
 
   it("restores the last repository list for the same GitHub login", async () => {
