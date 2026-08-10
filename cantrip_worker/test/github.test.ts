@@ -365,6 +365,42 @@ describe("GitHub project files", () => {
         submitted_at: "2026-08-10T12:30:00.000Z",
       },
     ];
+    const reviewComments = [
+      {
+        id: 20,
+        pull_request_review_id: 12,
+        user: { login: "reviewer" },
+        body: "Rename this symbol.",
+        html_url:
+          "https://github.com/ArcaneArts/Cantrip/pull/44#discussion_r20",
+        path: "src/review.ts",
+        line: 4,
+        side: "RIGHT",
+        start_line: null,
+        start_side: null,
+        diff_hunk: "@@ -3,2 +3,2 @@",
+        in_reply_to_id: null,
+        created_at: "2026-08-10T12:31:00.000Z",
+        updated_at: "2026-08-10T12:31:00.000Z",
+      },
+      {
+        id: 21,
+        pull_request_review_id: 12,
+        user: { login: "author" },
+        body: "Done.",
+        html_url:
+          "https://github.com/ArcaneArts/Cantrip/pull/44#discussion_r21",
+        path: "src/review.ts",
+        line: 4,
+        side: "RIGHT",
+        start_line: null,
+        start_side: null,
+        diff_hunk: "@@ -3,2 +3,2 @@",
+        in_reply_to_id: 20,
+        created_at: "2026-08-10T12:32:00.000Z",
+        updated_at: "2026-08-10T12:32:00.000Z",
+      },
+    ];
     const binDirectory = path.join(dataDirectory, "bin");
     const logPath = path.join(dataDirectory, "gh.log");
     await mkdir(binDirectory);
@@ -384,6 +420,7 @@ describe("GitHub project files", () => {
         `else if (route.endsWith("/check-runs")) process.stdout.write(${JSON.stringify(JSON.stringify(checkRuns))});`,
         `else if (route.endsWith("/status")) process.stdout.write(${JSON.stringify(JSON.stringify(statuses))});`,
         `else if (route.endsWith("/pulls/44/reviews")) process.stdout.write(${JSON.stringify(JSON.stringify(reviews))});`,
+        `else if (route.endsWith("/pulls/44/comments")) process.stdout.write(${JSON.stringify(JSON.stringify(reviewComments))});`,
         'else process.stdout.write("{}");',
       ].join("\n"),
     );
@@ -410,10 +447,54 @@ describe("GitHub project files", () => {
         { name: "deploy", status: "in-progress" },
       ],
       reviews: [{ author: "reviewer", state: "changes-requested" }],
+      reviewThreads: [
+        {
+          path: "src/review.ts",
+          line: 4,
+          comments: [{ id: 20 }, { id: 21, inReplyToId: 20 }],
+        },
+      ],
     });
     const invocations = await readFile(logPath, "utf8");
     expect(invocations).toContain(`/commits/${head}/check-runs`);
     expect(invocations).toContain("per_page=100");
+    await github.commentOnPullRequest(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      "General feedback",
+    );
+    await github.submitPullRequestReview("ArcaneArts/Cantrip", repository, 44, {
+      event: "request-changes",
+      body: "Please revise.",
+    });
+    await github.commentOnPullRequestLine(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      {
+        body: "Inline feedback",
+        path: "src/review.ts",
+        line: 4,
+        side: "RIGHT",
+        startLine: null,
+        startSide: null,
+      },
+    );
+    await github.replyToPullRequestReview(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      20,
+      "Updated.",
+    );
+    const mutationInvocations = await readFile(logPath, "utf8");
+    expect(mutationInvocations).toContain("body=General feedback");
+    expect(mutationInvocations).toContain("event=REQUEST_CHANGES");
+    expect(mutationInvocations).toContain(`commit_id=${head}`);
+    expect(mutationInvocations).toContain("path=src/review.ts");
+    expect(mutationInvocations).toContain("line=4");
+    expect(mutationInvocations).toContain("/comments/20/replies");
     await expect(
       github.getPullRequest("ArcaneArts/Cantrip", "/missing/worktree", 44),
     ).rejects.toThrow();

@@ -149,6 +149,49 @@ const pullRequestCreateCommands: Array<
 const pullRequestGetCommands: Array<
   Extract<WorkerCommand, { type: "github.pull-request.get" }>
 > = [];
+const pullRequestReviewCommands: WorkerCommand[] = [];
+function pullRequestDetailFixture(number: number) {
+  return {
+    number,
+    title: "Review pull requests",
+    state: "open",
+    url: `https://github.com/ArcaneArts/Cantrip/pull/${number}`,
+    author: "cantrip-test",
+    commentCount: 1,
+    labels: [{ name: "feature", color: "22d3ee" }],
+    createdAt: "2026-08-10T12:00:00.000Z",
+    updatedAt: "2026-08-10T13:00:00.000Z",
+    closedAt: null,
+    body: "Please review.",
+    draft: false,
+    merged: false,
+    headRef: "feature/review",
+    headSha: "4".repeat(40),
+    baseRef: "main",
+    baseSha: "3".repeat(40),
+    comments: [],
+    commentsTruncated: false,
+    requestedReviewers: ["reviewer"],
+    mergeable: true,
+    mergeableState: "clean",
+    reviewDecision: "review-required",
+    checksState: "success",
+    additions: 4,
+    deletions: 1,
+    changedFileCount: 1,
+    commitCount: 1,
+    commits: [],
+    commitsTruncated: false,
+    files: [],
+    filesTruncated: false,
+    checks: [],
+    checksTruncated: false,
+    reviews: [],
+    reviewsTruncated: false,
+    reviewThreads: [],
+    reviewThreadsTruncated: false,
+  } as const;
+}
 const relayedSurfaceFrames: Array<{
   workerId: string;
   sequence: number;
@@ -382,44 +425,13 @@ const workerBridge = {
         };
       case "github.pull-request.get":
         pullRequestGetCommands.push(command);
-        return {
-          number: command.number,
-          title: "Review pull requests",
-          state: "open",
-          url: `https://github.com/ArcaneArts/Cantrip/pull/${command.number}`,
-          author: "cantrip-test",
-          commentCount: 1,
-          labels: [{ name: "feature", color: "22d3ee" }],
-          createdAt: "2026-08-10T12:00:00.000Z",
-          updatedAt: "2026-08-10T13:00:00.000Z",
-          closedAt: null,
-          body: "Please review.",
-          draft: false,
-          merged: false,
-          headRef: "feature/review",
-          headSha: "4".repeat(40),
-          baseRef: "main",
-          baseSha: "3".repeat(40),
-          comments: [],
-          commentsTruncated: false,
-          requestedReviewers: ["reviewer"],
-          mergeable: true,
-          mergeableState: "clean",
-          reviewDecision: "review-required",
-          checksState: "success",
-          additions: 4,
-          deletions: 1,
-          changedFileCount: 1,
-          commitCount: 1,
-          commits: [],
-          commitsTruncated: false,
-          files: [],
-          filesTruncated: false,
-          checks: [],
-          checksTruncated: false,
-          reviews: [],
-          reviewsTruncated: false,
-        };
+        return pullRequestDetailFixture(command.number);
+      case "github.pull-request.comment":
+      case "github.pull-request.review.submit":
+      case "github.pull-request.review.comment":
+      case "github.pull-request.review.reply":
+        pullRequestReviewCommands.push(command);
+        return pullRequestDetailFixture(command.number);
       case "project.clone":
         if (command.repository.nameWithOwner === heldProjectCloneName) {
           await new Promise<void>((resolve) => {
@@ -2076,6 +2088,65 @@ describe("local server foundation", () => {
         url: `/api/projects/${project.id}/worktrees/missing-worktree/github/pull-requests/44`,
       }),
     ).toMatchObject({ statusCode: 404 });
+    const pullRequestActionUrl = `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/github/pull-requests/44/actions`;
+    for (const payload of [
+      { type: "comment", body: "General feedback" },
+      {
+        type: "submit-review",
+        review: { event: "approve", body: "Looks good" },
+      },
+      {
+        type: "inline-comment",
+        comment: {
+          body: "Please rename this.",
+          path: "src/review.ts",
+          line: 12,
+          side: "RIGHT",
+        },
+      },
+      { type: "reply", commentId: 99, body: "Updated." },
+    ]) {
+      const response = await firstApp.inject({
+        method: "POST",
+        url: pullRequestActionUrl,
+        payload,
+      });
+      expect(response.statusCode).toBe(200);
+      expect(githubPullRequestDetailSchema.parse(response.json()).number).toBe(
+        44,
+      );
+    }
+    expect(pullRequestReviewCommands.slice(-4)).toMatchObject([
+      {
+        type: "github.pull-request.comment",
+        cwd: primaryWorktree!.path,
+        number: 44,
+        body: "General feedback",
+      },
+      {
+        type: "github.pull-request.review.submit",
+        review: { event: "approve", body: "Looks good" },
+      },
+      {
+        type: "github.pull-request.review.comment",
+        comment: { path: "src/review.ts", line: 12, side: "RIGHT" },
+      },
+      {
+        type: "github.pull-request.review.reply",
+        commentId: 99,
+        body: "Updated.",
+      },
+    ]);
+    expect(
+      await firstApp.inject({
+        method: "POST",
+        url: pullRequestActionUrl,
+        payload: {
+          type: "submit-review",
+          review: { event: "request-changes", body: "" },
+        },
+      }),
+    ).toMatchObject({ statusCode: 400 });
     const history = gitHistorySchema.parse(
       (
         await firstApp.inject({

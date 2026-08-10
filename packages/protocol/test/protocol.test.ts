@@ -1201,8 +1201,47 @@ describe("Cantrip protocol", () => {
         checksTruncated: false,
         reviews: [],
         reviewsTruncated: false,
+        reviewThreads: [],
+        reviewThreadsTruncated: false,
       }).reviewDecision,
     ).toBe("review-required");
+    expect(
+      workerCommandSchema.parse({
+        type: "github.pull-request.review.comment",
+        cwd: "/repo/worktrees/feature",
+        repository: "ArcaneArts/Cantrip",
+        number: 44,
+        comment: {
+          body: "Please rename this.",
+          path: "src/review.ts",
+          line: 12,
+          side: "RIGHT",
+        },
+      }),
+    ).toMatchObject({ comment: { line: 12, startLine: null } });
+    expect(
+      workerCommandSchema.safeParse({
+        type: "github.pull-request.review.comment",
+        cwd: "/repo",
+        repository: "ArcaneArts/Cantrip",
+        number: 44,
+        comment: {
+          body: "Unsafe path",
+          path: "../secret",
+          line: 1,
+          side: "RIGHT",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      workerCommandSchema.safeParse({
+        type: "github.pull-request.review.submit",
+        cwd: "/repo",
+        repository: "ArcaneArts/Cantrip",
+        number: 44,
+        review: { event: "request-changes", body: "" },
+      }).success,
+    ).toBe(false);
   });
 
   it("validates worker-owned authenticated project share lifecycles", () => {

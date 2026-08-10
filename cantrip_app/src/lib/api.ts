@@ -159,6 +159,7 @@ import type {
   GithubIssueKind,
   GithubIssueState,
   GithubPullRequestCreate,
+  GithubPullRequestReviewAction,
   GithubReleaseCreate,
   GithubProjectCreate,
   ModelProfileCreate,
@@ -982,6 +983,20 @@ export async function getGithubPullRequest(
   return githubPullRequestDetailSchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/pull-requests/${pullRequestNumber}`,
+    ),
+  );
+}
+
+export async function runGithubPullRequestReviewAction(
+  projectId: string,
+  worktreeId: string,
+  pullRequestNumber: number,
+  action: GithubPullRequestReviewAction,
+) {
+  return githubPullRequestDetailSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/pull-requests/${pullRequestNumber}/actions`,
+      action,
     ),
   );
 }

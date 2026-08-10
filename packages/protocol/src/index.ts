@@ -886,6 +886,109 @@ export const githubPullRequestReviewSchema = z.object({
   url: z.url().nullable(),
 });
 
+export const githubPullRequestReviewCommentSchema = z.object({
+  id: z.number().int().positive(),
+  reviewId: z.number().int().positive().nullable(),
+  author: z.string().min(1),
+  body: z.string().max(1_000_000),
+  url: z.url(),
+  path: z.string().min(1).max(8_192),
+  line: z.number().int().positive().nullable(),
+  side: z.enum(["LEFT", "RIGHT"]).nullable(),
+  startLine: z.number().int().positive().nullable(),
+  startSide: z.enum(["LEFT", "RIGHT"]).nullable(),
+  diffHunk: z.string().max(100_000),
+  inReplyToId: z.number().int().positive().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const githubPullRequestReviewThreadSchema = z.object({
+  id: z.string().min(1),
+  path: z.string().min(1).max(8_192),
+  line: z.number().int().positive().nullable(),
+  side: z.enum(["LEFT", "RIGHT"]).nullable(),
+  resolved: z.boolean().nullable(),
+  comments: z.array(githubPullRequestReviewCommentSchema).min(1).max(100),
+});
+
+const githubPullRequestReviewPathSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(8_192)
+  .refine(
+    (value) =>
+      !value.startsWith("/") &&
+      !value.includes("\\") &&
+      !value.split("/").some((part) => part === ".." || part === ""),
+    { message: "Review path must be a repository-relative file path." },
+  );
+
+export const githubPullRequestReviewSubmitSchema = z
+  .object({
+    event: z.enum(["approve", "request-changes"]),
+    body: z.string().trim().max(65_536).default(""),
+  })
+  .superRefine((request, context) => {
+    if (request.event === "request-changes" && !request.body) {
+      context.addIssue({
+        code: "custom",
+        path: ["body"],
+        message: "Requesting changes requires an explanation.",
+      });
+    }
+  });
+
+export const githubPullRequestInlineCommentCreateSchema = z
+  .object({
+    body: z.string().trim().min(1).max(65_536),
+    path: githubPullRequestReviewPathSchema,
+    line: z.number().int().positive(),
+    side: z.enum(["LEFT", "RIGHT"]),
+    startLine: z.number().int().positive().nullable().default(null),
+    startSide: z.enum(["LEFT", "RIGHT"]).nullable().default(null),
+  })
+  .superRefine((request, context) => {
+    if ((request.startLine === null) !== (request.startSide === null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["startLine"],
+        message: "A multi-line comment requires both start line and side.",
+      });
+    }
+    if (request.startLine !== null && request.startLine > request.line) {
+      context.addIssue({
+        code: "custom",
+        path: ["startLine"],
+        message: "Review start line cannot be after the end line.",
+      });
+    }
+  });
+
+export const githubPullRequestReviewActionSchema = z.discriminatedUnion(
+  "type",
+  [
+    z.object({
+      type: z.literal("comment"),
+      body: githubIssueCommentCreateSchema.shape.body,
+    }),
+    z.object({
+      type: z.literal("submit-review"),
+      review: githubPullRequestReviewSubmitSchema,
+    }),
+    z.object({
+      type: z.literal("inline-comment"),
+      comment: githubPullRequestInlineCommentCreateSchema,
+    }),
+    z.object({
+      type: z.literal("reply"),
+      commentId: z.number().int().positive(),
+      body: githubIssueCommentCreateSchema.shape.body,
+    }),
+  ],
+);
+
 export const githubPullRequestDetailSchema =
   githubPullRequestSummarySchema.extend({
     comments: z.array(githubIssueCommentSchema).max(100),
@@ -913,6 +1016,8 @@ export const githubPullRequestDetailSchema =
     checksTruncated: z.boolean(),
     reviews: z.array(githubPullRequestReviewSchema).max(100),
     reviewsTruncated: z.boolean(),
+    reviewThreads: z.array(githubPullRequestReviewThreadSchema).max(100),
+    reviewThreadsTruncated: z.boolean(),
   });
 
 export const githubReleaseSummarySchema = z.object({
@@ -4444,6 +4549,35 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     number: z.number().int().positive(),
   }),
   z.object({
+    type: z.literal("github.pull-request.comment"),
+    cwd: z.string().min(1).max(8_192),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+    number: z.number().int().positive(),
+    body: githubIssueCommentCreateSchema.shape.body,
+  }),
+  z.object({
+    type: z.literal("github.pull-request.review.submit"),
+    cwd: z.string().min(1).max(8_192),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+    number: z.number().int().positive(),
+    review: githubPullRequestReviewSubmitSchema,
+  }),
+  z.object({
+    type: z.literal("github.pull-request.review.comment"),
+    cwd: z.string().min(1).max(8_192),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+    number: z.number().int().positive(),
+    comment: githubPullRequestInlineCommentCreateSchema,
+  }),
+  z.object({
+    type: z.literal("github.pull-request.review.reply"),
+    cwd: z.string().min(1).max(8_192),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+    number: z.number().int().positive(),
+    commentId: z.number().int().positive(),
+    body: githubIssueCommentCreateSchema.shape.body,
+  }),
+  z.object({
     type: z.literal("github.releases.list"),
     cwd: z.string().min(1).max(8_192),
     repository: githubRepositorySchema.shape.nameWithOwner,
@@ -5399,6 +5533,21 @@ export type GithubPullRequestCheck = z.infer<
 >;
 export type GithubPullRequestReview = z.infer<
   typeof githubPullRequestReviewSchema
+>;
+export type GithubPullRequestReviewComment = z.infer<
+  typeof githubPullRequestReviewCommentSchema
+>;
+export type GithubPullRequestReviewThread = z.infer<
+  typeof githubPullRequestReviewThreadSchema
+>;
+export type GithubPullRequestReviewSubmit = z.infer<
+  typeof githubPullRequestReviewSubmitSchema
+>;
+export type GithubPullRequestInlineCommentCreate = z.infer<
+  typeof githubPullRequestInlineCommentCreateSchema
+>;
+export type GithubPullRequestReviewAction = z.infer<
+  typeof githubPullRequestReviewActionSchema
 >;
 export type GithubPullRequestDetail = z.infer<
   typeof githubPullRequestDetailSchema

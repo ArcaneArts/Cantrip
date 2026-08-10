@@ -33,7 +33,11 @@ import {
   type GithubPullRequestCreateResult,
   type GithubPullRequestDetail,
   type GithubPullRequestCheck,
+  type GithubPullRequestInlineCommentCreate,
   type GithubPullRequestReview,
+  type GithubPullRequestReviewComment,
+  type GithubPullRequestReviewSubmit,
+  type GithubPullRequestReviewThread,
   type GithubPullRequestSummary,
   type GithubReleaseCreate,
   type GithubReleaseList,
@@ -210,6 +214,23 @@ interface GithubApiPullRequestReview {
   id?: unknown;
   state?: unknown;
   submitted_at?: unknown;
+  user?: unknown;
+}
+
+interface GithubApiPullRequestReviewComment {
+  body?: unknown;
+  created_at?: unknown;
+  diff_hunk?: unknown;
+  html_url?: unknown;
+  id?: unknown;
+  in_reply_to_id?: unknown;
+  line?: unknown;
+  path?: unknown;
+  pull_request_review_id?: unknown;
+  side?: unknown;
+  start_line?: unknown;
+  start_side?: unknown;
+  updated_at?: unknown;
   user?: unknown;
 }
 
@@ -481,6 +502,72 @@ function parsePullRequestReview(
   };
 }
 
+function nullablePositiveInteger(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function reviewSide(value: unknown): "LEFT" | "RIGHT" | null {
+  return value === "LEFT" || value === "RIGHT" ? value : null;
+}
+
+function parsePullRequestReviewComment(
+  value: GithubApiPullRequestReviewComment,
+): GithubPullRequestReviewComment {
+  return {
+    id: Number(value.id),
+    reviewId: nullablePositiveInteger(value.pull_request_review_id),
+    author: githubLogin(value.user),
+    body: boundedText(value.body, 1_000_000),
+    url: String(value.html_url),
+    path: String(value.path),
+    line: nullablePositiveInteger(value.line),
+    side: reviewSide(value.side),
+    startLine: nullablePositiveInteger(value.start_line),
+    startSide: reviewSide(value.start_side),
+    diffHunk: boundedText(value.diff_hunk, 100_000),
+    inReplyToId: nullablePositiveInteger(value.in_reply_to_id),
+    createdAt: String(value.created_at),
+    updatedAt: String(value.updated_at),
+  };
+}
+
+export function groupPullRequestReviewThreads(
+  comments: GithubPullRequestReviewComment[],
+): GithubPullRequestReviewThread[] {
+  const roots = new Map<number, GithubPullRequestReviewComment[]>();
+  const rootFor = new Map<number, number>();
+  for (const comment of comments) {
+    if (comment.inReplyToId === null) {
+      roots.set(comment.id, [comment]);
+      rootFor.set(comment.id, comment.id);
+    }
+  }
+  for (const comment of comments) {
+    if (comment.inReplyToId === null) continue;
+    const rootId = rootFor.get(comment.inReplyToId) ?? comment.inReplyToId;
+    const thread = roots.get(rootId);
+    if (thread) {
+      thread.push(comment);
+      rootFor.set(comment.id, rootId);
+    } else {
+      roots.set(comment.id, [comment]);
+      rootFor.set(comment.id, comment.id);
+    }
+  }
+  return [...roots.entries()].slice(0, 100).map(([id, threadComments]) => {
+    const root = threadComments[0]!;
+    return {
+      id: String(id),
+      path: root.path,
+      line: root.line,
+      side: root.side,
+      resolved: null,
+      comments: threadComments.slice(0, 100),
+    };
+  });
+}
+
 function deriveReviewDecision(
   reviews: GithubPullRequestReview[],
   requestedReviewers: string[],
@@ -570,6 +657,10 @@ export class GithubClient {
       maxBuffer: 32 * 1024 * 1024,
     });
     return JSON.parse(stdout);
+  }
+
+  private async verifyWorktree(cwd: string): Promise<void> {
+    await execFileAsync("git", ["-C", cwd, "rev-parse", "--git-dir"]);
   }
 
   async cachedRepositories(login: string): Promise<GithubWorkerRepository[]> {
@@ -897,7 +988,7 @@ export class GithubClient {
     cwd: string,
     pullRequestNumber: number,
   ): Promise<GithubPullRequestDetail> {
-    await execFileAsync("git", ["-C", cwd, "rev-parse", "--git-dir"]);
+    await this.verifyWorktree(cwd);
     const repositoryPath = this.repositoryApiPath(nameWithOwner);
     const pullRequestPath = `${repositoryPath}/pulls/${pullRequestNumber}`;
     const rawPullRequest = (await this.api(
@@ -912,6 +1003,7 @@ export class GithubClient {
       rawCheckRuns,
       rawStatuses,
       rawReviews,
+      rawReviewComments,
     ] = await Promise.all([
       this.api(`${issuePath}/comments`, [
         "--method",
@@ -949,6 +1041,12 @@ export class GithubClient {
         "-f",
         "per_page=100",
       ]) as Promise<GithubApiPullRequestReview[]>,
+      this.api(`${pullRequestPath}/comments`, [
+        "--method",
+        "GET",
+        "-f",
+        "per_page=100",
+      ]) as Promise<GithubApiPullRequestReviewComment[]>,
     ]);
     const commits = rawCommits.slice(0, 100).map(parsePullRequestCommit);
     const files = rawFiles.slice(0, 100).map(parsePullRequestFile);
@@ -964,6 +1062,10 @@ export class GithubClient {
       : [];
     const checks = [...checkRuns, ...statuses].slice(0, 200);
     const reviews = rawReviews.slice(0, 100).map(parsePullRequestReview);
+    const reviewComments = rawReviewComments
+      .slice(0, 100)
+      .map(parsePullRequestReviewComment);
+    const reviewThreads = groupPullRequestReviewThreads(reviewComments);
     const requestedReviewers = Array.isArray(rawPullRequest.requested_reviewers)
       ? [
           ...new Set(
@@ -1006,7 +1108,91 @@ export class GithubClient {
           rawStatuses.statuses.length >= 100),
       reviews,
       reviewsTruncated: rawReviews.length >= 100,
+      reviewThreads,
+      reviewThreadsTruncated:
+        rawReviewComments.length >= 100 || reviewThreads.length >= 100,
     });
+  }
+
+  async commentOnPullRequest(
+    nameWithOwner: string,
+    cwd: string,
+    pullRequestNumber: number,
+    body: string,
+  ): Promise<GithubPullRequestDetail> {
+    await this.verifyWorktree(cwd);
+    await this.api(
+      `${this.repositoryApiPath(nameWithOwner)}/issues/${pullRequestNumber}/comments`,
+      ["--method", "POST", "-f", `body=${body}`],
+    );
+    return this.getPullRequest(nameWithOwner, cwd, pullRequestNumber);
+  }
+
+  async submitPullRequestReview(
+    nameWithOwner: string,
+    cwd: string,
+    pullRequestNumber: number,
+    review: GithubPullRequestReviewSubmit,
+  ): Promise<GithubPullRequestDetail> {
+    await this.verifyWorktree(cwd);
+    const event = review.event === "approve" ? "APPROVE" : "REQUEST_CHANGES";
+    await this.api(
+      `${this.repositoryApiPath(nameWithOwner)}/pulls/${pullRequestNumber}/reviews`,
+      ["--method", "POST", "-f", `event=${event}`, "-f", `body=${review.body}`],
+    );
+    return this.getPullRequest(nameWithOwner, cwd, pullRequestNumber);
+  }
+
+  async commentOnPullRequestLine(
+    nameWithOwner: string,
+    cwd: string,
+    pullRequestNumber: number,
+    comment: GithubPullRequestInlineCommentCreate,
+  ): Promise<GithubPullRequestDetail> {
+    await this.verifyWorktree(cwd);
+    const pullRequestPath = `${this.repositoryApiPath(nameWithOwner)}/pulls/${pullRequestNumber}`;
+    const pullRequest = parsePullRequest(
+      (await this.api(pullRequestPath)) as GithubApiPullRequest,
+    );
+    const args = [
+      "--method",
+      "POST",
+      "-f",
+      `body=${comment.body}`,
+      "-f",
+      `commit_id=${pullRequest.headSha}`,
+      "-f",
+      `path=${comment.path}`,
+      "-F",
+      `line=${comment.line}`,
+      "-f",
+      `side=${comment.side}`,
+    ];
+    if (comment.startLine !== null && comment.startSide !== null) {
+      args.push(
+        "-F",
+        `start_line=${comment.startLine}`,
+        "-f",
+        `start_side=${comment.startSide}`,
+      );
+    }
+    await this.api(`${pullRequestPath}/comments`, args);
+    return this.getPullRequest(nameWithOwner, cwd, pullRequestNumber);
+  }
+
+  async replyToPullRequestReview(
+    nameWithOwner: string,
+    cwd: string,
+    pullRequestNumber: number,
+    commentId: number,
+    body: string,
+  ): Promise<GithubPullRequestDetail> {
+    await this.verifyWorktree(cwd);
+    await this.api(
+      `${this.repositoryApiPath(nameWithOwner)}/pulls/${pullRequestNumber}/comments/${commentId}/replies`,
+      ["--method", "POST", "-f", `body=${body}`],
+    );
+    return this.getPullRequest(nameWithOwner, cwd, pullRequestNumber);
   }
 
   async listReleases(nameWithOwner: string): Promise<GithubReleaseList> {

@@ -12,6 +12,7 @@ export function GitPatchView({
   newLabel,
   oldLabel,
   onClose,
+  onCommentLine,
   originalPath,
   patch,
   path,
@@ -24,6 +25,7 @@ export function GitPatchView({
   newLabel: string;
   oldLabel: string;
   onClose(): void;
+  onCommentLine?(line: number, side: "LEFT" | "RIGHT"): void;
   originalPath?: string | null;
   patch: string | undefined;
   path: string;
@@ -119,15 +121,30 @@ export function GitPatchView({
                     key={`line:${index}`}
                     className="grid grid-cols-[3rem_minmax(0,1fr)_3rem_minmax(0,1fr)]"
                   >
-                    <span
+                    <button
+                      type="button"
+                      disabled={!onCommentLine || row.oldNumber === null}
+                      title={
+                        onCommentLine && row.oldNumber !== null
+                          ? `Comment on old line ${row.oldNumber}`
+                          : undefined
+                      }
+                      onClick={() => {
+                        if (row.oldNumber !== null) {
+                          onCommentLine?.(row.oldNumber, "LEFT");
+                        }
+                      }}
                       className={cn(
                         "select-none border-b px-2 text-right text-muted-foreground/70",
+                        onCommentLine &&
+                          row.oldNumber !== null &&
+                          "cursor-pointer hover:bg-blue-500/20 hover:text-foreground",
                         row.oldKind === "delete" && "bg-red-500/15",
                         row.oldKind === "empty" && "bg-muted/30",
                       )}
                     >
                       {row.oldNumber}
-                    </span>
+                    </button>
                     <pre
                       className={cn(
                         "overflow-hidden border-b border-l px-2 whitespace-pre [tab-size:4]",
@@ -139,15 +156,30 @@ export function GitPatchView({
                     >
                       {row.oldText ?? " "}
                     </pre>
-                    <span
+                    <button
+                      type="button"
+                      disabled={!onCommentLine || row.newNumber === null}
+                      title={
+                        onCommentLine && row.newNumber !== null
+                          ? `Comment on new line ${row.newNumber}`
+                          : undefined
+                      }
+                      onClick={() => {
+                        if (row.newNumber !== null) {
+                          onCommentLine?.(row.newNumber, "RIGHT");
+                        }
+                      }}
                       className={cn(
                         "select-none border-b border-l px-2 text-right text-muted-foreground/70",
+                        onCommentLine &&
+                          row.newNumber !== null &&
+                          "cursor-pointer hover:bg-blue-500/20 hover:text-foreground",
                         row.newKind === "add" && "bg-emerald-500/15",
                         row.newKind === "empty" && "bg-muted/30",
                       )}
                     >
                       {row.newNumber}
-                    </span>
+                    </button>
                     <pre
                       className={cn(
                         "overflow-hidden border-b border-l px-2 whitespace-pre [tab-size:4]",
