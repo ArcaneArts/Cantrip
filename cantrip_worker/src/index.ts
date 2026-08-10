@@ -220,6 +220,12 @@ async function start(): Promise<void> {
           command.number,
           command.comment,
         );
+      case "github.pull-request.create":
+        return github.createPullRequest(
+          command.repository,
+          command.cwd,
+          command.request,
+        );
       case "github.releases.list":
         return github.listReleases(command.repository);
       case "github.release.get":

@@ -15,6 +15,8 @@ import {
   githubAuthStatusSchema,
   githubIssueDetailSchema,
   githubIssueListSchema,
+  githubPullRequestCreateResultSchema,
+  githubPullRequestSummarySchema,
   githubReleaseListSchema,
   githubReleaseSummarySchema,
   githubWorkerRepositoryListSchema,
@@ -26,6 +28,9 @@ import {
   type GithubIssueList,
   type GithubIssueState,
   type GithubIssueSummary,
+  type GithubPullRequestCreate,
+  type GithubPullRequestCreateResult,
+  type GithubPullRequestSummary,
   type GithubReleaseCreate,
   type GithubReleaseList,
   type GithubReleaseSummary,
@@ -129,6 +134,17 @@ interface GithubApiIssueComment {
   user?: unknown;
 }
 
+interface GithubApiPullRequest extends GithubApiIssue {
+  base?: unknown;
+  draft?: unknown;
+  head?: unknown;
+  merged?: unknown;
+}
+
+interface GithubApiGitRef {
+  object?: unknown;
+}
+
 interface GithubApiRelease {
   author?: unknown;
   body?: unknown;
@@ -225,6 +241,36 @@ function parseIssueComment(value: GithubApiIssueComment) {
     createdAt: String(value.created_at),
     updatedAt: String(value.updated_at),
   };
+}
+
+function pullRequestBranch(value: unknown): { ref: string; sha: string } {
+  if (!value || typeof value !== "object") return { ref: "unknown", sha: "" };
+  const branch = value as { ref?: unknown; sha?: unknown };
+  return {
+    ref: typeof branch.ref === "string" ? branch.ref : "unknown",
+    sha: typeof branch.sha === "string" ? branch.sha : "",
+  };
+}
+
+function parsePullRequest(
+  value: GithubApiPullRequest,
+): GithubPullRequestSummary {
+  const head = pullRequestBranch(value.head);
+  const base = pullRequestBranch(value.base);
+  return githubPullRequestSummarySchema.parse({
+    ...parseIssue(value),
+    body: typeof value.body === "string" ? value.body : null,
+    draft: value.draft === true,
+    merged: value.merged === true,
+    headRef: head.ref,
+    headSha: head.sha,
+    baseRef: base.ref,
+    baseSha: base.sha,
+  });
+}
+
+function encodedRefPath(branch: string): string {
+  return branch.split("/").map(encodeURIComponent).join("/");
 }
 
 function parseRelease(value: GithubApiRelease): GithubReleaseSummary {
@@ -475,6 +521,119 @@ export class GithubClient {
     }
     await this.api(issuePath, ["--method", "PATCH", "-f", "state=closed"]);
     return this.getIssue(nameWithOwner, issueNumber);
+  }
+
+  async createPullRequest(
+    nameWithOwner: string,
+    cwd: string,
+    request: GithubPullRequestCreate,
+  ): Promise<GithubPullRequestCreateResult> {
+    await Promise.all([
+      execFileAsync("git", [
+        "-C",
+        cwd,
+        "check-ref-format",
+        "--branch",
+        request.head,
+      ]),
+      execFileAsync("git", [
+        "-C",
+        cwd,
+        "check-ref-format",
+        "--branch",
+        request.base,
+      ]),
+    ]);
+    const { stdout } = await execFileAsync("git", [
+      "-C",
+      cwd,
+      "rev-parse",
+      `refs/heads/${request.head}`,
+    ]);
+    const localHead = stdout.trim();
+    const remoteHead = (await this.api(
+      `${this.repositoryApiPath(nameWithOwner)}/git/ref/heads/${encodedRefPath(request.head)}`,
+    )) as GithubApiGitRef;
+    const remoteObject =
+      remoteHead.object && typeof remoteHead.object === "object"
+        ? (remoteHead.object as { sha?: unknown })
+        : null;
+    const remoteSha =
+      remoteObject && typeof remoteObject.sha === "string"
+        ? remoteObject.sha
+        : "";
+    if (!/^[0-9a-f]{40}$/u.test(remoteSha) || remoteSha !== localHead) {
+      throw new Error(
+        `Push ${request.head} to ${nameWithOwner} before creating its pull request. The local and GitHub branch tips must match.`,
+      );
+    }
+
+    const linkedIssues = [...new Set(request.linkedIssueNumbers)].map(
+      (number) => `Closes #${number}`,
+    );
+    const body = [request.body.trim(), linkedIssues.join("\n")]
+      .filter(Boolean)
+      .join("\n\n");
+    const rawPullRequest = (await this.api(
+      `${this.repositoryApiPath(nameWithOwner)}/pulls`,
+      [
+        "--method",
+        "POST",
+        "-f",
+        `title=${request.title}`,
+        "-f",
+        `head=${request.head}`,
+        "-f",
+        `base=${request.base}`,
+        "-f",
+        `body=${body}`,
+        "-F",
+        `draft=${request.draft}`,
+      ],
+    )) as GithubApiPullRequest;
+    const pullRequest = parsePullRequest(rawPullRequest);
+    const warnings: string[] = [];
+    const labels = [...new Set(request.labels)];
+    if (labels.length > 0) {
+      try {
+        await this.api(
+          `${this.repositoryApiPath(nameWithOwner)}/issues/${pullRequest.number}/labels`,
+          [
+            "--method",
+            "POST",
+            ...labels.flatMap((label) => ["-f", `labels[]=${label}`]),
+          ],
+        );
+      } catch (error) {
+        warnings.push(
+          `The pull request was created, but labels could not be applied: ${(error as Error).message}`,
+        );
+      }
+    }
+    const reviewers = [...new Set(request.reviewers)];
+    if (reviewers.length > 0) {
+      try {
+        await this.api(
+          `${this.repositoryApiPath(nameWithOwner)}/pulls/${pullRequest.number}/requested_reviewers`,
+          [
+            "--method",
+            "POST",
+            ...reviewers.flatMap((reviewer) => [
+              "-f",
+              `reviewers[]=${reviewer}`,
+            ]),
+          ],
+        );
+      } catch (error) {
+        warnings.push(
+          `The pull request was created, but reviewers could not be requested: ${(error as Error).message}`,
+        );
+      }
+    }
+    return githubPullRequestCreateResultSchema.parse({
+      pullRequest,
+      warnings,
+    });
   }
 
   async listReleases(nameWithOwner: string): Promise<GithubReleaseList> {

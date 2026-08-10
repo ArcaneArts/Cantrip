@@ -1,4 +1,5 @@
 import type {
+  GitStatus,
   GithubIssueDetail,
   GithubIssueKind,
   GithubIssueList,
@@ -10,6 +11,7 @@ import {
   ExternalLink,
   Loader2,
   MessageSquare,
+  Plus,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -29,6 +31,7 @@ import {
   commentOnGithubIssue,
   getGithubIssue,
 } from "@/lib/api";
+import { GithubPullRequestCreateDialog } from "./github-pull-request-create-dialog";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -270,6 +273,8 @@ export function GithubIssuesView({
   kind,
   onLoadMore,
   project,
+  status,
+  worktreeId,
 }: {
   error: unknown;
   hasNextPage: boolean;
@@ -279,8 +284,12 @@ export function GithubIssuesView({
   kind: GithubIssueKind;
   onLoadMore(): void;
   project: ProjectSummary;
+  status: GitStatus | undefined;
+  worktreeId: string;
 }) {
   const [selectedIssue, setSelectedIssue] = useState<number | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const queryClient = useQueryClient();
   const listRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const state = issues?.state ?? "open";
@@ -302,6 +311,18 @@ export function GithubIssuesView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {kind === "pull-request" ? (
+        <div className="flex h-9 shrink-0 items-center justify-end px-3">
+          <Button
+            size="sm"
+            className="h-7 gap-1 text-xs"
+            disabled={!status?.branch}
+            onClick={() => setCreateOpen(true)}
+          >
+            <Plus className="size-3.5" /> Pull request
+          </Button>
+        </div>
+      ) : null}
       <div ref={listRef} className="min-h-0 flex-1 overflow-auto">
         {isLoading ? (
           <div className="grid min-h-64 place-items-center text-muted-foreground">
@@ -404,6 +425,24 @@ export function GithubIssuesView({
           if (!open) setSelectedIssue(null);
         }}
       />
+      {status ? (
+        <GithubPullRequestCreateDialog
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          projectId={project.id}
+          status={status}
+          worktreeId={worktreeId}
+          onCreated={(pullRequest) => {
+            void queryClient.invalidateQueries({
+              queryKey: ["github-issues", project.id, "pull-request"],
+            });
+            queryClient.setQueryData(
+              ["github-issue", project.id, pullRequest.number],
+              undefined,
+            );
+          }}
+        />
+      ) : null}
     </div>
   );
 }

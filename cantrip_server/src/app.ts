@@ -91,6 +91,8 @@ import {
   githubIssueDetailSchema,
   githubIssueKindSchema,
   githubIssueListSchema,
+  githubPullRequestCreateResultSchema,
+  githubPullRequestCreateSchema,
   githubIssueStateSchema,
   githubProjectCreateSchema,
   githubRepositoryListSchema,
@@ -6963,6 +6965,60 @@ export async function buildApp({
       return reply.code(status).send({ error: errorMessage(error) });
     }
   });
+
+  app.post<{
+    Params: { projectId: string; worktreeId: string };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests",
+    async (request, reply) => {
+      const input = githubPullRequestCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const result = await worktreeCoordinator.serialize(
+          request.params.projectId,
+          async () => {
+            const [worktree, github] = await Promise.all([
+              repository.getProjectWorktreeContext(
+                LOCAL_USER_ID,
+                request.params.projectId,
+                request.params.worktreeId,
+              ),
+              repository.getGithubProjectExecutionContext(
+                LOCAL_USER_ID,
+                request.params.projectId,
+              ),
+            ]);
+            if (!worktree || !github) {
+              throw new Error("GitHub worktree project not found.");
+            }
+            if (worktree.workerId !== github.workerId) {
+              throw new Error(
+                "The selected worktree and GitHub project belong to different workers.",
+              );
+            }
+            return githubPullRequestCreateResultSchema.parse(
+              await bridge.request(
+                worktree.workerId,
+                {
+                  type: "github.pull-request.create",
+                  cwd: worktree.worktree.path,
+                  repository: github.nameWithOwner,
+                  request: input.data,
+                },
+                { timeoutMs: null },
+              ),
+            );
+          },
+        );
+        return reply.code(201).send(result);
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
 
   app.get<{
     Params: { projectId: string };

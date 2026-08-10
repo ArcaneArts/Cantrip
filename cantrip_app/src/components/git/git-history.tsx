@@ -939,6 +939,8 @@ export function GitHistoryView({
           issues={loadedIssues}
           kind={issueKind}
           project={project}
+          status={status}
+          worktreeId={worktreeId}
           onLoadMore={() => void issues.fetchNextPage()}
         />
       ) : (

@@ -54,6 +54,7 @@ import {
   githubAuthStatusSchema,
   githubIssueDetailSchema,
   githubIssueListSchema,
+  githubPullRequestCreateResultSchema,
   githubReleaseListSchema,
   githubReleaseSummarySchema,
   githubRepositoryListSchema,
@@ -156,6 +157,7 @@ import type {
   GitTagAction,
   GithubIssueKind,
   GithubIssueState,
+  GithubPullRequestCreate,
   GithubReleaseCreate,
   GithubProjectCreate,
   ModelProfileCreate,
@@ -954,6 +956,19 @@ export async function getGitHistory(projectId: string, cursor = 0) {
   return gitHistorySchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/git/history?limit=100&cursor=${cursor}`,
+    ),
+  );
+}
+
+export async function createGithubPullRequest(
+  projectId: string,
+  worktreeId: string,
+  request: GithubPullRequestCreate,
+) {
+  return githubPullRequestCreateResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/pull-requests`,
+      request,
     ),
   );
 }
