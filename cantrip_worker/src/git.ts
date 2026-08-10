@@ -2,6 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   lstat,
+  mkdir,
   mkdtemp,
   readFile,
   realpath,
@@ -64,6 +65,8 @@ import {
   type GitManagedOperationPreview,
   type GitManagedOperationWorkerState,
   type GitMergeRebaseAction,
+  type GitInteractiveRebaseTodoItem,
+  type GitInteractiveRebaseTodoAction,
   type GitComparisonCommit,
   type GitManagedBranch,
   type GitComparison,
@@ -3414,6 +3417,239 @@ const managedOperationEnvironment: NodeJS.ProcessEnv = {
   GIT_SEQUENCE_EDITOR: "true",
 };
 
+type GitInteractiveRebaseAction = Extract<
+  GitMergeRebaseAction,
+  { type: "interactiveRebase" }
+>;
+
+function interactiveRebaseSourceRef(action: GitMergeRebaseAction): string {
+  return action.type === "interactiveRebase"
+    ? action.upstreamRef
+    : action.sourceRef;
+}
+
+async function normalizeInteractiveRebaseTodo(
+  cwd: string,
+  action: GitInteractiveRebaseAction,
+  upstreamRevision: string,
+  originalHead: string,
+): Promise<{
+  action: GitInteractiveRebaseAction;
+  commits: GitComparisonCommit[];
+  todoText: string;
+}> {
+  if (
+    !(await gitSucceeds(cwd, [
+      "merge-base",
+      "--is-ancestor",
+      upstreamRevision,
+      originalHead,
+    ]))
+  ) {
+    throw new Error(
+      "Interactive rebase requires an upstream commit that is an ancestor of the current HEAD.",
+    );
+  }
+  const revisions = await boundedRevisionRange(
+    cwd,
+    `${upstreamRevision}..${originalHead}`,
+  );
+  if (revisions.length === 0) {
+    throw new Error(
+      "There are no commits after the selected upstream to rewrite.",
+    );
+  }
+  const summaries = await Promise.all(
+    revisions.map((revision) => commitActionSummary(cwd, revision)),
+  );
+  const todo: GitInteractiveRebaseTodoItem[] = action.todo.length
+    ? action.todo
+    : revisions.map((revision) => ({
+        action: "pick" as const,
+        revision,
+        message: null,
+      }));
+  if (todo.length !== revisions.length) {
+    throw new Error("The rebase todo must contain every selected commit once.");
+  }
+  const expected = new Set(revisions);
+  const seen = new Set<string>();
+  let retained = 0;
+  for (const [index, item] of todo.entries()) {
+    if (!expected.has(item.revision) || seen.has(item.revision)) {
+      throw new Error(
+        "The rebase todo must contain every selected commit exactly once.",
+      );
+    }
+    seen.add(item.revision);
+    if (item.action !== "drop") retained += 1;
+    if (
+      (item.action === "squash" || item.action === "fixup") &&
+      !todo.slice(0, index).some((candidate) => candidate.action !== "drop")
+    ) {
+      throw new Error(
+        `${item.action} cannot be the first retained step in the rebase todo.`,
+      );
+    }
+  }
+  if (retained === 0) {
+    throw new Error("Interactive rebase must retain at least one commit.");
+  }
+  const subjects = new Map(
+    summaries.map((summary) => [summary.hash, summary.subject]),
+  );
+  const todoText = todo
+    .map((item) =>
+      `${item.action} ${item.revision} ${subjects.get(item.revision) ?? ""}`.trimEnd(),
+    )
+    .join("\n");
+  return {
+    action: { ...action, todo },
+    commits: todo.map((item) =>
+      summaries.find(({ hash }) => hash === item.revision)!,
+    ),
+    todoText,
+  };
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
+async function gitCommonPath(
+  cwd: string,
+  relativePath: string,
+): Promise<string> {
+  const common = await gitOutput(cwd, ["rev-parse", "--git-common-dir"]);
+  const root = path.isAbsolute(common) ? common : path.join(cwd, common);
+  return path.join(root, relativePath);
+}
+
+function rewriteStorageKey(checkpointRef: string): string {
+  const key = checkpointRef.split("/").at(-1) ?? "";
+  if (!/^rewrite-[0-9a-f-]+$/u.test(key)) {
+    throw new Error("The interactive rebase recovery metadata is invalid.");
+  }
+  return key;
+}
+
+async function prepareInteractiveRebaseEnvironment(
+  cwd: string,
+  action: GitInteractiveRebaseAction,
+  checkpointRef: string,
+  storageRoot?: string,
+): Promise<NodeJS.ProcessEnv> {
+  const root =
+    storageRoot ??
+    (await gitCommonPath(
+      cwd,
+      path.join("cantrip", "rebases", rewriteStorageKey(checkpointRef)),
+    ));
+  await mkdir(root, { recursive: true });
+  const todoPath = path.join(root, "todo");
+  const messagesPath = path.join(root, "reword-messages.json");
+  const sequenceEditorPath = path.join(root, "sequence-editor.cjs");
+  const messageEditorPath = path.join(root, "message-editor.cjs");
+  const rebaseDone = await gitOutput(cwd, [
+    "rev-parse",
+    "--git-path",
+    "rebase-merge/done",
+  ]);
+  const rebaseDonePath = path.isAbsolute(rebaseDone)
+    ? rebaseDone
+    : path.join(cwd, rebaseDone);
+  await Promise.all([
+    writeFile(
+      todoPath,
+      `${action.todo.map((item) => `${item.action} ${item.revision}`).join("\n")}\n`,
+    ),
+    writeFile(
+      messagesPath,
+      JSON.stringify(
+        Object.fromEntries(
+          action.todo
+            .filter((item) => item.action === "reword")
+            .map((item) => [item.revision, item.message]),
+        ),
+      ),
+    ),
+    writeFile(
+      sequenceEditorPath,
+      `#!/usr/bin/env node\nrequire("node:fs").copyFileSync(process.env.CANTRIP_REBASE_TODO, process.argv[2]);\n`,
+      { mode: 0o700 },
+    ),
+    writeFile(
+      messageEditorPath,
+      `#!/usr/bin/env node\nconst fs = require("node:fs");\nconst target = process.argv[2];\nconst current = fs.readFileSync(target, "utf8");\nif (current.includes("# This is a combination of")) process.exit(0);\nlet done = "";\ntry { done = fs.readFileSync(process.env.CANTRIP_REBASE_DONE, "utf8"); } catch { process.exit(0); }\nconst line = done.trim().split("\\n").at(-1) || "";\nconst [action, revision] = line.trim().split(/\\s+/);\nif (action !== "reword" || !revision) process.exit(0);\nconst messages = JSON.parse(fs.readFileSync(process.env.CANTRIP_REWORD_MESSAGES, "utf8"));\nconst match = Object.entries(messages).find(([hash]) => hash.startsWith(revision) || revision.startsWith(hash));\nif (!match) throw new Error("Missing Cantrip reword message");\nfs.writeFileSync(target, String(match[1]) + "\\n");\n`,
+      { mode: 0o700 },
+    ),
+  ]);
+  return {
+    ...process.env,
+    CANTRIP_REBASE_TODO: todoPath,
+    CANTRIP_REWORD_MESSAGES: messagesPath,
+    CANTRIP_REBASE_DONE: rebaseDonePath,
+    GIT_SEQUENCE_EDITOR: shellQuote(sequenceEditorPath),
+    GIT_EDITOR: shellQuote(messageEditorPath),
+    LC_ALL: "C",
+  };
+}
+
+async function interactiveRebaseEnvironmentFromContext(
+  cwd: string,
+  context: GitManagedOperationContext,
+): Promise<NodeJS.ProcessEnv> {
+  if (!context.checkpointRef) {
+    throw new Error(
+      "The interactive rebase is missing its recovery reference.",
+    );
+  }
+  const root = await gitCommonPath(
+    cwd,
+    path.join("cantrip", "rebases", rewriteStorageKey(context.checkpointRef)),
+  );
+  const sequenceEditorPath = path.join(root, "sequence-editor.cjs");
+  const messageEditorPath = path.join(root, "message-editor.cjs");
+  const rebaseDone = await gitOutput(cwd, [
+    "rev-parse",
+    "--git-path",
+    "rebase-merge/done",
+  ]);
+  const rebaseDonePath = path.isAbsolute(rebaseDone)
+    ? rebaseDone
+    : path.join(cwd, rebaseDone);
+  return {
+    ...process.env,
+    CANTRIP_REBASE_TODO: path.join(root, "todo"),
+    CANTRIP_REWORD_MESSAGES: path.join(root, "reword-messages.json"),
+    CANTRIP_REBASE_DONE: rebaseDonePath,
+    GIT_SEQUENCE_EDITOR: shellQuote(sequenceEditorPath),
+    GIT_EDITOR: shellQuote(messageEditorPath),
+    LC_ALL: "C",
+  };
+}
+
+function isInteractiveRebaseContext(
+  context: GitManagedOperationContext,
+): boolean {
+  return (
+    context.type === "rebase" &&
+    context.checkpointRef?.includes("/rewrite-") === true
+  );
+}
+
+async function cleanupInteractiveRebaseState(
+  cwd: string,
+  context: GitManagedOperationContext,
+): Promise<void> {
+  if (!isInteractiveRebaseContext(context) || !context.checkpointRef) return;
+  const root = await gitCommonPath(
+    cwd,
+    path.join("cantrip", "rebases", rewriteStorageKey(context.checkpointRef)),
+  );
+  await rm(root, { force: true, recursive: true });
+}
+
 async function currentBranchRef(cwd: string): Promise<string> {
   const branch = await gitOutput(cwd, ["symbolic-ref", "-q", "HEAD"]).catch(
     () => "",
@@ -3476,36 +3712,52 @@ async function previewManagedOperationEffect(
     path.join(tmpdir(), "cantrip-operation-preview-"),
   );
   const previewPath = path.join(temporaryRoot, "worktree");
+  const rewriteStatePath = path.join(temporaryRoot, "rewrite-state");
   let added = false;
   try {
     await runGit(cwd, ["worktree", "add", "--detach", previewPath, head]);
     added = true;
-    const arguments_ =
-      action.type === "merge"
-        ? [
-            "-c",
-            "core.hooksPath=/dev/null",
-            "-c",
-            "commit.gpgSign=false",
-            "merge",
-            "--no-edit",
-            sourceRevision,
-          ]
+    const arguments_ = [
+      "-c",
+      "core.hooksPath=/dev/null",
+      "-c",
+      "commit.gpgSign=false",
+      ...(action.type === "merge"
+        ? ["merge", "--no-edit", sourceRevision]
         : [
-            "-c",
-            "core.hooksPath=/dev/null",
-            "-c",
-            "commit.gpgSign=false",
             "rebase",
+            ...(action.type === "interactiveRebase" ? ["--interactive"] : []),
             sourceRevision,
-          ];
-    const outcome = await runGitOutcome(
-      previewPath,
-      arguments_,
-      managedOperationEnvironment,
-    );
-    const status = await readGitStatus(previewPath);
-    const conflicts = conflictPaths(status);
+          ]),
+    ];
+    const environment =
+      action.type === "interactiveRebase"
+        ? await prepareInteractiveRebaseEnvironment(
+            previewPath,
+            action,
+            "refs/cantrip/checkpoints/rewrite-preview-preview",
+            rewriteStatePath,
+          )
+        : managedOperationEnvironment;
+    let outcome = await runGitOutcome(previewPath, arguments_, environment);
+    let status = await readGitStatus(previewPath);
+    let conflicts = conflictPaths(status);
+    if (action.type === "interactiveRebase") {
+      for (
+        let step = 0;
+        step < action.todo.length && conflicts.length === 0;
+        step += 1
+      ) {
+        if (!(await hasGitOperationMarker(previewPath, "rebase"))) break;
+        outcome = await runGitOutcome(
+          previewPath,
+          ["rebase", "--continue"],
+          environment,
+        );
+        status = await readGitStatus(previewPath);
+        conflicts = conflictPaths(status);
+      }
+    }
     if (outcome.code !== 0 && conflicts.length === 0) {
       throw new Error(outcome.output);
     }
@@ -3569,11 +3821,12 @@ export async function previewGitManagedOperation(
   action: GitMergeRebaseAction,
 ): Promise<GitManagedOperationPreview> {
   await assertNoInProgressGitOperation(cwd);
+  const sourceRef = interactiveRebaseSourceRef(action);
   const [status, originalHead, targetRef, sourceRevision] = await Promise.all([
     readGitStatus(cwd),
     resolveCommit(cwd, "HEAD"),
     currentBranchRef(cwd),
-    resolveCommit(cwd, action.sourceRef),
+    resolveCommit(cwd, sourceRef),
   ]);
   requireCleanStatus(status, action.type === "merge" ? "Merge" : "Rebase");
   if (sourceRevision === originalHead) {
@@ -3581,25 +3834,43 @@ export async function previewGitManagedOperation(
       "The selected source already resolves to the current HEAD.",
     );
   }
-  const pendingCommits = await boundedRevisionRange(
-    cwd,
-    action.type === "merge"
-      ? `${originalHead}..${sourceRevision}`
-      : `${sourceRevision}..${originalHead}`,
-  );
-  const commits = await Promise.all(
-    pendingCommits.map((revision) => commitActionSummary(cwd, revision)),
-  );
+  let resolvedAction = action;
+  let todo: GitInteractiveRebaseTodoItem[] = [];
+  let todoText = "";
+  let commits: GitComparisonCommit[];
+  if (action.type === "interactiveRebase") {
+    const normalized = await normalizeInteractiveRebaseTodo(
+      cwd,
+      action,
+      sourceRevision,
+      originalHead,
+    );
+    resolvedAction = normalized.action;
+    todo = normalized.action.todo;
+    todoText = normalized.todoText;
+    commits = normalized.commits;
+  } else {
+    const revisions = await boundedRevisionRange(
+      cwd,
+      action.type === "merge"
+        ? `${originalHead}..${sourceRevision}`
+        : `${sourceRevision}..${originalHead}`,
+    );
+    commits = await Promise.all(
+      revisions.map((revision) => commitActionSummary(cwd, revision)),
+    );
+  }
+  const pendingCommits = commits.map(({ hash }) => hash);
   const effect = await previewManagedOperationEffect(
     cwd,
-    action,
+    resolvedAction,
     originalHead,
     sourceRevision,
   );
   const baseContext: GitManagedOperationContext = {
-    type: action.type,
+    type: action.type === "merge" ? "merge" : "rebase",
     originalHead,
-    sourceRef: action.sourceRef,
+    sourceRef,
     sourceRevision,
     targetRef,
     targetRevision: originalHead,
@@ -3609,7 +3880,7 @@ export async function previewGitManagedOperation(
   };
   const workspace = await workspaceFingerprint(cwd);
   const provisionalToken = managedOperationToken(
-    action,
+    resolvedAction,
     baseContext,
     workspace,
     effect.patch,
@@ -3617,33 +3888,42 @@ export async function previewGitManagedOperation(
   const context = {
     ...baseContext,
     checkpointRef:
-      action.type === "rebase"
-        ? `refs/cantrip/checkpoints/rebase-${originalHead.slice(0, 12)}-${provisionalToken.slice(0, 12)}`
+      action.type !== "merge"
+        ? `refs/cantrip/checkpoints/${action.type === "interactiveRebase" ? "rewrite" : "rebase"}-${originalHead.slice(0, 12)}-${provisionalToken.slice(0, 12)}`
         : null,
   };
-  const token = managedOperationToken(action, context, workspace, effect.patch);
+  const token = managedOperationToken(
+    resolvedAction,
+    context,
+    workspace,
+    effect.patch,
+  );
   const branchName = targetRef.replace(/^refs\/heads\//u, "");
   const warnings = effect.wouldConflict
     ? [
         "The preview found conflicts. Starting leaves the operation resumable in the selected worktree.",
       ]
     : [];
-  if (action.type === "rebase") {
+  if (action.type !== "merge") {
     warnings.push(
       "Rebase rewrites commit identities. Cantrip creates a recovery reference before it starts.",
     );
   }
   return gitManagedOperationPreviewSchema.parse({
-    action,
+    action: resolvedAction,
     token,
-    destructive: action.type === "rebase",
+    destructive: action.type !== "merge",
     summary:
       action.type === "merge"
-        ? `Merge ${action.sourceRef} (${sourceRevision.slice(0, 10)}) into ${branchName}.`
-        : `Rebase ${branchName} onto ${action.sourceRef} (${sourceRevision.slice(0, 10)}).`,
+        ? `Merge ${sourceRef} (${sourceRevision.slice(0, 10)}) into ${branchName}.`
+        : action.type === "interactiveRebase"
+          ? `Rewrite ${todo.length} commits on ${branchName} after ${sourceRef} (${sourceRevision.slice(0, 10)}).`
+          : `Rebase ${branchName} onto ${sourceRef} (${sourceRevision.slice(0, 10)}).`,
     warnings,
     context,
     commits,
+    todo,
+    todoText,
     ...effect,
   });
 }
@@ -3667,6 +3947,19 @@ async function readGitPathFile(
   } catch {
     return null;
   }
+}
+
+async function currentInteractiveRebaseAction(
+  cwd: string,
+  context: GitManagedOperationContext,
+): Promise<GitInteractiveRebaseTodoAction | null> {
+  if (!isInteractiveRebaseContext(context)) return null;
+  const done = await readGitPathFile(cwd, "rebase-merge/done");
+  const action = done?.split("\n").at(-1)?.trim().split(/\s+/u)[0];
+  return action &&
+    ["pick", "reword", "edit", "squash", "fixup", "drop"].includes(action)
+    ? (action as GitInteractiveRebaseTodoAction)
+    : null;
 }
 
 async function hasGitOperationMarker(
@@ -3746,12 +4039,14 @@ export async function inspectGitManagedOperation(
   output = "",
   terminalHint: "completed" | "aborted" | null = null,
 ): Promise<GitManagedOperationWorkerState> {
-  const [status, currentHead, operationMarker, progress] = await Promise.all([
-    readGitStatus(cwd),
-    resolveCommit(cwd, "HEAD"),
-    hasGitOperationMarker(cwd, context.type),
-    managedOperationProgress(cwd, context),
-  ]);
+  const [status, currentHead, operationMarker, progress, pausedAction] =
+    await Promise.all([
+      readGitStatus(cwd),
+      resolveCommit(cwd, "HEAD"),
+      hasGitOperationMarker(cwd, context.type),
+      managedOperationProgress(cwd, context),
+      currentInteractiveRebaseAction(cwd, context),
+    ]);
   const active = terminalHint === null && operationMarker;
   const conflicts = conflictPaths(status);
   const state = active
@@ -3773,6 +4068,7 @@ export async function inspectGitManagedOperation(
     conflictedPaths: conflicts,
     output: output.slice(-1_000_000),
     status,
+    pausedAction: active ? pausedAction : null,
   });
 }
 
@@ -3794,23 +4090,39 @@ export async function startGitManagedOperation(
       preview.context.originalHead,
     ]);
   }
+  const resolvedAction = preview.action;
   const arguments_ =
-    action.type === "merge"
+    resolvedAction.type === "merge"
       ? ["merge", "--no-edit", preview.context.sourceRevision!]
-      : ["rebase", preview.context.sourceRevision!];
-  const outcome = await runGitOutcome(
-    cwd,
-    arguments_,
-    managedOperationEnvironment,
-  );
+      : [
+          "rebase",
+          ...(resolvedAction.type === "interactiveRebase"
+            ? ["--interactive"]
+            : []),
+          preview.context.sourceRevision!,
+        ];
+  const environment =
+    resolvedAction.type === "interactiveRebase"
+      ? await prepareInteractiveRebaseEnvironment(
+          cwd,
+          resolvedAction,
+          preview.context.checkpointRef!,
+        )
+      : managedOperationEnvironment;
+  const outcome = await runGitOutcome(cwd, arguments_, environment);
+  const stillActive = await hasGitOperationMarker(cwd, preview.context.type);
   const state = await inspectGitManagedOperation(
     cwd,
     preview.context,
     outcome.output,
-    outcome.code === 0 ? "completed" : null,
+    outcome.code === 0 && !stillActive ? "completed" : null,
   );
   if (outcome.code !== 0 && state.state === "aborted") {
+    await cleanupInteractiveRebaseState(cwd, preview.context);
     throw new Error(outcome.output);
+  }
+  if (["completed", "aborted"].includes(state.state)) {
+    await cleanupInteractiveRebaseState(cwd, preview.context);
   }
   return state;
 }
@@ -3870,16 +4182,20 @@ export async function controlGitManagedOperation(
         : context.type === "merge"
           ? ["merge", "--continue"]
           : [context.type, "--continue"];
-  const outcome = await runGitOutcome(
-    cwd,
-    arguments_,
-    managedOperationEnvironment,
-  );
+  const environment = isInteractiveRebaseContext(context)
+    ? await interactiveRebaseEnvironmentFromContext(cwd, context)
+    : managedOperationEnvironment;
+  const outcome = await runGitOutcome(cwd, arguments_, environment);
+  const stillActive = await hasGitOperationMarker(cwd, context.type);
   const state = await inspectGitManagedOperation(
     cwd,
     context,
     outcome.output,
-    outcome.code === 0 ? (action === "abort" ? "aborted" : "completed") : null,
+    outcome.code === 0 && !stillActive
+      ? action === "abort"
+        ? "aborted"
+        : "completed"
+      : null,
   );
   if (
     outcome.code !== 0 &&
@@ -3887,6 +4203,83 @@ export async function controlGitManagedOperation(
     state.state !== "awaiting-user-action"
   ) {
     throw new Error(outcome.output);
+  }
+  if (["completed", "aborted"].includes(state.state)) {
+    await cleanupInteractiveRebaseState(cwd, context);
+  }
+  return state;
+}
+
+export async function amendGitManagedOperation(
+  cwd: string,
+  context: GitManagedOperationContext,
+  message: string | null,
+): Promise<GitManagedOperationWorkerState> {
+  if (!isInteractiveRebaseContext(context)) {
+    throw new Error(
+      "Only an interactive rebase edit step can be amended here.",
+    );
+  }
+  if (!(await hasGitOperationMarker(cwd, "rebase"))) {
+    return inspectGitManagedOperation(cwd, context);
+  }
+  if ((await currentInteractiveRebaseAction(cwd, context)) !== "edit") {
+    throw new Error("The interactive rebase is not paused at an edit step.");
+  }
+  const status = await readGitStatus(cwd);
+  if (conflictPaths(status).length > 0) {
+    throw new Error(
+      "Resolve and stage every conflict before amending the edit step.",
+    );
+  }
+  const hasStagedChanges = !(await gitSucceeds(cwd, [
+    "diff",
+    "--cached",
+    "--quiet",
+  ]));
+  if (!hasStagedChanges && !message) {
+    throw new Error(
+      "Stage an edit or enter a replacement commit message before amending.",
+    );
+  }
+  const environment = await interactiveRebaseEnvironmentFromContext(
+    cwd,
+    context,
+  );
+  const amended = await runGitOutcome(
+    cwd,
+    [
+      "-c",
+      "commit.gpgSign=false",
+      "commit",
+      "--amend",
+      "--no-verify",
+      ...(message ? ["--message", message] : ["--no-edit"]),
+    ],
+    environment,
+  );
+  if (amended.code !== 0) throw new Error(amended.output);
+  const continued = await runGitOutcome(
+    cwd,
+    ["rebase", "--continue"],
+    environment,
+  );
+  const stillActive = await hasGitOperationMarker(cwd, context.type);
+  const state = await inspectGitManagedOperation(
+    cwd,
+    context,
+    [amended.output, continued.output].filter(Boolean).join("\n"),
+    continued.code === 0 && !stillActive ? "completed" : null,
+  );
+  if (
+    continued.code !== 0 &&
+    state.state !== "conflicted" &&
+    state.state !== "awaiting-user-action"
+  ) {
+    throw new Error(continued.output);
+  }
+  if (state.state === "completed") {
+    await cleanupInteractiveRebaseState(cwd, context);
   }
   return state;
 }

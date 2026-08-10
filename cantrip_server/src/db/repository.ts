@@ -401,6 +401,7 @@ function toGitManagedOperationRecord(
     conflictedPaths: operation.conflictedPaths,
     output: operation.output,
     checkpointRef: operation.checkpointRef,
+    pausedAction: operation.pausedAction,
     error: operation.error,
     createdAt: toISOString(operation.createdAt),
     updatedAt: toISOString(operation.updatedAt),
@@ -2030,6 +2031,7 @@ export class ServerRepository {
         conflictedPaths: [],
         output: "",
         checkpointRef: context.checkpointRef,
+        pausedAction: null,
       })
       .returning();
     return toGitManagedOperationRecord(
@@ -2180,6 +2182,7 @@ export class ServerRepository {
         totalSteps: state.totalSteps,
         conflictedPaths: state.conflictedPaths,
         output,
+        pausedAction: state.pausedAction ?? null,
         error: null,
         completedAt: terminal ? new Date() : null,
         updatedAt: new Date(),

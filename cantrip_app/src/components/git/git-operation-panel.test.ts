@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   gitOperationControlActions,
+  gitOperationEditorRef,
   gitOperationIsActive,
   gitOperationSourceLabel,
 } from "./git-operation-panel";
@@ -61,5 +62,18 @@ describe("Git operation panel state", () => {
     const stash = operation("conflicted", "stash");
     stash.sourceRef = "pop:stash@{0}";
     expect(gitOperationSourceLabel(stash)).toBe("pop stash@{0}");
+  });
+
+  it("uses the upstream field for interactive rewrite planning", () => {
+    expect(
+      gitOperationEditorRef({
+        type: "interactiveRebase",
+        upstreamRef: "origin/main",
+        todo: [],
+      }),
+    ).toBe("origin/main");
+    expect(gitOperationEditorRef({ type: "merge", sourceRef: "feature" })).toBe(
+      "feature",
+    );
   });
 });

@@ -347,6 +347,11 @@ function managedWorkerState(context = managedOperationContext) {
       managedOperationState === "conflicted"
         ? "CONFLICT in src/app.ts"
         : managedOperationState,
+    pausedAction:
+      managedOperationState === "awaiting-user-action" &&
+      context.checkpointRef?.includes("/rewrite-")
+        ? ("edit" as const)
+        : null,
     status: {
       ...status(),
       head: terminal ? "4".repeat(40) : "1".repeat(40),
@@ -670,22 +675,30 @@ const workerBridge = {
               : null,
         });
       }
-      case "git.operation.preview":
+      case "git.operation.preview": {
         gitManagedOperationCommands.push(command);
+        const operationSourceRef =
+          command.action.type === "interactiveRebase"
+            ? command.action.upstreamRef
+            : command.action.sourceRef;
+        const operationType =
+          command.action.type === "merge" ? "merge" : "rebase";
         return completeStashMutation({
           action: command.action,
           token: "d".repeat(64),
-          destructive: command.action.type === "rebase",
+          destructive: command.action.type !== "merge",
           summary: "Review managed Git operation.",
           warnings: [],
           context: {
             ...managedOperationContext,
-            type: command.action.type,
-            sourceRef: command.action.sourceRef,
+            type: operationType,
+            sourceRef: operationSourceRef,
             checkpointRef:
-              command.action.type === "rebase"
-                ? managedOperationContext.checkpointRef
-                : null,
+              command.action.type === "interactiveRebase"
+                ? "refs/cantrip/checkpoints/rewrite-test"
+                : command.action.type === "rebase"
+                  ? managedOperationContext.checkpointRef
+                  : null,
           },
           commits: [
             {
@@ -709,11 +722,36 @@ const workerBridge = {
           patch: "@@ -1 +1 @@\n-old\n+new\n",
           patchTruncated: false,
           wouldConflict: true,
+          todo:
+            command.action.type === "interactiveRebase"
+              ? command.action.todo
+              : [],
+          todoText:
+            command.action.type === "interactiveRebase"
+              ? command.action.todo
+                  .map(
+                    (item) => `${item.action} ${item.revision} Pending commit`,
+                  )
+                  .join("\n")
+              : "",
         });
-      case "git.operation.start":
+      }
+      case "git.operation.start": {
         gitManagedOperationCommands.push(command);
-        managedOperationState = "conflicted";
-        return completeStashMutation(managedWorkerState());
+        managedOperationState =
+          command.action.type === "interactiveRebase"
+            ? "awaiting-user-action"
+            : "conflicted";
+        const startContext =
+          command.action.type === "interactiveRebase"
+            ? {
+                ...managedOperationContext,
+                sourceRef: command.action.upstreamRef,
+                checkpointRef: "refs/cantrip/checkpoints/rewrite-test",
+              }
+            : managedOperationContext;
+        return completeStashMutation(managedWorkerState(startContext));
+      }
       case "git.operation.inspect":
         gitManagedOperationCommands.push(command);
         return managedWorkerState(command.context);
@@ -721,6 +759,10 @@ const workerBridge = {
         gitManagedOperationCommands.push(command);
         managedOperationState =
           command.action === "abort" ? "aborted" : "completed";
+        return completeStashMutation(managedWorkerState(command.context));
+      case "git.operation.amend":
+        gitManagedOperationCommands.push(command);
+        managedOperationState = "completed";
         return completeStashMutation(managedWorkerState(command.context));
       case "git.conflicts.list":
         gitConflictCommands.push(command);
@@ -2653,6 +2695,60 @@ describe.sequential("server worktree control plane", () => {
         target.id,
       ),
     ).toMatchObject({ id: startedOperation.id, state: "completed" });
+    const rewriteAction = {
+      type: "interactiveRebase" as const,
+      upstreamRef: "origin/main",
+      todo: [
+        {
+          action: "edit" as const,
+          revision: "3".repeat(40),
+          message: null,
+        },
+      ],
+    };
+    const rewritePreviewResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/preview`,
+      payload: rewriteAction,
+    });
+    expect(
+      gitManagedOperationPreviewSchema.parse(rewritePreviewResponse.json()),
+    ).toMatchObject({
+      action: rewriteAction,
+      destructive: true,
+      todo: rewriteAction.todo,
+    });
+    const rewriteStartResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations`,
+      payload: { action: rewriteAction, token: "d".repeat(64) },
+    });
+    expect(rewriteStartResponse.statusCode, rewriteStartResponse.body).toBe(
+      201,
+    );
+    const rewriteOperation = gitManagedOperationResponseSchema.parse(
+      rewriteStartResponse.json(),
+    ).operation!;
+    expect(rewriteOperation).toMatchObject({
+      type: "rebase",
+      state: "awaiting-user-action",
+      checkpointRef: "refs/cantrip/checkpoints/rewrite-test",
+      pausedAction: "edit",
+    });
+    const rewriteAmendResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/${rewriteOperation.id}/amend`,
+      payload: { message: "Edited through Cantrip" },
+    });
+    expect(
+      gitManagedOperationResponseSchema.parse(rewriteAmendResponse.json())
+        .operation,
+    ).toMatchObject({ id: rewriteOperation.id, state: "completed" });
+    expect(gitManagedOperationCommands.at(-1)).toMatchObject({
+      type: "git.operation.amend",
+      cwd: target.path,
+      message: "Edited through Cantrip",
+    });
     const invalidOperation = await app.inject({
       method: "POST",
       url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/preview`,

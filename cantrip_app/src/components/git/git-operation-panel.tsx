@@ -1,10 +1,13 @@
 import type {
+  GitInteractiveRebaseTodoAction,
   GitManagedOperationRecord,
   GitMergeRebaseAction,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   Check,
   GitMerge,
   GitPullRequestArrow,
@@ -12,6 +15,7 @@ import {
   Play,
   RotateCcw,
   SkipForward,
+  WandSparkles,
   X,
 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
@@ -26,6 +30,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  amendProjectWorktreeGitOperation,
   controlProjectWorktreeGitOperation,
   getProjectWorktreeGitOperation,
   getProjectWorktreeRevisionCandidates,
@@ -36,6 +41,38 @@ import { cn } from "@/lib/utils";
 
 import { GitPatchView } from "./git-patch-view";
 import { GitConflictResolver } from "./git-conflict-resolver";
+
+type GitInteractiveRebaseAction = Extract<
+  GitMergeRebaseAction,
+  { type: "interactiveRebase" }
+>;
+
+const rewriteActions: GitInteractiveRebaseTodoAction[] = [
+  "pick",
+  "reword",
+  "edit",
+  "squash",
+  "fixup",
+  "drop",
+];
+
+export function gitOperationEditorRef(
+  action: GitMergeRebaseAction | null,
+): string {
+  if (!action) return "";
+  return action.type === "interactiveRebase"
+    ? action.upstreamRef
+    : action.sourceRef;
+}
+
+function withGitOperationEditorRef(
+  action: GitMergeRebaseAction,
+  value: string,
+): GitMergeRebaseAction {
+  return action.type === "interactiveRebase"
+    ? { ...action, upstreamRef: value }
+    : { ...action, sourceRef: value };
+}
 
 export function gitOperationIsActive(
   operation: GitManagedOperationRecord | null | undefined,
@@ -125,6 +162,7 @@ export function GitOperationPanel({
   );
   const [reviewedAction, setReviewedAction] =
     useState<GitMergeRebaseAction | null>(null);
+  const [amendMessage, setAmendMessage] = useState("");
   useEffect(() => {
     if (initialAction) setEditor(initialAction);
   }, [initialAction]);
@@ -141,6 +179,7 @@ export function GitOperationPanel({
   const preview = useMutation({
     mutationFn: (action: GitMergeRebaseAction) =>
       previewProjectWorktreeGitOperation(projectId, worktreeId, action),
+    onSuccess: (result) => setReviewedAction(result.action),
   });
   const start = useMutation({
     mutationFn: async () => {
@@ -184,6 +223,26 @@ export function GitOperationPanel({
       invalidateGitQueries();
     },
   });
+  const amend = useMutation({
+    mutationFn: () => {
+      const current = operation.data?.operation;
+      if (!current) throw new Error("No active Git operation was found.");
+      return amendProjectWorktreeGitOperation(
+        projectId,
+        worktreeId,
+        current.id,
+        amendMessage.trim() || null,
+      );
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData(
+        ["git-operation", projectId, worktreeId],
+        result,
+      );
+      setAmendMessage("");
+      invalidateGitQueries();
+    },
+  });
   const invalidateGitQueries = () => {
     void queryClient.invalidateQueries({
       queryKey: ["worktree-status", projectId, worktreeId],
@@ -200,6 +259,10 @@ export function GitOperationPanel({
   };
   const current = operation.data?.operation ?? null;
   const active = gitOperationIsActive(current);
+  const interactiveEdit =
+    current?.type === "rebase" &&
+    current.state === "awaiting-user-action" &&
+    current.pausedAction === "edit";
   const candidates = useMemo(
     () =>
       (refs.data ?? []).filter(
@@ -211,13 +274,26 @@ export function GitOperationPanel({
   );
   const submitEditor = (event: FormEvent) => {
     event.preventDefault();
-    if (!editor?.sourceRef.trim()) return;
-    const action = { ...editor, sourceRef: editor.sourceRef.trim() };
+    const selectedRef = gitOperationEditorRef(editor).trim();
+    if (!editor || !selectedRef) return;
+    const action = withGitOperationEditorRef(editor, selectedRef);
     setReviewedAction(action);
     preview.reset();
     start.reset();
     preview.mutate(action);
   };
+  const updateInteractiveTodo = (
+    update: (action: GitInteractiveRebaseAction) => GitInteractiveRebaseAction,
+  ) => {
+    if (reviewedAction?.type === "interactiveRebase") {
+      setReviewedAction(update(reviewedAction));
+      start.reset();
+    }
+  };
+  const previewMatchesAction =
+    reviewedAction !== null &&
+    preview.data !== undefined &&
+    JSON.stringify(reviewedAction) === JSON.stringify(preview.data.action);
 
   return (
     <aside className="absolute inset-y-0 right-0 z-20 flex w-full min-w-0 flex-col border-l bg-background shadow-2xl md:w-[min(48rem,78vw)]">
@@ -246,6 +322,20 @@ export function GitOperationPanel({
               onClick={() => setEditor({ type: "rebase", sourceRef: "" })}
             >
               <GitPullRequestArrow className="size-3.5" /> Rebase
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1 text-xs"
+              onClick={() =>
+                setEditor({
+                  type: "interactiveRebase",
+                  upstreamRef: "",
+                  todo: [],
+                })
+              }
+            >
+              <WandSparkles className="size-3.5" /> Rewrite
             </Button>
           </>
         ) : null}
@@ -324,6 +414,50 @@ export function GitOperationPanel({
               </div>
             ) : null}
 
+            {interactiveEdit ? (
+              <div className="space-y-3 rounded-xl border p-4">
+                <div>
+                  <p className="text-sm font-medium">Edit step paused</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Change files and stage them in Working changes, optionally
+                    replace the commit message, then amend and continue.
+                  </p>
+                </div>
+                <textarea
+                  className="min-h-20 w-full resize-y rounded-md border bg-background px-3 py-2 text-sm"
+                  placeholder="Replacement commit message (optional)"
+                  value={amendMessage}
+                  onChange={(event) => setAmendMessage(event.target.value)}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={onOpenWorkingChanges}
+                  >
+                    Open Working changes
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={amend.isPending}
+                    onClick={() => amend.mutate()}
+                  >
+                    {amend.isPending ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : null}
+                    Amend and continue
+                  </Button>
+                </div>
+                {amend.error ? (
+                  <p className="text-xs text-destructive">
+                    {amend.error instanceof Error
+                      ? amend.error.message
+                      : "The edit step could not be amended."}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
             {active ? (
               <div className="flex flex-wrap gap-2">
                 {gitOperationControlActions(current).map((action) => (
@@ -392,7 +526,9 @@ export function GitOperationPanel({
         <DialogContent className="flex max-h-[92vh] max-w-3xl flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle className="capitalize">
-              {editor?.type ?? "Git"} current branch
+              {editor?.type === "interactiveRebase"
+                ? "Rewrite current branch"
+                : `${editor?.type ?? "Git"} current branch`}
             </DialogTitle>
             <DialogDescription>
               Select the source, review the exact effect, then start the durable
@@ -406,10 +542,12 @@ export function GitOperationPanel({
                   autoFocus
                   aria-label="Operation source ref"
                   className="h-9 rounded-md border bg-background px-3 text-sm"
-                  value={editor?.sourceRef ?? ""}
+                  value={gitOperationEditorRef(editor)}
                   onChange={(event) =>
                     editor &&
-                    setEditor({ ...editor, sourceRef: event.target.value })
+                    setEditor(
+                      withGitOperationEditorRef(editor, event.target.value),
+                    )
                   }
                 >
                   <option value="">Select a branch or tag</option>
@@ -425,10 +563,12 @@ export function GitOperationPanel({
                 <input
                   className="h-9 rounded-md border bg-background px-3 text-sm"
                   placeholder="Or enter a revision"
-                  value={editor?.sourceRef ?? ""}
+                  value={gitOperationEditorRef(editor)}
                   onChange={(event) =>
                     editor &&
-                    setEditor({ ...editor, sourceRef: event.target.value })
+                    setEditor(
+                      withGitOperationEditorRef(editor, event.target.value),
+                    )
                   }
                 />
               </div>
@@ -440,8 +580,13 @@ export function GitOperationPanel({
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={!editor?.sourceRef.trim()}>
-                  Review operation
+                <Button
+                  type="submit"
+                  disabled={!gitOperationEditorRef(editor).trim()}
+                >
+                  {editor?.type === "interactiveRebase"
+                    ? "Load commit plan"
+                    : "Review operation"}
                 </Button>
               </DialogFooter>
             </form>
@@ -467,6 +612,150 @@ export function GitOperationPanel({
             </div>
           ) : preview.data ? (
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+              {reviewedAction?.type === "interactiveRebase" ? (
+                <div className="min-h-0 shrink overflow-auto rounded-lg border">
+                  <div className="sticky top-0 z-10 flex items-center gap-2 border-b bg-background px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium">Interactive todo</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Reorder every selected commit and choose how Git
+                        rewrites it.
+                      </p>
+                    </div>
+                    {!previewMatchesAction ? (
+                      <Button
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={preview.isPending}
+                        onClick={() => preview.mutate(reviewedAction)}
+                      >
+                        Validate plan
+                      </Button>
+                    ) : (
+                      <span className="text-[10px] text-emerald-600">
+                        Validated
+                      </span>
+                    )}
+                  </div>
+                  <div className="divide-y">
+                    {reviewedAction.todo.map((item, index) => {
+                      const commit = preview.data.commits.find(
+                        ({ hash }) => hash === item.revision,
+                      );
+                      return (
+                        <div
+                          key={item.revision}
+                          className="grid grid-cols-[auto_7rem_minmax(0,1fr)] items-start gap-2 px-2 py-2"
+                        >
+                          <div className="flex pt-0.5">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-6"
+                              disabled={index === 0}
+                              onClick={() =>
+                                updateInteractiveTodo((current) => {
+                                  const todo = [...current.todo];
+                                  [todo[index - 1], todo[index]] = [
+                                    todo[index]!,
+                                    todo[index - 1]!,
+                                  ];
+                                  return { ...current, todo };
+                                })
+                              }
+                            >
+                              <ArrowUp className="size-3" />
+                              <span className="sr-only">Move commit up</span>
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-6"
+                              disabled={
+                                index === reviewedAction.todo.length - 1
+                              }
+                              onClick={() =>
+                                updateInteractiveTodo((current) => {
+                                  const todo = [...current.todo];
+                                  [todo[index], todo[index + 1]] = [
+                                    todo[index + 1]!,
+                                    todo[index]!,
+                                  ];
+                                  return { ...current, todo };
+                                })
+                              }
+                            >
+                              <ArrowDown className="size-3" />
+                              <span className="sr-only">Move commit down</span>
+                            </Button>
+                          </div>
+                          <select
+                            aria-label={`Action for ${commit?.shortHash ?? item.revision.slice(0, 10)}`}
+                            className="h-7 rounded border bg-background px-2 text-xs"
+                            value={item.action}
+                            onChange={(event) =>
+                              updateInteractiveTodo((current) => ({
+                                ...current,
+                                todo: current.todo.map(
+                                  (candidate, itemIndex) =>
+                                    itemIndex === index
+                                      ? {
+                                          ...candidate,
+                                          action: event.target
+                                            .value as GitInteractiveRebaseTodoAction,
+                                          message:
+                                            event.target.value === "reword"
+                                              ? (candidate.message ??
+                                                commit?.subject ??
+                                                "Reworded commit")
+                                              : null,
+                                        }
+                                      : candidate,
+                                ),
+                              }))
+                            }
+                          >
+                            {rewriteActions.map((action) => (
+                              <option key={action} value={action}>
+                                {action}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="min-w-0">
+                            <p className="truncate text-xs">
+                              {commit?.subject ?? item.revision}
+                              <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                                {commit?.shortHash ??
+                                  item.revision.slice(0, 10)}
+                              </span>
+                            </p>
+                            {item.action === "reword" ? (
+                              <textarea
+                                className="mt-1 min-h-14 w-full resize-y rounded border bg-background px-2 py-1 text-xs"
+                                value={item.message ?? ""}
+                                onChange={(event) =>
+                                  updateInteractiveTodo((current) => ({
+                                    ...current,
+                                    todo: current.todo.map(
+                                      (candidate, itemIndex) =>
+                                        itemIndex === index
+                                          ? {
+                                              ...candidate,
+                                              message: event.target.value,
+                                            }
+                                          : candidate,
+                                    ),
+                                  }))
+                                }
+                              />
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
               <div className="shrink-0 space-y-1 rounded-lg bg-muted/30 p-3 text-xs">
                 <p className="font-medium">{preview.data.summary}</p>
                 <p className="text-muted-foreground">
@@ -485,6 +774,16 @@ export function GitOperationPanel({
                   <p className="break-all font-mono text-muted-foreground">
                     Recovery: {preview.data.context.checkpointRef}
                   </p>
+                ) : null}
+                {preview.data.todoText ? (
+                  <details className="pt-1">
+                    <summary className="cursor-pointer font-medium">
+                      Exact validated Git todo
+                    </summary>
+                    <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-background p-2 font-mono text-[10px]">
+                      {preview.data.todoText}
+                    </pre>
+                  </details>
                 ) : null}
               </div>
               <div className="min-h-64 flex-1 overflow-hidden rounded-lg border">
@@ -517,7 +816,7 @@ export function GitOperationPanel({
                   Back
                 </Button>
                 <Button
-                  disabled={start.isPending}
+                  disabled={start.isPending || !previewMatchesAction}
                   className={
                     preview.data.destructive
                       ? "bg-destructive text-white hover:bg-destructive/90"
@@ -528,7 +827,10 @@ export function GitOperationPanel({
                   {start.isPending ? (
                     <Loader2 className="size-4 animate-spin" />
                   ) : null}
-                  Start {reviewedAction.type}
+                  Start{" "}
+                  {reviewedAction.type === "interactiveRebase"
+                    ? "rewrite"
+                    : reviewedAction.type}
                 </Button>
               </DialogFooter>
             </div>

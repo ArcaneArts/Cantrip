@@ -10,6 +10,7 @@ import type {
   CodexRuntimeReport,
   GitManagedOperationState,
   GitManagedOperationType,
+  GitInteractiveRebaseTodoAction,
   PendingPlanQuestion,
   PlanStep,
   RemoteSurfaceCapabilities,
@@ -455,6 +456,7 @@ export const gitOperations = pgTable(
       .default([]),
     output: text("output").notNull().default(""),
     checkpointRef: text("checkpoint_ref"),
+    pausedAction: text("paused_action").$type<GitInteractiveRebaseTodoAction>(),
     error: text("error"),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
