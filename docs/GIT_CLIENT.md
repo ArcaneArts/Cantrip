@@ -775,6 +775,34 @@ Manual QA:
 6. Disconnect the assigned worker and confirm signature inspection does not
    fall back to another worker or expose worker-local trust configuration.
 
+## Agent-assisted working changes
+
+The Working Changes panel offers optional **Summarize** and **Draft message**
+actions. The assigned worker collects a bounded staged/unstaged status and
+patch snapshot, then runs the account's default model in a read-only,
+network-disabled generation turn. Repository content is treated as untrusted
+evidence rather than instructions.
+
+Every result opens in an editable review dialog. Summaries can be copied.
+Commit-message drafts enter the ordinary commit-message field only after
+**Use reviewed draft**; they never stage files, create a commit, push, or
+publish by themselves. The normal Git controls remain available when no model
+is configured or the worker's Codex runtime is unavailable.
+
+Manual QA:
+
+1. Create staged and unstaged changes, generate a summary, and confirm both
+   scopes are described without changing status or HEAD.
+2. Generate a commit-message draft, edit it in the review dialog, and use it.
+   Confirm the edited text enters the commit field but no commit occurs.
+3. Cancel and regenerate drafts. Confirm each remains preview-only and shows
+   the selected model route's provider and model.
+4. Remove the default model, disconnect the assigned worker, and exhaust one
+   provider route. Confirm clear errors and normal manual Git controls remain
+   usable; configured fallback routes are attempted in priority order.
+5. Put instruction-like text in a changed file and confirm the model treats it
+   as repository evidence rather than an instruction to mutate or publish.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport

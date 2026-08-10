@@ -23,6 +23,7 @@ import {
   writeExplorerFile,
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
+import { buildGitAgentPrompt } from "./git-agent.js";
 import {
   amendGitManagedOperation,
   applyGitForcePush,
@@ -486,6 +487,31 @@ async function start(): Promise<void> {
         return previewGitForcePush(command.cwd);
       case "git.force-push.apply":
         return applyGitForcePush(command.cwd, command.token);
+      case "git.agent.generate":
+        return runtimeFor(command).runWorkflowNode({
+          workflowRunId: `git-agent:${command.generationId}`,
+          runNodeId: command.task,
+          attemptId: command.generationId,
+          idempotencyKey: command.generationId,
+          worktreeId: null,
+          cwd: command.cwd,
+          threadId: null,
+          prompt: await buildGitAgentPrompt(
+            command.cwd,
+            command.task,
+            command.instructions,
+          ),
+          developerInstructions: command.developerInstructions,
+          skillNames: [],
+          outputSchema: command.outputSchema,
+          mutationMode: "read-only",
+          networkAccess: "none",
+          approvalMode: "preauthorized",
+          permissionProfileId: null,
+          timeoutMs: command.timeoutMs,
+          model: command.model,
+          provider: command.provider,
+        });
       case "worktree.list":
         return worktrees.list(command.sourcePath);
       case "worktree.reconcile":
