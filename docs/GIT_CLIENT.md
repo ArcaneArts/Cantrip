@@ -643,6 +643,41 @@ Manual QA:
 6. Apply a destructive action and verify its recovery ref points to the exact
    previous revision and remains usable after reconnecting the app.
 
+### Durable bisect
+
+Choose **Bisect** in the History tab's Operations panel and identify one known
+good revision plus one known bad revision. Cantrip verifies that good is an
+ancestor of bad, bounds the searchable range, and previews the candidate
+commits before changing HEAD. Starting creates a recovery checkpoint and lets
+Git select the next candidate in the explicitly selected worktree.
+
+Classify each candidate with **Good**, **Bad**, or **Skip**. The server persists
+the operation, current candidate, remaining range, and Git output after every
+step, so reconnecting the app, server, or worker resumes the same bisect rather
+than starting over. When Git identifies the first bad commit, its output stays
+visible until **Reset bisect** restores the original branch and HEAD. Abort also
+restores the original checkout while recording the operation as aborted.
+
+Bisect is serialized with every other Git mutation and requires a clean
+worktree. Its controls never fall back to another checkout or worker, and a
+second managed operation cannot begin while the bisect is active.
+
+Manual QA:
+
+1. Create a linear history with a known regression, preview a known-good and
+   known-bad pair, then classify candidates until Git identifies the first bad
+   commit.
+2. Reload the app and restart the worker between classifications. Confirm the
+   same candidate, range, output, and controls return from the durable record.
+3. Skip a candidate and confirm Git selects another candidate without losing
+   the operation. Reset after the result and verify the original branch and
+   HEAD are restored.
+4. Abort midway and confirm the original checkout is restored and the aborted
+   record remains inspectable.
+5. Try unrelated or reversed good/bad revisions, a dirty worktree, a second
+   managed operation, and an offline worker; confirm each fails without
+   mutating or falling back to another worktree.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport
@@ -657,7 +692,7 @@ Manual QA:
 - [x] Advanced history rewriting
 - [x] Full GitHub pull-request workflow
 - [x] File history, blame, and repository search
-- [ ] Recovery tools and bisect
+- [x] Recovery tools and bisect
 - [ ] Repository-system support
 - [ ] Agent-assisted Git workflows
 

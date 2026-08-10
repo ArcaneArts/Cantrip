@@ -39,6 +39,7 @@ import {
   gitActionSchema,
   gitBranchActionPreviewSchema,
   gitBranchListSchema,
+  gitBisectActionSchema,
   gitCommitActionPreviewSchema,
   gitCommitActionResultSchema,
   gitCommitSearchQuerySchema,
@@ -46,6 +47,7 @@ import {
   gitConflictDetailSchema,
   gitConflictResolutionRequestSchema,
   gitManagedOperationPreviewSchema,
+  gitManagedOperationControlSchema,
   gitManagedOperationRecordSchema,
   gitRemoteActionPreviewSchema,
   gitRemoteListSchema,
@@ -108,6 +110,33 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("validates durable bisect actions and classification controls", () => {
+    const action = gitBisectActionSchema.parse({
+      type: "bisect",
+      goodRef: "v1.0.0",
+      badRef: "HEAD",
+    });
+    expect(
+      workerCommandSchema.parse({
+        type: "git.operation.preview",
+        cwd: "/repo",
+        action,
+      }),
+    ).toMatchObject({ action });
+    for (const control of ["good", "bad", "skip", "reset"] as const) {
+      expect(
+        gitManagedOperationControlSchema.parse({ action: control }),
+      ).toEqual({ action: control });
+    }
+    expect(() =>
+      gitBisectActionSchema.parse({
+        type: "bisect",
+        goodRef: "--exec=bad",
+        badRef: "HEAD",
+      }),
+    ).toThrow();
+  });
+
   it("validates durable merge and rebase operation envelopes", () => {
     const head = "1".repeat(40);
     const source = "2".repeat(40);

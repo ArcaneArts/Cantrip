@@ -4183,6 +4183,7 @@ export const gitOperationSummarySchema = z.object({
 export const gitManagedOperationTypeSchema = z.enum([
   "merge",
   "rebase",
+  "bisect",
   "cherry-pick",
   "revert",
   "stash",
@@ -4246,6 +4247,17 @@ export const gitMergeRebaseActionSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+export const gitBisectActionSchema = z.object({
+  type: z.literal("bisect"),
+  goodRef: gitRevisionInputSchema,
+  badRef: gitRevisionInputSchema,
+});
+
+export const gitManagedOperationActionSchema = z.union([
+  gitMergeRebaseActionSchema,
+  gitBisectActionSchema,
+]);
+
 export const gitManagedOperationContextSchema = z.object({
   type: gitManagedOperationTypeSchema,
   originalHead: gitCommitHashInputSchema,
@@ -4271,7 +4283,7 @@ export const gitManagedOperationWorkerStateSchema =
   });
 
 export const gitManagedOperationPreviewSchema = z.object({
-  action: gitMergeRebaseActionSchema,
+  action: gitManagedOperationActionSchema,
   token: z.string().regex(/^[0-9a-f]{64}$/u),
   destructive: z.boolean(),
   summary: z.string().min(1).max(10_000),
@@ -4288,12 +4300,12 @@ export const gitManagedOperationPreviewSchema = z.object({
 });
 
 export const gitManagedOperationStartSchema = z.object({
-  action: gitMergeRebaseActionSchema,
+  action: gitManagedOperationActionSchema,
   token: z.string().regex(/^[0-9a-f]{64}$/u),
 });
 
 export const gitManagedOperationControlSchema = z.object({
-  action: z.enum(["continue", "skip", "abort"]),
+  action: z.enum(["continue", "skip", "abort", "good", "bad", "reset"]),
 });
 
 export const gitManagedOperationAmendSchema = z.object({
@@ -5057,7 +5069,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("git.operation.preview"),
     cwd: z.string().min(1).max(8_192),
-    action: gitMergeRebaseActionSchema,
+    action: gitManagedOperationActionSchema,
   }),
   z
     .object({
@@ -5957,6 +5969,10 @@ export type GitManagedOperationState = z.infer<
   typeof gitManagedOperationStateSchema
 >;
 export type GitMergeRebaseAction = z.infer<typeof gitMergeRebaseActionSchema>;
+export type GitBisectAction = z.infer<typeof gitBisectActionSchema>;
+export type GitManagedOperationAction = z.infer<
+  typeof gitManagedOperationActionSchema
+>;
 export type GitInteractiveRebaseTodoAction = z.infer<
   typeof gitInteractiveRebaseTodoActionSchema
 >;

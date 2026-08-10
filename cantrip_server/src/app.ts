@@ -129,12 +129,12 @@ import {
   gitConflictResolutionRequestSchema,
   gitConflictResolutionResultSchema,
   gitManagedOperationAmendSchema,
+  gitManagedOperationActionSchema,
   gitManagedOperationControlSchema,
   gitManagedOperationPreviewSchema,
   gitManagedOperationResponseSchema,
   gitManagedOperationStartSchema,
   gitManagedOperationWorkerStateSchema,
-  gitMergeRebaseActionSchema,
   gitDiffScopeSchema,
   gitFileDiffSchema,
   gitFileHistorySchema,
@@ -6045,7 +6045,7 @@ export async function buildApp({
   app.post<{ Params: { projectId: string; worktreeId: string } }>(
     "/api/projects/:projectId/worktrees/:worktreeId/git/operations/preview",
     async (request, reply) => {
-      const input = gitMergeRebaseActionSchema.safeParse(request.body);
+      const input = gitManagedOperationActionSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }

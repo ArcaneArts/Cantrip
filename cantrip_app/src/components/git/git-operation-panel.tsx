@@ -1,5 +1,6 @@
 import type {
   GitInteractiveRebaseTodoAction,
+  GitManagedOperationAction,
   GitManagedOperationRecord,
   GitMergeRebaseAction,
 } from "@cantrip/protocol";
@@ -14,6 +15,7 @@ import {
   Loader2,
   Play,
   RotateCcw,
+  SearchCheck,
   SkipForward,
   WandSparkles,
   X,
@@ -57,18 +59,20 @@ const rewriteActions: GitInteractiveRebaseTodoAction[] = [
 ];
 
 export function gitOperationEditorRef(
-  action: GitMergeRebaseAction | null,
+  action: GitManagedOperationAction | null,
 ): string {
   if (!action) return "";
+  if (action.type === "bisect") return action.goodRef;
   return action.type === "interactiveRebase"
     ? action.upstreamRef
     : action.sourceRef;
 }
 
 function withGitOperationEditorRef(
-  action: GitMergeRebaseAction,
+  action: GitManagedOperationAction,
   value: string,
-): GitMergeRebaseAction {
+): GitManagedOperationAction {
+  if (action.type === "bisect") return { ...action, goodRef: value };
   return action.type === "interactiveRebase"
     ? { ...action, upstreamRef: value }
     : { ...action, sourceRef: value };
@@ -87,8 +91,9 @@ export function gitOperationIsActive(
 
 export function gitOperationControlActions(
   operation: GitManagedOperationRecord,
-): Array<"continue" | "skip" | "abort"> {
+): Array<"continue" | "skip" | "abort" | "good" | "bad" | "reset"> {
   if (!gitOperationIsActive(operation)) return [];
+  if (operation.type === "bisect") return ["good", "bad", "skip", "reset"];
   return operation.type === "merge" || operation.type === "stash"
     ? ["continue", "abort"]
     : ["continue", "skip", "abort"];
@@ -97,6 +102,9 @@ export function gitOperationControlActions(
 export function gitOperationSourceLabel(
   operation: GitManagedOperationRecord,
 ): string {
+  if (operation.type === "bisect") {
+    return `Good ${operation.sourceRef ?? operation.sourceRevision ?? "?"} · Bad ${operation.targetRevision.slice(0, 10)}`;
+  }
   if (operation.type !== "stash") {
     return operation.sourceRef ?? operation.sourceRevision ?? "Recorded action";
   }
@@ -157,11 +165,11 @@ export function GitOperationPanel({
   worktreeId: string;
 }) {
   const queryClient = useQueryClient();
-  const [editor, setEditor] = useState<GitMergeRebaseAction | null>(
+  const [editor, setEditor] = useState<GitManagedOperationAction | null>(
     initialAction,
   );
   const [reviewedAction, setReviewedAction] =
-    useState<GitMergeRebaseAction | null>(null);
+    useState<GitManagedOperationAction | null>(null);
   const [amendMessage, setAmendMessage] = useState("");
   useEffect(() => {
     if (initialAction) setEditor(initialAction);
@@ -177,7 +185,7 @@ export function GitOperationPanel({
     queryFn: () => getProjectWorktreeRevisionCandidates(projectId, worktreeId),
   });
   const preview = useMutation({
-    mutationFn: (action: GitMergeRebaseAction) =>
+    mutationFn: (action: GitManagedOperationAction) =>
       previewProjectWorktreeGitOperation(projectId, worktreeId, action),
     onSuccess: (result) => setReviewedAction(result.action),
   });
@@ -205,7 +213,9 @@ export function GitOperationPanel({
     },
   });
   const control = useMutation({
-    mutationFn: (action: "continue" | "skip" | "abort") => {
+    mutationFn: (
+      action: "continue" | "skip" | "abort" | "good" | "bad" | "reset",
+    ) => {
       const current = operation.data?.operation;
       if (!current) throw new Error("No active Git operation was found.");
       return controlProjectWorktreeGitOperation(
@@ -274,6 +284,14 @@ export function GitOperationPanel({
   );
   const submitEditor = (event: FormEvent) => {
     event.preventDefault();
+    if (editor?.type === "bisect") {
+      if (!editor.goodRef.trim() || !editor.badRef.trim()) return;
+      setReviewedAction(editor);
+      preview.reset();
+      start.reset();
+      preview.mutate(editor);
+      return;
+    }
     const selectedRef = gitOperationEditorRef(editor).trim();
     if (!editor || !selectedRef) return;
     const action = withGitOperationEditorRef(editor, selectedRef);
@@ -302,7 +320,7 @@ export function GitOperationPanel({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold">Git operations</p>
           <p className="truncate text-[10px] text-muted-foreground">
-            Durable merge, rebase, stash, and conflict progress
+            Durable merge, rebase, bisect, stash, and conflict progress
           </p>
         </div>
         {!active ? (
@@ -336,6 +354,16 @@ export function GitOperationPanel({
               }
             >
               <WandSparkles className="size-3.5" /> Rewrite
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1 text-xs"
+              onClick={() =>
+                setEditor({ type: "bisect", goodRef: "", badRef: "HEAD" })
+              }
+            >
+              <SearchCheck className="size-3.5" /> Bisect
             </Button>
           </>
         ) : null}
@@ -466,7 +494,7 @@ export function GitOperationPanel({
                     size="sm"
                     variant="outline"
                     className={
-                      action === "abort"
+                      action === "abort" || action === "reset"
                         ? "border-destructive/40 text-destructive hover:bg-destructive/10"
                         : undefined
                     }
@@ -479,12 +507,16 @@ export function GitOperationPanel({
                   >
                     {action === "continue" ? (
                       <Play className="size-3.5" />
+                    ) : action === "good" || action === "bad" ? (
+                      <Check className="size-3.5" />
                     ) : action === "skip" ? (
                       <SkipForward className="size-3.5" />
                     ) : (
                       <RotateCcw className="size-3.5" />
                     )}
-                    <span className="capitalize">{action}</span>
+                    <span className="capitalize">
+                      {action === "reset" ? "Reset bisect" : action}
+                    </span>
                   </Button>
                 ))}
               </div>
@@ -509,7 +541,7 @@ export function GitOperationPanel({
           </div>
         ) : (
           <div className="grid h-48 place-items-center text-center text-sm text-muted-foreground">
-            No merge or rebase has been recorded for this worktree yet.
+            No durable Git operation has been recorded for this worktree yet.
           </div>
         )}
       </div>
@@ -528,7 +560,9 @@ export function GitOperationPanel({
             <DialogTitle className="capitalize">
               {editor?.type === "interactiveRebase"
                 ? "Rewrite current branch"
-                : `${editor?.type ?? "Git"} current branch`}
+                : editor?.type === "bisect"
+                  ? "Bisect history"
+                  : `${editor?.type ?? "Git"} current branch`}
             </DialogTitle>
             <DialogDescription>
               Select the source, review the exact effect, then start the durable
@@ -538,39 +572,81 @@ export function GitOperationPanel({
           {!reviewedAction ? (
             <form onSubmit={submitEditor}>
               <div className="grid gap-3 py-4">
-                <select
-                  autoFocus
-                  aria-label="Operation source ref"
-                  className="h-9 rounded-md border bg-background px-3 text-sm"
-                  value={gitOperationEditorRef(editor)}
-                  onChange={(event) =>
-                    editor &&
-                    setEditor(
-                      withGitOperationEditorRef(editor, event.target.value),
-                    )
-                  }
-                >
-                  <option value="">Select a branch or tag</option>
-                  {candidates.map((candidate) => (
-                    <option
-                      key={`${candidate.kind}:${candidate.name}`}
-                      value={candidate.name}
+                {editor?.type === "bisect" ? (
+                  <>
+                    <label className="grid gap-1 text-xs">
+                      <span>Known-good revision</span>
+                      <input
+                        autoFocus
+                        list="git-operation-refs"
+                        className="h-9 rounded-md border bg-background px-3 text-sm"
+                        placeholder="Tag, branch, or commit"
+                        value={editor.goodRef}
+                        onChange={(event) =>
+                          setEditor({ ...editor, goodRef: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label className="grid gap-1 text-xs">
+                      <span>Known-bad revision</span>
+                      <input
+                        list="git-operation-refs"
+                        className="h-9 rounded-md border bg-background px-3 text-sm"
+                        placeholder="HEAD"
+                        value={editor.badRef}
+                        onChange={(event) =>
+                          setEditor({ ...editor, badRef: event.target.value })
+                        }
+                      />
+                    </label>
+                    <datalist id="git-operation-refs">
+                      {candidates.map((candidate) => (
+                        <option
+                          key={`${candidate.kind}:${candidate.name}`}
+                          value={candidate.name}
+                        >
+                          {candidate.shortHash}
+                        </option>
+                      ))}
+                    </datalist>
+                  </>
+                ) : (
+                  <>
+                    <select
+                      autoFocus
+                      aria-label="Operation source ref"
+                      className="h-9 rounded-md border bg-background px-3 text-sm"
+                      value={gitOperationEditorRef(editor)}
+                      onChange={(event) =>
+                        editor &&
+                        setEditor(
+                          withGitOperationEditorRef(editor, event.target.value),
+                        )
+                      }
                     >
-                      {candidate.name} · {candidate.shortHash}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  className="h-9 rounded-md border bg-background px-3 text-sm"
-                  placeholder="Or enter a revision"
-                  value={gitOperationEditorRef(editor)}
-                  onChange={(event) =>
-                    editor &&
-                    setEditor(
-                      withGitOperationEditorRef(editor, event.target.value),
-                    )
-                  }
-                />
+                      <option value="">Select a branch or tag</option>
+                      {candidates.map((candidate) => (
+                        <option
+                          key={`${candidate.kind}:${candidate.name}`}
+                          value={candidate.name}
+                        >
+                          {candidate.name} · {candidate.shortHash}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      className="h-9 rounded-md border bg-background px-3 text-sm"
+                      placeholder="Or enter a revision"
+                      value={gitOperationEditorRef(editor)}
+                      onChange={(event) =>
+                        editor &&
+                        setEditor(
+                          withGitOperationEditorRef(editor, event.target.value),
+                        )
+                      }
+                    />
+                  </>
+                )}
               </div>
               <DialogFooter>
                 <Button
@@ -582,11 +658,17 @@ export function GitOperationPanel({
                 </Button>
                 <Button
                   type="submit"
-                  disabled={!gitOperationEditorRef(editor).trim()}
+                  disabled={
+                    editor?.type === "bisect"
+                      ? !editor.goodRef.trim() || !editor.badRef.trim()
+                      : !gitOperationEditorRef(editor).trim()
+                  }
                 >
                   {editor?.type === "interactiveRebase"
                     ? "Load commit plan"
-                    : "Review operation"}
+                    : editor?.type === "bisect"
+                      ? "Review bisect"
+                      : "Review operation"}
                 </Button>
               </DialogFooter>
             </form>

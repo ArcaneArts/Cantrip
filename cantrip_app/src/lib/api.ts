@@ -158,7 +158,7 @@ import type {
   GitCommitAction,
   GitCommitSearchQuery,
   GitConflictResolutionRequest,
-  GitMergeRebaseAction,
+  GitManagedOperationAction,
   GitDiffScope,
   GitPartialPatchRequest,
   GitRemoteAction,
@@ -701,7 +701,7 @@ export async function getProjectWorktreeGitOperation(
 export async function previewProjectWorktreeGitOperation(
   projectId: string,
   worktreeId: string,
-  action: GitMergeRebaseAction,
+  action: GitManagedOperationAction,
 ) {
   return gitManagedOperationPreviewSchema.parse(
     await post(
@@ -714,7 +714,7 @@ export async function previewProjectWorktreeGitOperation(
 export async function startProjectWorktreeGitOperation(
   projectId: string,
   worktreeId: string,
-  action: GitMergeRebaseAction,
+  action: GitManagedOperationAction,
   token: string,
 ) {
   return gitManagedOperationResponseSchema.parse(
@@ -729,7 +729,7 @@ export async function controlProjectWorktreeGitOperation(
   projectId: string,
   worktreeId: string,
   operationId: string,
-  action: "continue" | "skip" | "abort",
+  action: "continue" | "skip" | "abort" | "good" | "bad" | "reset",
 ) {
   return gitManagedOperationResponseSchema.parse(
     await post(
