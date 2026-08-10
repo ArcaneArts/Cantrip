@@ -120,6 +120,8 @@ import {
   gitCommitActionResultSchema,
   gitCommitActionSchema,
   gitCommitDetailSchema,
+  gitCommitSearchQuerySchema,
+  gitCommitSearchResultSchema,
   gitConflictDetailSchema,
   gitConflictListSchema,
   gitConflictResolutionApplySchema,
@@ -4423,6 +4425,73 @@ export async function buildApp({
               cwd: context.worktree.path,
               path: filePath.data,
               revision,
+              cursor,
+              limit,
+            }),
+          ),
+        );
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string; worktreeId: string };
+    Querystring: {
+      author?: string;
+      branch?: string;
+      cursor?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      hash?: string;
+      limit?: string;
+      message?: string;
+      path?: string;
+      tag?: string;
+    };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/commits/search",
+    async (request, reply) => {
+      const value = (candidate: string | undefined) =>
+        candidate?.trim() ? candidate.trim() : null;
+      const query = gitCommitSearchQuerySchema.safeParse({
+        message: value(request.query.message),
+        author: value(request.query.author),
+        hash: value(request.query.hash),
+        dateFrom: value(request.query.dateFrom),
+        dateTo: value(request.query.dateTo),
+        path: value(request.query.path),
+        branch: value(request.query.branch),
+        tag: value(request.query.tag),
+      });
+      if (!query.success) {
+        return reply.code(400).send(invalidBody(query.error.issues));
+      }
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      const limit = Math.min(
+        100,
+        Math.max(1, Number.parseInt(request.query.limit ?? "100", 10) || 100),
+      );
+      const cursor = Math.max(
+        0,
+        Number.parseInt(request.query.cursor ?? "0", 10) || 0,
+      );
+      try {
+        return reply.send(
+          gitCommitSearchResultSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "git.commit.search",
+              cwd: context.worktree.path,
+              query: query.data,
               cursor,
               limit,
             }),

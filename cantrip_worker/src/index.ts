@@ -62,6 +62,7 @@ import {
   readGitStashFileDiff,
   readGitTagDetail,
   readGitTags,
+  searchGitCommits,
   runGitAction,
   startGitManagedOperation,
 } from "./git.js";
@@ -325,6 +326,13 @@ async function start(): Promise<void> {
           command.cwd,
           command.path,
           command.revision,
+          command.limit,
+          command.cursor,
+        );
+      case "git.commit.search":
+        return searchGitCommits(
+          command.cwd,
+          command.query,
           command.limit,
           command.cursor,
         );

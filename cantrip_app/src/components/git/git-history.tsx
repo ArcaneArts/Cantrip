@@ -33,6 +33,7 @@ import {
   Plus,
   RefreshCw,
   ScanLine,
+  Search,
   Server,
   Tag,
 } from "lucide-react";
@@ -80,6 +81,7 @@ import {
   gitPushRequiresLease,
 } from "./git-force-push-dialog";
 import { GitFileHistoryDialog } from "./git-file-history-dialog";
+import { GitCommitSearchDialog } from "./git-commit-search-dialog";
 import { GitStashPanel } from "./git-stash-panel";
 import { GitRepositoryPanel } from "./git-repository-panel";
 import { GitOperationPanel, gitOperationIsActive } from "./git-operation-panel";
@@ -406,6 +408,7 @@ export function GitHistoryView({
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [forcePushOpen, setForcePushOpen] = useState(false);
   const [fileHistoryOpen, setFileHistoryOpen] = useState(false);
+  const [commitSearchOpen, setCommitSearchOpen] = useState(false);
   const [operationPreset, setOperationPreset] =
     useState<GitMergeRebaseAction | null>(null);
   const [commitActionRequest, setCommitActionRequest] =
@@ -872,6 +875,17 @@ export function GitHistoryView({
               onClick={() => setFileHistoryOpen(true)}
             >
               <FileClock className="size-3" /> File
+            </Button>
+          ) : null}
+          {section === "history" ? (
+            <Button
+              size="sm"
+              variant={commitSearchOpen ? "outline" : "ghost"}
+              className="h-6 gap-1 px-2 text-[11px]"
+              disabled={!selectedAvailable}
+              onClick={() => setCommitSearchOpen(true)}
+            >
+              <Search className="size-3" /> Search
             </Button>
           ) : null}
           {section !== "history" ? (
@@ -1570,6 +1584,17 @@ export function GitHistoryView({
       <GitFileHistoryDialog
         open={fileHistoryOpen}
         onOpenChange={setFileHistoryOpen}
+        projectId={project.id}
+        worktreeId={worktreeId}
+        onOpenCommit={(revision) => {
+          setChangesOpen(false);
+          setCompareOpen(false);
+          setSelectedCommit(revision);
+        }}
+      />
+      <GitCommitSearchDialog
+        open={commitSearchOpen}
+        onOpenChange={setCommitSearchOpen}
         projectId={project.id}
         worktreeId={worktreeId}
         onOpenCommit={(revision) => {

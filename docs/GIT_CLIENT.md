@@ -591,6 +591,28 @@ Manual QA:
 5. Try an escaping path, invalid revision, unborn repository, and offline
    worker; confirm validation/error states are bounded and explicit.
 
+### Repository commit search
+
+The Search inspector combines literal message text, author name/email, an
+abbreviated or full commit hash, inclusive date bounds, a repository-relative
+path, and either one local/remote branch or one tag. The worker verifies exact
+branch/tag/hash scopes before invoking Git, limits every response to 100
+commits, and continues through cursor pagination. Results retain graph refs and
+open in the shared commit inspector; no search changes refs or checkout state.
+
+Manual QA:
+
+1. Combine message, author, date, and path filters and confirm only commits
+   satisfying every supplied filter appear.
+2. Search a local branch, `remote/name` branch, and annotated tag, then enter
+   an invalid or missing ref and verify the worker reports it explicitly.
+3. Search by abbreviated and full hashes and confirm ambiguous prefixes fail
+   rather than selecting an arbitrary commit.
+4. Load more than 100 matching commits and verify ordering and pagination have
+   no duplicate or skipped rows.
+5. Search an offline selected worktree and confirm Cantrip does not fall back
+   to another checkout or worker.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport
@@ -604,7 +626,7 @@ Manual QA:
 - [x] Conflict resolution
 - [x] Advanced history rewriting
 - [x] Full GitHub pull-request workflow
-- [ ] File history, blame, and repository search
+- [x] File history, blame, and repository search
 - [ ] Recovery tools and bisect
 - [ ] Repository-system support
 - [ ] Agent-assisted Git workflows

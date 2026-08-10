@@ -46,6 +46,7 @@ import {
   readGitTagDetail,
   readGitTags,
   runGitAction,
+  searchGitCommits,
   startGitManagedOperation,
 } from "../src/git.js";
 
@@ -2606,6 +2607,123 @@ describe("Git history", () => {
     await expect(
       readGitFileHistory(directory, "../secret", "HEAD", 10),
     ).rejects.toThrow("Invalid Git history path");
+  });
+
+  it("searches commits with combined bounded filters and exact ref scopes", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-search-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await execFileAsync("git", ["-C", directory, "config", "user.name", "Ada"]);
+    await writeFile(path.join(directory, "README.md"), "Cantrip\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "docs: base"]);
+    const base = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await execFileAsync("git", ["-C", directory, "tag", "v1"]);
+    await execFileAsync("git", ["-C", directory, "config", "user.name", "Bob"]);
+    await writeFile(path.join(directory, "src.ts"), "fixed\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "commit",
+      "-m",
+      "fix: race condition",
+    ]);
+    const fix = (
+      await execFileAsync("git", ["-C", directory, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await execFileAsync("git", ["-C", directory, "switch", "-c", "feature"]);
+    await execFileAsync("git", ["-C", directory, "config", "user.name", "Ada"]);
+    await writeFile(path.join(directory, "feature.ts"), "feature\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "commit",
+      "-m",
+      "feat: search",
+    ]);
+
+    expect(
+      (
+        await searchGitCommits(
+          directory,
+          {
+            message: "race condition",
+            author: "Bob",
+            hash: null,
+            dateFrom: null,
+            dateTo: null,
+            path: "src.ts",
+            branch: "main",
+            tag: null,
+          },
+          100,
+        )
+      ).commits.map(({ hash }) => hash),
+    ).toEqual([fix]);
+    expect(
+      (
+        await searchGitCommits(
+          directory,
+          {
+            message: null,
+            author: null,
+            hash: base.slice(0, 8),
+            dateFrom: null,
+            dateTo: null,
+            path: null,
+            branch: null,
+            tag: null,
+          },
+          100,
+        )
+      ).commits.map(({ hash }) => hash),
+    ).toEqual([base]);
+    const firstPage = await searchGitCommits(
+      directory,
+      {
+        message: null,
+        author: "Ada",
+        hash: null,
+        dateFrom: null,
+        dateTo: null,
+        path: null,
+        branch: null,
+        tag: null,
+      },
+      1,
+    );
+    expect(firstPage.hasMore).toBe(true);
+    expect(firstPage.nextCursor).toBe(1);
+    expect(
+      (
+        await searchGitCommits(
+          directory,
+          firstPage.query,
+          1,
+          firstPage.nextCursor!,
+        )
+      ).commits,
+    ).toHaveLength(1);
+    expect(
+      (
+        await searchGitCommits(
+          directory,
+          { ...firstPage.query, author: null, tag: "v1" },
+          100,
+        )
+      ).commits.map(({ hash }) => hash),
+    ).toEqual([base]);
   });
 
   it("paginates commits from every branch", async () => {
