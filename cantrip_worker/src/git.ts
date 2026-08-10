@@ -28,6 +28,7 @@ import {
   gitManagedOperationWorkerStateSchema,
   gitComparisonSchema,
   gitCommitDetailSchema,
+  gitCommitSearchResultSchema,
   gitFileDiffSchema,
   gitFileHistorySchema,
   gitBlameSchema,
@@ -75,6 +76,8 @@ import {
   type GitComparison,
   type GitComparisonMode,
   type GitCommitDetail,
+  type GitCommitSearchQuery,
+  type GitCommitSearchResult,
   type GitCommitFile,
   type GitDiffScope,
   type GitFileDiff,
@@ -565,6 +568,100 @@ export async function readGitFileBlame(
     ranges,
     hasMore,
     nextCursor: hasMore ? cursor + visible.length : null,
+  });
+}
+
+function escapeGitRegex(value: string): string {
+  return value.replace(/[\\^$.*+?()[\]{}|]/gu, "\\$&");
+}
+
+export async function searchGitCommits(
+  cwd: string,
+  query: GitCommitSearchQuery,
+  limit: number,
+  cursor = 0,
+): Promise<GitCommitSearchResult> {
+  const parsedQuery = gitCommitSearchResultSchema.shape.query.parse(query);
+  let revision = "--all";
+  if (parsedQuery.hash) {
+    revision = await resolveCommit(cwd, parsedQuery.hash);
+  } else if (parsedQuery.branch) {
+    revision = await resolveCommit(
+      cwd,
+      `refs/heads/${parsedQuery.branch}`,
+    ).catch(() => resolveCommit(cwd, `refs/remotes/${parsedQuery.branch}`));
+  } else if (parsedQuery.tag) {
+    revision = await resolveCommit(cwd, `refs/tags/${parsedQuery.tag}`);
+  }
+  const branch = await gitOutput(cwd, ["branch", "--show-current"]);
+  const remoteNames = new Set(
+    (await gitOutput(cwd, ["remote"]).catch(() => ""))
+      .split("\n")
+      .filter(Boolean),
+  );
+  const args = [
+    "log",
+    "--topo-order",
+    "--date-order",
+    `--skip=${cursor}`,
+    `--max-count=${limit + 1}`,
+    "--date=iso-strict",
+    "--regexp-ignore-case",
+    "--pretty=format:%H%x00%h%x00%P%x00%an%x00%ae%x00%aI%x00%s%x00%D%x1e",
+  ];
+  if (parsedQuery.message) {
+    args.push("--fixed-strings", `--grep=${parsedQuery.message}`);
+  }
+  if (parsedQuery.author) {
+    args.push(`--author=${escapeGitRegex(parsedQuery.author)}`);
+  }
+  if (parsedQuery.dateFrom) args.push(`--since=${parsedQuery.dateFrom}`);
+  if (parsedQuery.dateTo) args.push(`--until=${parsedQuery.dateTo} 23:59:59`);
+  args.push(revision);
+  if (parsedQuery.path) args.push("--", parsedQuery.path);
+  const output = await gitRaw(cwd, args);
+  const parsed = output
+    .split("\x1e")
+    .map((record) => record.trim())
+    .filter(Boolean)
+    .flatMap((record) => {
+      const [
+        hash,
+        shortHash,
+        parents,
+        authorName,
+        authorEmail,
+        authoredAt,
+        subject,
+        decorations,
+      ] = record.split("\0");
+      return hash && shortHash && authorName && authoredAt
+        ? [
+            {
+              hash,
+              shortHash,
+              parents: (parents ?? "").split(" ").filter(Boolean),
+              subject: subject ?? "",
+              authorName,
+              authorEmail: authorEmail ?? "",
+              authoredAt,
+              refs: parseRefs(decorations ?? "", branch, remoteNames),
+              isHead: false,
+            },
+          ]
+        : [];
+    });
+  const head = await resolveCommit(cwd, "HEAD").catch(() => "");
+  const commits = parsed.slice(0, limit).map((commit) => ({
+    ...commit,
+    isHead: commit.hash === head,
+  }));
+  const hasMore = parsed.length > limit;
+  return gitCommitSearchResultSchema.parse({
+    query: parsedQuery,
+    commits,
+    hasMore,
+    nextCursor: hasMore ? cursor + commits.length : null,
   });
 }
 

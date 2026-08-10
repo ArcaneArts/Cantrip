@@ -74,6 +74,7 @@ import {
   gitManagedOperationPreviewSchema,
   gitManagedOperationResponseSchema,
   gitCommitDetailSchema,
+  gitCommitSearchResultSchema,
   gitComparisonSchema,
   gitFileDiffSchema,
   gitFileHistorySchema,
@@ -152,6 +153,7 @@ import type {
   GitAction,
   GitBranchAction,
   GitCommitAction,
+  GitCommitSearchQuery,
   GitConflictResolutionRequest,
   GitMergeRebaseAction,
   GitDiffScope,
@@ -457,6 +459,23 @@ export async function getProjectWorktreeFileBlame(
   return gitBlameSchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/files/blame?${search.toString()}`,
+    ),
+  );
+}
+
+export async function searchProjectWorktreeCommits(
+  projectId: string,
+  worktreeId: string,
+  query: GitCommitSearchQuery,
+  cursor = 0,
+) {
+  const search = new URLSearchParams({ cursor: String(cursor), limit: "100" });
+  for (const [key, value] of Object.entries(query)) {
+    if (value) search.set(key, value);
+  }
+  return gitCommitSearchResultSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/commits/search?${search.toString()}`,
     ),
   );
 }

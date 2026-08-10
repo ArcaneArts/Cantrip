@@ -3512,6 +3512,54 @@ export const gitBlameSchema = z.object({
   nextCursor: z.number().int().nonnegative().nullable(),
 });
 
+const gitSearchDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u);
+export const gitCommitSearchQuerySchema = z
+  .object({
+    message: z.string().trim().min(1).max(1_000).nullable().default(null),
+    author: z.string().trim().min(1).max(1_000).nullable().default(null),
+    hash: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .regex(/^[0-9a-f]{4,64}$/u)
+      .nullable()
+      .default(null),
+    dateFrom: gitSearchDateSchema.nullable().default(null),
+    dateTo: gitSearchDateSchema.nullable().default(null),
+    path: gitRelativePathSchema.nullable().default(null),
+    branch: z.string().trim().min(1).max(1_024).nullable().default(null),
+    tag: z.string().trim().min(1).max(1_024).nullable().default(null),
+  })
+  .superRefine((query, context) => {
+    if (query.branch && query.tag) {
+      context.addIssue({
+        code: "custom",
+        path: ["tag"],
+        message: "Search can target a branch or tag, not both.",
+      });
+    }
+    if (query.dateFrom && query.dateTo && query.dateFrom > query.dateTo) {
+      context.addIssue({
+        code: "custom",
+        path: ["dateTo"],
+        message: "Search end date cannot precede its start date.",
+      });
+    }
+    if (!Object.values(query).some(Boolean)) {
+      context.addIssue({
+        code: "custom",
+        message: "At least one commit search filter is required.",
+      });
+    }
+  });
+
+export const gitCommitSearchResultSchema = z.object({
+  query: gitCommitSearchQuerySchema,
+  commits: z.array(gitCommitSchema).max(100),
+  hasMore: z.boolean(),
+  nextCursor: z.number().int().nonnegative().nullable(),
+});
+
 export const gitFileChangeSchema = z.object({
   path: z.string().min(1),
   originalPath: z.string().min(1).nullable(),
@@ -4770,6 +4818,13 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     limit: z.number().int().min(1).max(500).default(200),
   }),
   z.object({
+    type: z.literal("git.commit.search"),
+    cwd: z.string().min(1).max(8_192),
+    query: gitCommitSearchQuerySchema,
+    cursor: z.number().int().nonnegative().default(0),
+    limit: z.number().int().min(1).max(100).default(100),
+  }),
+  z.object({
     type: z.literal("git.commit.get"),
     cwd: z.string().min(1).max(8_192),
     revision: z.string().regex(/^[0-9a-f]{40,64}$/u),
@@ -5723,6 +5778,8 @@ export type GitFileHistoryEntry = z.infer<typeof gitFileHistoryEntrySchema>;
 export type GitFileHistory = z.infer<typeof gitFileHistorySchema>;
 export type GitBlameRange = z.infer<typeof gitBlameRangeSchema>;
 export type GitBlame = z.infer<typeof gitBlameSchema>;
+export type GitCommitSearchQuery = z.infer<typeof gitCommitSearchQuerySchema>;
+export type GitCommitSearchResult = z.infer<typeof gitCommitSearchResultSchema>;
 export type GitCommitPerson = z.infer<typeof gitCommitPersonSchema>;
 export type GitSignature = z.infer<typeof gitSignatureSchema>;
 export type GitCommitFile = z.infer<typeof gitCommitFileSchema>;

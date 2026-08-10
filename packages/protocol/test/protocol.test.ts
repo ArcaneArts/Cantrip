@@ -41,6 +41,8 @@ import {
   gitBranchListSchema,
   gitCommitActionPreviewSchema,
   gitCommitActionResultSchema,
+  gitCommitSearchQuerySchema,
+  gitCommitSearchResultSchema,
   gitConflictDetailSchema,
   gitConflictResolutionRequestSchema,
   gitManagedOperationPreviewSchema,
@@ -975,6 +977,51 @@ describe("Cantrip protocol", () => {
         type: "git.file.blame",
         cwd: "/repo",
         path: "../secret",
+      }),
+    ).toThrow();
+  });
+
+  it("validates bounded multi-filter commit search", () => {
+    const query = gitCommitSearchQuerySchema.parse({
+      message: "fix race",
+      author: "Ada",
+      hash: null,
+      dateFrom: "2026-08-01",
+      dateTo: "2026-08-10",
+      path: "src/index.ts",
+      branch: "main",
+      tag: null,
+    });
+    expect(
+      gitCommitSearchResultSchema.parse({
+        query,
+        commits: [],
+        hasMore: false,
+        nextCursor: null,
+      }).query,
+    ).toMatchObject({ branch: "main", message: "fix race" });
+    expect(
+      workerCommandSchema.parse({
+        type: "git.commit.search",
+        cwd: "/repo",
+        query,
+        cursor: 0,
+        limit: 100,
+      }),
+    ).toMatchObject({ type: "git.commit.search", query });
+    expect(() => gitCommitSearchQuerySchema.parse({})).toThrow();
+    expect(() =>
+      gitCommitSearchQuerySchema.parse({
+        message: "test",
+        branch: "main",
+        tag: "v1",
+      }),
+    ).toThrow();
+    expect(() =>
+      gitCommitSearchQuerySchema.parse({
+        message: "test",
+        dateFrom: "2026-08-10",
+        dateTo: "2026-08-01",
       }),
     ).toThrow();
   });

@@ -40,6 +40,7 @@ import {
   gitActionResultSchema,
   gitBlameSchema,
   gitFileHistorySchema,
+  gitCommitSearchResultSchema,
   gitHistorySchema,
   gitStatusSchema,
   githubRepositoryListSchema,
@@ -171,6 +172,9 @@ const gitFileHistoryCommands: Array<
 > = [];
 const gitFileBlameCommands: Array<
   Extract<WorkerCommand, { type: "git.file.blame" }>
+> = [];
+const gitCommitSearchCommands: Array<
+  Extract<WorkerCommand, { type: "git.commit.search" }>
 > = [];
 function pullRequestDetailFixture(number: number) {
   return {
@@ -647,6 +651,26 @@ const workerBridge = {
               startLine: 1,
               endLine: 2,
               lines: ["Cantrip", "Git client"],
+            },
+          ],
+          hasMore: false,
+          nextCursor: null,
+        };
+      case "git.commit.search":
+        gitCommitSearchCommands.push(command);
+        return {
+          query: command.query,
+          commits: [
+            {
+              hash: "1".repeat(40),
+              shortHash: "1".repeat(8),
+              parents: [],
+              subject: "fix: searched commit",
+              authorName: "Cantrip Test",
+              authorEmail: "test@cantrip.art",
+              authoredAt: "2026-08-10T12:00:00.000Z",
+              refs: [],
+              isHead: false,
             },
           ],
           hasMore: false,
@@ -2428,6 +2452,35 @@ describe("local server foundation", () => {
       cursor: 200,
       limit: 100,
     });
+    const searchResult = gitCommitSearchResultSchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/git/commits/search?message=searched&author=Cantrip&path=README.md&branch=main&cursor=10&limit=25`,
+        })
+      ).json(),
+    );
+    expect(searchResult).toMatchObject({
+      query: {
+        message: "searched",
+        author: "Cantrip",
+        path: "README.md",
+        branch: "main",
+        tag: null,
+      },
+      commits: [{ subject: "fix: searched commit" }],
+    });
+    expect(gitCommitSearchCommands.at(-1)).toMatchObject({
+      cwd: primaryWorktree!.path,
+      cursor: 10,
+      limit: 25,
+    });
+    expect(
+      await firstApp.inject({
+        method: "GET",
+        url: `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/git/commits/search`,
+      }),
+    ).toMatchObject({ statusCode: 400 });
     expect(
       await firstApp.inject({
         method: "GET",
