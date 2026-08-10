@@ -9,21 +9,28 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   applyGitBranchAction,
   applyGitPartialPatch,
+  applyGitRemoteAction,
   applyGitStashAction,
+  applyGitTagAction,
   createGitStash,
   previewGitBranchAction,
   previewGitPartialPatch,
+  previewGitRemoteAction,
   previewGitStashAction,
+  previewGitTagAction,
   readGitCommitDetail,
   readGitBranches,
   readGitComparison,
   readGitFileDiff,
   readGitHistory,
+  readGitRemotes,
   readGitRevisionFileDiff,
   readGitRevisionCandidates,
   readGitStatus,
   readGitStashes,
   readGitStashFileDiff,
+  readGitTagDetail,
+  readGitTags,
   runGitAction,
 } from "../src/git.js";
 
@@ -39,6 +46,231 @@ afterEach(async () => {
 });
 
 describe("Git history", () => {
+  it("manages sanitized remotes, defaults, fetch, edit, and removal through reviewed actions", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-remote-test-"));
+    directories.push(root);
+    const directory = path.join(root, "repo");
+    const firstRemote = path.join(root, "first.git");
+    const secondRemote = path.join(root, "second.git");
+    await execFileAsync("git", ["init", "--bare", firstRemote]);
+    await execFileAsync("git", ["init", "--bare", secondRemote]);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "README.md"), "Cantrip\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Initial"]);
+
+    const add = {
+      type: "add" as const,
+      name: "upstream",
+      fetchUrl: firstRemote,
+      pushUrl: null,
+    };
+    let preview = await previewGitRemoteAction(directory, add);
+    expect(preview.destructive).toBe(false);
+    let result = await applyGitRemoteAction(directory, add, preview.token);
+    expect(result.remotes.remotes).toEqual([
+      expect.objectContaining({
+        name: "upstream",
+        fetchUrl: firstRemote,
+        defaultFetch: true,
+        defaultPush: true,
+      }),
+    ]);
+
+    const edit = {
+      type: "edit" as const,
+      name: "upstream",
+      fetchUrl: secondRemote,
+      pushUrl: firstRemote,
+    };
+    preview = await previewGitRemoteAction(directory, edit);
+    result = await applyGitRemoteAction(directory, edit, preview.token);
+    expect(result.remotes.remotes[0]).toMatchObject({
+      fetchUrl: secondRemote,
+      pushUrl: firstRemote,
+    });
+    const defaults = {
+      type: "setDefaults" as const,
+      fetchRemote: "upstream",
+      pushRemote: "upstream",
+    };
+    preview = await previewGitRemoteAction(directory, defaults);
+    await applyGitRemoteAction(directory, defaults, preview.token);
+    const fetch = { type: "fetch" as const, remote: "upstream", prune: true };
+    preview = await previewGitRemoteAction(directory, fetch);
+    expect(preview.destructive).toBe(true);
+    await applyGitRemoteAction(directory, fetch, preview.token);
+
+    const staleRemove = { type: "remove" as const, name: "upstream" };
+    const stalePreview = await previewGitRemoteAction(directory, staleRemove);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "remote",
+      "add",
+      "backup",
+      firstRemote,
+    ]);
+    await expect(
+      applyGitRemoteAction(directory, staleRemove, stalePreview.token),
+    ).rejects.toThrow(/changed after this preview/iu);
+    const removePreview = await previewGitRemoteAction(directory, staleRemove);
+    await applyGitRemoteAction(directory, staleRemove, removePreview.token);
+
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "remote",
+      "add",
+      "credentialed",
+      "https://user:top-secret@example.invalid/repo.git?access_token=hidden",
+    ]);
+    const credentialed = (await readGitRemotes(directory)).remotes.find(
+      ({ name }) => name === "credentialed",
+    );
+    expect(credentialed).toMatchObject({
+      fetchUrlRedacted: true,
+      pushUrlRedacted: true,
+    });
+    expect(JSON.stringify(credentialed)).not.toContain("top-secret");
+    expect(JSON.stringify(credentialed)).not.toContain("hidden");
+    const credentialEdit = {
+      type: "edit" as const,
+      name: "credentialed",
+      fetchUrl: "https://user:replacement@example.invalid/repo.git",
+      pushUrl: null,
+    };
+    const credentialPreview = await previewGitRemoteAction(
+      directory,
+      credentialEdit,
+    );
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "remote",
+      "set-url",
+      "credentialed",
+      "https://user:changed@example.invalid/repo.git?access_token=other",
+    ]);
+    await expect(
+      applyGitRemoteAction(directory, credentialEdit, credentialPreview.token),
+    ).rejects.toThrow("changed after this preview");
+  });
+
+  it("creates, inspects, publishes, and safely deletes lightweight and annotated tags", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-tag-test-"));
+    directories.push(root);
+    const directory = path.join(root, "repo");
+    const remote = path.join(root, "remote.git");
+    await execFileAsync("git", ["init", "--bare", remote]);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "README.md"), "Cantrip\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Initial"]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "remote",
+      "add",
+      "origin",
+      remote,
+    ]);
+
+    const lightweight = {
+      type: "create" as const,
+      name: "v1.0.0",
+      target: null,
+      annotated: false,
+      message: null,
+    };
+    let preview = await previewGitTagAction(directory, lightweight);
+    await applyGitTagAction(directory, lightweight, preview.token);
+    const annotated = {
+      type: "create" as const,
+      name: "v1.1.0",
+      target: "HEAD",
+      annotated: true,
+      message: "Cantrip 1.1\n\nRelease notes",
+    };
+    preview = await previewGitTagAction(directory, annotated);
+    await applyGitTagAction(directory, annotated, preview.token);
+    let tags = await readGitTags(directory);
+    expect(tags.tags).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "v1.0.0", annotated: false }),
+        expect.objectContaining({
+          name: "v1.1.0",
+          annotated: true,
+          signature: {
+            status: "unsigned",
+            signer: null,
+            key: null,
+            fingerprint: null,
+          },
+        }),
+      ]),
+    );
+    expect((await readGitTagDetail(directory, "v1.1.0")).message).toContain(
+      "Release notes",
+    );
+
+    const push = { type: "push" as const, name: "v1.1.0", remote: "origin" };
+    preview = await previewGitTagAction(directory, push);
+    tags = (await applyGitTagAction(directory, push, preview.token)).tags;
+    expect(
+      tags.tags.find(({ name }) => name === "v1.1.0")?.publishedRemotes,
+    ).toEqual(["origin"]);
+
+    const deleteRemote = {
+      type: "deleteRemote" as const,
+      name: "v1.1.0",
+      remote: "origin",
+    };
+    preview = await previewGitTagAction(directory, deleteRemote);
+    expect(preview.destructive).toBe(true);
+    await applyGitTagAction(directory, deleteRemote, preview.token);
+    const deleteLocal = { type: "deleteLocal" as const, name: "v1.1.0" };
+    preview = await previewGitTagAction(directory, deleteLocal);
+    tags = (await applyGitTagAction(directory, deleteLocal, preview.token))
+      .tags;
+    expect(tags.tags.some(({ name }) => name === "v1.1.0")).toBe(false);
+
+    const stale = { ...lightweight, name: "stale-tag" };
+    const stalePreview = await previewGitTagAction(directory, stale);
+    await execFileAsync("git", ["-C", directory, "tag", "changed-tag"]);
+    await expect(
+      applyGitTagAction(directory, stale, stalePreview.token),
+    ).rejects.toThrow(/changed after this preview/iu);
+  });
+
   it("manages local, tracked, published, renamed, and remote branches through reviewed actions", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "cantrip-branch-test-"));
     directories.push(root);

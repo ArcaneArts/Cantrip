@@ -26,21 +26,28 @@ import { GithubClient } from "./github.js";
 import {
   applyGitBranchAction,
   applyGitPartialPatch,
+  applyGitRemoteAction,
   applyGitStashAction,
+  applyGitTagAction,
   createGitStash,
   previewGitBranchAction,
   previewGitPartialPatch,
+  previewGitRemoteAction,
   previewGitStashAction,
+  previewGitTagAction,
   readGitCommitDetail,
   readGitBranches,
   readGitComparison,
   readGitFileDiff,
   readGitHistory,
+  readGitRemotes,
   readGitRevisionFileDiff,
   readGitRevisionCandidates,
   readGitStatus,
   readGitStashes,
   readGitStashFileDiff,
+  readGitTagDetail,
+  readGitTags,
   runGitAction,
 } from "./git.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
@@ -200,6 +207,16 @@ async function start(): Promise<void> {
           command.number,
           command.comment,
         );
+      case "github.releases.list":
+        return github.listReleases(command.repository);
+      case "github.release.get":
+        return github.getRelease(command.repository, command.releaseId);
+      case "github.release.create":
+        return github.createRelease(
+          command.repository,
+          command.cwd,
+          command.request,
+        );
       case "project.clone":
         return github.cloneRepository(command.repository.nameWithOwner);
       case "project.files.delete":
@@ -270,6 +287,20 @@ async function start(): Promise<void> {
         return previewGitBranchAction(command.cwd, command.action);
       case "git.branch.action.apply":
         return applyGitBranchAction(command.cwd, command.action, command.token);
+      case "git.remote.list":
+        return readGitRemotes(command.cwd);
+      case "git.remote.action.preview":
+        return previewGitRemoteAction(command.cwd, command.action);
+      case "git.remote.action.apply":
+        return applyGitRemoteAction(command.cwd, command.action, command.token);
+      case "git.tag.list":
+        return readGitTags(command.cwd);
+      case "git.tag.get":
+        return readGitTagDetail(command.cwd, command.name);
+      case "git.tag.action.preview":
+        return previewGitTagAction(command.cwd, command.action);
+      case "git.tag.action.apply":
+        return applyGitTagAction(command.cwd, command.action, command.token);
       case "git.action":
         return runGitAction(command.cwd, command.action);
       case "worktree.list":

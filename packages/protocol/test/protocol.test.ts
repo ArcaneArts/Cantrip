@@ -39,6 +39,8 @@ import {
   gitActionSchema,
   gitBranchActionPreviewSchema,
   gitBranchListSchema,
+  gitRemoteActionPreviewSchema,
+  gitRemoteListSchema,
   gitCommitDetailSchema,
   gitComparisonSchema,
   gitFileDiffSchema,
@@ -46,6 +48,10 @@ import {
   gitStashActionPreviewSchema,
   gitStashCreateSchema,
   gitStashListSchema,
+  gitTagActionPreviewSchema,
+  gitTagListSchema,
+  githubReleaseCreateSchema,
+  githubReleaseListSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
   mentionedSkillNames,
@@ -83,6 +89,133 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("validates remotes, tags, releases, and destructive review envelopes", () => {
+    const hash = "d".repeat(40);
+    const signature = {
+      status: "unsigned" as const,
+      signer: null,
+      key: null,
+      fingerprint: null,
+    };
+    expect(
+      gitRemoteListSchema.parse({
+        remotes: [
+          {
+            name: "origin",
+            fetchUrl: "https://github.com/ArcaneArts/Cantrip.git",
+            fetchUrlRedacted: false,
+            pushUrl: "git@github.com:ArcaneArts/Cantrip.git",
+            pushUrlRedacted: false,
+            defaultFetch: true,
+            defaultPush: true,
+          },
+        ],
+        generatedAt: "2026-08-10T12:00:00.000Z",
+      }).remotes,
+    ).toHaveLength(1);
+    expect(
+      gitRemoteActionPreviewSchema.parse({
+        action: { type: "remove", name: "origin" },
+        token: "a".repeat(64),
+        destructive: true,
+        summary: "Remove origin.",
+        warnings: [],
+        remote: {
+          name: "origin",
+          fetchUrl: "https://github.com/ArcaneArts/Cantrip.git",
+          fetchUrlRedacted: false,
+          pushUrl: "https://github.com/ArcaneArts/Cantrip.git",
+          pushUrlRedacted: false,
+          defaultFetch: true,
+          defaultPush: true,
+        },
+      }).destructive,
+    ).toBe(true);
+    const tag = {
+      name: "v1.0.0",
+      hash,
+      targetHash: hash,
+      targetType: "commit" as const,
+      annotated: false,
+      subject: "Release",
+      taggerName: null,
+      createdAt: "2026-08-10T12:00:00.000Z",
+      signature,
+      publishedRemotes: ["origin"],
+    };
+    expect(
+      gitTagListSchema.parse({
+        tags: [tag],
+        truncated: false,
+        remoteChecks: [{ remote: "origin", available: true, error: null }],
+        generatedAt: "2026-08-10T12:00:00.000Z",
+      }).tags,
+    ).toHaveLength(1);
+    expect(
+      gitTagActionPreviewSchema.parse({
+        action: { type: "deleteRemote", name: "v1.0.0", remote: "origin" },
+        token: "b".repeat(64),
+        destructive: true,
+        summary: "Delete remote tag.",
+        warnings: [],
+        tag,
+      }).destructive,
+    ).toBe(true);
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "git.tag.action.preview",
+        cwd: "/repo",
+        action: {
+          type: "create",
+          name: "v2",
+          target: null,
+          annotated: true,
+          message: null,
+        },
+      }),
+    ).toThrow(/message/iu);
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "git.remote.action.preview",
+        cwd: "/repo",
+        action: {
+          type: "add",
+          name: "origin",
+          fetchUrl: "--upload-pack=bad",
+          pushUrl: null,
+        },
+      }),
+    ).toThrow();
+    expect(
+      githubReleaseListSchema.parse({
+        releases: [
+          {
+            id: 1,
+            tagName: "v1.0.0",
+            name: "Cantrip 1.0",
+            body: "Notes",
+            url: "https://github.com/ArcaneArts/Cantrip/releases/tag/v1.0.0",
+            author: "cantrip",
+            draft: false,
+            prerelease: false,
+            createdAt: "2026-08-10T12:00:00.000Z",
+            publishedAt: "2026-08-10T12:00:00.000Z",
+          },
+        ],
+        truncated: false,
+      }).releases,
+    ).toHaveLength(1);
+    expect(
+      githubReleaseCreateSchema.parse({
+        tagName: "v1.0.0",
+        name: "Cantrip 1.0",
+        body: "Notes",
+        draft: true,
+        prerelease: false,
+      }).draft,
+    ).toBe(true);
+  });
+
   it("validates bounded branch inventory and reviewed branch actions", () => {
     const hash = "a".repeat(40);
     const branch = {

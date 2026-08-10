@@ -15,6 +15,9 @@ import {
   gitFileDiffSchema,
   gitHistorySchema,
   gitPartialPatchPreviewSchema,
+  gitRemoteActionPreviewSchema,
+  gitRemoteListSchema,
+  gitRemoteMutationResultSchema,
   gitStashActionPreviewSchema,
   gitStashFileDiffSchema,
   gitStashListSchema,
@@ -22,6 +25,10 @@ import {
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
   gitStatusSchema,
+  gitTagActionPreviewSchema,
+  gitTagDetailSchema,
+  gitTagListSchema,
+  gitTagMutationResultSchema,
   type GitAction,
   type GitActionResult,
   type GitBranchAction,
@@ -39,6 +46,10 @@ import {
   type GitHistory,
   type GitPartialPatchPreview,
   type GitPartialPatchRequest,
+  type GitRemoteAction,
+  type GitRemoteActionPreview,
+  type GitRemoteList,
+  type GitRemoteMutationResult,
   type GitStashAction,
   type GitStashActionPreview,
   type GitStashCreate,
@@ -52,6 +63,12 @@ import {
   type GitRevisionCandidate,
   type GitSignature,
   type GitStatus,
+  type GitTagAction,
+  type GitTagActionPreview,
+  type GitTagDetail,
+  type GitTagList,
+  type GitTagMutationResult,
+  type GitTagSummary,
 } from "@cantrip/protocol";
 
 const execFileAsync = promisify(execFile);
@@ -60,6 +77,8 @@ const DIFF_CHARACTER_LIMIT = 2_000_000;
 const COMMIT_MESSAGE_CHARACTER_LIMIT = 1_000_000;
 const COMMIT_FILE_LIMIT = 100_000;
 const BRANCH_LIMIT = 20_000;
+const TAG_LIMIT = 10_000;
+const REMOTE_TIMEOUT_MS = 30_000;
 
 async function gitOutput(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
@@ -2144,6 +2163,630 @@ export async function applyGitBranchAction(
     output,
     status: await readGitStatus(cwd),
     branches: await readGitBranches(cwd),
+  });
+}
+
+function sanitizeRemoteText(value: string): {
+  redacted: boolean;
+  value: string;
+} {
+  let redacted = false;
+  let sanitized = value;
+  try {
+    const parsed = new URL(value);
+    if (parsed.username || parsed.password) {
+      parsed.username = "";
+      parsed.password = "";
+      redacted = true;
+    }
+    for (const key of [...parsed.searchParams.keys()]) {
+      if (/(?:token|key|auth|password|secret)/iu.test(key)) {
+        parsed.searchParams.set(key, "REDACTED");
+        redacted = true;
+      }
+    }
+    sanitized = parsed.toString();
+  } catch {
+    const withoutUserInfo = sanitized.replace(
+      /([a-z][a-z0-9+.-]*:\/\/)[^/@\s]+@/giu,
+      "$1",
+    );
+    redacted ||= withoutUserInfo !== sanitized;
+    sanitized = withoutUserInfo.replace(
+      /([?&](?:token|key|auth|password|secret)[^=]*=)[^&\s]+/giu,
+      "$1REDACTED",
+    );
+    redacted ||= sanitized !== withoutUserInfo;
+  }
+  return { redacted, value: sanitized };
+}
+
+async function runGitOutcomeBounded(
+  cwd: string,
+  args: string[],
+): Promise<{ code: number; output: string }> {
+  try {
+    const { stdout, stderr } = await execFileAsync(
+      "git",
+      ["-C", cwd, ...args],
+      {
+        encoding: "utf8",
+        maxBuffer: GIT_BUFFER,
+        timeout: REMOTE_TIMEOUT_MS,
+      },
+    );
+    return { code: 0, output: `${stdout}${stderr}`.trim() };
+  } catch (error) {
+    const failure = error as {
+      message?: string;
+      stderr?: string;
+      stdout?: string;
+    };
+    const output =
+      failure.stderr?.trim() ||
+      failure.stdout?.trim() ||
+      failure.message ||
+      "Git command failed.";
+    return { code: 1, output: sanitizeRemoteText(output).value };
+  }
+}
+
+export async function readGitRemotes(cwd: string): Promise<GitRemoteList> {
+  const names = (await gitOutput(cwd, ["remote"]))
+    .split("\n")
+    .filter(Boolean)
+    .sort();
+  const currentBranch = await gitOutput(cwd, ["branch", "--show-current"]);
+  const configuredFetch = await gitOutput(cwd, [
+    "config",
+    "--get",
+    "cantrip.defaultFetchRemote",
+  ]).catch(() => "");
+  const branchRemote = currentBranch
+    ? await gitOutput(cwd, [
+        "config",
+        "--get",
+        `branch.${currentBranch}.remote`,
+      ]).catch(() => "")
+    : "";
+  const configuredPush = await gitOutput(cwd, [
+    "config",
+    "--get",
+    "remote.pushDefault",
+  ]).catch(() => "");
+  const defaultFetch =
+    (configuredFetch && names.includes(configuredFetch)
+      ? configuredFetch
+      : branchRemote && branchRemote !== "." && names.includes(branchRemote)
+        ? branchRemote
+        : names.includes("origin")
+          ? "origin"
+          : names[0]) ?? null;
+  const defaultPush =
+    (configuredPush && names.includes(configuredPush)
+      ? configuredPush
+      : defaultFetch) ?? null;
+  const remotes = await Promise.all(
+    names.map(async (name) => {
+      const [fetchValue, pushValue] = await Promise.all([
+        gitOutput(cwd, ["remote", "get-url", name]),
+        gitOutput(cwd, ["remote", "get-url", "--push", name]).catch(() => ""),
+      ]);
+      const fetchUrl = sanitizeRemoteText(fetchValue);
+      const pushUrl = sanitizeRemoteText(pushValue || fetchValue);
+      return {
+        name,
+        fetchUrl: fetchUrl.value,
+        fetchUrlRedacted: fetchUrl.redacted,
+        pushUrl: pushUrl.value,
+        pushUrlRedacted: pushUrl.redacted,
+        defaultFetch: name === defaultFetch,
+        defaultPush: name === defaultPush,
+      };
+    }),
+  );
+  return gitRemoteListSchema.parse({
+    remotes,
+    generatedAt: new Date().toISOString(),
+  });
+}
+
+function remoteActionToken(
+  action: GitRemoteAction,
+  remotes: GitRemoteList,
+  workspace: string,
+  configuration: string,
+): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        action,
+        remotes: remotes.remotes,
+        workspace,
+        configuration,
+      }),
+    )
+    .digest("hex");
+}
+
+async function remoteConfigurationFingerprint(cwd: string): Promise<string> {
+  const raw = await gitRaw(cwd, [
+    "config",
+    "--null",
+    "--get-regexp",
+    "^(remote\\..*\\.(url|pushurl)|remote\\.pushDefault|cantrip\\.defaultFetchRemote)$",
+  ]).catch(() => "");
+  return createHash("sha256").update(raw).digest("hex");
+}
+
+export async function previewGitRemoteAction(
+  cwd: string,
+  action: GitRemoteAction,
+): Promise<GitRemoteActionPreview> {
+  const remotes = await readGitRemotes(cwd);
+  const remote =
+    "name" in action
+      ? (remotes.remotes.find(({ name }) => name === action.name) ?? null)
+      : action.type === "fetch"
+        ? (remotes.remotes.find(({ name }) => name === action.remote) ?? null)
+        : null;
+  const requireRemote = (name: string) => {
+    const selected = remotes.remotes.find(
+      (candidate) => candidate.name === name,
+    );
+    if (!selected) throw new Error(`Git remote ${name} does not exist.`);
+    return selected;
+  };
+  let summary: string;
+  const warnings: string[] = [];
+  switch (action.type) {
+    case "add":
+      await runGit(cwd, [
+        "check-ref-format",
+        `refs/remotes/${action.name}/probe`,
+      ]);
+      if (remote) throw new Error(`Git remote ${action.name} already exists.`);
+      summary = `Add remote ${action.name} with fetch URL ${sanitizeRemoteText(action.fetchUrl).value}.`;
+      break;
+    case "edit":
+      requireRemote(action.name);
+      summary = `Replace the fetch and push URLs for remote ${action.name}.`;
+      if (remote?.fetchUrlRedacted || remote?.pushUrlRedacted) {
+        warnings.push(
+          "The existing URL contains hidden credentials. Saving replaces the complete URL, including those credentials.",
+        );
+      }
+      break;
+    case "remove":
+      requireRemote(action.name);
+      summary = `Remove remote ${action.name} and its remote-tracking refs.`;
+      warnings.push(
+        "Local branches and commits remain, but upstream configuration may become invalid.",
+      );
+      break;
+    case "setDefaults":
+      if (action.fetchRemote) requireRemote(action.fetchRemote);
+      if (action.pushRemote) requireRemote(action.pushRemote);
+      summary = `Use ${action.fetchRemote ?? "Git's automatic choice"} for fetch and ${action.pushRemote ?? "Git's automatic choice"} for push by default.`;
+      break;
+    case "fetch":
+      requireRemote(action.remote);
+      summary = `${action.prune ? "Fetch and prune" : "Fetch"} remote ${action.remote}.`;
+      if (action.prune)
+        warnings.push(
+          "Prune removes remote-tracking refs deleted from the remote.",
+        );
+      break;
+  }
+  const [workspace, configuration] = await Promise.all([
+    workspaceFingerprint(cwd),
+    remoteConfigurationFingerprint(cwd),
+  ]);
+  return gitRemoteActionPreviewSchema.parse({
+    action,
+    token: remoteActionToken(action, remotes, workspace, configuration),
+    destructive:
+      action.type === "remove" || (action.type === "fetch" && action.prune),
+    summary,
+    warnings,
+    remote,
+  });
+}
+
+export async function applyGitRemoteAction(
+  cwd: string,
+  action: GitRemoteAction,
+  token: string,
+): Promise<GitRemoteMutationResult> {
+  const preview = await previewGitRemoteAction(cwd, action);
+  if (preview.token !== token) {
+    throw new Error(
+      "The remotes or worktree changed after this preview. Review the action again.",
+    );
+  }
+  const output: string[] = [];
+  switch (action.type) {
+    case "add":
+      output.push(
+        await runGit(cwd, ["remote", "add", action.name, action.fetchUrl]),
+      );
+      if (action.pushUrl && action.pushUrl !== action.fetchUrl) {
+        output.push(
+          await runGit(cwd, [
+            "remote",
+            "set-url",
+            "--push",
+            action.name,
+            action.pushUrl,
+          ]),
+        );
+      }
+      break;
+    case "edit":
+      output.push(
+        await runGit(cwd, ["remote", "set-url", action.name, action.fetchUrl]),
+      );
+      output.push(
+        await runGit(cwd, [
+          "remote",
+          "set-url",
+          "--push",
+          action.name,
+          action.pushUrl ?? action.fetchUrl,
+        ]),
+      );
+      break;
+    case "remove":
+      output.push(await runGit(cwd, ["remote", "remove", action.name]));
+      break;
+    case "setDefaults":
+      if (action.fetchRemote) {
+        output.push(
+          await runGit(cwd, [
+            "config",
+            "cantrip.defaultFetchRemote",
+            action.fetchRemote,
+          ]),
+        );
+      } else {
+        await runGitOutcome(cwd, [
+          "config",
+          "--unset",
+          "cantrip.defaultFetchRemote",
+        ]);
+      }
+      if (action.pushRemote) {
+        output.push(
+          await runGit(cwd, [
+            "config",
+            "remote.pushDefault",
+            action.pushRemote,
+          ]),
+        );
+      } else {
+        await runGitOutcome(cwd, ["config", "--unset", "remote.pushDefault"]);
+      }
+      break;
+    case "fetch": {
+      const result = await runGitOutcomeBounded(cwd, [
+        "fetch",
+        action.remote,
+        ...(action.prune ? ["--prune"] : []),
+      ]);
+      if (result.code !== 0) throw new Error(result.output);
+      output.push(result.output);
+      break;
+    }
+  }
+  return gitRemoteMutationResultSchema.parse({
+    output: output.filter(Boolean).join("\n"),
+    status: await readGitStatus(cwd),
+    remotes: await readGitRemotes(cwd),
+  });
+}
+
+function tagTargetType(value: string): GitTagSummary["targetType"] {
+  return ["commit", "tree", "blob", "tag"].includes(value)
+    ? (value as GitTagSummary["targetType"])
+    : "other";
+}
+
+async function readRemoteTags(
+  cwd: string,
+  remotes: string[],
+): Promise<{
+  checks: GitTagList["remoteChecks"];
+  tags: Map<string, Set<string>>;
+}> {
+  const tags = new Map<string, Set<string>>();
+  const checks = await Promise.all(
+    remotes.map(async (remote) => {
+      const outcome = await runGitOutcomeBounded(cwd, [
+        "ls-remote",
+        "--tags",
+        "--refs",
+        remote,
+      ]);
+      if (outcome.code !== 0) {
+        return {
+          remote,
+          available: false,
+          error: outcome.output.slice(0, 1_000),
+        };
+      }
+      for (const line of outcome.output.split("\n")) {
+        const [, ref] = line.split(/\s+/u);
+        if (!ref?.startsWith("refs/tags/")) continue;
+        const name = ref.slice("refs/tags/".length);
+        const published = tags.get(name) ?? new Set<string>();
+        published.add(remote);
+        tags.set(name, published);
+      }
+      return { remote, available: true, error: null };
+    }),
+  );
+  return { checks, tags };
+}
+
+async function tagRefOutput(cwd: string): Promise<string> {
+  const signatureFormat =
+    "%(refname:short)%00%(objectname)%00%(objecttype)%00%(*objectname)%00%(*objecttype)%00%(contents:subject)%00%(taggername)%00%(creatordate:iso-strict)%00%(signature:grade)%00%(signature:signer)%00%(signature:key)%00%(signature:fingerprint)";
+  try {
+    return await gitRaw(cwd, [
+      "for-each-ref",
+      `--format=${signatureFormat}`,
+      "refs/tags",
+    ]);
+  } catch {
+    return gitRaw(cwd, [
+      "for-each-ref",
+      "--format=%(refname:short)%00%(objectname)%00%(objecttype)%00%(*objectname)%00%(*objecttype)%00%(contents:subject)%00%(taggername)%00%(creatordate:iso-strict)%00N%00%00%00",
+      "refs/tags",
+    ]);
+  }
+}
+
+export async function readGitTags(cwd: string): Promise<GitTagList> {
+  const [refOutput, remotes] = await Promise.all([
+    tagRefOutput(cwd),
+    gitOutput(cwd, ["remote"]).then((value) =>
+      value.split("\n").filter(Boolean),
+    ),
+  ]);
+  const remoteTags = await readRemoteTags(cwd, remotes);
+  const parsed = refOutput
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter(Boolean)
+    .flatMap((line): GitTagSummary[] => {
+      const [
+        name,
+        hash,
+        objectType,
+        peeledHash = "",
+        peeledType = "",
+        subject = "",
+        taggerName = "",
+        createdAt = "",
+        signatureCode = "N",
+        signatureSigner = "",
+        signatureKey = "",
+        signatureFingerprint = "",
+      ] = line.split("\0");
+      if (!name || !hash || !objectType) return [];
+      const annotated = objectType === "tag";
+      return [
+        {
+          name,
+          hash,
+          targetHash: annotated && peeledHash ? peeledHash : hash,
+          targetType: tagTargetType(annotated ? peeledType : objectType),
+          annotated,
+          subject,
+          taggerName: taggerName || null,
+          createdAt: createdAt || null,
+          signature: {
+            status: signatureStatus(signatureCode),
+            signer: signatureSigner || null,
+            key: signatureKey || null,
+            fingerprint: signatureFingerprint || null,
+          },
+          publishedRemotes: [...(remoteTags.tags.get(name) ?? [])].sort(),
+        },
+      ];
+    })
+    .sort(
+      (left, right) =>
+        (right.createdAt ?? "").localeCompare(left.createdAt ?? "") ||
+        left.name.localeCompare(right.name),
+    );
+  return gitTagListSchema.parse({
+    tags: parsed.slice(0, TAG_LIMIT),
+    truncated: parsed.length > TAG_LIMIT,
+    remoteChecks: remoteTags.checks,
+    generatedAt: new Date().toISOString(),
+  });
+}
+
+export async function readGitTagDetail(
+  cwd: string,
+  name: string,
+): Promise<GitTagDetail> {
+  await runGit(cwd, ["check-ref-format", `refs/tags/${name}`]);
+  const list = await readGitTags(cwd);
+  const tag = list.tags.find((candidate) => candidate.name === name);
+  if (!tag) throw new Error(`Tag ${name} does not exist.`);
+  const message = tag.annotated
+    ? await gitRaw(cwd, [
+        "for-each-ref",
+        "--format=%(contents:subject)%0a%0a%(contents:body)",
+        `refs/tags/${name}`,
+      ])
+    : "";
+  return gitTagDetailSchema.parse({
+    ...tag,
+    message: message.slice(0, COMMIT_MESSAGE_CHARACTER_LIMIT),
+    messageTruncated: message.length > COMMIT_MESSAGE_CHARACTER_LIMIT,
+  });
+}
+
+function tagActionToken(
+  action: GitTagAction,
+  list: GitTagList,
+  workspace: string,
+): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        action,
+        tags: list.tags.map(({ name, hash, publishedRemotes }) => ({
+          name,
+          hash,
+          publishedRemotes,
+        })),
+        remoteChecks: list.remoteChecks,
+        workspace,
+      }),
+    )
+    .digest("hex");
+}
+
+export async function previewGitTagAction(
+  cwd: string,
+  action: GitTagAction,
+): Promise<GitTagActionPreview> {
+  const list = await readGitTags(cwd);
+  const tag = list.tags.find(({ name }) => name === action.name) ?? null;
+  const remotes = await readGitRemotes(cwd);
+  const requireRemote = (name: string) => {
+    if (!remotes.remotes.some((remote) => remote.name === name)) {
+      throw new Error(`Git remote ${name} does not exist.`);
+    }
+  };
+  await runGit(cwd, ["check-ref-format", `refs/tags/${action.name}`]);
+  let summary: string;
+  const warnings: string[] = [];
+  switch (action.type) {
+    case "create":
+      if (tag) throw new Error(`Tag ${action.name} already exists.`);
+      if (
+        !action.target &&
+        !(await gitSucceeds(cwd, ["rev-parse", "--verify", "HEAD"]))
+      ) {
+        throw new Error("An unborn repository needs an existing tag target.");
+      }
+      if (action.target) {
+        await runGit(cwd, [
+          "rev-parse",
+          "--verify",
+          "--end-of-options",
+          `${action.target}^{object}`,
+        ]);
+      }
+      summary = `Create ${action.annotated ? "annotated" : "lightweight"} tag ${action.name}${action.target ? ` at ${action.target}` : " at HEAD"}.`;
+      break;
+    case "push":
+      if (!tag) throw new Error(`Tag ${action.name} does not exist.`);
+      requireRemote(action.remote);
+      if (tag.publishedRemotes.includes(action.remote)) {
+        warnings.push(
+          `${action.remote} already advertises this tag. Git will refuse a conflicting replacement.`,
+        );
+      }
+      summary = `Push tag ${action.name} to ${action.remote}.`;
+      break;
+    case "deleteLocal":
+      if (!tag) throw new Error(`Tag ${action.name} does not exist.`);
+      summary = `Delete local tag ${action.name}.`;
+      if (tag.publishedRemotes.length) {
+        warnings.push(
+          `The tag remains published on ${tag.publishedRemotes.join(", ")}.`,
+        );
+      }
+      break;
+    case "deleteRemote": {
+      if (!tag) throw new Error(`Tag ${action.name} does not exist locally.`);
+      requireRemote(action.remote);
+      const check = list.remoteChecks.find(
+        ({ remote }) => remote === action.remote,
+      );
+      if (!check?.available) {
+        throw new Error(
+          `Cannot verify tags on ${action.remote}: ${check?.error ?? "remote unavailable"}`,
+        );
+      }
+      if (!tag.publishedRemotes.includes(action.remote)) {
+        throw new Error(
+          `Tag ${action.name} is not published on ${action.remote}.`,
+        );
+      }
+      summary = `Delete tag ${action.name} from remote ${action.remote}.`;
+      warnings.push(
+        "This removes the tag for every collaborator using this remote.",
+      );
+      break;
+    }
+  }
+  const workspace = await workspaceFingerprint(cwd);
+  return gitTagActionPreviewSchema.parse({
+    action,
+    token: tagActionToken(action, list, workspace),
+    destructive:
+      action.type === "deleteLocal" || action.type === "deleteRemote",
+    summary,
+    warnings,
+    tag,
+  });
+}
+
+export async function applyGitTagAction(
+  cwd: string,
+  action: GitTagAction,
+  token: string,
+): Promise<GitTagMutationResult> {
+  const preview = await previewGitTagAction(cwd, action);
+  if (preview.token !== token) {
+    throw new Error(
+      "The tags, remotes, or worktree changed after this preview. Review the action again.",
+    );
+  }
+  let args: string[];
+  switch (action.type) {
+    case "create":
+      args = action.annotated
+        ? [
+            "tag",
+            "-a",
+            action.name,
+            "-m",
+            action.message!,
+            ...(action.target ? [action.target] : []),
+          ]
+        : ["tag", action.name, ...(action.target ? [action.target] : [])];
+      break;
+    case "push":
+      args = [
+        "push",
+        action.remote,
+        `refs/tags/${action.name}:refs/tags/${action.name}`,
+      ];
+      break;
+    case "deleteLocal":
+      args = ["tag", "-d", action.name];
+      break;
+    case "deleteRemote":
+      args = ["push", action.remote, `:refs/tags/${action.name}`];
+      break;
+  }
+  const outcome =
+    action.type === "push" || action.type === "deleteRemote"
+      ? await runGitOutcomeBounded(cwd, args)
+      : { code: 0, output: await runGit(cwd, args) };
+  if (outcome.code !== 0) throw new Error(outcome.output);
+  return gitTagMutationResultSchema.parse({
+    output: outcome.output,
+    status: await readGitStatus(cwd),
+    tags: await readGitTags(cwd),
   });
 }
 
