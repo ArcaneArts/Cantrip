@@ -62,6 +62,8 @@ import {
   githubReleaseSummarySchema,
   githubRepositoryListSchema,
   gitActionResultSchema,
+  gitAgentDraftCreateSchema,
+  gitAgentDraftResultSchema,
   gitBranchActionPreviewSchema,
   gitBranchListSchema,
   gitBranchMutationResultSchema,
@@ -160,6 +162,7 @@ import type {
   CodexSkillConfigUpdate,
   CodexSkillRootsUpdate,
   GitAction,
+  GitAgentDraftCreate,
   GitBranchAction,
   GitCommitAction,
   GitCommitSearchQuery,
@@ -601,6 +604,19 @@ export async function runProjectWorktreeGitAction(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/actions`,
       action,
+    ),
+  );
+}
+
+export async function generateProjectWorktreeGitDraft(
+  projectId: string,
+  worktreeId: string,
+  input: GitAgentDraftCreate,
+) {
+  return gitAgentDraftResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/agent/drafts`,
+      gitAgentDraftCreateSchema.parse(input),
     ),
   );
 }

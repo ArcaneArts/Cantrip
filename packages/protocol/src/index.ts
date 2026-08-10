@@ -3363,6 +3363,32 @@ export const gitSignatureSchema = z.object({
   verificationMessage: z.string().max(10_000).nullable().default(null),
 });
 
+export const gitAgentDraftTaskSchema = z.enum([
+  "summarize-changes",
+  "draft-commit-message",
+]);
+
+export const gitAgentDraftCreateSchema = z.object({
+  task: gitAgentDraftTaskSchema,
+  modelId: z.string().min(1).max(200).optional(),
+  instructions: z.string().trim().max(2_000).nullable().default(null),
+});
+
+export const gitAgentDraftModelOutputSchema = z.object({
+  text: z.string().trim().min(1).max(100_000),
+});
+
+export const gitAgentDraftResultSchema = z.object({
+  generationId: z.string().min(1).max(200),
+  task: gitAgentDraftTaskSchema,
+  text: z.string().trim().min(1).max(100_000),
+  modelId: z.string().min(1).max(200),
+  modelName: z.string().min(1).max(500),
+  providerName: z.string().min(1).max(200),
+  worktreeId: z.string().min(1).max(200),
+  generatedAt: z.iso.datetime(),
+});
+
 export const gitRelativePathSchema = z
   .string()
   .min(1)
@@ -5338,6 +5364,22 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     })
     .extend(gitForcePushApplySchema.shape),
   z.object({
+    type: z.literal("git.agent.generate"),
+    generationId: z.string().min(1).max(200),
+    cwd: z.string().min(1).max(8_192),
+    task: gitAgentDraftTaskSchema,
+    instructions: gitAgentDraftCreateSchema.shape.instructions,
+    developerInstructions: z.string().trim().min(1).max(100_000),
+    outputSchema: workflowJsonObjectSchema,
+    timeoutMs: z
+      .number()
+      .int()
+      .min(1_000)
+      .max(30 * 60 * 1_000),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
     type: z.literal("worktree.list"),
     sourcePath: z.string().min(1),
   }),
@@ -6100,6 +6142,9 @@ export type GitRecoveryApply = z.infer<typeof gitRecoveryApplySchema>;
 export type GitRecoveryResult = z.infer<typeof gitRecoveryResultSchema>;
 export type GitCommitPerson = z.infer<typeof gitCommitPersonSchema>;
 export type GitSignature = z.infer<typeof gitSignatureSchema>;
+export type GitAgentDraftTask = z.infer<typeof gitAgentDraftTaskSchema>;
+export type GitAgentDraftCreate = z.infer<typeof gitAgentDraftCreateSchema>;
+export type GitAgentDraftResult = z.infer<typeof gitAgentDraftResultSchema>;
 export type GitCommitFile = z.infer<typeof gitCommitFileSchema>;
 export type GitCommitDetail = z.infer<typeof gitCommitDetailSchema>;
 export type GitRevisionFileDiff = z.infer<typeof gitRevisionFileDiffSchema>;

@@ -11,6 +11,7 @@ import {
   codeTabSummarySchema,
   explorerSummarySchema,
   gitActionResultSchema,
+  gitAgentDraftResultSchema,
   gitBranchActionPreviewSchema,
   gitBranchListSchema,
   gitBranchMutationResultSchema,
@@ -237,6 +238,9 @@ const gitRefsCommands: Array<
 > = [];
 const chatTurnCommands: Array<Extract<WorkerCommand, { type: "chat.turn" }>> =
   [];
+const gitAgentCommands: Array<
+  Extract<WorkerCommand, { type: "git.agent.generate" }>
+> = [];
 let agentToolInvocation: {
   arguments: Record<string, unknown>;
   tool: AgentWorktreeToolName;
@@ -1041,6 +1045,21 @@ const workerBridge = {
       case "git.force-push.apply":
         gitForcePushCommands.push(command);
         return completeGitMutation("forced with lease");
+      case "git.agent.generate":
+        gitAgentCommands.push(command);
+        return {
+          threadId: "git-agent-thread",
+          turnId: "git-agent-turn",
+          text: "",
+          structuredResult: {
+            text:
+              command.task === "draft-commit-message"
+                ? "feat: add Git assistant drafts"
+                : "Summarized working changes.",
+          },
+          measuredUsage: {},
+          status: "completed",
+        };
       case "git.diff":
         gitDiffCommands.push(command);
         return {
@@ -3285,6 +3304,33 @@ describe.sequential("server worktree control plane", () => {
       url: `/api/projects/${projectId}/worktrees/${target.id}/git/compare?left=main&right=${right}&mode=direct`,
     });
     expect(invalidComparison.statusCode).toBe(400);
+  });
+
+  it("routes preview-only Git agent drafts through the selected worker and default model", async () => {
+    const target = (
+      await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId)
+    ).find(({ id }) => id === managedIds[0])!;
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/agent/drafts`,
+      payload: {
+        task: "draft-commit-message",
+        instructions: "Mention the Git client.",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(gitAgentDraftResultSchema.parse(response.json())).toMatchObject({
+      task: "draft-commit-message",
+      text: "feat: add Git assistant drafts",
+      worktreeId: target.id,
+    });
+    expect(gitAgentCommands.at(-1)).toMatchObject({
+      cwd: target.path,
+      task: "draft-commit-message",
+      instructions: "Mention the Git client.",
+      timeoutMs: 120_000,
+    });
   });
 
   it("locks, unlocks, and protects Primary and external removal", async () => {

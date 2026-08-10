@@ -37,6 +37,8 @@ import {
   remoteSurfaceWebRtcConfigurationSchema,
   remoteSurfaceWebRtcSignalSchema,
   gitActionSchema,
+  gitAgentDraftCreateSchema,
+  gitAgentDraftResultSchema,
   gitBranchActionPreviewSchema,
   gitBranchListSchema,
   gitBisectActionSchema,
@@ -114,6 +116,36 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("validates preview-only Git agent draft requests and provenance", () => {
+    expect(
+      gitAgentDraftCreateSchema.parse({
+        task: "draft-commit-message",
+        instructions: "Focus on the public API.",
+      }),
+    ).toMatchObject({
+      task: "draft-commit-message",
+      instructions: "Focus on the public API.",
+    });
+    expect(
+      gitAgentDraftResultSchema.parse({
+        generationId: "generation-1",
+        task: "summarize-changes",
+        text: "Changed the Git client.",
+        modelId: "model-1",
+        modelName: "gpt-5.6-sol",
+        providerName: "ChatGPT",
+        worktreeId: "worktree-1",
+        generatedAt: "2026-08-10T12:00:00.000Z",
+      }),
+    ).toMatchObject({
+      task: "summarize-changes",
+      worktreeId: "worktree-1",
+    });
+    expect(() =>
+      gitAgentDraftCreateSchema.parse({ task: "publish-commit" }),
+    ).toThrow();
+  });
+
   it("validates durable bisect actions and classification controls", () => {
     const action = gitBisectActionSchema.parse({
       type: "bisect",
