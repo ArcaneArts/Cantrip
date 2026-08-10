@@ -38,6 +38,9 @@ import {
   gitRemoteActionPreviewSchema,
   gitRemoteListSchema,
   gitRemoteMutationResultSchema,
+  gitSubmoduleActionPreviewSchema,
+  gitSubmoduleListSchema,
+  gitSubmoduleMutationResultSchema,
   gitRecoveryCandidateListSchema,
   gitRecoveryPreviewSchema,
   gitRecoveryResultSchema,
@@ -95,6 +98,11 @@ import {
   type GitRemoteActionPreview,
   type GitRemoteList,
   type GitRemoteMutationResult,
+  type GitSubmoduleAction,
+  type GitSubmoduleActionPreview,
+  type GitSubmoduleList,
+  type GitSubmoduleMutationResult,
+  type GitSubmoduleSummary,
   type GitRecoveryAction,
   type GitRecoveryCandidate,
   type GitRecoveryCandidateList,
@@ -3329,6 +3337,336 @@ export async function applyGitRemoteAction(
     output: output.filter(Boolean).join("\n"),
     status: await readGitStatus(cwd),
     remotes: await readGitRemotes(cwd),
+  });
+}
+
+type SubmoduleConfiguration = {
+  name: string;
+  path: string;
+  localPath: string;
+  parentPath: string;
+  url: string;
+  branch: string | null;
+};
+
+function safeSubmodulePath(cwd: string, candidate: string): string | null {
+  const normalized = candidate.replaceAll("\\", "/").replace(/^\.\//u, "");
+  if (!normalized || normalized === ".") return null;
+  const root = path.resolve(cwd);
+  const absolute = path.resolve(root, normalized);
+  if (!absolute.startsWith(`${root}${path.sep}`)) return null;
+  return normalized;
+}
+
+async function readSubmoduleConfigurationFile(
+  cwd: string,
+  filePath: string,
+  parentPath: string,
+): Promise<SubmoduleConfiguration[]> {
+  const metadata = await lstat(path.resolve(cwd, filePath)).catch(() => null);
+  if (!metadata?.isFile()) return [];
+  const output = await gitOutput(cwd, [
+    "config",
+    "-f",
+    filePath,
+    "--get-regexp",
+    "^submodule\\..*\\.(path|url|branch)$",
+  ]).catch(() => "");
+  const sections = new Map<
+    string,
+    { branch?: string; path?: string; url?: string }
+  >();
+  for (const line of output.split("\n")) {
+    const separator = line.indexOf(" ");
+    if (separator <= 0) continue;
+    const key = line.slice(0, separator);
+    const value = line.slice(separator + 1);
+    const match = /^submodule\.(.*)\.(path|url|branch)$/u.exec(key);
+    if (!match) continue;
+    const sectionName = match[1];
+    const field = match[2] as "branch" | "path" | "url" | undefined;
+    if (!sectionName || !field) continue;
+    const section = sections.get(sectionName) ?? {};
+    section[field] = value;
+    sections.set(sectionName, section);
+  }
+  const configurations: SubmoduleConfiguration[] = [];
+  for (const [name, section] of sections) {
+    if (!section.path || !section.url) continue;
+    const localPath = safeSubmodulePath(cwd, section.path);
+    const fullPath = safeSubmodulePath(
+      cwd,
+      parentPath ? `${parentPath}/${section.path}` : section.path,
+    );
+    if (!localPath || !fullPath) continue;
+    configurations.push({
+      name: parentPath ? `${parentPath}:${name}` : name,
+      path: fullPath,
+      localPath,
+      parentPath,
+      url: sanitizeRemoteText(section.url).value,
+      branch: section.branch || null,
+    });
+  }
+  return configurations;
+}
+
+function parseSubmoduleStatus(
+  output: string,
+): Map<string, { hash: string; marker: " " | "+" | "-" | "U" }> {
+  const statuses = new Map<
+    string,
+    { hash: string; marker: " " | "+" | "-" | "U" }
+  >();
+  for (const line of output.split("\n")) {
+    const match = /^([ +\-U])([0-9a-f]{40,64})\s+(.+?)(?:\s+\(.*\))?$/u.exec(
+      line,
+    );
+    if (!match) continue;
+    const submodulePath = match[3];
+    const hash = match[2];
+    if (!submodulePath || !hash) continue;
+    statuses.set(submodulePath, {
+      marker: match[1] as " " | "+" | "-" | "U",
+      hash,
+    });
+  }
+  return statuses;
+}
+
+async function expectedSubmoduleHash(
+  cwd: string,
+  configuration: SubmoduleConfiguration,
+): Promise<string | null> {
+  const parent = configuration.parentPath
+    ? path.resolve(cwd, configuration.parentPath)
+    : cwd;
+  const output = await gitOutput(parent, [
+    "ls-files",
+    "--stage",
+    "--",
+    configuration.localPath,
+  ]).catch(() => "");
+  return /^160000\s+([0-9a-f]{40,64})\s/u.exec(output)?.[1] ?? null;
+}
+
+export async function readGitSubmodules(
+  cwd: string,
+): Promise<GitSubmoduleList> {
+  const rawStatus = await gitRaw(cwd, [
+    "-c",
+    "core.quotePath=false",
+    "submodule",
+    "status",
+    "--recursive",
+  ]).catch(() => "");
+  const statuses = parseSubmoduleStatus(rawStatus);
+  const configurationFiles = new Map<string, string>([["", ".gitmodules"]]);
+  for (const [submodulePath, status] of statuses) {
+    if (status.marker !== "-") {
+      configurationFiles.set(submodulePath, `${submodulePath}/.gitmodules`);
+    }
+  }
+  const configured = (
+    await Promise.all(
+      [...configurationFiles].map(([parentPath, filePath]) =>
+        readSubmoduleConfigurationFile(cwd, filePath, parentPath),
+      ),
+    )
+  )
+    .flat()
+    .sort((left, right) => left.path.localeCompare(right.path));
+  const bounded = configured.slice(0, 10_000);
+  const submodules = await Promise.all(
+    bounded.map(async (configuration): Promise<GitSubmoduleSummary> => {
+      const observed = statuses.get(configuration.path);
+      const initialized = Boolean(observed && observed.marker !== "-");
+      const [expectedHash, dirty] = await Promise.all([
+        expectedSubmoduleHash(cwd, configuration),
+        initialized
+          ? gitOutput(path.resolve(cwd, configuration.path), [
+              "status",
+              "--porcelain=v1",
+              "--untracked-files=normal",
+            ])
+              .then(Boolean)
+              .catch(() => false)
+          : false,
+      ]);
+      const state: GitSubmoduleSummary["state"] = !observed
+        ? "missing"
+        : observed.marker === "-"
+          ? "uninitialized"
+          : observed.marker === "U"
+            ? "conflicted"
+            : observed.marker === "+" || dirty
+              ? "changed"
+              : "clean";
+      return {
+        name: configuration.name,
+        path: configuration.path,
+        url: configuration.url,
+        branch: configuration.branch,
+        expectedHash,
+        currentHash: initialized ? (observed?.hash ?? null) : null,
+        initialized,
+        dirty,
+        nested: Boolean(configuration.parentPath),
+        state,
+      };
+    }),
+  );
+  return gitSubmoduleListSchema.parse({
+    submodules,
+    truncated: configured.length > bounded.length,
+    generatedAt: new Date().toISOString(),
+  });
+}
+
+function selectedSubmodules(
+  list: GitSubmoduleList,
+  action: GitSubmoduleAction,
+): GitSubmoduleSummary[] {
+  if (action.type === "deinitialize") {
+    const selected = list.submodules.find(({ path }) => path === action.path);
+    if (!selected) throw new Error(`Submodule ${action.path} does not exist.`);
+    return [selected];
+  }
+  if (!action.path) {
+    return action.recursive
+      ? list.submodules
+      : list.submodules.filter(({ nested }) => !nested);
+  }
+  const selected = list.submodules.filter(
+    ({ path }) =>
+      path === action.path ||
+      (action.recursive && path.startsWith(`${action.path}/`)),
+  );
+  if (!selected.some(({ path }) => path === action.path)) {
+    throw new Error(`Submodule ${action.path} does not exist.`);
+  }
+  return selected;
+}
+
+function submoduleActionToken(
+  action: GitSubmoduleAction,
+  list: GitSubmoduleList,
+  workspace: string,
+): string {
+  return createHash("sha256")
+    .update(JSON.stringify({ action, submodules: list.submodules, workspace }))
+    .digest("hex");
+}
+
+export async function previewGitSubmoduleAction(
+  cwd: string,
+  action: GitSubmoduleAction,
+): Promise<GitSubmoduleActionPreview> {
+  const [submodules, workspace] = await Promise.all([
+    readGitSubmodules(cwd),
+    workspaceFingerprint(cwd),
+  ]);
+  const targets = selectedSubmodules(submodules, action);
+  if (targets.length === 0) throw new Error("No submodules match this action.");
+  const scope = action.path ?? "all top-level submodules";
+  const warnings: string[] = [];
+  let summary: string;
+  switch (action.type) {
+    case "initialize":
+      summary = `Initialize ${scope}${action.recursive ? " and nested submodules" : ""} at the commits recorded by the repository.`;
+      break;
+    case "update":
+      summary = `${action.remote ? "Fetch configured remote branches and update" : "Update"} ${scope}${action.recursive ? " and nested submodules" : ""}.`;
+      if (action.remote) {
+        warnings.push(
+          "Remote update can check out commits that differ from the superproject's recorded submodule commits.",
+        );
+      }
+      break;
+    case "sync":
+      summary = `Synchronize configured URLs for ${scope}${action.recursive ? " and nested submodules" : ""}.`;
+      break;
+    case "deinitialize":
+      summary = `Deinitialize submodule ${action.path} and remove its checked-out worktree.`;
+      if (targets[0]?.dirty && !action.force) {
+        throw new Error(
+          `Submodule ${action.path} has local changes. Review again with force only if those changes may be discarded.`,
+        );
+      }
+      warnings.push(
+        "Deinitializing removes the submodule worktree but keeps its Git data and the superproject configuration.",
+      );
+      if (action.force) {
+        warnings.push("Force deinitialize discards local submodule changes.");
+      }
+      break;
+  }
+  return gitSubmoduleActionPreviewSchema.parse({
+    action,
+    token: submoduleActionToken(action, submodules, workspace),
+    destructive: action.type === "deinitialize",
+    summary,
+    warnings,
+    targets,
+  });
+}
+
+export async function applyGitSubmoduleAction(
+  cwd: string,
+  action: GitSubmoduleAction,
+  token: string,
+): Promise<GitSubmoduleMutationResult> {
+  const preview = await previewGitSubmoduleAction(cwd, action);
+  if (preview.token !== token) {
+    throw new Error(
+      "The submodules or selected worktree changed after this preview. Review the action again.",
+    );
+  }
+  const actionPath = action.path;
+  const inventory = actionPath ? await readGitSubmodules(cwd) : null;
+  const parentModule = actionPath
+    ? inventory?.submodules
+        .filter(
+          ({ path: candidate }) =>
+            candidate !== actionPath && actionPath.startsWith(`${candidate}/`),
+        )
+        .sort((left, right) => right.path.length - left.path.length)[0]
+    : undefined;
+  const commandCwd = parentModule ? path.resolve(cwd, parentModule.path) : cwd;
+  const commandPath =
+    actionPath && parentModule
+      ? actionPath.slice(parentModule.path.length + 1)
+      : actionPath;
+  const args = ["submodule"];
+  switch (action.type) {
+    case "initialize":
+      args.push(
+        "update",
+        "--init",
+        ...(action.recursive ? ["--recursive"] : []),
+      );
+      break;
+    case "update":
+      args.push(
+        "update",
+        ...(action.recursive ? ["--recursive"] : []),
+        ...(action.remote ? ["--remote"] : []),
+      );
+      break;
+    case "sync":
+      args.push("sync", ...(action.recursive ? ["--recursive"] : []));
+      break;
+    case "deinitialize":
+      args.push("deinit", ...(action.force ? ["--force"] : []));
+      break;
+  }
+  if (commandPath) args.push("--", commandPath);
+  const outcome = await runGitOutcomeBounded(commandCwd, args);
+  if (outcome.code !== 0) throw new Error(outcome.output);
+  return gitSubmoduleMutationResultSchema.parse({
+    output: outcome.output,
+    status: await readGitStatus(cwd),
+    submodules: await readGitSubmodules(cwd),
   });
 }
 

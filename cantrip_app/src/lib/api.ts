@@ -86,6 +86,9 @@ import {
   gitStashFileDiffSchema,
   gitStashListSchema,
   gitStashMutationResultSchema,
+  gitSubmoduleActionPreviewSchema,
+  gitSubmoduleListSchema,
+  gitSubmoduleMutationResultSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
   gitRemoteActionPreviewSchema,
@@ -166,6 +169,7 @@ import type {
   GitRecoveryApply,
   GitStashAction,
   GitStashCreate,
+  GitSubmoduleAction,
   GitTagAction,
   GithubIssueKind,
   GithubIssueState,
@@ -836,6 +840,44 @@ export async function applyProjectWorktreeRemoteAction(
   return gitRemoteMutationResultSchema.parse(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/remotes/actions/apply`,
+      { action, token },
+    ),
+  );
+}
+
+export async function getProjectWorktreeSubmodules(
+  projectId: string,
+  worktreeId: string,
+) {
+  return gitSubmoduleListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/submodules`,
+    ),
+  );
+}
+
+export async function previewProjectWorktreeSubmoduleAction(
+  projectId: string,
+  worktreeId: string,
+  action: GitSubmoduleAction,
+) {
+  return gitSubmoduleActionPreviewSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/submodules/actions/preview`,
+      action,
+    ),
+  );
+}
+
+export async function applyProjectWorktreeSubmoduleAction(
+  projectId: string,
+  worktreeId: string,
+  action: GitSubmoduleAction,
+  token: string,
+) {
+  return gitSubmoduleMutationResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/submodules/actions/apply`,
       { action, token },
     ),
   );

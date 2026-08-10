@@ -16,6 +16,7 @@ import {
   applyGitRemoteAction,
   applyGitRecoveryAction,
   applyGitStashAction,
+  applyGitSubmoduleAction,
   applyGitTagAction,
   controlGitManagedOperation,
   createGitStash,
@@ -28,6 +29,7 @@ import {
   previewGitRemoteAction,
   previewGitRecoveryAction,
   previewGitStashAction,
+  previewGitSubmoduleAction,
   previewGitTagAction,
   previewGitManagedOperation,
   previewGitForcePush,
@@ -47,6 +49,7 @@ import {
   readGitStatus,
   readGitStashes,
   readGitStashFileDiff,
+  readGitSubmodules,
   readGitTagDetail,
   readGitTags,
   runGitAction,
@@ -274,6 +277,195 @@ describe("Git history", () => {
     await expect(previewGitManagedOperation(directory, action)).rejects.toThrow(
       "Bisect requires a clean selected worktree",
     );
+  });
+
+  it("lists and safely manages worktree-scoped submodules", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-submodule-test-"));
+    directories.push(root);
+    const library = path.join(root, "library");
+    const repository = path.join(root, "repo");
+    await execFileAsync("git", ["init", "-b", "main", library]);
+    await execFileAsync("git", [
+      "-C",
+      library,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      library,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(library, "library.txt"), "one\n");
+    await execFileAsync("git", ["-C", library, "add", "."]);
+    await execFileAsync("git", ["-C", library, "commit", "-m", "Library"]);
+    const firstLibraryCommit = (
+      await execFileAsync("git", ["-C", library, "rev-parse", "HEAD"])
+    ).stdout.trim();
+
+    await execFileAsync("git", ["init", "-b", "main", repository]);
+    await execFileAsync("git", [
+      "-C",
+      repository,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      repository,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      repository,
+      "config",
+      "protocol.file.allow",
+      "always",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      repository,
+      "-c",
+      "protocol.file.allow=always",
+      "submodule",
+      "add",
+      "-b",
+      "main",
+      library,
+      "modules/library",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      repository,
+      "commit",
+      "-am",
+      "Add module",
+    ]);
+
+    let inventory = await readGitSubmodules(repository);
+    expect(inventory).toMatchObject({
+      truncated: false,
+      submodules: [
+        {
+          path: "modules/library",
+          expectedHash: firstLibraryCommit,
+          currentHash: firstLibraryCommit,
+          initialized: true,
+          dirty: false,
+          state: "clean",
+        },
+      ],
+    });
+
+    const deinitialize = {
+      type: "deinitialize" as const,
+      path: "modules/library",
+      force: false,
+    };
+    const deinitializePreview = await previewGitSubmoduleAction(
+      repository,
+      deinitialize,
+    );
+    expect(deinitializePreview.destructive).toBe(true);
+    inventory = (
+      await applyGitSubmoduleAction(
+        repository,
+        deinitialize,
+        deinitializePreview.token,
+      )
+    ).submodules;
+    expect(inventory.submodules[0]).toMatchObject({
+      initialized: false,
+      state: "uninitialized",
+    });
+
+    const initialize = {
+      type: "initialize" as const,
+      path: "modules/library",
+      recursive: true,
+    };
+    const initializePreview = await previewGitSubmoduleAction(
+      repository,
+      initialize,
+    );
+    await applyGitSubmoduleAction(
+      repository,
+      initialize,
+      initializePreview.token,
+    );
+    await writeFile(
+      path.join(repository, "modules/library/library.txt"),
+      "dirty\n",
+    );
+    inventory = await readGitSubmodules(repository);
+    expect(inventory.submodules[0]).toMatchObject({
+      dirty: true,
+      state: "changed",
+    });
+    await expect(
+      previewGitSubmoduleAction(repository, deinitialize),
+    ).rejects.toThrow("has local changes");
+    const forceDeinitialize = { ...deinitialize, force: true };
+    const forcePreview = await previewGitSubmoduleAction(
+      repository,
+      forceDeinitialize,
+    );
+    expect(forcePreview.warnings.join(" ")).toContain("discards local");
+    await applyGitSubmoduleAction(
+      repository,
+      forceDeinitialize,
+      forcePreview.token,
+    );
+
+    const reinitializePreview = await previewGitSubmoduleAction(
+      repository,
+      initialize,
+    );
+    await applyGitSubmoduleAction(
+      repository,
+      initialize,
+      reinitializePreview.token,
+    );
+    await execFileAsync("git", [
+      "-C",
+      path.join(repository, "modules/library"),
+      "config",
+      "protocol.file.allow",
+      "always",
+    ]);
+    await writeFile(path.join(library, "library.txt"), "two\n");
+    await execFileAsync("git", ["-C", library, "commit", "-am", "Advance"]);
+    const secondLibraryCommit = (
+      await execFileAsync("git", ["-C", library, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    const remoteUpdate = {
+      type: "update" as const,
+      path: "modules/library",
+      recursive: true,
+      remote: true,
+    };
+    const remotePreview = await previewGitSubmoduleAction(
+      repository,
+      remoteUpdate,
+    );
+    inventory = (
+      await applyGitSubmoduleAction(
+        repository,
+        remoteUpdate,
+        remotePreview.token,
+      )
+    ).submodules;
+    expect(inventory.submodules[0]).toMatchObject({
+      expectedHash: firstLibraryCommit,
+      currentHash: secondLibraryCommit,
+      state: "changed",
+    });
   });
 
   it("previews, applies, stages, and verifies conflict resolutions", async () => {

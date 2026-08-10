@@ -37,6 +37,9 @@ import {
   gitStashFileDiffSchema,
   gitStashListSchema,
   gitStashMutationResultSchema,
+  gitSubmoduleActionPreviewSchema,
+  gitSubmoduleListSchema,
+  gitSubmoduleMutationResultSchema,
   gitTagActionPreviewSchema,
   gitTagDetailSchema,
   gitTagListSchema,
@@ -130,6 +133,17 @@ const gitRemoteCommands: Array<
         | "git.remote.list"
         | "git.remote.action.preview"
         | "git.remote.action.apply";
+    }
+  >
+> = [];
+const gitSubmoduleCommands: Array<
+  Extract<
+    WorkerCommand,
+    {
+      type:
+        | "git.submodule.list"
+        | "git.submodule.action.preview"
+        | "git.submodule.action.apply";
     }
   >
 > = [];
@@ -339,6 +353,18 @@ const managedOperationContext = {
   pendingCommits: ["3".repeat(40)],
   totalSteps: 1,
   checkpointRef: "refs/cantrip/checkpoints/rebase-test",
+};
+const submoduleFixture = {
+  name: "library",
+  path: "modules/library",
+  url: "https://github.com/ArcaneArts/library.git",
+  branch: "main",
+  expectedHash: "5".repeat(40),
+  currentHash: null,
+  initialized: false,
+  dirty: false,
+  nested: false,
+  state: "uninitialized" as const,
 };
 
 function managedWorkerState(
@@ -1112,6 +1138,41 @@ const workerBridge = {
           output: "remote action complete",
           status: status(),
           remotes: remoteList(),
+        });
+      case "git.submodule.list":
+        gitSubmoduleCommands.push(command);
+        return {
+          submodules: [submoduleFixture],
+          truncated: false,
+          generatedAt: "2026-08-10T12:00:00.000Z",
+        };
+      case "git.submodule.action.preview":
+        gitSubmoduleCommands.push(command);
+        return {
+          action: command.action,
+          token: "9".repeat(64),
+          destructive: command.action.type === "deinitialize",
+          summary: "Review submodule action.",
+          warnings: [],
+          targets: [submoduleFixture],
+        };
+      case "git.submodule.action.apply":
+        gitSubmoduleCommands.push(command);
+        return completeStashMutation({
+          output: "submodule action complete",
+          status: status(),
+          submodules: {
+            submodules: [
+              {
+                ...submoduleFixture,
+                currentHash: submoduleFixture.expectedHash,
+                initialized: true,
+                state: "clean" as const,
+              },
+            ],
+            truncated: false,
+            generatedAt: "2026-08-10T12:00:00.000Z",
+          },
         });
       case "git.tag.list":
         gitTagCommands.push(command);
@@ -2504,6 +2565,71 @@ describe.sequential("server worktree control plane", () => {
       },
     });
     expect(invalidRemoteResponse.statusCode).toBe(400);
+
+    const submoduleListResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/submodules`,
+    });
+    expect(
+      gitSubmoduleListSchema.parse(submoduleListResponse.json()),
+    ).toMatchObject({
+      submodules: [
+        expect.objectContaining({
+          path: "modules/library",
+          state: "uninitialized",
+        }),
+      ],
+    });
+    expect(gitSubmoduleCommands.at(-1)).toMatchObject({
+      type: "git.submodule.list",
+      cwd: target.path,
+    });
+    const submoduleAction = {
+      type: "initialize" as const,
+      path: "modules/library",
+      recursive: true,
+    };
+    const submodulePreviewResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/submodules/actions/preview`,
+      payload: submoduleAction,
+    });
+    expect(
+      gitSubmoduleActionPreviewSchema.parse(submodulePreviewResponse.json()),
+    ).toMatchObject({ action: submoduleAction, token: "9".repeat(64) });
+    const submoduleApplyResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/submodules/actions/apply`,
+      payload: { action: submoduleAction, token: "9".repeat(64) },
+    });
+    expect(
+      gitSubmoduleMutationResultSchema.parse(submoduleApplyResponse.json()),
+    ).toMatchObject({
+      output: "submodule action complete",
+      submodules: {
+        submodules: [
+          expect.objectContaining({
+            path: "modules/library",
+            state: "clean",
+          }),
+        ],
+      },
+    });
+    expect(gitSubmoduleCommands.at(-1)).toMatchObject({
+      type: "git.submodule.action.apply",
+      cwd: target.path,
+      action: submoduleAction,
+    });
+    const invalidSubmoduleResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/submodules/actions/preview`,
+      payload: {
+        type: "deinitialize",
+        path: "../outside",
+        force: true,
+      },
+    });
+    expect(invalidSubmoduleResponse.statusCode).toBe(400);
 
     const tagListResponse = await app.inject({
       method: "GET",
