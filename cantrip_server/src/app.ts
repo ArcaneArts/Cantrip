@@ -142,6 +142,11 @@ import {
   gitForcePushApplySchema,
   gitForcePushPreviewSchema,
   gitHistorySchema,
+  gitLfsActionApplySchema,
+  gitLfsActionPreviewSchema,
+  gitLfsActionSchema,
+  gitLfsMutationResultSchema,
+  gitLfsStatusSchema,
   gitPartialPatchApplySchema,
   gitPartialPatchPreviewSchema,
   gitPartialPatchRequestSchema,
@@ -7311,6 +7316,106 @@ export async function buildApp({
             await bridge.request(context.workerId, {
               type: "git.submodule.list",
               cwd: context.worktree.path,
+            }),
+          ),
+        );
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/lfs/actions/apply",
+    async (request, reply) => {
+      const input = gitLfsActionApplySchema.safeParse(request.body);
+      if (!input.success)
+        return reply.code(400).send(invalidBody(input.error.issues));
+      try {
+        const result = await worktreeCoordinator.serialize(
+          request.params.projectId,
+          async () => {
+            const context = await repository.getProjectWorktreeContext(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (!context) throw new Error("Worktree not found.");
+            const applied = gitLfsMutationResultSchema.parse(
+              await bridge.request(context.workerId, {
+                type: "git.lfs.action.apply",
+                cwd: context.worktree.path,
+                action: input.data.action,
+                token: input.data.token,
+              }),
+            );
+            await recordLiveWorktreeStatus(
+              request.params.projectId,
+              request.params.worktreeId,
+              worktreeStatusFromGitStatus(context.worktree, applied.status),
+            );
+            publishLiveInvalidation("worktree-status", {
+              projectId: request.params.projectId,
+            });
+            return applied;
+          },
+        );
+        return reply.send(result);
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/lfs/actions/preview",
+    async (request, reply) => {
+      const input = gitLfsActionSchema.safeParse(request.body);
+      if (!input.success)
+        return reply.code(400).send(invalidBody(input.error.issues));
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context)
+        return reply.code(404).send({ error: "Worktree not found." });
+      try {
+        return reply.send(
+          gitLfsActionPreviewSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "git.lfs.action.preview",
+              cwd: context.worktree.path,
+              action: input.data,
+            }),
+          ),
+        );
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/lfs",
+    async (request, reply) => {
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context)
+        return reply.code(404).send({ error: "Worktree not found." });
+      try {
+        return reply.send(
+          gitLfsStatusSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "git.lfs.status",
+              cwd: context.worktree.path,
+              refreshLocks: false,
             }),
           ),
         );

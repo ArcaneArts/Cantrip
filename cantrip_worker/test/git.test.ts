@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   amendGitManagedOperation,
   applyGitForcePush,
+  applyGitLfsAction,
   applyGitBranchAction,
   applyGitCommitAction,
   applyGitConflictResolution,
@@ -26,6 +27,7 @@ import {
   previewGitCommitAction,
   previewGitConflictResolution,
   previewGitPartialPatch,
+  previewGitLfsAction,
   previewGitRemoteAction,
   previewGitRecoveryAction,
   previewGitStashAction,
@@ -41,6 +43,7 @@ import {
   readGitFileBlame,
   readGitFileHistory,
   readGitHistory,
+  readGitLfsStatus,
   listGitConflicts,
   readGitRemotes,
   readGitRecoveryCandidates,
@@ -466,6 +469,98 @@ describe("Git history", () => {
       currentHash: secondLibraryCommit,
       state: "changed",
     });
+  });
+
+  it("detects Git LFS capability and manages patterns and pointer state", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-lfs-test-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "README.md"), "LFS test\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Base"]);
+
+    let status = await readGitLfsStatus(directory);
+    if (!status.available) {
+      expect(status).toMatchObject({ version: null, files: [], patterns: [] });
+      expect(status.message).toBeTruthy();
+      return;
+    }
+    expect(status.version).toMatch(/git-lfs/iu);
+
+    const install = { type: "install" as const };
+    const installPreview = await previewGitLfsAction(directory, install);
+    await applyGitLfsAction(directory, install, installPreview.token);
+    const track = { type: "track" as const, pattern: "*.bin" };
+    const trackPreview = await previewGitLfsAction(directory, track);
+    status = (await applyGitLfsAction(directory, track, trackPreview.token))
+      .lfs;
+    expect(status.patterns).toContainEqual({
+      pattern: "*.bin",
+      source: ".gitattributes",
+    });
+
+    await writeFile(path.join(directory, "asset.bin"), "large-object\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "LFS asset"]);
+    status = await readGitLfsStatus(directory);
+    expect(status.files[0]).toMatchObject({
+      path: "asset.bin",
+      checkedOut: true,
+      downloaded: true,
+      status: null,
+    });
+    await writeFile(path.join(directory, "asset.bin"), "changed\n");
+    status = await readGitLfsStatus(directory);
+    expect(status.pendingPaths).toContainEqual({
+      path: "asset.bin",
+      status: "M",
+    });
+    expect(status.files[0]?.status).toBe("M");
+
+    const untrack = { type: "untrack" as const, pattern: "*.bin" };
+    const stalePreview = await previewGitLfsAction(directory, untrack);
+    await writeFile(path.join(directory, "untracked.txt"), "changes token\n");
+    await expect(
+      applyGitLfsAction(directory, untrack, stalePreview.token),
+    ).rejects.toThrow("changed after this preview");
+    const untrackPreview = await previewGitLfsAction(directory, untrack);
+    status = (await applyGitLfsAction(directory, untrack, untrackPreview.token))
+      .lfs;
+    expect(status.patterns).not.toContainEqual(
+      expect.objectContaining({ pattern: "*.bin" }),
+    );
+
+    const oid = status.files[0]?.oid;
+    expect(oid).toBeTruthy();
+    await rm(
+      path.join(
+        directory,
+        ".git",
+        "lfs",
+        "objects",
+        oid!.slice(0, 2),
+        oid!.slice(2, 4),
+        oid!,
+      ),
+      { force: true },
+    );
+    status = await readGitLfsStatus(directory);
+    expect(status).toMatchObject({ missingObjects: 1 });
+    expect(status.files[0]?.downloaded).toBe(false);
   });
 
   it("previews, applies, stages, and verifies conflict resolutions", async () => {

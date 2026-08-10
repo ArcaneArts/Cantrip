@@ -81,6 +81,9 @@ import {
   gitBlameSchema,
   gitForcePushPreviewSchema,
   gitHistorySchema,
+  gitLfsActionPreviewSchema,
+  gitLfsMutationResultSchema,
+  gitLfsStatusSchema,
   gitPartialPatchPreviewSchema,
   gitStashActionPreviewSchema,
   gitStashFileDiffSchema,
@@ -162,6 +165,7 @@ import type {
   GitCommitSearchQuery,
   GitConflictResolutionRequest,
   GitManagedOperationAction,
+  GitLfsAction,
   GitDiffScope,
   GitPartialPatchRequest,
   GitRemoteAction,
@@ -878,6 +882,44 @@ export async function applyProjectWorktreeSubmoduleAction(
   return gitSubmoduleMutationResultSchema.parse(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/submodules/actions/apply`,
+      { action, token },
+    ),
+  );
+}
+
+export async function getProjectWorktreeGitLfs(
+  projectId: string,
+  worktreeId: string,
+) {
+  return gitLfsStatusSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/lfs`,
+    ),
+  );
+}
+
+export async function previewProjectWorktreeGitLfsAction(
+  projectId: string,
+  worktreeId: string,
+  action: GitLfsAction,
+) {
+  return gitLfsActionPreviewSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/lfs/actions/preview`,
+      action,
+    ),
+  );
+}
+
+export async function applyProjectWorktreeGitLfsAction(
+  projectId: string,
+  worktreeId: string,
+  action: GitLfsAction,
+  token: string,
+) {
+  return gitLfsMutationResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/lfs/actions/apply`,
       { action, token },
     ),
   );

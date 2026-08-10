@@ -4099,6 +4099,101 @@ export const gitSubmoduleMutationResultSchema = z.object({
   submodules: gitSubmoduleListSchema,
 });
 
+export const gitLfsTrackedPatternSchema = z.object({
+  pattern: z.string().min(1).max(4_096),
+  source: gitRelativePathSchema,
+});
+
+export const gitLfsFileSchema = z.object({
+  path: gitRelativePathSchema,
+  oid: z.string().regex(/^[0-9a-f]{64}$/u),
+  size: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  checkedOut: z.boolean(),
+  downloaded: z.boolean(),
+  status: z.string().min(1).max(100).nullable(),
+});
+
+export const gitLfsLockSchema = z.object({
+  id: z.string().min(1).max(1_024),
+  path: gitRelativePathSchema,
+  owner: z.string().min(1).max(1_024).nullable(),
+  lockedAt: z.string().datetime({ offset: true }).nullable(),
+  ours: z.boolean(),
+});
+
+export const gitLfsStatusSchema = z.object({
+  available: z.boolean(),
+  version: z.string().min(1).max(1_024).nullable(),
+  message: z.string().max(10_000).nullable(),
+  patterns: z.array(gitLfsTrackedPatternSchema).max(10_000),
+  files: z.array(gitLfsFileSchema).max(10_000),
+  filesTruncated: z.boolean(),
+  missingObjects: z.number().int().nonnegative().max(10_000),
+  pendingPaths: z
+    .array(
+      z.object({
+        path: gitRelativePathSchema,
+        status: z.string().min(1).max(100),
+      }),
+    )
+    .max(10_000),
+  locks: z.array(gitLfsLockSchema).max(10_000),
+  locksTruncated: z.boolean(),
+  locksCached: z.boolean(),
+  lockError: z.string().max(10_000).nullable(),
+  generatedAt: z.string().datetime({ offset: true }),
+});
+
+const gitLfsPatternInputSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(4_096)
+  .regex(/^[^\0\r\n-][^\0\r\n]*$/u);
+
+export const gitLfsActionSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("install") }),
+  z.object({ type: z.literal("track"), pattern: gitLfsPatternInputSchema }),
+  z.object({ type: z.literal("untrack"), pattern: gitLfsPatternInputSchema }),
+  z.object({
+    type: z.literal("fetch"),
+    remote: gitRemoteNameInputSchema.nullable(),
+    all: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("pull"),
+    remote: gitRemoteNameInputSchema.nullable(),
+  }),
+  z.object({ type: z.literal("prune"), verifyRemote: z.boolean() }),
+  z.object({ type: z.literal("refreshLocks") }),
+  z.object({ type: z.literal("lock"), path: gitRelativePathSchema }),
+  z.object({
+    type: z.literal("unlock"),
+    path: gitRelativePathSchema,
+    force: z.boolean(),
+  }),
+]);
+
+export const gitLfsActionPreviewSchema = z.object({
+  action: gitLfsActionSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+  destructive: z.boolean(),
+  summary: z.string().min(1).max(10_000),
+  warnings: z.array(z.string().max(1_000)).max(100),
+  status: gitLfsStatusSchema,
+});
+
+export const gitLfsActionApplySchema = z.object({
+  action: gitLfsActionSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+
+export const gitLfsMutationResultSchema = z.object({
+  output: z.string().max(1_000_000),
+  status: gitStatusSchema,
+  lfs: gitLfsStatusSchema,
+});
+
 export const gitTagNameInputSchema = z
   .string()
   .trim()
@@ -5120,6 +5215,22 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     })
     .extend(gitSubmoduleActionApplySchema.shape),
   z.object({
+    type: z.literal("git.lfs.status"),
+    cwd: z.string().min(1).max(8_192),
+    refreshLocks: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("git.lfs.action.preview"),
+    cwd: z.string().min(1).max(8_192),
+    action: gitLfsActionSchema,
+  }),
+  z
+    .object({
+      type: z.literal("git.lfs.action.apply"),
+      cwd: z.string().min(1).max(8_192),
+    })
+    .extend(gitLfsActionApplySchema.shape),
+  z.object({
     type: z.literal("git.tag.list"),
     cwd: z.string().min(1).max(8_192),
   }),
@@ -6046,6 +6157,14 @@ export type GitSubmoduleActionApply = z.infer<
 export type GitSubmoduleMutationResult = z.infer<
   typeof gitSubmoduleMutationResultSchema
 >;
+export type GitLfsTrackedPattern = z.infer<typeof gitLfsTrackedPatternSchema>;
+export type GitLfsFile = z.infer<typeof gitLfsFileSchema>;
+export type GitLfsLock = z.infer<typeof gitLfsLockSchema>;
+export type GitLfsStatus = z.infer<typeof gitLfsStatusSchema>;
+export type GitLfsAction = z.infer<typeof gitLfsActionSchema>;
+export type GitLfsActionPreview = z.infer<typeof gitLfsActionPreviewSchema>;
+export type GitLfsActionApply = z.infer<typeof gitLfsActionApplySchema>;
+export type GitLfsMutationResult = z.infer<typeof gitLfsMutationResultSchema>;
 export type GitTagSummary = z.infer<typeof gitTagSummarySchema>;
 export type GitTagDetail = z.infer<typeof gitTagDetailSchema>;
 export type GitTagList = z.infer<typeof gitTagListSchema>;

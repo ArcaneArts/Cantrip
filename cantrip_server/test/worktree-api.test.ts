@@ -27,6 +27,9 @@ import {
   gitFileDiffSchema,
   gitForcePushPreviewSchema,
   gitHistorySchema,
+  gitLfsActionPreviewSchema,
+  gitLfsMutationResultSchema,
+  gitLfsStatusSchema,
   gitPartialPatchPreviewSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
@@ -144,6 +147,15 @@ const gitSubmoduleCommands: Array<
         | "git.submodule.list"
         | "git.submodule.action.preview"
         | "git.submodule.action.apply";
+    }
+  >
+> = [];
+const gitLfsCommands: Array<
+  Extract<
+    WorkerCommand,
+    {
+      type:
+        "git.lfs.status" | "git.lfs.action.preview" | "git.lfs.action.apply";
     }
   >
 > = [];
@@ -365,6 +377,30 @@ const submoduleFixture = {
   dirty: false,
   nested: false,
   state: "uninitialized" as const,
+};
+const lfsStatusFixture = {
+  available: true,
+  version: "git-lfs/3.7.0",
+  message: null,
+  patterns: [{ pattern: "*.bin", source: ".gitattributes" }],
+  files: [
+    {
+      path: "asset.bin",
+      oid: "6".repeat(64),
+      size: 42,
+      checkedOut: true,
+      downloaded: true,
+      status: null,
+    },
+  ],
+  filesTruncated: false,
+  missingObjects: 0,
+  pendingPaths: [],
+  locks: [],
+  locksTruncated: false,
+  locksCached: true,
+  lockError: null,
+  generatedAt: "2026-08-10T12:00:00.000Z",
 };
 
 function managedWorkerState(
@@ -1173,6 +1209,28 @@ const workerBridge = {
             truncated: false,
             generatedAt: "2026-08-10T12:00:00.000Z",
           },
+        });
+      case "git.lfs.status":
+        gitLfsCommands.push(command);
+        return lfsStatusFixture;
+      case "git.lfs.action.preview":
+        gitLfsCommands.push(command);
+        return {
+          action: command.action,
+          token: "8".repeat(64),
+          destructive:
+            command.action.type === "prune" ||
+            command.action.type === "untrack",
+          summary: "Review Git LFS action.",
+          warnings: [],
+          status: lfsStatusFixture,
+        };
+      case "git.lfs.action.apply":
+        gitLfsCommands.push(command);
+        return completeStashMutation({
+          output: "Git LFS action complete",
+          status: status(),
+          lfs: lfsStatusFixture,
         });
       case "git.tag.list":
         gitTagCommands.push(command);
@@ -2630,6 +2688,51 @@ describe.sequential("server worktree control plane", () => {
       },
     });
     expect(invalidSubmoduleResponse.statusCode).toBe(400);
+
+    const lfsStatusResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/lfs`,
+    });
+    expect(gitLfsStatusSchema.parse(lfsStatusResponse.json())).toMatchObject({
+      available: true,
+      files: [expect.objectContaining({ path: "asset.bin" })],
+    });
+    expect(gitLfsCommands.at(-1)).toMatchObject({
+      type: "git.lfs.status",
+      cwd: target.path,
+      refreshLocks: false,
+    });
+    const lfsAction = {
+      type: "track" as const,
+      pattern: "*.archive",
+    };
+    const lfsPreviewResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/lfs/actions/preview`,
+      payload: lfsAction,
+    });
+    expect(
+      gitLfsActionPreviewSchema.parse(lfsPreviewResponse.json()),
+    ).toMatchObject({ action: lfsAction, token: "8".repeat(64) });
+    const lfsApplyResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/lfs/actions/apply`,
+      payload: { action: lfsAction, token: "8".repeat(64) },
+    });
+    expect(
+      gitLfsMutationResultSchema.parse(lfsApplyResponse.json()),
+    ).toMatchObject({ output: "Git LFS action complete" });
+    expect(gitLfsCommands.at(-1)).toMatchObject({
+      type: "git.lfs.action.apply",
+      cwd: target.path,
+      action: lfsAction,
+    });
+    const invalidLfsResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/lfs/actions/preview`,
+      payload: { type: "lock", path: "../outside" },
+    });
+    expect(invalidLfsResponse.statusCode).toBe(400);
 
     const tagListResponse = await app.inject({
       method: "GET",

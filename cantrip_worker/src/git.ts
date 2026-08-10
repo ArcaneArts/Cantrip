@@ -34,6 +34,9 @@ import {
   gitBlameSchema,
   gitForcePushPreviewSchema,
   gitHistorySchema,
+  gitLfsActionPreviewSchema,
+  gitLfsMutationResultSchema,
+  gitLfsStatusSchema,
   gitPartialPatchPreviewSchema,
   gitRemoteActionPreviewSchema,
   gitRemoteListSchema,
@@ -80,6 +83,11 @@ import {
   type GitInteractiveRebaseTodoAction,
   type GitComparisonCommit,
   type GitManagedBranch,
+  type GitLfsAction,
+  type GitLfsActionPreview,
+  type GitLfsLock,
+  type GitLfsMutationResult,
+  type GitLfsStatus,
   type GitComparison,
   type GitComparisonMode,
   type GitCommitDetail,
@@ -3667,6 +3675,344 @@ export async function applyGitSubmoduleAction(
     output: outcome.output,
     status: await readGitStatus(cwd),
     submodules: await readGitSubmodules(cwd),
+  });
+}
+
+function parseGitLfsPatterns(output: string) {
+  const patterns: GitLfsStatus["patterns"] = [];
+  let tracked = false;
+  for (const line of output.split("\n")) {
+    if (line.trim() === "Listing tracked patterns") {
+      tracked = true;
+      continue;
+    }
+    if (line.trim() === "Listing excluded patterns") break;
+    if (!tracked) continue;
+    const match = /^\s{4}(.+?)\s+\((.+)\)$/u.exec(line);
+    const pattern = match?.[1];
+    const source = match?.[2];
+    if (pattern && source && safeSubmodulePath(".", source)) {
+      patterns.push({ pattern, source });
+    }
+  }
+  return patterns.slice(0, 10_000);
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function parseGitLfsFiles(
+  output: string,
+  pending: Map<string, string>,
+): { files: GitLfsStatus["files"]; truncated: boolean } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(output);
+  } catch {
+    return { files: [], truncated: false };
+  }
+  const rawFiles = jsonRecord(parsed)?.files;
+  const entries = Array.isArray(rawFiles) ? rawFiles : [];
+  const files: GitLfsStatus["files"] = [];
+  for (const raw of entries.slice(0, 10_000)) {
+    const file = jsonRecord(raw);
+    if (!file) continue;
+    const filePath = typeof file.name === "string" ? file.name : null;
+    const oid = typeof file.oid === "string" ? file.oid : null;
+    if (!filePath || !oid || !safeSubmodulePath(".", filePath)) continue;
+    files.push({
+      path: filePath,
+      oid,
+      size:
+        typeof file.size === "number" && Number.isSafeInteger(file.size)
+          ? Math.max(0, file.size)
+          : 0,
+      checkedOut: file.checkout === true,
+      downloaded: file.downloaded === true,
+      status: pending.get(filePath) ?? null,
+    });
+  }
+  return { files, truncated: entries.length > 10_000 };
+}
+
+function parseGitLfsPending(output: string): Map<string, string> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(output);
+  } catch {
+    return new Map();
+  }
+  const rawFiles = jsonRecord(jsonRecord(parsed)?.files) ?? {};
+  const pending = new Map<string, string>();
+  for (const [filePath, raw] of Object.entries(rawFiles).slice(0, 10_000)) {
+    const status = jsonRecord(raw)?.status;
+    if (
+      typeof status === "string" &&
+      status &&
+      safeSubmodulePath(".", filePath)
+    ) {
+      pending.set(filePath, status);
+    }
+  }
+  return pending;
+}
+
+function parseGitLfsLocks(output: string): {
+  locks: GitLfsLock[];
+  truncated: boolean;
+} {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(output);
+  } catch {
+    return { locks: [], truncated: false };
+  }
+  const wrapped = jsonRecord(parsed);
+  const entries = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(wrapped?.locks)
+      ? wrapped.locks
+      : [];
+  const locks: GitLfsLock[] = [];
+  for (const raw of entries.slice(0, 10_000)) {
+    const lock = jsonRecord(raw);
+    if (!lock) continue;
+    const id = typeof lock.id === "string" ? lock.id : null;
+    const lockPath = typeof lock.path === "string" ? lock.path : null;
+    if (!id || !lockPath || !safeSubmodulePath(".", lockPath)) continue;
+    const owner = jsonRecord(lock.owner);
+    const lockedAtValue =
+      typeof lock.locked_at === "string"
+        ? lock.locked_at
+        : typeof lock.lockedAt === "string"
+          ? lock.lockedAt
+          : null;
+    const lockedAt =
+      lockedAtValue && !Number.isNaN(Date.parse(lockedAtValue))
+        ? new Date(lockedAtValue).toISOString()
+        : null;
+    locks.push({
+      id,
+      path: lockPath,
+      owner: typeof owner?.name === "string" ? owner.name : null,
+      lockedAt,
+      ours: lock.ours === true,
+    });
+  }
+  return { locks, truncated: entries.length > 10_000 };
+}
+
+export async function readGitLfsStatus(
+  cwd: string,
+  refreshLocks = false,
+): Promise<GitLfsStatus> {
+  const version = await runGitOutcomeBounded(cwd, ["lfs", "version"]);
+  if (version.code !== 0) {
+    return gitLfsStatusSchema.parse({
+      available: false,
+      version: null,
+      message: version.output,
+      patterns: [],
+      files: [],
+      filesTruncated: false,
+      missingObjects: 0,
+      pendingPaths: [],
+      locks: [],
+      locksTruncated: false,
+      locksCached: true,
+      lockError: null,
+      generatedAt: new Date().toISOString(),
+    });
+  }
+  const [patternsResult, filesResult, pendingResult, locksResult] =
+    await Promise.all([
+      runGitOutcomeBounded(cwd, ["lfs", "track"]),
+      runGitOutcomeBounded(cwd, ["lfs", "ls-files", "--json", "--all"]),
+      runGitOutcomeBounded(cwd, ["lfs", "status", "--json"]),
+      runGitOutcomeBounded(cwd, [
+        "lfs",
+        "locks",
+        "--json",
+        ...(refreshLocks ? [] : ["--cached"]),
+      ]),
+    ]);
+  const pending =
+    pendingResult.code === 0
+      ? parseGitLfsPending(pendingResult.output)
+      : new Map<string, string>();
+  const parsedFiles =
+    filesResult.code === 0
+      ? parseGitLfsFiles(filesResult.output, pending)
+      : { files: [], truncated: false };
+  const parsedLocks =
+    locksResult.code === 0
+      ? parseGitLfsLocks(locksResult.output)
+      : { locks: [], truncated: false };
+  return gitLfsStatusSchema.parse({
+    available: true,
+    version: version.output,
+    message:
+      filesResult.code === 0 && pendingResult.code === 0
+        ? null
+        : [filesResult.output, pendingResult.output]
+            .filter(Boolean)
+            .join("\n")
+            .slice(0, 10_000),
+    patterns:
+      patternsResult.code === 0
+        ? parseGitLfsPatterns(patternsResult.output)
+        : [],
+    files: parsedFiles.files,
+    filesTruncated: parsedFiles.truncated,
+    missingObjects: parsedFiles.files.filter(({ downloaded }) => !downloaded)
+      .length,
+    pendingPaths: [...pending].map(([filePath, status]) => ({
+      path: filePath,
+      status,
+    })),
+    locks: parsedLocks.locks,
+    locksTruncated: parsedLocks.truncated,
+    locksCached: !refreshLocks,
+    lockError: locksResult.code === 0 ? null : locksResult.output,
+    generatedAt: new Date().toISOString(),
+  });
+}
+
+function gitLfsActionToken(
+  action: GitLfsAction,
+  status: GitLfsStatus,
+  workspace: string,
+): string {
+  const { generatedAt: _generatedAt, ...stableStatus } = status;
+  return createHash("sha256")
+    .update(JSON.stringify({ action, status: stableStatus, workspace }))
+    .digest("hex");
+}
+
+export async function previewGitLfsAction(
+  cwd: string,
+  action: GitLfsAction,
+): Promise<GitLfsActionPreview> {
+  const [status, workspace] = await Promise.all([
+    readGitLfsStatus(cwd),
+    workspaceFingerprint(cwd),
+  ]);
+  if (!status.available) {
+    throw new Error(
+      status.message ?? "Git LFS is not available on this worker.",
+    );
+  }
+  const warnings: string[] = [];
+  let summary: string;
+  switch (action.type) {
+    case "install":
+      summary = "Install Git LFS hooks and filters for this repository only.";
+      break;
+    case "track":
+      summary = `Track ${action.pattern} with Git LFS and update .gitattributes.`;
+      break;
+    case "untrack":
+      summary = `Stop tracking ${action.pattern} with Git LFS and update .gitattributes.`;
+      warnings.push(
+        "Existing committed LFS objects are not rewritten automatically.",
+      );
+      break;
+    case "fetch":
+      summary = `${action.all ? "Fetch every reachable" : "Fetch required"} Git LFS object${action.remote ? ` from ${action.remote}` : ""}.`;
+      break;
+    case "pull":
+      summary = `Fetch and check out Git LFS objects${action.remote ? ` from ${action.remote}` : ""}.`;
+      break;
+    case "prune":
+      summary = "Prune old local Git LFS objects that are no longer required.";
+      warnings.push(
+        "Pruned local objects may need to be downloaded again later.",
+      );
+      if (action.verifyRemote) {
+        warnings.push(
+          "Remote verification can fail when the LFS server is offline.",
+        );
+      }
+      break;
+    case "refreshLocks":
+      summary = "Refresh lock ownership from the configured Git LFS server.";
+      break;
+    case "lock":
+      summary = `Lock ${action.path} on the configured Git LFS server.`;
+      break;
+    case "unlock":
+      summary = `${action.force ? "Force unlock" : "Unlock"} ${action.path} on the configured Git LFS server.`;
+      if (action.force)
+        warnings.push("Force unlock may remove another user's lock.");
+      break;
+  }
+  return gitLfsActionPreviewSchema.parse({
+    action,
+    token: gitLfsActionToken(action, status, workspace),
+    destructive:
+      action.type === "prune" ||
+      action.type === "untrack" ||
+      (action.type === "unlock" && action.force),
+    summary,
+    warnings,
+    status,
+  });
+}
+
+export async function applyGitLfsAction(
+  cwd: string,
+  action: GitLfsAction,
+  token: string,
+): Promise<GitLfsMutationResult> {
+  const preview = await previewGitLfsAction(cwd, action);
+  if (preview.token !== token) {
+    throw new Error(
+      "Git LFS or the selected worktree changed after this preview. Review the action again.",
+    );
+  }
+  const args = ["lfs"];
+  switch (action.type) {
+    case "install":
+      args.push("install", "--local");
+      break;
+    case "track":
+      args.push("track", action.pattern);
+      break;
+    case "untrack":
+      args.push("untrack", action.pattern);
+      break;
+    case "fetch":
+      args.push(
+        "fetch",
+        ...(action.all ? ["--all"] : []),
+        ...(action.remote ? [action.remote] : []),
+      );
+      break;
+    case "pull":
+      args.push("pull", ...(action.remote ? [action.remote] : []));
+      break;
+    case "prune":
+      args.push("prune", ...(action.verifyRemote ? ["--verify-remote"] : []));
+      break;
+    case "refreshLocks":
+      args.push("locks", "--json");
+      break;
+    case "lock":
+      args.push("lock", action.path);
+      break;
+    case "unlock":
+      args.push("unlock", ...(action.force ? ["--force"] : []), action.path);
+      break;
+  }
+  const outcome = await runGitOutcomeBounded(cwd, args);
+  if (outcome.code !== 0) throw new Error(outcome.output);
+  return gitLfsMutationResultSchema.parse({
+    output: sanitizeRemoteText(outcome.output).value,
+    status: await readGitStatus(cwd),
+    lfs: await readGitLfsStatus(cwd, action.type === "refreshLocks"),
   });
 }
 

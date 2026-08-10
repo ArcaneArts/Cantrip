@@ -43,9 +43,10 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
+import { GitLfsPanel } from "./git-lfs-panel";
 import { GitSubmodulePanel } from "./git-submodule-panel";
 
-type Section = "remotes" | "submodules" | "tags" | "releases";
+type Section = "remotes" | "submodules" | "lfs" | "tags" | "releases";
 type ReviewedAction =
   | { kind: "remote"; action: GitRemoteAction }
   | { kind: "tag"; action: GitTagAction };
@@ -297,7 +298,7 @@ export function GitRepositoryPanel({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold">Repository</p>
           <p className="truncate text-[10px] text-muted-foreground">
-            Remotes, submodules, tags, signatures, and GitHub releases
+            Remotes, submodules, LFS, tags, signatures, and releases
           </p>
         </div>
         <Button
@@ -312,7 +313,7 @@ export function GitRepositoryPanel({
       </div>
       <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
         <div className="flex rounded-md bg-muted/50 p-px">
-          {(["remotes", "submodules", "tags", "releases"] as const).map(
+          {(["remotes", "submodules", "lfs", "tags", "releases"] as const).map(
             (candidate) => (
               <button
                 key={candidate}
@@ -383,7 +384,7 @@ export function GitRepositoryPanel({
               <Plus className="size-3" /> Remote
             </Button>
           </>
-        ) : section === "submodules" ? (
+        ) : section === "submodules" || section === "lfs" ? (
           <span className="flex-1" />
         ) : section === "tags" ? (
           <Button
@@ -528,6 +529,8 @@ export function GitRepositoryPanel({
           )
         ) : section === "submodules" ? (
           <GitSubmodulePanel projectId={projectId} worktreeId={worktreeId} />
+        ) : section === "lfs" ? (
+          <GitLfsPanel projectId={projectId} worktreeId={worktreeId} />
         ) : section === "tags" ? (
           tags.isLoading ? (
             <Loading />
