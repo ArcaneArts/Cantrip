@@ -567,6 +567,30 @@ Manual QA:
 6. Disconnect the selected worker and confirm no fallback worker is used and
    no partial server worktree record is created.
 
+## File history, blame, and revision comparison
+
+The History tab's File inspector accepts a safe repository-relative path and
+starting revision. History follows renames through Git and loads at most 100
+commits per request. Blame resolves the requested revision first, requests at
+most 201 lines at a time, groups adjacent lines with the same commit, and lets
+the user jump directly to the shared commit inspector. The Compare view reuses
+the existing bounded revision-diff transport and shared patch viewer for any
+two commit-ish inputs without switching the worktree.
+
+Manual QA:
+
+1. Inspect a file that was renamed several times and confirm older commits
+   continue loading in order through the rename boundary.
+2. Load blame for a file longer than 500 lines, paginate, and confirm line
+   numbers, author metadata, and commit jumps remain correct at page edges.
+3. Compare the file between branches, tags, and commit hashes in both
+   directions; verify additions/deletions reverse and the selected worktree
+   remains unchanged.
+4. Test deleted, binary, empty, root-commit, and pre-rename paths and confirm
+   unavailable textual patches are intentional rather than fabricated.
+5. Try an escaping path, invalid revision, unborn repository, and offline
+   worker; confirm validation/error states are bounded and explicit.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport

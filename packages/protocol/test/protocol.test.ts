@@ -50,6 +50,8 @@ import {
   gitCommitDetailSchema,
   gitComparisonSchema,
   gitFileDiffSchema,
+  gitFileHistorySchema,
+  gitBlameSchema,
   gitForcePushPreviewSchema,
   gitPartialPatchPreviewSchema,
   gitStashActionPreviewSchema,
@@ -914,6 +916,65 @@ describe("Cantrip protocol", () => {
         type: "git.patch.preview",
         cwd: "/repo",
         request: { ...request, path: "../secret" },
+      }),
+    ).toThrow();
+  });
+
+  it("validates paginated file history and blame commands", () => {
+    expect(
+      gitFileHistorySchema.parse({
+        path: "src/index.ts",
+        revision: "1".repeat(40),
+        commits: [
+          {
+            hash: "1".repeat(40),
+            shortHash: "1".repeat(8),
+            subject: "Update index",
+            authorName: "Cantrip Test",
+            authorEmail: "test@cantrip.art",
+            authoredAt: "2026-08-10T12:00:00.000Z",
+          },
+        ],
+        hasMore: false,
+        nextCursor: null,
+      }).commits,
+    ).toHaveLength(1);
+    expect(
+      gitBlameSchema.parse({
+        path: "src/index.ts",
+        revision: "1".repeat(40),
+        ranges: [
+          {
+            commit: "1".repeat(40),
+            shortCommit: "1".repeat(8),
+            authorName: "Cantrip Test",
+            authorEmail: "test@cantrip.art",
+            authoredAt: "2026-08-10T12:00:00.000Z",
+            summary: "Update index",
+            startLine: 1,
+            endLine: 2,
+            lines: ["one", "two"],
+          },
+        ],
+        hasMore: true,
+        nextCursor: 2,
+      }).ranges[0]?.endLine,
+    ).toBe(2);
+    expect(
+      workerCommandSchema.parse({
+        type: "git.file.history",
+        cwd: "/repo",
+        path: "src/index.ts",
+        revision: "main",
+        cursor: 100,
+        limit: 50,
+      }),
+    ).toMatchObject({ type: "git.file.history", revision: "main" });
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "git.file.blame",
+        cwd: "/repo",
+        path: "../secret",
       }),
     ).toThrow();
   });

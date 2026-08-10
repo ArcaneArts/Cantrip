@@ -22,6 +22,7 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   Archive,
+  FileClock,
   FileDiff,
   GitBranch,
   GitCommitHorizontal,
@@ -78,6 +79,7 @@ import {
   GitForcePushDialog,
   gitPushRequiresLease,
 } from "./git-force-push-dialog";
+import { GitFileHistoryDialog } from "./git-file-history-dialog";
 import { GitStashPanel } from "./git-stash-panel";
 import { GitRepositoryPanel } from "./git-repository-panel";
 import { GitOperationPanel, gitOperationIsActive } from "./git-operation-panel";
@@ -403,6 +405,7 @@ export function GitHistoryView({
   const [repositoryOpen, setRepositoryOpen] = useState(false);
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [forcePushOpen, setForcePushOpen] = useState(false);
+  const [fileHistoryOpen, setFileHistoryOpen] = useState(false);
   const [operationPreset, setOperationPreset] =
     useState<GitMergeRebaseAction | null>(null);
   const [commitActionRequest, setCommitActionRequest] =
@@ -858,6 +861,17 @@ export function GitHistoryView({
               }}
             >
               <GitCompareArrows className="size-3" /> Compare
+            </Button>
+          ) : null}
+          {section === "history" ? (
+            <Button
+              size="sm"
+              variant={fileHistoryOpen ? "outline" : "ghost"}
+              className="h-6 gap-1 px-2 text-[11px]"
+              disabled={!selectedAvailable}
+              onClick={() => setFileHistoryOpen(true)}
+            >
+              <FileClock className="size-3" /> File
             </Button>
           ) : null}
           {section !== "history" ? (
@@ -1552,6 +1566,17 @@ export function GitHistoryView({
         onOpenChange={setForcePushOpen}
         projectId={project.id}
         worktreeId={worktreeId}
+      />
+      <GitFileHistoryDialog
+        open={fileHistoryOpen}
+        onOpenChange={setFileHistoryOpen}
+        projectId={project.id}
+        worktreeId={worktreeId}
+        onOpenCommit={(revision) => {
+          setChangesOpen(false);
+          setCompareOpen(false);
+          setSelectedCommit(revision);
+        }}
       />
     </div>
   );

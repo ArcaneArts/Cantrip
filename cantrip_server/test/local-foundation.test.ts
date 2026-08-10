@@ -38,6 +38,8 @@ import {
   explorerListSchema,
   explorerSummarySchema,
   gitActionResultSchema,
+  gitBlameSchema,
+  gitFileHistorySchema,
   gitHistorySchema,
   gitStatusSchema,
   githubRepositoryListSchema,
@@ -163,6 +165,12 @@ const pullRequestCheckoutCommands: Array<
 > = [];
 const pullRequestWorktreeCommands: Array<
   Extract<WorkerCommand, { type: "worktree.create" }>
+> = [];
+const gitFileHistoryCommands: Array<
+  Extract<WorkerCommand, { type: "git.file.history" }>
+> = [];
+const gitFileBlameCommands: Array<
+  Extract<WorkerCommand, { type: "git.file.blame" }>
 > = [];
 function pullRequestDetailFixture(number: number) {
   return {
@@ -600,6 +608,45 @@ const workerBridge = {
                 { name: "main", kind: "local", current: true },
               ],
               isHead: true,
+            },
+          ],
+          hasMore: false,
+          nextCursor: null,
+        };
+      case "git.file.history":
+        gitFileHistoryCommands.push(command);
+        return {
+          path: command.path,
+          revision: "1".repeat(40),
+          commits: [
+            {
+              hash: "1".repeat(40),
+              shortHash: "1".repeat(8),
+              subject: "Update README",
+              authorName: "Cantrip Test",
+              authorEmail: "test@cantrip.art",
+              authoredAt: "2026-08-10T12:00:00.000Z",
+            },
+          ],
+          hasMore: false,
+          nextCursor: null,
+        };
+      case "git.file.blame":
+        gitFileBlameCommands.push(command);
+        return {
+          path: command.path,
+          revision: "1".repeat(40),
+          ranges: [
+            {
+              commit: "1".repeat(40),
+              shortCommit: "1".repeat(8),
+              authorName: "Cantrip Test",
+              authorEmail: "test@cantrip.art",
+              authoredAt: "2026-08-10T12:00:00.000Z",
+              summary: "Update README",
+              startLine: 1,
+              endLine: 2,
+              lines: ["Cantrip", "Git client"],
             },
           ],
           hasMore: false,
@@ -2344,6 +2391,49 @@ describe("local server foundation", () => {
       branch: "main",
       commits: [{ subject: "feat: test history" }],
     });
+    const fileHistory = gitFileHistorySchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/git/files/history?path=README.md&revision=HEAD&cursor=0&limit=25`,
+        })
+      ).json(),
+    );
+    expect(fileHistory).toMatchObject({
+      path: "README.md",
+      commits: [{ subject: "Update README" }],
+    });
+    expect(gitFileHistoryCommands.at(-1)).toMatchObject({
+      cwd: primaryWorktree!.path,
+      path: "README.md",
+      revision: "HEAD",
+      cursor: 0,
+      limit: 25,
+    });
+    const blame = gitBlameSchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/git/files/blame?path=README.md&revision=main&cursor=200&limit=100`,
+        })
+      ).json(),
+    );
+    expect(blame).toMatchObject({
+      path: "README.md",
+      ranges: [{ startLine: 1, endLine: 2 }],
+    });
+    expect(gitFileBlameCommands.at(-1)).toMatchObject({
+      cwd: primaryWorktree!.path,
+      revision: "main",
+      cursor: 200,
+      limit: 100,
+    });
+    expect(
+      await firstApp.inject({
+        method: "GET",
+        url: `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/git/files/history?path=../secret`,
+      }),
+    ).toMatchObject({ statusCode: 400 });
     const gitStatus = gitStatusSchema.parse(
       (
         await firstApp.inject({

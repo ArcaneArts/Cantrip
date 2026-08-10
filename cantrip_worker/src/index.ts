@@ -51,6 +51,8 @@ import {
   readGitBranches,
   readGitComparison,
   readGitFileDiff,
+  readGitFileBlame,
+  readGitFileHistory,
   readGitHistory,
   readGitRemotes,
   readGitRevisionFileDiff,
@@ -309,6 +311,22 @@ async function start(): Promise<void> {
           command.limit,
           command.cursor,
           command.revisions,
+        );
+      case "git.file.history":
+        return readGitFileHistory(
+          command.cwd,
+          command.path,
+          command.revision,
+          command.limit,
+          command.cursor,
+        );
+      case "git.file.blame":
+        return readGitFileBlame(
+          command.cwd,
+          command.path,
+          command.revision,
+          command.limit,
+          command.cursor,
         );
       case "git.commit.get":
         return readGitCommitDetail(
