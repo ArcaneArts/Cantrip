@@ -8,6 +8,7 @@ const {
   safeRelativePaths,
   themeNameForAppearance,
 } = require("./protocol.js");
+const { forceColorTheme } = require("./theme.js");
 
 function configuration() {
   return vscode.workspace.getConfiguration("cantrip");
@@ -446,9 +447,11 @@ class WorkbenchCoordinator {
     if (!theme) {
       throw new Error(`Unknown Cantrip appearance: ${String(appearance)}`);
     }
-    await vscode.workspace
-      .getConfiguration("workbench")
-      .update("colorTheme", theme, vscode.ConfigurationTarget.Workspace);
+    await forceColorTheme(
+      vscode.workspace.getConfiguration("workbench"),
+      theme,
+      vscode.ConfigurationTarget.Workspace,
+    );
   }
 
   async agentTurnState(params) {
