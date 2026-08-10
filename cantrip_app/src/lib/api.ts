@@ -60,6 +60,7 @@ import {
   gitComparisonSchema,
   gitFileDiffSchema,
   gitHistorySchema,
+  gitPartialPatchPreviewSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
   gitStatusSchema,
@@ -119,6 +120,7 @@ import type {
   CodexSkillRootsUpdate,
   GitAction,
   GitDiffScope,
+  GitPartialPatchRequest,
   GithubIssueKind,
   GithubIssueState,
   GithubProjectCreate,
@@ -439,6 +441,33 @@ export async function runProjectWorktreeGitAction(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/actions`,
       action,
+    ),
+  );
+}
+
+export async function previewProjectWorktreePartialPatch(
+  projectId: string,
+  worktreeId: string,
+  input: GitPartialPatchRequest,
+) {
+  return gitPartialPatchPreviewSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/patch/preview`,
+      input,
+    ),
+  );
+}
+
+export async function applyProjectWorktreePartialPatch(
+  projectId: string,
+  worktreeId: string,
+  request: GitPartialPatchRequest,
+  token: string,
+) {
+  return gitActionResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/patch/apply`,
+      { request, token },
     ),
   );
 }

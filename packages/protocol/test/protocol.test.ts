@@ -40,6 +40,7 @@ import {
   gitCommitDetailSchema,
   gitComparisonSchema,
   gitFileDiffSchema,
+  gitPartialPatchPreviewSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
   mentionedSkillNames,
@@ -238,6 +239,52 @@ describe("Cantrip protocol", () => {
         deletions: 0,
       }).rightAhead,
     ).toBe(1);
+  });
+
+  it("validates exact partial-patch previews and stale-safe applies", () => {
+    const request = {
+      operation: "stage" as const,
+      path: "src/index.ts",
+      hunks: [
+        { hunkIndex: 0, lineIndexes: [1, 2] },
+        { hunkIndex: 2, lineIndexes: null },
+      ],
+    };
+    expect(
+      workerCommandSchema.parse({
+        type: "git.patch.preview",
+        cwd: "/repo",
+        request,
+      }),
+    ).toMatchObject({ type: "git.patch.preview", request });
+    expect(
+      workerCommandSchema.parse({
+        type: "git.patch.apply",
+        cwd: "/repo",
+        request,
+        token: "a".repeat(64),
+      }),
+    ).toMatchObject({ type: "git.patch.apply", token: "a".repeat(64) });
+    expect(
+      gitPartialPatchPreviewSchema.parse({
+        operation: "stage",
+        path: "src/index.ts",
+        scope: "unstaged",
+        patch:
+          "diff --git a/src/index.ts b/src/index.ts\n@@ -1 +1 @@\n-old\n+new\n",
+        token: "b".repeat(64),
+        selectedHunks: 1,
+        selectedLines: 2,
+        warnings: [],
+      }).selectedLines,
+    ).toBe(2);
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "git.patch.preview",
+        cwd: "/repo",
+        request: { ...request, path: "../secret" },
+      }),
+    ).toThrow();
   });
 
   it("bounds discovered script commands and their terminal-safe invocation", () => {

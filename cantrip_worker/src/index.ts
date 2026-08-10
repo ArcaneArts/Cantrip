@@ -24,6 +24,8 @@ import {
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
 import {
+  applyGitPartialPatch,
+  previewGitPartialPatch,
   readGitCommitDetail,
   readGitComparison,
   readGitFileDiff,
@@ -236,6 +238,14 @@ async function start(): Promise<void> {
         return readGitStatus(command.cwd);
       case "git.diff":
         return readGitFileDiff(command.cwd, command.path, command.scope);
+      case "git.patch.preview":
+        return previewGitPartialPatch(command.cwd, command.request);
+      case "git.patch.apply":
+        return applyGitPartialPatch(
+          command.cwd,
+          command.request,
+          command.token,
+        );
       case "git.action":
         return runGitAction(command.cwd, command.action);
       case "worktree.list":

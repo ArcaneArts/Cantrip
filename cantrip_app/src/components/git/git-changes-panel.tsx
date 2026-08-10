@@ -380,6 +380,8 @@ export function GitChangesPanel({
             error={diff.error}
             loading={diff.isLoading}
             onClose={() => setSelected(null)}
+            projectId={projectId}
+            worktreeId={worktreeId}
           />
         ) : null}
 

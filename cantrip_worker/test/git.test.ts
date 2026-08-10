@@ -7,6 +7,8 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  applyGitPartialPatch,
+  previewGitPartialPatch,
   readGitCommitDetail,
   readGitComparison,
   readGitFileDiff,
@@ -29,6 +31,396 @@ afterEach(async () => {
 });
 
 describe("Git history", () => {
+  it("previews and applies exact line selections for stage, unstage, and discard", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    const filePath = path.join(directory, "lines.txt");
+    await writeFile(filePath, "one\ntwo\nthree\nfour\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Initial"]);
+    await writeFile(filePath, "one\nTWO\nthree\nFOUR\n");
+
+    const lineSelection = async (
+      scope: "staged" | "unstaged",
+      values: string[],
+    ) => {
+      const patch = (await readGitFileDiff(directory, "lines.txt", scope))
+        .patch;
+      const lines = patch.split("\n");
+      const hunkStart = lines.findIndex((line) => line.startsWith("@@ "));
+      return {
+        hunkIndex: 0,
+        lineIndexes: values.map((value) => {
+          const index = lines.findIndex(
+            (line, candidate) => candidate > hunkStart && line === value,
+          );
+          expect(index).toBeGreaterThan(hunkStart);
+          return index - hunkStart - 1;
+        }),
+      };
+    };
+
+    const stageRequest = {
+      operation: "stage" as const,
+      path: "lines.txt",
+      hunks: [await lineSelection("unstaged", ["-two", "+TWO"])],
+    };
+    const stagePreview = await previewGitPartialPatch(directory, stageRequest);
+    expect(stagePreview.patch).toContain("+TWO");
+    expect(stagePreview.patch).not.toContain("+FOUR");
+    let result = await applyGitPartialPatch(
+      directory,
+      stageRequest,
+      stagePreview.token,
+    );
+    expect(result.status.files[0]).toMatchObject({
+      staged: true,
+      unstaged: true,
+    });
+    expect(
+      (await readGitFileDiff(directory, "lines.txt", "staged")).patch,
+    ).toContain("+TWO");
+    expect(
+      (await readGitFileDiff(directory, "lines.txt", "staged")).patch,
+    ).not.toContain("+FOUR");
+
+    const unstageRequest = {
+      operation: "unstage" as const,
+      path: "lines.txt",
+      hunks: [await lineSelection("staged", ["-two", "+TWO"])],
+    };
+    const unstagePreview = await previewGitPartialPatch(
+      directory,
+      unstageRequest,
+    );
+    result = await applyGitPartialPatch(
+      directory,
+      unstageRequest,
+      unstagePreview.token,
+    );
+    expect(result.status.files[0]).toMatchObject({
+      staged: false,
+      unstaged: true,
+    });
+
+    const discardRequest = {
+      operation: "discard" as const,
+      path: "lines.txt",
+      hunks: [await lineSelection("unstaged", ["-four", "+FOUR"])],
+    };
+    const discardPreview = await previewGitPartialPatch(
+      directory,
+      discardRequest,
+    );
+    expect(discardPreview.patch).toContain("+FOUR");
+    result = await applyGitPartialPatch(
+      directory,
+      discardRequest,
+      discardPreview.token,
+    );
+    expect(await readFile(filePath, "utf8")).toBe("one\nTWO\nthree\nfour\n");
+    expect(result.status.files[0]).toMatchObject({
+      staged: false,
+      unstaged: true,
+    });
+
+    const stalePreview = await previewGitPartialPatch(directory, {
+      operation: "stage",
+      path: "lines.txt",
+      hunks: [{ hunkIndex: 0, lineIndexes: null }],
+    });
+    await writeFile(filePath, "one\nTWO again\nthree\nfour\n");
+    await expect(
+      applyGitPartialPatch(
+        directory,
+        {
+          operation: "stage",
+          path: "lines.txt",
+          hunks: [{ hunkIndex: 0, lineIndexes: null }],
+        },
+        stalePreview.token,
+      ),
+    ).rejects.toThrow(/no longer match/u);
+  });
+
+  it("partially stages new and deleted files and preserves no-newline markers", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "deleted.txt"), "keep\nremove\n");
+    await writeFile(path.join(directory, "marker.txt"), "before\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Initial"]);
+
+    await writeFile(path.join(directory, "new.txt"), "first\nsecond\n");
+    const newPatch = await readGitFileDiff(directory, "new.txt", "unstaged");
+    const newLines = newPatch.patch.split("\n");
+    const newHunk = newLines.findIndex((line) => line.startsWith("@@ "));
+    const secondLine = newLines.findIndex(
+      (line, index) => index > newHunk && line === "+second",
+    );
+    const newRequest = {
+      operation: "stage" as const,
+      path: "new.txt",
+      hunks: [{ hunkIndex: 0, lineIndexes: [secondLine - newHunk - 1] }],
+    };
+    const newPreview = await previewGitPartialPatch(directory, newRequest);
+    await applyGitPartialPatch(directory, newRequest, newPreview.token);
+    const stagedNew = await execFileAsync("git", [
+      "-C",
+      directory,
+      "show",
+      ":new.txt",
+    ]);
+    expect(stagedNew.stdout).toBe("second\n");
+    expect((await readGitStatus(directory)).files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "new.txt",
+          staged: true,
+          unstaged: true,
+        }),
+      ]),
+    );
+
+    await rm(path.join(directory, "deleted.txt"));
+    const deletedPatch = await readGitFileDiff(
+      directory,
+      "deleted.txt",
+      "unstaged",
+    );
+    const deletedLines = deletedPatch.patch.split("\n");
+    const deletedHunk = deletedLines.findIndex((line) =>
+      line.startsWith("@@ "),
+    );
+    const removeLine = deletedLines.findIndex(
+      (line, index) => index > deletedHunk && line === "-remove",
+    );
+    const deleteRequest = {
+      operation: "stage" as const,
+      path: "deleted.txt",
+      hunks: [{ hunkIndex: 0, lineIndexes: [removeLine - deletedHunk - 1] }],
+    };
+    const deletePreview = await previewGitPartialPatch(
+      directory,
+      deleteRequest,
+    );
+    await applyGitPartialPatch(directory, deleteRequest, deletePreview.token);
+    const stagedDeleted = await execFileAsync("git", [
+      "-C",
+      directory,
+      "show",
+      ":deleted.txt",
+    ]);
+    expect(stagedDeleted.stdout).toBe("keep\n");
+    expect((await readGitStatus(directory)).files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "deleted.txt",
+          staged: true,
+          unstaged: true,
+        }),
+      ]),
+    );
+
+    await writeFile(path.join(directory, "marker.txt"), "after");
+    const markerRequest = {
+      operation: "stage" as const,
+      path: "marker.txt",
+      hunks: [{ hunkIndex: 0, lineIndexes: null }],
+    };
+    const markerPreview = await previewGitPartialPatch(
+      directory,
+      markerRequest,
+    );
+    expect(markerPreview.patch).toContain("\\ No newline at end of file");
+    await applyGitPartialPatch(directory, markerRequest, markerPreview.token);
+    const stagedMarker = await execFileAsync("git", [
+      "-C",
+      directory,
+      "show",
+      ":marker.txt",
+    ]);
+    expect(stagedMarker.stdout).toBe("after");
+  });
+
+  it("partially unstages and discards new and deleted files", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "deleted.txt"), "first\nsecond\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Initial"]);
+    const selectedLine = async (
+      path: string,
+      scope: "staged" | "unstaged",
+      text: string,
+    ) => {
+      const lines = (await readGitFileDiff(directory, path, scope)).patch.split(
+        "\n",
+      );
+      const hunk = lines.findIndex((line) => line.startsWith("@@ "));
+      const line = lines.findIndex(
+        (candidate, index) => index > hunk && candidate === text,
+      );
+      expect(line).toBeGreaterThan(hunk);
+      return { hunkIndex: 0, lineIndexes: [line - hunk - 1] };
+    };
+
+    await writeFile(path.join(directory, "new.txt"), "first\nsecond\n");
+    await execFileAsync("git", ["-C", directory, "add", "new.txt"]);
+    const unstageNew = {
+      operation: "unstage" as const,
+      path: "new.txt",
+      hunks: [await selectedLine("new.txt", "staged", "+second")],
+    };
+    let preview = await previewGitPartialPatch(directory, unstageNew);
+    await applyGitPartialPatch(directory, unstageNew, preview.token);
+    expect(
+      (await execFileAsync("git", ["-C", directory, "show", ":new.txt"]))
+        .stdout,
+    ).toBe("first\n");
+
+    await execFileAsync("git", ["-C", directory, "reset", "--", "new.txt"]);
+    const discardNew = {
+      operation: "discard" as const,
+      path: "new.txt",
+      hunks: [await selectedLine("new.txt", "unstaged", "+first")],
+    };
+    preview = await previewGitPartialPatch(directory, discardNew);
+    await applyGitPartialPatch(directory, discardNew, preview.token);
+    expect(await readFile(path.join(directory, "new.txt"), "utf8")).toBe(
+      "second\n",
+    );
+
+    await rm(path.join(directory, "deleted.txt"));
+    await execFileAsync("git", ["-C", directory, "add", "deleted.txt"]);
+    const unstageDeleted = {
+      operation: "unstage" as const,
+      path: "deleted.txt",
+      hunks: [await selectedLine("deleted.txt", "staged", "-first")],
+    };
+    preview = await previewGitPartialPatch(directory, unstageDeleted);
+    await applyGitPartialPatch(directory, unstageDeleted, preview.token);
+    expect(
+      (await execFileAsync("git", ["-C", directory, "show", ":deleted.txt"]))
+        .stdout,
+    ).toBe("first\n");
+
+    await execFileAsync("git", ["-C", directory, "reset", "--hard", "HEAD"]);
+    await rm(path.join(directory, "deleted.txt"));
+    const discardDeleted = {
+      operation: "discard" as const,
+      path: "deleted.txt",
+      hunks: [await selectedLine("deleted.txt", "unstaged", "-second")],
+    };
+    preview = await previewGitPartialPatch(directory, discardDeleted);
+    await applyGitPartialPatch(directory, discardDeleted, preview.token);
+    expect(await readFile(path.join(directory, "deleted.txt"), "utf8")).toBe(
+      "second\n",
+    );
+  });
+
+  it("rejects partial binary, rename, and mode-only metadata changes", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "rename.txt"), "rename me\n");
+    await writeFile(path.join(directory, "mode.sh"), "#!/bin/sh\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Initial"]);
+
+    await writeFile(path.join(directory, "image.bin"), Buffer.from([0, 1, 2]));
+    await expect(
+      previewGitPartialPatch(directory, {
+        operation: "stage",
+        path: "image.bin",
+        hunks: [{ hunkIndex: 0, lineIndexes: null }],
+      }),
+    ).rejects.toThrow(/binary|no selectable/u);
+
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "mv",
+      "rename.txt",
+      "renamed.txt",
+    ]);
+    await expect(
+      previewGitPartialPatch(directory, {
+        operation: "unstage",
+        path: "renamed.txt",
+        hunks: [{ hunkIndex: 0, lineIndexes: null }],
+      }),
+    ).rejects.toThrow(/rename|metadata|no selectable/u);
+
+    await execFileAsync("chmod", ["+x", path.join(directory, "mode.sh")]);
+    await expect(
+      previewGitPartialPatch(directory, {
+        operation: "stage",
+        path: "mode.sh",
+        hunks: [{ hunkIndex: 0, lineIndexes: null }],
+      }),
+    ).rejects.toThrow(/mode|no selectable/u);
+  });
+
   it("lists commit refs and compares direct and merge-base revision ranges", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
     directories.push(directory);

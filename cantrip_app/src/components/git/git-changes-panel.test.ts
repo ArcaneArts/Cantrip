@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest";
 
 import { buildGitChangeTree } from "./git-change-tree";
 import { parseSideBySideDiff } from "./git-diff";
+import {
+  buildPartialPatchRequest,
+  partialPatchUnavailableReason,
+  parseSelectablePatchHunks,
+} from "./git-partial-patch-view";
 
 function change(path: string): GitFileChange {
   return {
@@ -107,5 +112,52 @@ describe("Git changes panel helpers", () => {
         text: "Binary files a/image.png and b/image.png differ",
       },
     ]);
+  });
+
+  it("builds bounded whole-hunk and selected-line patch requests", () => {
+    const hunks = parseSelectablePatchHunks(
+      [
+        "diff --git a/src/app.ts b/src/app.ts",
+        "--- a/src/app.ts",
+        "+++ b/src/app.ts",
+        "@@ -1,3 +1,3 @@",
+        " context",
+        "-old value",
+        "+new value",
+        "@@ -8 +8 @@",
+        "-second old",
+        "+second new",
+      ].join("\n"),
+    );
+
+    expect(hunks).toHaveLength(2);
+    expect(
+      buildPartialPatchRequest(
+        "stage",
+        "src/app.ts",
+        hunks,
+        new Set(["0:1", "0:2", "1:1"]),
+      ),
+    ).toEqual({
+      operation: "stage",
+      path: "src/app.ts",
+      hunks: [
+        { hunkIndex: 0, lineIndexes: null },
+        { hunkIndex: 1, lineIndexes: [1] },
+      ],
+    });
+    expect(
+      buildPartialPatchRequest("discard", "src/app.ts", hunks, new Set()),
+    ).toBeNull();
+    expect(
+      partialPatchUnavailableReason({
+        truncated: false,
+        patch:
+          "diff --git a/old b/new\nrename from old\nrename to new\n@@ -1 +1 @@\n-old\n+new\n",
+      }),
+    ).toMatch(/file-level action/u);
+    expect(
+      partialPatchUnavailableReason({ patch: "", truncated: true }),
+    ).toMatch(/truncated/iu);
   });
 });

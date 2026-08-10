@@ -103,6 +103,9 @@ import {
   gitDiffScopeSchema,
   gitFileDiffSchema,
   gitHistorySchema,
+  gitPartialPatchApplySchema,
+  gitPartialPatchPreviewSchema,
+  gitPartialPatchRequestSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
   gitRelativePathSchema,
@@ -5173,6 +5176,83 @@ export async function buildApp({
   );
 
   app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/patch/preview",
+    async (request, reply) => {
+      const input = gitPartialPatchRequestSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context)
+        return reply.code(404).send({ error: "Worktree not found." });
+      try {
+        const preview = await bridge.request(context.workerId, {
+          type: "git.patch.preview",
+          cwd: context.worktree.path,
+          request: input.data,
+        });
+        return reply.send(gitPartialPatchPreviewSchema.parse(preview));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/patch/apply",
+    async (request, reply) => {
+      const input = gitPartialPatchApplySchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const existing = await repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!existing) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      try {
+        const result = await worktreeCoordinator.serialize(
+          request.params.projectId,
+          async () => {
+            const context = await repository.getProjectWorktreeContext(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (!context) throw new Error("Worktree not found.");
+            const applied = gitActionResultSchema.parse(
+              await bridge.request(context.workerId, {
+                type: "git.patch.apply",
+                cwd: context.worktree.path,
+                request: input.data.request,
+                token: input.data.token,
+              }),
+            );
+            await recordLiveWorktreeStatus(
+              request.params.projectId,
+              request.params.worktreeId,
+              worktreeStatusFromGitStatus(context.worktree, applied.status),
+            );
+            return applied;
+          },
+        );
+        return reply.send(result);
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
     "/api/projects/:projectId/worktrees/:worktreeId/git/actions",
     async (request, reply) => {
       const input = gitActionSchema.safeParse(request.body);
@@ -5188,17 +5268,32 @@ export async function buildApp({
         return reply.code(404).send({ error: "Worktree not found." });
       }
       try {
-        const result = gitActionResultSchema.parse(
-          await bridge.request(context.workerId, {
-            type: "git.action",
-            cwd: context.worktree.path,
-            action: input.data,
-          }),
-        );
-        await recordLiveWorktreeStatus(
+        const result = await worktreeCoordinator.serialize(
           request.params.projectId,
-          request.params.worktreeId,
-          worktreeStatusFromGitStatus(context.worktree, result.status),
+          async () => {
+            const freshContext = await repository.getProjectWorktreeContext(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (!freshContext) throw new Error("Worktree not found.");
+            const applied = gitActionResultSchema.parse(
+              await bridge.request(freshContext.workerId, {
+                type: "git.action",
+                cwd: freshContext.worktree.path,
+                action: input.data,
+              }),
+            );
+            await recordLiveWorktreeStatus(
+              request.params.projectId,
+              request.params.worktreeId,
+              worktreeStatusFromGitStatus(
+                freshContext.worktree,
+                applied.status,
+              ),
+            );
+            return applied;
+          },
         );
         return reply.send(result);
       } catch (error) {

@@ -1,4 +1,5 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 
 import {
@@ -7,6 +8,7 @@ import {
   gitCommitDetailSchema,
   gitFileDiffSchema,
   gitHistorySchema,
+  gitPartialPatchPreviewSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
   gitStatusSchema,
@@ -20,6 +22,8 @@ import {
   type GitDiffScope,
   type GitFileDiff,
   type GitHistory,
+  type GitPartialPatchPreview,
+  type GitPartialPatchRequest,
   type GitRef,
   type GitRevisionFileDiff,
   type GitRevisionCandidate,
@@ -114,6 +118,50 @@ async function gitSucceeds(cwd: string, args: string[]): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function runGitWithInput(
+  cwd: string,
+  args: string[],
+  input: string,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("git", ["-C", cwd, ...args], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    let outputLength = 0;
+    let settled = false;
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    const capture = (target: "stdout" | "stderr", chunk: Buffer) => {
+      outputLength += chunk.length;
+      if (outputLength > GIT_BUFFER) {
+        child.kill();
+        fail(new Error("Git patch output exceeded the safety limit."));
+        return;
+      }
+      if (target === "stdout") stdout += chunk.toString("utf8");
+      else stderr += chunk.toString("utf8");
+    };
+    child.stdout.on("data", (chunk: Buffer) => capture("stdout", chunk));
+    child.stderr.on("data", (chunk: Buffer) => capture("stderr", chunk));
+    child.on("error", fail);
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      if (code === 0) resolve(`${stdout}${stderr}`.trim());
+      else
+        reject(
+          new Error(stderr.trim() || stdout.trim() || "Git patch failed."),
+        );
+    });
+    child.stdin.end(input);
+  });
 }
 
 function parseRefs(
@@ -855,6 +903,7 @@ export async function readGitFileDiff(
     "--no-ext-diff",
     "--no-textconv",
     "--unified=3",
+    "-M",
   ];
   const untracked = change.indexStatus === "?" && change.worktreeStatus === "?";
   const result =
@@ -870,6 +919,7 @@ export async function readGitFileDiff(
             ...commonArguments,
             ...(scope === "staged" ? ["--cached"] : []),
             "--",
+            ...(change.originalPath ? [change.originalPath] : []),
             filePath,
           ],
           false,
@@ -881,6 +931,295 @@ export async function readGitFileDiff(
     scope,
     patch: result.output.slice(0, DIFF_CHARACTER_LIMIT),
     truncated,
+  });
+}
+
+interface ParsedPatchHunk {
+  header: string;
+  lines: string[];
+}
+
+function parsePatchHunks(patch: string): {
+  header: string[];
+  hunks: ParsedPatchHunk[];
+} {
+  const header: string[] = [];
+  const hunks: ParsedPatchHunk[] = [];
+  let current: ParsedPatchHunk | null = null;
+  const lines = patch.split("\n");
+  if (lines.at(-1) === "") lines.pop();
+  for (const line of lines) {
+    if (line.startsWith("@@ ")) {
+      current = { header: line, lines: [] };
+      hunks.push(current);
+    } else if (current) {
+      current.lines.push(line);
+    } else if (line) {
+      header.push(line);
+    }
+  }
+  return { header, hunks };
+}
+
+function partialPatch(
+  patch: string,
+  request: GitPartialPatchRequest,
+): { patch: string; selectedLines: number; warnings: string[] } {
+  const parsed = parsePatchHunks(patch);
+  if (parsed.hunks.length === 0) {
+    throw new Error(
+      "This binary, rename-only, or mode-only change does not contain selectable text hunks. Use the file-level action instead.",
+    );
+  }
+  if (
+    parsed.header.some(
+      (line) =>
+        line.startsWith("rename from ") ||
+        line.startsWith("rename to ") ||
+        line.startsWith("old mode ") ||
+        line.startsWith("new mode "),
+    )
+  ) {
+    throw new Error(
+      "Partial actions are disabled for renames and mode changes. Use the file-level action so repository metadata stays consistent.",
+    );
+  }
+  const selections = new Map<number, Set<number> | null>();
+  for (const selection of request.hunks) {
+    if (selections.has(selection.hunkIndex)) {
+      throw new Error(
+        `Hunk ${selection.hunkIndex + 1} was selected more than once.`,
+      );
+    }
+    selections.set(
+      selection.hunkIndex,
+      selection.lineIndexes === null ? null : new Set(selection.lineIndexes),
+    );
+  }
+  const changedLines = parsed.hunks.reduce(
+    (count, hunk) =>
+      count +
+      hunk.lines.filter((line) => line.startsWith("+") || line.startsWith("-"))
+        .length,
+    0,
+  );
+  let requestedLines = 0;
+  for (const [hunkIndex, lineSelection] of selections) {
+    const hunk = parsed.hunks[hunkIndex];
+    if (!hunk) throw new Error(`Hunk ${hunkIndex + 1} does not exist.`);
+    const changedIndexes = new Set(
+      hunk.lines.flatMap((line, lineIndex) =>
+        line.startsWith("+") || line.startsWith("-") ? [lineIndex] : [],
+      ),
+    );
+    if (lineSelection === null) {
+      requestedLines += changedIndexes.size;
+      continue;
+    }
+    const invalidLines = [...lineSelection].filter(
+      (lineIndex) => !changedIndexes.has(lineIndex),
+    );
+    if (invalidLines.length > 0) {
+      throw new Error(
+        `Hunk ${hunkIndex + 1} selected context or missing line indexes.`,
+      );
+    }
+    requestedLines += lineSelection.size;
+  }
+  const fullSelection =
+    selections.size === parsed.hunks.length && requestedLines === changedLines;
+  const newFile = parsed.header.some((line) =>
+    line.startsWith("new file mode "),
+  );
+  const deletedFile = parsed.header.some((line) =>
+    line.startsWith("deleted file mode "),
+  );
+  const normalizeNewFile =
+    newFile && !fullSelection && request.operation !== "stage";
+  const normalizeDeletedFile =
+    deletedFile && !fullSelection && request.operation === "stage";
+  let outputHeader = [...parsed.header];
+  const output: string[] = [];
+  let selectedLines = 0;
+  const reverse =
+    request.operation === "unstage" || request.operation === "discard";
+  for (const [hunkIndex, lineSelection] of [...selections].sort(
+    ([left], [right]) => left - right,
+  )) {
+    const hunk = parsed.hunks[hunkIndex];
+    if (!hunk) throw new Error(`Hunk ${hunkIndex + 1} does not exist.`);
+    if (lineSelection === null) {
+      output.push(hunk.header, ...hunk.lines);
+      selectedLines += hunk.lines.filter(
+        (line) => line.startsWith("+") || line.startsWith("-"),
+      ).length;
+      continue;
+    }
+    if (lineSelection.size === 0) {
+      throw new Error(`Hunk ${hunkIndex + 1} has no selected lines.`);
+    }
+    const match = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/u.exec(
+      hunk.header,
+    );
+    if (!match) throw new Error(`Hunk ${hunkIndex + 1} has an invalid header.`);
+    const parsedOldStart = Number.parseInt(match[1]!, 10);
+    const parsedNewStart = Number.parseInt(match[3]!, 10);
+    const oldStart = normalizeNewFile ? parsedNewStart : parsedOldStart;
+    const newStart = normalizeDeletedFile ? parsedOldStart : parsedNewStart;
+    const body: string[] = [];
+    let oldCount = 0;
+    let newCount = 0;
+    let previousIncluded = false;
+    for (const [lineIndex, line] of hunk.lines.entries()) {
+      const prefix = line[0];
+      if (prefix === " ") {
+        body.push(line);
+        oldCount += 1;
+        newCount += 1;
+        previousIncluded = true;
+      } else if (prefix === "-") {
+        if (lineSelection.has(lineIndex)) {
+          body.push(line);
+          oldCount += 1;
+          selectedLines += 1;
+          previousIncluded = true;
+        } else if (!reverse) {
+          body.push(` ${line.slice(1)}`);
+          oldCount += 1;
+          newCount += 1;
+          previousIncluded = true;
+        } else {
+          previousIncluded = false;
+        }
+      } else if (prefix === "+") {
+        if (lineSelection.has(lineIndex)) {
+          body.push(line);
+          newCount += 1;
+          selectedLines += 1;
+          previousIncluded = true;
+        } else if (reverse) {
+          body.push(` ${line.slice(1)}`);
+          oldCount += 1;
+          newCount += 1;
+          previousIncluded = true;
+        } else {
+          previousIncluded = false;
+        }
+      } else if (prefix === "\\") {
+        if (previousIncluded) body.push(line);
+      } else if (line) {
+        body.push(line);
+        previousIncluded = true;
+      }
+    }
+    const range = (start: number, count: number) =>
+      count === 1 ? `${start}` : `${start},${count}`;
+    output.push(
+      `@@ -${range(oldStart, oldCount)} +${range(newStart, newCount)} @@${match[5] ?? ""}`,
+      ...body,
+    );
+  }
+  if (selectedLines === 0)
+    throw new Error("The selection contains no changed lines.");
+  if (normalizeNewFile || normalizeDeletedFile) {
+    const oldMarker = outputHeader.find((line) => line.startsWith("--- "));
+    const newMarker = outputHeader.find((line) => line.startsWith("+++ "));
+    const swapPrefix = (marker: string, from: "a" | "b", to: "a" | "b") =>
+      marker.replace(`${from}/`, `${to}/`).replace(`\"${from}/`, `\"${to}/`);
+    outputHeader = outputHeader
+      .filter(
+        (line) =>
+          !line.startsWith("new file mode ") &&
+          !line.startsWith("deleted file mode ") &&
+          !line.startsWith("index "),
+      )
+      .map((line) => {
+        if (normalizeNewFile && line === oldMarker && newMarker) {
+          return swapPrefix(newMarker.replace(/^\+\+\+ /u, "--- "), "b", "a");
+        }
+        if (normalizeDeletedFile && line === newMarker && oldMarker) {
+          return swapPrefix(oldMarker.replace(/^--- /u, "+++ "), "a", "b");
+        }
+        return line;
+      });
+  }
+  return {
+    patch: `${[...outputHeader, ...output].join("\n")}\n`,
+    selectedLines,
+    warnings: [],
+  };
+}
+
+function partialPatchArguments(
+  operation: GitPartialPatchRequest["operation"],
+  check: boolean,
+): string[] {
+  return [
+    "apply",
+    ...(check ? ["--check"] : []),
+    ...(operation === "stage" || operation === "unstage" ? ["--cached"] : []),
+    ...(operation === "unstage" || operation === "discard"
+      ? ["--reverse"]
+      : []),
+    "--recount",
+    "-",
+  ];
+}
+
+export async function previewGitPartialPatch(
+  cwd: string,
+  request: GitPartialPatchRequest,
+): Promise<GitPartialPatchPreview> {
+  const scope: GitDiffScope =
+    request.operation === "unstage" ? "staged" : "unstaged";
+  const source = await readGitFileDiff(cwd, request.path, scope);
+  if (source.truncated) {
+    throw new Error("This patch is truncated and cannot be applied partially.");
+  }
+  const selected = partialPatch(source.patch, request);
+  await runGitWithInput(
+    cwd,
+    partialPatchArguments(request.operation, true),
+    selected.patch,
+  );
+  const token = createHash("sha256")
+    .update(request.operation)
+    .update("\0")
+    .update(request.path)
+    .update("\0")
+    .update(selected.patch)
+    .digest("hex");
+  return gitPartialPatchPreviewSchema.parse({
+    operation: request.operation,
+    path: request.path,
+    scope,
+    patch: selected.patch,
+    token,
+    selectedHunks: request.hunks.length,
+    selectedLines: selected.selectedLines,
+    warnings: selected.warnings,
+  });
+}
+
+export async function applyGitPartialPatch(
+  cwd: string,
+  request: GitPartialPatchRequest,
+  token: string,
+): Promise<GitActionResult> {
+  const preview = await previewGitPartialPatch(cwd, request);
+  if (preview.token !== token) {
+    throw new Error(
+      "The working changes no longer match this preview. Review the selection again.",
+    );
+  }
+  const output = await runGitWithInput(
+    cwd,
+    partialPatchArguments(request.operation, false),
+    preview.patch,
+  );
+  return gitActionResultSchema.parse({
+    output,
+    status: await readGitStatus(cwd),
   });
 }
 

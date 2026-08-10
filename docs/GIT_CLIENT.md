@@ -60,11 +60,46 @@ Manual QA:
 6. Compare unrelated histories directly, then confirm merge-base mode reports
    the missing common ancestor intentionally.
 
+## Hunk and selected-line staging
+
+Open **Working changes** and select a staged or unstaged text file. Changed
+lines have selection controls, while each hunk header selects or clears the
+whole hunk. Unstaged selections can be staged or discarded; staged selections
+can be unstaged. Whole-file buttons remain available in the file list.
+
+Every partial mutation is a two-step operation. The worker constructs and
+validates the exact patch, the app shows that patch in the shared diff viewer,
+and the server applies it only with the matching review token. The worker
+rebuilds the patch immediately before applying it, so stale selections are
+rejected instead of targeting newly changed content. Git's own `apply --check`
+is also required before a preview is returned.
+
+New and deleted files can be partially staged safely, including files without
+a trailing newline. Partial rename and file-mode metadata changes are disabled
+and direct the user to the existing file-level action. Binary and truncated
+patches are likewise intentionally non-selectable. A file that has both staged
+and unstaged content retains the other scope when only one scope is changed.
+
+Manual QA:
+
+1. Edit two separated lines in a tracked file, select one replacement, review
+   the exact patch, stage it, and confirm the other edit remains unstaged.
+2. Select and unstage one staged hunk, then discard one unstaged hunk after
+   reviewing the destructive confirmation.
+3. Partially stage a new file and a deleted file and confirm both staged and
+   unstaged entries remain.
+4. Change a file after opening its patch preview and confirm apply rejects the
+   stale review.
+5. Inspect binary, rename-only, mode-only, and truncated changes and confirm
+   the UI keeps their file-level actions but disables partial selection.
+6. Stop the selected worktree's worker and confirm preview/apply reports the
+   offline worker without falling back to another worktree.
+
 ## Evolution checklist
 
 - [x] Commit inspector and reusable revision-diff transport
 - [x] Arbitrary revision comparison
-- [ ] Hunk and selected-line staging
+- [x] Hunk and selected-line staging
 - [ ] Stash/shelf management
 - [ ] Complete branch management
 - [ ] Remotes, tags, and GitHub releases

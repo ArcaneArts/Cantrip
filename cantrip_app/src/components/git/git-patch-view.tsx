@@ -15,6 +15,7 @@ export function GitPatchView({
   originalPath,
   patch,
   path,
+  showClose = true,
   subtitle,
   truncated,
 }: {
@@ -26,6 +27,7 @@ export function GitPatchView({
   originalPath?: string | null;
   patch: string | undefined;
   path: string;
+  showClose?: boolean;
   subtitle: string;
   truncated: boolean;
 }) {
@@ -53,16 +55,18 @@ export function GitPatchView({
             {subtitle}
           </p>
         </div>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="hidden size-8 md:inline-flex"
-          onClick={onClose}
-          title="Close diff"
-        >
-          <X className="size-4" />
-          <span className="sr-only">Close diff</span>
-        </Button>
+        {showClose ? (
+          <Button
+            size="icon"
+            variant="ghost"
+            className="hidden size-8 md:inline-flex"
+            onClick={onClose}
+            title="Close diff"
+          >
+            <X className="size-4" />
+            <span className="sr-only">Close diff</span>
+          </Button>
+        ) : null}
       </div>
 
       {loading ? (
