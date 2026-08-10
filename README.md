@@ -15,7 +15,7 @@ Cantrip organizes work into GitHub-backed projects. Each project has one source 
 - Read-only Explorer tabs with a source or Markdown preview for supported text files.
 - Worker-streamed Browser tabs for project-related web pages.
 - One-click Remote Desktop tabs for the project worker's screen.
-- Git history with a branch graph, refs and tags, every known worktree HEAD, per-worktree WIP state, staged and unstaged changes, commits, branches, pull/push operations, and GitHub issue browsing and management.
+- Git history with a branch graph, refs and tags, every known worktree HEAD, per-worktree WIP state, clickable commit inspection and revision patches, staged and unstaged changes, commits, branches, pull/push operations, and GitHub issue browsing and management. See [the Git client guide](docs/GIT_CLIENT.md).
 
 Settings are stored by the server for the current Cantrip identity rather than in browser cookies. They include System/Light/Dark appearance, optional high contrast, model providers, models, and the default model. Provider support currently includes:
 

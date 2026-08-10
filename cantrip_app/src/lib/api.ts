@@ -56,8 +56,10 @@ import {
   githubIssueListSchema,
   githubRepositoryListSchema,
   gitActionResultSchema,
+  gitCommitDetailSchema,
   gitFileDiffSchema,
   gitHistorySchema,
+  gitRevisionFileDiffSchema,
   gitStatusSchema,
   modelProfileCreateSchema,
   modelProfileSummarySchema,
@@ -367,6 +369,35 @@ export async function getProjectWorktreeHistory(
   return gitHistorySchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/history?cursor=${cursor}&limit=100`,
+    ),
+  );
+}
+
+export async function getProjectWorktreeCommit(
+  projectId: string,
+  worktreeId: string,
+  revision: string,
+  parentIndex = 0,
+) {
+  return gitCommitDetailSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/commits/${encodeURIComponent(revision)}?parent=${parentIndex}`,
+    ),
+  );
+}
+
+export async function getProjectWorktreeRevisionDiff(
+  projectId: string,
+  worktreeId: string,
+  revision: string,
+  baseRevision: string | null,
+  path: string,
+) {
+  const search = new URLSearchParams({ path });
+  if (baseRevision) search.set("base", baseRevision);
+  return gitRevisionFileDiffSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/revisions/${encodeURIComponent(revision)}/diff?${search.toString()}`,
     ),
   );
 }

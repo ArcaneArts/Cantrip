@@ -3,21 +3,29 @@ import { promisify } from "node:util";
 
 import {
   gitActionResultSchema,
+  gitCommitDetailSchema,
   gitFileDiffSchema,
   gitHistorySchema,
+  gitRevisionFileDiffSchema,
   gitStatusSchema,
   type GitAction,
   type GitActionResult,
+  type GitCommitDetail,
+  type GitCommitFile,
   type GitDiffScope,
   type GitFileDiff,
   type GitHistory,
   type GitRef,
+  type GitRevisionFileDiff,
+  type GitSignature,
   type GitStatus,
 } from "@cantrip/protocol";
 
 const execFileAsync = promisify(execFile);
 const GIT_BUFFER = 16 * 1024 * 1024;
 const DIFF_CHARACTER_LIMIT = 2_000_000;
+const COMMIT_MESSAGE_CHARACTER_LIMIT = 1_000_000;
+const COMMIT_FILE_LIMIT = 100_000;
 
 async function gitOutput(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
@@ -231,6 +239,343 @@ export async function readGitHistory(
     commits,
     hasMore,
     nextCursor: hasMore ? cursor + commits.length : null,
+  });
+}
+
+function signatureStatus(code: string): GitSignature["status"] {
+  switch (code) {
+    case "G":
+      return "valid";
+    case "U":
+      return "valid-unknown";
+    case "B":
+      return "invalid";
+    case "X":
+    case "Y":
+      return "expired";
+    case "R":
+      return "revoked";
+    case "E":
+      return "unverifiable";
+    default:
+      return "unsigned";
+  }
+}
+
+function commitFileStatus(code: string): GitCommitFile["status"] {
+  switch (code[0]) {
+    case "A":
+      return "added";
+    case "M":
+      return "modified";
+    case "D":
+      return "deleted";
+    case "R":
+      return "renamed";
+    case "C":
+      return "copied";
+    case "T":
+      return "type-changed";
+    case "U":
+      return "unmerged";
+    default:
+      return "unknown";
+  }
+}
+
+function parseNameStatus(output: string): Array<{
+  path: string;
+  originalPath: string | null;
+  status: GitCommitFile["status"];
+}> {
+  const fields = output.split("\0");
+  const files: Array<{
+    path: string;
+    originalPath: string | null;
+    status: GitCommitFile["status"];
+  }> = [];
+  for (let index = 0; index < fields.length;) {
+    const code = fields[index++] ?? "";
+    if (!code) continue;
+    const renamed = code.startsWith("R") || code.startsWith("C");
+    const originalPath = renamed ? (fields[index++] ?? null) : null;
+    const path = fields[index++] ?? "";
+    if (!path || !safeGitPath(path)) continue;
+    files.push({ path, originalPath, status: commitFileStatus(code) });
+  }
+  return files;
+}
+
+function parseNumstat(output: string): Map<
+  string,
+  {
+    additions: number | null;
+    deletions: number | null;
+    originalPath: string | null;
+  }
+> {
+  const fields = output.split("\0");
+  const stats = new Map<
+    string,
+    {
+      additions: number | null;
+      deletions: number | null;
+      originalPath: string | null;
+    }
+  >();
+  for (let index = 0; index < fields.length;) {
+    const record = fields[index++] ?? "";
+    if (!record) continue;
+    const firstTab = record.indexOf("\t");
+    const secondTab = record.indexOf("\t", firstTab + 1);
+    if (firstTab < 0 || secondTab < 0) continue;
+    const additionsText = record.slice(0, firstTab);
+    const deletionsText = record.slice(firstTab + 1, secondTab);
+    let path = record.slice(secondTab + 1);
+    let originalPath: string | null = null;
+    if (!path) {
+      originalPath = fields[index++] ?? null;
+      path = fields[index++] ?? "";
+    }
+    if (!path || !safeGitPath(path)) continue;
+    stats.set(path, {
+      additions:
+        additionsText === "-" ? null : Number.parseInt(additionsText, 10) || 0,
+      deletions:
+        deletionsText === "-" ? null : Number.parseInt(deletionsText, 10) || 0,
+      originalPath,
+    });
+  }
+  return stats;
+}
+
+function commitDiffArguments(
+  baseHash: string | null,
+  hash: string,
+  format: "name-status" | "numstat",
+): string[] {
+  const formatArguments = [
+    format === "name-status" ? "--name-status" : "--numstat",
+    "-z",
+    "-M",
+    "-C",
+  ];
+  return baseHash
+    ? ["diff", ...formatArguments, baseHash, hash]
+    : ["diff-tree", "--root", "--no-commit-id", "-r", ...formatArguments, hash];
+}
+
+async function readCommitFiles(
+  cwd: string,
+  baseHash: string | null,
+  hash: string,
+): Promise<{ files: GitCommitFile[]; total: number; truncated: boolean }> {
+  const [names, numstat] = await Promise.all([
+    gitRaw(cwd, commitDiffArguments(baseHash, hash, "name-status")),
+    gitRaw(cwd, commitDiffArguments(baseHash, hash, "numstat")),
+  ]);
+  const stats = parseNumstat(numstat);
+  const parsed = parseNameStatus(names);
+  return {
+    files: parsed.slice(0, COMMIT_FILE_LIMIT).map((file) => {
+      const stat = stats.get(file.path);
+      const additions = stat?.additions ?? null;
+      const deletions = stat?.deletions ?? null;
+      return {
+        ...file,
+        originalPath: file.originalPath ?? stat?.originalPath ?? null,
+        additions,
+        deletions,
+        binary: additions === null || deletions === null,
+      };
+    }),
+    total: parsed.length,
+    truncated: parsed.length > COMMIT_FILE_LIMIT,
+  };
+}
+
+async function resolveCommit(cwd: string, revision: string): Promise<string> {
+  const hash = await gitOutput(cwd, [
+    "rev-parse",
+    "--verify",
+    `${revision}^{commit}`,
+  ]).catch(() => "");
+  if (!/^[0-9a-f]{40,64}$/u.test(hash)) {
+    throw new Error(`Commit ${revision} does not exist.`);
+  }
+  return hash;
+}
+
+async function commitChildren(
+  cwd: string,
+  hash: string,
+  revisions: string[],
+): Promise<string[]> {
+  const verified = (
+    await Promise.all(
+      [...new Set(revisions)].map(async (revision) => ({
+        revision,
+        valid: await gitSucceeds(cwd, [
+          "cat-file",
+          "-e",
+          `${revision}^{commit}`,
+        ]),
+      })),
+    )
+  )
+    .filter(({ valid }) => valid)
+    .map(({ revision }) => revision);
+  const output = await gitRaw(cwd, [
+    "rev-list",
+    "--children",
+    "--all",
+    ...verified,
+  ]).catch(() => "");
+  const children = new Set<string>();
+  for (const line of output.split("\n")) {
+    const [commit, ...values] = line.trim().split(/\s+/u);
+    if (commit !== hash) continue;
+    for (const child of values) {
+      if (/^[0-9a-f]{40,64}$/u.test(child)) children.add(child);
+    }
+  }
+  return [...children].slice(0, 10_000);
+}
+
+export async function readGitCommitDetail(
+  cwd: string,
+  revision: string,
+  parentIndex = 0,
+  revisions: string[] = [],
+): Promise<GitCommitDetail> {
+  const hash = await resolveCommit(cwd, revision);
+  const metadata = await gitRaw(cwd, [
+    "show",
+    "-s",
+    "--date=iso-strict",
+    "--format=%H%x00%h%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s%x00%B%x00%D%x00%G?%x00%GS%x00%GK%x00%GF",
+    hash,
+  ]);
+  const [
+    fullHash,
+    shortHash,
+    parentText,
+    authorName,
+    authorEmail,
+    authoredAt,
+    committerName,
+    committerEmail,
+    committedAt,
+    subject,
+    fullMessage = "",
+    decorations = "",
+    signatureCode = "N",
+    signatureSigner = "",
+    signatureKey = "",
+    signatureFingerprint = "",
+  ] = metadata.trimEnd().split("\0");
+  const parents = (parentText ?? "").split(" ").filter(Boolean);
+  if (parents.length > 0 && parentIndex >= parents.length) {
+    throw new Error(
+      `Commit ${revision} does not have parent ${parentIndex + 1}.`,
+    );
+  }
+  const selectedParentIndex = parents.length > 0 ? parentIndex : null;
+  const baseHash = selectedParentIndex === null ? null : parents[parentIndex]!;
+  const branch = await gitOutput(cwd, ["branch", "--show-current"]);
+  const remotes = new Set(
+    (await gitOutput(cwd, ["remote"]).catch(() => ""))
+      .split("\n")
+      .filter(Boolean),
+  );
+  const [{ files, total, truncated }, children] = await Promise.all([
+    readCommitFiles(cwd, baseHash, hash),
+    commitChildren(cwd, hash, revisions),
+  ]);
+  const messageTruncated = fullMessage.length > COMMIT_MESSAGE_CHARACTER_LIMIT;
+  return gitCommitDetailSchema.parse({
+    hash: fullHash,
+    shortHash,
+    subject,
+    message: fullMessage.slice(0, COMMIT_MESSAGE_CHARACTER_LIMIT),
+    messageTruncated,
+    parents,
+    children,
+    parentIndex: selectedParentIndex,
+    baseHash,
+    author: { name: authorName, email: authorEmail, date: authoredAt },
+    committer: {
+      name: committerName,
+      email: committerEmail,
+      date: committedAt,
+    },
+    signature: {
+      status: signatureStatus(signatureCode),
+      signer: signatureSigner || null,
+      key: signatureKey || null,
+      fingerprint: signatureFingerprint || null,
+    },
+    refs: parseRefs(decorations, branch, remotes),
+    files,
+    filesTruncated: truncated,
+    filesChanged: total,
+    additions: files.reduce((sum, file) => sum + (file.additions ?? 0), 0),
+    deletions: files.reduce((sum, file) => sum + (file.deletions ?? 0), 0),
+  });
+}
+
+export async function readGitRevisionFileDiff(
+  cwd: string,
+  revision: string,
+  baseRevision: string | null,
+  filePath: string,
+): Promise<GitRevisionFileDiff> {
+  if (!safeGitPath(filePath)) throw new Error("Invalid Git diff path.");
+  const hash = await resolveCommit(cwd, revision);
+  const baseHash = baseRevision ? await resolveCommit(cwd, baseRevision) : null;
+  const { files } = await readCommitFiles(cwd, baseHash, hash);
+  const file = files.find(({ path }) => path === filePath);
+  if (!file) throw new Error(`No revision change exists for ${filePath}.`);
+  const commonArguments = [
+    "--no-color",
+    "--no-ext-diff",
+    "--no-textconv",
+    "--unified=3",
+    "-M",
+    "-C",
+  ];
+  const arguments_ = baseHash
+    ? [
+        "diff",
+        ...commonArguments,
+        baseHash,
+        hash,
+        "--",
+        file.originalPath ?? file.path,
+        file.path,
+      ]
+    : [
+        "diff-tree",
+        "--root",
+        "--no-commit-id",
+        "-r",
+        "-p",
+        ...commonArguments,
+        hash,
+        "--",
+        file.path,
+      ];
+  const result = await gitDiffOutput(cwd, arguments_, false);
+  const truncated =
+    result.truncated || result.output.length > DIFF_CHARACTER_LIMIT;
+  return gitRevisionFileDiffSchema.parse({
+    revision: hash,
+    baseRevision: baseHash,
+    path: file.path,
+    originalPath: file.originalPath,
+    patch: result.output.slice(0, DIFF_CHARACTER_LIMIT),
+    truncated,
+    binary: file.binary,
   });
 }
 

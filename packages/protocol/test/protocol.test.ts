@@ -37,7 +37,9 @@ import {
   remoteSurfaceWebRtcConfigurationSchema,
   remoteSurfaceWebRtcSignalSchema,
   gitActionSchema,
+  gitCommitDetailSchema,
   gitFileDiffSchema,
+  gitRevisionFileDiffSchema,
   mentionedSkillNames,
   MIN_SIDEBAR_WIDTH,
   normalizeResponsesBaseUrl,
@@ -73,6 +75,101 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("validates bounded commit inspection and revision diff commands", () => {
+    const revision = "a".repeat(40);
+    const parent = "b".repeat(40);
+    expect(
+      workerCommandSchema.parse({
+        type: "git.commit.get",
+        cwd: "/worker/projects/cantrip",
+        revision,
+        parentIndex: 1,
+        revisions: [revision, parent],
+      }),
+    ).toMatchObject({ type: "git.commit.get", parentIndex: 1 });
+    expect(
+      workerCommandSchema.parse({
+        type: "git.revision.diff",
+        cwd: "/worker/projects/cantrip",
+        revision,
+        baseRevision: parent,
+        path: "src/index.ts",
+      }),
+    ).toMatchObject({ type: "git.revision.diff", path: "src/index.ts" });
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "git.commit.get",
+        cwd: "/repo",
+        revision: "HEAD~1",
+      }),
+    ).toThrow();
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "git.revision.diff",
+        cwd: "/repo",
+        revision,
+        baseRevision: null,
+        path: "../secret",
+      }),
+    ).toThrow();
+
+    expect(
+      gitCommitDetailSchema.parse({
+        hash: revision,
+        shortHash: "aaaaaaaa",
+        subject: "Inspect commits",
+        message: "Inspect commits\n\nFull message",
+        messageTruncated: false,
+        parents: [parent],
+        children: [],
+        parentIndex: 0,
+        baseHash: parent,
+        author: {
+          name: "Cantrip",
+          email: "dev@cantrip.art",
+          date: "2026-08-10T12:00:00.000Z",
+        },
+        committer: {
+          name: "Cantrip",
+          email: "dev@cantrip.art",
+          date: "2026-08-10T12:00:00.000Z",
+        },
+        signature: {
+          status: "valid",
+          signer: "Cantrip",
+          key: "ABC123",
+          fingerprint: null,
+        },
+        refs: [],
+        files: [
+          {
+            path: "src/index.ts",
+            originalPath: null,
+            status: "modified",
+            additions: 4,
+            deletions: 1,
+            binary: false,
+          },
+        ],
+        filesTruncated: false,
+        filesChanged: 1,
+        additions: 4,
+        deletions: 1,
+      }).files[0]?.status,
+    ).toBe("modified");
+    expect(
+      gitRevisionFileDiffSchema.parse({
+        revision,
+        baseRevision: parent,
+        path: "src/index.ts",
+        originalPath: null,
+        patch: "@@ -1 +1 @@",
+        truncated: false,
+        binary: false,
+      }).revision,
+    ).toBe(revision);
+  });
+
   it("bounds discovered script commands and their terminal-safe invocation", () => {
     expect(
       scriptCommandListSchema.parse([

@@ -59,6 +59,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { GitChangesPanel } from "./git-changes-panel";
+import { GitCommitInspector } from "./git-commit-inspector";
 import { HistoryWorktreeMarker } from "./history-worktree-marker";
 import { GithubIssuesView } from "./github-issues";
 
@@ -374,6 +375,7 @@ export function GitHistoryView({
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const [section, setSection] = useState<GitViewSection>(view);
   const [changesOpen, setChangesOpen] = useState(false);
+  const [selectedCommit, setSelectedCommit] = useState<string | null>(null);
   const [issueState, setIssueState] = useState<GithubIssueState>("open");
   const [issueRefreshEpoch, setIssueRefreshEpoch] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
@@ -600,6 +602,11 @@ export function GitHistoryView({
   useEffect(() => {
     setSection(view);
   }, [project.id, view]);
+
+  useEffect(() => {
+    setChangesOpen(false);
+    setSelectedCommit(null);
+  }, [project.id, worktreeId]);
 
   useEffect(() => {
     return () => onHeaderChange(null);
@@ -872,6 +879,7 @@ export function GitHistoryView({
                         style={{ gridTemplateColumns: historyColumns }}
                         onClick={() => {
                           onSelectWorktree(worktree.id);
+                          setSelectedCommit(null);
                           setChangesOpen(true);
                         }}
                         title={`Open ${worktree.name} staged and unstaged changes`}
@@ -944,17 +952,23 @@ export function GitHistoryView({
                     displayRows[index - 1]?.graph.commit.hash ===
                       row.commit.hash;
                   return (
-                    <div
+                    <button
                       key={row.commit.hash}
+                      type="button"
                       data-high-contrast-row
                       data-current={row.commit.isHead}
                       className={cn(
-                        "grid h-8 items-center border-b border-border/50 px-4 hover:bg-muted/50",
+                        "grid h-8 w-full items-center border-b border-border/50 px-4 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50",
                         selectedHead &&
                           "bg-cyan-500/[0.07] shadow-[inset_2px_0_0_0_rgb(6_182_212)]",
+                        selectedCommit === row.commit.hash && "bg-muted/70",
                       )}
                       style={{ gridTemplateColumns: historyColumns }}
                       title={`${row.commit.subject}\n${row.commit.hash}\n${fullDateFormatter.format(new Date(row.commit.authoredAt))}`}
+                      onClick={() => {
+                        setChangesOpen(false);
+                        setSelectedCommit(row.commit.hash);
+                      }}
                     >
                       <div className="relative h-8 min-w-0 overflow-visible">
                         <div className="absolute inset-y-0 left-0 z-[1] flex items-center">
@@ -1060,7 +1074,7 @@ export function GitHistoryView({
                           ? relativeDate(row.commit.authoredAt)
                           : ""}
                       </span>
-                    </div>
+                    </button>
                   );
                 })}
                 <div
@@ -1094,6 +1108,15 @@ export function GitHistoryView({
                 </p>
               </aside>
             )
+          ) : null}
+          {selectedCommit ? (
+            <GitCommitInspector
+              projectId={project.id}
+              worktreeId={worktreeId}
+              revision={selectedCommit}
+              onClose={() => setSelectedCommit(null)}
+              onNavigate={setSelectedCommit}
+            />
           ) : null}
         </div>
       )}
