@@ -41,6 +41,8 @@ import {
   gitBranchListSchema,
   gitCommitActionPreviewSchema,
   gitCommitActionResultSchema,
+  gitManagedOperationPreviewSchema,
+  gitManagedOperationRecordSchema,
   gitRemoteActionPreviewSchema,
   gitRemoteListSchema,
   gitCommitDetailSchema,
@@ -91,6 +93,78 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("validates durable merge and rebase operation envelopes", () => {
+    const head = "1".repeat(40);
+    const source = "2".repeat(40);
+    const context = {
+      type: "rebase" as const,
+      originalHead: head,
+      sourceRef: "origin/main",
+      sourceRevision: source,
+      targetRef: "refs/heads/feature",
+      targetRevision: head,
+      pendingCommits: [head],
+      totalSteps: 1,
+      checkpointRef: "refs/cantrip/checkpoints/rebase-example",
+    };
+    expect(
+      gitManagedOperationPreviewSchema.parse({
+        action: { type: "rebase", sourceRef: "origin/main" },
+        token: "a".repeat(64),
+        destructive: true,
+        summary: "Rebase feature onto origin/main.",
+        warnings: ["Published commit hashes may change."],
+        context,
+        commits: [
+          {
+            hash: head,
+            shortHash: head.slice(0, 8),
+            subject: "Feature work",
+            authorName: "Cantrip",
+            authoredAt: "2026-08-10T12:00:00.000Z",
+          },
+        ],
+        files: [],
+        patch: "",
+        patchTruncated: false,
+        wouldConflict: false,
+      }).context.type,
+    ).toBe("rebase");
+    expect(
+      gitManagedOperationRecordSchema.parse({
+        ...context,
+        id: "019fdc2c-e848-7552-b2ea-6fc7ef09e9f2",
+        projectId: "019fdc2c-e848-7552-b2ea-6fc7ef09e9f3",
+        worktreeId: "019fdc2c-e848-7552-b2ea-6fc7ef09e9f4",
+        workerId: "local-worker",
+        state: "conflicted",
+        currentHead: head,
+        currentStep: 1,
+        conflictedPaths: ["src/app.ts"],
+        output: "CONFLICT",
+        error: null,
+        createdAt: "2026-08-10T12:00:00.000Z",
+        updatedAt: "2026-08-10T12:01:00.000Z",
+        completedAt: null,
+      }).state,
+    ).toBe("conflicted");
+    expect(
+      workerCommandSchema.parse({
+        type: "git.operation.control",
+        cwd: "/repo",
+        context,
+        action: "continue",
+      }).action,
+    ).toBe("continue");
+    expect(
+      workerCommandSchema.safeParse({
+        type: "git.operation.preview",
+        cwd: "/repo",
+        action: { type: "merge", sourceRef: "bad\nref" },
+      }).success,
+    ).toBe(false);
+  });
+
   it("validates reviewed commit actions and resumable conflict state", () => {
     const head = "1".repeat(40);
     const revision = "2".repeat(40);

@@ -112,6 +112,12 @@ import {
   gitCommitActionResultSchema,
   gitCommitActionSchema,
   gitCommitDetailSchema,
+  gitManagedOperationControlSchema,
+  gitManagedOperationPreviewSchema,
+  gitManagedOperationResponseSchema,
+  gitManagedOperationStartSchema,
+  gitManagedOperationWorkerStateSchema,
+  gitMergeRebaseActionSchema,
   gitDiffScopeSchema,
   gitFileDiffSchema,
   gitHistorySchema,
@@ -223,6 +229,9 @@ import type {
   CodexExternalImportStatus,
   CodexMcpOauthStatus,
   GitStatus,
+  GitManagedOperationContext,
+  GitManagedOperationRecord,
+  GitManagedOperationWorkerState,
   ProjectWorktreeSummary,
   WorkerNotification,
   WorkerSummary,
@@ -347,6 +356,22 @@ export interface BuildAppOptions {
   codeTunnel?: CodeTunnelBroker;
   projectShareTunnel?: ProjectShareTunnelBroker;
   workerBridge?: WorkerCommandBus;
+}
+
+function gitManagedOperationContext(
+  operation: GitManagedOperationRecord,
+): GitManagedOperationContext {
+  return {
+    type: operation.type,
+    originalHead: operation.originalHead,
+    sourceRef: operation.sourceRef,
+    sourceRevision: operation.sourceRevision,
+    targetRef: operation.targetRef,
+    targetRevision: operation.targetRevision,
+    pendingCommits: operation.pendingCommits,
+    totalSteps: operation.totalSteps,
+    checkpointRef: operation.checkpointRef,
+  };
 }
 
 const ROUTE_FAILURE_COOLDOWN_MS = 60_000;
@@ -537,6 +562,7 @@ export async function buildApp({
     string,
     ReturnType<typeof setTimeout>
   >();
+  const runningGitOperationRequests = new Set<string>();
   const workerNotificationSubscriptions = new Map<string, () => void>();
   const publishWorktreeStatus = (
     projectId: string,
@@ -5033,6 +5059,16 @@ export async function buildApp({
               request.params.worktreeId,
             );
             if (!context) throw new Error("Worktree not found.");
+            const activeOperation = await repository.getActiveGitOperation(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (activeOperation) {
+              throw new Error(
+                `Finish or abort the active ${activeOperation.type} operation first.`,
+              );
+            }
             return gitCommitActionPreviewSchema.parse(
               await bridge.request(context.workerId, {
                 type: "git.commit.action.preview",
@@ -5067,6 +5103,16 @@ export async function buildApp({
               request.params.worktreeId,
             );
             if (!context) throw new Error("Worktree not found.");
+            const activeOperation = await repository.getActiveGitOperation(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (activeOperation) {
+              throw new Error(
+                `Finish or abort the active ${activeOperation.type} operation first.`,
+              );
+            }
             const applied = gitCommitActionResultSchema.parse(
               await bridge.request(context.workerId, {
                 type: "git.commit.action.apply",
@@ -5080,6 +5126,54 @@ export async function buildApp({
               request.params.worktreeId,
               worktreeStatusFromGitStatus(context.worktree, applied.status),
             );
+            if (applied.operation) {
+              const operationContext: GitManagedOperationContext = {
+                type: applied.operation.type,
+                originalHead: applied.operation.originalHead,
+                sourceRef: null,
+                sourceRevision: applied.operation.sourceRevisions[0] ?? null,
+                targetRef: applied.status.branch
+                  ? `refs/heads/${applied.status.branch}`
+                  : null,
+                targetRevision: applied.operation.originalHead,
+                pendingCommits: applied.operation.sourceRevisions,
+                totalSteps: applied.operation.totalSteps,
+                checkpointRef: applied.checkpointRef,
+              };
+              const durable = await repository.createGitOperation(
+                LOCAL_USER_ID,
+                request.params.projectId,
+                request.params.worktreeId,
+                context.workerId,
+                operationContext,
+              );
+              await repository.markGitOperationRunning(durable.id);
+              await repository.updateGitOperation(
+                LOCAL_USER_ID,
+                request.params.projectId,
+                request.params.worktreeId,
+                durable.id,
+                gitManagedOperationWorkerStateSchema.parse({
+                  ...operationContext,
+                  state: applied.operation.state,
+                  currentHead: applied.operation.currentHead,
+                  currentStep: applied.operation.currentStep,
+                  pendingCommits:
+                    applied.operation.state === "completed"
+                      ? []
+                      : applied.operation.sourceRevisions.slice(
+                          Math.max(0, applied.operation.currentStep - 1),
+                        ),
+                  conflictedPaths: applied.operation.conflictedPaths,
+                  output: applied.output,
+                  status: applied.status,
+                }),
+              );
+              publishLiveInvalidation("git-operation", {
+                entityId: durable.id,
+                projectId: request.params.projectId,
+              });
+            }
             publishLiveInvalidation("worktree", {
               projectId: request.params.projectId,
             });
@@ -5093,6 +5187,347 @@ export async function buildApp({
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 409;
         return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/operations/preview",
+    async (request, reply) => {
+      const input = gitMergeRebaseActionSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const result = await worktreeCoordinator.serialize(
+          request.params.projectId,
+          async () => {
+            const context = await repository.getProjectWorktreeContext(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (!context) throw new Error("Worktree not found.");
+            const active = await repository.getActiveGitOperation(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (active) {
+              throw new Error(
+                `Finish or abort the active ${active.type} operation first.`,
+              );
+            }
+            return gitManagedOperationPreviewSchema.parse(
+              await bridge.request(
+                context.workerId,
+                {
+                  type: "git.operation.preview",
+                  cwd: context.worktree.path,
+                  action: input.data,
+                },
+                { timeoutMs: 5 * 60_000 },
+              ),
+            );
+          },
+        );
+        return reply.send(result);
+      } catch (error) {
+        return reply
+          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/operations",
+    async (request, reply) => {
+      const input = gitManagedOperationStartSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      let durableId: string | null = null;
+      try {
+        const operation = await worktreeCoordinator.serialize(
+          request.params.projectId,
+          async () => {
+            const context = await repository.getProjectWorktreeContext(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+            );
+            if (!context) throw new Error("Worktree not found.");
+            const preview = gitManagedOperationPreviewSchema.parse(
+              await bridge.request(
+                context.workerId,
+                {
+                  type: "git.operation.preview",
+                  cwd: context.worktree.path,
+                  action: input.data.action,
+                },
+                { timeoutMs: 5 * 60_000 },
+              ),
+            );
+            if (preview.token !== input.data.token) {
+              throw new Error(
+                "The worktree or selected revisions changed after this preview. Review the operation again.",
+              );
+            }
+            const durable = await repository.createGitOperation(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+              context.workerId,
+              preview.context,
+            );
+            durableId = durable.id;
+            await repository.markGitOperationRunning(durable.id);
+            publishLiveInvalidation("git-operation", {
+              entityId: durable.id,
+              projectId: request.params.projectId,
+            });
+            runningGitOperationRequests.add(durable.id);
+            let workerState: GitManagedOperationWorkerState;
+            try {
+              workerState = gitManagedOperationWorkerStateSchema.parse(
+                await bridge.request(
+                  context.workerId,
+                  {
+                    type: "git.operation.start",
+                    cwd: context.worktree.path,
+                    action: input.data.action,
+                    token: input.data.token,
+                  },
+                  { timeoutMs: null },
+                ),
+              );
+            } finally {
+              runningGitOperationRequests.delete(durable.id);
+            }
+            const updated = await repository.updateGitOperation(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+              durable.id,
+              workerState,
+            );
+            if (!updated) throw new Error("Git operation record disappeared.");
+            await recordLiveWorktreeStatus(
+              request.params.projectId,
+              request.params.worktreeId,
+              worktreeStatusFromGitStatus(context.worktree, workerState.status),
+            );
+            publishLiveInvalidation("git-operation", {
+              entityId: durable.id,
+              projectId: request.params.projectId,
+            });
+            publishLiveInvalidation("worktree-status", {
+              projectId: request.params.projectId,
+            });
+            return updated;
+          },
+        );
+        return reply
+          .code(201)
+          .send(gitManagedOperationResponseSchema.parse({ operation }));
+      } catch (error) {
+        if (durableId && !(error instanceof WorkerUnavailableError)) {
+          await repository.failGitOperation(
+            LOCAL_USER_ID,
+            request.params.projectId,
+            request.params.worktreeId,
+            durableId,
+            errorMessage(error),
+          );
+          publishLiveInvalidation("git-operation", {
+            entityId: durableId,
+            projectId: request.params.projectId,
+          });
+        }
+        return reply
+          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/operations/current",
+    async (request, reply) => {
+      try {
+        const context = await repository.getProjectWorktreeContext(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          request.params.worktreeId,
+        );
+        if (!context) throw new Error("Worktree not found.");
+        const active = await repository.getActiveGitOperation(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          request.params.worktreeId,
+        );
+        let operation: GitManagedOperationRecord | null;
+        if (!active) {
+          operation = await repository.getLatestGitOperation(
+            LOCAL_USER_ID,
+            request.params.projectId,
+            request.params.worktreeId,
+          );
+        } else if (
+          active.state === "queued" ||
+          (active.state === "running" &&
+            (runningGitOperationRequests.has(active.id) ||
+              Date.now() - new Date(active.updatedAt).getTime() < 5_000))
+        ) {
+          operation = active;
+        } else {
+          try {
+            const workerState = gitManagedOperationWorkerStateSchema.parse(
+              await bridge.request(context.workerId, {
+                type: "git.operation.inspect",
+                cwd: context.worktree.path,
+                context: gitManagedOperationContext(active),
+              }),
+            );
+            operation =
+              (await repository.updateGitOperation(
+                LOCAL_USER_ID,
+                request.params.projectId,
+                request.params.worktreeId,
+                active.id,
+                workerState,
+              )) ?? active;
+            if (operation.state !== active.state) {
+              publishLiveInvalidation("git-operation", {
+                entityId: operation.id,
+                projectId: request.params.projectId,
+              });
+              if (
+                ["completed", "failed", "aborted"].includes(operation.state)
+              ) {
+                publishLiveInvalidation("worktree", {
+                  projectId: request.params.projectId,
+                });
+                publishLiveInvalidation("worktree-status", {
+                  projectId: request.params.projectId,
+                });
+                void scheduleProjectWorktreeObservation(
+                  request.params.projectId,
+                );
+              }
+            }
+            await recordLiveWorktreeStatus(
+              request.params.projectId,
+              request.params.worktreeId,
+              worktreeStatusFromGitStatus(context.worktree, workerState.status),
+            );
+          } catch (error) {
+            if (error instanceof WorkerUnavailableError) operation = active;
+            else throw error;
+          }
+        }
+        return reply.send(
+          gitManagedOperationResponseSchema.parse({ operation }),
+        );
+      } catch (error) {
+        return reply
+          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{
+    Params: { projectId: string; worktreeId: string; operationId: string };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/operations/:operationId/control",
+    async (request, reply) => {
+      const input = gitManagedOperationControlSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const operation = await worktreeCoordinator.serialize(
+          request.params.projectId,
+          async () => {
+            const [context, durable] = await Promise.all([
+              repository.getProjectWorktreeContext(
+                LOCAL_USER_ID,
+                request.params.projectId,
+                request.params.worktreeId,
+              ),
+              repository.getGitOperation(
+                LOCAL_USER_ID,
+                request.params.projectId,
+                request.params.worktreeId,
+                request.params.operationId,
+              ),
+            ]);
+            if (!context || !durable)
+              throw new Error("Git operation not found.");
+            if (durable.workerId !== context.workerId) {
+              throw new Error(
+                "The Git operation belongs to a different worker than this worktree.",
+              );
+            }
+            if (["completed", "failed", "aborted"].includes(durable.state)) {
+              throw new Error(
+                `This Git operation is already ${durable.state}.`,
+              );
+            }
+            runningGitOperationRequests.add(durable.id);
+            let workerState: GitManagedOperationWorkerState;
+            try {
+              workerState = gitManagedOperationWorkerStateSchema.parse(
+                await bridge.request(
+                  context.workerId,
+                  {
+                    type: "git.operation.control",
+                    cwd: context.worktree.path,
+                    context: gitManagedOperationContext(durable),
+                    action: input.data.action,
+                  },
+                  { timeoutMs: null },
+                ),
+              );
+            } finally {
+              runningGitOperationRequests.delete(durable.id);
+            }
+            const updated = await repository.updateGitOperation(
+              LOCAL_USER_ID,
+              request.params.projectId,
+              request.params.worktreeId,
+              durable.id,
+              workerState,
+            );
+            if (!updated) throw new Error("Git operation record disappeared.");
+            await recordLiveWorktreeStatus(
+              request.params.projectId,
+              request.params.worktreeId,
+              worktreeStatusFromGitStatus(context.worktree, workerState.status),
+            );
+            publishLiveInvalidation("git-operation", {
+              entityId: durable.id,
+              projectId: request.params.projectId,
+            });
+            publishLiveInvalidation("worktree", {
+              projectId: request.params.projectId,
+            });
+            publishLiveInvalidation("worktree-status", {
+              projectId: request.params.projectId,
+            });
+            void scheduleProjectWorktreeObservation(request.params.projectId);
+            return updated;
+          },
+        );
+        return reply.send(
+          gitManagedOperationResponseSchema.parse({ operation }),
+        );
+      } catch (error) {
+        return reply
+          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .send({ error: errorMessage(error) });
       }
     },
   );

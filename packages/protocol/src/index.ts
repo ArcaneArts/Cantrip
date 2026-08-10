@@ -3692,6 +3692,101 @@ export const gitOperationSummarySchema = z.object({
   conflictedPaths: z.array(gitRelativePathSchema).max(100_000),
 });
 
+export const gitManagedOperationTypeSchema = z.enum([
+  "merge",
+  "rebase",
+  "cherry-pick",
+  "revert",
+]);
+
+export const gitManagedOperationStateSchema = z.enum([
+  "queued",
+  "running",
+  "conflicted",
+  "awaiting-user-action",
+  "completed",
+  "failed",
+  "aborted",
+]);
+
+export const gitMergeRebaseActionSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("merge"),
+    sourceRef: gitRevisionInputSchema,
+  }),
+  z.object({
+    type: z.literal("rebase"),
+    sourceRef: gitRevisionInputSchema,
+  }),
+]);
+
+export const gitManagedOperationContextSchema = z.object({
+  type: gitManagedOperationTypeSchema,
+  originalHead: gitCommitHashInputSchema,
+  sourceRef: z.string().min(1).max(1_024).nullable(),
+  sourceRevision: gitCommitHashInputSchema.nullable(),
+  targetRef: z.string().min(1).max(1_024).nullable(),
+  targetRevision: gitCommitHashInputSchema,
+  pendingCommits: z.array(gitCommitHashInputSchema).max(10_000),
+  totalSteps: z.number().int().positive().max(10_000),
+  checkpointRef: z.string().min(1).max(1_024).nullable(),
+});
+
+export const gitManagedOperationWorkerStateSchema =
+  gitManagedOperationContextSchema.extend({
+    state: gitManagedOperationStateSchema,
+    currentHead: gitCommitHashInputSchema,
+    currentStep: z.number().int().nonnegative().max(10_000),
+    pendingCommits: z.array(gitCommitHashInputSchema).max(10_000),
+    conflictedPaths: z.array(gitRelativePathSchema).max(100_000),
+    output: z.string().max(1_000_000),
+    status: gitStatusSchema,
+  });
+
+export const gitManagedOperationPreviewSchema = z.object({
+  action: gitMergeRebaseActionSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+  destructive: z.boolean(),
+  summary: z.string().min(1).max(10_000),
+  warnings: z.array(z.string().max(1_000)).max(100),
+  context: gitManagedOperationContextSchema,
+  commits: z.array(gitComparisonCommitSchema).max(10_000),
+  files: z.array(gitCommitFileSchema).max(100_000),
+  patch: z.string().max(2_000_000),
+  patchTruncated: z.boolean(),
+  wouldConflict: z.boolean(),
+});
+
+export const gitManagedOperationStartSchema = z.object({
+  action: gitMergeRebaseActionSchema,
+  token: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+
+export const gitManagedOperationControlSchema = z.object({
+  action: z.enum(["continue", "skip", "abort"]),
+});
+
+export const gitManagedOperationRecordSchema =
+  gitManagedOperationContextSchema.extend({
+    id: z.string().uuid(),
+    projectId: z.string().uuid(),
+    worktreeId: z.string().uuid(),
+    workerId: z.string().min(1).max(255),
+    state: gitManagedOperationStateSchema,
+    currentHead: gitCommitHashInputSchema,
+    currentStep: z.number().int().nonnegative().max(10_000),
+    conflictedPaths: z.array(gitRelativePathSchema).max(100_000),
+    output: z.string().max(1_000_000),
+    error: z.string().max(1_000_000).nullable(),
+    createdAt: z.string().datetime({ offset: true }),
+    updatedAt: z.string().datetime({ offset: true }),
+    completedAt: z.string().datetime({ offset: true }).nullable(),
+  });
+
+export const gitManagedOperationResponseSchema = z.object({
+  operation: gitManagedOperationRecordSchema.nullable(),
+});
+
 export const gitCommitActionPreviewSchema = z.object({
   action: gitCommitActionSchema,
   token: z.string().regex(/^[0-9a-f]{64}$/u),
@@ -4196,6 +4291,28 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       cwd: z.string().min(1).max(8_192),
     })
     .extend(gitCommitActionApplySchema.shape),
+  z.object({
+    type: z.literal("git.operation.preview"),
+    cwd: z.string().min(1).max(8_192),
+    action: gitMergeRebaseActionSchema,
+  }),
+  z
+    .object({
+      type: z.literal("git.operation.start"),
+      cwd: z.string().min(1).max(8_192),
+    })
+    .extend(gitManagedOperationStartSchema.shape),
+  z.object({
+    type: z.literal("git.operation.inspect"),
+    cwd: z.string().min(1).max(8_192),
+    context: gitManagedOperationContextSchema,
+  }),
+  z.object({
+    type: z.literal("git.operation.control"),
+    cwd: z.string().min(1).max(8_192),
+    context: gitManagedOperationContextSchema,
+    action: gitManagedOperationControlSchema.shape.action,
+  }),
   z.object({
     type: z.literal("git.action"),
     cwd: z.string().min(1),
@@ -4967,6 +5084,34 @@ export type GitCherryPickSelection = z.infer<
 >;
 export type GitCommitAction = z.infer<typeof gitCommitActionSchema>;
 export type GitOperationSummary = z.infer<typeof gitOperationSummarySchema>;
+export type GitManagedOperationType = z.infer<
+  typeof gitManagedOperationTypeSchema
+>;
+export type GitManagedOperationState = z.infer<
+  typeof gitManagedOperationStateSchema
+>;
+export type GitMergeRebaseAction = z.infer<typeof gitMergeRebaseActionSchema>;
+export type GitManagedOperationContext = z.infer<
+  typeof gitManagedOperationContextSchema
+>;
+export type GitManagedOperationWorkerState = z.infer<
+  typeof gitManagedOperationWorkerStateSchema
+>;
+export type GitManagedOperationPreview = z.infer<
+  typeof gitManagedOperationPreviewSchema
+>;
+export type GitManagedOperationStart = z.infer<
+  typeof gitManagedOperationStartSchema
+>;
+export type GitManagedOperationControl = z.infer<
+  typeof gitManagedOperationControlSchema
+>;
+export type GitManagedOperationRecord = z.infer<
+  typeof gitManagedOperationRecordSchema
+>;
+export type GitManagedOperationResponse = z.infer<
+  typeof gitManagedOperationResponseSchema
+>;
 export type GitCommitActionPreview = z.infer<
   typeof gitCommitActionPreviewSchema
 >;

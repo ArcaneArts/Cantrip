@@ -66,6 +66,12 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         : event.scope.kind === "current-user"
           ? [["worktree-status"]]
           : [];
+    case "git-operation":
+      return projectId
+        ? [["git-operation", projectId]]
+        : event.scope.kind === "current-user"
+          ? [["git-operation"]]
+          : [];
     case "chat":
       return projectId
         ? [["chats", projectId]]
@@ -170,6 +176,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["project-tab-layout", scope.projectId],
         ["worktrees", scope.projectId],
         ["worktree-status", scope.projectId],
+        ["git-operation", scope.projectId],
         ["chats", scope.projectId],
         ["terminals", scope.projectId],
         ["explorers", scope.projectId],

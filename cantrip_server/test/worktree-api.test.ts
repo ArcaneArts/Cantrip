@@ -17,6 +17,8 @@ import {
   gitCommitDetailSchema,
   gitCommitActionPreviewSchema,
   gitCommitActionResultSchema,
+  gitManagedOperationPreviewSchema,
+  gitManagedOperationResponseSchema,
   gitComparisonSchema,
   gitFileDiffSchema,
   gitHistorySchema,
@@ -158,6 +160,20 @@ const gitCommitActionCommands: Array<
     { type: "git.commit.action.preview" | "git.commit.action.apply" }
   >
 > = [];
+const gitManagedOperationCommands: Array<
+  Extract<
+    WorkerCommand,
+    {
+      type:
+        | "git.operation.preview"
+        | "git.operation.start"
+        | "git.operation.inspect"
+        | "git.operation.control";
+    }
+  >
+> = [];
+let managedOperationState: "conflicted" | "completed" | "aborted" =
+  "conflicted";
 const gitRevisionDiffCommands: Array<
   Extract<WorkerCommand, { type: "git.revision.diff" }>
 > = [];
@@ -280,6 +296,56 @@ function branchList() {
     branches: [branchFixture],
     truncated: false,
     generatedAt: "2026-08-10T12:00:00.000Z",
+  };
+}
+
+const managedOperationAction = {
+  type: "rebase" as const,
+  sourceRef: "origin/main",
+};
+const managedOperationContext = {
+  type: "rebase" as const,
+  originalHead: "1".repeat(40),
+  sourceRef: "origin/main",
+  sourceRevision: "2".repeat(40),
+  targetRef: "refs/heads/main",
+  targetRevision: "1".repeat(40),
+  pendingCommits: ["3".repeat(40)],
+  totalSteps: 1,
+  checkpointRef: "refs/cantrip/checkpoints/rebase-test",
+};
+
+function managedWorkerState() {
+  const terminal = managedOperationState !== "conflicted";
+  return {
+    ...managedOperationContext,
+    state: managedOperationState,
+    currentHead: terminal ? "4".repeat(40) : "1".repeat(40),
+    currentStep: terminal ? 1 : 1,
+    pendingCommits: terminal ? [] : managedOperationContext.pendingCommits,
+    conflictedPaths:
+      managedOperationState === "conflicted" ? ["src/app.ts"] : [],
+    output:
+      managedOperationState === "conflicted"
+        ? "CONFLICT in src/app.ts"
+        : managedOperationState,
+    status: {
+      ...status(),
+      head: terminal ? "4".repeat(40) : "1".repeat(40),
+      files:
+        managedOperationState === "conflicted"
+          ? [
+              {
+                path: "src/app.ts",
+                originalPath: null,
+                indexStatus: "U",
+                worktreeStatus: "U",
+                staged: true,
+                unstaged: true,
+              },
+            ]
+          : [],
+    },
   };
 }
 
@@ -586,6 +652,58 @@ const workerBridge = {
               : null,
         });
       }
+      case "git.operation.preview":
+        gitManagedOperationCommands.push(command);
+        return completeStashMutation({
+          action: command.action,
+          token: "d".repeat(64),
+          destructive: command.action.type === "rebase",
+          summary: "Review managed Git operation.",
+          warnings: [],
+          context: {
+            ...managedOperationContext,
+            type: command.action.type,
+            sourceRef: command.action.sourceRef,
+            checkpointRef:
+              command.action.type === "rebase"
+                ? managedOperationContext.checkpointRef
+                : null,
+          },
+          commits: [
+            {
+              hash: "3".repeat(40),
+              shortHash: "3".repeat(8),
+              subject: "Pending commit",
+              authorName: "Cantrip",
+              authoredAt: "2026-08-10T12:00:00.000Z",
+            },
+          ],
+          files: [
+            {
+              path: "src/app.ts",
+              originalPath: null,
+              status: "modified",
+              additions: 1,
+              deletions: 1,
+              binary: false,
+            },
+          ],
+          patch: "@@ -1 +1 @@\n-old\n+new\n",
+          patchTruncated: false,
+          wouldConflict: true,
+        });
+      case "git.operation.start":
+        gitManagedOperationCommands.push(command);
+        managedOperationState = "conflicted";
+        return completeStashMutation(managedWorkerState());
+      case "git.operation.inspect":
+        gitManagedOperationCommands.push(command);
+        return managedWorkerState();
+      case "git.operation.control":
+        gitManagedOperationCommands.push(command);
+        managedOperationState =
+          command.action === "abort" ? "aborted" : "completed";
+        return completeStashMutation(managedWorkerState());
       case "git.refs.list":
         gitRefsCommands.push(command);
         return [
@@ -2213,6 +2331,91 @@ describe.sequential("server worktree control plane", () => {
       cwd: target.path,
       action: commitAction,
     });
+    managedOperationState = "conflicted";
+    const operationPreviewResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/preview`,
+      payload: managedOperationAction,
+    });
+    expect(
+      gitManagedOperationPreviewSchema.parse(operationPreviewResponse.json()),
+    ).toMatchObject({
+      action: managedOperationAction,
+      token: "d".repeat(64),
+      wouldConflict: true,
+    });
+    const operationStartResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations`,
+      payload: {
+        action: managedOperationAction,
+        token: "d".repeat(64),
+      },
+    });
+    expect(operationStartResponse.statusCode, operationStartResponse.body).toBe(
+      201,
+    );
+    const startedOperation = gitManagedOperationResponseSchema.parse(
+      operationStartResponse.json(),
+    ).operation!;
+    expect(startedOperation).toMatchObject({
+      projectId,
+      worktreeId: target.id,
+      workerId: "test-worker",
+      type: "rebase",
+      state: "conflicted",
+      sourceRef: "origin/main",
+      conflictedPaths: ["src/app.ts"],
+    });
+    expect(gitManagedOperationCommands.at(-1)).toMatchObject({
+      type: "git.operation.start",
+      cwd: target.path,
+      action: managedOperationAction,
+    });
+    const blockedOperationPreview = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/preview`,
+      payload: { type: "merge", sourceRef: "feature" },
+    });
+    expect(blockedOperationPreview.statusCode).toBe(409);
+    connected = false;
+    const offlineOperation = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/current`,
+    });
+    expect(offlineOperation.statusCode).toBe(200);
+    expect(
+      gitManagedOperationResponseSchema.parse(offlineOperation.json())
+        .operation,
+    ).toMatchObject({ id: startedOperation.id, state: "conflicted" });
+    connected = true;
+    const operationControlResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/${startedOperation.id}/control`,
+      payload: { action: "continue" },
+    });
+    expect(
+      gitManagedOperationResponseSchema.parse(operationControlResponse.json())
+        .operation,
+    ).toMatchObject({
+      id: startedOperation.id,
+      state: "completed",
+      currentStep: 1,
+      pendingCommits: [],
+    });
+    expect(
+      await database.repository.getLatestGitOperation(
+        LOCAL_USER_ID,
+        projectId,
+        target.id,
+      ),
+    ).toMatchObject({ id: startedOperation.id, state: "completed" });
+    const invalidOperation = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/preview`,
+      payload: { type: "rebase", sourceRef: "bad\nref" },
+    });
+    expect(invalidOperation.statusCode).toBe(400);
     const invalidCommitAction = await app.inject({
       method: "POST",
       url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/actions/preview`,

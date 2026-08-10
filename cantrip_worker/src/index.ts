@@ -30,13 +30,16 @@ import {
   applyGitRemoteAction,
   applyGitStashAction,
   applyGitTagAction,
+  controlGitManagedOperation,
   createGitStash,
+  inspectGitManagedOperation,
   previewGitBranchAction,
   previewGitCommitAction,
   previewGitPartialPatch,
   previewGitRemoteAction,
   previewGitStashAction,
   previewGitTagAction,
+  previewGitManagedOperation,
   readGitCommitDetail,
   readGitBranches,
   readGitComparison,
@@ -51,6 +54,7 @@ import {
   readGitTagDetail,
   readGitTags,
   runGitAction,
+  startGitManagedOperation,
 } from "./git.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
 import { ProjectShareManager } from "./project-share-manager.js";
@@ -307,6 +311,22 @@ async function start(): Promise<void> {
         return previewGitCommitAction(command.cwd, command.action);
       case "git.commit.action.apply":
         return applyGitCommitAction(command.cwd, command.action, command.token);
+      case "git.operation.preview":
+        return previewGitManagedOperation(command.cwd, command.action);
+      case "git.operation.start":
+        return startGitManagedOperation(
+          command.cwd,
+          command.action,
+          command.token,
+        );
+      case "git.operation.inspect":
+        return inspectGitManagedOperation(command.cwd, command.context);
+      case "git.operation.control":
+        return controlGitManagedOperation(
+          command.cwd,
+          command.context,
+          command.action,
+        );
       case "git.action":
         return runGitAction(command.cwd, command.action);
       case "worktree.list":

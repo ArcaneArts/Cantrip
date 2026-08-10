@@ -2,6 +2,7 @@ import type {
   ChatSummary,
   GitCommit,
   GitRef,
+  GitMergeRebaseAction,
   GitStatus,
   GithubIssueKind,
   GithubIssueList,
@@ -14,6 +15,7 @@ import type {
 import {
   useInfiniteQuery,
   useMutation,
+  useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import {
@@ -25,6 +27,7 @@ import {
   GitCommitHorizontal,
   GitCompareArrows,
   GitFork,
+  GitPullRequestArrow,
   Loader2,
   Plus,
   RefreshCw,
@@ -38,6 +41,7 @@ import {
   createProjectWorktree,
   getGithubIssues,
   getProjectWorktreeHistory,
+  getProjectWorktreeGitOperation,
   lockProjectWorktree,
   pruneProjectWorktrees,
   reconcileProjectWorktrees,
@@ -72,6 +76,7 @@ import { GitCommitContextMenu } from "./git-commit-actions-menu";
 import { GitComparisonPanel } from "./git-comparison-panel";
 import { GitStashPanel } from "./git-stash-panel";
 import { GitRepositoryPanel } from "./git-repository-panel";
+import { GitOperationPanel, gitOperationIsActive } from "./git-operation-panel";
 import { HistoryWorktreeMarker } from "./history-worktree-marker";
 import { GithubIssuesView } from "./github-issues";
 
@@ -392,6 +397,9 @@ export function GitHistoryView({
   const [stashesOpen, setStashesOpen] = useState(false);
   const [branchesOpen, setBranchesOpen] = useState(false);
   const [repositoryOpen, setRepositoryOpen] = useState(false);
+  const [operationsOpen, setOperationsOpen] = useState(false);
+  const [operationPreset, setOperationPreset] =
+    useState<GitMergeRebaseAction | null>(null);
   const [commitActionRequest, setCommitActionRequest] =
     useState<CommitActionRequest | null>(null);
   const [compareLeft, setCompareLeft] = useState<string | null>(null);
@@ -412,6 +420,13 @@ export function GitHistoryView({
     selectedWorktree?.lifecycleState === "ready" && selectedWorker?.online,
   );
   const status = statuses[worktreeId];
+  const operation = useQuery({
+    enabled: section === "history" && selectedAvailable,
+    queryKey: ["git-operation", project.id, worktreeId],
+    queryFn: () => getProjectWorktreeGitOperation(project.id, worktreeId),
+    refetchInterval: (query) =>
+      gitOperationIsActive(query.state.data?.operation) ? 3_000 : false,
+  });
   const history = useInfiniteQuery({
     enabled: section === "history" && selectedAvailable,
     initialPageParam: 0,
@@ -630,6 +645,8 @@ export function GitHistoryView({
     setStashesOpen(false);
     setBranchesOpen(false);
     setRepositoryOpen(false);
+    setOperationsOpen(false);
+    setOperationPreset(null);
     setCommitActionRequest(null);
     setCompareLeft(null);
     setCompareRight(null);
@@ -728,6 +745,29 @@ export function GitHistoryView({
           {section === "history" ? (
             <Button
               size="sm"
+              variant={operationsOpen ? "outline" : "ghost"}
+              className="h-6 gap-1 px-2 text-[11px]"
+              disabled={!selectedAvailable}
+              onClick={() => {
+                setChangesOpen(false);
+                setSelectedCommit(null);
+                setCompareOpen(false);
+                setStashesOpen(false);
+                setBranchesOpen(false);
+                setRepositoryOpen(false);
+                setOperationPreset(null);
+                setOperationsOpen((current) => !current);
+              }}
+            >
+              <GitPullRequestArrow className="size-3" /> Operations
+              {gitOperationIsActive(operation.data?.operation) ? (
+                <span className="size-1.5 rounded-full bg-amber-500" />
+              ) : null}
+            </Button>
+          ) : null}
+          {section === "history" ? (
+            <Button
+              size="sm"
               variant={repositoryOpen ? "outline" : "ghost"}
               className="h-6 gap-1 px-2 text-[11px]"
               disabled={!selectedAvailable}
@@ -737,6 +777,7 @@ export function GitHistoryView({
                 setCompareOpen(false);
                 setStashesOpen(false);
                 setBranchesOpen(false);
+                setOperationsOpen(false);
                 setRepositoryOpen((current) => !current);
               }}
             >
@@ -755,6 +796,7 @@ export function GitHistoryView({
                 setCompareOpen(false);
                 setStashesOpen(false);
                 setRepositoryOpen(false);
+                setOperationsOpen(false);
                 setBranchesOpen((current) => !current);
               }}
             >
@@ -773,6 +815,7 @@ export function GitHistoryView({
                 setCompareOpen(false);
                 setBranchesOpen(false);
                 setRepositoryOpen(false);
+                setOperationsOpen(false);
                 setStashesOpen((current) => !current);
               }}
             >
@@ -791,6 +834,7 @@ export function GitHistoryView({
                 setStashesOpen(false);
                 setBranchesOpen(false);
                 setRepositoryOpen(false);
+                setOperationsOpen(false);
                 setCompareOpen((current) => {
                   if (!current && !compareLeft) {
                     setCompareLeft(firstPage?.head ?? status?.head ?? null);
@@ -1311,6 +1355,27 @@ export function GitHistoryView({
               projectId={project.id}
               worktreeId={worktreeId}
               onClose={() => setBranchesOpen(false)}
+              onOperation={(action) => {
+                setBranchesOpen(false);
+                setOperationPreset(action);
+                setOperationsOpen(true);
+              }}
+            />
+          ) : null}
+          {operationsOpen ? (
+            <GitOperationPanel
+              initialAction={operationPreset}
+              projectId={project.id}
+              worktreeId={worktreeId}
+              onClose={() => {
+                setOperationsOpen(false);
+                setOperationPreset(null);
+              }}
+              onOpenWorkingChanges={() => {
+                setOperationsOpen(false);
+                setOperationPreset(null);
+                setChangesOpen(true);
+              }}
             />
           ) : null}
           {repositoryOpen ? (
