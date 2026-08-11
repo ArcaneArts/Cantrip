@@ -13,8 +13,10 @@ import { getTerminalScriptCommands } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 import {
+  ensureTerminalCommandSelectionVisible,
   filterTerminalScriptCommands,
   moveTerminalCommandSelection,
+  type TerminalCommandSelectionSource,
 } from "./terminal-command-palette";
 
 function errorText(error: unknown): string {
@@ -36,6 +38,7 @@ export function TerminalScriptCommandDialog({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [runError, setRunError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const selectionSourceRef = useRef<TerminalCommandSelectionSource>("reset");
   const commands = useQuery({
     queryKey: ["terminal-script-commands", terminalId],
     queryFn: () => getTerminalScriptCommands(terminalId),
@@ -49,19 +52,24 @@ export function TerminalScriptCommandDialog({
 
   useEffect(() => {
     if (!open) return;
+    selectionSourceRef.current = "reset";
     setQuery("");
     setSelectedIndex(0);
     setRunError(null);
   }, [open, terminalId]);
 
   useEffect(() => {
+    selectionSourceRef.current = "reset";
     setSelectedIndex(0);
   }, [query, commands.data]);
 
   useEffect(() => {
-    listRef.current
-      ?.querySelector<HTMLElement>("[data-selected='true']")
-      ?.scrollIntoView({ block: "nearest" });
+    ensureTerminalCommandSelectionVisible(
+      listRef.current?.querySelector<HTMLElement>("[data-selected='true']") ??
+        null,
+      selectionSourceRef.current,
+    );
+    selectionSourceRef.current = "reset";
   }, [selectedIndex]);
 
   const run = (command: ScriptCommand | undefined) => {
@@ -76,13 +84,13 @@ export function TerminalScriptCommandDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="top-[15vh] max-h-[70vh] max-w-2xl -translate-y-0 gap-0 overflow-hidden p-0">
+      <DialogContent className="top-[15vh] flex max-h-[70vh] max-w-2xl -translate-y-0 flex-col gap-0 overflow-hidden p-0">
         <DialogTitle className="sr-only">Run a project command</DialogTitle>
         <DialogDescription className="sr-only">
           Filter commands discovered from project manifests and run one in the
           current terminal.
         </DialogDescription>
-        <div className="flex h-16 items-center gap-3 border-b px-5 pr-12">
+        <div className="flex h-16 shrink-0 items-center gap-3 border-b px-5 pr-12">
           <Search className="size-5 shrink-0 text-muted-foreground" />
           <input
             autoFocus
@@ -92,6 +100,7 @@ export function TerminalScriptCommandDialog({
             onKeyDown={(event) => {
               if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                 event.preventDefault();
+                selectionSourceRef.current = "keyboard";
                 setSelectedIndex((index) =>
                   moveTerminalCommandSelection(
                     index,
@@ -122,7 +131,7 @@ export function TerminalScriptCommandDialog({
         <div
           id="terminal-script-command-list"
           ref={listRef}
-          className="min-h-28 overflow-y-auto p-2"
+          className="min-h-28 flex-1 overscroll-contain overflow-y-auto p-2"
           role="listbox"
         >
           {commands.isPending ? (
@@ -158,7 +167,10 @@ export function TerminalScriptCommandDialog({
                     : "hover:bg-muted/60",
                 )}
                 onClick={() => run(command)}
-                onMouseMove={() => setSelectedIndex(index)}
+                onMouseMove={() => {
+                  selectionSourceRef.current = "pointer";
+                  setSelectedIndex(index);
+                }}
               >
                 <Palette className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1">
@@ -186,7 +198,7 @@ export function TerminalScriptCommandDialog({
             ))
           )}
         </div>
-        <div className="flex min-h-9 items-center justify-between border-t px-4 text-[11px] text-muted-foreground">
+        <div className="flex min-h-9 shrink-0 items-center justify-between border-t px-4 text-[11px] text-muted-foreground">
           <span>{runError ?? `${filtered.length} commands`}</span>
           <span className="flex items-center gap-3">
             <span>↑↓ Navigate</span>

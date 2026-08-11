@@ -56,6 +56,16 @@ export function moveTerminalCommandSelection(
   return (currentIndex + direction + commandCount) % commandCount;
 }
 
+export type TerminalCommandSelectionSource = "keyboard" | "pointer" | "reset";
+
+export function ensureTerminalCommandSelectionVisible(
+  element: Pick<HTMLElement, "scrollIntoView"> | null,
+  source: TerminalCommandSelectionSource,
+): void {
+  if (source !== "keyboard") return;
+  element?.scrollIntoView({ block: "nearest" });
+}
+
 export function terminalCommandInput(command: ScriptCommand): string {
   return `${command.command}\r`;
 }
