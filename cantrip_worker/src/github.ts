@@ -946,6 +946,26 @@ export class GithubClient {
     });
   }
 
+  async countOpenIssues(nameWithOwner: string): Promise<number> {
+    repositorySegments(nameWithOwner);
+    const result = (await this.api("search/issues", [
+      "--method",
+      "GET",
+      "-f",
+      `q=repo:${nameWithOwner} is:issue is:open`,
+      "-f",
+      "per_page=1",
+    ])) as { total_count?: unknown };
+    if (
+      typeof result.total_count !== "number" ||
+      !Number.isInteger(result.total_count) ||
+      result.total_count < 0
+    ) {
+      throw new Error("GitHub returned an invalid open issue count.");
+    }
+    return result.total_count;
+  }
+
   async getIssue(
     nameWithOwner: string,
     issueNumber: number,

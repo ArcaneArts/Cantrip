@@ -88,11 +88,34 @@ export const projectAutomationScheduleSchema = z.discriminatedUnion("kind", [
   projectAutomationCronScheduleSchema,
 ]);
 
+export const projectAutomationConditionSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("script"),
+    script: z
+      .string()
+      .min(1)
+      .max(100_000)
+      .refine((value) => value.trim().length > 0, {
+        message: "Condition script is required.",
+      }),
+  }),
+  z.object({
+    type: z.literal("open-issues"),
+    minimum: z.number().int().min(1).max(1_000_000).default(1),
+  }),
+]);
+
+export const projectAutomationConditionResultSchema = z.object({
+  allowed: z.boolean(),
+  detail: z.string().trim().min(1).max(5_000),
+});
+
 export const projectAutomationCreateSchema = z.object({
   name: z.string().trim().min(1).max(200),
   chatId: idSchema,
   prompt: z.string().trim().min(1).max(100_000),
   schedule: projectAutomationScheduleSchema,
+  condition: projectAutomationConditionSchema.nullable().default(null),
   enabled: z.boolean().default(true),
 });
 
@@ -102,6 +125,7 @@ export const projectAutomationUpdateSchema = z
     chatId: idSchema.optional(),
     prompt: z.string().trim().min(1).max(100_000).optional(),
     schedule: projectAutomationScheduleSchema.optional(),
+    condition: projectAutomationConditionSchema.nullable().optional(),
     enabled: z.boolean().optional(),
   })
   .refine((input) => Object.keys(input).length > 0, {
@@ -113,6 +137,7 @@ export const projectAutomationStatusSchema = z.enum([
   "dispatching",
   "started",
   "queued",
+  "skipped",
   "failed",
 ]);
 
@@ -125,6 +150,7 @@ export const projectAutomationSchema = z.object({
   name: z.string().min(1).max(200),
   prompt: z.string().min(1).max(100_000),
   schedule: projectAutomationScheduleSchema,
+  condition: projectAutomationConditionSchema.nullable().default(null),
   enabled: z.boolean(),
   revision: z.number().int().positive(),
   nextRunAt: timestampSchema.nullable(),
@@ -154,6 +180,12 @@ export type ProjectAutomationIntervalUnit = z.infer<
 export type ProjectAutomationSchedule = z.infer<
   typeof projectAutomationScheduleSchema
 >;
+export type ProjectAutomationCondition = z.infer<
+  typeof projectAutomationConditionSchema
+>;
+export type ProjectAutomationConditionResult = z.infer<
+  typeof projectAutomationConditionResultSchema
+>;
 export type ProjectAutomationCreate = z.infer<
   typeof projectAutomationCreateSchema
 >;
@@ -167,6 +199,14 @@ export type ProjectAutomationDispatchRequest = z.infer<
 export type ProjectAutomationDispatchResult = z.infer<
   typeof projectAutomationDispatchResultSchema
 >;
+
+export function describeProjectAutomationCondition(
+  condition: ProjectAutomationCondition | null,
+): string {
+  if (!condition) return "No condition";
+  if (condition.type === "script") return "Script must exit with code 0";
+  return `At least ${condition.minimum} open ${condition.minimum === 1 ? "issue" : "issues"}`;
+}
 
 const fixedIntervalMilliseconds: Partial<
   Record<ProjectAutomationIntervalUnit, number>

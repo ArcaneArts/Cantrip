@@ -4,6 +4,7 @@ import path from "node:path";
 import type { WorkerCommand, WorkerEvent } from "@cantrip/protocol";
 
 import { AttachmentStore } from "./attachment-store.js";
+import { evaluateProjectAutomationCondition } from "./automation-conditions.js";
 import { ProjectAutomationScheduler } from "./automation-scheduler.js";
 import { codexAccountHome } from "./codex/account-home.js";
 import { CodexAppServer, codexRuntimeId } from "./codex/app-server.js";
@@ -234,6 +235,15 @@ async function start(): Promise<void> {
         return github.listRepositoryOwners();
       case "github.repositories.create":
         return github.createRepository(command.request);
+      case "automation.condition.evaluate":
+        return evaluateProjectAutomationCondition(
+          command.condition,
+          command.cwd,
+          command.repository,
+          {
+            countOpenIssues: (repository) => github.countOpenIssues(repository),
+          },
+        );
       case "github.issues.list":
         return github.listIssues(
           command.repository,

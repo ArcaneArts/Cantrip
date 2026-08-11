@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export * from "./live.js";
 
+import { projectAutomationConditionSchema } from "./automations.js";
 import {
   workflowJsonObjectSchema,
   workflowNodeExecutionRequestSchema,
@@ -5198,6 +5199,12 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("github.repositories.create"),
     request: githubRepositoryCreateSchema,
+  }),
+  z.object({
+    type: z.literal("automation.condition.evaluate"),
+    condition: projectAutomationConditionSchema,
+    cwd: z.string().min(1).max(8_192),
+    repository: githubRepositorySchema.shape.nameWithOwner.nullable(),
   }),
   z.object({
     type: z.literal("github.issues.list"),

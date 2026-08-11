@@ -2,7 +2,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
+import {
+  unprobedCodexRuntimeReport,
+  type WorkerCommand,
+} from "@cantrip/protocol";
 import {
   projectAutomationDispatchResultSchema,
   projectAutomationListSchema,
@@ -32,6 +35,11 @@ const config: ServerConfig = {
   port: 4310,
   workerToken: "test-worker-token",
 };
+const conditionRequests: Extract<
+  WorkerCommand,
+  { type: "automation.condition.evaluate" }
+>[] = [];
+let conditionAllowed = true;
 const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
@@ -48,6 +56,13 @@ const workerBridge: WorkerCommandBus = {
     return () => undefined;
   },
   async request(_workerId, command) {
+    if (command.type === "automation.condition.evaluate") {
+      conditionRequests.push(command);
+      return {
+        allowed: conditionAllowed,
+        detail: conditionAllowed ? "Condition passed." : "Condition blocked.",
+      };
+    }
     throw new Error(`Unexpected worker command ${command.type}.`);
   },
 };
@@ -130,6 +145,7 @@ describe.sequential("project automation API", () => {
           unit: "minute",
           startsAt,
         },
+        condition: { type: "open-issues", minimum: 1 },
         enabled: true,
       },
     });
@@ -138,6 +154,7 @@ describe.sequential("project automation API", () => {
     automationId = created.id;
     expect(created.nextRunAt).toBe(startsAt);
     expect(created.chatTitle).toBe("Scheduled work");
+    expect(created.condition).toEqual({ type: "open-issues", minimum: 1 });
 
     const workerResponse = await app.inject({
       method: "GET",
@@ -193,6 +210,12 @@ describe.sequential("project automation API", () => {
     expect(queued[0]?.text).toBe(
       "Review the project and summarize its current state.",
     );
+    expect(conditionRequests).toContainEqual({
+      type: "automation.condition.evaluate",
+      condition: { type: "open-issues", minimum: 1 },
+      cwd: path.join(dataDirectory, "repository"),
+      repository: "ArcaneArts/Cantrip",
+    });
 
     const duplicate = await dispatch();
     expect(duplicate.statusCode).toBe(200);
@@ -202,6 +225,67 @@ describe.sequential("project automation API", () => {
     expect(
       await database.repository.listQueuedPrompts(LOCAL_USER_ID, chatId),
     ).toHaveLength(1);
+  });
+
+  it("advances a due occurrence without queuing when its condition is false", async () => {
+    conditionAllowed = false;
+    const startsAt = new Date(Date.now() + 10_000).toISOString();
+    const createdResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/automations`,
+      payload: {
+        name: "Conditional review",
+        chatId,
+        prompt: "This prompt should be skipped.",
+        schedule: {
+          kind: "interval",
+          every: 1,
+          unit: "hour",
+          startsAt,
+        },
+        condition: { type: "script", script: "exit 1" },
+        enabled: true,
+      },
+    });
+    const automation = projectAutomationSchema.parse(createdResponse.json());
+    const dispatched = await app.inject({
+      method: "POST",
+      url: `/api/internal/workers/automations/${automation.id}/dispatch?workerId=automation-worker`,
+      headers: { authorization: "Bearer test-worker-token" },
+      payload: {
+        revision: automation.revision,
+        scheduledFor: automation.nextRunAt,
+      },
+    });
+
+    expect(dispatched.statusCode).toBe(202);
+    expect(
+      projectAutomationDispatchResultSchema.parse(dispatched.json()),
+    ).toMatchObject({ accepted: true, status: "skipped" });
+    expect(
+      await database.repository.listQueuedPrompts(LOCAL_USER_ID, chatId),
+    ).toHaveLength(1);
+    const skipped = projectAutomationListSchema
+      .parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/projects/${projectId}/automations`,
+          })
+        ).json(),
+      )
+      .find(({ id }) => id === automation.id);
+    expect(skipped?.lastStatus).toBe("skipped");
+
+    conditionAllowed = true;
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/api/automations/${automation.id}`,
+        })
+      ).statusCode,
+    ).toBe(204);
   });
 
   it("pauses, edits, and deletes an automation", async () => {

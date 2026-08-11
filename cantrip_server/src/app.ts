@@ -297,6 +297,7 @@ import type {
   AgentWorktreeToolResult,
 } from "@cantrip/protocol";
 import {
+  projectAutomationConditionResultSchema,
   projectAutomationCreateSchema,
   projectAutomationDispatchRequestSchema,
   projectAutomationDispatchResultSchema,
@@ -12702,6 +12703,40 @@ export async function buildApp({
         );
         if (!context || context.workerId !== request.query.workerId) {
           throw new Error("The automation target moved to another worker.");
+        }
+        if (automation.condition) {
+          const githubContext =
+            automation.condition.type === "open-issues"
+              ? await repository.getGithubProjectExecutionContext(
+                  LOCAL_USER_ID,
+                  automation.projectId,
+                )
+              : null;
+          const condition = projectAutomationConditionResultSchema.parse(
+            await bridge.request(
+              context.workerId,
+              {
+                type: "automation.condition.evaluate",
+                condition: automation.condition,
+                cwd: context.cwd,
+                repository: githubContext?.nameWithOwner ?? null,
+              },
+              { timeoutMs: 45_000 },
+            ),
+          );
+          if (!condition.allowed) {
+            await repository.projectAutomations.finishDispatch(
+              automation.id,
+              "skipped",
+            );
+            return reply.code(202).send(
+              projectAutomationDispatchResultSchema.parse({
+                accepted: true,
+                status: "skipped",
+                nextRunAt: claim.nextRunAt?.toISOString() ?? null,
+              }),
+            );
+          }
         }
         let status: "started" | "queued";
         if (context.automationPaused || chatIsExecuting(context.status)) {

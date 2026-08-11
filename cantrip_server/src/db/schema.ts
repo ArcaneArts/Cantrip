@@ -17,7 +17,10 @@ import type {
   RemoteSurfaceConfiguration,
   WorktreeStatusResult,
 } from "@cantrip/protocol";
-import type { ProjectAutomationSchedule } from "@cantrip/protocol/automations";
+import type {
+  ProjectAutomationCondition,
+  ProjectAutomationSchedule,
+} from "@cantrip/protocol/automations";
 import { sql } from "drizzle-orm";
 import {
   bigserial,
@@ -1051,6 +1054,7 @@ export const projectAutomations = pgTable(
     name: text("name").notNull(),
     prompt: text("prompt").notNull(),
     schedule: jsonb("schedule").$type<ProjectAutomationSchedule>().notNull(),
+    condition: jsonb("condition").$type<ProjectAutomationCondition>(),
     enabled: boolean("enabled").notNull().default(true),
     revision: integer("revision").notNull().default(1),
     nextRunAt: timestamp("next_run_at", { withTimezone: true }),
@@ -1075,7 +1079,7 @@ export const projectAutomations = pgTable(
     check("project_automations_revision_check", sql`${table.revision} > 0`),
     check(
       "project_automations_status_check",
-      sql`${table.lastStatus} IN ('idle', 'dispatching', 'started', 'queued', 'failed')`,
+      sql`${table.lastStatus} IN ('idle', 'dispatching', 'started', 'queued', 'skipped', 'failed')`,
     ),
   ],
 );
