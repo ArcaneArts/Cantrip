@@ -2461,7 +2461,7 @@ export function App() {
   const [showImporter, setShowImporter] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsSection, setSettingsSection] = useState<
-    "general" | "skills" | "workspaces"
+    "general" | "skills" | "mcp" | "workspaces"
   >("general");
   const [showProjectSettings, setShowProjectSettings] = useState(false);
   const [activeProjectWorkspaceId, setActiveProjectWorkspaceId] = useState<

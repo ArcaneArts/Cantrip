@@ -565,6 +565,10 @@ export class WorkflowExecutor {
   ): Promise<void> {
     const { cwd, workerId, worktreeId } = lease.assignment;
     try {
+      const mcpServers = await this.repository.listEffectiveMcpServers(
+        LOCAL_USER_ID,
+        lease.candidate.run.projectId,
+      );
       const rawResult = await this.bridge.request(
         workerId,
         {
@@ -595,6 +599,7 @@ export class WorkflowExecutor {
           timeoutMs: lease.timeoutMs,
           model: runtime.model,
           provider: runtime.provider,
+          mcpServers,
         },
         {
           timeoutMs: null,

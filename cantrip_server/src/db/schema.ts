@@ -251,6 +251,61 @@ export const projects = pgTable(
   ],
 );
 
+export const mcpServers = pgTable(
+  "mcp_servers",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "cascade",
+    }),
+    name: text("name").notNull(),
+    transport: text("transport").notNull(),
+    command: text("command"),
+    args: jsonb("args").$type<string[]>().notNull().default([]),
+    url: text("url"),
+    environment: jsonb("environment")
+      .$type<Record<string, string>>()
+      .notNull()
+      .default({}),
+    headers: jsonb("headers")
+      .$type<Record<string, string>>()
+      .notNull()
+      .default({}),
+    environmentHeaders: jsonb("environment_headers")
+      .$type<Record<string, string>>()
+      .notNull()
+      .default({}),
+    bearerTokenEnvironmentVariable: text("bearer_token_environment_variable"),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("mcp_servers_owner_global_name_unique")
+      .on(table.ownerId, table.name)
+      .where(sql`${table.projectId} IS NULL`),
+    uniqueIndex("mcp_servers_project_name_unique")
+      .on(table.projectId, table.name)
+      .where(sql`${table.projectId} IS NOT NULL`),
+    index("mcp_servers_owner_scope_index").on(table.ownerId, table.projectId),
+    check(
+      "mcp_servers_transport_check",
+      sql`${table.transport} IN ('stdio', 'http')`,
+    ),
+    check(
+      "mcp_servers_transport_configuration_check",
+      sql`(${table.transport} = 'stdio' AND ${table.command} IS NOT NULL AND ${table.url} IS NULL) OR (${table.transport} = 'http' AND ${table.command} IS NULL AND ${table.url} IS NOT NULL)`,
+    ),
+  ],
+);
+
 export const projectWorkspaces = pgTable(
   "project_workspaces",
   {

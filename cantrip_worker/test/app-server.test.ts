@@ -9,6 +9,7 @@ import {
   codexResultForAgentInteraction,
   CodexAppServer,
   codexEndpointFromLine,
+  codexMcpConfigOverride,
   codexModelProviderName,
   codexThreadPermissionParams,
   codexWorkflowTurnPolicy,
@@ -665,6 +666,48 @@ describe("changedFiles", () => {
       { path: "src/new.ts", kind: "add" },
       { path: "old.ts", kind: "delete" },
     ]);
+  });
+});
+
+describe("codexMcpConfigOverride", () => {
+  it("maps Cantrip stdio and HTTP settings to Codex config keys", () => {
+    expect(
+      codexMcpConfigOverride([
+        {
+          name: "local_tools",
+          transport: "stdio",
+          command: "npx",
+          args: ["-y", "@example/mcp"],
+          environment: { TOKEN: "secret" },
+          enabled: true,
+        },
+        {
+          name: "remote_tools",
+          transport: "http",
+          url: "https://example.com/mcp",
+          bearerTokenEnvironmentVariable: "MCP_TOKEN",
+          headers: { "X-Team": "Cantrip" },
+          environmentHeaders: { Authorization: "MCP_AUTH_HEADER" },
+          enabled: false,
+        },
+      ]),
+    ).toEqual({
+      mcp_servers: {
+        local_tools: {
+          command: "npx",
+          args: ["-y", "@example/mcp"],
+          env: { TOKEN: "secret" },
+          enabled: true,
+        },
+        remote_tools: {
+          url: "https://example.com/mcp",
+          bearer_token_env_var: "MCP_TOKEN",
+          http_headers: { "X-Team": "Cantrip" },
+          env_http_headers: { Authorization: "MCP_AUTH_HEADER" },
+          enabled: false,
+        },
+      },
+    });
   });
 });
 

@@ -316,6 +316,13 @@
       "when": 1786432643600,
       "tag": "0044_left_terrax",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1786433551636,
+      "tag": "0045_futuristic_lady_bullseye",
+      "breakpoints": true
     }
   ]
 }

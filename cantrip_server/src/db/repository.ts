@@ -45,6 +45,8 @@ import type {
   ModelProfileCreate,
   ModelProfileSummary,
   ModelProfileUpdate,
+  McpServerConfiguration,
+  McpServerSummary,
   ModelProviderCreate,
   ModelProviderSummary,
   ModelProviderUpdate,
@@ -129,6 +131,7 @@ type RepositoryDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type ProjectRow = typeof schema.projects.$inferSelect;
 type ProjectSourceRow = typeof schema.projectSources.$inferSelect;
 type ProjectWorktreeRow = typeof schema.projectWorktrees.$inferSelect;
+type McpServerRow = typeof schema.mcpServers.$inferSelect;
 type GitOperationRow = typeof schema.gitOperations.$inferSelect;
 type ProjectWorkspaceRow = typeof schema.projectWorkspaces.$inferSelect;
 
@@ -332,6 +335,66 @@ function toProjectSummary(
       : null,
     createdAt: toISOString(project.createdAt),
     updatedAt: toISOString(project.updatedAt),
+  };
+}
+
+function toMcpServerSummary(server: McpServerRow): McpServerSummary {
+  const metadata = {
+    id: server.id,
+    scope: server.projectId ? ("project" as const) : ("global" as const),
+    projectId: server.projectId,
+    createdAt: toISOString(server.createdAt),
+    updatedAt: toISOString(server.updatedAt),
+  };
+  if (server.transport === "stdio") {
+    return {
+      ...metadata,
+      name: server.name,
+      transport: "stdio",
+      command: server.command!,
+      args: server.args,
+      environment: server.environment,
+      enabled: server.enabled,
+    };
+  }
+  return {
+    ...metadata,
+    name: server.name,
+    transport: "http",
+    url: server.url!,
+    bearerTokenEnvironmentVariable: server.bearerTokenEnvironmentVariable,
+    headers: server.headers,
+    environmentHeaders: server.environmentHeaders,
+    enabled: server.enabled,
+  };
+}
+
+function mcpServerValues(input: McpServerConfiguration) {
+  if (input.transport === "stdio") {
+    return {
+      name: input.name,
+      transport: input.transport,
+      command: input.command,
+      args: input.args,
+      url: null,
+      environment: input.environment,
+      headers: {},
+      environmentHeaders: {},
+      bearerTokenEnvironmentVariable: null,
+      enabled: input.enabled,
+    };
+  }
+  return {
+    name: input.name,
+    transport: input.transport,
+    command: null,
+    args: [],
+    url: input.url,
+    environment: {},
+    headers: input.headers,
+    environmentHeaders: input.environmentHeaders,
+    bearerTokenEnvironmentVariable: input.bearerTokenEnvironmentVariable,
+    enabled: input.enabled,
   };
 }
 
@@ -1508,6 +1571,194 @@ export class ServerRepository {
       .where(eq(schema.projects.ownerId, ownerId))
       .orderBy(asc(schema.projects.position), asc(schema.projects.createdAt));
     return rows.map(({ project, source }) => toProjectSummary(project, source));
+  }
+
+  async listMcpServers(
+    ownerId: string,
+    projectId: string | null,
+  ): Promise<McpServerSummary[] | null> {
+    if (projectId) {
+      const project = await this.database
+        .select({ id: schema.projects.id })
+        .from(schema.projects)
+        .where(
+          and(
+            eq(schema.projects.id, projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .limit(1);
+      if (!project[0]) return null;
+    }
+    const rows = await this.database
+      .select()
+      .from(schema.mcpServers)
+      .where(
+        and(
+          eq(schema.mcpServers.ownerId, ownerId),
+          projectId
+            ? eq(schema.mcpServers.projectId, projectId)
+            : isNull(schema.mcpServers.projectId),
+        ),
+      )
+      .orderBy(asc(schema.mcpServers.name), asc(schema.mcpServers.createdAt));
+    return rows.map(toMcpServerSummary);
+  }
+
+  async listEffectiveMcpServers(
+    ownerId: string,
+    projectId: string | null,
+  ): Promise<McpServerConfiguration[]> {
+    const rows = await this.database
+      .select()
+      .from(schema.mcpServers)
+      .where(
+        and(
+          eq(schema.mcpServers.ownerId, ownerId),
+          or(
+            isNull(schema.mcpServers.projectId),
+            ...(projectId ? [eq(schema.mcpServers.projectId, projectId)] : []),
+          ),
+        ),
+      )
+      .orderBy(asc(schema.mcpServers.name), asc(schema.mcpServers.createdAt));
+    const effective = new Map<string, McpServerRow>();
+    for (const row of rows) {
+      const current = effective.get(row.name);
+      if (!current || (projectId && row.projectId === projectId)) {
+        effective.set(row.name, row);
+      }
+    }
+    return [...effective.values()].map((row) => {
+      const {
+        id: _id,
+        scope: _scope,
+        projectId: _projectId,
+        createdAt: _createdAt,
+        updatedAt: _updatedAt,
+        ...configuration
+      } = toMcpServerSummary(row);
+      return configuration;
+    });
+  }
+
+  async createMcpServer(
+    ownerId: string,
+    projectId: string | null,
+    input: McpServerConfiguration,
+  ): Promise<McpServerSummary | null> {
+    if (projectId) {
+      const project = await this.database
+        .select({ id: schema.projects.id })
+        .from(schema.projects)
+        .where(
+          and(
+            eq(schema.projects.id, projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .limit(1);
+      if (!project[0]) return null;
+    }
+    const rows = await this.database
+      .insert(schema.mcpServers)
+      .values({
+        id: randomUUID(),
+        ownerId,
+        projectId,
+        ...mcpServerValues(input),
+      })
+      .returning();
+    return toMcpServerSummary(firstOrThrow(rows, "creating an MCP server"));
+  }
+
+  async updateMcpServer(
+    ownerId: string,
+    projectId: string | null,
+    serverId: string,
+    input: McpServerConfiguration,
+  ): Promise<McpServerSummary | null> {
+    const rows = await this.database
+      .update(schema.mcpServers)
+      .set({ ...mcpServerValues(input), updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.mcpServers.id, serverId),
+          eq(schema.mcpServers.ownerId, ownerId),
+          projectId
+            ? eq(schema.mcpServers.projectId, projectId)
+            : isNull(schema.mcpServers.projectId),
+        ),
+      )
+      .returning();
+    return rows[0] ? toMcpServerSummary(rows[0]) : null;
+  }
+
+  async deleteMcpServer(
+    ownerId: string,
+    projectId: string | null,
+    serverId: string,
+  ): Promise<boolean> {
+    const rows = await this.database
+      .delete(schema.mcpServers)
+      .where(
+        and(
+          eq(schema.mcpServers.id, serverId),
+          eq(schema.mcpServers.ownerId, ownerId),
+          projectId
+            ? eq(schema.mcpServers.projectId, projectId)
+            : isNull(schema.mcpServers.projectId),
+        ),
+      )
+      .returning({ id: schema.mcpServers.id });
+    return rows.length > 0;
+  }
+
+  async copyProjectMcpServer(
+    ownerId: string,
+    targetProjectId: string,
+    sourceProjectId: string,
+    sourceServerId: string,
+  ): Promise<McpServerSummary | null> {
+    const [target, source] = await Promise.all([
+      this.database
+        .select({ id: schema.projects.id })
+        .from(schema.projects)
+        .where(
+          and(
+            eq(schema.projects.id, targetProjectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .limit(1),
+      this.database
+        .select({ server: schema.mcpServers })
+        .from(schema.mcpServers)
+        .innerJoin(
+          schema.projects,
+          eq(schema.projects.id, schema.mcpServers.projectId),
+        )
+        .where(
+          and(
+            eq(schema.mcpServers.id, sourceServerId),
+            eq(schema.mcpServers.projectId, sourceProjectId),
+            eq(schema.mcpServers.ownerId, ownerId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .limit(1),
+    ]);
+    if (!target[0] || !source[0]) return null;
+    const sourceSummary = toMcpServerSummary(source[0].server);
+    const {
+      id: _id,
+      scope: _scope,
+      projectId: _projectId,
+      createdAt: _createdAt,
+      updatedAt: _updatedAt,
+      ...configuration
+    } = sourceSummary;
+    return this.createMcpServer(ownerId, targetProjectId, configuration);
   }
 
   async ensureDefaultProjectWorkspace(

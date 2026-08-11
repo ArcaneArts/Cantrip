@@ -39,6 +39,7 @@ import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { McpServerSettings } from "@/components/settings/mcp-server-settings";
 import {
   Dialog,
   DialogContent,
@@ -461,6 +462,11 @@ export function ProjectSettingsPage({
             })}
           </div>
         </section>
+
+        <McpServerSettings
+          scope={{ kind: "project", projectId: project.id }}
+          className="overflow-hidden rounded-xl border"
+        />
 
         <WorkflowCenter
           chats={chats}

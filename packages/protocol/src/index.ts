@@ -755,6 +755,71 @@ export const modelProfileSummarySchema = modelProfileCreateSchema.extend({
 
 export const modelProfileListSchema = z.array(modelProfileSummarySchema);
 
+const mcpKeyValueSchema = z
+  .record(z.string().trim().min(1).max(256), z.string().max(65_536))
+  .refine((value) => Object.keys(value).length <= 100, {
+    message: "MCP key/value collections cannot contain more than 100 entries.",
+  });
+
+export const mcpServerNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(100)
+  .regex(/^[A-Za-z0-9_-]+$/u, {
+    message: "Use only letters, numbers, hyphens, and underscores.",
+  });
+
+const mcpServerSharedSchema = z.object({
+  name: mcpServerNameSchema,
+  enabled: z.boolean().default(true),
+});
+
+export const mcpServerStdioConfigurationSchema = mcpServerSharedSchema.extend({
+  transport: z.literal("stdio"),
+  command: z.string().trim().min(1).max(8_192),
+  args: z.array(z.string().max(8_192)).max(100).default([]),
+  environment: mcpKeyValueSchema.default({}),
+});
+
+export const mcpServerHttpConfigurationSchema = mcpServerSharedSchema.extend({
+  transport: z.literal("http"),
+  url: z.url().max(8_192),
+  bearerTokenEnvironmentVariable: z
+    .string()
+    .trim()
+    .min(1)
+    .max(256)
+    .nullable()
+    .default(null),
+  headers: mcpKeyValueSchema.default({}),
+  environmentHeaders: mcpKeyValueSchema.default({}),
+});
+
+export const mcpServerConfigurationSchema = z.discriminatedUnion("transport", [
+  mcpServerStdioConfigurationSchema,
+  mcpServerHttpConfigurationSchema,
+]);
+
+export const mcpServerScopeSchema = z.enum(["global", "project"]);
+
+export const mcpServerSummarySchema = mcpServerConfigurationSchema.and(
+  z.object({
+    id: z.string().min(1),
+    scope: mcpServerScopeSchema,
+    projectId: z.string().min(1).nullable(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  }),
+);
+
+export const mcpServerListSchema = z.array(mcpServerSummarySchema).max(200);
+
+export const mcpServerCopySchema = z.object({
+  sourceProjectId: z.string().min(1),
+  sourceServerId: z.string().min(1),
+});
+
 export const userSettingsSchema = z.object({
   theme: themePreferenceSchema,
   highContrast: z.boolean(),
@@ -5524,6 +5589,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       .max(30 * 60 * 1_000),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
+    mcpServers: z.array(mcpServerConfigurationSchema).max(200).default([]),
   }),
   z.object({
     type: z.literal("worktree.list"),
@@ -5874,12 +5940,14 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     provider: workerRuntimeProviderSchema,
     permissionProfileId: permissionProfileIdSchema,
     planMode: planModeSchema,
+    mcpServers: z.array(mcpServerConfigurationSchema).max(200).default([]),
     automationPaused: z.boolean().default(false),
   }),
   workflowNodeExecutionRequestSchema.extend({
     type: z.literal("workflow.node.execute"),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
+    mcpServers: z.array(mcpServerConfigurationSchema).max(200).default([]),
   }),
   z.object({
     type: z.literal("workflow.definition.generate"),
@@ -5895,6 +5963,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       .max(15 * 60 * 1_000),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
+    mcpServers: z.array(mcpServerConfigurationSchema).max(200).default([]),
   }),
   z.object({
     type: z.literal("workflow.repository.scan"),
@@ -5983,6 +6052,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
     permissionProfileId: permissionProfileIdSchema,
+    mcpServers: z.array(mcpServerConfigurationSchema).max(200).default([]),
   }),
   z.object({
     type: z.literal("chat.plan.get"),
@@ -6209,6 +6279,12 @@ export type ModelRouteSummary = z.infer<typeof modelRouteSummarySchema>;
 export type ModelProfileCreate = z.infer<typeof modelProfileCreateSchema>;
 export type ModelProfileUpdate = z.infer<typeof modelProfileUpdateSchema>;
 export type ModelProfileSummary = z.infer<typeof modelProfileSummarySchema>;
+export type McpServerConfiguration = z.infer<
+  typeof mcpServerConfigurationSchema
+>;
+export type McpServerScope = z.infer<typeof mcpServerScopeSchema>;
+export type McpServerSummary = z.infer<typeof mcpServerSummarySchema>;
+export type McpServerCopy = z.infer<typeof mcpServerCopySchema>;
 export type UserSettings = z.infer<typeof userSettingsSchema>;
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
 export type SettingsBundle = z.infer<typeof settingsBundleSchema>;
