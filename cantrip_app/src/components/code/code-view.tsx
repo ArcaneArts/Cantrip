@@ -13,6 +13,7 @@ import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
 import {
   CantripApiError,
   createCodeAttachment,
+  getCodeRuntime,
   releaseCodeAttachment,
   saveAllCodeTab,
   setCodeTabTheme,
@@ -20,7 +21,8 @@ import {
 } from "@/lib/api";
 
 const MAX_RECONNECT_DELAY_MS = 15_000;
-const CODE_FRAME_REVEAL_DELAY_MS = 1_500;
+const CODE_RUNTIME_POLL_DELAY_MS = 500;
+const CODE_FRAME_REVEAL_FALLBACK_MS = 30_000;
 const ATTACHMENT_UNAVAILABLE_MESSAGE = "cantrip-code-attachment-unavailable-v1";
 
 export interface CodeHeaderState {
@@ -54,6 +56,13 @@ export function isCodeSessionUnavailableError(error: unknown): boolean {
     error.status >= 500 &&
     /^Cantrip Code session .+ is not open\.$/u.test(error.message)
   );
+}
+
+export function isCodeWorkbenchReady(
+  runtime: CodeRuntimeStatus,
+  sessionId: string,
+): boolean {
+  return runtime.sessionId === sessionId && runtime.bridgeConnected;
 }
 
 function errorText(error: unknown): string {
@@ -215,13 +224,40 @@ export function CodeView({
   }, [actionMessage]);
 
   useEffect(() => {
-    if (!frameLoaded) return;
-    const timeout = setTimeout(
+    if (!attachment || !frameLoaded || frameReadyToReveal) return;
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | undefined;
+    const revealFallback = setTimeout(
       () => setFrameReadyToReveal(true),
-      CODE_FRAME_REVEAL_DELAY_MS,
+      CODE_FRAME_REVEAL_FALLBACK_MS,
     );
-    return () => clearTimeout(timeout);
-  }, [attachment?.attachmentId, frameLoaded]);
+
+    const pollRuntime = async () => {
+      try {
+        const runtime = await getCodeRuntime(codeTab.id, attachment.sessionId);
+        if (cancelled) return;
+        if (isCodeWorkbenchReady(runtime, attachment.sessionId)) {
+          setAttachment((current) =>
+            current?.attachmentId === attachment.attachmentId
+              ? { ...current, runtime }
+              : current,
+          );
+          setFrameReadyToReveal(true);
+          return;
+        }
+      } catch {
+        if (cancelled) return;
+      }
+      pollTimer = setTimeout(pollRuntime, CODE_RUNTIME_POLL_DELAY_MS);
+    };
+
+    void pollRuntime();
+    return () => {
+      cancelled = true;
+      clearTimeout(revealFallback);
+      if (pollTimer) clearTimeout(pollTimer);
+    };
+  }, [attachment, codeTab.id, frameLoaded, frameReadyToReveal]);
 
   const runAction = useCallback(
     async (name: string, action: () => Promise<void>) => {

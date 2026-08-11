@@ -9186,6 +9186,50 @@ export async function buildApp({
     },
   );
 
+  app.get<{ Params: { codeTabId: string; sessionId: string } }>(
+    "/api/code-tabs/:codeTabId/sessions/:sessionId/runtime",
+    async (request, reply) => {
+      const context = await repository.getCodeTabExecutionContext(
+        LOCAL_USER_ID,
+        request.params.codeTabId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Code tab not found." });
+      }
+      const sessions =
+        (await repository.listCodeSessions(
+          LOCAL_USER_ID,
+          request.params.codeTabId,
+        )) ?? [];
+      const session = sessions.find(
+        (candidate) => candidate.id === request.params.sessionId,
+      );
+      if (!session) {
+        return reply.code(404).send({ error: "Code session not found." });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+      try {
+        const runtime = codeRuntimeStatusSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "code.status",
+            sessionId: session.id,
+          }),
+        );
+        await updateCodeSessionRuntime(
+          LOCAL_USER_ID,
+          context.codeTab.id,
+          session.id,
+          runtime,
+        );
+        return reply.send(runtime);
+      } catch (error) {
+        return reply.code(502).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
   app.post<{ Params: { codeTabId: string } }>(
     "/api/code-tabs/:codeTabId/attachments",
     async (request, reply) => {
