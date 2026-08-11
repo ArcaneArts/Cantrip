@@ -11,6 +11,10 @@
     "./workflows": {
       "types": "./src/workflows.ts",
       "import": "./dist/workflows.js"
+    },
+    "./automations": {
+      "types": "./src/automations.ts",
+      "import": "./dist/automations.js"
     }
   },
   "files": [
@@ -23,6 +27,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "croner": "^10.0.1",
     "zod": "^4.4.3"
   }
 }

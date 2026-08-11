@@ -4,6 +4,7 @@ import path from "node:path";
 import type { WorkerCommand, WorkerEvent } from "@cantrip/protocol";
 
 import { AttachmentStore } from "./attachment-store.js";
+import { ProjectAutomationScheduler } from "./automation-scheduler.js";
 import { codexAccountHome } from "./codex/account-home.js";
 import { CodexAppServer, codexRuntimeId } from "./codex/app-server.js";
 import { CodexAuthClient } from "./codex/auth-client.js";
@@ -152,6 +153,11 @@ async function start(): Promise<void> {
     desktop: desktopAdapter,
   });
   const worktrees = new WorktreeManager(config.dataDirectory);
+  const automationScheduler = new ProjectAutomationScheduler({
+    serverUrl: config.serverUrl,
+    token: config.token,
+    workerId: config.workerId,
+  });
 
   const accountHomeFor = (providerId: string) =>
     codexAccountHome(config.dataDirectory, providerId);
@@ -1135,6 +1141,7 @@ async function start(): Promise<void> {
   };
 
   await publish();
+  automationScheduler.start();
   const heartbeatTimer = setInterval(
     () => void publish(),
     HEARTBEAT_INTERVAL_MS,
@@ -1148,6 +1155,7 @@ async function start(): Promise<void> {
 
       stopping = true;
       clearInterval(heartbeatTimer);
+      automationScheduler.close();
       worktrees.close();
       commandConnection.close();
       for (const client of codexAuthClients.values()) client.close();
