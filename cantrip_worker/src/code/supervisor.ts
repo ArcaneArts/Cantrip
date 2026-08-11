@@ -807,6 +807,8 @@ export class CodeSupervisor {
       "security.workspace.trust.enabled": false,
       "telemetry.telemetryLevel": "off",
       "update.mode": "none",
+      "window.title": "Command Palette",
+      "workbench.secondarySideBar.defaultVisibility": "hidden",
     };
     settings["workbench.colorTheme"] = THEME_NAMES[session.appearance];
     const workspace = {
