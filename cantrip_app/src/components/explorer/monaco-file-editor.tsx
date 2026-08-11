@@ -68,25 +68,27 @@ export function MonacoFileEditor({
   };
 
   return (
-    <Editor
-      height="100%"
-      language={language}
-      onChange={(nextValue) => onChange(nextValue ?? "")}
-      onMount={handleMount}
-      options={{
-        automaticLayout: true,
-        fontFamily:
-          "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-        fontSize: 13,
-        minimap: { enabled: true },
-        padding: { bottom: 12, top: 12 },
-        scrollBeyondLastLine: false,
-        smoothScrolling: true,
-        tabSize: 2,
-      }}
-      path={modelPath}
-      theme={theme}
-      value={value}
-    />
+    <div className="h-full" data-selectable-text="true">
+      <Editor
+        height="100%"
+        language={language}
+        onChange={(nextValue) => onChange(nextValue ?? "")}
+        onMount={handleMount}
+        options={{
+          automaticLayout: true,
+          fontFamily:
+            "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+          fontSize: 13,
+          minimap: { enabled: true },
+          padding: { bottom: 12, top: 12 },
+          scrollBeyondLastLine: false,
+          smoothScrolling: true,
+          tabSize: 2,
+        }}
+        path={modelPath}
+        theme={theme}
+        value={value}
+      />
+    </div>
   );
 }
