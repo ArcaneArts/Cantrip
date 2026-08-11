@@ -23,6 +23,9 @@ import {
   githubPullRequestSummarySchema,
   githubReleaseListSchema,
   githubReleaseSummarySchema,
+  githubRepositoryOwnerListSchema,
+  githubRepositoryCreateSchema,
+  githubWorkerRepositorySchema,
   githubWorkerRepositoryListSchema,
   projectCloneResultSchema,
   worktreePolicySchema,
@@ -49,6 +52,8 @@ import {
   type GithubReleaseCreate,
   type GithubReleaseList,
   type GithubReleaseSummary,
+  type GithubRepositoryCreate,
+  type GithubRepositoryOwner,
   type GithubWorkerRepository,
   type ProjectCloneResult,
   type WorktreePolicy,
@@ -123,6 +128,10 @@ interface GithubApiRepository {
   name?: unknown;
   private?: unknown;
   updated_at?: unknown;
+}
+
+interface GithubApiOrganization {
+  login?: unknown;
 }
 
 interface GithubApiIssue {
@@ -839,6 +848,62 @@ export class GithubClient {
       await rm(temporaryPath, { force: true }).catch(() => undefined);
     }
     return repositories;
+  }
+
+  async listRepositoryOwners(): Promise<GithubRepositoryOwner[]> {
+    const status = await this.authStatus();
+    if (!status.authenticated || !status.login) {
+      throw new Error(
+        "GitHub is not authenticated on this worker. Run `gh auth login` or set GH_TOKEN.",
+      );
+    }
+    const { stdout } = await execFileAsync(
+      "gh",
+      [
+        "api",
+        "--method",
+        "GET",
+        "--paginate",
+        "--slurp",
+        "user/orgs",
+        "-f",
+        "per_page=100",
+      ],
+      { maxBuffer: 8 * 1024 * 1024 },
+    );
+    const pages = JSON.parse(stdout) as GithubApiOrganization[][];
+    const organizations = pages
+      .flat()
+      .flatMap(({ login }) => (typeof login === "string" ? [login] : []))
+      .filter((login) => login !== status.login)
+      .sort((left, right) => left.localeCompare(right));
+    return githubRepositoryOwnerListSchema.parse([
+      { login: status.login, kind: "user" },
+      ...[...new Set(organizations)].map((login) => ({
+        login,
+        kind: "organization" as const,
+      })),
+    ]);
+  }
+
+  async createRepository(
+    input: GithubRepositoryCreate,
+  ): Promise<GithubWorkerRepository> {
+    const request = githubRepositoryCreateSchema.parse(input);
+    const nameWithOwner = `${request.owner}/${request.name}`;
+    repositorySegments(nameWithOwner);
+    const args = ["repo", "create", nameWithOwner, `--${request.visibility}`];
+    if (request.description) {
+      args.push("--description", request.description);
+    }
+    await execFileAsync("gh", args, { maxBuffer: 8 * 1024 * 1024 });
+    return githubWorkerRepositorySchema.parse(
+      parseRepository(
+        (await this.api(
+          this.repositoryApiPath(nameWithOwner),
+        )) as GithubApiRepository,
+      ),
+    );
   }
 
   async listIssues(

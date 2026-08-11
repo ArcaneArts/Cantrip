@@ -60,7 +60,10 @@ import {
   githubPullRequestLifecyclePreviewSchema,
   githubReleaseListSchema,
   githubReleaseSummarySchema,
+  githubRepositoryCreateSchema,
   githubRepositoryListSchema,
+  githubRepositoryOwnerListSchema,
+  githubRepositorySchema,
   gitActionResultSchema,
   gitAgentDraftCreateSchema,
   gitAgentDraftResultSchema,
@@ -193,6 +196,7 @@ import type {
   GithubPullRequestReviewAction,
   GithubReleaseCreate,
   GithubProjectCreate,
+  GithubRepositoryCreate,
   ModelProfileCreate,
   ModelProfileUpdate,
   ModelProviderCreate,
@@ -325,6 +329,26 @@ export async function getGithubRepositories(workerId: string) {
   return githubRepositoryListSchema.parse(
     await request(
       `/api/github/repositories?workerId=${encodeURIComponent(workerId)}`,
+    ),
+  );
+}
+
+export async function getGithubRepositoryOwners(workerId: string) {
+  return githubRepositoryOwnerListSchema.parse(
+    await request(
+      `/api/github/repository-owners?workerId=${encodeURIComponent(workerId)}`,
+    ),
+  );
+}
+
+export async function createGithubRepository(
+  workerId: string,
+  input: GithubRepositoryCreate,
+) {
+  return githubRepositorySchema.parse(
+    await post(
+      `/api/github/repositories?workerId=${encodeURIComponent(workerId)}`,
+      githubRepositoryCreateSchema.parse(input),
     ),
   );
 }

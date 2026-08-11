@@ -79,6 +79,8 @@ import {
   githubPullRequestDetailSchema,
   githubPullRequestLifecyclePreviewSchema,
   githubReleaseListSchema,
+  githubRepositoryCreateSchema,
+  githubRepositoryOwnerListSchema,
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
   mentionedSkillNames,
@@ -1723,6 +1725,38 @@ describe("Cantrip protocol", () => {
         repository: "ArcaneArts/Cantrip",
         number: 44,
         review: { event: "request-changes", body: "" },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("validates GitHub repository owners and creation commands", () => {
+    expect(
+      githubRepositoryOwnerListSchema.parse([
+        { login: "cyberpwnn", kind: "user" },
+        { login: "ArcaneArts", kind: "organization" },
+      ]),
+    ).toHaveLength(2);
+    const request = githubRepositoryCreateSchema.parse({
+      owner: "ArcaneArts",
+      name: "cantrip-labs",
+      description: "A Cantrip project",
+      visibility: "private",
+    });
+    expect(
+      workerCommandSchema.parse({
+        type: "github.repository-owners.list",
+      }).type,
+    ).toBe("github.repository-owners.list");
+    expect(
+      workerCommandSchema.parse({
+        type: "github.repositories.create",
+        request,
+      }),
+    ).toMatchObject({ request });
+    expect(
+      githubRepositoryCreateSchema.safeParse({
+        ...request,
+        name: "../unsafe",
       }).success,
     ).toBe(false);
   });

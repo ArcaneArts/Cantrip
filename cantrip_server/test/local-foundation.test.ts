@@ -47,6 +47,8 @@ import {
   gitHistorySchema,
   gitStatusSchema,
   githubRepositoryListSchema,
+  githubRepositoryOwnerListSchema,
+  githubRepositorySchema,
   githubIssueDetailSchema,
   githubIssueListSchema,
   githubPullRequestCreateResultSchema,
@@ -150,6 +152,9 @@ const issueListRequests: Array<{
   limit: number;
   page: number;
 }> = [];
+const repositoryCreateCommands: Array<
+  Extract<WorkerCommand, { type: "github.repositories.create" }>
+> = [];
 const closedIssues: Array<{ comment: string | null; number: number }> = [];
 const pullRequestCreateCommands: Array<
   Extract<WorkerCommand, { type: "github.pull-request.create" }>
@@ -369,6 +374,28 @@ const workerBridge = {
             updatedAt: "2026-08-07T12:00:00.000Z",
           },
         ];
+      case "github.repository-owners.list":
+        return [
+          { login: "cantrip-test", kind: "user" },
+          { login: "ArcaneArts", kind: "organization" },
+        ];
+      case "github.repositories.create":
+        repositoryCreateCommands.push(command);
+        return {
+          id: "github-created-repository",
+          name: command.request.name,
+          nameWithOwner: command.request.owner + "/" + command.request.name,
+          description: command.request.description || null,
+          isPrivate: command.request.visibility === "private",
+          isFork: false,
+          url:
+            "https://github.com/" +
+            command.request.owner +
+            "/" +
+            command.request.name,
+          defaultBranch: "main",
+          updatedAt: "2026-08-11T12:00:00.000Z",
+        };
       case "github.issues.list":
         issueListRequests.push({
           kind: command.kind,
@@ -1798,6 +1825,44 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toMatchObject([{ nameWithOwner: "ArcaneArts/Cantrip", imported: false }]);
+    expect(
+      githubRepositoryOwnerListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: "/api/github/repository-owners?workerId=test-worker",
+          })
+        ).json(),
+      ),
+    ).toEqual([
+      { login: "cantrip-test", kind: "user" },
+      { login: "ArcaneArts", kind: "organization" },
+    ]);
+    const createdRepositoryResponse = await firstApp.inject({
+      method: "POST",
+      url: "/api/github/repositories?workerId=test-worker",
+      payload: {
+        owner: "ArcaneArts",
+        name: "cantrip-labs",
+        description: "A Cantrip project",
+        visibility: "private",
+      },
+    });
+    expect(createdRepositoryResponse.statusCode).toBe(201);
+    expect(
+      githubRepositorySchema.parse(createdRepositoryResponse.json()),
+    ).toMatchObject({
+      id: "github-created-repository",
+      nameWithOwner: "ArcaneArts/cantrip-labs",
+      isPrivate: true,
+      imported: false,
+    });
+    expect(repositoryCreateCommands.at(-1)?.request).toEqual({
+      owner: "ArcaneArts",
+      name: "cantrip-labs",
+      description: "A Cantrip project",
+      visibility: "private",
+    });
 
     heldProjectCloneName = "ArcaneArts/Cantrip";
     const projectResponse = await firstApp.inject({

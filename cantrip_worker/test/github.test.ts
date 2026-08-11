@@ -52,6 +52,72 @@ describe("GitHub project files", () => {
       warning: expect.stringContaining("worktreePolicy is invalid"),
     });
   });
+
+  it("lists repository owners and creates a repository through GitHub CLI", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-github-repository-create-"),
+    );
+    directories.push(dataDirectory);
+    const binDirectory = path.join(dataDirectory, "bin");
+    const logPath = path.join(dataDirectory, "gh.log");
+    await mkdir(binDirectory);
+    const fakeGh = path.join(binDirectory, "gh");
+    const repository = {
+      id: 123,
+      name: "cantrip-labs",
+      full_name: "ArcaneArts/cantrip-labs",
+      description: "A Cantrip project",
+      private: true,
+      fork: false,
+      html_url: "https://github.com/ArcaneArts/cantrip-labs",
+      default_branch: "main",
+      updated_at: "2026-08-11T12:00:00.000Z",
+    };
+    await writeFile(
+      fakeGh,
+      [
+        "#!/usr/bin/env node",
+        'const fs = require("node:fs");',
+        "const log = " + JSON.stringify(logPath) + ";",
+        'const args = process.argv.slice(2); fs.appendFileSync(log, args.join("\\0") + "\\n");',
+        'if (args[0] === "api" && args[1] === "user") process.stdout.write("cyberpwnn\\n");',
+        'else if (args.includes("user/orgs")) process.stdout.write(' +
+          JSON.stringify(
+            JSON.stringify([[{ login: "ArcaneArts" }, { login: "MPM" }]]),
+          ) +
+          ");",
+        'else if (args.includes("repos/ArcaneArts/cantrip-labs")) process.stdout.write(' +
+          JSON.stringify(JSON.stringify(repository)) +
+          ");",
+        'else if (args[0] !== "repo" || args[1] !== "create") process.exit(1);',
+      ].join("\n"),
+    );
+    await chmod(fakeGh, 0o755);
+    process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
+
+    const github = new GithubClient(dataDirectory);
+    await expect(github.listRepositoryOwners()).resolves.toEqual([
+      { login: "cyberpwnn", kind: "user" },
+      { login: "ArcaneArts", kind: "organization" },
+      { login: "MPM", kind: "organization" },
+    ]);
+    await expect(
+      github.createRepository({
+        owner: "ArcaneArts",
+        name: "cantrip-labs",
+        description: "A Cantrip project",
+        visibility: "private",
+      }),
+    ).resolves.toMatchObject({
+      id: "123",
+      nameWithOwner: "ArcaneArts/cantrip-labs",
+      isPrivate: true,
+    });
+    const invocations = await readFile(logPath, "utf8");
+    expect(invocations).toContain(
+      "repo\0create\0ArcaneArts/cantrip-labs\0--private\0--description\0A Cantrip project",
+    );
+  });
   it("lists issues and pull requests separately and supports issue detail mutations", async () => {
     const dataDirectory = await mkdtemp(
       path.join(tmpdir(), "cantrip-github-issues-test-"),

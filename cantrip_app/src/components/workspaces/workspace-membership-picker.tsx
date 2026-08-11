@@ -1,6 +1,7 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import type { ProjectWorkspaceSummary } from "@cantrip/protocol";
 import { Check, Layers3, Plus } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,11 +9,13 @@ import { Button } from "@/components/ui/button";
 export function WorkspaceMembershipPicker({
   requiredWorkspaceId,
   selectedIds,
+  trailingAction,
   onChange,
   workspaces,
 }: {
   requiredWorkspaceId: string;
   selectedIds: ReadonlySet<string>;
+  trailingAction?: ReactNode;
   onChange(ids: Set<string>): void;
   workspaces: ProjectWorkspaceSummary[];
 }) {
@@ -82,6 +85,9 @@ export function WorkspaceMembershipPicker({
           </DropdownMenuPrimitive.Content>
         </DropdownMenuPrimitive.Portal>
       </DropdownMenuPrimitive.Root>
+      {trailingAction ? (
+        <div className="ml-auto pl-3">{trailingAction}</div>
+      ) : null}
     </div>
   );
 }

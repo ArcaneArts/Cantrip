@@ -795,6 +795,34 @@ export const githubRepositorySchema = z.object({
 
 export const githubRepositoryListSchema = z.array(githubRepositorySchema);
 
+const githubRepositorySegmentSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(100)
+  .regex(/^[A-Za-z0-9_.-]+$/)
+  .refine((value) => value !== "." && value !== "..", {
+    message: "Repository names cannot be dot path segments.",
+  });
+
+export const githubRepositoryOwnerSchema = z.object({
+  login: githubRepositorySegmentSchema,
+  kind: z.enum(["user", "organization"]),
+});
+
+export const githubRepositoryOwnerListSchema = z.array(
+  githubRepositoryOwnerSchema,
+);
+
+export const githubRepositoryVisibilitySchema = z.enum(["public", "private"]);
+
+export const githubRepositoryCreateSchema = z.object({
+  owner: githubRepositorySegmentSchema,
+  name: githubRepositorySegmentSchema,
+  description: z.string().trim().max(350),
+  visibility: githubRepositoryVisibilitySchema,
+});
+
 export const githubIssueStateSchema = z.enum(["open", "closed"]);
 export const githubIssueKindSchema = z.enum(["issue", "pull-request"]);
 
@@ -5060,6 +5088,11 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     login: z.string().min(1),
   }),
   z.object({ type: z.literal("github.repositories.list") }),
+  z.object({ type: z.literal("github.repository-owners.list") }),
+  z.object({
+    type: z.literal("github.repositories.create"),
+    request: githubRepositoryCreateSchema,
+  }),
   z.object({
     type: z.literal("github.issues.list"),
     repository: githubRepositorySchema.shape.nameWithOwner,
@@ -6199,6 +6232,13 @@ export type ProjectWorktreeSummary = z.infer<
 >;
 export type GithubAuthStatus = z.infer<typeof githubAuthStatusSchema>;
 export type GithubRepository = z.infer<typeof githubRepositorySchema>;
+export type GithubRepositoryOwner = z.infer<typeof githubRepositoryOwnerSchema>;
+export type GithubRepositoryVisibility = z.infer<
+  typeof githubRepositoryVisibilitySchema
+>;
+export type GithubRepositoryCreate = z.infer<
+  typeof githubRepositoryCreateSchema
+>;
 export type GithubIssueState = z.infer<typeof githubIssueStateSchema>;
 export type GithubIssueKind = z.infer<typeof githubIssueKindSchema>;
 export type GithubIssueSummary = z.infer<typeof githubIssueSummarySchema>;
