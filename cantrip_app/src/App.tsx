@@ -110,10 +110,8 @@ import {
 } from "@/components/git/git-history";
 import type { ExplorerHeaderState } from "@/components/explorer/explorer-view";
 import { ProjectChatList } from "@/components/sidebar/project-chat-list";
-import {
-  ProjectTabBar,
-  type ProjectSurfaceCreateKind,
-} from "@/components/workspace/project-tab-bar";
+import { ProjectTabBar } from "@/components/workspace/project-tab-bar";
+import type { ProjectSurfaceCreateKind } from "@/components/workspace/project-surface-create-menu";
 import {
   ContentHeaderActions,
   type ContentHeaderActionsProps,
@@ -3794,19 +3792,26 @@ export function App() {
       })
       .catch(() => selectLocally());
   };
-  const createSurfaceInSelectedGroup = (kind: ProjectSurfaceCreateKind) => {
-    if (!selectedProject || !selectedTabGroup) return;
-    const input = {
-      projectId: selectedProject.id,
-      tabGroupId: selectedTabGroup.id,
-    };
+  const createProjectSurface = (
+    projectId: string,
+    kind: ProjectSurfaceCreateKind,
+    tabGroupId?: string,
+  ) => {
+    const input: { projectId: string; tabGroupId?: string } = { projectId };
+    if (tabGroupId) input.tabGroupId = tabGroupId;
     if (kind === "chat") newChat.mutate(input);
     else if (kind === "terminal") newTerminal.mutate(input);
     else if (kind === "explorer") newExplorer.mutate(input);
     else if (kind === "browser") newBrowser.mutate(input);
     else if (kind === "code") newCodeTab.mutate(input);
-    else if (kind === "remote-desktop") newRemoteDesktop.mutate(input);
-    else newProjectView.mutate({ ...input, kind });
+    else if (kind === "remote-desktop") {
+      if (!tabGroupId) newRemoteDesktop.reset();
+      newRemoteDesktop.mutate(input);
+    } else newProjectView.mutate({ ...input, kind });
+  };
+  const createSurfaceInSelectedGroup = (kind: ProjectSurfaceCreateKind) => {
+    if (!selectedProject || !selectedTabGroup) return;
+    createProjectSurface(selectedProject.id, kind, selectedTabGroup.id);
   };
   const renameSurface = (surface: ProjectSurface, title: string) => {
     if (surface.kind === "chat") {
@@ -4037,31 +4042,8 @@ export function App() {
                 selectedProjectId={selectedProjectId}
                 selectedTabKey={selectedTabKey}
                 tabLayout={tabLayout.data ?? null}
-                creatingChat={newChat.isPending}
-                creatingCode={newCodeTab.isPending}
-                creatingBrowser={newBrowser.isPending}
-                creatingExplorer={newExplorer.isPending}
-                creatingRemoteDesktop={newRemoteDesktop.isPending}
-                creatingTerminal={newTerminal.isPending}
-                creatingView={newProjectView.isPending}
-                onCreateChat={(projectId) => newChat.mutate({ projectId })}
-                onCreateCode={(projectId) => newCodeTab.mutate({ projectId })}
-                onCreateBrowser={(projectId) =>
-                  newBrowser.mutate({ projectId })
-                }
-                onCreateExplorer={(projectId) =>
-                  newExplorer.mutate({ projectId })
-                }
-                onCreateGit={(projectId) =>
-                  newProjectView.mutate({ projectId, kind: "history" })
-                }
-                onCreateRemoteDesktop={(projectId) => {
-                  newRemoteDesktop.reset();
-                  newRemoteDesktop.mutate({ projectId });
-                }}
-                onCreateTerminal={(projectId) =>
-                  newTerminal.mutate({ projectId })
-                }
+                creatingKinds={creatingSurfaceKinds}
+                onCreateSurface={createProjectSurface}
                 onChangeChatWorktree={(chatId, worktreeId, mode) => {
                   const chat = chats.data?.find(({ id }) => id === chatId);
                   if (chat) bindChatWorktree(chat, worktreeId, mode);
@@ -5020,29 +5002,8 @@ export function App() {
               selectedProjectId={selectedProjectId}
               selectedTabKey={selectedTabKey}
               tabLayout={tabLayout.data ?? null}
-              creatingChat={newChat.isPending}
-              creatingCode={newCodeTab.isPending}
-              creatingBrowser={newBrowser.isPending}
-              creatingExplorer={newExplorer.isPending}
-              creatingRemoteDesktop={newRemoteDesktop.isPending}
-              creatingTerminal={newTerminal.isPending}
-              creatingView={newProjectView.isPending}
-              onCreateChat={(projectId) => newChat.mutate({ projectId })}
-              onCreateCode={(projectId) => newCodeTab.mutate({ projectId })}
-              onCreateBrowser={(projectId) => newBrowser.mutate({ projectId })}
-              onCreateExplorer={(projectId) =>
-                newExplorer.mutate({ projectId })
-              }
-              onCreateGit={(projectId) =>
-                newProjectView.mutate({ projectId, kind: "history" })
-              }
-              onCreateRemoteDesktop={(projectId) => {
-                newRemoteDesktop.reset();
-                newRemoteDesktop.mutate({ projectId });
-              }}
-              onCreateTerminal={(projectId) =>
-                newTerminal.mutate({ projectId })
-              }
+              creatingKinds={creatingSurfaceKinds}
+              onCreateSurface={createProjectSurface}
               onChangeChatWorktree={(chatId, worktreeId, mode) => {
                 const chat = chats.data?.find(({ id }) => id === chatId);
                 if (chat) bindChatWorktree(chat, worktreeId, mode);

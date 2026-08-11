@@ -1,5 +1,4 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useDroppable } from "@dnd-kit/core";
 import {
   horizontalListSortingStrategy,
@@ -10,7 +9,11 @@ import { CSS } from "@dnd-kit/utilities";
 import { CopyPlus, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { ProjectSurfaceIcon, surfaceKindLabel } from "./project-surface-icon";
+import { ProjectSurfaceIcon } from "./project-surface-icon";
+import {
+  ProjectSurfaceCreateMenu,
+  type ProjectSurfaceCreateKind,
+} from "./project-surface-create-menu";
 import {
   InlineRenameLabel,
   SurfaceActionsMenu,
@@ -36,21 +39,8 @@ import {
   workspaceTopBarDropId,
 } from "@/lib/workspace-dnd-model";
 
-export type ProjectSurfaceCreateKind = ProjectSurface["kind"];
-
 const menuContentClass = surfaceMenuContentClass;
 const menuItemClass = surfaceMenuItemClass;
-
-const createKinds: ProjectSurfaceCreateKind[] = [
-  "chat",
-  "terminal",
-  "explorer",
-  "code",
-  "browser",
-  "history",
-  "issues",
-  "remote-desktop",
-];
 
 export interface ProjectTabBarProps {
   activeTabKey: string;
@@ -65,7 +55,7 @@ export interface ProjectTabBarProps {
 
 export function ProjectTabBar({
   activeTabKey,
-  creatingKinds = new Set(),
+  creatingKinds,
   onCreate,
   onDelete,
   onDuplicate,
@@ -229,8 +219,10 @@ export function ProjectTabBar({
             })}
           </SortableContext>
 
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
+          <ProjectSurfaceCreateMenu
+            creatingKinds={creatingKinds}
+            onCreate={onCreate}
+            trigger={
               <Button
                 size="icon"
                 variant="ghost"
@@ -239,27 +231,8 @@ export function ProjectTabBar({
               >
                 <Plus className="size-4" />
               </Button>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content
-                align="start"
-                sideOffset={4}
-                className={menuContentClass}
-              >
-                {createKinds.map((kind) => (
-                  <DropdownMenu.Item
-                    key={kind}
-                    className={menuItemClass}
-                    disabled={creatingKinds.has(kind)}
-                    onSelect={() => onCreate(kind)}
-                  >
-                    <ProjectSurfaceIcon kind={kind} className="size-4" />
-                    {surfaceKindLabel(kind)}
-                  </DropdownMenu.Item>
-                ))}
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
+            }
+          />
         </div>
       </div>
 
