@@ -105,9 +105,11 @@ packaging smoke tests.
 shell points its Local profile at the externally orchestrated development
 server so TypeScript watchers and Vite hot reload remain fast.
 
-Both `pnpm dev` and `pnpm devtop` perform only a fast Cantrip Code fingerprint
-check. Run `pnpm code:build` once after cloning or whenever the pinned editor,
-patchset, product configuration, extension source, or native target changes.
+Both `pnpm dev` and `pnpm devtop` ensure the fingerprinted Cantrip Code build is
+available. A matching cache is reused immediately; after cloning or whenever
+the pinned editor, patchset, product configuration, extension source, or native
+target changes, development startup builds the new distribution automatically.
+`pnpm code:ready` remains available as a strict verification-only command.
 
 ## Switching servers
 

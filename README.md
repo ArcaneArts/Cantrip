@@ -465,9 +465,11 @@ cargo check --manifest-path cantrip_app/src-tauri/Cargo.toml
 ## Pinned runtime maintenance
 
 `pnpm dev` and `pnpm devtop` call `pnpm dev:prepare` automatically. That
-preparation builds the shared protocol and pinned Codex runtime, then confirms
-that the fingerprinted Cantrip Code distribution is ready. Most contributors
-do not need to invoke the lower-level runtime commands directly.
+preparation builds the shared protocol and pinned Codex runtime, then reuses or
+builds the fingerprinted Cantrip Code distribution. A matching cached Code
+build remains a fast no-op; missing or stale builds are repaired automatically.
+Most contributors do not need to invoke the lower-level runtime commands
+directly.
 
 | Command                    | Purpose                                                     |
 | -------------------------- | ----------------------------------------------------------- |

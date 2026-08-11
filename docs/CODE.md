@@ -227,8 +227,8 @@ pnpm code:verify
 
 1. Determine the required Cantrip Code build fingerprint.
 2. Reuse a matching cached build when present.
-3. Print a clear `pnpm code:build` instruction when it is missing or stale.
-4. Avoid silently beginning a long Code OSS build as part of normal startup.
+3. Build the required distribution automatically when it is missing or stale.
+4. Print build progress while preparing a new distribution.
 
 The implemented cache lives under ignored `.cantrip-code/cache/builds/`, shared
 through Git's common repository directory so sequential worktrees reuse the
