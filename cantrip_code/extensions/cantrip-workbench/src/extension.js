@@ -9,6 +9,7 @@ const {
   themeNameForAppearance,
 } = require("./protocol.js");
 const { forceColorTheme } = require("./theme.js");
+const { hideSecondarySideBar } = require("./layout.js");
 
 function configuration() {
   return vscode.workspace.getConfiguration("cantrip");
@@ -186,6 +187,7 @@ class WorkbenchCoordinator {
       }),
     );
     this.registerCommands();
+    await hideSecondarySideBar(vscode.commands);
     await this.initializeGit();
     this.reconnect(true);
   }

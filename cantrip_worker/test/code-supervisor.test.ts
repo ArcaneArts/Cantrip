@@ -232,6 +232,8 @@ describe("Cantrip Code supervisor", () => {
       "cantrip.sessionId": "one",
       "cantrip.worktreeId": "primary",
       "security.workspace.trust.enabled": false,
+      "window.title": "Command Palette",
+      "workbench.secondarySideBar.defaultVisibility": "hidden",
       "workbench.colorTheme": "Cantrip Dark",
     });
     const launchArguments = JSON.parse(
