@@ -1,7 +1,8 @@
 import type { ScriptCommand } from "@cantrip/protocol";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+  ensureTerminalCommandSelectionVisible,
   filterTerminalScriptCommands,
   moveTerminalCommandSelection,
   terminalCommandInput,
@@ -56,5 +57,18 @@ describe("terminal command palette", () => {
     expect(moveTerminalCommandSelection(2, 1, commands.length)).toBe(0);
     expect(moveTerminalCommandSelection(0, 1, 0)).toBe(0);
     expect(terminalCommandInput(commands[0]!)).toBe("pnpm run dev\r");
+  });
+
+  it("auto-scrolls keyboard selection without chasing pointer hover", () => {
+    const scrollIntoView = vi.fn();
+    const element = { scrollIntoView };
+
+    ensureTerminalCommandSelectionVisible(element, "pointer");
+    ensureTerminalCommandSelectionVisible(element, "reset");
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    ensureTerminalCommandSelectionVisible(element, "keyboard");
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
   });
 });
