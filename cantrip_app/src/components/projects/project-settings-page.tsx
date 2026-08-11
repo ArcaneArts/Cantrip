@@ -15,6 +15,7 @@ import type {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CircleAlert,
+  CalendarClock,
   Code2,
   ExternalLink,
   FolderTree,
@@ -28,6 +29,7 @@ import {
   Plus,
   RefreshCw,
   ScanLine,
+  SlidersHorizontal,
   SquareTerminal,
   Trash2,
   Unlock,
@@ -60,6 +62,7 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { WorkflowCenter } from "@/components/workflows/workflow-center";
+import { ProjectAutomationsSettings } from "./project-automations-settings";
 
 const menuContentClass =
   "z-50 min-w-52 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
@@ -188,6 +191,7 @@ export function ProjectSettingsPage({
   worktrees: ProjectWorktreeSummary[];
 }) {
   const queryClient = useQueryClient();
+  const [section, setSection] = useState<"general" | "automations">("general");
   const [createOpen, setCreateOpen] = useState(false);
   const [pruneOpen, setPruneOpen] = useState(false);
   const [allowExternalPrune, setAllowExternalPrune] = useState(false);
@@ -296,7 +300,47 @@ export function ProjectSettingsPage({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-6xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="sticky top-0 z-10 flex h-10 items-center gap-1 bg-background/95 px-4 backdrop-blur sm:px-6">
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className={cn(
+            "h-10 rounded-none border-b-2 px-2.5 text-xs",
+            section === "general"
+              ? "border-foreground text-foreground"
+              : "border-transparent text-muted-foreground",
+          )}
+          onClick={() => setSection("general")}
+        >
+          <SlidersHorizontal className="size-3.5" /> General
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className={cn(
+            "h-10 rounded-none border-b-2 px-2.5 text-xs",
+            section === "automations"
+              ? "border-foreground text-foreground"
+              : "border-transparent text-muted-foreground",
+          )}
+          onClick={() => setSection("automations")}
+        >
+          <CalendarClock className="size-3.5" /> Automations
+        </Button>
+      </div>
+
+      {section === "automations" ? (
+        <ProjectAutomationsSettings chats={chats} projectId={project.id} />
+      ) : null}
+
+      <div
+        className={cn(
+          "mx-auto w-full max-w-6xl space-y-8 px-4 py-6 sm:px-6 lg:px-8",
+          section !== "general" && "hidden",
+        )}
+      >
         {operationError ? (
           <div className="flex gap-2 rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
             <CircleAlert className="mt-0.5 size-4 shrink-0" />

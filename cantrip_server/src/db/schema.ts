@@ -17,6 +17,7 @@ import type {
   RemoteSurfaceConfiguration,
   WorktreeStatusResult,
 } from "@cantrip/protocol";
+import type { ProjectAutomationSchedule } from "@cantrip/protocol/automations";
 import { sql } from "drizzle-orm";
 import {
   bigserial,
@@ -975,6 +976,51 @@ export const queuedPrompts = pgTable(
     uniqueIndex("queued_prompts_chat_idempotency_unique").on(
       table.chatId,
       table.idempotencyKey,
+    ),
+  ],
+);
+
+export const projectAutomations = pgTable(
+  "project_automations",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    prompt: text("prompt").notNull(),
+    schedule: jsonb("schedule").$type<ProjectAutomationSchedule>().notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    revision: integer("revision").notNull().default(1),
+    nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    lastStatus: text("last_status").notNull().default("idle"),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("project_automations_project_index").on(
+      table.ownerId,
+      table.projectId,
+      table.createdAt,
+    ),
+    index("project_automations_chat_index").on(table.chatId),
+    index("project_automations_due_index").on(table.enabled, table.nextRunAt),
+    check("project_automations_revision_check", sql`${table.revision} > 0`),
+    check(
+      "project_automations_status_check",
+      sql`${table.lastStatus} IN ('idle', 'dispatching', 'started', 'queued', 'failed')`,
     ),
   ],
 );

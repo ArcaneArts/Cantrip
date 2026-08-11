@@ -106,6 +106,7 @@ import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
 import * as schema from "./schema.js";
+import { ProjectAutomationRepository } from "./project-automations.js";
 import { WorkflowRunRepository } from "./workflow-runs.js";
 import { WorkflowRepository } from "./workflows.js";
 import { WorkflowTriggerRepository } from "./workflow-triggers.js";
@@ -883,12 +884,14 @@ function toQueuedPrompt(
 }
 
 export class ServerRepository {
+  readonly projectAutomations: ProjectAutomationRepository;
   readonly tabLayouts: ProjectTabLayoutRepository;
   readonly workflows: WorkflowRepository;
   readonly workflowRuns: WorkflowRunRepository;
   readonly workflowTriggers: WorkflowTriggerRepository;
 
   constructor(private readonly database: RepositoryDatabase) {
+    this.projectAutomations = new ProjectAutomationRepository(database);
     this.workflows = new WorkflowRepository(database);
     this.workflowRuns = new WorkflowRunRepository(database);
     this.workflowTriggers = new WorkflowTriggerRepository(database);

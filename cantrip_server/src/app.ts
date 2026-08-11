@@ -281,6 +281,14 @@ import type {
   AgentWorktreeToolResult,
 } from "@cantrip/protocol";
 import {
+  projectAutomationCreateSchema,
+  projectAutomationDispatchRequestSchema,
+  projectAutomationDispatchResultSchema,
+  projectAutomationListSchema,
+  projectAutomationSchema,
+  projectAutomationUpdateSchema,
+} from "@cantrip/protocol/automations";
+import {
   workflowAutomationTriggerCreateSchema,
   workflowAutomationTriggerListSchema,
   workflowAutomationTriggerQuerySchema,
@@ -349,6 +357,7 @@ import {
   type ChatExecutionContext,
   type ModelRuntime,
 } from "./db/repository.js";
+import { ProjectAutomationConflictError } from "./db/project-automations.js";
 import {
   WorkflowControlConflictError,
   WorkflowRunConflictError,
@@ -3471,6 +3480,82 @@ export async function buildApp({
     const projects = await repository.listProjects(LOCAL_USER_ID);
     return reply.send(projectListSchema.parse(projects));
   });
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/automations",
+    async (request, reply) =>
+      reply.send(
+        projectAutomationListSchema.parse(
+          await repository.projectAutomations.list(
+            LOCAL_USER_ID,
+            request.params.projectId,
+          ),
+        ),
+      ),
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/automations",
+    async (request, reply) => {
+      const input = projectAutomationCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const automation = await repository.projectAutomations.create(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          input.data,
+        );
+        return automation
+          ? reply.code(201).send(projectAutomationSchema.parse(automation))
+          : reply
+              .code(404)
+              .send({ error: "Project or target chat not found." });
+      } catch (error) {
+        if (error instanceof ProjectAutomationConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.patch<{ Params: { automationId: string } }>(
+    "/api/automations/:automationId",
+    async (request, reply) => {
+      const input = projectAutomationUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const automation = await repository.projectAutomations.update(
+          LOCAL_USER_ID,
+          request.params.automationId,
+          input.data,
+        );
+        return automation
+          ? reply.send(projectAutomationSchema.parse(automation))
+          : reply.code(404).send({ error: "Automation not found." });
+      } catch (error) {
+        if (error instanceof ProjectAutomationConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.delete<{ Params: { automationId: string } }>(
+    "/api/automations/:automationId",
+    async (request, reply) =>
+      (await repository.projectAutomations.delete(
+        LOCAL_USER_ID,
+        request.params.automationId,
+      ))
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "Automation not found." }),
+  );
 
   app.get("/api/workspaces", async (_request, reply) => {
     return reply.send(
@@ -12059,6 +12144,128 @@ export async function buildApp({
             ? 409
             : 400;
         return reply.code(status).send({ error: message });
+      }
+    },
+  );
+
+  app.get<{ Querystring: { workerId?: string } }>(
+    "/api/internal/workers/automations",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      if (request.headers.authorization !== `Bearer ${config.workerToken}`) {
+        return reply.code(401).send({ error: "Unauthorized" });
+      }
+      if (!request.query.workerId) {
+        return reply.code(400).send({ error: "workerId is required." });
+      }
+      return reply.send(
+        projectAutomationListSchema.parse(
+          await repository.projectAutomations.listForWorker(
+            request.query.workerId,
+          ),
+        ),
+      );
+    },
+  );
+
+  app.post<{
+    Body: unknown;
+    Params: { automationId: string };
+    Querystring: { workerId?: string };
+  }>(
+    "/api/internal/workers/automations/:automationId/dispatch",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      if (request.headers.authorization !== `Bearer ${config.workerToken}`) {
+        return reply.code(401).send({ error: "Unauthorized" });
+      }
+      if (!request.query.workerId) {
+        return reply.code(400).send({ error: "workerId is required." });
+      }
+      const input = projectAutomationDispatchRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const claim = await repository.projectAutomations.claimDue(
+        request.query.workerId,
+        request.params.automationId,
+        input.data,
+      );
+      if (!claim) {
+        const current = await repository.projectAutomations.get(
+          LOCAL_USER_ID,
+          request.params.automationId,
+        );
+        return reply.send(
+          projectAutomationDispatchResultSchema.parse({
+            accepted: false,
+            status: "skipped",
+            nextRunAt: current?.nextRunAt ?? null,
+          }),
+        );
+      }
+
+      const automation = claim.automation;
+      const idempotencyKey = `automation:${automation.id}:${input.data.scheduledFor}`;
+      try {
+        const context = await repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          automation.chatId,
+        );
+        if (!context || context.workerId !== request.query.workerId) {
+          throw new Error("The automation target moved to another worker.");
+        }
+        let status: "started" | "queued";
+        if (context.automationPaused || chatIsExecuting(context.status)) {
+          const modelId = await resolveModelId(context, undefined);
+          const prompt = await createLiveQueuedPrompt(
+            LOCAL_USER_ID,
+            context.chatId,
+            {
+              text: automation.prompt,
+              attachmentIds: [],
+              mode: "default",
+              idempotencyKey,
+              modelId,
+              frozen: false,
+              worktreeId: null,
+            },
+            modelId,
+          );
+          if (!prompt) throw new Error("The target chat is unavailable.");
+          if (!context.automationPaused) {
+            void dispatchNextQueuedPrompt(context.chatId);
+          }
+          status = "queued";
+        } else {
+          await beginPromptTurn(context, {
+            text: automation.prompt,
+            attachmentIds: [],
+            mode: "default",
+            idempotencyKey,
+          });
+          status = "started";
+        }
+        await repository.projectAutomations.finishDispatch(
+          automation.id,
+          status,
+        );
+        return reply.code(202).send(
+          projectAutomationDispatchResultSchema.parse({
+            accepted: true,
+            status,
+            nextRunAt: claim.nextRunAt?.toISOString() ?? null,
+          }),
+        );
+      } catch (error) {
+        await repository.projectAutomations.finishDispatch(
+          automation.id,
+          "failed",
+          errorMessage(error),
+        );
+        return reply.code(409).send({ error: errorMessage(error) });
       }
     },
   );
