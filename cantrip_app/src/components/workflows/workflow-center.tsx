@@ -592,7 +592,7 @@ export function WorkflowCenter({
         </div>
       ) : null}
 
-      <div className="grid min-h-[24rem] overflow-hidden rounded-xl border lg:grid-cols-[18rem_minmax(0,1fr)]">
+      <div className="grid min-h-[24rem] overflow-hidden border-y lg:grid-cols-[18rem_minmax(0,1fr)]">
         <div className="border-b bg-muted/20 lg:border-b-0 lg:border-r">
           <div className="border-b px-3 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
             Available ({visibleWorkflows.length})
@@ -814,7 +814,7 @@ export function WorkflowCenter({
         </div>
       </div>
 
-      <div className="grid min-h-[28rem] overflow-hidden rounded-xl border xl:grid-cols-[20rem_minmax(0,1fr)]">
+      <div className="grid min-h-[28rem] overflow-hidden border-y xl:grid-cols-[20rem_minmax(0,1fr)]">
         <div className="border-b bg-muted/20 xl:border-b-0 xl:border-r">
           <div className="border-b px-3 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
             Project runs ({runs.data?.length ?? 0})

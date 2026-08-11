@@ -13,9 +13,11 @@ import {
   Pencil,
   RefreshCw,
   Save,
+  Search,
   ShieldCheck,
   Trash2,
   UserRound,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -90,6 +92,20 @@ function locationIcon(item: SkillSettingsItem) {
   return UserRound;
 }
 
+export function skillMatchesSearch(
+  item: SkillSettingsItem,
+  query: string,
+): boolean {
+  if (!query) return true;
+  return [
+    item.name,
+    item.displayName,
+    item.description,
+    item.path,
+    locationLabel(item),
+  ].some((value) => value?.toLowerCase().includes(query));
+}
+
 function SkillRows({
   emptyText,
   items,
@@ -100,8 +116,8 @@ function SkillRows({
   onOpen(item: SkillSettingsItem): void;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border">
-      <div className="hidden grid-cols-[minmax(12rem,0.8fr)_minmax(16rem,1.4fr)_minmax(9rem,0.55fr)_4rem] gap-4 bg-muted/50 px-4 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground md:grid">
+    <div className="border-y">
+      <div className="hidden grid-cols-[minmax(12rem,0.8fr)_minmax(16rem,1.4fr)_minmax(9rem,0.55fr)_4rem] gap-4 border-b px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground md:grid">
         <span>Skill</span>
         <span>Description</span>
         <span>Scope</span>
@@ -115,7 +131,7 @@ function SkillRows({
               key={`${item.location}:${item.id}`}
               type="button"
               data-high-contrast-row
-              className="grid w-full gap-2 px-4 py-3 text-left transition-colors hover:bg-muted/50 md:grid-cols-[minmax(12rem,0.8fr)_minmax(16rem,1.4fr)_minmax(9rem,0.55fr)_4rem] md:items-center md:gap-4"
+              className="grid w-full gap-1.5 px-3 py-2.5 text-left transition-colors hover:bg-muted/50 md:grid-cols-[minmax(12rem,0.8fr)_minmax(16rem,1.4fr)_minmax(9rem,0.55fr)_4rem] md:items-center md:gap-4"
               onClick={() => onOpen(item)}
             >
               <span className="min-w-0">
@@ -131,7 +147,7 @@ function SkillRows({
                   </span>
                 ) : null}
               </span>
-              <span className="line-clamp-2 text-xs leading-5 text-muted-foreground">
+              <span className="line-clamp-1 text-xs text-muted-foreground">
                 {item.description}
               </span>
               <span className="flex flex-wrap items-center gap-1.5">
@@ -174,6 +190,7 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
   const [selectedFile, setSelectedFile] = useState("SKILL.md");
   const [draft, setDraft] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     const available = workers.data ?? [];
@@ -293,10 +310,17 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
     draft !== document.data.content &&
     !save.isPending,
   );
+  const search = searchQuery.trim().toLowerCase();
+  const visibleProjectSkills = (inventory.data?.project ?? []).filter((item) =>
+    skillMatchesSearch(item, search),
+  );
+  const visibleGlobalSkills = (inventory.data?.global ?? []).filter((item) =>
+    skillMatchesSearch(item, search),
+  );
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-7">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="mx-auto w-full max-w-6xl space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-semibold">
             {project ? "Project skills" : "Global skills"}
@@ -320,7 +344,32 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
         </Button>
       </div>
 
-      <div className="grid gap-3 rounded-xl border bg-muted/20 p-4 sm:grid-cols-2">
+      <div className="relative max-w-xl">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          type="text"
+          role="searchbox"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          className="h-9 w-full rounded-md border bg-background pl-9 pr-9 text-sm outline-none ring-ring placeholder:text-muted-foreground focus:ring-2"
+          placeholder="Search skills"
+          aria-label="Search skills"
+        />
+        {searchQuery ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="absolute right-0.5 top-0.5 size-8"
+            onClick={() => setSearchQuery("")}
+          >
+            <X className="size-3.5" />
+            <span className="sr-only">Clear search</span>
+          </Button>
+        ) : null}
+      </div>
+
+      <div className="grid gap-3 border-y px-3 py-3 sm:grid-cols-2">
         {!project ? (
           <label className="grid gap-1.5 text-sm">
             <span className="font-medium">Worker</span>
@@ -401,9 +450,9 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
       {project ? (
         <section
           aria-labelledby="project-skill-list-title"
-          className="space-y-3"
+          className="space-y-2"
         >
-          <div>
+          <div className="px-3">
             <h3 id="project-skill-list-title" className="text-sm font-semibold">
               Project Skills
             </h3>
@@ -412,8 +461,12 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
             </p>
           </div>
           <SkillRows
-            items={inventory.data?.project ?? []}
-            emptyText="No project-specific skills were found."
+            items={visibleProjectSkills}
+            emptyText={
+              search
+                ? `No project skills match “${searchQuery.trim()}”.`
+                : "No project-specific skills were found."
+            }
             onOpen={openSkill}
           />
         </section>
@@ -421,9 +474,9 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
 
       <section
         aria-labelledby="global-skill-list-title"
-        className={cn("space-y-3", project && "border-t pt-7")}
+        className={cn("space-y-2", project && "border-t pt-4")}
       >
-        <div>
+        <div className="px-3">
           <h3 id="global-skill-list-title" className="text-sm font-semibold">
             Global Skills
           </h3>
@@ -434,8 +487,12 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
           </p>
         </div>
         <SkillRows
-          items={inventory.data?.global ?? []}
-          emptyText="No global skills were found for this worker and provider."
+          items={visibleGlobalSkills}
+          emptyText={
+            search
+              ? `No global skills match “${searchQuery.trim()}”.`
+              : "No global skills were found for this worker and provider."
+          }
           onOpen={openSkill}
         />
       </section>
