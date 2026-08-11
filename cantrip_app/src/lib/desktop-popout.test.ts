@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  desktopBackgroundThrottlingPolicy,
   desktopPopoutTitlebarLeftInset,
   desktopPopoutGroupSearch,
   desktopPopoutGroupWindowLabel,
@@ -44,6 +45,10 @@ describe("desktop pop-out groups", () => {
     expect(desktopPopoutGroupWindowLabel("group with spaces")).toBe(
       "cantrip-group-group_with_spaces",
     );
+  });
+
+  it("keeps live pop-out clients running while macOS considers them occluded", () => {
+    expect(desktopBackgroundThrottlingPolicy).toBe("disabled");
   });
 });
 

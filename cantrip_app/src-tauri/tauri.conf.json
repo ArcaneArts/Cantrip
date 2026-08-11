@@ -16,6 +16,7 @@
         "title": "Cantrip",
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
+        "backgroundThrottling": "disabled",
         "width": 1280,
         "height": 800,
         "minWidth": 760,

@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import type { BackgroundThrottlingPolicy } from "@tauri-apps/api/window";
 
 export type DesktopPopoutGroupTarget = {
   activeTabKey: string;
@@ -7,6 +8,12 @@ export type DesktopPopoutGroupTarget = {
 };
 
 const groupParameter = "cantrip-popout-group";
+
+// Cantrip windows host live transports and Tauri's title-bar drag handling.
+// Suspending an occluded WKWebView can therefore freeze both content and
+// window interaction until a native resize wakes the document again.
+export const desktopBackgroundThrottlingPolicy =
+  "disabled" as BackgroundThrottlingPolicy;
 
 export function parseDesktopPopoutGroupTarget(
   search: string,
@@ -122,6 +129,7 @@ export async function openDesktopPopoutGroup(
   const path = window.location.pathname || "/";
   const macos = isMacosDesktopRuntime();
   const popout = new WebviewWindow(label, {
+    backgroundThrottling: desktopBackgroundThrottlingPolicy,
     center: true,
     focus: true,
     height: 760,

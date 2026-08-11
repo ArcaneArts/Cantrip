@@ -8,6 +8,7 @@
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "transparent": true,
+        "backgroundThrottling": "disabled",
         "width": 1280,
         "height": 800,
         "minWidth": 760,
