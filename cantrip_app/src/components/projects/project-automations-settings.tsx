@@ -467,7 +467,7 @@ export function ProjectAutomationsSettings({
       </div>
 
       {!chats.length ? (
-        <div className="rounded-xl border px-4 py-10 text-center text-sm text-muted-foreground">
+        <div className="border-y px-4 py-10 text-center text-sm text-muted-foreground">
           Create a chat in this project before adding an automation.
         </div>
       ) : null}
@@ -483,8 +483,8 @@ export function ProjectAutomationsSettings({
           <Loader2 className="size-5 animate-spin" />
         </div>
       ) : rows.length ? (
-        <div className="overflow-hidden rounded-xl border">
-          <div className="hidden grid-cols-[minmax(12rem,1.1fr)_minmax(9rem,0.8fr)_minmax(13rem,1fr)_minmax(10rem,0.8fr)_7rem] gap-3 bg-muted/40 px-4 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground md:grid">
+        <div className="border-y">
+          <div className="hidden grid-cols-[minmax(12rem,1.1fr)_minmax(9rem,0.8fr)_minmax(13rem,1fr)_minmax(10rem,0.8fr)_7rem] gap-3 border-b px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground md:grid">
             <span>Automation</span>
             <span>Target chat</span>
             <span>Schedule</span>
@@ -496,7 +496,7 @@ export function ProjectAutomationsSettings({
               <div
                 key={automation.id}
                 data-high-contrast-row
-                className="grid gap-2 px-4 py-3 odd:bg-muted/[0.18] md:grid-cols-[minmax(12rem,1.1fr)_minmax(9rem,0.8fr)_minmax(13rem,1fr)_minmax(10rem,0.8fr)_7rem] md:items-center md:gap-3"
+                className="grid gap-2 px-3 py-2.5 odd:bg-muted/[0.18] md:grid-cols-[minmax(12rem,1.1fr)_minmax(9rem,0.8fr)_minmax(13rem,1fr)_minmax(10rem,0.8fr)_7rem] md:items-center md:gap-3"
               >
                 <div className="flex min-w-0 items-center gap-2.5">
                   <AlarmClock
@@ -578,7 +578,7 @@ export function ProjectAutomationsSettings({
           </div>
         </div>
       ) : chats.length ? (
-        <div className="rounded-xl border px-4 py-12 text-center">
+        <div className="border-y px-4 py-12 text-center">
           <CalendarClock className="mx-auto size-7 text-muted-foreground" />
           <p className="mt-3 text-sm font-medium">No automations yet</p>
           <p className="mt-1 text-xs text-muted-foreground">

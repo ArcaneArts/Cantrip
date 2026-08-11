@@ -29,11 +29,13 @@ import {
   Plus,
   RefreshCw,
   ScanLine,
+  Search,
   SlidersHorizontal,
   Sparkles,
   SquareTerminal,
   Trash2,
   Unlock,
+  X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -72,6 +74,13 @@ const menuContentClass =
 const menuItemClass =
   "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
 const createdDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
+
+function matchesProjectSettingsSearch(
+  query: string,
+  ...values: Array<string | null | undefined>
+): boolean {
+  return !query || values.some((value) => value?.toLowerCase().includes(query));
+}
 
 const policies: Array<{
   description: string;
@@ -203,6 +212,7 @@ export function ProjectSettingsPage({
   const [removeTarget, setRemoveTarget] =
     useState<ProjectWorktreeSummary | null>(null);
   const [forceRemove, setForceRemove] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const projectWorker = workers.find(
     ({ workerId }) => workerId === project.source?.workerId,
   );
@@ -302,10 +312,72 @@ export function ProjectSettingsPage({
     lockWorktree.isPending ||
     prune.isPending ||
     remove.isPending;
+  const search = searchQuery.trim().toLowerCase();
+  const projectDetailsMatch = matchesProjectSettingsSearch(
+    search,
+    "project details repository source location worker added metadata",
+    project.name,
+    project.github?.nameWithOwner,
+    project.source?.displayPath,
+    projectWorker?.name,
+  );
+  const worktreePolicyMatch = matchesProjectSettingsSearch(
+    search,
+    "worktree policy agent managed required for writes direct primary isolated",
+    project.worktreePolicy,
+  );
+  const mcpMatch = matchesProjectSettingsSearch(
+    search,
+    "mcp model context protocol servers project local inherited",
+  );
+  const workflowsMatch = matchesProjectSettingsSearch(
+    search,
+    "workflows automation execution lanes runs repository",
+  );
+  const visibleWorktrees = search
+    ? worktrees.filter((worktree) => {
+        const worker = workers.find(
+          ({ workerId }) => workerId === worktree.workerId,
+        );
+        const status = statuses[worktree.id];
+        return matchesProjectSettingsSearch(
+          search,
+          "worktrees checkouts git branches bindings primary",
+          worktree.name,
+          worktree.displayPath,
+          worktree.branch,
+          worktree.head,
+          worker?.name,
+          projectWorktreeState(worktree, status, worker?.online ?? false).label,
+          ...projectWorktreeBindings(
+            worktree.id,
+            chats,
+            terminals,
+            explorers,
+            projectViews,
+            codeTabs,
+          ),
+        );
+      })
+    : worktrees;
+  const worktreesMatch =
+    matchesProjectSettingsSearch(
+      search,
+      "worktrees checkouts git branches bindings primary",
+    ) || visibleWorktrees.length > 0;
+  const hasGeneralSearchResults =
+    projectDetailsMatch ||
+    worktreePolicyMatch ||
+    mcpMatch ||
+    workflowsMatch ||
+    worktreesMatch;
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="sticky top-0 z-10 flex h-10 items-center gap-1 bg-background/95 px-4 backdrop-blur sm:px-6">
+    <div
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      data-slot="project-settings"
+    >
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b px-4 sm:px-6">
         <Button
           type="button"
           size="sm"
@@ -351,14 +423,41 @@ export function ProjectSettingsPage({
       </div>
 
       {section === "automations" ? (
-        <ProjectAutomationsSettings chats={chats} projectId={project.id} />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <ProjectAutomationsSettings chats={chats} projectId={project.id} />
+        </div>
       ) : null}
       <div
         className={cn(
-          "mx-auto w-full max-w-6xl space-y-8 px-4 py-6 sm:px-6 lg:px-8",
+          "mx-auto min-h-0 w-full max-w-6xl flex-1 space-y-4 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8",
           section !== "general" && "hidden",
         )}
       >
+        <div className="relative max-w-xl">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            role="searchbox"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            className="h-9 w-full rounded-md border bg-background pl-9 pr-9 text-sm outline-none ring-ring placeholder:text-muted-foreground focus:ring-2"
+            placeholder="Search project settings"
+            aria-label="Search project settings"
+          />
+          {searchQuery ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="absolute right-0.5 top-0.5 size-8"
+              onClick={() => setSearchQuery("")}
+            >
+              <X className="size-3.5" />
+              <span className="sr-only">Clear search</span>
+            </Button>
+          ) : null}
+        </div>
+
         {operationError ? (
           <div className="flex gap-2 rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
             <CircleAlert className="mt-0.5 size-4 shrink-0" />
@@ -370,7 +469,10 @@ export function ProjectSettingsPage({
           </div>
         ) : null}
 
-        <section aria-labelledby="project-details-title">
+        <section
+          aria-labelledby="project-details-title"
+          className={cn(!projectDetailsMatch && "hidden")}
+        >
           <div className="mb-3">
             <h2 id="project-details-title" className="font-semibold">
               Project details
@@ -379,7 +481,7 @@ export function ProjectSettingsPage({
               Server-owned metadata for this worker-backed source.
             </p>
           </div>
-          <dl className="overflow-hidden rounded-xl border divide-y">
+          <dl className="divide-y border-y">
             <DetailRow label="Repository">
               {project.github ? (
                 <a
@@ -420,7 +522,10 @@ export function ProjectSettingsPage({
           </dl>
         </section>
 
-        <section aria-labelledby="worktree-policy-title">
+        <section
+          aria-labelledby="worktree-policy-title"
+          className={cn(!worktreePolicyMatch && "hidden")}
+        >
           <div className="mb-3">
             <h2 id="worktree-policy-title" className="font-semibold">
               Worktree policy
@@ -430,7 +535,7 @@ export function ProjectSettingsPage({
               their changes.
             </p>
           </div>
-          <div className="grid overflow-hidden rounded-xl border sm:grid-cols-3 sm:divide-x">
+          <div className="divide-y border-y">
             {policies.map((policy) => {
               const selected = project.worktreePolicy === policy.value;
               return (
@@ -440,9 +545,8 @@ export function ProjectSettingsPage({
                   aria-pressed={selected}
                   disabled={updatePolicy.isPending}
                   className={cn(
-                    "min-h-24 border-b px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-muted/60 disabled:opacity-60 sm:border-b-0",
-                    selected &&
-                      "bg-muted shadow-[inset_0_2px_0_0_currentColor]",
+                    "grid min-h-14 w-full gap-1 px-3 py-2.5 text-left transition-colors hover:bg-muted/60 disabled:opacity-60 sm:grid-cols-[12rem_minmax(0,1fr)] sm:items-center sm:gap-4",
+                    selected && "bg-muted/60",
                   )}
                   onClick={() => updatePolicy.mutate(policy.value)}
                 >
@@ -454,7 +558,7 @@ export function ProjectSettingsPage({
                     )}
                     {policy.label}
                   </span>
-                  <span className="mt-1.5 block text-xs leading-5 text-muted-foreground">
+                  <span className="block text-xs text-muted-foreground">
                     {policy.description}
                   </span>
                 </button>
@@ -463,19 +567,25 @@ export function ProjectSettingsPage({
           </div>
         </section>
 
-        <McpServerSettings
-          scope={{ kind: "project", projectId: project.id }}
-          className="overflow-hidden rounded-xl border"
-        />
+        {mcpMatch ? (
+          <McpServerSettings
+            scope={{ kind: "project", projectId: project.id }}
+          />
+        ) : null}
 
-        <WorkflowCenter
-          chats={chats}
-          initialWorkflowId={initialWorkflowId}
-          projectId={project.id}
-          onOpenHistory={onCreateHistory}
-        />
+        {workflowsMatch ? (
+          <WorkflowCenter
+            chats={chats}
+            initialWorkflowId={initialWorkflowId}
+            projectId={project.id}
+            onOpenHistory={onCreateHistory}
+          />
+        ) : null}
 
-        <section aria-labelledby="worktrees-title">
+        <section
+          aria-labelledby="worktrees-title"
+          className={cn(!worktreesMatch && "hidden")}
+        >
           <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 id="worktrees-title" className="font-semibold">
@@ -522,15 +632,15 @@ export function ProjectSettingsPage({
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-xl border">
-            <div className="hidden grid-cols-[minmax(13rem,1fr)_minmax(9rem,0.7fr)_minmax(10rem,0.8fr)_2.5rem] gap-4 bg-muted/50 px-4 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground md:grid">
+          <div className="border-y">
+            <div className="hidden grid-cols-[minmax(13rem,1fr)_minmax(9rem,0.7fr)_minmax(10rem,0.8fr)_2.5rem] gap-4 border-b px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground md:grid">
               <span>Worktree</span>
               <span>Git state</span>
               <span>Worker / bindings</span>
               <span className="sr-only">Actions</span>
             </div>
             <div className="divide-y">
-              {worktrees.map((worktree) => {
+              {visibleWorktrees.map((worktree) => {
                 const worker = workers.find(
                   ({ workerId }) => workerId === worktree.workerId,
                 );
@@ -552,7 +662,7 @@ export function ProjectSettingsPage({
                   <div
                     key={worktree.id}
                     data-high-contrast-row
-                    className="grid gap-3 px-4 py-3 odd:bg-muted/[0.18] md:grid-cols-[minmax(13rem,1fr)_minmax(9rem,0.7fr)_minmax(10rem,0.8fr)_2.5rem] md:items-center md:gap-4"
+                    className="grid gap-2 px-3 py-2.5 odd:bg-muted/[0.18] md:grid-cols-[minmax(13rem,1fr)_minmax(9rem,0.7fr)_minmax(10rem,0.8fr)_2.5rem] md:items-center md:gap-4"
                   >
                     <div className="min-w-0">
                       <div className="flex min-w-0 items-center gap-2">
@@ -729,18 +839,29 @@ export function ProjectSettingsPage({
                   </div>
                 );
               })}
-              {!worktrees.length ? (
+              {!visibleWorktrees.length ? (
                 <div className="px-4 py-10 text-center text-sm text-muted-foreground">
-                  No worktree inventory is available. Refresh after the worker
-                  reconnects.
+                  {search
+                    ? `No worktrees match “${searchQuery.trim()}”.`
+                    : "No worktree inventory is available. Refresh after the worker reconnects."}
                 </div>
               ) : null}
             </div>
           </div>
         </section>
+
+        {!hasGeneralSearchResults ? (
+          <div className="py-12 text-center">
+            <Search className="mx-auto mb-3 size-5 text-muted-foreground" />
+            <p className="text-sm font-medium">No project settings found</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Try a repository, policy, MCP, workflow, or worktree term.
+            </p>
+          </div>
+        ) : null}
       </div>
       {section === "skills" ? (
-        <div className="px-4 py-6 sm:px-6 lg:px-8">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
           <SkillsSettings project={project} />
         </div>
       ) : null}

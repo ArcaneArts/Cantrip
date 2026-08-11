@@ -226,6 +226,8 @@ describe("project settings", () => {
     expect(markup).toContain("Agent managed");
     expect(markup).toContain("Required for writes");
     expect(markup).toContain("Skills");
+    expect(markup).toContain('data-slot="project-settings"');
+    expect(markup).toContain('aria-label="Search project settings"');
     expect(markup).toContain("Primary");
     expect(markup).toContain("Worker offline");
   });
