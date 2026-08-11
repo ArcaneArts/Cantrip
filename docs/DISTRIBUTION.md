@@ -10,14 +10,14 @@ runtime used to build it.
 Run packaging on the target operating system because the Worker contains
 native PTY, screen capture, and image modules.
 
-| Command                 | Output                                                            | Host requirement                               |
-| ----------------------- | ----------------------------------------------------------------- | ---------------------------------------------- |
-| `pnpm package:server`   | `artifacts/cantrip-server-<os>-<arch>`                            | Node.js 22+ at runtime                         |
-| `pnpm package:worker`   | `artifacts/cantrip-worker-<os>-<arch>`                            | Native build host, Node.js 22+, Git at runtime |
-| `pnpm package:services` | Both service trees                                                | Same as above                                  |
-| `pnpm package:app`      | Tauri bundles under `cantrip_app/src-tauri/target/release/bundle` | Tauri build prerequisites                      |
-| `pnpm bundle`           | All three native artifacts under `artifacts/bundles/<os>-<arch>`  | Current native build host                      |
-| `pnpm release`          | Fast-forwards `release` to synchronized `main`                    | Clean `main` checkout with push access         |
+| Command                 | Output                                                            | Host requirement                       |
+| ----------------------- | ----------------------------------------------------------------- | -------------------------------------- |
+| `pnpm package:server`   | `artifacts/cantrip-server-<os>-<arch>`                            | No external runtime                    |
+| `pnpm package:worker`   | `artifacts/cantrip-worker-<os>-<arch>`                            | Native build host, Git at runtime      |
+| `pnpm package:services` | Both service trees                                                | Same as above                          |
+| `pnpm package:app`      | Tauri bundles under `cantrip_app/src-tauri/target/release/bundle` | Tauri build prerequisites              |
+| `pnpm bundle`           | All three native artifacts under `artifacts/bundles/<os>-<arch>`  | Current native build host              |
+| `pnpm release`          | Fast-forwards `release` to synchronized `main`                    | Clean `main` checkout with push access |
 
 `pnpm bundle` performs the complete native build for the current host. It builds
 the protocol once, packages Server and Worker concurrently, then builds the
@@ -50,6 +50,12 @@ All lower-level packaging commands accept the native target explicitly, for exam
 both the Worker and Cantrip Code contain native modules. `macos-*` and
 `windows-*` are accepted aliases for the runtime target names `darwin-*` and
 `win32-*`.
+
+The Server and Worker archives each include the platform-matched Node runtime
+used to build their native dependencies. Their startup scripts invoke only that
+packaged executable, so a separate host Node installation is not required.
+Desktop removes those duplicate per-service runtimes while staging and uses its
+single shared bundled Node executable instead.
 
 Worker packages contain `resources/cantrip-code/`, including the compiled
 browser-native editor, its bundled Node runtime, legal notices, and a

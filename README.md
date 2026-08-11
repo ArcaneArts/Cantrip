@@ -407,7 +407,7 @@ pnpm bundle                  # native service/client archives for this platform
 pnpm package:all             # alias for pnpm bundle
 ```
 
-Standalone service directories include compiled JavaScript, production dependencies, startup scripts, and a focused `.env.example`. They require Node.js 22 or newer on the host. Copy `.env.example` to `.env`, configure matching `CANTRIP_WORKER_TOKEN` values, then launch `start.sh` or `start.cmd`. The worker initiates its connection with `CANTRIP_SERVER_URL`; no inbound worker port is exposed.
+Standalone service directories include a platform-matched Node.js runtime, compiled JavaScript, production dependencies, startup scripts, and a focused `.env.example`. They do not require Node.js to be installed on the host. Copy `.env.example` to `.env`, configure matching `CANTRIP_WORKER_TOKEN` values, then launch `start.sh` or `start.cmd`. The worker initiates its connection with `CANTRIP_SERVER_URL`; no inbound worker port is exposed.
 
 Run `pnpm release` from a clean `main` branch to pull `origin/main` and
 fast-forward `origin/release`. That branch update starts the native release
