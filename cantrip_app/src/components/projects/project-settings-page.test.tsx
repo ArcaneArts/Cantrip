@@ -175,7 +175,7 @@ describe("project settings", () => {
     ).toEqual(["Implementation", "Shell", "Files", "Workbench", "History"]);
   });
 
-  it("renders project metadata, policies, and inventory in one surface", () => {
+  it("renders project features under their dedicated settings tabs", () => {
     const project = {
       id: "project-1",
       name: "Cantrip",
@@ -197,40 +197,59 @@ describe("project settings", () => {
       createdAt: now,
       updatedAt: now,
     } satisfies ProjectSummary;
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    const markup = renderToStaticMarkup(
-      <QueryClientProvider client={queryClient}>
-        <ProjectSettingsPage
-          project={project}
-          chats={[]}
-          codeTabs={[]}
-          terminals={[]}
-          explorers={[]}
-          projectViews={[]}
-          workers={[]}
-          worktrees={[worktree]}
-          statuses={{ [worktree.id]: cleanStatus }}
-          onCreateChat={() => undefined}
-          onCreateCode={() => undefined}
-          onCreateTerminal={() => undefined}
-          onCreateExplorer={() => undefined}
-          onCreateHistory={() => undefined}
-        />
-      </QueryClientProvider>,
-    );
+    const renderSection = (
+      initialSection: "general" | "workflows" | "worktrees" = "general",
+    ) => {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      return renderToStaticMarkup(
+        <QueryClientProvider client={queryClient}>
+          <ProjectSettingsPage
+            initialSection={initialSection}
+            project={project}
+            chats={[]}
+            codeTabs={[]}
+            terminals={[]}
+            explorers={[]}
+            projectViews={[]}
+            workers={[]}
+            worktrees={[worktree]}
+            statuses={{ [worktree.id]: cleanStatus }}
+            onCreateChat={() => undefined}
+            onCreateCode={() => undefined}
+            onCreateTerminal={() => undefined}
+            onCreateExplorer={() => undefined}
+            onCreateHistory={() => undefined}
+          />
+        </QueryClientProvider>,
+      );
+    };
+
+    const markup = renderSection();
 
     expect(markup).toContain("ArcaneArts/Cantrip");
     expect(markup).toContain("~/repos/cantrip");
-    expect(markup).toContain("Agent managed");
-    expect(markup).toContain("Required for writes");
+    expect(markup).toContain("Workflows");
+    expect(markup).toContain("Worktrees");
     expect(markup).toContain("Skills");
     expect(markup).toContain("MCP");
     expect(markup).not.toContain("MCP servers");
+    expect(markup).not.toContain("New workflow");
+    expect(markup).not.toContain("Agent managed");
+    expect(markup).not.toContain("Worker offline");
     expect(markup).toContain('data-slot="project-settings"');
-    expect(markup).toContain('aria-label="Search project settings"');
-    expect(markup).toContain("Primary");
-    expect(markup).toContain("Worker offline");
+
+    const workflowsMarkup = renderSection("workflows");
+    expect(workflowsMarkup).toContain("New workflow");
+    expect(workflowsMarkup).not.toContain("Agent managed");
+
+    const worktreesMarkup = renderSection("worktrees");
+    expect(worktreesMarkup).toContain("Agent managed");
+    expect(worktreesMarkup).toContain("Required for writes");
+    expect(worktreesMarkup).toContain("Primary");
+    expect(worktreesMarkup).toContain("Worker offline");
+    expect(worktreesMarkup).toContain('aria-label="Search worktrees"');
+    expect(worktreesMarkup).not.toContain("New workflow");
   });
 });
