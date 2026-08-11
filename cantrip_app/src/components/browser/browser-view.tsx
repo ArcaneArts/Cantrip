@@ -25,6 +25,7 @@ import {
   Network,
   RefreshCw,
   RotateCw,
+  Search,
   X,
 } from "lucide-react";
 import {
@@ -49,6 +50,30 @@ const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
 
 export function browserServiceDisplayName(service: BrowserService): string {
   return service.title ?? service.processName ?? `Port ${service.port}`;
+}
+
+export function filterBrowserServices(
+  services: BrowserService[],
+  query: string,
+): BrowserService[] {
+  const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return services;
+  return services.filter((service) => {
+    const searchable = [
+      browserServiceDisplayName(service),
+      service.title,
+      service.processName,
+      service.protocol,
+      service.host,
+      service.port,
+      service.statusCode,
+      service.url,
+    ]
+      .filter((value) => value !== null && value !== undefined)
+      .join(" ")
+      .toLocaleLowerCase();
+    return terms.every((term) => searchable.includes(term));
+  });
 }
 
 export function normalizeBrowserAddress(value: string): string | null {
@@ -183,6 +208,7 @@ export function BrowserView({
   const [runtimeMessage, setRuntimeMessage] = useState<string | null>(null);
   const [clipboardMessage, setClipboardMessage] = useState<string | null>(null);
   const [serviceMenuOpen, setServiceMenuOpen] = useState(false);
+  const [serviceSearch, setServiceSearch] = useState("");
   const [renderedSurfaceId, setRenderedSurfaceId] = useState<string | null>(
     null,
   );
@@ -195,6 +221,7 @@ export function BrowserView({
     staleTime: 5_000,
   });
   const services = servicesQuery.data ?? [];
+  const filteredServices = filterBrowserServices(services, serviceSearch);
   onPageStateRef.current = onPageState;
 
   const sendFrame = useCallback(
@@ -663,7 +690,10 @@ export function BrowserView({
         </form>
         <DropdownMenuPrimitive.Root
           open={serviceMenuOpen}
-          onOpenChange={setServiceMenuOpen}
+          onOpenChange={(open) => {
+            setServiceMenuOpen(open);
+            if (!open) setServiceSearch("");
+          }}
         >
           <DropdownMenuPrimitive.Trigger asChild>
             <Button
@@ -687,62 +717,86 @@ export function BrowserView({
             <DropdownMenuPrimitive.Content
               align="end"
               sideOffset={6}
-              className="z-50 w-80 rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+              className="z-50 flex max-h-[var(--radix-dropdown-menu-content-available-height)] w-80 flex-col overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
             >
-              <DropdownMenuPrimitive.Label className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              <DropdownMenuPrimitive.Label className="shrink-0 px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                 Worker web services
               </DropdownMenuPrimitive.Label>
-              {servicesQuery.isLoading ? (
-                <DropdownMenuPrimitive.Item
-                  disabled
-                  className="flex items-center gap-2 rounded-sm px-2 py-2 text-xs text-muted-foreground outline-none"
-                >
-                  <Loader2 className="size-3.5 animate-spin" />
-                  Scanning listening ports…
-                </DropdownMenuPrimitive.Item>
-              ) : servicesQuery.isError ? (
-                <DropdownMenuPrimitive.Item
-                  disabled
-                  className="rounded-sm px-2 py-2 text-xs text-destructive outline-none"
-                >
-                  Could not scan this worker.
-                </DropdownMenuPrimitive.Item>
-              ) : services.length === 0 ? (
-                <DropdownMenuPrimitive.Item
-                  disabled
-                  className="rounded-sm px-2 py-2 text-xs text-muted-foreground outline-none"
-                >
-                  No HTTP services found.
-                </DropdownMenuPrimitive.Item>
-              ) : (
-                services.map((service) => (
+              <div className="relative shrink-0 px-1 pb-1.5">
+                <Search className="pointer-events-none absolute left-3 top-4 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  autoFocus
+                  aria-label="Search services"
+                  value={serviceSearch}
+                  onChange={(event) => setServiceSearch(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Escape") event.stopPropagation();
+                  }}
+                  className="h-8 w-full rounded-md border bg-background pl-8 pr-2 text-xs outline-none ring-ring placeholder:text-muted-foreground focus:ring-2"
+                  placeholder="Search services"
+                  spellCheck={false}
+                />
+              </div>
+              <div className="min-h-0 max-h-80 flex-1 overflow-y-auto overscroll-contain">
+                {servicesQuery.isLoading ? (
                   <DropdownMenuPrimitive.Item
-                    key={service.url}
-                    className="flex cursor-default items-center gap-2 rounded-sm px-2 py-2 outline-none focus:bg-accent focus:text-accent-foreground"
-                    onSelect={() => navigateTo(service.url)}
+                    disabled
+                    className="flex items-center gap-2 rounded-sm px-2 py-2 text-xs text-muted-foreground outline-none"
                   >
-                    <Network className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-xs font-medium">
-                        {browserServiceDisplayName(service)}
-                      </span>
-                      <span className="block truncate text-[10px] text-muted-foreground">
-                        {service.processName &&
-                        service.processName !== service.title
-                          ? `${service.processName} · `
-                          : ""}
-                        {service.protocol}://{service.host}:{service.port}
-                      </span>
-                    </span>
-                    <span className="text-[10px] tabular-nums text-muted-foreground">
-                      {service.statusCode}
-                    </span>
+                    <Loader2 className="size-3.5 animate-spin" />
+                    Scanning listening ports…
                   </DropdownMenuPrimitive.Item>
-                ))
-              )}
-              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+                ) : servicesQuery.isError ? (
+                  <DropdownMenuPrimitive.Item
+                    disabled
+                    className="rounded-sm px-2 py-2 text-xs text-destructive outline-none"
+                  >
+                    Could not scan this worker.
+                  </DropdownMenuPrimitive.Item>
+                ) : services.length === 0 ? (
+                  <DropdownMenuPrimitive.Item
+                    disabled
+                    className="rounded-sm px-2 py-2 text-xs text-muted-foreground outline-none"
+                  >
+                    No HTTP services found.
+                  </DropdownMenuPrimitive.Item>
+                ) : filteredServices.length === 0 ? (
+                  <DropdownMenuPrimitive.Item
+                    disabled
+                    className="rounded-sm px-2 py-2 text-xs text-muted-foreground outline-none"
+                  >
+                    No services match “{serviceSearch.trim()}”.
+                  </DropdownMenuPrimitive.Item>
+                ) : (
+                  filteredServices.map((service, index) => (
+                    <DropdownMenuPrimitive.Item
+                      key={`${service.url}-${index}`}
+                      className="flex cursor-default items-center gap-2 rounded-sm px-2 py-2 outline-none focus:bg-accent focus:text-accent-foreground"
+                      onSelect={() => navigateTo(service.url)}
+                    >
+                      <Network className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-medium">
+                          {browserServiceDisplayName(service)}
+                        </span>
+                        <span className="block truncate text-[10px] text-muted-foreground">
+                          {service.processName &&
+                          service.processName !== service.title
+                            ? `${service.processName} · `
+                            : ""}
+                          {service.protocol}://{service.host}:{service.port}
+                        </span>
+                      </span>
+                      <span className="text-[10px] tabular-nums text-muted-foreground">
+                        {service.statusCode}
+                      </span>
+                    </DropdownMenuPrimitive.Item>
+                  ))
+                )}
+              </div>
+              <DropdownMenuPrimitive.Separator className="my-1 h-px shrink-0 bg-border" />
               <DropdownMenuPrimitive.Item
-                className="flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-xs outline-none focus:bg-accent focus:text-accent-foreground"
+                className="flex shrink-0 cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-xs outline-none focus:bg-accent focus:text-accent-foreground"
                 onSelect={(event) => {
                   event.preventDefault();
                   void servicesQuery.refetch();

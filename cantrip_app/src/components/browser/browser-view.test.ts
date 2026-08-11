@@ -4,6 +4,7 @@ import {
   browserPointerCoordinates,
   browserServiceDisplayName,
   browserTouchPoints,
+  filterBrowserServices,
   normalizeBrowserAddress,
 } from "./browser-view";
 
@@ -29,6 +30,40 @@ describe("browserServiceDisplayName", () => {
         processName: null,
       }),
     ).toBe("Port 5173");
+  });
+});
+
+describe("filterBrowserServices", () => {
+  const services = [
+    {
+      host: "127.0.0.1",
+      port: 5173,
+      protocol: "http" as const,
+      url: "http://127.0.0.1:5173/",
+      processName: "Vite",
+      statusCode: 200,
+      title: "Cantrip Dev",
+    },
+    {
+      host: "127.0.0.1",
+      port: 9100,
+      protocol: "http" as const,
+      url: "http://127.0.0.1:9100/",
+      processName: "dart",
+      statusCode: 404,
+      title: null,
+    },
+  ];
+
+  it("matches service identity, address, port, and status case-insensitively", () => {
+    expect(filterBrowserServices(services, "CANTRIP")).toEqual([services[0]]);
+    expect(filterBrowserServices(services, "dart 9100")).toEqual([services[1]]);
+    expect(filterBrowserServices(services, "404")).toEqual([services[1]]);
+  });
+
+  it("returns every service for blank input and none for an unknown term", () => {
+    expect(filterBrowserServices(services, "  ")).toBe(services);
+    expect(filterBrowserServices(services, "postgres")).toEqual([]);
   });
 });
 
