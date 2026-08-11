@@ -22,6 +22,7 @@ import {
   LogOut,
   Monitor,
   Moon,
+  Palette,
   Pencil,
   Plus,
   Route,
@@ -553,11 +554,14 @@ export function SettingsPage({
               {appearanceMatches ? (
                 <section>
                   <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-3">
-                    <div>
-                      <h2 className="text-sm font-semibold">Appearance</h2>
-                      <p className="text-xs text-muted-foreground">
-                        System follows the operating system.
-                      </p>
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <Palette className="size-4 shrink-0 text-muted-foreground" />
+                      <div>
+                        <h2 className="text-sm font-semibold">Appearance</h2>
+                        <p className="text-xs text-muted-foreground">
+                          System follows the operating system.
+                        </p>
+                      </div>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <div className="flex rounded-md bg-muted/50 p-0.5">
@@ -681,20 +685,24 @@ export function SettingsPage({
               {providersMatch ? (
                 <section>
                   <div className="flex items-center justify-between gap-3 px-3 py-3">
-                    <div className="min-w-0">
-                      <div className="flex items-baseline gap-2">
-                        <h2 className="text-sm font-semibold">Providers</h2>
-                        <span className="text-xs text-muted-foreground">
-                          {visibleProviders.length}
-                          {search &&
-                          visibleProviders.length !== providers.length
-                            ? ` of ${providers.length}`
-                            : ""}
-                        </span>
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <Server className="size-4 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0">
+                        <div className="flex items-baseline gap-2">
+                          <h2 className="text-sm font-semibold">Providers</h2>
+                          <span className="text-xs text-muted-foreground">
+                            {visibleProviders.length}
+                            {search &&
+                            visibleProviders.length !== providers.length
+                              ? ` of ${providers.length}`
+                              : ""}
+                          </span>
+                        </div>
+                        <p className="truncate text-xs text-muted-foreground">
+                          Ollama, compatible APIs, and isolated ChatGPT
+                          accounts.
+                        </p>
                       </div>
-                      <p className="truncate text-xs text-muted-foreground">
-                        Ollama, compatible APIs, and isolated ChatGPT accounts.
-                      </p>
                     </div>
                     <Button
                       className="size-8"
@@ -740,19 +748,22 @@ export function SettingsPage({
               {modelsMatch ? (
                 <section>
                   <div className="flex items-center justify-between gap-3 px-3 py-3">
-                    <div className="min-w-0">
-                      <div className="flex items-baseline gap-2">
-                        <h2 className="text-sm font-semibold">Models</h2>
-                        <span className="text-xs text-muted-foreground">
-                          {visibleModels.length}
-                          {search && visibleModels.length !== models.length
-                            ? ` of ${models.length}`
-                            : ""}
-                        </span>
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <Cpu className="size-4 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0">
+                        <div className="flex items-baseline gap-2">
+                          <h2 className="text-sm font-semibold">Models</h2>
+                          <span className="text-xs text-muted-foreground">
+                            {visibleModels.length}
+                            {search && visibleModels.length !== models.length
+                              ? ` of ${models.length}`
+                              : ""}
+                          </span>
+                        </div>
+                        <p className="truncate text-xs text-muted-foreground">
+                          Logical models with ordered provider failover routes.
+                        </p>
                       </div>
-                      <p className="truncate text-xs text-muted-foreground">
-                        Logical models with ordered provider failover routes.
-                      </p>
                     </div>
                     <Button
                       className="size-8"
