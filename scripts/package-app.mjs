@@ -9,6 +9,7 @@ import {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 let requestedTarget;
+let fromArtifacts = false;
 for (let index = 2; index < process.argv.length; index += 1) {
   const argument = process.argv[index];
   if (argument === "--target") {
@@ -21,6 +22,8 @@ for (let index = 2; index < process.argv.length; index += 1) {
     index += 1;
   } else if (argument.startsWith("--target=")) {
     requestedTarget = argument.slice("--target=".length);
+  } else if (argument === "--from-artifacts") {
+    fromArtifacts = true;
   } else throw new Error(`Unknown app packaging argument: ${argument}`);
 }
 
@@ -38,10 +41,12 @@ function run(command, arguments_) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-run(process.execPath, [
+const runtimeArguments = [
   path.join(root, "scripts", "package-distributions.mjs"),
   "desktop-runtime",
   "--target",
   target.id,
-]);
+];
+if (fromArtifacts) runtimeArguments.push("--from-artifacts");
+run(process.execPath, runtimeArguments);
 run(pnpm, ["--filter", "@cantrip/app", "tauri:build"]);

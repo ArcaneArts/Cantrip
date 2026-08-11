@@ -16,11 +16,35 @@ native PTY, screen capture, and image modules.
 | `pnpm package:worker`   | `artifacts/cantrip-worker-<os>-<arch>`                            | Native build host, Node.js 22+, Git at runtime |
 | `pnpm package:services` | Both service trees                                                | Same as above                                  |
 | `pnpm package:app`      | Tauri bundles under `cantrip_app/src-tauri/target/release/bundle` | Tauri build prerequisites                      |
+| `pnpm bundle`           | All three native artifacts under `artifacts/bundles/<os>-<arch>`  | Current native build host                      |
+| `pnpm release`          | Fast-forwards `release` to synchronized `main`                    | Clean `main` checkout with push access         |
 
-The manual/tag-triggered GitHub Actions workflow runs both packaging jobs on
-macOS, Linux, and Windows and uploads Server, Worker, and Desktop separately.
+`pnpm bundle` performs the complete native build for the current host. It builds
+the protocol once, packages Server and Worker concurrently, then builds the
+Desktop client from those exact service trees. Final archives and native
+installers are collected under `artifacts/bundles/<os>-<arch>/`; it does not
+create a GitHub release.
 
-All packaging commands accept the native target explicitly, for example
+The release workflow is intentionally limited to macOS ARM64 (`macos-14`) and
+Windows x64 (`windows-2025`). Its Server and Worker jobs run in parallel. The
+Client job downloads those native service archives, embeds them alongside the
+runner's Node.js runtime, builds the Tauri client, and publishes the resulting
+client bundle. A final job creates a GitHub release tagged
+`release-<full-commit-sha>` and uploads every service/client artifact.
+
+From a clean, synchronized `main` checkout, start that workflow with:
+
+```shell
+pnpm release
+```
+
+The command first runs `git pull --ff-only origin main`, requires local `main`
+to equal `origin/main`, verifies that `origin/release` can fast-forward, and
+then pushes `main` to `release`. It refuses dirty trees, non-`main` branches,
+unpushed main commits, and divergent release history. It does not build or
+publish anything locally; the `release` branch push is the workflow trigger.
+
+All lower-level packaging commands accept the native target explicitly, for example
 `pnpm package:worker --target darwin-arm64` or
 `pnpm package:app --target darwin-arm64`. Cross-compilation is rejected because
 both the Worker and Cantrip Code contain native modules. `macos-*` and

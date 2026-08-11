@@ -253,7 +253,9 @@ development stacks and artifacts in more detail.
 | `pnpm package:services`        | Both standalone service trees.                                               |
 | `pnpm package:desktop-runtime` | Local server and worker runtime staged for Tauri.                            |
 | `pnpm package:app`             | Native Tauri installer or application bundle.                                |
-| `pnpm package:all`             | Standalone services and the native desktop app.                              |
+| `pnpm bundle`                  | Current-platform server, worker, and embedded desktop release artifacts.     |
+| `pnpm package:all`             | Alias for `pnpm bundle`.                                                     |
+| `pnpm release`                 | Fast-forward `release` to synchronized `main` and start release automation.  |
 
 ## Browser development with `pnpm dev`
 
@@ -401,12 +403,19 @@ pnpm package:worker          # artifacts/cantrip-worker-<platform>-<arch>
 pnpm package:services        # both standalone service trees
 pnpm package:desktop-runtime # stage the local services used by Tauri
 pnpm package:app             # native Tauri installer/bundle for this platform
-pnpm package:all             # standalone services plus the desktop app
+pnpm bundle                  # native service/client archives for this platform
+pnpm package:all             # alias for pnpm bundle
 ```
 
 Standalone service directories include compiled JavaScript, production dependencies, startup scripts, and a focused `.env.example`. They require Node.js 22 or newer on the host. Copy `.env.example` to `.env`, configure matching `CANTRIP_WORKER_TOKEN` values, then launch `start.sh` or `start.cmd`. The worker initiates its connection with `CANTRIP_SERVER_URL`; no inbound worker port is exposed.
 
-The `Package distributions` GitHub Actions workflow builds separate Server, Worker, and Desktop artifacts on macOS, Linux, and Windows. See [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) for the environment contract, desktop lifecycle, and current security boundary.
+Run `pnpm release` from a clean `main` branch to pull `origin/main` and
+fast-forward `origin/release`. That branch update starts the native release
+workflow, which builds separate Server, Worker, and Desktop artifacts for
+macOS ARM64 and Windows x64 before publishing them in a commit-addressed GitHub
+release. The command never force-pushes a divergent release branch. See
+[docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) for the artifact flow, environment
+contract, desktop lifecycle, and current security boundary.
 
 ## Test with Ollama
 

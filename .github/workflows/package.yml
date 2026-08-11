@@ -1,58 +1,58 @@
-name: Package distributions
+name: Release native bundles
 
 on:
-  workflow_dispatch:
   push:
-    tags:
-      - "v*"
+    branches:
+      - release
 
 permissions:
   contents: read
 
-jobs:
-  services:
-    name: Services (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-14, ubuntu-24.04, windows-2025]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.15.1
-      - uses: actions/setup-node@v4
-        with:
-          cache: pnpm
-          node-version: 24
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.95.0
-      - name: Install Linux Codex build dependencies
-        if: runner.os == 'Linux'
-        run: >-
-          sudo apt-get update && sudo apt-get install -y
-          binutils build-essential libcap-dev pkg-config
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm package:services
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cantrip-server-${{ runner.os }}-${{ runner.arch }}
-          path: artifacts/cantrip-server-*
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cantrip-worker-${{ runner.os }}-${{ runner.arch }}
-          path: artifacts/cantrip-worker-*
-          if-no-files-found: error
+concurrency:
+  group: native-release
+  cancel-in-progress: false
 
-  desktop:
-    name: Desktop (${{ matrix.os }})
+jobs:
+  server:
+    name: Server (${{ matrix.target }})
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, ubuntu-24.04, windows-2025]
+        include:
+          - os: macos-14
+            target: darwin-arm64
+          - os: windows-2025
+            target: win32-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v4
+        with:
+          cache: pnpm
+          node-version: 24
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm package:server --target ${{ matrix.target }}
+      - run: node scripts/archive-distribution.mjs server --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cantrip-server-${{ matrix.target }}
+          path: artifacts/bundles/${{ matrix.target }}/cantrip-server-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  worker:
+    name: Worker (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: darwin-arm64
+          - os: windows-2025
+            target: win32-x64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -66,17 +66,93 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.95.0
-      - name: Install Linux desktop dependencies
-        if: runner.os == 'Linux'
-        run: >-
-          sudo apt-get update && sudo apt-get install -y
-          libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev
-          libssl-dev libayatana-appindicator3-dev librsvg2-dev binutils
-          libcap-dev pkg-config
       - run: pnpm install --frozen-lockfile
-      - run: pnpm package:app
+      - run: pnpm package:worker --target ${{ matrix.target }}
+      - run: node scripts/archive-distribution.mjs worker --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
-          name: cantrip-desktop-${{ runner.os }}-${{ runner.arch }}
-          path: cantrip_app/src-tauri/target/release/bundle/**/*
+          name: cantrip-worker-${{ matrix.target }}
+          path: artifacts/bundles/${{ matrix.target }}/cantrip-worker-${{ matrix.target }}.tar.gz
           if-no-files-found: error
+          retention-days: 14
+
+  client:
+    name: Client (${{ matrix.target }})
+    needs: [server, worker]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: darwin-arm64
+          - os: windows-2025
+            target: win32-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v4
+        with:
+          cache: pnpm
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+      - uses: actions/download-artifact@v4
+        with:
+          name: cantrip-server-${{ matrix.target }}
+          path: artifacts/incoming/server
+      - uses: actions/download-artifact@v4
+        with:
+          name: cantrip-worker-${{ matrix.target }}
+          path: artifacts/incoming/worker
+      - name: Materialize embedded services
+        shell: bash
+        run: |
+          tar -xzf "artifacts/incoming/server/cantrip-server-${{ matrix.target }}.tar.gz" -C artifacts
+          tar -xzf "artifacts/incoming/worker/cantrip-worker-${{ matrix.target }}.tar.gz" -C artifacts
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm package:app --target ${{ matrix.target }} --from-artifacts
+      - run: node scripts/archive-distribution.mjs client --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cantrip-client-${{ matrix.target }}
+          path: artifacts/bundles/${{ matrix.target }}/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish GitHub release
+    needs: [server, worker, client]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cantrip-*
+          merge-multiple: true
+          path: release-assets
+      - name: Create release and upload native artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="release-${GITHUB_SHA}"
+          mapfile -d '' files < <(find release-assets -type f -print0 | sort -z)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No release assets were downloaded." >&2
+            exit 1
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${files[@]}" --clobber
+          else
+            gh release create "$tag" "${files[@]}" \
+              --generate-notes \
+              --target "$GITHUB_SHA" \
+              --title "Cantrip ${GITHUB_SHA:0:12}"
+          fi
