@@ -2,9 +2,35 @@ import { describe, expect, it } from "vitest";
 
 import {
   browserPointerCoordinates,
+  browserServiceDisplayName,
   browserTouchPoints,
   normalizeBrowserAddress,
 } from "./browser-view";
+
+describe("browserServiceDisplayName", () => {
+  const service = {
+    host: "127.0.0.1",
+    port: 5173,
+    protocol: "http" as const,
+    url: "http://127.0.0.1:5173/",
+    processName: "Vite",
+    statusCode: 200,
+  };
+
+  it("prefers the page title, then process name, then port", () => {
+    expect(
+      browserServiceDisplayName({ ...service, title: "Cantrip Dev" }),
+    ).toBe("Cantrip Dev");
+    expect(browserServiceDisplayName({ ...service, title: null })).toBe("Vite");
+    expect(
+      browserServiceDisplayName({
+        ...service,
+        title: null,
+        processName: null,
+      }),
+    ).toBe("Port 5173");
+  });
+});
 
 describe("normalizeBrowserAddress", () => {
   it("adds HTTPS to host-like input and rejects non-web protocols", () => {

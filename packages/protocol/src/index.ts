@@ -2075,6 +2075,26 @@ export const browserSummarySchema = z.object({
 
 export const browserListSchema = z.array(browserSummarySchema);
 
+export const browserServiceProtocolSchema = z.enum(["http", "https"]);
+
+export const browserServiceSchema = z.object({
+  host: z.string().trim().min(1).max(255),
+  port: z.number().int().min(1).max(65_535),
+  protocol: browserServiceProtocolSchema,
+  url: z
+    .string()
+    .url()
+    .max(4_096)
+    .refine((value) => /^https?:\/\//u.test(value), {
+      message: "Browser service URLs must use HTTP or HTTPS.",
+    }),
+  title: z.string().trim().min(1).max(200).nullable(),
+  processName: z.string().trim().min(1).max(200).nullable(),
+  statusCode: z.number().int().min(100).max(599),
+});
+
+export const browserServiceListSchema = z.array(browserServiceSchema).max(128);
+
 export const remoteDesktopCreateSchema = z
   .object({ tabGroupId: z.string().min(1).optional() })
   .strict();
@@ -5275,6 +5295,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("project.script-commands"),
     cwd: z.string().min(1).max(8_192),
   }),
+  z.object({ type: z.literal("browser.services.discover") }),
   z.object({
     type: z.literal("project.share.open"),
     shareId: z.string().min(1).max(200),
@@ -6646,6 +6667,10 @@ export type ProjectShareTunnelFrameHeader = z.infer<
 export type BrowserCreate = z.infer<typeof browserCreateSchema>;
 export type BrowserUpdate = z.infer<typeof browserUpdateSchema>;
 export type BrowserSummary = z.infer<typeof browserSummarySchema>;
+export type BrowserServiceProtocol = z.infer<
+  typeof browserServiceProtocolSchema
+>;
+export type BrowserService = z.infer<typeof browserServiceSchema>;
 export type RemoteDesktopCreate = z.infer<typeof remoteDesktopCreateSchema>;
 export type RemoteDesktopTarget = z.infer<typeof remoteDesktopTargetSchema>;
 export type RemoteDesktopMonitor = z.infer<typeof remoteDesktopMonitorSchema>;

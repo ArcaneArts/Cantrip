@@ -15,6 +15,7 @@ import {
   appLiveEventPayloadSchema,
   browserCreateSchema,
   browserListSchema,
+  browserServiceListSchema,
   browserSummarySchema,
   browserUpdateSchema,
   codeAttachmentCreateSchema,
@@ -9514,6 +9515,33 @@ export async function buildApp({
           ),
         ),
       ),
+  );
+
+  app.get<{ Params: { browserId: string } }>(
+    "/api/browsers/:browserId/services",
+    async (request, reply) => {
+      const context = await repository.getRemoteSurfaceExecutionContext(
+        LOCAL_USER_ID,
+        request.params.browserId,
+      );
+      if (!context || context.surface.kind !== "browser") {
+        return reply.code(404).send({ error: "Browser not found." });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        const services = await bridge.request(
+          context.workerId,
+          { type: "browser.services.discover" },
+          { timeoutMs: 20_000 },
+        );
+        return reply.send(browserServiceListSchema.parse(services));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
   );
 
   app.post<{ Params: { projectId: string } }>(

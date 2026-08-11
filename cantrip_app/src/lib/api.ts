@@ -3,6 +3,7 @@ import {
   agentInteractionRequestSchema,
   agentInteractionResolutionCreateSchema,
   browserListSchema,
+  browserServiceListSchema,
   browserSummarySchema,
   agentThreadSyncSchema,
   chatListSchema,
@@ -1669,6 +1670,12 @@ export async function deleteExplorer(explorerId: string) {
 export async function getBrowsers(projectId: string) {
   return browserListSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/browsers`),
+  );
+}
+
+export async function getBrowserServices(browserId: string) {
+  return browserServiceListSchema.parse(
+    await request(`/api/browsers/${encodeURIComponent(browserId)}/services`),
   );
 }
 
