@@ -4530,7 +4530,10 @@ export function App() {
               {selectedCodeTab ? (
                 <CodeHeaderActions header={codeHeader} />
               ) : null}
-              {selectedStandaloneTerminal ? (
+              {!showImporter &&
+              !showSettings &&
+              !showProjectSettings &&
+              selectedStandaloneTerminal ? (
                 <Button
                   size="icon"
                   variant="ghost"
@@ -4700,7 +4703,10 @@ export function App() {
               {selectedCodeTab ? (
                 <CodeHeaderActions header={codeHeader} />
               ) : null}
-              {selectedStandaloneTerminal ? (
+              {!showImporter &&
+              !showSettings &&
+              !showProjectSettings &&
+              selectedStandaloneTerminal ? (
                 <Button
                   size="icon"
                   variant="ghost"
