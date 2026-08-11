@@ -304,9 +304,9 @@ function TerminalTab({
           <span className="truncate">{terminal.title}</span>
           <span
             className={cn(
-              "ml-auto size-1.5 rounded-full bg-muted-foreground/40",
-              terminal.status === "running" && "bg-emerald-500",
-              terminal.status === "failed" && "bg-destructive",
+              "ml-auto size-[5px] rounded-full bg-muted-foreground/40",
+              terminal.status === "running" && "bg-emerald-400",
+              terminal.status === "failed" && "bg-red-400",
             )}
           />
         </button>
@@ -559,10 +559,10 @@ function CodeTab({
           <span className="truncate">{codeTab.title}</span>
           <span
             className={cn(
-              "ml-auto size-1.5 rounded-full bg-muted-foreground/40",
-              codeTab.status === "running" && "bg-emerald-500",
+              "ml-auto size-[5px] rounded-full bg-muted-foreground/40",
+              codeTab.status === "running" && "bg-emerald-400",
               codeTab.status === "starting" && "animate-pulse bg-amber-500",
-              codeTab.status === "failed" && "bg-destructive",
+              codeTab.status === "failed" && "bg-red-400",
             )}
             title={`Editor ${codeTab.status}`}
           />
