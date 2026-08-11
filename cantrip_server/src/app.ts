@@ -204,6 +204,7 @@ import {
   orderedIdsSchema,
   projectCloneResultSchema,
   projectListSchema,
+  projectRepositoryStatsSchema,
   projectRemoveSchema,
   projectShareAttachmentSchema,
   projectSummarySchema,
@@ -8460,6 +8461,30 @@ export async function buildApp({
       return reply.code(status).send({ error: errorMessage(error) });
     }
   });
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/repository-stats",
+    async (request, reply) => {
+      const source = await repository.getProjectSource(
+        LOCAL_USER_ID,
+        request.params.projectId,
+      );
+      if (!source) {
+        return reply.code(404).send({ error: "Project source not found." });
+      }
+      try {
+        const stats = await bridge.request(
+          source.workerId,
+          { type: "project.repository-stats", cwd: source.cwd },
+          { timeoutMs: 30_000 },
+        );
+        return reply.send(projectRepositoryStatsSchema.parse(stats));
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
 
   app.post<{
     Params: { projectId: string; worktreeId: string };

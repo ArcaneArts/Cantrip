@@ -120,6 +120,7 @@ import { WorkspaceDndProvider } from "@/components/workspace/workspace-dnd-provi
 import { WorkspaceMembershipPicker } from "@/components/workspaces/workspace-membership-picker";
 import { WorkspaceSwitcher } from "@/components/workspaces/workspace-switcher";
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
+import { ProjectOverview } from "@/components/projects/project-overview";
 import { GithubRepositoryCreateDialog } from "@/components/projects/github-repository-create-dialog";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { ServerSwitcher } from "@/components/servers/server-switcher";
@@ -191,6 +192,7 @@ import {
   getProjectWorktrees,
   getProjectWorktreeStatus,
   getProjectViews,
+  getProjectRepositoryStats,
   getRemoteDesktop,
   getQueuedPrompts,
   getServerBootstrap,
@@ -2368,6 +2370,12 @@ export function App() {
     "general" | "skills" | "mcp" | "workspaces"
   >("general");
   const [showProjectSettings, setShowProjectSettings] = useState(false);
+  const projectOverviewSelected =
+    !isPopout &&
+    !showImporter &&
+    !showSettings &&
+    !showProjectSettings &&
+    workspaceSelection.destination === "overview";
   const [activeProjectWorkspaceId, setActiveProjectWorkspaceId] = useState<
     string | null
   >(() => window.localStorage.getItem("cantrip:active-project-workspace"));
@@ -2572,6 +2580,23 @@ export function App() {
     queryFn: () => getProjectViews(selectedProjectId!),
     queryKey: ["project-views", selectedProjectId],
     refetchInterval: projectResourcesLive ? false : 10_000,
+  });
+  const repositoryStats = useQuery({
+    enabled:
+      Boolean(selectedProjectId) &&
+      projectOverviewSelected &&
+      Boolean(
+        projects.data?.some(
+          (project) =>
+            project.id === selectedProjectId &&
+            project.setupStatus === "ready" &&
+            project.source,
+        ),
+      ),
+    queryFn: () => getProjectRepositoryStats(selectedProjectId!),
+    queryKey: ["project-repository-stats", selectedProjectId],
+    retry: false,
+    staleTime: 30_000,
   });
   const selectedProjectViewForQuery = projectViews.data?.find(
     (view) => view.id === selectedProjectViewId,
@@ -3225,6 +3250,10 @@ export function App() {
   const selectedSurface = selectedTabKey
     ? projectSurfaceIndex.byTabKey.get(selectedTabKey)
     : undefined;
+  const projectSurfaces = useMemo(
+    () => [...projectSurfaceIndex.byTabKey.values()],
+    [projectSurfaceIndex],
+  );
   const selectedTabGroup = tabLayout.data?.groups.find(
     (group) => group.id === workspaceSelection.selectedGroupId,
   );
@@ -3767,10 +3796,10 @@ export function App() {
   };
   const selectProjectFromSidebar = (projectId: string) => {
     setSelectedProjectId(projectId);
+    setWorkspaceSelection(emptyWorkspaceSelection(projectId));
+    setPendingSurfaceSelection(null);
     setChatConsoleChatId(null);
-    if (workspaceSelection.projectId !== projectId) {
-      setWorkspaceSelection(emptyWorkspaceSelection(projectId));
-    }
+    setDetachedGroupId(null);
     revealWorkspace();
   };
   const selectTopTab = (tabKey: string) => {
@@ -4261,24 +4290,26 @@ export function App() {
                       ? "Settings"
                       : showProjectSettings
                         ? "Project settings"
-                        : gitHistoryProject
-                          ? (selectedProjectView?.title ?? "Git")
-                          : selectedProjectView?.kind === "remote-desktop"
-                            ? selectedProjectView.title
-                            : selectedCodeTab
-                              ? selectedCodeTab.title
-                              : selectedBrowser
-                                ? selectedBrowser.title
-                                : selectedExplorer
-                                  ? selectedExplorer.title
-                                  : selectedTerminal
-                                    ? selectedTerminal.linkedChatId
-                                      ? (linkedConsoleChat?.title ?? "Chat")
-                                      : selectedTerminal.title
-                                    : selectedChat
-                                      ? selectedChat.title
-                                      : (selectedProject?.github
-                                          ?.nameWithOwner ?? "Cantrip")}
+                        : projectOverviewSelected && selectedProject
+                          ? selectedProject.name
+                          : gitHistoryProject
+                            ? (selectedProjectView?.title ?? "Git")
+                            : selectedProjectView?.kind === "remote-desktop"
+                              ? selectedProjectView.title
+                              : selectedCodeTab
+                                ? selectedCodeTab.title
+                                : selectedBrowser
+                                  ? selectedBrowser.title
+                                  : selectedExplorer
+                                    ? selectedExplorer.title
+                                    : selectedTerminal
+                                      ? selectedTerminal.linkedChatId
+                                        ? (linkedConsoleChat?.title ?? "Chat")
+                                        : selectedTerminal.title
+                                      : selectedChat
+                                        ? selectedChat.title
+                                        : (selectedProject?.github
+                                            ?.nameWithOwner ?? "Cantrip")}
                 </span>
                 {!showImporter &&
                 !showSettings &&
@@ -4364,6 +4395,8 @@ export function App() {
                   (selectedProject?.github?.nameWithOwner ??
                   selectedProject?.name ??
                   "Project preferences")
+                ) : projectOverviewSelected && selectedProject ? (
+                  `Project overview · ${selectedProject.source?.displayPath ?? selectedProject.github?.nameWithOwner ?? selectedProject.name}`
                 ) : gitHistoryProject ? (
                   <>
                     {gitHistoryProject.github?.nameWithOwner ??
@@ -4827,6 +4860,30 @@ export function App() {
                 </p>
               </div>
             </div>
+          ) : projectOverviewSelected ? (
+            <ProjectOverview
+              creatingKinds={creatingSurfaceKinds}
+              project={selectedProject}
+              stats={repositoryStats.data}
+              statsError={
+                repositoryStats.isError
+                  ? errorText(repositoryStats.error)
+                  : null
+              }
+              statsLoading={repositoryStats.isLoading}
+              surfaces={projectSurfaces}
+              workerOnline={Boolean(
+                workers.data?.find(
+                  ({ workerId }) =>
+                    workerId === selectedProject.source?.workerId,
+                )?.online,
+              )}
+              worktrees={worktrees.data ?? []}
+              onCreateSurface={(kind) =>
+                createProjectSurface(selectedProject.id, kind)
+              }
+              onOpenSurface={selectTopTab}
+            />
           ) : (
             <div className="grid flex-1 place-items-center p-6 text-center">
               <div>

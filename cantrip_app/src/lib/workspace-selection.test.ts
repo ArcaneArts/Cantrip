@@ -104,6 +104,32 @@ describe("workspace selection", () => {
     expect(selectedWorkspaceTabKey(selection)).toBe("chat:two");
   });
 
+  it("keeps the project overview selected while tab layouts refresh", () => {
+    const selection = reconcileWorkspaceSelection(
+      emptyWorkspaceSelection("project-1"),
+      initialLayout,
+    );
+
+    expect(selection.destination).toBe("overview");
+    expect(selection.selectedGroupId).toBeNull();
+    expect(selectedWorkspaceTabKey(selection)).toBeNull();
+    expect(selection.activeTabByGroup).toEqual({
+      "group-1": "chat:one",
+      "group-2": "chat:two",
+    });
+  });
+
+  it("leaves the overview when a child tab is selected", () => {
+    const overview = reconcileWorkspaceSelection(
+      emptyWorkspaceSelection("project-1"),
+      initialLayout,
+    );
+    const selected = selectWorkspaceTab(overview, initialLayout, "chat:two");
+
+    expect(selected.destination).toBe("surface");
+    expect(selectedWorkspaceTabKey(selected)).toBe("chat:two");
+  });
+
   it("resets group-local state when the project changes", () => {
     const selected = selectWorkspaceTab(
       reconcileWorkspaceSelection(emptyWorkspaceSelection(), initialLayout),
