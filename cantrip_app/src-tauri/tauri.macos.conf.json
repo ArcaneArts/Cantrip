@@ -1,0 +1,19 @@
+{
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Cantrip",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "transparent": true,
+        "width": 1280,
+        "height": 800,
+        "minWidth": 760,
+        "minHeight": 560,
+        "resizable": true
+      }
+    ]
+  }
+}

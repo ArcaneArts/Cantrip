@@ -163,7 +163,11 @@ export function WorkspaceDndProvider({
         clear();
       }}
     >
-      <main className={className} data-tauri-titlebar={tauriTitlebar}>
+      <main
+        className={className}
+        data-slot="app-shell"
+        data-tauri-titlebar={tauriTitlebar}
+      >
         {children}
       </main>
       <DragOverlay>

@@ -2715,6 +2715,7 @@ describe("Cantrip protocol", () => {
       userSettingsSchema.parse({
         theme: "system",
         highContrast: false,
+        proMode: false,
         sidebarWidth: 288,
         desktopFrameRate: 30,
         desktopStreamQuality: "adaptive",
@@ -2725,6 +2726,7 @@ describe("Cantrip protocol", () => {
       userSettingsSchema.safeParse({
         theme: "system",
         highContrast: false,
+        proMode: false,
         sidebarWidth: MIN_SIDEBAR_WIDTH,
         desktopFrameRate: 30,
         desktopStreamQuality: "adaptive",
@@ -2735,6 +2737,7 @@ describe("Cantrip protocol", () => {
       userSettingsSchema.safeParse({
         theme: "system",
         highContrast: false,
+        proMode: false,
         sidebarWidth: MIN_SIDEBAR_WIDTH - 1,
         desktopFrameRate: 30,
         desktopStreamQuality: "adaptive",
