@@ -8,6 +8,11 @@ export type DesktopPopoutGroupTarget = {
 };
 
 const groupParameter = "cantrip-popout-group";
+const noDesktopPopoutListener = () => undefined;
+
+export type DesktopPopoutWindowLifecycle = {
+  listenDestroyed(listener: () => void): Promise<() => void>;
+};
 
 // Cantrip windows host live transports and Tauri's title-bar drag handling.
 // Suspending an occluded WKWebView can therefore freeze both content and
@@ -105,6 +110,58 @@ export async function focusDesktopPopoutGroup(
   groupId: string,
 ): Promise<boolean> {
   return isDesktopRuntime() ? focusWindow(groupId) : false;
+}
+
+export async function observeDesktopPopoutClosure(
+  getWindow: () => Promise<DesktopPopoutWindowLifecycle | null>,
+  onClosed: () => void,
+): Promise<() => void> {
+  const popout = await getWindow();
+  if (!popout) {
+    onClosed();
+    return noDesktopPopoutListener;
+  }
+
+  let listening = true;
+  const resume = () => {
+    if (!listening) return;
+    listening = false;
+    onClosed();
+  };
+  const unlisten = await popout.listenDestroyed(resume);
+  try {
+    if (await getWindow()) {
+      return () => {
+        if (!listening) return;
+        listening = false;
+        unlisten();
+      };
+    }
+  } catch (error) {
+    unlisten();
+    throw error;
+  }
+  unlisten();
+  resume();
+  return noDesktopPopoutListener;
+}
+
+export async function watchDesktopPopoutGroup(
+  groupId: string,
+  onClosed: () => void,
+): Promise<() => void> {
+  if (!isDesktopRuntime()) return noDesktopPopoutListener;
+  const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+  const label = desktopPopoutGroupWindowLabel(groupId);
+  return observeDesktopPopoutClosure(async () => {
+    const popout = await WebviewWindow.getByLabel(label);
+    return popout
+      ? {
+          listenDestroyed: (listener) =>
+            popout.once("tauri://destroyed", listener),
+        }
+      : null;
+  }, onClosed);
 }
 
 export async function closeCurrentDesktopWindow(): Promise<void> {

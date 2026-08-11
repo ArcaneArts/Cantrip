@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   desktopBackgroundThrottlingPolicy,
@@ -6,6 +6,7 @@ import {
   desktopPopoutGroupSearch,
   desktopPopoutGroupWindowLabel,
   isMacosDesktopRuntime,
+  observeDesktopPopoutClosure,
   parseDesktopPopoutGroupTarget,
   shouldUseOverlayTitlebar,
   type DesktopPopoutGroupTarget,
@@ -49,6 +50,67 @@ describe("desktop pop-out groups", () => {
 
   it("keeps live pop-out clients running while macOS considers them occluded", () => {
     expect(desktopBackgroundThrottlingPolicy).toBe("disabled");
+  });
+
+  it("resumes immediately when the detached window is already gone", async () => {
+    const onClosed = vi.fn();
+
+    const stop = await observeDesktopPopoutClosure(
+      vi.fn().mockResolvedValue(null),
+      onClosed,
+    );
+
+    expect(onClosed).toHaveBeenCalledOnce();
+    expect(stop()).toBeUndefined();
+  });
+
+  it("resumes when the detached window is destroyed", async () => {
+    const onClosed = vi.fn();
+    const unlisten = vi.fn();
+    let destroyed: () => void = () => undefined;
+    const popout = {
+      listenDestroyed: vi.fn().mockImplementation((listener: () => void) => {
+        destroyed = listener;
+        return Promise.resolve(unlisten);
+      }),
+    };
+
+    const stop = await observeDesktopPopoutClosure(
+      vi.fn().mockResolvedValue(popout),
+      onClosed,
+    );
+    destroyed();
+    destroyed();
+    stop();
+
+    expect(popout.listenDestroyed).toHaveBeenCalledOnce();
+    expect(onClosed).toHaveBeenCalledOnce();
+    expect(unlisten).not.toHaveBeenCalled();
+  });
+
+  it("cancels observation and closes the setup race", async () => {
+    const onClosed = vi.fn();
+    const unlisten = vi.fn();
+    const popout = {
+      listenDestroyed: vi.fn().mockResolvedValue(unlisten),
+    };
+    const lookup = vi
+      .fn<() => Promise<typeof popout | null>>()
+      .mockResolvedValueOnce(popout)
+      .mockResolvedValueOnce(popout);
+
+    const stop = await observeDesktopPopoutClosure(lookup, onClosed);
+    stop();
+
+    expect(onClosed).not.toHaveBeenCalled();
+    expect(unlisten).toHaveBeenCalledOnce();
+
+    lookup.mockReset();
+    lookup.mockResolvedValueOnce(popout).mockResolvedValueOnce(null);
+    await observeDesktopPopoutClosure(lookup, onClosed);
+
+    expect(onClosed).toHaveBeenCalledOnce();
+    expect(unlisten).toHaveBeenCalledTimes(2);
   });
 });
 
