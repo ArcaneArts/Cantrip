@@ -18,16 +18,12 @@ import {
   MonitorUp,
   RotateCw,
 } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type PointerEvent,
-  type WheelEvent,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import {
+  RemoteSurfaceCanvas,
+  type RemoteSurfaceCanvasHandle,
+} from "@/components/remote-surface/remote-surface-canvas";
 import { Button } from "@/components/ui/button";
 import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
 import {
@@ -35,9 +31,7 @@ import {
   updateRemoteDesktopTarget,
 } from "@/lib/api";
 import {
-  remoteSurfaceKeyText,
-  remoteSurfaceModifiers,
-  remoteSurfacePointerButton,
+  forwardRemoteSurfaceClipboard,
   remoteSurfacePointerCoordinates,
 } from "@/lib/remote-surface-input";
 import {
@@ -65,48 +59,6 @@ const menuItemClass =
 interface Size {
   height: number;
   width: number;
-}
-
-interface DesktopFrameStats {
-  decodeTimeMs: number;
-  droppedFrames: number;
-  feedbackStartedAt: number;
-  receivedFrames: number;
-  renderedFrames: number;
-}
-
-function desktopFrameStats(): DesktopFrameStats {
-  return {
-    decodeTimeMs: 0,
-    droppedFrames: 0,
-    feedbackStartedAt: performance.now(),
-    receivedFrames: 0,
-    renderedFrames: 0,
-  };
-}
-
-export class LatestDesktopFrameBuffer {
-  #pending: Uint8Array | null = null;
-
-  push(frame: Uint8Array): boolean {
-    const replaced = this.#pending !== null;
-    this.#pending = new Uint8Array(frame);
-    return replaced;
-  }
-
-  take(): Uint8Array | null {
-    const frame = this.#pending;
-    this.#pending = null;
-    return frame;
-  }
-
-  clear(): void {
-    this.#pending = null;
-  }
-
-  get hasFrame(): boolean {
-    return this.#pending !== null;
-  }
 }
 
 export function fitDesktopSize(container: Size, desktop: Size): Size {
@@ -165,19 +117,14 @@ export function ManagedRemoteDesktopView({
   desktop: RemoteDesktopSummary;
 }) {
   const queryClient = useQueryClient();
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const remoteCanvasRef = useRef<RemoteSurfaceCanvasHandle>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
-  const lastPointerMoveAtRef = useRef(0);
   const viewportRef = useRef({
     width: 1_280,
     height: 720,
     devicePixelRatio: window.devicePixelRatio || 1,
   });
   const desktopSizeRef = useRef<Size>({ width: 1_920, height: 1_080 });
-  const frameBufferRef = useRef(new LatestDesktopFrameBuffer());
-  const frameGenerationRef = useRef(0);
-  const decodingGenerationRef = useRef<number | null>(null);
-  const frameStatsRef = useRef<DesktopFrameStats>(desktopFrameStats());
   const [desktopSize, setDesktopSize] = useState(desktopSizeRef.current);
   const [canvasSize, setCanvasSize] = useState<Size>({
     width: 1_280,
@@ -224,68 +171,12 @@ export function ManagedRemoteDesktopView({
     },
   });
 
-  async function decodeLatestDesktopFrame(
-    generation: number,
-    context: RemoteSurfaceFrameContext,
-  ): Promise<void> {
-    const frameBuffer = frameBufferRef.current;
-    if (
-      decodingGenerationRef.current === generation ||
-      !frameBuffer.hasFrame ||
-      !context.isCurrent() ||
-      frameGenerationRef.current !== generation
-    ) {
-      return;
-    }
-    const bytes = frameBuffer.take();
-    if (!bytes) return;
-    decodingGenerationRef.current = generation;
-    const startedAt = performance.now();
-    try {
-      const canvas = canvasRef.current;
-      if (!canvas || !context.isCurrent()) return;
-      const bitmap = await createImageBitmap(
-        new Blob([Uint8Array.from(bytes).buffer], { type: "image/jpeg" }),
-      );
-      if (!context.isCurrent() || frameGenerationRef.current !== generation) {
-        bitmap.close();
-        return;
-      }
-      canvas.width = bitmap.width;
-      canvas.height = bitmap.height;
-      canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
-      bitmap.close();
-      setRenderedSurfaceId(desktop.id);
-      const stats = frameStatsRef.current;
-      stats.renderedFrames += 1;
-      stats.decodeTimeMs += performance.now() - startedAt;
-    } catch {
-      if (context.isCurrent()) {
-        context.reportError("The worker sent an unreadable desktop frame.");
-      }
-    } finally {
-      if (decodingGenerationRef.current === generation) {
-        decodingGenerationRef.current = null;
-      }
-      if (
-        frameBuffer.hasFrame &&
-        context.isCurrent() &&
-        frameGenerationRef.current === generation
-      ) {
-        void decodeLatestDesktopFrame(generation, context);
-      }
-    }
-  }
-
   function handleFrame(
     frame: RemoteSurfaceInboundFrame,
     context: RemoteSurfaceFrameContext,
   ): void {
     if (frame.header.channel === "frame") {
-      const stats = frameStatsRef.current;
-      stats.receivedFrames += 1;
-      if (frameBufferRef.current.push(frame.payload)) stats.droppedFrames += 1;
-      void decodeLatestDesktopFrame(frameGenerationRef.current, context);
+      remoteCanvasRef.current?.pushFrame(frame.payload);
       return;
     }
     if (
@@ -324,16 +215,14 @@ export function ManagedRemoteDesktopView({
     }
   }
 
-  const { connectionState, error, retry, sendFrame, transportState } =
+  const { connectionState, error, retry, sendFrame, setError, transportState } =
     useRemoteSurfaceTransport({
       surfaceId: desktop.id,
       webSocketUrl: () =>
         remoteSurfaceWebSocketUrl(desktop.id, viewportRef.current),
       messages: desktopTransportMessages,
       onConnecting: () => {
-        frameGenerationRef.current += 1;
-        frameBufferRef.current.clear();
-        frameStatsRef.current = desktopFrameStats();
+        remoteCanvasRef.current?.reset();
         setStreamStatus(null);
         setLaunchingApplication(null);
         setTargetMessage(null);
@@ -392,108 +281,22 @@ export function ManagedRemoteDesktopView({
 
   useEffect(() => {
     const feedbackTimer = setInterval(() => {
-      const stats = frameStatsRef.current;
-      const now = performance.now();
-      const intervalMs = Math.max(
-        250,
-        Math.round(now - stats.feedbackStartedAt),
-      );
+      const feedback = remoteCanvasRef.current?.takeFrameFeedback();
+      if (!feedback) return;
       send({
         type: "stream-feedback",
-        intervalMs,
-        receivedFrames: stats.receivedFrames,
-        renderedFrames: stats.renderedFrames,
-        droppedFrames: stats.droppedFrames,
-        averageDecodeMs: stats.renderedFrames
-          ? stats.decodeTimeMs / stats.renderedFrames
-          : 0,
+        ...feedback,
       });
-      frameStatsRef.current = desktopFrameStats();
     }, 2_000);
     return () => clearInterval(feedbackTimer);
   }, [send]);
 
-  const pointer = (
-    event: PointerEvent<HTMLCanvasElement>,
-    type: "move" | "down" | "up",
-  ) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    if (
-      type === "move" &&
-      performance.now() - lastPointerMoveAtRef.current < 32
-    ) {
-      return;
-    }
-    if (type === "move") lastPointerMoveAtRef.current = performance.now();
-    if (type === "down") {
-      canvas.focus();
-      canvas.setPointerCapture(event.pointerId);
-    }
-    send({
-      type: "pointer",
-      event: type,
-      ...desktopPointerCoordinates(
-        event,
-        canvas.getBoundingClientRect(),
-        desktopSizeRef.current,
-      ),
-      button: remoteSurfacePointerButton(event.button),
-      buttons: event.buttons,
-      clickCount: event.detail,
-      deltaX: 0,
-      deltaY: 0,
-      modifiers: remoteSurfaceModifiers(event),
-    });
-  };
-
-  const wheel = (event: WheelEvent<HTMLCanvasElement>) => {
-    event.preventDefault();
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    send({
-      type: "pointer",
-      event: "wheel",
-      ...desktopPointerCoordinates(
-        event,
-        canvas.getBoundingClientRect(),
-        desktopSizeRef.current,
-      ),
-      button: "none",
-      buttons: 0,
-      clickCount: 0,
-      deltaX: event.deltaX,
-      deltaY: event.deltaY,
-      modifiers: remoteSurfaceModifiers(event),
-    });
-  };
-
-  const key = (
-    event: KeyboardEvent<HTMLCanvasElement>,
-    type: "down" | "up",
-  ) => {
-    event.preventDefault();
-    if (type === "down" && event.repeat) return;
-    send({
-      type: "key",
-      event: type,
-      key: event.key,
-      code: event.code,
-      text: remoteSurfaceKeyText(event, type, {
-        allowAltModifiedText: false,
-      }),
-      modifiers: remoteSurfaceModifiers(event),
-    });
-  };
-
   const pasteClipboard = async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      send({ type: "clipboard", operation: "paste-text", text });
-      setNotice(text ? "Clipboard pasted" : "Clipboard is empty");
-    } catch {
-      setNotice("Clipboard access was denied by this app environment.");
-    }
+    setNotice(
+      await forwardRemoteSurfaceClipboard((text) =>
+        send({ type: "clipboard", operation: "paste-text", text }),
+      ),
+    );
   };
   const inventoryTargets: RemoteDesktopTarget[] = [
     ...targetInventory.monitors.map((monitor) => ({
@@ -707,21 +510,25 @@ export function ManagedRemoteDesktopView({
         ref={surfaceRef}
         className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black"
       >
-        <canvas
-          ref={canvasRef}
-          aria-label={`${desktop.title} managed desktop surface`}
+        <RemoteSurfaceCanvas
+          ref={remoteCanvasRef}
+          allowAltModifiedText={false}
+          ariaLabel={`${desktop.title} managed desktop surface`}
           className="touch-none outline-none"
-          style={{ width: canvasSize.width, height: canvasSize.height }}
-          tabIndex={0}
+          coordinateLimit="last-pixel"
+          framePolicy="latest"
+          getCoordinateSpace={() => desktopSizeRef.current}
+          ignoreRepeatedKeyDown
           onFocus={() => send({ type: "focus" })}
-          onContextMenu={(event) => event.preventDefault()}
-          onPointerDown={(event) => pointer(event, "down")}
-          onPointerMove={(event) => pointer(event, "move")}
-          onPointerUp={(event) => pointer(event, "up")}
-          onPointerCancel={(event) => pointer(event, "up")}
-          onWheel={wheel}
-          onKeyDown={(event) => key(event, "down")}
-          onKeyUp={(event) => key(event, "up")}
+          onFrameError={() =>
+            setError("The worker sent an unreadable desktop frame.")
+          }
+          onKey={send}
+          onPointer={send}
+          onRendered={() => setRenderedSurfaceId(desktop.id)}
+          pointerMoveThrottleMs={32}
+          preventContextMenu
+          style={{ width: canvasSize.width, height: canvasSize.height }}
         />
         <SurfaceLoadingVeil
           label={
