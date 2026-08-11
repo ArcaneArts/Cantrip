@@ -185,10 +185,11 @@ remote are reviewed operations. Remote discovery is bounded and a failed remote
 is reported without hiding local tags.
 
 GitHub-backed projects also list releases and can create one from an existing
-local tag. The form supports a title, Markdown notes, draft state, and
-prerelease state; existing releases link to GitHub for the complete hosted
-view. Release calls run on the selected worktree's worker so its GitHub identity
-and local tag inventory stay authoritative.
+local tag or a new tag at the selected worktree's current HEAD. The form
+supports a title, Markdown notes, draft state, and prerelease state; existing
+releases link to GitHub for the complete hosted view. Release calls run on the
+selected worktree's worker so its GitHub identity and exact commit target stay
+authoritative.
 
 Manual QA:
 
@@ -204,8 +205,8 @@ Manual QA:
    each operation names the exact tag and remote before it runs.
 6. Inspect a signed and unsigned tag and verify signer/key/fingerprint metadata
    is shown only when Git provides it.
-7. Create draft, prerelease, and published GitHub releases from local tags, then
-   open each hosted release in GitHub.
+7. Create draft, prerelease, and published GitHub releases from local tags and
+   from new tag names at HEAD, then open each hosted release in GitHub.
 8. Disconnect the selected worker and confirm remotes, remote tag checks, and
    releases fail explicitly without falling back to another worktree.
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   filterRepositoryTags,
+  releaseDraftFromTags,
   remoteActionDescription,
 } from "./git-repository-panel";
 
@@ -50,5 +51,17 @@ describe("repository Git controls", () => {
         prune: true,
       }),
     ).toBe("Fetch and prune origin.");
+  });
+
+  it("opens release creation even when the repository has no local tags", () => {
+    expect(releaseDraftFromTags([])).toMatchObject({
+      tagName: "",
+      name: "",
+      draft: true,
+    });
+    expect(releaseDraftFromTags([tag])).toMatchObject({
+      tagName: "v1.2.3",
+      name: "v1.2.3",
+    });
   });
 });
