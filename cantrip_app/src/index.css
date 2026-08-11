@@ -195,6 +195,24 @@
     @apply bg-background text-foreground antialiased;
     margin: 0;
     min-width: 320px;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /*
+   * Application chrome behaves like a native desktop UI: text selection is
+   * opt-in for content that users reasonably need to read, edit, or copy.
+   */
+  :where(
+    input,
+    textarea,
+    [contenteditable="true"],
+    pre,
+    [data-selectable-text]
+  ),
+  :where([data-selectable-text] *) {
+    -webkit-user-select: text;
+    user-select: text;
   }
 
   .pro-mode body,

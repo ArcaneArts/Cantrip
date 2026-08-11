@@ -12,6 +12,7 @@ export function Markdown({
 }) {
   return (
     <div
+      data-selectable-text="true"
       className={cn(
         "min-w-0 max-w-full break-words text-sm leading-6",
         inverse && "text-primary-foreground",

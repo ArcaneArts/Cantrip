@@ -207,7 +207,11 @@ export function TerminalView({
 
   return (
     <div className="relative flex min-h-0 flex-1 bg-background">
-      <div ref={containerRef} className="min-h-0 min-w-0 flex-1 p-3" />
+      <div
+        ref={containerRef}
+        className="min-h-0 min-w-0 flex-1 p-3"
+        data-selectable-text="true"
+      />
       <SurfaceLoadingVeil
         label={
           terminal.linkedChatId
