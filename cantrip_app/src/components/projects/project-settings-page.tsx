@@ -14,8 +14,9 @@ import type {
 } from "@cantrip/protocol";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  CircleAlert,
   CalendarClock,
+  Cable,
+  CircleAlert,
   Code2,
   ExternalLink,
   FolderTree,
@@ -79,12 +80,13 @@ import {
 
 const createdDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 
-type ProjectSettingsSection = "general" | "automations" | "skills";
+type ProjectSettingsSection = "general" | "automations" | "skills" | "mcp";
 
 const projectSettingsTabs: readonly SettingsTab<ProjectSettingsSection>[] = [
   { id: "general", label: "General", icon: SlidersHorizontal },
   { id: "automations", label: "Automations", icon: CalendarClock },
   { id: "skills", label: "Skills", icon: Sparkles },
+  { id: "mcp", label: "MCP", icon: Cable },
 ];
 
 function matchesProjectSettingsSearch(
@@ -336,10 +338,6 @@ export function ProjectSettingsPage({
     "worktree policy agent managed required for writes direct primary isolated",
     project.worktreePolicy,
   );
-  const mcpMatch = matchesProjectSettingsSearch(
-    search,
-    "mcp model context protocol servers project local inherited",
-  );
   const workflowsMatch = matchesProjectSettingsSearch(
     search,
     "workflows automation execution lanes runs repository",
@@ -378,7 +376,6 @@ export function ProjectSettingsPage({
   const hasGeneralSearchResults =
     projectDetailsMatch ||
     worktreePolicyMatch ||
-    mcpMatch ||
     workflowsMatch ||
     worktreesMatch;
 
@@ -520,12 +517,6 @@ export function ProjectSettingsPage({
             })}
           </div>
         </section>
-
-        {mcpMatch ? (
-          <McpServerSettings
-            scope={{ kind: "project", projectId: project.id }}
-          />
-        ) : null}
 
         {workflowsMatch ? (
           <WorkflowCenter
@@ -800,7 +791,7 @@ export function ProjectSettingsPage({
             <Search className="mx-auto mb-3 size-5 text-muted-foreground" />
             <p className="text-sm font-medium">No project settings found</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Try a repository, policy, MCP, workflow, or worktree term.
+              Try a repository, policy, workflow, or worktree term.
             </p>
           </div>
         ) : null}
@@ -808,6 +799,13 @@ export function ProjectSettingsPage({
       {section === "skills" ? (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
           <SkillsSettings project={project} />
+        </div>
+      ) : null}
+      {section === "mcp" ? (
+        <div className="mx-auto min-h-0 w-full max-w-6xl flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+          <McpServerSettings
+            scope={{ kind: "project", projectId: project.id }}
+          />
         </div>
       ) : null}
 
