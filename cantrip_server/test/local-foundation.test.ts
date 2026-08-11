@@ -1573,6 +1573,7 @@ describe("local server foundation", () => {
       theme: "system",
       highContrast: false,
       proMode: false,
+      proModeOpacity: 80,
       sidebarWidth: 288,
       desktopFrameRate: 30,
       desktopStreamQuality: "adaptive",
@@ -1662,6 +1663,12 @@ describe("local server foundation", () => {
         }),
       ],
     });
+    const invalidProModeOpacity = await firstApp.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      payload: { proModeOpacity: 101 },
+    });
+    expect(invalidProModeOpacity.statusCode).toBe(400);
     const updatedSettings = settingsBundleSchema.parse(
       (
         await firstApp.inject({
@@ -1671,6 +1678,7 @@ describe("local server foundation", () => {
             theme: "dark",
             highContrast: true,
             proMode: true,
+            proModeOpacity: 64,
             sidebarWidth: 352,
             desktopFrameRate: 60,
             desktopStreamQuality: "balanced",
@@ -1683,6 +1691,7 @@ describe("local server foundation", () => {
       theme: "dark",
       highContrast: true,
       proMode: true,
+      proModeOpacity: 64,
       sidebarWidth: 352,
       desktopFrameRate: 60,
       desktopStreamQuality: "balanced",
@@ -4870,6 +4879,7 @@ describe("local server foundation", () => {
       theme: "dark",
       highContrast: true,
       proMode: true,
+      proModeOpacity: 64,
       sidebarWidth: 352,
       desktopFrameRate: 60,
       desktopStreamQuality: "balanced",

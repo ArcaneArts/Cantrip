@@ -691,6 +691,7 @@ export const userSettingsSchema = z.object({
   theme: themePreferenceSchema,
   highContrast: z.boolean(),
   proMode: z.boolean(),
+  proModeOpacity: z.number().int().min(0).max(100),
   sidebarWidth: sidebarWidthPreferenceSchema,
   desktopFrameRate: z.union([z.literal(15), z.literal(30), z.literal(60)]),
   desktopStreamQuality: z.enum(["adaptive", "data-saver", "balanced", "sharp"]),

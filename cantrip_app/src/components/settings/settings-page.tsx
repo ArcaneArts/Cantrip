@@ -253,7 +253,11 @@ export function SettingsPage({
   );
   const queryClient = useQueryClient();
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
+  const macosDesktopRuntime = isMacosDesktopRuntime();
   const [searchQuery, setSearchQuery] = useState("");
+  const [proModeOpacityDialogOpen, setProModeOpacityDialogOpen] =
+    useState(false);
+  const [proModeOpacityDraft, setProModeOpacityDraft] = useState(80);
   const [deviceLogin, setDeviceLogin] = useState<CodexDeviceLogin | null>(null);
   const [deviceCodeCopied, setDeviceCodeCopied] = useState(false);
   const [deviceLinkCopied, setDeviceLinkCopied] = useState(false);
@@ -293,6 +297,20 @@ export function SettingsPage({
     mutationFn: updateSettings,
     onSuccess: (value) => queryClient.setQueryData(["settings"], value),
   });
+  const savedProModeOpacity = settings.data?.preferences.proModeOpacity ?? 80;
+  useEffect(() => {
+    if (!proModeOpacityDialogOpen) return;
+    document.documentElement.style.setProperty(
+      "--pro-mode-opacity",
+      `${proModeOpacityDraft}%`,
+    );
+    return () => {
+      document.documentElement.style.setProperty(
+        "--pro-mode-opacity",
+        `${savedProModeOpacity}%`,
+      );
+    };
+  }, [proModeOpacityDialogOpen, proModeOpacityDraft, savedProModeOpacity]);
   const saveProvider = useMutation({
     mutationFn: async () => {
       const input = {
@@ -424,7 +442,7 @@ export function SettingsPage({
     !search ||
     matchesSearch(
       search,
-      "appearance theme system light dark high contrast pro mode transparency vibrancy blur macos operating system",
+      "appearance theme system light dark high contrast pro mode opacity transparency vibrancy blur macos operating system",
     );
   const desktopStreamingMatches =
     !search ||
@@ -611,29 +629,32 @@ export function SettingsPage({
                         />
                         High contrast
                       </label>
-                      <label
-                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50 has-disabled:cursor-not-allowed has-disabled:opacity-50"
-                        title={
-                          isMacosDesktopRuntime()
-                            ? "Use a translucent native macOS material across this window"
-                            : '"Pro" Mode is available in the macOS desktop app'
-                        }
-                      >
-                        <input
-                          type="checkbox"
-                          className="size-3.5 accent-primary"
-                          checked={settings.data?.preferences.proMode ?? false}
-                          disabled={
-                            preferences.isPending || !isMacosDesktopRuntime()
-                          }
-                          onChange={(event) =>
-                            preferences.mutate({
-                              proMode: event.target.checked,
-                            })
-                          }
-                        />
-                        &quot;Pro&quot; Mode
-                      </label>
+                      {macosDesktopRuntime ? (
+                        <label
+                          className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50 has-disabled:cursor-not-allowed has-disabled:opacity-50"
+                          title="Use a translucent native macOS material. Right-click to adjust opacity."
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            setProModeOpacityDraft(savedProModeOpacity);
+                            setProModeOpacityDialogOpen(true);
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            className="size-3.5 accent-primary"
+                            checked={
+                              settings.data?.preferences.proMode ?? false
+                            }
+                            disabled={preferences.isPending}
+                            onChange={(event) =>
+                              preferences.mutate({
+                                proMode: event.target.checked,
+                              })
+                            }
+                          />
+                          &quot;Pro&quot; Mode
+                        </label>
+                      ) : null}
                     </div>
                   </div>
                 </section>
@@ -928,6 +949,92 @@ export function SettingsPage({
           </div>
         ) : null}
       </div>
+
+      {macosDesktopRuntime ? (
+        <Dialog
+          open={proModeOpacityDialogOpen}
+          onOpenChange={(open) => {
+            if (open) setProModeOpacityDraft(savedProModeOpacity);
+            setProModeOpacityDialogOpen(open);
+          }}
+        >
+          <DialogContent className="max-w-md">
+            <form
+              className="grid gap-5"
+              onSubmit={(event) => {
+                event.preventDefault();
+                preferences.mutate(
+                  { proModeOpacity: proModeOpacityDraft },
+                  { onSuccess: () => setProModeOpacityDialogOpen(false) },
+                );
+              }}
+            >
+              <DialogHeader>
+                <DialogTitle>Pro Mode opacity</DialogTitle>
+                <DialogDescription>
+                  Adjust the window tint over the native macOS blur. Changes
+                  preview immediately and are saved to this Cantrip account.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-3">
+                <div className="flex items-center justify-between text-sm">
+                  <label htmlFor="pro-mode-opacity" className="font-medium">
+                    Window opacity
+                  </label>
+                  <output
+                    htmlFor="pro-mode-opacity"
+                    className="min-w-12 rounded-md bg-muted px-2 py-1 text-center font-mono text-xs"
+                  >
+                    {proModeOpacityDraft}%
+                  </output>
+                </div>
+                <input
+                  id="pro-mode-opacity"
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={proModeOpacityDraft}
+                  className="w-full accent-primary"
+                  onChange={(event) =>
+                    setProModeOpacityDraft(Number(event.target.value))
+                  }
+                />
+                <div className="flex justify-between text-[11px] text-muted-foreground">
+                  <span>Transparent</span>
+                  <span>Opaque</span>
+                </div>
+              </div>
+              {preferences.isError ? (
+                <p className="text-sm text-destructive">
+                  {errorText(preferences.error)}
+                </p>
+              ) : null}
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="sm:mr-auto"
+                  onClick={() => setProModeOpacityDraft(80)}
+                >
+                  Reset to 80%
+                </Button>
+                <DialogClose asChild>
+                  <Button type="button" variant="outline">
+                    Cancel
+                  </Button>
+                </DialogClose>
+                <Button type="submit" disabled={preferences.isPending}>
+                  {preferences.isPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : null}
+                  Save
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       <Dialog open={providerDialogOpen} onOpenChange={setProviderDialogOpen}>
         <DialogContent>

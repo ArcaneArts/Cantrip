@@ -147,28 +147,41 @@ export const modelRoutes = pgTable(
   ],
 );
 
-export const userSettings = pgTable("user_settings", {
-  userId: text("user_id")
-    .primaryKey()
-    .references(() => users.id, { onDelete: "cascade" }),
-  theme: text("theme").notNull().default("system"),
-  highContrast: boolean("high_contrast").notNull().default(false),
-  proMode: boolean("pro_mode").notNull().default(false),
-  sidebarWidth: integer("sidebar_width").notNull().default(288),
-  desktopFrameRate: integer("desktop_frame_rate").notNull().default(30),
-  desktopStreamQuality: text("desktop_stream_quality")
-    .notNull()
-    .default("adaptive"),
-  defaultModelId: text("default_model_id").references(() => modelProfiles.id, {
-    onDelete: "set null",
-  }),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const userSettings = pgTable(
+  "user_settings",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    theme: text("theme").notNull().default("system"),
+    highContrast: boolean("high_contrast").notNull().default(false),
+    proMode: boolean("pro_mode").notNull().default(false),
+    proModeOpacity: integer("pro_mode_opacity").notNull().default(80),
+    sidebarWidth: integer("sidebar_width").notNull().default(288),
+    desktopFrameRate: integer("desktop_frame_rate").notNull().default(30),
+    desktopStreamQuality: text("desktop_stream_quality")
+      .notNull()
+      .default("adaptive"),
+    defaultModelId: text("default_model_id").references(
+      () => modelProfiles.id,
+      {
+        onDelete: "set null",
+      },
+    ),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "user_settings_pro_mode_opacity_check",
+      sql`${table.proModeOpacity} BETWEEN 0 AND 100`,
+    ),
+  ],
+);
 
 export const workers = pgTable("workers", {
   id: text("id").primaryKey(),

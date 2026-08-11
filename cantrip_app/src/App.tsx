@@ -3595,6 +3595,14 @@ export function App() {
   ]);
 
   useEffect(() => {
+    const opacity = settings.data?.preferences.proModeOpacity ?? 80;
+    document.documentElement.style.setProperty(
+      "--pro-mode-opacity",
+      `${opacity}%`,
+    );
+  }, [settings.data?.preferences.proModeOpacity]);
+
+  useEffect(() => {
     const requested = settings.data?.preferences.proMode ?? false;
     const supported = isMacosDesktopRuntime();
     let active = true;
