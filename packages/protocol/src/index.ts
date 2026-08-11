@@ -1377,6 +1377,10 @@ export const codeAppearanceSchema = z.enum([
   "dark",
   "high-contrast-light",
   "high-contrast-dark",
+  "pro-light",
+  "pro-dark",
+  "pro-high-contrast-light",
+  "pro-high-contrast-dark",
 ]);
 export const codeTabStatusSchema = z.enum([
   "idle",

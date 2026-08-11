@@ -102,6 +102,26 @@
         "label": "Cantrip High Contrast Dark",
         "uiTheme": "hc-black",
         "path": "./themes/cantrip-hc-dark.json"
+      },
+      {
+        "label": "Cantrip Pro Light",
+        "uiTheme": "vs",
+        "path": "./themes/cantrip-pro-light.json"
+      },
+      {
+        "label": "Cantrip Pro Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/cantrip-pro-dark.json"
+      },
+      {
+        "label": "Cantrip Pro High Contrast Light",
+        "uiTheme": "hc-light",
+        "path": "./themes/cantrip-pro-hc-light.json"
+      },
+      {
+        "label": "Cantrip Pro High Contrast Dark",
+        "uiTheme": "hc-black",
+        "path": "./themes/cantrip-pro-hc-dark.json"
       }
     ]
   },

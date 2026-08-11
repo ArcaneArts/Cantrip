@@ -125,34 +125,34 @@
 
 :root.pro-mode:not(.dark) {
   --background: oklch(0.985 0.002 264 / var(--pro-mode-opacity));
-  --card: oklch(1 0 0 / 78%);
-  --popover: oklch(1 0 0 / 90%);
-  --secondary: oklch(0.955 0.006 264 / 76%);
-  --muted: oklch(0.955 0.006 264 / 72%);
-  --accent: oklch(0.935 0.012 264 / 76%);
-  --row-alternate: oklch(0.97 0.002 264 / 58%);
+  --card: oklch(1 0 0 / 20%);
+  --popover: oklch(1 0 0 / 80%);
+  --secondary: oklch(0.955 0.006 264 / 18%);
+  --muted: oklch(0.955 0.006 264 / 16%);
+  --accent: oklch(0.935 0.012 264 / 22%);
+  --row-alternate: oklch(0.97 0.002 264 / 10%);
 }
 
 :root.dark.pro-mode {
   --background: oklch(0.145 0.01 264 / var(--pro-mode-opacity));
-  --card: oklch(0.19 0.012 264 / 78%);
-  --popover: oklch(0.19 0.012 264 / 90%);
-  --secondary: oklch(0.25 0.012 264 / 76%);
-  --muted: oklch(0.25 0.012 264 / 72%);
-  --accent: oklch(0.29 0.018 264 / 76%);
-  --row-alternate: oklch(0.18 0.006 264 / 58%);
+  --card: oklch(0.19 0.012 264 / 22%);
+  --popover: oklch(0.19 0.012 264 / 80%);
+  --secondary: oklch(0.25 0.012 264 / 20%);
+  --muted: oklch(0.25 0.012 264 / 18%);
+  --accent: oklch(0.29 0.018 264 / 24%);
+  --row-alternate: oklch(0.18 0.006 264 / 12%);
 }
 
 :root.high-contrast.pro-mode:not(.dark) {
   --background: oklch(1 0 0 / var(--pro-mode-opacity));
-  --card: oklch(1 0 0 / 78%);
-  --popover: oklch(1 0 0 / 90%);
+  --card: oklch(1 0 0 / 20%);
+  --popover: oklch(1 0 0 / 80%);
 }
 
 :root.dark.high-contrast.pro-mode {
   --background: oklch(0 0 0 / var(--pro-mode-opacity));
-  --card: oklch(0 0 0 / 78%);
-  --popover: oklch(0 0 0 / 90%);
+  --card: oklch(0 0 0 / 22%);
+  --popover: oklch(0 0 0 / 80%);
 }
 
 @layer base {
@@ -253,10 +253,45 @@
   }
 }
 
-/* The window shell owns the 80% tint. Major views stay transparent so their
-   background does not compound to 96% when layered over the shell. */
+/* The native window owns the Pro Mode tint. Structural surfaces and controls
+   stay transparent so nested backgrounds never compound the configured
+   opacity. Selection, card, and alternating-row tokens remain lightly tinted
+   above that single base layer. */
+.pro-mode [data-slot="app-sidebar"],
+.pro-mode [data-slot="terminal-view"],
+.pro-mode [data-slot="code-view"],
 .pro-mode [data-slot="app-shell"] > section > [class~="bg-background"] {
   background-color: transparent;
+}
+
+.pro-mode.high-contrast [data-slot="card"] {
+  background: var(--card);
+}
+
+.pro-mode.high-contrast [data-high-contrast-row][data-current="true"] {
+  background: color-mix(in oklab, cyan 10%, transparent);
+}
+
+.pro-mode
+  :where(
+    input:not([type="checkbox"], [type="radio"], [type="range"]),
+    textarea,
+    select,
+    [role="combobox"],
+    [data-slot="button"][class~="bg-background"]
+  ) {
+  background-color: transparent !important;
+}
+
+.pro-mode .xterm,
+.pro-mode .xterm .xterm-viewport,
+.pro-mode .xterm .xterm-screen {
+  background-color: transparent !important;
+}
+
+.pro-mode :where([class~="bg-popover"], [data-slot="dialog-content"]) {
+  -webkit-backdrop-filter: blur(20px) saturate(125%);
+  backdrop-filter: blur(20px) saturate(125%);
 }
 
 .chat-composer-fade {

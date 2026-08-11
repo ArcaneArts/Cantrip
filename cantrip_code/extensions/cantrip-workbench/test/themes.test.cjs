@@ -37,3 +37,33 @@ test("keeps OLED surfaces pure while softening structural contrast", async () =>
   assert.equal(light["sideBar.background"], "#FFFFFF");
   assert.equal(light.contrastBorder, "#00000026");
 });
+
+test("uses transparent structural surfaces for Pro Mode themes", async () => {
+  const names = [
+    "cantrip-pro-dark.json",
+    "cantrip-pro-light.json",
+    "cantrip-pro-hc-dark.json",
+    "cantrip-pro-hc-light.json",
+  ];
+  const structuralColors = [
+    "editor.background",
+    "editorGroup.emptyBackground",
+    "editorGroupHeader.tabsBackground",
+    "sideBar.background",
+    "activityBar.background",
+    "titleBar.activeBackground",
+    "statusBar.background",
+    "panel.background",
+    "terminal.background",
+    "input.background",
+  ];
+
+  for (const name of names) {
+    const colors = (await theme(name)).colors;
+    for (const color of structuralColors) {
+      assert.equal(colors[color], "#00000000", `${name}: ${color}`);
+    }
+    assert.match(colors["list.activeSelectionBackground"], /^(?:#.{8})$/u);
+    assert.notEqual(colors["list.activeSelectionBackground"].slice(-2), "FF");
+  }
+});
