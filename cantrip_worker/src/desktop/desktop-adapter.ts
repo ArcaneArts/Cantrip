@@ -4,6 +4,7 @@ import {
   remoteDesktopClientMessageSchema,
   remoteDesktopProbeResultSchema,
   remoteDesktopServerMessageSchema,
+  type RemoteDesktopApplicationIcon,
   type RemoteDesktopClientMessage,
   type RemoteDesktopProbeResult,
   type RemoteDesktopTarget,
@@ -33,6 +34,7 @@ import {
   desktopTargetMatches,
   desktopTargetName,
 } from "./desktop-input.js";
+import type { DesktopApplicationIconProvider } from "./desktop-icons.js";
 import {
   AdaptiveDesktopStreamTuner,
   createNativeDesktopFramePipeline,
@@ -83,6 +85,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
   readonly #createFramePipeline: DesktopFramePipelineFactory;
   readonly #launchApplication: DesktopApplicationLauncher;
   readonly #listTargets: DesktopTargetInventoryFactory;
+  readonly #applicationIcons: DesktopApplicationIconProvider | null;
   #framePipeline: NativeDesktopFramePipeline | null;
   readonly #streamSettings: DesktopStreamSettings;
   readonly #tuner: AdaptiveDesktopStreamTuner;
@@ -123,6 +126,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     framePipeline: NativeDesktopFramePipeline | null;
     launchApplication: DesktopApplicationLauncher;
     listTargets: DesktopTargetInventoryFactory;
+    applicationIcons: DesktopApplicationIconProvider | null;
     streamSettings: DesktopStreamSettings;
   }) {
     this.#client = options.client;
@@ -134,6 +138,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     this.#framePipeline = options.framePipeline;
     this.#launchApplication = options.launchApplication;
     this.#listTargets = options.listTargets;
+    this.#applicationIcons = options.applicationIcons;
     this.#streamSettings = options.streamSettings;
     this.#tuner = new AdaptiveDesktopStreamTuner(options.streamSettings);
   }
@@ -194,6 +199,10 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     }
     if (message.type === "refresh-targets") {
       await this.refreshTargets(attachmentId, true);
+      return;
+    }
+    if (message.type === "request-target-icons") {
+      await this.publishTargetIcons(attachmentId, message.keys);
       return;
     }
     await this.enqueue(() => this.applyInput(attachmentId, message));
@@ -396,7 +405,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     restoreRequested = false,
   ): Promise<void> {
     try {
-      this.#targetInventory = await this.#listTargets();
+      this.#targetInventory = await this.loadTargets();
       if (
         restoreRequested &&
         !desktopTargetMatches(this.configuration.target, this.#activeTarget)
@@ -429,7 +438,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     this.clearCaptureTimer();
     this.#pendingFrame = null;
     try {
-      this.#targetInventory = await this.#listTargets();
+      this.#targetInventory = await this.loadTargets();
       if (
         requested.kind === "window" &&
         launchMissingApplication &&
@@ -447,7 +456,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
           const deadline = Date.now() + APPLICATION_LAUNCH_TIMEOUT_MS;
           while (Date.now() < deadline) {
             await wait(APPLICATION_POLL_INTERVAL_MS);
-            this.#targetInventory = await this.#listTargets();
+            this.#targetInventory = await this.loadTargets();
             if (
               desktopApplicationAvailable(
                 requested.application,
@@ -549,6 +558,49 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     }
   }
 
+  private async loadTargets(): Promise<RemoteDesktopTargetInventory> {
+    const inventory = await this.#listTargets();
+    if (!this.#applicationIcons) return inventory;
+    return {
+      monitors: inventory.monitors,
+      windows: inventory.windows.map((window) => ({
+        ...window,
+        iconKey: this.#applicationIcons!.register(window.application),
+      })),
+    };
+  }
+
+  private async publishTargetIcons(
+    attachmentId: string,
+    keys: string[],
+  ): Promise<void> {
+    if (!this.#applicationIcons || !this.#attachments.has(attachmentId)) return;
+    const icons: RemoteDesktopApplicationIcon[] = [];
+    const uniqueKeys = [...new Set(keys)];
+    for (let index = 0; index < uniqueKeys.length; index += 4) {
+      icons.push(
+        ...(await Promise.all(
+          uniqueKeys
+            .slice(index, index + 4)
+            .map((key) => this.#applicationIcons!.resolve(key)),
+        )),
+      );
+    }
+    if (!this.#attachments.has(attachmentId)) return;
+    this.#emit(
+      attachmentId,
+      "control",
+      encoder.encode(
+        JSON.stringify(
+          remoteDesktopServerMessageSchema.parse({
+            type: "desktop-target-icons",
+            icons,
+          }),
+        ),
+      ),
+    );
+  }
+
   private publishState(
     attachmentId: string | undefined,
     status: "ready" | "launching" | "suspended" | "error",
@@ -587,7 +639,9 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     attachmentId: string,
     message: Exclude<
       RemoteDesktopClientMessage,
-      { type: "stream-feedback" | "viewport" }
+      | { type: "request-target-icons" }
+      | { type: "stream-feedback" }
+      | { type: "viewport" }
     >,
   ): Promise<void> {
     if (message.type === "pointer") {
@@ -772,6 +826,7 @@ export class ManagedDesktopRemoteSurfaceAdapter implements RemoteSurfaceAdapter 
     private readonly createFramePipeline: DesktopFramePipelineFactory = createNativeDesktopFramePipeline,
     private readonly listTargets: DesktopTargetInventoryFactory = listNativeDesktopTargets,
     private readonly launchApplication: DesktopApplicationLauncher = launchDesktopApplication,
+    private readonly applicationIcons: DesktopApplicationIconProvider | null = null,
   ) {}
 
   get available(): boolean {
@@ -851,6 +906,7 @@ export class ManagedDesktopRemoteSurfaceAdapter implements RemoteSurfaceAdapter 
       framePipeline: null,
       launchApplication: this.launchApplication,
       listTargets: this.listTargets,
+      applicationIcons: this.applicationIcons,
       streamSettings: command.desktopStream ?? DEFAULT_STREAM_SETTINGS,
     });
   }

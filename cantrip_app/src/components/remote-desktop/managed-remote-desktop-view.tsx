@@ -17,8 +17,9 @@ import {
   Loader2,
   MonitorUp,
   RotateCw,
+  Search,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   RemoteSurfaceCanvas,
@@ -38,6 +39,10 @@ import {
   forwardRemoteSurfaceClipboard,
   remoteSurfacePointerCoordinates,
 } from "@/lib/remote-surface-input";
+import {
+  cachedRemoteDesktopIcon,
+  cacheRemoteDesktopIcons,
+} from "@/lib/remote-desktop-icon-cache";
 import {
   useRemoteSurfaceTransport,
   type RemoteSurfaceFrameContext,
@@ -111,6 +116,44 @@ export function remoteDesktopTargetLabel(target: RemoteDesktopTarget): string {
     : target.application;
 }
 
+export function filterRemoteDesktopTargetInventory(
+  inventory: RemoteDesktopTargetInventory,
+  query: string,
+): RemoteDesktopTargetInventory {
+  const needle = query.trim().normalize("NFKC").toLocaleLowerCase();
+  if (!needle) return inventory;
+  return {
+    monitors: inventory.monitors.filter((monitor) =>
+      [
+        monitor.name,
+        monitor.id,
+        `${monitor.width}x${monitor.height}`,
+        monitor.primary ? "primary" : "",
+      ].some((value) =>
+        value.normalize("NFKC").toLocaleLowerCase().includes(needle),
+      ),
+    ),
+    windows: inventory.windows.filter((window) =>
+      [window.application, window.title, window.id].some((value) =>
+        value.normalize("NFKC").toLocaleLowerCase().includes(needle),
+      ),
+    ),
+  };
+}
+
+function ApplicationIcon({ source }: { source?: string | null }) {
+  return source ? (
+    <img
+      alt=""
+      aria-hidden="true"
+      className="size-4 shrink-0 rounded-[3px] object-contain"
+      src={source}
+    />
+  ) : (
+    <AppWindow className="size-4 shrink-0" />
+  );
+}
+
 export function ManagedRemoteDesktopView({
   desktop,
 }: {
@@ -143,6 +186,12 @@ export function ManagedRemoteDesktopView({
   } | null>(null);
   const [targetInventory, setTargetInventory] =
     useState<RemoteDesktopTargetInventory>({ monitors: [], windows: [] });
+  const [targetMenuOpen, setTargetMenuOpen] = useState(false);
+  const [targetSearch, setTargetSearch] = useState("");
+  const [iconSources, setIconSources] = useState<Record<string, string | null>>(
+    {},
+  );
+  const requestedIconKeysRef = useRef(new Set<string>());
   const [requestedTarget, setRequestedTarget] = useState(desktop.target);
   const [activeTarget, setActiveTarget] = useState(desktop.target);
   const [launchingApplication, setLaunchingApplication] = useState<
@@ -201,6 +250,9 @@ export function ManagedRemoteDesktopView({
       setActiveTarget(message.active);
       setLaunchingApplication(message.launchingApplication);
       setTargetMessage(message.message);
+    } else if (message.type === "desktop-target-icons") {
+      const resolved = cacheRemoteDesktopIcons(desktop.workerId, message.icons);
+      setIconSources((current) => ({ ...current, ...resolved }));
     } else {
       void navigator.clipboard.writeText(message.text).then(
         () => {
@@ -226,6 +278,7 @@ export function ManagedRemoteDesktopView({
         setStreamStatus(null);
         setLaunchingApplication(null);
         setTargetMessage(null);
+        requestedIconKeysRef.current.clear();
       },
       onFrame: handleFrame,
     });
@@ -250,6 +303,11 @@ export function ManagedRemoteDesktopView({
   useEffect(() => {
     setRequestedTarget(desktop.target);
   }, [desktop.target]);
+
+  useEffect(() => {
+    setIconSources({});
+    requestedIconKeysRef.current.clear();
+  }, [desktop.workerId]);
 
   useEffect(() => {
     const surface = surfaceRef.current;
@@ -291,6 +349,45 @@ export function ManagedRemoteDesktopView({
     return () => clearInterval(feedbackTimer);
   }, [send]);
 
+  const filteredTargetInventory = useMemo(
+    () => filterRemoteDesktopTargetInventory(targetInventory, targetSearch),
+    [targetInventory, targetSearch],
+  );
+
+  useEffect(() => {
+    if (connectionState !== "ready") return;
+    const resolved: Record<string, string | null> = {};
+    const missing: string[] = [];
+    for (const key of new Set(
+      filteredTargetInventory.windows
+        .map((window) => window.iconKey)
+        .filter((value): value is string => Boolean(value)),
+    )) {
+      const cached = cachedRemoteDesktopIcon(desktop.workerId, key);
+      if (cached !== undefined) {
+        resolved[key] = cached;
+      } else if (targetMenuOpen && !requestedIconKeysRef.current.has(key)) {
+        requestedIconKeysRef.current.add(key);
+        missing.push(key);
+      }
+    }
+    if (Object.keys(resolved).length) {
+      setIconSources((current) => ({ ...current, ...resolved }));
+    }
+    for (let index = 0; index < missing.length; index += 64) {
+      send({
+        type: "request-target-icons",
+        keys: missing.slice(index, index + 64),
+      });
+    }
+  }, [
+    connectionState,
+    desktop.workerId,
+    filteredTargetInventory.windows,
+    send,
+    targetMenuOpen,
+  ]);
+
   const pasteClipboard = async () => {
     setNotice(
       await forwardRemoteSurfaceClipboard((text) =>
@@ -319,6 +416,27 @@ export function ManagedRemoteDesktopView({
       : inventoryTargets.some((target) =>
           remoteDesktopTargetMatches(requestedTarget, target),
         );
+  const showUnavailableRequestedTarget =
+    !requestedTargetListed &&
+    requestedTarget.kind === "window" &&
+    (!targetSearch.trim() ||
+      remoteDesktopTargetLabel(requestedTarget)
+        .normalize("NFKC")
+        .toLocaleLowerCase()
+        .includes(targetSearch.trim().normalize("NFKC").toLocaleLowerCase()));
+  const iconSourceForTarget = (target: RemoteDesktopTarget) => {
+    if (target.kind !== "window") return null;
+    const matchingWindow = targetInventory.windows.find(
+      (window) =>
+        remoteDesktopTargetMatches(target, {
+          kind: "window",
+          id: window.id,
+          application: window.application,
+          title: window.title,
+        }) || window.application === target.application,
+    );
+    return matchingWindow?.iconKey ? iconSources[matchingWindow.iconKey] : null;
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
@@ -332,7 +450,13 @@ export function ManagedRemoteDesktopView({
               : ""}
           </span>
         </div>
-        <DropdownMenuPrimitive.Root>
+        <DropdownMenuPrimitive.Root
+          open={targetMenuOpen}
+          onOpenChange={(open) => {
+            setTargetMenuOpen(open);
+            if (!open) setTargetSearch("");
+          }}
+        >
           <DropdownMenuPrimitive.Trigger asChild>
             <Button
               type="button"
@@ -348,7 +472,7 @@ export function ManagedRemoteDesktopView({
               {updateTarget.isPending || launchingApplication ? (
                 <Loader2 className="size-3.5 shrink-0 animate-spin" />
               ) : activeTarget.kind === "window" ? (
-                <AppWindow className="size-3.5 shrink-0" />
+                <ApplicationIcon source={iconSourceForTarget(activeTarget)} />
               ) : (
                 <MonitorUp className="size-3.5 shrink-0" />
               )}
@@ -362,107 +486,134 @@ export function ManagedRemoteDesktopView({
             <StyledDropdownMenuContent
               align="end"
               sideOffset={4}
-              className="max-h-[min(28rem,var(--radix-dropdown-menu-content-available-height))] min-w-80 overflow-y-auto"
+              className="flex max-h-[min(28rem,var(--radix-dropdown-menu-content-available-height))] min-w-80 flex-col overflow-hidden p-0"
             >
-              <DropdownMenuPrimitive.Label className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                Displays
-              </DropdownMenuPrimitive.Label>
-              {targetInventory.monitors.map((monitor) => {
-                const target: RemoteDesktopTarget = {
-                  kind: "monitor",
-                  id: monitor.id,
-                  name: monitor.name,
-                };
-                return (
+              <div
+                className="relative shrink-0 border-b border-border/60 p-2"
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                <Search className="pointer-events-none absolute left-4 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  autoFocus
+                  type="search"
+                  value={targetSearch}
+                  onChange={(event) => setTargetSearch(event.target.value)}
+                  placeholder="Search displays and applications"
+                  aria-label="Search displays and application windows"
+                  className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-2 text-xs outline-none placeholder:text-muted-foreground focus:border-ring"
+                />
+              </div>
+              <div className="min-h-0 overflow-y-auto p-1">
+                <DropdownMenuPrimitive.Label className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Displays
+                </DropdownMenuPrimitive.Label>
+                {filteredTargetInventory.monitors.map((monitor) => {
+                  const target: RemoteDesktopTarget = {
+                    kind: "monitor",
+                    id: monitor.id,
+                    name: monitor.name,
+                  };
+                  return (
+                    <StyledDropdownMenuItem
+                      key={`monitor:${monitor.id}`}
+                      onSelect={() => updateTarget.mutate(target)}
+                    >
+                      <MonitorUp className="size-4 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate">
+                        {monitor.name}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {monitor.width} × {monitor.height}
+                        {monitor.primary ? " · primary" : ""}
+                      </span>
+                      {(
+                        requestedTarget.kind === "monitor" &&
+                        !requestedTarget.id &&
+                        !requestedTarget.name
+                          ? monitor.primary
+                          : remoteDesktopTargetMatches(requestedTarget, target)
+                      ) ? (
+                        <Check className="size-3.5 shrink-0" />
+                      ) : null}
+                    </StyledDropdownMenuItem>
+                  );
+                })}
+                {!filteredTargetInventory.monitors.length ? (
+                  <StyledDropdownMenuItem disabled>
+                    {targetSearch
+                      ? "No matching displays"
+                      : "No displays reported"}
+                  </StyledDropdownMenuItem>
+                ) : null}
+
+                <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+                <DropdownMenuPrimitive.Label className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Application windows
+                </DropdownMenuPrimitive.Label>
+                {showUnavailableRequestedTarget ? (
                   <StyledDropdownMenuItem
-                    key={`monitor:${monitor.id}`}
-                    onSelect={() => updateTarget.mutate(target)}
+                    className="bg-muted/50"
+                    onSelect={() => updateTarget.mutate(requestedTarget)}
                   >
-                    <MonitorUp className="size-4 shrink-0" />
+                    <ApplicationIcon
+                      source={iconSourceForTarget(requestedTarget)}
+                    />
                     <span className="min-w-0 flex-1 truncate">
-                      {monitor.name}
+                      {remoteDesktopTargetLabel(requestedTarget)}
                     </span>
                     <span className="text-[10px] text-muted-foreground">
-                      {monitor.width} × {monitor.height}
-                      {monitor.primary ? " · primary" : ""}
+                      Launch on worker
                     </span>
-                    {(
-                      requestedTarget.kind === "monitor" &&
-                      !requestedTarget.id &&
-                      !requestedTarget.name
-                        ? monitor.primary
-                        : remoteDesktopTargetMatches(requestedTarget, target)
-                    ) ? (
-                      <Check className="size-3.5 shrink-0" />
-                    ) : null}
+                    <Check className="size-3.5 shrink-0" />
                   </StyledDropdownMenuItem>
-                );
-              })}
-              {!targetInventory.monitors.length ? (
-                <StyledDropdownMenuItem disabled>
-                  No displays reported
-                </StyledDropdownMenuItem>
-              ) : null}
-
-              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-              <DropdownMenuPrimitive.Label className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                Application windows
-              </DropdownMenuPrimitive.Label>
-              {!requestedTargetListed && requestedTarget.kind === "window" ? (
+                ) : null}
+                {filteredTargetInventory.windows.map((window) => {
+                  const target: RemoteDesktopTarget = {
+                    kind: "window",
+                    id: window.id,
+                    application: window.application,
+                    title: window.title,
+                  };
+                  return (
+                    <StyledDropdownMenuItem
+                      key={`window:${window.id}`}
+                      onSelect={() => updateTarget.mutate(target)}
+                    >
+                      <ApplicationIcon
+                        source={
+                          window.iconKey ? iconSources[window.iconKey] : null
+                        }
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-medium">
+                          {window.application}
+                        </span>
+                        <span className="block truncate text-[10px] text-muted-foreground">
+                          {window.title}
+                          {window.minimized ? " · minimized" : ""}
+                        </span>
+                      </span>
+                      {remoteDesktopTargetMatches(requestedTarget, target) ? (
+                        <Check className="size-3.5 shrink-0" />
+                      ) : null}
+                    </StyledDropdownMenuItem>
+                  );
+                })}
+                {!filteredTargetInventory.windows.length &&
+                !showUnavailableRequestedTarget ? (
+                  <StyledDropdownMenuItem disabled>
+                    {targetSearch
+                      ? "No matching application windows"
+                      : "No application windows reported"}
+                  </StyledDropdownMenuItem>
+                ) : null}
+                <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
                 <StyledDropdownMenuItem
-                  className="bg-muted/50"
-                  onSelect={() => updateTarget.mutate(requestedTarget)}
+                  onSelect={() => send({ type: "refresh-targets" })}
                 >
-                  <AppWindow className="size-4 shrink-0" />
-                  <span className="min-w-0 flex-1 truncate">
-                    {remoteDesktopTargetLabel(requestedTarget)}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">
-                    Launch on worker
-                  </span>
-                  <Check className="size-3.5 shrink-0" />
+                  <RotateCw className="size-4" /> Refresh windows and displays
                 </StyledDropdownMenuItem>
-              ) : null}
-              {targetInventory.windows.map((window) => {
-                const target: RemoteDesktopTarget = {
-                  kind: "window",
-                  id: window.id,
-                  application: window.application,
-                  title: window.title,
-                };
-                return (
-                  <StyledDropdownMenuItem
-                    key={`window:${window.id}`}
-                    onSelect={() => updateTarget.mutate(target)}
-                  >
-                    <AppWindow className="size-4 shrink-0" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-xs font-medium">
-                        {window.application}
-                      </span>
-                      <span className="block truncate text-[10px] text-muted-foreground">
-                        {window.title}
-                        {window.minimized ? " · minimized" : ""}
-                      </span>
-                    </span>
-                    {remoteDesktopTargetMatches(requestedTarget, target) ? (
-                      <Check className="size-3.5 shrink-0" />
-                    ) : null}
-                  </StyledDropdownMenuItem>
-                );
-              })}
-              {!targetInventory.windows.length &&
-              !(!requestedTargetListed && requestedTarget.kind === "window") ? (
-                <StyledDropdownMenuItem disabled>
-                  No application windows reported
-                </StyledDropdownMenuItem>
-              ) : null}
-              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-              <StyledDropdownMenuItem
-                onSelect={() => send({ type: "refresh-targets" })}
-              >
-                <RotateCw className="size-4" /> Refresh windows and displays
-              </StyledDropdownMenuItem>
+              </div>
             </StyledDropdownMenuContent>
           </DropdownMenuPrimitive.Portal>
         </DropdownMenuPrimitive.Root>

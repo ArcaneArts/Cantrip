@@ -81,6 +81,14 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
       rgba: new Uint8Array(1_920 * 4),
     }));
     const encode = vi.fn(async () => new Uint8Array([1, 2, 3]));
+    const applicationIcons = {
+      register: vi.fn((application: string) => `icon-${application}`),
+      resolve: vi.fn(async (key: string) => ({
+        key,
+        mimeType: "image/png" as const,
+        data: Buffer.from("icon").toString("base64"),
+      })),
+    };
     const adapter = new ManagedDesktopRemoteSurfaceAdapter(
       async () => client,
       async () => ({
@@ -93,6 +101,7 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
       }),
       async () => desktopTargets,
       async () => undefined,
+      applicationIcons,
     );
     await adapter.initialize();
     expect(adapter.available).toBe(true);
@@ -155,6 +164,30 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
           remoteDesktopServerMessageSchema.parse(
             JSON.parse(new TextDecoder().decode(payload)),
           ).type === "desktop-targets"
+        );
+      }),
+    ).toBe(true);
+
+    await session.handleFrame(
+      "attachment-1",
+      "control",
+      new TextEncoder().encode(
+        JSON.stringify({
+          type: "request-target-icons",
+          keys: ["icon-Code"],
+        }),
+      ),
+    );
+    expect(applicationIcons.resolve).toHaveBeenCalledWith("icon-Code");
+    expect(
+      emissions.some(({ channel, payload }) => {
+        if (channel !== "control") return false;
+        const message = remoteDesktopServerMessageSchema.parse(
+          JSON.parse(new TextDecoder().decode(payload)),
+        );
+        return (
+          message.type === "desktop-target-icons" &&
+          message.icons[0]?.key === "icon-Code"
         );
       }),
     ).toBe(true);
