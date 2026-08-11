@@ -1,4 +1,4 @@
-import { access, chmod, cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
@@ -10,6 +10,10 @@ import {
   normalizeTarget,
   verifyBuild,
 } from "./cantrip-code/build-lib.mjs";
+import {
+  bundleNodeRuntime,
+  writeServiceLaunchers,
+} from "./package-runtime.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const selection = process.argv[2];
@@ -85,7 +89,7 @@ async function requireDirectory(directory, description) {
   }
 }
 
-async function packageService(name, destination) {
+async function packageService(name, destination, { standalone = true } = {}) {
   const packageName = `@cantrip/${name}`;
   await rm(destination, { force: true, recursive: true });
   await mkdir(path.dirname(destination), { recursive: true });
@@ -98,15 +102,10 @@ async function packageService(name, destination) {
     destination,
   ]);
 
-  await writeFile(
-    path.join(destination, "start.sh"),
-    `#!/bin/sh\nset -eu\ncd "$(dirname "$0")"\nexec node --env-file-if-exists=.env dist/index.js\n`,
-    { mode: 0o755 },
-  );
-  await writeFile(
-    path.join(destination, "start.cmd"),
-    "@echo off\r\ncd /d %~dp0\r\nnode --env-file-if-exists=.env dist\\index.js\r\n",
-  );
+  if (standalone) {
+    await bundleNodeRuntime(path.join(destination, "runtime"));
+    await writeServiceLaunchers(destination);
+  }
   await cp(
     path.join(root, "deploy", `${name}.env.example`),
     path.join(destination, ".env.example"),
@@ -201,16 +200,26 @@ async function packageDesktopRuntime() {
     await requireDirectory(workerArtifact, "Packaged worker");
     await cp(serverArtifact, path.join(runtime, "server"), { recursive: true });
     await cp(workerArtifact, path.join(runtime, "worker"), { recursive: true });
+    for (const service of ["server", "worker"]) {
+      const serviceRoot = path.join(runtime, service);
+      await rm(path.join(serviceRoot, "runtime"), {
+        force: true,
+        recursive: true,
+      });
+      await rm(path.join(serviceRoot, "start.sh"), { force: true });
+      await rm(path.join(serviceRoot, "start.cmd"), { force: true });
+    }
   } else {
     buildCodex();
     buildSelectedServices("services");
-    await packageService("server", path.join(runtime, "server"));
-    await packageService("worker", path.join(runtime, "worker"));
+    await packageService("server", path.join(runtime, "server"), {
+      standalone: false,
+    });
+    await packageService("worker", path.join(runtime, "worker"), {
+      standalone: false,
+    });
   }
-  const nodeName = process.platform === "win32" ? "node.exe" : "node";
-  const bundledNode = path.join(runtime, nodeName);
-  await cp(process.execPath, bundledNode);
-  if (process.platform !== "win32") await chmod(bundledNode, 0o755);
+  await bundleNodeRuntime(runtime);
   console.log(
     `Bundled Node ${process.version}: ${path.relative(root, runtime)}`,
   );
