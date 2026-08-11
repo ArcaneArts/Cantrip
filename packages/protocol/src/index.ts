@@ -690,6 +690,7 @@ export const modelProfileListSchema = z.array(modelProfileSummarySchema);
 export const userSettingsSchema = z.object({
   theme: themePreferenceSchema,
   highContrast: z.boolean(),
+  proMode: z.boolean(),
   sidebarWidth: sidebarWidthPreferenceSchema,
   desktopFrameRate: z.union([z.literal(15), z.literal(30), z.literal(60)]),
   desktopStreamQuality: z.enum(["adaptive", "data-saver", "balanced", "sharp"]),

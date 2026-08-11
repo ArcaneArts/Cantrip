@@ -295,6 +295,13 @@
       "when": 1786354412899,
       "tag": "0041_outgoing_snowbird",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1786429529878,
+      "tag": "0042_tense_stingray",
+      "breakpoints": true
     }
   ]
 }

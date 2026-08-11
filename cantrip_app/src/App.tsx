@@ -236,10 +236,12 @@ import {
   closeCurrentDesktopWindow,
   focusDesktopPopoutGroup,
   isDesktopRuntime,
+  isMacosDesktopRuntime,
   openDesktopPopoutGroup,
   parseDesktopPopoutGroupTarget,
   shouldUseOverlayTitlebar,
   updateDesktopWindowTheme,
+  updateMacosProMode,
   updateDesktopWindowTitle,
 } from "@/lib/desktop-popout";
 import {
@@ -3591,6 +3593,30 @@ export function App() {
     settings.data?.preferences.highContrast,
     settings.data?.preferences.theme,
   ]);
+
+  useEffect(() => {
+    const requested = settings.data?.preferences.proMode ?? false;
+    const supported = isMacosDesktopRuntime();
+    let active = true;
+    document.documentElement.classList.toggle(
+      "pro-mode",
+      supported && requested,
+    );
+    if (!supported) return;
+    void updateMacosProMode(requested)
+      .then((enabled) => {
+        if (active) {
+          document.documentElement.classList.toggle("pro-mode", enabled);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) document.documentElement.classList.remove("pro-mode");
+        console.error("Could not update macOS Pro Mode", error);
+      });
+    return () => {
+      active = false;
+    };
+  }, [settings.data?.preferences.proMode]);
 
   useEffect(() => {
     if (!projectWorkspaces.data?.length) return;

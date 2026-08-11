@@ -1572,6 +1572,7 @@ describe("local server foundation", () => {
     expect(initialSettings.preferences).toMatchObject({
       theme: "system",
       highContrast: false,
+      proMode: false,
       sidebarWidth: 288,
       desktopFrameRate: 30,
       desktopStreamQuality: "adaptive",
@@ -1669,6 +1670,7 @@ describe("local server foundation", () => {
           payload: {
             theme: "dark",
             highContrast: true,
+            proMode: true,
             sidebarWidth: 352,
             desktopFrameRate: 60,
             desktopStreamQuality: "balanced",
@@ -1680,6 +1682,7 @@ describe("local server foundation", () => {
     expect(updatedSettings.preferences).toEqual({
       theme: "dark",
       highContrast: true,
+      proMode: true,
       sidebarWidth: 352,
       desktopFrameRate: 60,
       desktopStreamQuality: "balanced",
@@ -4866,6 +4869,7 @@ describe("local server foundation", () => {
     expect(restoredSettings.preferences).toEqual({
       theme: "dark",
       highContrast: true,
+      proMode: true,
       sidebarWidth: 352,
       desktopFrameRate: 60,
       desktopStreamQuality: "balanced",

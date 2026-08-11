@@ -60,6 +60,7 @@ import {
   updateModelProvider,
   updateSettings,
 } from "@/lib/api";
+import { isMacosDesktopRuntime } from "@/lib/desktop-popout";
 import { WorkspaceSettings } from "./workspace-settings";
 
 const reasoningOptions: Array<ReasoningEffort | ""> = [
@@ -423,7 +424,7 @@ export function SettingsPage({
     !search ||
     matchesSearch(
       search,
-      "appearance theme system light dark high contrast operating system",
+      "appearance theme system light dark high contrast pro mode transparency vibrancy blur macos operating system",
     );
   const desktopStreamingMatches =
     !search ||
@@ -609,6 +610,29 @@ export function SettingsPage({
                           }
                         />
                         High contrast
+                      </label>
+                      <label
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50 has-disabled:cursor-not-allowed has-disabled:opacity-50"
+                        title={
+                          isMacosDesktopRuntime()
+                            ? "Use a translucent native macOS material across this window"
+                            : '"Pro" Mode is available in the macOS desktop app'
+                        }
+                      >
+                        <input
+                          type="checkbox"
+                          className="size-3.5 accent-primary"
+                          checked={settings.data?.preferences.proMode ?? false}
+                          disabled={
+                            preferences.isPending || !isMacosDesktopRuntime()
+                          }
+                          onChange={(event) =>
+                            preferences.mutate({
+                              proMode: event.target.checked,
+                            })
+                          }
+                        />
+                        &quot;Pro&quot; Mode
                       </label>
                     </div>
                   </div>

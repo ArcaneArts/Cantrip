@@ -1,4 +1,4 @@
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 
 export type DesktopPopoutGroupTarget = {
   activeTabKey: string;
@@ -37,6 +37,15 @@ export function desktopPopoutGroupWindowLabel(groupId: string): string {
 
 export function isDesktopRuntime(): boolean {
   return isTauri();
+}
+
+export function isMacosDesktopRuntime(): boolean {
+  return shouldUseOverlayTitlebar(isDesktopRuntime(), navigator.userAgent);
+}
+
+export async function updateMacosProMode(enabled: boolean): Promise<boolean> {
+  if (!isMacosDesktopRuntime()) return false;
+  return invoke<boolean>("set_macos_pro_mode", { enabled });
 }
 
 export function shouldUseOverlayTitlebar(
@@ -112,6 +121,7 @@ export async function openDesktopPopoutGroup(
     minWidth: 640,
     resizable: true,
     title: `${title} — Cantrip`,
+    transparent: isMacosDesktopRuntime(),
     url: `${path}${desktopPopoutGroupSearch(target)}`,
     width: 1100,
   });

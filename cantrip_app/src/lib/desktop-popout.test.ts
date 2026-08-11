@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   desktopPopoutGroupSearch,
   desktopPopoutGroupWindowLabel,
+  isMacosDesktopRuntime,
   parseDesktopPopoutGroupTarget,
   shouldUseOverlayTitlebar,
   type DesktopPopoutGroupTarget,
@@ -58,5 +59,9 @@ describe("desktop title bar layout", () => {
     expect(
       shouldUseOverlayTitlebar(true, "Mozilla/5.0 (X11; Linux x86_64)"),
     ).toBe(false);
+  });
+
+  it("does not expose macOS desktop-only behavior in the browser", () => {
+    expect(isMacosDesktopRuntime()).toBe(false);
   });
 });

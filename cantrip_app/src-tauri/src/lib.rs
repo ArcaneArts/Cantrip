@@ -60,6 +60,35 @@ fn relay_client_log(level: String, message: String) {
     let _ = (level, message);
 }
 
+#[tauri::command]
+fn set_macos_pro_mode(window: tauri::WebviewWindow, enabled: bool) -> Result<bool, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let effect_window = window.clone();
+        window
+            .run_on_main_thread(move || {
+                let _ = window_vibrancy::clear_vibrancy(&effect_window);
+                if enabled {
+                    if let Err(error) = window_vibrancy::apply_vibrancy(
+                        &effect_window,
+                        window_vibrancy::NSVisualEffectMaterial::Sidebar,
+                        Some(window_vibrancy::NSVisualEffectState::FollowsWindowActiveState),
+                        None,
+                    ) {
+                        eprintln!("Could not apply macOS Pro Mode: {error}");
+                    }
+                }
+            })
+            .map_err(|error| format!("Could not schedule macOS Pro Mode: {error}"))?;
+        Ok(enabled)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, enabled);
+        Ok(false)
+    }
+}
+
 fn open_log(path: &Path) -> Result<File, String> {
     OpenOptions::new()
         .create(true)
@@ -262,6 +291,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             local_server_url,
             relay_client_log,
+            set_macos_pro_mode,
             project_share::reveal_project_share,
         ])
         .setup(|app| {
