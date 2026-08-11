@@ -20,15 +20,14 @@ import {
 } from "lucide-react";
 
 import {
+  StyledDropdownMenuContent,
+  StyledDropdownMenuItem,
+} from "@/components/ui/styled-menu";
+import {
   worktreeHasConflicts,
   worktreeTooltip,
 } from "@/components/worktrees/worktree-control";
 import { cn } from "@/lib/utils";
-
-const contentClass =
-  "z-50 min-w-72 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
-const itemClass =
-  "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
 
 export function historyWorktreeState({
   online,
@@ -138,10 +137,10 @@ export function HistoryWorktreeMarker({
         </button>
       </DropdownMenuPrimitive.Trigger>
       <DropdownMenuPrimitive.Portal>
-        <DropdownMenuPrimitive.Content
+        <StyledDropdownMenuContent
           align="start"
           sideOffset={4}
-          className={contentClass}
+          className="min-w-72"
         >
           <div className="space-y-2 px-2 py-2 text-xs">
             <div className="flex items-center gap-2">
@@ -197,44 +196,30 @@ export function HistoryWorktreeMarker({
             </dl>
           </div>
           <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-          <DropdownMenuPrimitive.Item
-            className={itemClass}
-            onSelect={() => onOpenChat()}
-          >
+          <StyledDropdownMenuItem onSelect={() => onOpenChat()}>
             <MessageSquare className="size-4" /> Open Chat here
-          </DropdownMenuPrimitive.Item>
-          <DropdownMenuPrimitive.Item
-            className={itemClass}
-            onSelect={onOpenTerminal}
-          >
+          </StyledDropdownMenuItem>
+          <StyledDropdownMenuItem onSelect={onOpenTerminal}>
             <SquareTerminal className="size-4" /> Open Terminal here
-          </DropdownMenuPrimitive.Item>
-          <DropdownMenuPrimitive.Item
-            className={itemClass}
-            onSelect={onOpenExplorer}
-          >
+          </StyledDropdownMenuItem>
+          <StyledDropdownMenuItem onSelect={onOpenExplorer}>
             <FolderTree className="size-4" /> Open Explorer here
-          </DropdownMenuPrimitive.Item>
-          <DropdownMenuPrimitive.Item
-            className={itemClass}
-            onSelect={onOpenHistory}
-          >
+          </StyledDropdownMenuItem>
+          <StyledDropdownMenuItem onSelect={onOpenHistory}>
             <History className="size-4" /> Open another Git tab here
-          </DropdownMenuPrimitive.Item>
+          </StyledDropdownMenuItem>
           {boundChats.map((chat) => (
-            <DropdownMenuPrimitive.Item
+            <StyledDropdownMenuItem
               key={chat.id}
-              className={itemClass}
               onSelect={() => onOpenChat(chat.id)}
             >
               <MessageSquare className="size-4" /> Open {chat.title}
-            </DropdownMenuPrimitive.Item>
+            </StyledDropdownMenuItem>
           ))}
           {!worktree.isPrimary ? (
             <>
               <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-              <DropdownMenuPrimitive.Item
-                className={itemClass}
+              <StyledDropdownMenuItem
                 disabled={
                   !worker?.online || worktree.lifecycleState !== "ready"
                 }
@@ -246,19 +231,16 @@ export function HistoryWorktreeMarker({
                   <Lock className="size-4" />
                 )}
                 {worktree.locked ? "Unlock worktree" : "Lock worktree"}
-              </DropdownMenuPrimitive.Item>
-              <DropdownMenuPrimitive.Item
-                className={cn(
-                  itemClass,
-                  "text-destructive focus:bg-destructive/10",
-                )}
+              </StyledDropdownMenuItem>
+              <StyledDropdownMenuItem
+                className="text-destructive focus:bg-destructive/10"
                 onSelect={onRemove}
               >
                 <Trash2 className="size-4" /> Remove worktree…
-              </DropdownMenuPrimitive.Item>
+              </StyledDropdownMenuItem>
             </>
           ) : null}
-        </DropdownMenuPrimitive.Content>
+        </StyledDropdownMenuContent>
       </DropdownMenuPrimitive.Portal>
     </DropdownMenuPrimitive.Root>
   );

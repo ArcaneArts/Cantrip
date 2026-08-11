@@ -38,6 +38,7 @@ import {
   runProjectWorktreeGitAction,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { errorMessage } from "@/lib/error-message";
 
 import { buildGitChangeTree, type GitChangeTreeNode } from "./git-change-tree";
 import { GitFileDiffView } from "./git-file-diff-view";
@@ -55,7 +56,7 @@ interface SelectedChange {
 }
 
 function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : "Git operation failed.";
+  return errorMessage(error, "Git operation failed.");
 }
 
 function changeLabel(change: GitFileChange, staged: boolean): string {

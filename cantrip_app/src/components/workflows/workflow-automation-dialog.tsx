@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { createWorkflowAutomationTrigger } from "@/lib/api";
+import { errorMessage } from "@/lib/error-message";
 
 type AutomationType = WorkflowAutomationTrigger["type"];
 
@@ -62,9 +63,7 @@ function positiveInteger(value: string, minimum: number, label: string) {
 }
 
 function errorText(error: unknown) {
-  return error instanceof Error
-    ? error.message
-    : "The automation could not be created.";
+  return errorMessage(error, "The automation could not be created.");
 }
 
 export function WorkflowAutomationDialog({

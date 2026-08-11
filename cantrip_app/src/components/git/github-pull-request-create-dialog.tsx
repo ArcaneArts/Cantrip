@@ -22,6 +22,7 @@ import {
   createGithubPullRequest,
   generateProjectWorktreeGitDraft,
 } from "@/lib/api";
+import { errorMessage } from "@/lib/error-message";
 
 import { GitAgentDraftDialog } from "./git-agent-draft-dialog";
 
@@ -71,9 +72,7 @@ export function pullRequestBranchChoices(status: GitStatus): {
 }
 
 function errorText(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : "The pull request could not be created.";
+  return errorMessage(error, "The pull request could not be created.");
 }
 
 const emptyDraft = {

@@ -17,11 +17,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { createGithubRepository, getGithubRepositoryOwners } from "@/lib/api";
+import { errorMessage } from "@/lib/error-message";
 
 function errorText(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : "The GitHub repository could not be created.";
+  return errorMessage(error, "The GitHub repository could not be created.");
 }
 
 export function GithubRepositoryCreateDialog({

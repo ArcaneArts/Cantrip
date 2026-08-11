@@ -57,11 +57,11 @@ import {
   ProjectSurfaceCreateMenu,
   type ProjectSurfaceCreateKind,
 } from "@/components/workspace/project-surface-create-menu";
+import { SurfaceActionsMenu } from "@/components/workspace/surface-tab-controls";
 import {
-  SurfaceActionsMenu,
-  surfaceMenuContentClass,
-  surfaceMenuItemClass,
-} from "@/components/workspace/surface-tab-controls";
+  StyledDropdownMenuContent,
+  StyledDropdownMenuItem,
+} from "@/components/ui/styled-menu";
 import {
   Dialog,
   DialogClose,
@@ -89,9 +89,6 @@ const explorerId = (id: string) => `explorer:${id}`;
 const browserId = (id: string) => `browser:${id}`;
 const codeId = (id: string) => `code:${id}`;
 const viewId = (id: string) => `view:${id}`;
-
-const menuContentClass = cn(surfaceMenuContentClass, "min-w-36");
-const menuItemClass = surfaceMenuItemClass;
 
 function SortableChat({
   active,
@@ -412,37 +409,30 @@ function SortableProject({
               </button>
             </DropdownMenuPrimitive.Trigger>
             <DropdownMenuPrimitive.Portal>
-              <DropdownMenuPrimitive.Content
+              <StyledDropdownMenuContent
                 align="end"
                 sideOffset={4}
-                className={menuContentClass}
+                className="min-w-36"
               >
-                <DropdownMenuPrimitive.Item
-                  className={menuItemClass}
-                  onSelect={onOpenSettings}
-                >
+                <StyledDropdownMenuItem onSelect={onOpenSettings}>
                   <Settings className="size-4" /> Settings
-                </DropdownMenuPrimitive.Item>
+                </StyledDropdownMenuItem>
                 {onReveal ? (
-                  <DropdownMenuPrimitive.Item
-                    className={menuItemClass}
+                  <StyledDropdownMenuItem
                     disabled={revealDisabled}
                     onSelect={onReveal}
                   >
                     <FolderOpen className="size-4" /> {projectRevealLabel}
-                  </DropdownMenuPrimitive.Item>
+                  </StyledDropdownMenuItem>
                 ) : null}
                 <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-                <DropdownMenuPrimitive.Item
-                  className={cn(
-                    menuItemClass,
-                    "text-destructive focus:bg-destructive/10",
-                  )}
+                <StyledDropdownMenuItem
+                  className="text-destructive focus:bg-destructive/10"
                   onSelect={onRemove}
                 >
                   <Trash2 className="size-4" /> Remove project
-                </DropdownMenuPrimitive.Item>
-              </DropdownMenuPrimitive.Content>
+                </StyledDropdownMenuItem>
+              </StyledDropdownMenuContent>
             </DropdownMenuPrimitive.Portal>
           </DropdownMenuPrimitive.Root>
         )}

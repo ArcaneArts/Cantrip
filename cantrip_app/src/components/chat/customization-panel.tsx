@@ -57,6 +57,7 @@ import {
 } from "@/lib/api";
 import { useAppLiveStatus } from "@/lib/app-live-react";
 import { cn } from "@/lib/utils";
+import { errorMessage } from "@/lib/error-message";
 
 const RESOURCE_PREVIEW_LIMIT = 20_000;
 
@@ -207,7 +208,7 @@ async function openAuthorizationUrl(url: string): Promise<void> {
 }
 
 function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : "The request failed.";
+  return errorMessage(error, "The request failed.");
 }
 
 function CapabilityBadge({

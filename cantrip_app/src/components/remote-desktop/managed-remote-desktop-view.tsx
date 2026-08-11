@@ -25,6 +25,10 @@ import {
   type RemoteSurfaceCanvasHandle,
 } from "@/components/remote-surface/remote-surface-canvas";
 import { Button } from "@/components/ui/button";
+import {
+  StyledDropdownMenuContent,
+  StyledDropdownMenuItem,
+} from "@/components/ui/styled-menu";
 import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
 import {
   remoteSurfaceWebSocketUrl,
@@ -51,10 +55,6 @@ const desktopTransportMessages = {
     "The server sent an invalid Remote Desktop connection message.",
   invalidFrame: "The server sent an invalid Remote Desktop frame.",
 };
-const menuContentClass =
-  "z-50 max-h-[min(28rem,var(--radix-dropdown-menu-content-available-height))] min-w-80 overflow-y-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
-const menuItemClass =
-  "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
 
 interface Size {
   height: number;
@@ -359,10 +359,10 @@ export function ManagedRemoteDesktopView({
             </Button>
           </DropdownMenuPrimitive.Trigger>
           <DropdownMenuPrimitive.Portal>
-            <DropdownMenuPrimitive.Content
+            <StyledDropdownMenuContent
               align="end"
               sideOffset={4}
-              className={menuContentClass}
+              className="max-h-[min(28rem,var(--radix-dropdown-menu-content-available-height))] min-w-80 overflow-y-auto"
             >
               <DropdownMenuPrimitive.Label className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                 Displays
@@ -374,9 +374,8 @@ export function ManagedRemoteDesktopView({
                   name: monitor.name,
                 };
                 return (
-                  <DropdownMenuPrimitive.Item
+                  <StyledDropdownMenuItem
                     key={`monitor:${monitor.id}`}
-                    className={menuItemClass}
                     onSelect={() => updateTarget.mutate(target)}
                   >
                     <MonitorUp className="size-4 shrink-0" />
@@ -396,13 +395,13 @@ export function ManagedRemoteDesktopView({
                     ) ? (
                       <Check className="size-3.5 shrink-0" />
                     ) : null}
-                  </DropdownMenuPrimitive.Item>
+                  </StyledDropdownMenuItem>
                 );
               })}
               {!targetInventory.monitors.length ? (
-                <DropdownMenuPrimitive.Item disabled className={menuItemClass}>
+                <StyledDropdownMenuItem disabled>
                   No displays reported
-                </DropdownMenuPrimitive.Item>
+                </StyledDropdownMenuItem>
               ) : null}
 
               <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
@@ -410,8 +409,8 @@ export function ManagedRemoteDesktopView({
                 Application windows
               </DropdownMenuPrimitive.Label>
               {!requestedTargetListed && requestedTarget.kind === "window" ? (
-                <DropdownMenuPrimitive.Item
-                  className={cn(menuItemClass, "bg-muted/50")}
+                <StyledDropdownMenuItem
+                  className="bg-muted/50"
                   onSelect={() => updateTarget.mutate(requestedTarget)}
                 >
                   <AppWindow className="size-4 shrink-0" />
@@ -422,7 +421,7 @@ export function ManagedRemoteDesktopView({
                     Launch on worker
                   </span>
                   <Check className="size-3.5 shrink-0" />
-                </DropdownMenuPrimitive.Item>
+                </StyledDropdownMenuItem>
               ) : null}
               {targetInventory.windows.map((window) => {
                 const target: RemoteDesktopTarget = {
@@ -432,9 +431,8 @@ export function ManagedRemoteDesktopView({
                   title: window.title,
                 };
                 return (
-                  <DropdownMenuPrimitive.Item
+                  <StyledDropdownMenuItem
                     key={`window:${window.id}`}
-                    className={menuItemClass}
                     onSelect={() => updateTarget.mutate(target)}
                   >
                     <AppWindow className="size-4 shrink-0" />
@@ -450,23 +448,22 @@ export function ManagedRemoteDesktopView({
                     {remoteDesktopTargetMatches(requestedTarget, target) ? (
                       <Check className="size-3.5 shrink-0" />
                     ) : null}
-                  </DropdownMenuPrimitive.Item>
+                  </StyledDropdownMenuItem>
                 );
               })}
               {!targetInventory.windows.length &&
               !(!requestedTargetListed && requestedTarget.kind === "window") ? (
-                <DropdownMenuPrimitive.Item disabled className={menuItemClass}>
+                <StyledDropdownMenuItem disabled>
                   No application windows reported
-                </DropdownMenuPrimitive.Item>
+                </StyledDropdownMenuItem>
               ) : null}
               <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-              <DropdownMenuPrimitive.Item
-                className={menuItemClass}
+              <StyledDropdownMenuItem
                 onSelect={() => send({ type: "refresh-targets" })}
               >
                 <RotateCw className="size-4" /> Refresh windows and displays
-              </DropdownMenuPrimitive.Item>
-            </DropdownMenuPrimitive.Content>
+              </StyledDropdownMenuItem>
+            </StyledDropdownMenuContent>
           </DropdownMenuPrimitive.Portal>
         </DropdownMenuPrimitive.Root>
         <Button

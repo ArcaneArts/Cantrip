@@ -40,6 +40,10 @@ import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  StyledDropdownMenuContent,
+  StyledDropdownMenuItem,
+} from "@/components/ui/styled-menu";
 import { McpServerSettings } from "@/components/settings/mcp-server-settings";
 import {
   Dialog,
@@ -73,10 +77,6 @@ import {
   type SettingsTab,
 } from "@/components/settings/settings-controls";
 
-const menuContentClass =
-  "z-50 min-w-52 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
-const menuItemClass =
-  "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
 const createdDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 
 type ProjectSettingsSection = "general" | "automations" | "skills";
@@ -699,16 +699,15 @@ export function ProjectSettingsPage({
                         </Button>
                       </DropdownMenuPrimitive.Trigger>
                       <DropdownMenuPrimitive.Portal>
-                        <DropdownMenuPrimitive.Content
+                        <StyledDropdownMenuContent
                           align="end"
                           sideOffset={4}
-                          className={menuContentClass}
+                          className="min-w-52"
                         >
                           <DropdownMenuPrimitive.Label className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                             Open on this worktree
                           </DropdownMenuPrimitive.Label>
-                          <DropdownMenuPrimitive.Item
-                            className={menuItemClass}
+                          <StyledDropdownMenuItem
                             disabled={
                               worktree.lifecycleState !== "ready" ||
                               !worker?.online
@@ -716,9 +715,8 @@ export function ProjectSettingsPage({
                             onSelect={() => onCreateChat(worktree.id)}
                           >
                             <MessageSquare className="size-4" /> New chat
-                          </DropdownMenuPrimitive.Item>
-                          <DropdownMenuPrimitive.Item
-                            className={menuItemClass}
+                          </StyledDropdownMenuItem>
+                          <StyledDropdownMenuItem
                             disabled={
                               worktree.lifecycleState !== "ready" ||
                               !worker?.online
@@ -726,9 +724,8 @@ export function ProjectSettingsPage({
                             onSelect={() => onCreateTerminal(worktree.id)}
                           >
                             <SquareTerminal className="size-4" /> Terminal
-                          </DropdownMenuPrimitive.Item>
-                          <DropdownMenuPrimitive.Item
-                            className={menuItemClass}
+                          </StyledDropdownMenuItem>
+                          <StyledDropdownMenuItem
                             disabled={
                               worktree.lifecycleState !== "ready" ||
                               !worker?.online
@@ -736,9 +733,8 @@ export function ProjectSettingsPage({
                             onSelect={() => onCreateExplorer(worktree.id)}
                           >
                             <FolderTree className="size-4" /> Explorer
-                          </DropdownMenuPrimitive.Item>
-                          <DropdownMenuPrimitive.Item
-                            className={menuItemClass}
+                          </StyledDropdownMenuItem>
+                          <StyledDropdownMenuItem
                             disabled={
                               worktree.lifecycleState !== "ready" ||
                               !worker?.online
@@ -746,9 +742,8 @@ export function ProjectSettingsPage({
                             onSelect={() => onCreateCode(worktree.id)}
                           >
                             <Code2 className="size-4" /> Code
-                          </DropdownMenuPrimitive.Item>
-                          <DropdownMenuPrimitive.Item
-                            className={menuItemClass}
+                          </StyledDropdownMenuItem>
+                          <StyledDropdownMenuItem
                             disabled={
                               worktree.lifecycleState !== "ready" ||
                               !worker?.online
@@ -756,12 +751,11 @@ export function ProjectSettingsPage({
                             onSelect={() => onCreateHistory(worktree.id)}
                           >
                             <History className="size-4" /> Git
-                          </DropdownMenuPrimitive.Item>
+                          </StyledDropdownMenuItem>
                           {!worktree.isPrimary ? (
                             <>
                               <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-                              <DropdownMenuPrimitive.Item
-                                className={menuItemClass}
+                              <StyledDropdownMenuItem
                                 disabled={pendingInventory || !worker?.online}
                                 onSelect={() => lockWorktree.mutate(worktree)}
                               >
@@ -771,12 +765,9 @@ export function ProjectSettingsPage({
                                   <Lock className="size-4" />
                                 )}
                                 {worktree.locked ? "Unlock" : "Lock"}
-                              </DropdownMenuPrimitive.Item>
-                              <DropdownMenuPrimitive.Item
-                                className={cn(
-                                  menuItemClass,
-                                  "text-destructive focus:bg-destructive/10",
-                                )}
+                              </StyledDropdownMenuItem>
+                              <StyledDropdownMenuItem
+                                className="text-destructive focus:bg-destructive/10"
                                 disabled={pendingInventory || !worker?.online}
                                 onSelect={() => {
                                   setForceRemove(false);
@@ -784,10 +775,10 @@ export function ProjectSettingsPage({
                                 }}
                               >
                                 <Trash2 className="size-4" /> Remove worktree
-                              </DropdownMenuPrimitive.Item>
+                              </StyledDropdownMenuItem>
                             </>
                           ) : null}
-                        </DropdownMenuPrimitive.Content>
+                        </StyledDropdownMenuContent>
                       </DropdownMenuPrimitive.Portal>
                     </DropdownMenuPrimitive.Root>
                   </div>

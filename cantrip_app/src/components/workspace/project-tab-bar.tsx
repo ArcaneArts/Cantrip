@@ -14,13 +14,12 @@ import {
   ProjectSurfaceCreateMenu,
   type ProjectSurfaceCreateKind,
 } from "./project-surface-create-menu";
-import {
-  InlineRenameLabel,
-  SurfaceActionsMenu,
-  surfaceMenuContentClass,
-  surfaceMenuItemClass,
-} from "./surface-tab-controls";
+import { InlineRenameLabel, SurfaceActionsMenu } from "./surface-tab-controls";
 import { Button } from "@/components/ui/button";
+import {
+  StyledContextMenuContent,
+  StyledContextMenuItem,
+} from "@/components/ui/styled-menu";
 import {
   Dialog,
   DialogClose,
@@ -38,9 +37,6 @@ import {
   workspaceSurfaceDragId,
   workspaceTopBarDropId,
 } from "@/lib/workspace-dnd-model";
-
-const menuContentClass = surfaceMenuContentClass;
-const menuItemClass = surfaceMenuItemClass;
 
 export interface ProjectTabBarProps {
   activeTabKey: string;
@@ -186,32 +182,27 @@ export function ProjectTabBar({
                       </div>
                     </ContextMenu.Trigger>
                     <ContextMenu.Portal>
-                      <ContextMenu.Content className={menuContentClass}>
-                        <ContextMenu.Item
-                          className={menuItemClass}
+                      <StyledContextMenuContent className="min-w-40">
+                        <StyledContextMenuItem
                           onSelect={() => beginRename(surface)}
                         >
                           <Pencil className="size-4" /> Rename
-                        </ContextMenu.Item>
+                        </StyledContextMenuItem>
                         {surface.kind === "chat" && onDuplicate ? (
-                          <ContextMenu.Item
-                            className={menuItemClass}
+                          <StyledContextMenuItem
                             onSelect={() => onDuplicate(surface)}
                           >
                             <CopyPlus className="size-4" /> Duplicate
-                          </ContextMenu.Item>
+                          </StyledContextMenuItem>
                         ) : null}
                         <ContextMenu.Separator className="my-1 h-px bg-border" />
-                        <ContextMenu.Item
-                          className={cn(
-                            menuItemClass,
-                            "text-destructive focus:bg-destructive/10",
-                          )}
+                        <StyledContextMenuItem
+                          className="text-destructive focus:bg-destructive/10"
                           onSelect={() => setDeleteTarget(surface)}
                         >
                           <Trash2 className="size-4" /> Delete
-                        </ContextMenu.Item>
-                      </ContextMenu.Content>
+                        </StyledContextMenuItem>
+                      </StyledContextMenuContent>
                     </ContextMenu.Portal>
                   </ContextMenu.Root>
                 </SortableProjectTabFrame>

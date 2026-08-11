@@ -16,9 +16,10 @@ import {
   applyProjectWorktreeGitForcePush,
   previewProjectWorktreeGitForcePush,
 } from "@/lib/api";
+import { errorMessage } from "@/lib/error-message";
 
 function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : "Force push failed.";
+  return errorMessage(error, "Force push failed.");
 }
 
 export function gitPushRequiresLease(

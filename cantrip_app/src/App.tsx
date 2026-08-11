@@ -129,6 +129,7 @@ import {
   type WorktreeStatusMap,
 } from "@/components/worktrees/worktree-control";
 import { hasScrolledContent } from "@/lib/scroll-divider";
+import { errorMessage as errorText } from "@/lib/error-message";
 import { githubRepositoryOnboardingAction } from "@/lib/github-repository-onboarding";
 import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
 import { Badge } from "@/components/ui/badge";
@@ -329,10 +330,6 @@ const RemoteDesktopView = lazy(() =>
     default: module.RemoteDesktopView,
   })),
 );
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : "Something went wrong.";
-}
 
 type WorktreeBindingTarget =
   | {

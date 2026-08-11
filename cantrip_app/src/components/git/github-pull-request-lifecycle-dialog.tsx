@@ -20,6 +20,7 @@ import {
   applyGithubPullRequestLifecycle,
   previewGithubPullRequestLifecycle,
 } from "@/lib/api";
+import { errorMessage } from "@/lib/error-message";
 
 export function pullRequestLifecycleLabel(
   action: GithubPullRequestLifecycleAction,
@@ -47,9 +48,7 @@ export function lifecycleConfirmationMatches(
 }
 
 function errorText(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : "The pull request action failed.";
+  return errorMessage(error, "The pull request action failed.");
 }
 
 export function GithubPullRequestLifecycleDialog({

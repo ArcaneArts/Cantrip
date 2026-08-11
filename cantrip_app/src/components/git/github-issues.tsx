@@ -31,6 +31,7 @@ import {
   commentOnGithubIssue,
   getGithubIssue,
 } from "@/lib/api";
+import { errorMessage } from "@/lib/error-message";
 import { GithubPullRequestCreateDialog } from "./github-pull-request-create-dialog";
 import { GithubPullRequestDialog } from "./github-pull-request-dialog";
 
@@ -40,7 +41,7 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
 });
 
 function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : "GitHub request failed.";
+  return errorMessage(error, "GitHub request failed.");
 }
 
 function IssueDialog({

@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { getTerminalScriptCommands } from "@/lib/api";
+import { errorMessage } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
 
 import {
@@ -20,7 +21,7 @@ import {
 } from "./terminal-command-palette";
 
 function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return errorMessage(error, String(error));
 }
 
 export function TerminalScriptCommandDialog({
