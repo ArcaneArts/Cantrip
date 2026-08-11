@@ -236,6 +236,13 @@ import {
   settingsBundleSchema,
   scriptCommandListSchema,
   skillListSchema,
+  skillSettingsContextSchema,
+  skillSettingsDeleteRequestSchema,
+  skillSettingsDocumentSchema,
+  skillSettingsFileRequestSchema,
+  skillSettingsFileUpdateSchema,
+  skillSettingsInventorySchema,
+  skillSettingsMutationResultSchema,
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
   tabGroupOrderSchema,
@@ -404,6 +411,16 @@ export interface BuildAppOptions {
   codeTunnel?: CodeTunnelBroker;
   projectShareTunnel?: ProjectShareTunnelBroker;
   workerBridge?: WorkerCommandBus;
+}
+
+class SkillSettingsRequestError extends Error {
+  readonly statusCode: 404 | 409 | 503;
+
+  constructor(statusCode: 404 | 409 | 503, message: string) {
+    super(message);
+    this.name = "SkillSettingsRequestError";
+    this.statusCode = statusCode;
+  }
 }
 
 function gitManagedOperationContext(
@@ -2101,6 +2118,42 @@ export async function buildApp({
     return repository.getModelRuntime(LOCAL_USER_ID, modelId);
   };
 
+  const skillSettingsTarget = async (input: {
+    projectId: string | null;
+    providerId: string;
+    workerId: string;
+  }) => {
+    const provider = await repository.getModelProvider(
+      LOCAL_USER_ID,
+      input.providerId,
+    );
+    if (!provider) {
+      throw new SkillSettingsRequestError(404, "Model provider not found.");
+    }
+    const source = input.projectId
+      ? await repository.getProjectSource(LOCAL_USER_ID, input.projectId)
+      : null;
+    if (input.projectId && !source) {
+      throw new SkillSettingsRequestError(404, "Project source not found.");
+    }
+    if (source && source.workerId !== input.workerId) {
+      throw new SkillSettingsRequestError(
+        409,
+        "The selected project belongs to a different worker.",
+      );
+    }
+    const workerId = source?.workerId ?? input.workerId;
+    if (!bridge.isConnected(workerId)) {
+      throw new SkillSettingsRequestError(503, "Selected worker is offline.");
+    }
+    return {
+      cwd: source?.cwd ?? null,
+      workerId,
+      providerId: provider.id,
+      providerKind: provider.kind,
+    };
+  };
+
   const permissionProfileState = async (context: ChatExecutionContext) => {
     const selection = effectivePermissionProfile(context);
     if (!bridge.isConnected(context.workerId)) {
@@ -3262,6 +3315,128 @@ export async function buildApp({
     return reply.send(
       settingsBundleSchema.parse(await repository.getSettings(LOCAL_USER_ID)),
     );
+  });
+
+  app.get<{
+    Querystring: {
+      projectId?: string;
+      providerId?: string;
+      workerId?: string;
+    };
+  }>("/api/skills", async (request, reply) => {
+    const input = skillSettingsContextSchema.safeParse({
+      workerId: request.query.workerId,
+      providerId: request.query.providerId,
+      projectId: request.query.projectId ?? null,
+    });
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const target = await skillSettingsTarget(input.data);
+      const inventory = await bridge.request(target.workerId, {
+        type: "skills.settings.list",
+        cwd: target.cwd,
+        providerId: target.providerId,
+        providerKind: target.providerKind,
+      });
+      return reply.send(skillSettingsInventorySchema.parse(inventory));
+    } catch (error) {
+      const status =
+        error instanceof SkillSettingsRequestError
+          ? error.statusCode
+          : error instanceof WorkerUnavailableError
+            ? 503
+            : 502;
+      return reply.code(status).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.post("/api/skills/read", async (request, reply) => {
+    const input = skillSettingsFileRequestSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const target = await skillSettingsTarget(input.data);
+      const document = await bridge.request(target.workerId, {
+        type: "skills.settings.read",
+        cwd: target.cwd,
+        providerId: target.providerId,
+        providerKind: target.providerKind,
+        skillId: input.data.skillId,
+        file: input.data.file,
+      });
+      return reply.send(skillSettingsDocumentSchema.parse(document));
+    } catch (error) {
+      const status =
+        error instanceof SkillSettingsRequestError
+          ? error.statusCode
+          : error instanceof WorkerUnavailableError
+            ? 503
+            : 409;
+      return reply.code(status).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.put("/api/skills/file", async (request, reply) => {
+    const input = skillSettingsFileUpdateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const target = await skillSettingsTarget(input.data);
+      const result = await bridge.request(target.workerId, {
+        type: "skills.settings.write",
+        cwd: target.cwd,
+        providerId: target.providerId,
+        providerKind: target.providerKind,
+        skillId: input.data.skillId,
+        file: input.data.file,
+        content: input.data.content,
+      });
+      publishLiveInvalidation("customization", {
+        projectId: input.data.projectId,
+      });
+      return reply.send(skillSettingsMutationResultSchema.parse(result));
+    } catch (error) {
+      const status =
+        error instanceof SkillSettingsRequestError
+          ? error.statusCode
+          : error instanceof WorkerUnavailableError
+            ? 503
+            : 409;
+      return reply.code(status).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.delete("/api/skills", async (request, reply) => {
+    const input = skillSettingsDeleteRequestSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const target = await skillSettingsTarget(input.data);
+      const result = await bridge.request(target.workerId, {
+        type: "skills.settings.delete",
+        cwd: target.cwd,
+        providerId: target.providerId,
+        providerKind: target.providerKind,
+        skillId: input.data.skillId,
+      });
+      publishLiveInvalidation("customization", {
+        projectId: input.data.projectId,
+      });
+      return reply.send(skillSettingsMutationResultSchema.parse(result));
+    } catch (error) {
+      const status =
+        error instanceof SkillSettingsRequestError
+          ? error.statusCode
+          : error instanceof WorkerUnavailableError
+            ? 503
+            : 409;
+      return reply.code(status).send({ error: errorMessage(error) });
+    }
   });
 
   app.patch("/api/settings", async (request, reply) => {

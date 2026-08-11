@@ -167,7 +167,10 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
             ["chat-customizations", event.scope.chatId, "inventory"],
             ["skills", event.scope.chatId],
           ]
-        : [["settings"]];
+        : [
+            ["settings-skills"],
+            ...(projectId ? [["settings-skills", projectId]] : []),
+          ];
   }
 }
 

@@ -473,6 +473,74 @@ export const codexSkillRootsResultSchema = z.object({
   roots: z.array(z.string().min(1)).max(32),
 });
 
+export const skillSettingsLocationSchema = z.enum([
+  "project",
+  "account",
+  "user",
+  "system",
+  "admin",
+]);
+
+export const skillSettingsItemSchema = skillSummarySchema.extend({
+  id: z.string().min(1).max(8_192),
+  scope: z.enum(["repo", "user", "system", "admin"]),
+  location: skillSettingsLocationSchema,
+  path: z.string().min(1).max(8_192),
+  editable: z.boolean(),
+  deletable: z.boolean(),
+});
+
+export const skillSettingsErrorSchema = z.object({
+  path: z.string().max(8_192),
+  message: z.string().min(1).max(2_000),
+});
+
+export const skillSettingsInventorySchema = z.object({
+  project: z.array(skillSettingsItemSchema).max(1_000),
+  global: z.array(skillSettingsItemSchema).max(1_000),
+  errors: z.array(skillSettingsErrorSchema).max(200),
+});
+
+export const skillSettingsFileSchema = z.object({
+  path: z.string().min(1).max(8_192),
+  sizeBytes: z.number().int().nonnegative().max(1_000_000_000),
+});
+
+export const skillSettingsDocumentSchema = z.object({
+  skill: skillSettingsItemSchema,
+  file: skillSettingsFileSchema,
+  files: z.array(skillSettingsFileSchema).max(500),
+  content: z.string().max(1_000_000),
+});
+
+export const skillSettingsContextSchema = z.object({
+  workerId: z.string().min(1).max(200),
+  providerId: z.string().min(1).max(200),
+  projectId: z.string().min(1).max(200).nullable().default(null),
+});
+
+export const skillSettingsFileRequestSchema = skillSettingsContextSchema.extend(
+  {
+    skillId: skillSettingsItemSchema.shape.id,
+    file: skillSettingsFileSchema.shape.path.default("SKILL.md"),
+  },
+);
+
+export const skillSettingsFileUpdateSchema =
+  skillSettingsFileRequestSchema.extend({
+    content: z.string().max(1_000_000),
+  });
+
+export const skillSettingsDeleteRequestSchema =
+  skillSettingsContextSchema.extend({
+    skillId: skillSettingsItemSchema.shape.id,
+  });
+
+export const skillSettingsMutationResultSchema = z.object({
+  changed: z.literal(true),
+  recoveryPath: z.string().min(1).max(8_192).nullable(),
+});
+
 export const codexMcpOauthStartSchema = z.object({
   server: z.string().trim().min(1).max(256),
 });
@@ -5541,6 +5609,36 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     provider: workerRuntimeProviderSchema,
   }),
   z.object({
+    type: z.literal("skills.settings.list"),
+    cwd: z.string().min(1).max(8_192).nullable(),
+    providerId: z.string().min(1).max(200),
+    providerKind: modelProviderKindSchema,
+  }),
+  z.object({
+    type: z.literal("skills.settings.read"),
+    cwd: z.string().min(1).max(8_192).nullable(),
+    providerId: z.string().min(1).max(200),
+    providerKind: modelProviderKindSchema,
+    skillId: skillSettingsItemSchema.shape.id,
+    file: skillSettingsFileSchema.shape.path,
+  }),
+  z.object({
+    type: z.literal("skills.settings.write"),
+    cwd: z.string().min(1).max(8_192).nullable(),
+    providerId: z.string().min(1).max(200),
+    providerKind: modelProviderKindSchema,
+    skillId: skillSettingsItemSchema.shape.id,
+    file: skillSettingsFileSchema.shape.path,
+    content: skillSettingsFileUpdateSchema.shape.content,
+  }),
+  z.object({
+    type: z.literal("skills.settings.delete"),
+    cwd: z.string().min(1).max(8_192).nullable(),
+    providerId: z.string().min(1).max(200),
+    providerKind: modelProviderKindSchema,
+    skillId: skillSettingsItemSchema.shape.id,
+  }),
+  z.object({
     type: z.literal("customization.inventory.read"),
     cwd: z.string().min(1),
     forceReload: z.boolean().default(false),
@@ -6640,6 +6738,26 @@ export type CodexSkillConfigResult = z.infer<
 >;
 export type CodexSkillRootsUpdate = z.infer<typeof codexSkillRootsUpdateSchema>;
 export type CodexSkillRootsResult = z.infer<typeof codexSkillRootsResultSchema>;
+export type SkillSettingsLocation = z.infer<typeof skillSettingsLocationSchema>;
+export type SkillSettingsItem = z.infer<typeof skillSettingsItemSchema>;
+export type SkillSettingsInventory = z.infer<
+  typeof skillSettingsInventorySchema
+>;
+export type SkillSettingsFile = z.infer<typeof skillSettingsFileSchema>;
+export type SkillSettingsDocument = z.infer<typeof skillSettingsDocumentSchema>;
+export type SkillSettingsContext = z.infer<typeof skillSettingsContextSchema>;
+export type SkillSettingsFileRequest = z.infer<
+  typeof skillSettingsFileRequestSchema
+>;
+export type SkillSettingsFileUpdate = z.infer<
+  typeof skillSettingsFileUpdateSchema
+>;
+export type SkillSettingsDeleteRequest = z.infer<
+  typeof skillSettingsDeleteRequestSchema
+>;
+export type SkillSettingsMutationResult = z.infer<
+  typeof skillSettingsMutationResultSchema
+>;
 export type CodexMcpOauthStart = z.infer<typeof codexMcpOauthStartSchema>;
 export type CodexMcpOauthStartResult = z.infer<
   typeof codexMcpOauthStartResultSchema

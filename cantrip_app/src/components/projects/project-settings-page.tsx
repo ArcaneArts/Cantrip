@@ -30,6 +30,7 @@ import {
   RefreshCw,
   ScanLine,
   SlidersHorizontal,
+  Sparkles,
   SquareTerminal,
   Trash2,
   Unlock,
@@ -63,6 +64,7 @@ import {
 import { cn } from "@/lib/utils";
 import { WorkflowCenter } from "@/components/workflows/workflow-center";
 import { ProjectAutomationsSettings } from "./project-automations-settings";
+import { SkillsSettings } from "@/components/settings/skills-settings";
 
 const menuContentClass =
   "z-50 min-w-52 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
@@ -191,7 +193,9 @@ export function ProjectSettingsPage({
   worktrees: ProjectWorktreeSummary[];
 }) {
   const queryClient = useQueryClient();
-  const [section, setSection] = useState<"general" | "automations">("general");
+  const [section, setSection] = useState<"general" | "automations" | "skills">(
+    "general",
+  );
   const [createOpen, setCreateOpen] = useState(false);
   const [pruneOpen, setPruneOpen] = useState(false);
   const [allowExternalPrune, setAllowExternalPrune] = useState(false);
@@ -329,12 +333,25 @@ export function ProjectSettingsPage({
         >
           <CalendarClock className="size-3.5" /> Automations
         </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className={cn(
+            "h-10 rounded-none border-b-2 px-2.5 text-xs",
+            section === "skills"
+              ? "border-foreground text-foreground"
+              : "border-transparent text-muted-foreground",
+          )}
+          onClick={() => setSection("skills")}
+        >
+          <Sparkles className="size-3.5" /> Skills
+        </Button>
       </div>
 
       {section === "automations" ? (
         <ProjectAutomationsSettings chats={chats} projectId={project.id} />
       ) : null}
-
       <div
         className={cn(
           "mx-auto w-full max-w-6xl space-y-8 px-4 py-6 sm:px-6 lg:px-8",
@@ -716,6 +733,11 @@ export function ProjectSettingsPage({
           </div>
         </section>
       </div>
+      {section === "skills" ? (
+        <div className="px-4 py-6 sm:px-6 lg:px-8">
+          <SkillsSettings project={project} />
+        </div>
+      ) : null}
 
       <WorktreeCreateDialog
         open={createOpen}

@@ -225,6 +225,7 @@ describe("project settings", () => {
     expect(markup).toContain("~/repos/cantrip");
     expect(markup).toContain("Agent managed");
     expect(markup).toContain("Required for writes");
+    expect(markup).toContain("Skills");
     expect(markup).toContain("Primary");
     expect(markup).toContain("Worker offline");
   });

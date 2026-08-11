@@ -86,6 +86,7 @@ import { ProjectShareTunnelProxy } from "./project-share-tunnel-proxy.js";
 import { discoverScriptCommands } from "./script-command-discovery.js";
 import { TerminalManager } from "./terminal-manager.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
+import { SkillManager } from "./skill-manager.js";
 import { WorkerConnection } from "./transport.js";
 import { WorktreeManager } from "./worktrees.js";
 import {
@@ -147,6 +148,7 @@ async function start(): Promise<void> {
   const pausedChats = new Set<string>();
   const projectShares = new ProjectShareManager();
   const projectShareTunnel = new ProjectShareTunnelProxy(projectShares);
+  const skillManager = new SkillManager(config.dataDirectory);
   const terminals = new TerminalManager();
   const remoteSurfaces = new RemoteSurfaceManager({
     browser: browserAdapter,
@@ -610,6 +612,19 @@ async function start(): Promise<void> {
           model: command.model,
           provider: command.provider,
         });
+      case "skills.settings.list":
+        return skillManager.list(command);
+      case "skills.settings.read":
+        return skillManager.read(command, command.skillId, command.file);
+      case "skills.settings.write":
+        return skillManager.write(
+          command,
+          command.skillId,
+          command.file,
+          command.content,
+        );
+      case "skills.settings.delete":
+        return skillManager.delete(command, command.skillId);
       case "customization.inventory.read":
         return runtimeFor(command).readCustomizationInventory(
           {

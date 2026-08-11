@@ -29,6 +29,7 @@ import {
   Search,
   Server,
   SlidersHorizontal,
+  Sparkles,
   Sun,
   Trash2,
   X,
@@ -62,6 +63,7 @@ import {
 } from "@/lib/api";
 import { isMacosDesktopRuntime } from "@/lib/desktop-popout";
 import { WorkspaceSettings } from "./workspace-settings";
+import { SkillsSettings } from "./skills-settings";
 
 const reasoningOptions: Array<ReasoningEffort | ""> = [
   "",
@@ -246,9 +248,9 @@ function ProviderRow({
 export function SettingsPage({
   initialSection = "general",
 }: {
-  initialSection?: "general" | "workspaces";
+  initialSection?: "general" | "skills" | "workspaces";
 }) {
-  const [section, setSection] = useState<"general" | "workspaces">(
+  const [section, setSection] = useState<"general" | "skills" | "workspaces">(
     initialSection,
   );
   const queryClient = useQueryClient();
@@ -531,6 +533,20 @@ export function SettingsPage({
         >
           <Layers3 className="size-3.5" />
           Workspaces
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className={`h-10 rounded-none border-b-2 px-2.5 text-xs ${
+            section === "skills"
+              ? "border-foreground text-foreground"
+              : "border-transparent text-muted-foreground"
+          }`}
+          onClick={() => setSection("skills")}
+        >
+          <Sparkles className="size-3.5" />
+          Skills
         </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
@@ -948,6 +964,7 @@ export function SettingsPage({
             <WorkspaceSettings />
           </div>
         ) : null}
+        {section === "skills" ? <SkillsSettings /> : null}
       </div>
 
       {macosDesktopRuntime ? (
