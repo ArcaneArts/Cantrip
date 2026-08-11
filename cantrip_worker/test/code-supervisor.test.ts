@@ -53,8 +53,12 @@ async function fixture(
     mkdir(repository),
   ]);
   const source = `#!/usr/bin/env node
+const fs = require("node:fs");
 const http = require("node:http");
+const path = require("node:path");
 const port = Number(process.argv[process.argv.indexOf("--port") + 1]);
+const userDataDir = process.argv[process.argv.indexOf("--user-data-dir") + 1];
+fs.writeFileSync(path.join(userDataDir, "launch-args.json"), JSON.stringify(process.argv.slice(2)));
 const server = http.createServer((_request, response) => response.end("ready"));
 server.listen(port, "127.0.0.1", () => console.log("ready"));
 const stop = () => server.close(() => process.exit(0));
@@ -227,8 +231,24 @@ describe("Cantrip Code supervisor", () => {
     expect(workspace.settings).toMatchObject({
       "cantrip.sessionId": "one",
       "cantrip.worktreeId": "primary",
+      "security.workspace.trust.enabled": false,
       "workbench.colorTheme": "Cantrip Dark",
     });
+    const launchArguments = JSON.parse(
+      await readFile(
+        path.join(
+          dataDirectory,
+          "code",
+          "profiles",
+          createHash("sha256").update("default").digest("hex"),
+          "user-data",
+          "launch-args.json",
+        ),
+        "utf8",
+      ),
+    ) as string[];
+    expect(launchArguments).toContain("--disable-workspace-trust");
+    expect(launchArguments).toContain("oracle.oracle-java");
     expect(firstTarget.workspaceUri).toContain(
       path.basename(path.join(dataDirectory, "code")),
     );
@@ -307,7 +327,7 @@ describe("Cantrip Code supervisor", () => {
     socket.close();
   });
 
-  it("restores compatible session identity and lazily relaunches its profile", async () => {
+  it("restores compatible session identity and eagerly prewarms its profile", async () => {
     const {
       capabilities,
       dataDirectory,
@@ -328,12 +348,14 @@ describe("Cantrip Code supervisor", () => {
     supervisors.push(restored);
     await restored.start();
     expect(restored.status("restored")).toMatchObject({
-      status: "offline",
-      processInstanceId: null,
+      status: "running",
     });
     const reopened = await restored.open(command);
     expect(reopened.status).toBe("running");
     expect(reopened.processInstanceId).not.toBe(first.processInstanceId);
+    expect(reopened.processInstanceId).toBe(
+      restored.status("restored").processInstanceId,
+    );
   });
 
   it("evicts unattached idle sessions but preserves active tunnel streams", async () => {

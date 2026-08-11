@@ -68,6 +68,7 @@ interface ProfileProcess {
   port: number | null;
   profileId: string;
   profileKey: string;
+  ready: boolean;
   restartTimer: ReturnType<typeof setTimeout> | null;
   sessions: Set<string>;
   stopping: boolean;
@@ -97,6 +98,9 @@ const CRASH_WINDOW_MS = 5 * 60_000;
 const PROCESS_STOP_TIMEOUT_MS = 2_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60_000;
 const RUNTIME_STATE_SCHEMA_VERSION = 2;
+// Oracle Java eagerly imports every nested Gradle project and provides no
+// configuration switch for disabling that startup behavior.
+const DEFAULT_DISABLED_EXTENSIONS = ["oracle.oracle-java"] as const;
 
 const THEME_NAMES: Record<CodeAppearance, string> = {
   light: "Cantrip Light",
@@ -215,6 +219,7 @@ export class CodeSupervisor {
       this.#bridge.start(),
     ]);
     await this.#restoreState();
+    await this.#prewarmRestoredProfiles();
     this.#idleSweepTimer = setInterval(() => {
       void this.evictIdleSessions().catch(() => undefined);
     }, this.#idleSweepIntervalMs);
@@ -441,7 +446,8 @@ export class CodeSupervisor {
       !profile?.child ||
       profile.port === null ||
       !profile.connectionToken ||
-      !profile.instanceId
+      !profile.instanceId ||
+      !profile.ready
     ) {
       throw new Error("Cantrip Code session is not running.");
     }
@@ -541,6 +547,7 @@ export class CodeSupervisor {
       port: null,
       profileId,
       profileKey,
+      ready: false,
       restartTimer: null,
       sessions: new Set(),
       stopping: false,
@@ -550,12 +557,38 @@ export class CodeSupervisor {
   }
 
   async #ensureProfile(profile: ProfileProcess): Promise<void> {
-    if (profile.child && profile.port !== null) return;
+    if (profile.child && profile.port !== null && profile.ready) return;
     if (profile.launchPromise) return profile.launchPromise;
     profile.launchPromise = this.#launchProfile(profile).finally(() => {
       profile.launchPromise = null;
     });
     return profile.launchPromise;
+  }
+
+  async #prewarmRestoredProfiles(): Promise<void> {
+    if (!this.#installation || this.#profiles.size === 0) return;
+    await Promise.all(
+      [...this.#profiles.values()].map(async (profile) => {
+        try {
+          await this.#ensureProfile(profile);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          await this.#log(
+            profile.logPath,
+            `profile prewarm failed: ${message}`,
+          );
+          for (const sessionId of profile.sessions) {
+            const session = this.#sessions.get(sessionId);
+            if (!session) continue;
+            session.status = "offline";
+            session.lastError = message;
+            session.lastActivityAt = isoNow();
+          }
+        }
+      }),
+    );
+    await this.#persistState();
   }
 
   async #launchProfile(profile: ProfileProcess): Promise<void> {
@@ -569,6 +602,7 @@ export class CodeSupervisor {
     const connectionToken = randomBytes(32).toString("hex");
     const instanceId = randomUUID();
     profile.stopping = false;
+    profile.ready = false;
     profile.port = port;
     profile.connectionToken = connectionToken;
     profile.instanceId = instanceId;
@@ -580,6 +614,7 @@ export class CodeSupervisor {
       "--connection-token",
       connectionToken,
       "--accept-server-license-terms",
+      "--disable-workspace-trust",
       "--server-data-dir",
       path.join(profileDirectory, "server-data"),
       "--user-data-dir",
@@ -594,6 +629,9 @@ export class CodeSupervisor {
       "--log",
       "warn",
     ];
+    for (const extensionId of DEFAULT_DISABLED_EXTENSIONS) {
+      args.push("--disable-extension", extensionId);
+    }
     const child = spawnGuardedProcess(installation.entrypoint, args, {
       cwd: installation.root,
       env: {
@@ -626,6 +664,7 @@ export class CodeSupervisor {
     if (profile.child !== child) {
       throw new Error("Cantrip Code process changed during startup.");
     }
+    profile.ready = true;
     const now = isoNow();
     for (const sessionId of profile.sessions) {
       const session = this.#sessions.get(sessionId);
@@ -655,6 +694,7 @@ export class CodeSupervisor {
     profile.port = null;
     profile.connectionToken = null;
     profile.instanceId = null;
+    profile.ready = false;
     const intentional = profile.stopping || this.#closed;
     const message = intentional
       ? null
@@ -764,7 +804,7 @@ export class CodeSupervisor {
       "cantrip.worktreeName": session.worktreeName,
       "extensions.autoCheckUpdates": false,
       "extensions.autoUpdate": false,
-      "security.workspace.trust.enabled": true,
+      "security.workspace.trust.enabled": false,
       "telemetry.telemetryLevel": "off",
       "update.mode": "none",
     };
