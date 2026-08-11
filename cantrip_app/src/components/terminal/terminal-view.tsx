@@ -11,6 +11,7 @@ import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
 import { terminalCommandInput } from "./terminal-command-palette";
 import { rowsWithoutPartiallyVisibleLastLine } from "./terminal-fit";
 import { TerminalScriptCommandDialog } from "./terminal-script-command-dialog";
+import { terminalBackground } from "./terminal-theme";
 
 import "@xterm/xterm/css/xterm.css";
 
@@ -19,7 +20,10 @@ const loadedTerminalIds = new Set<string>();
 function terminalTheme() {
   const styles = getComputedStyle(document.documentElement);
   return {
-    background: styles.getPropertyValue("--background").trim(),
+    background: terminalBackground(
+      styles.getPropertyValue("--background").trim(),
+      document.documentElement.classList.contains("pro-mode"),
+    ),
     foreground: styles.getPropertyValue("--foreground").trim(),
     cursor: styles.getPropertyValue("--foreground").trim(),
     selectionBackground: styles.getPropertyValue("--accent").trim(),
@@ -67,6 +71,7 @@ export function TerminalView({
 
     const xterm = new Terminal({
       allowProposedApi: false,
+      allowTransparency: true,
       convertEol: false,
       cursorBlink: true,
       fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
@@ -206,7 +211,10 @@ export function TerminalView({
   };
 
   return (
-    <div className="relative flex min-h-0 flex-1 bg-background">
+    <div
+      className="relative flex min-h-0 flex-1 bg-background"
+      data-slot="terminal-view"
+    >
       <div
         ref={containerRef}
         className="min-h-0 min-w-0 flex-1 p-3"

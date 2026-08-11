@@ -289,6 +289,23 @@ function modelDisplayName(model: ModelProfileSummary): string {
   return `${model.name}${routeCount > 1 ? ` · Auto (${routeCount} routes)` : ""}`;
 }
 
+function codeAppearanceFor(
+  dark: boolean,
+  highContrast: boolean,
+  proMode: boolean,
+): CodeAppearance {
+  if (proMode) {
+    if (highContrast) {
+      return dark ? "pro-high-contrast-dark" : "pro-high-contrast-light";
+    }
+    return dark ? "pro-dark" : "pro-light";
+  }
+  if (highContrast) {
+    return dark ? "high-contrast-dark" : "high-contrast-light";
+  }
+  return dark ? "dark" : "light";
+}
+
 const TerminalView = lazy(() =>
   import("@/components/terminal/terminal-view").then((module) => ({
     default: module.TerminalView,
@@ -2418,6 +2435,7 @@ export function App() {
       ? "dark"
       : "light",
   );
+  const [proModeActive, setProModeActive] = useState(false);
   const contentRootRef = useRef<HTMLElement>(null);
   const scrolledContentRef = useRef(new Set<EventTarget>());
   const sidebarRef = useRef<HTMLElement>(null);
@@ -3569,13 +3587,11 @@ export function App() {
         settings.data?.preferences.highContrast ?? false,
       );
       setCodeAppearance(
-        settings.data?.preferences.highContrast
-          ? dark
-            ? "high-contrast-dark"
-            : "high-contrast-light"
-          : dark
-            ? "dark"
-            : "light",
+        codeAppearanceFor(
+          dark,
+          settings.data?.preferences.highContrast ?? false,
+          proModeActive,
+        ),
       );
       document.documentElement.style.colorScheme = dark ? "dark" : "light";
       void updateDesktopWindowTheme(dark ? "dark" : "light").catch(
@@ -3592,6 +3608,7 @@ export function App() {
   }, [
     settings.data?.preferences.highContrast,
     settings.data?.preferences.theme,
+    proModeActive,
   ]);
 
   useEffect(() => {
@@ -3610,15 +3627,20 @@ export function App() {
       "pro-mode",
       supported && requested,
     );
+    setProModeActive(supported && requested);
     if (!supported) return;
     void updateMacosProMode(requested)
       .then((enabled) => {
         if (active) {
           document.documentElement.classList.toggle("pro-mode", enabled);
+          setProModeActive(enabled);
         }
       })
       .catch((error: unknown) => {
-        if (active) document.documentElement.classList.remove("pro-mode");
+        if (active) {
+          document.documentElement.classList.remove("pro-mode");
+          setProModeActive(false);
+        }
         console.error("Could not update macOS Pro Mode", error);
       });
     return () => {

@@ -63,5 +63,15 @@ test("maps every Cantrip appearance to its bundled editor theme", () => {
     themeNameForAppearance("high-contrast-dark"),
     "Cantrip High Contrast Dark",
   );
+  assert.equal(themeNameForAppearance("pro-light"), "Cantrip Pro Light");
+  assert.equal(themeNameForAppearance("pro-dark"), "Cantrip Pro Dark");
+  assert.equal(
+    themeNameForAppearance("pro-high-contrast-light"),
+    "Cantrip Pro High Contrast Light",
+  );
+  assert.equal(
+    themeNameForAppearance("pro-high-contrast-dark"),
+    "Cantrip Pro High Contrast Dark",
+  );
   assert.equal(themeNameForAppearance("independent"), null);
 });

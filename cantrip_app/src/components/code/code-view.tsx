@@ -332,13 +332,16 @@ export function CodeView({
   useEffect(() => () => onHeaderChange?.(null), [onHeaderChange]);
 
   return (
-    <div className="relative flex min-h-0 flex-1 overflow-hidden bg-background">
+    <div
+      className="relative flex min-h-0 flex-1 overflow-hidden bg-background"
+      data-slot="code-view"
+    >
       {attachment ? (
         <>
           <iframe
             key={attachment.attachmentId}
             allow="clipboard-read; clipboard-write"
-            className="min-h-0 w-full flex-1 border-0 bg-background"
+            className="min-h-0 w-full flex-1 border-0 bg-transparent"
             onLoad={() => setFrameLoaded(true)}
             referrerPolicy="no-referrer"
             ref={frameRef}

@@ -107,6 +107,10 @@ const THEME_NAMES: Record<CodeAppearance, string> = {
   dark: "Cantrip Dark",
   "high-contrast-light": "Cantrip High Contrast Light",
   "high-contrast-dark": "Cantrip High Contrast Dark",
+  "pro-light": "Cantrip Pro Light",
+  "pro-dark": "Cantrip Pro Dark",
+  "pro-high-contrast-light": "Cantrip Pro High Contrast Light",
+  "pro-high-contrast-dark": "Cantrip Pro High Contrast Dark",
 };
 
 function stableKey(value: string): string {
