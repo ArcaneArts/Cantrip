@@ -40,6 +40,7 @@ function toAutomation(
     name: row.name,
     prompt: row.prompt,
     schedule: row.schedule,
+    condition: row.condition,
     enabled: row.enabled,
     revision: row.revision,
     nextRunAt: row.nextRunAt ? toISOString(row.nextRunAt) : null,
@@ -120,6 +121,7 @@ export class ProjectAutomationRepository {
         name: input.name,
         prompt: input.prompt,
         schedule: input.schedule,
+        condition: input.condition,
         enabled: input.enabled,
         revision: 1,
         nextRunAt,
@@ -260,6 +262,9 @@ export class ProjectAutomationRepository {
       .set({
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.prompt !== undefined ? { prompt: input.prompt } : {}),
+        ...(input.condition !== undefined
+          ? { condition: input.condition }
+          : {}),
         chatId,
         schedule,
         enabled,
@@ -370,7 +375,7 @@ export class ProjectAutomationRepository {
 
   async finishDispatch(
     automationId: string,
-    status: "started" | "queued" | "failed",
+    status: "started" | "queued" | "skipped" | "failed",
     error: string | null = null,
   ): Promise<void> {
     await this.database

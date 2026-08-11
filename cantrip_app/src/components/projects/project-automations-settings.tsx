@@ -1,7 +1,9 @@
 import {
+  describeProjectAutomationCondition,
   describeProjectAutomationSchedule,
   projectAutomationCreateSchema,
   type ProjectAutomation,
+  type ProjectAutomationCondition,
   type ProjectAutomationIntervalUnit,
   type ProjectAutomationSchedule,
 } from "@cantrip/protocol/automations";
@@ -10,6 +12,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlarmClock,
   CalendarClock,
+  FileText,
+  ListChecks,
   Loader2,
   Pause,
   Pencil,
@@ -30,6 +34,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { SettingsTabBar } from "@/components/settings/settings-controls";
 import {
   createProjectAutomation,
   deleteProjectAutomation,
@@ -82,6 +87,14 @@ function formatRun(value: string | null): string {
 }
 
 type ScheduleMode = ProjectAutomationSchedule["kind"];
+type ConditionMode = "none" | ProjectAutomationCondition["type"];
+type AutomationDialogTab = "details" | "schedule" | "condition";
+
+const automationDialogTabs = [
+  { id: "details", label: "Details", icon: FileText },
+  { id: "schedule", label: "Schedule", icon: CalendarClock },
+  { id: "condition", label: "Condition", icon: ListChecks },
+] as const;
 
 function AutomationDialog({
   automation,
@@ -100,6 +113,7 @@ function AutomationDialog({
   const [name, setName] = useState("");
   const [chatId, setChatId] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [activeTab, setActiveTab] = useState<AutomationDialogTab>("details");
   const [mode, setMode] = useState<ScheduleMode>("interval");
   const [every, setEvery] = useState("5");
   const [unit, setUnit] = useState<ProjectAutomationIntervalUnit>("minute");
@@ -107,6 +121,9 @@ function AutomationDialog({
   const [weekdays, setWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [weeklyTime, setWeeklyTime] = useState("09:00");
   const [cronExpression, setCronExpression] = useState("0 9 * * 1-5");
+  const [conditionMode, setConditionMode] = useState<ConditionMode>("none");
+  const [conditionScript, setConditionScript] = useState("");
+  const [minimumOpenIssues, setMinimumOpenIssues] = useState("1");
   const [timeZone, setTimeZone] = useState(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
   );
@@ -114,8 +131,15 @@ function AutomationDialog({
   useEffect(() => {
     if (!open) return;
     setName(automation?.name ?? "");
+    setActiveTab("details");
     setChatId(automation?.chatId ?? chats[0]?.id ?? "");
     setPrompt(automation?.prompt ?? "");
+    const condition = automation?.condition;
+    setConditionMode(condition?.type ?? "none");
+    setConditionScript(condition?.type === "script" ? condition.script : "");
+    setMinimumOpenIssues(
+      condition?.type === "open-issues" ? String(condition.minimum) : "1",
+    );
     const schedule = automation?.schedule;
     setMode(schedule?.kind ?? "interval");
     if (schedule?.kind === "interval") {
@@ -170,11 +194,18 @@ function AutomationDialog({
           timeZone,
         };
       }
+      const condition: ProjectAutomationCondition | null =
+        conditionMode === "script"
+          ? { type: "script", script: conditionScript }
+          : conditionMode === "open-issues"
+            ? { type: "open-issues", minimum: Number(minimumOpenIssues) }
+            : null;
       const input = projectAutomationCreateSchema.parse({
         name,
         chatId,
         prompt,
         schedule,
+        condition,
         enabled: automation?.enabled ?? true,
       });
       return automation
@@ -202,135 +233,171 @@ function AutomationDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-1.5 text-sm">
-              <span className="font-medium">Name</span>
-              <Input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Review open pull requests"
-              />
-            </label>
-            <label className="grid gap-1.5 text-sm">
-              <span className="font-medium">Target chat</span>
-              <select
-                className="h-9 rounded-md border bg-background px-3 text-sm"
-                value={chatId}
-                onChange={(event) => setChatId(event.target.value)}
-              >
-                {chats.map((chat) => (
-                  <option key={chat.id} value={chat.id}>
-                    {chat.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+        <SettingsTabBar<AutomationDialogTab>
+          activeTab={activeTab}
+          ariaLabel="Automation sections"
+          onTabChange={setActiveTab}
+          tabs={automationDialogTabs}
+        />
 
-          <label className="grid gap-1.5 text-sm">
-            <span className="font-medium">Prompt</span>
-            <textarea
-              className="min-h-28 resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none ring-ring placeholder:text-muted-foreground focus:ring-2"
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              placeholder="Check the project and report anything that needs attention."
-            />
-          </label>
-
-          <div className="grid gap-3 rounded-lg border p-3">
-            <label className="grid gap-1.5 text-sm sm:max-w-xs">
-              <span className="font-medium">Schedule</span>
-              <select
-                className="h-9 rounded-md border bg-background px-3 text-sm"
-                value={mode}
-                onChange={(event) =>
-                  setMode(event.target.value as ScheduleMode)
-                }
-              >
-                <option value="interval">Every interval</option>
-                <option value="weekly">Selected weekdays</option>
-                <option value="cron">Advanced cron</option>
-              </select>
-            </label>
-
-            {mode === "interval" ? (
-              <div className="grid gap-3 sm:grid-cols-[8rem_1fr_1.4fr]">
+        <div className="min-h-[22rem] py-1">
+          {activeTab === "details" ? (
+            <div className="grid gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <label className="grid gap-1.5 text-sm">
-                  <span className="font-medium">Every</span>
+                  <span className="font-medium">Name</span>
                   <Input
-                    min={1}
-                    type="number"
-                    value={every}
-                    onChange={(event) => setEvery(event.target.value)}
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="Review open pull requests"
                   />
                 </label>
                 <label className="grid gap-1.5 text-sm">
-                  <span className="font-medium">Unit</span>
+                  <span className="font-medium">Target chat</span>
                   <select
-                    className="h-9 rounded-md border bg-background px-3 text-sm capitalize"
-                    value={unit}
-                    onChange={(event) =>
-                      setUnit(
-                        event.target.value as ProjectAutomationIntervalUnit,
-                      )
-                    }
+                    className="h-9 rounded-md border bg-background px-3 text-sm"
+                    value={chatId}
+                    onChange={(event) => setChatId(event.target.value)}
                   >
-                    {intervalUnits.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
+                    {chats.map((chat) => (
+                      <option key={chat.id} value={chat.id}>
+                        {chat.title}
                       </option>
                     ))}
                   </select>
                 </label>
-                <label className="grid gap-1.5 text-sm">
-                  <span className="font-medium">First run / anchor</span>
-                  <Input
-                    type="datetime-local"
-                    value={startsAt}
-                    onChange={(event) => setStartsAt(event.target.value)}
-                  />
-                </label>
-                <p className="text-xs text-muted-foreground sm:col-span-3">
-                  Month and year intervals stay anchored to this calendar date.
-                  For example, choose every 2 years and September 27 for a
-                  biennial run.
-                </p>
               </div>
-            ) : null}
 
-            {mode === "weekly" ? (
-              <div className="grid gap-3">
-                <div className="flex flex-wrap gap-1.5">
-                  {dayOptions.map((day) => {
-                    const selected = weekdays.includes(day.value);
-                    return (
-                      <Button
-                        key={day.value}
-                        type="button"
-                        size="sm"
-                        variant={selected ? "default" : "outline"}
-                        aria-pressed={selected}
-                        onClick={() =>
-                          setWeekdays((current) =>
-                            selected
-                              ? current.filter((value) => value !== day.value)
-                              : [...current, day.value].sort(),
-                          )
-                        }
-                      >
-                        {day.label}
-                      </Button>
-                    );
-                  })}
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-1.5 text-sm">
+                <span className="font-medium">Prompt</span>
+                <textarea
+                  className="min-h-40 resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none ring-ring placeholder:text-muted-foreground focus:ring-2"
+                  value={prompt}
+                  onChange={(event) => setPrompt(event.target.value)}
+                  placeholder="Check the project and report anything that needs attention."
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {activeTab === "schedule" ? (
+            <div className="grid gap-4">
+              <label className="grid gap-1.5 text-sm sm:max-w-xs">
+                <span className="font-medium">Schedule</span>
+                <select
+                  className="h-9 rounded-md border bg-background px-3 text-sm"
+                  value={mode}
+                  onChange={(event) =>
+                    setMode(event.target.value as ScheduleMode)
+                  }
+                >
+                  <option value="interval">Every interval</option>
+                  <option value="weekly">Selected weekdays</option>
+                  <option value="cron">Advanced cron</option>
+                </select>
+              </label>
+
+              {mode === "interval" ? (
+                <div className="grid gap-3 sm:grid-cols-[8rem_1fr_1.4fr]">
                   <label className="grid gap-1.5 text-sm">
-                    <span className="font-medium">Time</span>
+                    <span className="font-medium">Every</span>
                     <Input
-                      type="time"
-                      value={weeklyTime}
-                      onChange={(event) => setWeeklyTime(event.target.value)}
+                      min={1}
+                      type="number"
+                      value={every}
+                      onChange={(event) => setEvery(event.target.value)}
+                    />
+                  </label>
+                  <label className="grid gap-1.5 text-sm">
+                    <span className="font-medium">Unit</span>
+                    <select
+                      className="h-9 rounded-md border bg-background px-3 text-sm capitalize"
+                      value={unit}
+                      onChange={(event) =>
+                        setUnit(
+                          event.target.value as ProjectAutomationIntervalUnit,
+                        )
+                      }
+                    >
+                      {intervalUnits.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5 text-sm">
+                    <span className="font-medium">First run / anchor</span>
+                    <Input
+                      type="datetime-local"
+                      value={startsAt}
+                      onChange={(event) => setStartsAt(event.target.value)}
+                    />
+                  </label>
+                  <p className="text-xs text-muted-foreground sm:col-span-3">
+                    Month and year intervals stay anchored to this calendar
+                    date. For example, choose every 2 years and September 27 for
+                    a biennial run.
+                  </p>
+                </div>
+              ) : null}
+
+              {mode === "weekly" ? (
+                <div className="grid gap-3">
+                  <div className="flex flex-wrap gap-1.5">
+                    {dayOptions.map((day) => {
+                      const selected = weekdays.includes(day.value);
+                      return (
+                        <Button
+                          key={day.value}
+                          type="button"
+                          size="sm"
+                          variant={selected ? "default" : "outline"}
+                          aria-pressed={selected}
+                          onClick={() =>
+                            setWeekdays((current) =>
+                              selected
+                                ? current.filter((value) => value !== day.value)
+                                : [...current, day.value].sort(),
+                            )
+                          }
+                        >
+                          {day.label}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="grid gap-1.5 text-sm">
+                      <span className="font-medium">Time</span>
+                      <Input
+                        type="time"
+                        value={weeklyTime}
+                        onChange={(event) => setWeeklyTime(event.target.value)}
+                      />
+                    </label>
+                    <label className="grid gap-1.5 text-sm">
+                      <span className="font-medium">Time zone</span>
+                      <Input
+                        value={timeZone}
+                        onChange={(event) => setTimeZone(event.target.value)}
+                      />
+                    </label>
+                  </div>
+                </div>
+              ) : null}
+
+              {mode === "cron" ? (
+                <div className="grid gap-3 sm:grid-cols-[1fr_1fr]">
+                  <label className="grid gap-1.5 text-sm">
+                    <span className="font-medium">Cron expression</span>
+                    <Input
+                      className="font-mono"
+                      value={cronExpression}
+                      onChange={(event) =>
+                        setCronExpression(event.target.value)
+                      }
+                      placeholder="0 9 * * 1-5"
                     />
                   </label>
                   <label className="grid gap-1.5 text-sm">
@@ -340,36 +407,83 @@ function AutomationDialog({
                       onChange={(event) => setTimeZone(event.target.value)}
                     />
                   </label>
+                  <p className="text-xs text-muted-foreground sm:col-span-2">
+                    Standard five-field cron: minute, hour, day of month, month,
+                    weekday. Example: <code>0 9 * * 1-5</code> runs at 9:00 AM
+                    on weekdays.
+                  </p>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
+          ) : null}
 
-            {mode === "cron" ? (
-              <div className="grid gap-3 sm:grid-cols-[1fr_1fr]">
-                <label className="grid gap-1.5 text-sm">
-                  <span className="font-medium">Cron expression</span>
-                  <Input
-                    className="font-mono"
-                    value={cronExpression}
-                    onChange={(event) => setCronExpression(event.target.value)}
-                    placeholder="0 9 * * 1-5"
-                  />
-                </label>
-                <label className="grid gap-1.5 text-sm">
-                  <span className="font-medium">Time zone</span>
-                  <Input
-                    value={timeZone}
-                    onChange={(event) => setTimeZone(event.target.value)}
-                  />
-                </label>
-                <p className="text-xs text-muted-foreground sm:col-span-2">
-                  Standard five-field cron: minute, hour, day of month, month,
-                  weekday. Example: <code>0 9 * * 1-5</code> runs at 9:00 AM on
-                  weekdays.
+          {activeTab === "condition" ? (
+            <div className="grid gap-4">
+              <div>
+                <h3 className="text-sm font-medium">Run condition</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  The assigned worker checks this condition when an occurrence
+                  is due. A false result skips that occurrence and keeps the
+                  automation enabled for its next scheduled check.
                 </p>
               </div>
-            ) : null}
-          </div>
+              <label className="grid gap-1.5 text-sm sm:max-w-md">
+                <span className="font-medium">Condition type</span>
+                <select
+                  className="h-9 rounded-md border bg-background px-3 text-sm"
+                  value={conditionMode}
+                  onChange={(event) =>
+                    setConditionMode(event.target.value as ConditionMode)
+                  }
+                >
+                  <option value="none">No condition</option>
+                  <option value="script">Script exit code</option>
+                  <option value="open-issues">Minimum open issues</option>
+                </select>
+              </label>
+
+              {conditionMode === "script" ? (
+                <label className="grid gap-1.5 text-sm">
+                  <span className="font-medium">Script</span>
+                  <textarea
+                    className="min-h-40 resize-y rounded-md border bg-background px-3 py-2 font-mono text-sm outline-none ring-ring placeholder:text-muted-foreground focus:ring-2"
+                    value={conditionScript}
+                    onChange={(event) => setConditionScript(event.target.value)}
+                    placeholder="pnpm test"
+                    spellCheck={false}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Runs in the target chat&apos;s active worktree. Exit code 0
+                    allows the automation; every other exit code skips it.
+                  </span>
+                </label>
+              ) : null}
+
+              {conditionMode === "open-issues" ? (
+                <label className="grid max-w-xs gap-1.5 text-sm">
+                  <span className="font-medium">Minimum open issues</span>
+                  <Input
+                    min={1}
+                    type="number"
+                    value={minimumOpenIssues}
+                    onChange={(event) =>
+                      setMinimumOpenIssues(event.target.value)
+                    }
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Runs only when the GitHub issue tracker contains at least
+                    this many open issues. Pull requests are not counted.
+                  </span>
+                </label>
+              ) : null}
+
+              {conditionMode === "none" ? (
+                <p className="border-y py-4 text-sm text-muted-foreground">
+                  Every due occurrence will run without an additional check.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         {save.error ? (
@@ -519,9 +633,17 @@ export function ProjectAutomationsSettings({
                   </div>
                 </div>
                 <p className="truncate text-sm">{automation.chatTitle}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {describeProjectAutomationSchedule(automation.schedule)}
-                </p>
+                <div className="min-w-0 text-xs text-muted-foreground">
+                  <p className="truncate">
+                    {describeProjectAutomationSchedule(automation.schedule)}
+                  </p>
+                  {automation.condition ? (
+                    <p className="truncate">
+                      Condition:{" "}
+                      {describeProjectAutomationCondition(automation.condition)}
+                    </p>
+                  ) : null}
+                </div>
                 <div className="min-w-0 text-xs">
                   <p className="truncate">
                     {automation.enabled

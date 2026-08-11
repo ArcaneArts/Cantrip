@@ -118,6 +118,36 @@ describe("GitHub project files", () => {
       "repo\0create\0ArcaneArts/cantrip-labs\0--private\0--description\0A Cantrip project",
     );
   });
+
+  it("counts open issues with GitHub search", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-github-issue-count-test-"),
+    );
+    directories.push(dataDirectory);
+    const binDirectory = path.join(dataDirectory, "bin");
+    const logPath = path.join(dataDirectory, "gh.log");
+    await mkdir(binDirectory);
+    const fakeGh = path.join(binDirectory, "gh");
+    await writeFile(
+      fakeGh,
+      [
+        "#!/usr/bin/env node",
+        'const fs = require("node:fs");',
+        `fs.writeFileSync(${JSON.stringify(logPath)}, process.argv.slice(2).join("\\0"));`,
+        "process.stdout.write(JSON.stringify({ total_count: 7, items: [] }));",
+      ].join("\n"),
+    );
+    await chmod(fakeGh, 0o755);
+    process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
+
+    await expect(
+      new GithubClient(dataDirectory).countOpenIssues("ArcaneArts/Cantrip"),
+    ).resolves.toBe(7);
+    expect(await readFile(logPath, "utf8")).toContain(
+      "q=repo:ArcaneArts/Cantrip is:issue is:open",
+    );
+  });
+
   it("lists issues and pull requests separately and supports issue detail mutations", async () => {
     const dataDirectory = await mkdtemp(
       path.join(tmpdir(), "cantrip-github-issues-test-"),

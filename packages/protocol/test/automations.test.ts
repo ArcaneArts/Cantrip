@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  describeProjectAutomationCondition,
   describeProjectAutomationSchedule,
   firstProjectAutomationRunAt,
   nextProjectAutomationRunAt,
+  projectAutomationConditionSchema,
+  projectAutomationCreateSchema,
   projectAutomationScheduleSchema,
 } from "../src/automations.js";
 
@@ -79,5 +82,47 @@ describe("project automation schedules", () => {
         timeZone: "Mars/Olympus",
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("project automation conditions", () => {
+  it("supports one script or open-issue condition", () => {
+    expect(
+      projectAutomationConditionSchema.parse({
+        type: "script",
+        script: "pnpm test",
+      }),
+    ).toEqual({ type: "script", script: "pnpm test" });
+    expect(
+      projectAutomationConditionSchema.parse({ type: "open-issues" }),
+    ).toEqual({ type: "open-issues", minimum: 1 });
+    expect(
+      projectAutomationConditionSchema.safeParse({
+        type: "open-issues",
+        minimum: 0,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps conditions optional for existing automations", () => {
+    const input = projectAutomationCreateSchema.parse({
+      name: "Review",
+      chatId: "chat-one",
+      prompt: "Review the project.",
+      schedule: {
+        kind: "interval",
+        every: 1,
+        unit: "hour",
+        startsAt: "2026-08-11T12:00:00.000Z",
+      },
+    });
+
+    expect(input.condition).toBeNull();
+    expect(
+      describeProjectAutomationCondition({
+        type: "open-issues",
+        minimum: 2,
+      }),
+    ).toBe("At least 2 open issues");
   });
 });
