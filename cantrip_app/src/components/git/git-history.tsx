@@ -135,7 +135,7 @@ export function graphRows(commits: GitCommit[]): {
   maxLanes: number;
   rows: GraphRow[];
 } {
-  let lanes: string[] = [];
+  let lanes: Array<string | null> = [];
   const colors = new Map<string, string>();
   let colorIndex = 0;
   let maxLanes = 1;
@@ -152,32 +152,63 @@ export function graphRows(commits: GitCommit[]): {
     let lane = lanes.indexOf(commit.hash);
     const introduced = lane < 0;
     if (introduced) {
-      lane = lanes.length;
-      lanes.push(commit.hash);
+      const vacantLane = lanes.indexOf(null);
+      lane = vacantLane < 0 ? lanes.length : vacantLane;
+      lanes[lane] = commit.hash;
     }
     const nodeColor = colorFor(commit.hash);
     const before = [...lanes];
-    const next = before.filter((_, index) => index !== lane);
-    for (const [parentIndex, parent] of commit.parents.entries()) {
-      if (!next.includes(parent)) next.splice(lane + parentIndex, 0, parent);
-      if (parentIndex === 0) colors.set(parent, colorFor(commit.hash));
-      else colorFor(parent);
-    }
+    const next = [...before];
+    next[lane] = null;
+    const edges = commit.parents.map((parent, parentIndex) => {
+      let to = next.indexOf(parent);
+      const parentAlreadyHasLane = to >= 0;
+      if (to < 0) {
+        const vacantLane = next.findIndex(
+          (hash, index) => hash === null && index >= lane,
+        );
+        const earlierVacantLane = next.indexOf(null);
+        to =
+          vacantLane >= 0
+            ? vacantLane
+            : earlierVacantLane >= 0
+              ? earlierVacantLane
+              : next.length;
+        next[to] = parent;
+      }
+      if (parentIndex === 0 && !parentAlreadyHasLane) {
+        colors.set(parent, nodeColor);
+      } else {
+        colorFor(parent);
+      }
+      return {
+        from: lane,
+        to,
+        color: parentIndex === 0 ? nodeColor : colorFor(parent),
+      };
+    });
     const passthrough = before.flatMap((hash, from) => {
-      if (from === lane) return [];
+      if (!hash || from === lane) return [];
       const to = next.indexOf(hash);
       return to < 0 ? [] : [{ from, to, color: colorFor(hash) }];
     });
-    const edges = commit.parents.map((parent) => ({
-      from: lane,
-      to: next.indexOf(parent),
-      color: colorFor(parent),
-    }));
+    while (next.at(-1) === null) next.pop();
     lanes = next;
     maxLanes = Math.max(maxLanes, before.length, next.length);
     return { commit, edges, introduced, lane, nodeColor, passthrough };
   });
   return { maxLanes, rows };
+}
+
+export function graphCurvePath(
+  fromX: number,
+  toX: number,
+  startY: number,
+  endY: number,
+): string {
+  if (fromX === toX) return `M ${fromX} ${startY} L ${toX} ${endY}`;
+  const middleY = (startY + endY) / 2;
+  return `M ${fromX} ${startY} C ${fromX} ${middleY}, ${toX} ${middleY}, ${toX} ${endY}`;
 }
 
 export type HistoryDisplayRow =
@@ -282,18 +313,22 @@ function CommitGraph({
       {row.passthrough.map((edge, index) => (
         <path
           key={`p:${index}`}
-          d={`M ${x(edge.from)} -1 C ${x(edge.from)} 12, ${x(edge.to)} 20, ${x(edge.to)} 33`}
+          d={graphCurvePath(x(edge.from), x(edge.to), -1, 33)}
           fill="none"
           stroke={edge.color}
+          strokeLinecap="round"
+          strokeLinejoin="round"
           strokeWidth="2"
         />
       ))}
       {row.edges.map((edge, index) => (
         <path
           key={`e:${index}`}
-          d={`M ${x(edge.from)} 16 C ${x(edge.from)} 23, ${x(edge.to)} 24, ${x(edge.to)} 33`}
+          d={graphCurvePath(x(edge.from), x(edge.to), 16, 33)}
           fill="none"
           stroke={edge.color}
+          strokeLinecap="round"
+          strokeLinejoin="round"
           strokeWidth="2"
         />
       ))}
