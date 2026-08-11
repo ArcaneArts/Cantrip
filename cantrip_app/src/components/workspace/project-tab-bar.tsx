@@ -11,6 +11,12 @@ import { CopyPlus, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { ProjectSurfaceIcon, surfaceKindLabel } from "./project-surface-icon";
+import {
+  InlineRenameLabel,
+  SurfaceActionsMenu,
+  surfaceMenuContentClass,
+  surfaceMenuItemClass,
+} from "./surface-tab-controls";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,10 +38,8 @@ import {
 
 export type ProjectSurfaceCreateKind = ProjectSurface["kind"];
 
-const menuContentClass =
-  "z-50 min-w-40 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
-const menuItemClass =
-  "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
+const menuContentClass = surfaceMenuContentClass;
+const menuItemClass = surfaceMenuItemClass;
 
 const createKinds: ProjectSurfaceCreateKind[] = [
   "chat",
@@ -134,20 +138,13 @@ export function ProjectTabBar({
                         )}
                       >
                         {editing ? (
-                          <input
-                            autoFocus
-                            aria-label={`Rename ${surface.title}`}
+                          <InlineRenameLabel
+                            ariaLabel={`Rename ${surface.title}`}
                             className="mx-1 h-7 w-36 rounded border bg-background px-2 text-xs text-foreground outline-none ring-ring focus:ring-2"
                             value={renameValue}
-                            onBlur={() => finishRename(surface)}
-                            onChange={(event) =>
-                              setRenameValue(event.target.value)
-                            }
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") finishRename(surface);
-                              if (event.key === "Escape")
-                                setEditingTabKey(null);
-                            }}
+                            onCancel={() => setEditingTabKey(null)}
+                            onChange={setRenameValue}
+                            onSubmit={() => finishRename(surface)}
                           />
                         ) : (
                           <button
@@ -169,8 +166,16 @@ export function ProjectTabBar({
                           </button>
                         )}
                         {!editing ? (
-                          <DropdownMenu.Root>
-                            <DropdownMenu.Trigger asChild>
+                          <SurfaceActionsMenu
+                            title={surface.title}
+                            onDelete={() => setDeleteTarget(surface)}
+                            onDuplicate={
+                              surface.kind === "chat" && onDuplicate
+                                ? () => onDuplicate(surface)
+                                : undefined
+                            }
+                            onRename={() => beginRename(surface)}
+                            trigger={
                               <button
                                 type="button"
                                 className="mr-1 grid size-6 shrink-0 place-items-center rounded opacity-0 hover:bg-background/70 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
@@ -178,14 +183,8 @@ export function ProjectTabBar({
                               >
                                 <MoreHorizontal className="size-3.5" />
                               </button>
-                            </DropdownMenu.Trigger>
-                            <SurfaceActions
-                              surface={surface}
-                              onDelete={() => setDeleteTarget(surface)}
-                              onDuplicate={onDuplicate}
-                              onRename={() => beginRename(surface)}
-                            />
-                          </DropdownMenu.Root>
+                            }
+                          />
                         ) : null}
                         <span
                           aria-hidden="true"
@@ -346,45 +345,5 @@ function SortableProjectTabFrame({
     >
       {children}
     </div>
-  );
-}
-
-function SurfaceActions({
-  onDelete,
-  onDuplicate,
-  onRename,
-  surface,
-}: {
-  onDelete(): void;
-  onDuplicate?: (surface: ProjectSurface) => void;
-  onRename(): void;
-  surface: ProjectSurface;
-}) {
-  return (
-    <DropdownMenu.Portal>
-      <DropdownMenu.Content align="end" className={menuContentClass}>
-        <DropdownMenu.Item className={menuItemClass} onSelect={onRename}>
-          <Pencil className="size-4" /> Rename
-        </DropdownMenu.Item>
-        {surface.kind === "chat" && onDuplicate ? (
-          <DropdownMenu.Item
-            className={menuItemClass}
-            onSelect={() => onDuplicate(surface)}
-          >
-            <CopyPlus className="size-4" /> Duplicate
-          </DropdownMenu.Item>
-        ) : null}
-        <DropdownMenu.Separator className="my-1 h-px bg-border" />
-        <DropdownMenu.Item
-          className={cn(
-            menuItemClass,
-            "text-destructive focus:bg-destructive/10",
-          )}
-          onSelect={onDelete}
-        >
-          <Trash2 className="size-4" /> Delete
-        </DropdownMenu.Item>
-      </DropdownMenu.Content>
-    </DropdownMenu.Portal>
   );
 }

@@ -29,7 +29,6 @@ import {
   FolderTree,
   GitCommitHorizontal,
   Globe2,
-  GripVertical,
   Loader2,
   MessageSquare,
   MonitorUp,
@@ -40,12 +39,7 @@ import {
   SquareTerminal,
   Trash2,
 } from "lucide-react";
-import {
-  useState,
-  type CSSProperties,
-  type MouseEvent as ReactMouseEvent,
-  type ReactNode,
-} from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 
 import {
   ChatContextMenu,
@@ -53,7 +47,17 @@ import {
   type ChatWorktreeActions,
 } from "@/components/chat/chat-menu";
 import { Button } from "@/components/ui/button";
+import {
+  openSidebarActionsMenu,
+  SidebarDragHandle,
+  SortableSidebarSurfaceRow,
+} from "@/components/sidebar/sortable-sidebar-surface-row";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
+import {
+  SurfaceActionsMenu,
+  surfaceMenuContentClass,
+  surfaceMenuItemClass,
+} from "@/components/workspace/surface-tab-controls";
 import {
   Dialog,
   DialogClose,
@@ -82,38 +86,8 @@ const browserId = (id: string) => `browser:${id}`;
 const codeId = (id: string) => `code:${id}`;
 const viewId = (id: string) => `view:${id}`;
 
-function openActionsMenu(event: ReactMouseEvent<HTMLElement>) {
-  const trigger = event.currentTarget.querySelector<HTMLButtonElement>(
-    "[data-actions-trigger]",
-  );
-  if (!trigger) return;
-  event.preventDefault();
-  trigger.click();
-}
-const menuContentClass =
-  "z-50 min-w-36 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
-const menuItemClass =
-  "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
-
-function DragHandle({
-  listeners,
-  attributes,
-}: {
-  listeners?: object;
-  attributes: object;
-}) {
-  return (
-    <button
-      type="button"
-      className="grid size-6 shrink-0 touch-none place-items-center rounded text-muted-foreground/50 opacity-0 hover:bg-muted hover:text-foreground group-hover:opacity-100 focus:opacity-100 [@media(pointer:coarse)]:opacity-100"
-      {...attributes}
-      {...listeners}
-    >
-      <GripVertical className="size-3.5" />
-      <span className="sr-only">Drag to reorder</span>
-    </button>
-  );
-}
+const menuContentClass = cn(surfaceMenuContentClass, "min-w-36");
+const menuItemClass = surfaceMenuItemClass;
 
 function SortableChat({
   active,
@@ -146,13 +120,6 @@ function SortableChat({
   worktreeActions?: ChatWorktreeActions;
   worktreeStatus?: WorktreeStatusMap[string];
 }) {
-  const sortable = useSortable({ id: chatId(chat.id) });
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(sortable.transform),
-    transition: sortable.transition,
-    opacity: sortable.isDragging ? 0.25 : 1,
-    zIndex: sortable.isDragging ? 10 : undefined,
-  };
   const actions = {
     onDelete,
     onDuplicate,
@@ -160,696 +127,101 @@ function SortableChat({
     worktree: worktreeActions,
   };
   return (
-    <ChatContextMenu actions={actions}>
-      <div
-        ref={sortable.setNodeRef}
-        style={style}
-        className={cn(
-          "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
-          active && "bg-muted text-foreground",
-        )}
-      >
-        <DragHandle
-          attributes={sortable.attributes}
-          listeners={sortable.listeners}
-        />
-        {editing ? (
-          <input
-            autoFocus
-            value={renameValue}
-            onChange={(event) => setRenameValue(event.target.value)}
-            onBlur={submitRename}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") submitRename();
-              if (event.key === "Escape") onRename();
-            }}
-            className="h-7 min-w-0 flex-1 rounded border bg-background px-2 text-xs text-foreground outline-none ring-ring focus:ring-2"
-            aria-label={`Rename ${chat.title}`}
+    <SortableSidebarSurfaceRow
+      active={active}
+      editing={editing}
+      icon={<MessageSquare className="size-3.5 shrink-0" />}
+      sortId={chatId(chat.id)}
+      status={
+        chat.hasPendingPlanQuestion ? (
+          <CircleHelp
+            className="ml-auto size-3.5 text-amber-500"
+            aria-label="Codex is waiting for a Plan Mode answer"
           />
-        ) : (
-          <button
-            type="button"
-            className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
-            onClick={onSelect}
-            onDoubleClick={(event) => {
-              event.preventDefault();
-              onRename();
-            }}
-          >
-            <MessageSquare className="size-3.5 shrink-0" />
-            <span className="truncate">{chat.title}</span>
-            {chat.hasPendingPlanQuestion ? (
-              <CircleHelp
-                className="ml-auto size-3.5 text-amber-500"
-                aria-label="Codex is waiting for a Plan Mode answer"
-              />
-            ) : chat.automationPaused ? (
-              <CirclePause
-                className="ml-auto size-3.5 text-amber-500"
-                aria-label="Chat automation is paused"
-              />
-            ) : chat.status === "running" ? (
-              <Loader2 className="ml-auto size-3 animate-spin" />
-            ) : null}
-          </button>
-        )}
-        {!editing ? (
-          <WorktreeIndicator
-            leaseOwner={chat.title}
-            status={worktreeStatus}
-            workers={workers}
-            worktree={worktree}
+        ) : chat.automationPaused ? (
+          <CirclePause
+            className="ml-auto size-3.5 text-amber-500"
+            aria-label="Chat automation is paused"
           />
-        ) : null}
-        {!editing ? (
-          <ChatDropdownMenu actions={actions} title={chat.title} />
-        ) : null}
-      </div>
-    </ChatContextMenu>
-  );
-}
-
-function TerminalTab({
-  active,
-  editing,
-  onDelete,
-  onRename,
-  onSelect,
-  renameValue,
-  setRenameValue,
-  submitRename,
-  terminal,
-  workers,
-  worktree,
-  worktreeStatus,
-}: {
-  active: boolean;
-  editing: boolean;
-  onDelete(): void;
-  onRename(): void;
-  onSelect(): void;
-  renameValue: string;
-  setRenameValue(value: string): void;
-  submitRename(): void;
-  terminal: TerminalSummary;
-  workers: WorkerSummary[];
-  worktree?: ProjectWorktreeSummary;
-  worktreeStatus?: WorktreeStatusMap[string];
-}) {
-  const sortable = useSortable({ id: terminalId(terminal.id) });
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(sortable.transform),
-    transition: sortable.transition,
-    opacity: sortable.isDragging ? 0.25 : 1,
-    zIndex: sortable.isDragging ? 10 : undefined,
-  };
-  return (
-    <div
-      ref={sortable.setNodeRef}
-      style={style}
-      onContextMenu={openActionsMenu}
-      className={cn(
-        "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
-        active && "bg-muted text-foreground",
-      )}
-    >
-      <DragHandle
-        attributes={sortable.attributes}
-        listeners={sortable.listeners}
-      />
-      {editing ? (
-        <input
-          autoFocus
-          value={renameValue}
-          onChange={(event) => setRenameValue(event.target.value)}
-          onBlur={submitRename}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") submitRename();
-            if (event.key === "Escape") onRename();
-          }}
-          className="h-7 min-w-0 flex-1 rounded border bg-background px-2 text-xs text-foreground outline-none ring-ring focus:ring-2"
-          aria-label={`Rename ${terminal.title}`}
-        />
-      ) : (
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
-          onClick={onSelect}
-          onDoubleClick={(event) => {
-            event.preventDefault();
-            onRename();
-          }}
-        >
-          <SquareTerminal className="size-3.5 shrink-0" />
-          <span className="truncate">{terminal.title}</span>
-          <span
-            className={cn(
-              "ml-auto size-[5px] rounded-full bg-muted-foreground/40",
-              terminal.status === "running" && "bg-emerald-400",
-              terminal.status === "failed" && "bg-red-400",
-            )}
-          />
-        </button>
-      )}
-      {!editing ? (
+        ) : chat.status === "running" ? (
+          <Loader2 className="ml-auto size-3 animate-spin" />
+        ) : null
+      }
+      title={chat.title}
+      renameValue={renameValue}
+      onCancelRename={onRename}
+      onRename={setRenameValue}
+      onSelect={onSelect}
+      onSubmitRename={submitRename}
+      openActionsOnContextMenu={false}
+      trailing={
         <WorktreeIndicator
+          leaseOwner={chat.title}
           status={worktreeStatus}
           workers={workers}
           worktree={worktree}
         />
-      ) : null}
-      {!editing ? (
-        <DropdownMenuPrimitive.Root>
-          <DropdownMenuPrimitive.Trigger asChild>
-            <Button
-              data-actions-trigger
-              size="icon"
-              variant="ghost"
-              className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
-            >
-              <MoreHorizontal className="size-3.5" />
-              <span className="sr-only">Actions for {terminal.title}</span>
-            </Button>
-          </DropdownMenuPrimitive.Trigger>
-          <DropdownMenuPrimitive.Portal>
-            <DropdownMenuPrimitive.Content
-              align="end"
-              className={menuContentClass}
-            >
-              <DropdownMenuPrimitive.Item
-                className={menuItemClass}
-                onSelect={onRename}
-              >
-                <Pencil className="size-4" /> Rename
-              </DropdownMenuPrimitive.Item>
-              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-              <DropdownMenuPrimitive.Item
-                className={cn(
-                  menuItemClass,
-                  "text-destructive focus:bg-destructive/10",
-                )}
-                onSelect={onDelete}
-              >
-                <Trash2 className="size-4" /> Delete
-              </DropdownMenuPrimitive.Item>
-            </DropdownMenuPrimitive.Content>
-          </DropdownMenuPrimitive.Portal>
-        </DropdownMenuPrimitive.Root>
-      ) : null}
-    </div>
+      }
+      actions={<ChatDropdownMenu actions={actions} title={chat.title} />}
+      renderContextMenu={(row) => (
+        <ChatContextMenu actions={actions}>{row}</ChatContextMenu>
+      )}
+    />
   );
 }
 
-function ExplorerTab({
+function StandardSidebarSurfaceTab({
   active,
   editing,
-  explorer,
+  icon,
   onDelete,
   onRename,
   onSelect,
   renameValue,
   setRenameValue,
+  sortId,
+  status,
   submitRename,
-  workers,
-  worktree,
-  worktreeStatus,
+  title,
+  trailing,
 }: {
   active: boolean;
   editing: boolean;
-  explorer: ExplorerSummary;
+  icon: ReactNode;
   onDelete(): void;
   onRename(): void;
   onSelect(): void;
   renameValue: string;
   setRenameValue(value: string): void;
+  sortId: string;
+  status?: ReactNode;
   submitRename(): void;
-  workers: WorkerSummary[];
-  worktree?: ProjectWorktreeSummary;
-  worktreeStatus?: WorktreeStatusMap[string];
+  title: string;
+  trailing?: ReactNode;
 }) {
-  const sortable = useSortable({ id: explorerId(explorer.id) });
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(sortable.transform),
-    transition: sortable.transition,
-    opacity: sortable.isDragging ? 0.25 : 1,
-    zIndex: sortable.isDragging ? 10 : undefined,
-  };
   return (
-    <div
-      ref={sortable.setNodeRef}
-      style={style}
-      onContextMenu={openActionsMenu}
-      className={cn(
-        "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
-        active && "bg-muted text-foreground",
-      )}
-    >
-      <DragHandle
-        attributes={sortable.attributes}
-        listeners={sortable.listeners}
-      />
-      {editing ? (
-        <input
-          autoFocus
-          value={renameValue}
-          onChange={(event) => setRenameValue(event.target.value)}
-          onBlur={submitRename}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") submitRename();
-            if (event.key === "Escape") onRename();
-          }}
-          className="h-7 min-w-0 flex-1 rounded border bg-background px-2 text-xs text-foreground outline-none ring-ring focus:ring-2"
-          aria-label={`Rename ${explorer.title}`}
+    <SortableSidebarSurfaceRow
+      actions={
+        <SurfaceActionsMenu
+          title={title}
+          onDelete={onDelete}
+          onRename={onRename}
+          contentClassName="min-w-36"
         />
-      ) : (
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
-          onClick={onSelect}
-          onDoubleClick={(event) => {
-            event.preventDefault();
-            onRename();
-          }}
-        >
-          <FolderTree className="size-3.5 shrink-0" />
-          <span className="truncate">{explorer.title}</span>
-        </button>
-      )}
-      {!editing ? (
-        <WorktreeIndicator
-          status={worktreeStatus}
-          workers={workers}
-          worktree={worktree}
-        />
-      ) : null}
-      {!editing ? (
-        <DropdownMenuPrimitive.Root>
-          <DropdownMenuPrimitive.Trigger asChild>
-            <Button
-              data-actions-trigger
-              size="icon"
-              variant="ghost"
-              className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
-            >
-              <MoreHorizontal className="size-3.5" />
-              <span className="sr-only">Actions for {explorer.title}</span>
-            </Button>
-          </DropdownMenuPrimitive.Trigger>
-          <DropdownMenuPrimitive.Portal>
-            <DropdownMenuPrimitive.Content
-              align="end"
-              className={menuContentClass}
-            >
-              <DropdownMenuPrimitive.Item
-                className={menuItemClass}
-                onSelect={onRename}
-              >
-                <Pencil className="size-4" /> Rename
-              </DropdownMenuPrimitive.Item>
-              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-              <DropdownMenuPrimitive.Item
-                className={cn(
-                  menuItemClass,
-                  "text-destructive focus:bg-destructive/10",
-                )}
-                onSelect={onDelete}
-              >
-                <Trash2 className="size-4" /> Delete
-              </DropdownMenuPrimitive.Item>
-            </DropdownMenuPrimitive.Content>
-          </DropdownMenuPrimitive.Portal>
-        </DropdownMenuPrimitive.Root>
-      ) : null}
-    </div>
-  );
-}
-
-function CodeTab({
-  active,
-  codeTab,
-  editing,
-  onDelete,
-  onRename,
-  onSelect,
-  renameValue,
-  setRenameValue,
-  submitRename,
-  workers,
-  worktree,
-  worktreeStatus,
-}: {
-  active: boolean;
-  codeTab: CodeTabSummary;
-  editing: boolean;
-  onDelete(): void;
-  onRename(): void;
-  onSelect(): void;
-  renameValue: string;
-  setRenameValue(value: string): void;
-  submitRename(): void;
-  workers: WorkerSummary[];
-  worktree?: ProjectWorktreeSummary;
-  worktreeStatus?: WorktreeStatusMap[string];
-}) {
-  const sortable = useSortable({ id: codeId(codeTab.id) });
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(sortable.transform),
-    transition: sortable.transition,
-    opacity: sortable.isDragging ? 0.25 : 1,
-    zIndex: sortable.isDragging ? 10 : undefined,
-  };
-  return (
-    <div
-      ref={sortable.setNodeRef}
-      style={style}
-      onContextMenu={openActionsMenu}
-      className={cn(
-        "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
-        active && "bg-muted text-foreground",
-      )}
-    >
-      <DragHandle
-        attributes={sortable.attributes}
-        listeners={sortable.listeners}
-      />
-      {editing ? (
-        <input
-          autoFocus
-          value={renameValue}
-          onChange={(event) => setRenameValue(event.target.value)}
-          onBlur={submitRename}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") submitRename();
-            if (event.key === "Escape") onRename();
-          }}
-          className="h-7 min-w-0 flex-1 rounded border bg-background px-2 text-xs text-foreground outline-none ring-ring focus:ring-2"
-          aria-label={`Rename ${codeTab.title}`}
-        />
-      ) : (
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
-          onClick={onSelect}
-          onDoubleClick={(event) => {
-            event.preventDefault();
-            onRename();
-          }}
-        >
-          <Code2 className="size-3.5 shrink-0" />
-          <span className="truncate">{codeTab.title}</span>
-          <span
-            className={cn(
-              "ml-auto size-[5px] rounded-full bg-muted-foreground/40",
-              codeTab.status === "running" && "bg-emerald-400",
-              codeTab.status === "starting" && "animate-pulse bg-amber-500",
-              codeTab.status === "failed" && "bg-red-400",
-            )}
-            title={`Editor ${codeTab.status}`}
-          />
-        </button>
-      )}
-      {!editing ? (
-        <WorktreeIndicator
-          status={worktreeStatus}
-          workers={workers}
-          worktree={worktree}
-        />
-      ) : null}
-      {!editing ? (
-        <DropdownMenuPrimitive.Root>
-          <DropdownMenuPrimitive.Trigger asChild>
-            <Button
-              data-actions-trigger
-              size="icon"
-              variant="ghost"
-              className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
-            >
-              <MoreHorizontal className="size-3.5" />
-              <span className="sr-only">Actions for {codeTab.title}</span>
-            </Button>
-          </DropdownMenuPrimitive.Trigger>
-          <DropdownMenuPrimitive.Portal>
-            <DropdownMenuPrimitive.Content
-              align="end"
-              className={menuContentClass}
-            >
-              <DropdownMenuPrimitive.Item
-                className={menuItemClass}
-                onSelect={onRename}
-              >
-                <Pencil className="size-4" /> Rename
-              </DropdownMenuPrimitive.Item>
-              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-              <DropdownMenuPrimitive.Item
-                className={cn(
-                  menuItemClass,
-                  "text-destructive focus:bg-destructive/10",
-                )}
-                onSelect={onDelete}
-              >
-                <Trash2 className="size-4" /> Delete
-              </DropdownMenuPrimitive.Item>
-            </DropdownMenuPrimitive.Content>
-          </DropdownMenuPrimitive.Portal>
-        </DropdownMenuPrimitive.Root>
-      ) : null}
-    </div>
-  );
-}
-
-function BrowserTab({
-  active,
-  browser,
-  editing,
-  onDelete,
-  onRename,
-  onSelect,
-  renameValue,
-  setRenameValue,
-  submitRename,
-}: {
-  active: boolean;
-  browser: BrowserSummary;
-  editing: boolean;
-  onDelete(): void;
-  onRename(): void;
-  onSelect(): void;
-  renameValue: string;
-  setRenameValue(value: string): void;
-  submitRename(): void;
-}) {
-  const sortable = useSortable({ id: browserId(browser.id) });
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(sortable.transform),
-    transition: sortable.transition,
-    opacity: sortable.isDragging ? 0.25 : 1,
-    zIndex: sortable.isDragging ? 10 : undefined,
-  };
-  return (
-    <div
-      ref={sortable.setNodeRef}
-      style={style}
-      onContextMenu={openActionsMenu}
-      className={cn(
-        "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
-        active && "bg-muted text-foreground",
-      )}
-    >
-      <DragHandle
-        attributes={sortable.attributes}
-        listeners={sortable.listeners}
-      />
-      {editing ? (
-        <input
-          autoFocus
-          value={renameValue}
-          onChange={(event) => setRenameValue(event.target.value)}
-          onBlur={submitRename}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") submitRename();
-            if (event.key === "Escape") onRename();
-          }}
-          className="h-7 min-w-0 flex-1 rounded border bg-background px-2 text-xs text-foreground outline-none ring-ring focus:ring-2"
-          aria-label={`Rename ${browser.title}`}
-        />
-      ) : (
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
-          onClick={onSelect}
-          onDoubleClick={(event) => {
-            event.preventDefault();
-            onRename();
-          }}
-        >
-          <Globe2 className="size-3.5 shrink-0" />
-          <span className="truncate">{browser.title}</span>
-        </button>
-      )}
-      {!editing ? (
-        <DropdownMenuPrimitive.Root>
-          <DropdownMenuPrimitive.Trigger asChild>
-            <Button
-              data-actions-trigger
-              size="icon"
-              variant="ghost"
-              className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
-            >
-              <MoreHorizontal className="size-3.5" />
-              <span className="sr-only">Actions for {browser.title}</span>
-            </Button>
-          </DropdownMenuPrimitive.Trigger>
-          <DropdownMenuPrimitive.Portal>
-            <DropdownMenuPrimitive.Content
-              align="end"
-              className={menuContentClass}
-            >
-              <DropdownMenuPrimitive.Item
-                className={menuItemClass}
-                onSelect={onRename}
-              >
-                <Pencil className="size-4" /> Rename
-              </DropdownMenuPrimitive.Item>
-              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-              <DropdownMenuPrimitive.Item
-                className={cn(
-                  menuItemClass,
-                  "text-destructive focus:bg-destructive/10",
-                )}
-                onSelect={onDelete}
-              >
-                <Trash2 className="size-4" /> Delete
-              </DropdownMenuPrimitive.Item>
-            </DropdownMenuPrimitive.Content>
-          </DropdownMenuPrimitive.Portal>
-        </DropdownMenuPrimitive.Root>
-      ) : null}
-    </div>
-  );
-}
-
-function ProjectViewTab({
-  active,
-  editing,
-  onDelete,
-  onRename,
-  onSelect,
-  renameValue,
-  setRenameValue,
-  submitRename,
-  view,
-  workers,
-  worktree,
-  worktreeStatus,
-}: {
-  active: boolean;
-  editing: boolean;
-  onDelete(): void;
-  onRename(): void;
-  onSelect(): void;
-  renameValue: string;
-  setRenameValue(value: string): void;
-  submitRename(): void;
-  view: ProjectViewSummary;
-  workers: WorkerSummary[];
-  worktree?: ProjectWorktreeSummary;
-  worktreeStatus?: WorktreeStatusMap[string];
-}) {
-  const sortable = useSortable({ id: viewId(view.id) });
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(sortable.transform),
-    transition: sortable.transition,
-    opacity: sortable.isDragging ? 0.25 : 1,
-    zIndex: sortable.isDragging ? 10 : undefined,
-  };
-  const Icon = view.kind === "remote-desktop" ? MonitorUp : GitCommitHorizontal;
-  return (
-    <div
-      ref={sortable.setNodeRef}
-      style={style}
-      onContextMenu={openActionsMenu}
-      className={cn(
-        "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
-        active && "bg-muted text-foreground",
-      )}
-    >
-      <DragHandle
-        attributes={sortable.attributes}
-        listeners={sortable.listeners}
-      />
-      {editing ? (
-        <input
-          autoFocus
-          value={renameValue}
-          onChange={(event) => setRenameValue(event.target.value)}
-          onBlur={submitRename}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") submitRename();
-            if (event.key === "Escape") onRename();
-          }}
-          className="h-7 min-w-0 flex-1 rounded border bg-background px-2 text-xs text-foreground outline-none ring-ring focus:ring-2"
-          aria-label={`Rename ${view.title}`}
-        />
-      ) : (
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
-          onClick={onSelect}
-          onDoubleClick={(event) => {
-            event.preventDefault();
-            onRename();
-          }}
-        >
-          <Icon className="size-3.5 shrink-0" />
-          <span className="truncate">{view.title}</span>
-        </button>
-      )}
-      {!editing && view.kind === "history" ? (
-        <WorktreeIndicator
-          status={worktreeStatus}
-          workers={workers}
-          worktree={worktree}
-        />
-      ) : null}
-      {!editing ? (
-        <DropdownMenuPrimitive.Root>
-          <DropdownMenuPrimitive.Trigger asChild>
-            <Button
-              data-actions-trigger
-              size="icon"
-              variant="ghost"
-              className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
-            >
-              <MoreHorizontal className="size-3.5" />
-              <span className="sr-only">Actions for {view.title}</span>
-            </Button>
-          </DropdownMenuPrimitive.Trigger>
-          <DropdownMenuPrimitive.Portal>
-            <DropdownMenuPrimitive.Content
-              align="end"
-              className={menuContentClass}
-            >
-              <DropdownMenuPrimitive.Item
-                className={menuItemClass}
-                onSelect={onRename}
-              >
-                <Pencil className="size-4" /> Rename
-              </DropdownMenuPrimitive.Item>
-              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-              <DropdownMenuPrimitive.Item
-                className={cn(
-                  menuItemClass,
-                  "text-destructive focus:bg-destructive/10",
-                )}
-                onSelect={onDelete}
-              >
-                <Trash2 className="size-4" /> Delete
-              </DropdownMenuPrimitive.Item>
-            </DropdownMenuPrimitive.Content>
-          </DropdownMenuPrimitive.Portal>
-        </DropdownMenuPrimitive.Root>
-      ) : null}
-    </div>
+      }
+      active={active}
+      editing={editing}
+      icon={icon}
+      sortId={sortId}
+      status={status}
+      title={title}
+      trailing={trailing}
+      renameValue={renameValue}
+      onCancelRename={onRename}
+      onRename={setRenameValue}
+      onSelect={onSelect}
+      onSubmitRename={submitRename}
+    />
   );
 }
 
@@ -882,61 +254,32 @@ function GroupedSidebarTab({
   title: string;
   visualKind: ProjectTabGroupVisualKind;
 }) {
-  const sortable = useSortable({ id: sortId });
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(sortable.transform),
-    transition: sortable.transition,
-    opacity: sortable.isDragging ? 0.25 : 1,
-    zIndex: sortable.isDragging ? 10 : undefined,
-  };
   return (
-    <div
-      ref={sortable.setNodeRef}
-      style={style}
-      onContextMenu={openActionsMenu}
-      className={cn(
-        "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
-        active && "bg-muted text-foreground",
-      )}
-    >
-      <DragHandle
-        attributes={sortable.attributes}
-        listeners={sortable.listeners}
-      />
-      {editing ? (
-        <input
-          autoFocus
-          value={renameValue}
-          onChange={(event) => setRenameValue(event.target.value)}
-          onBlur={submitRename}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") submitRename();
-            if (event.key === "Escape") onRename();
-          }}
-          className="h-7 min-w-0 flex-1 rounded border bg-background px-2 text-xs text-foreground outline-none ring-ring focus:ring-2"
-          aria-label={`Rename ${title}`}
-        />
-      ) : (
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
-          onClick={onSelect}
-          onDoubleClick={(event) => {
-            event.preventDefault();
-            onRename();
-          }}
-        >
-          <ProjectSurfaceIcon kind={visualKind} className="size-3.5 shrink-0" />
-          <span className="truncate">{title}</span>
-        </button>
-      )}
-      {!editing ? (
+    <SortableSidebarSurfaceRow
+      active={active}
+      editing={editing}
+      icon={
+        <ProjectSurfaceIcon kind={visualKind} className="size-3.5 shrink-0" />
+      }
+      sortId={sortId}
+      title={title}
+      renameValue={renameValue}
+      onCancelRename={onRename}
+      onRename={setRenameValue}
+      onSelect={onSelect}
+      onSubmitRename={submitRename}
+      actions={
         <div className="relative mr-1 size-6 shrink-0">
           <span className="pointer-events-none absolute inset-0 grid place-items-center rounded-full bg-background/70 text-[10px] tabular-nums text-muted-foreground transition-opacity group-hover:opacity-0 [@media(pointer:coarse)]:opacity-0">
             {count}
           </span>
-          <DropdownMenuPrimitive.Root>
-            <DropdownMenuPrimitive.Trigger asChild>
+          <SurfaceActionsMenu
+            title={title}
+            onDelete={onDelete}
+            onDuplicate={onDuplicate}
+            onRename={onRename}
+            contentClassName="min-w-36"
+            trigger={
               <button
                 data-actions-trigger
                 type="button"
@@ -946,42 +289,11 @@ function GroupedSidebarTab({
               >
                 <MoreHorizontal className="size-3.5" />
               </button>
-            </DropdownMenuPrimitive.Trigger>
-            <DropdownMenuPrimitive.Portal>
-              <DropdownMenuPrimitive.Content
-                align="end"
-                className={menuContentClass}
-              >
-                <DropdownMenuPrimitive.Item
-                  className={menuItemClass}
-                  onSelect={onRename}
-                >
-                  <Pencil className="size-4" /> Rename
-                </DropdownMenuPrimitive.Item>
-                {onDuplicate ? (
-                  <DropdownMenuPrimitive.Item
-                    className={menuItemClass}
-                    onSelect={onDuplicate}
-                  >
-                    <CopyPlus className="size-4" /> Duplicate
-                  </DropdownMenuPrimitive.Item>
-                ) : null}
-                <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-                <DropdownMenuPrimitive.Item
-                  className={cn(
-                    menuItemClass,
-                    "text-destructive focus:bg-destructive/10",
-                  )}
-                  onSelect={onDelete}
-                >
-                  <Trash2 className="size-4" /> Delete
-                </DropdownMenuPrimitive.Item>
-              </DropdownMenuPrimitive.Content>
-            </DropdownMenuPrimitive.Portal>
-          </DropdownMenuPrimitive.Root>
+            }
+          />
         </div>
-      ) : null}
-    </div>
+      }
+    />
   );
 }
 
@@ -1050,13 +362,13 @@ function SortableProject({
     <div ref={sortable.setNodeRef} style={style} className="group mb-1">
       <div
         title={failed ? (project.setupError ?? undefined) : undefined}
-        onContextMenu={openActionsMenu}
+        onContextMenu={openSidebarActionsMenu}
         className={cn(
           "flex items-center rounded-md hover:bg-muted",
           active && "bg-muted font-medium",
         )}
       >
-        <DragHandle
+        <SidebarDragHandle
           attributes={sortable.attributes}
           listeners={sortable.listeners}
         />
@@ -1736,9 +1048,24 @@ export function ProjectChatList({
                             }}
                           />
                         ) : tab.kind === "terminal" ? (
-                          <TerminalTab
+                          <StandardSidebarSurfaceTab
                             key={tab.id}
-                            terminal={tab.terminal}
+                            sortId={tab.id}
+                            title={tab.terminal.title}
+                            icon={
+                              <SquareTerminal className="size-3.5 shrink-0" />
+                            }
+                            status={
+                              <span
+                                className={cn(
+                                  "ml-auto size-[5px] rounded-full bg-muted-foreground/40",
+                                  tab.terminal.status === "running" &&
+                                    "bg-emerald-400",
+                                  tab.terminal.status === "failed" &&
+                                    "bg-red-400",
+                                )}
+                              />
+                            }
                             active={tab.id === selectedTabKey}
                             editing={editingTerminalId === tab.terminal.id}
                             renameValue={renameValue}
@@ -1751,16 +1078,24 @@ export function ProjectChatList({
                             onDelete={() =>
                               setDeleteTerminalTarget(tab.terminal)
                             }
-                            workers={workers}
-                            worktree={worktreeById.get(tab.terminal.worktreeId)}
-                            worktreeStatus={
-                              worktreeStatuses[tab.terminal.worktreeId]
+                            trailing={
+                              <WorktreeIndicator
+                                status={
+                                  worktreeStatuses[tab.terminal.worktreeId]
+                                }
+                                workers={workers}
+                                worktree={worktreeById.get(
+                                  tab.terminal.worktreeId,
+                                )}
+                              />
                             }
                           />
                         ) : tab.kind === "explorer" ? (
-                          <ExplorerTab
+                          <StandardSidebarSurfaceTab
                             key={tab.id}
-                            explorer={tab.explorer}
+                            sortId={tab.id}
+                            title={tab.explorer.title}
+                            icon={<FolderTree className="size-3.5 shrink-0" />}
                             active={tab.id === selectedTabKey}
                             editing={editingExplorerId === tab.explorer.id}
                             renameValue={renameValue}
@@ -1773,16 +1108,24 @@ export function ProjectChatList({
                             onDelete={() =>
                               setDeleteExplorerTarget(tab.explorer)
                             }
-                            workers={workers}
-                            worktree={worktreeById.get(tab.explorer.worktreeId)}
-                            worktreeStatus={
-                              worktreeStatuses[tab.explorer.worktreeId]
+                            trailing={
+                              <WorktreeIndicator
+                                status={
+                                  worktreeStatuses[tab.explorer.worktreeId]
+                                }
+                                workers={workers}
+                                worktree={worktreeById.get(
+                                  tab.explorer.worktreeId,
+                                )}
+                              />
                             }
                           />
                         ) : tab.kind === "browser" ? (
-                          <BrowserTab
+                          <StandardSidebarSurfaceTab
                             key={tab.id}
-                            browser={tab.browser}
+                            sortId={tab.id}
+                            title={tab.browser.title}
+                            icon={<Globe2 className="size-3.5 shrink-0" />}
                             active={tab.id === selectedTabKey}
                             editing={editingBrowserId === tab.browser.id}
                             renameValue={renameValue}
@@ -1795,9 +1138,25 @@ export function ProjectChatList({
                             onDelete={() => setDeleteBrowserTarget(tab.browser)}
                           />
                         ) : tab.kind === "code" ? (
-                          <CodeTab
+                          <StandardSidebarSurfaceTab
                             key={tab.id}
-                            codeTab={tab.codeTab}
+                            sortId={tab.id}
+                            title={tab.codeTab.title}
+                            icon={<Code2 className="size-3.5 shrink-0" />}
+                            status={
+                              <span
+                                className={cn(
+                                  "ml-auto size-[5px] rounded-full bg-muted-foreground/40",
+                                  tab.codeTab.status === "running" &&
+                                    "bg-emerald-400",
+                                  tab.codeTab.status === "starting" &&
+                                    "animate-pulse bg-amber-500",
+                                  tab.codeTab.status === "failed" &&
+                                    "bg-red-400",
+                                )}
+                                title={`Editor ${tab.codeTab.status}`}
+                              />
+                            }
                             active={tab.id === selectedTabKey}
                             editing={editingCodeId === tab.codeTab.id}
                             renameValue={renameValue}
@@ -1806,16 +1165,30 @@ export function ProjectChatList({
                             onSelect={selectGroup}
                             onRename={() => beginCodeRename(tab.codeTab)}
                             onDelete={() => setDeleteCodeTarget(tab.codeTab)}
-                            workers={workers}
-                            worktree={worktreeById.get(tab.codeTab.worktreeId)}
-                            worktreeStatus={
-                              worktreeStatuses[tab.codeTab.worktreeId]
+                            trailing={
+                              <WorktreeIndicator
+                                status={
+                                  worktreeStatuses[tab.codeTab.worktreeId]
+                                }
+                                workers={workers}
+                                worktree={worktreeById.get(
+                                  tab.codeTab.worktreeId,
+                                )}
+                              />
                             }
                           />
                         ) : (
-                          <ProjectViewTab
+                          <StandardSidebarSurfaceTab
                             key={tab.id}
-                            view={tab.view}
+                            sortId={tab.id}
+                            title={tab.view.title}
+                            icon={
+                              tab.view.kind === "remote-desktop" ? (
+                                <MonitorUp className="size-3.5 shrink-0" />
+                              ) : (
+                                <GitCommitHorizontal className="size-3.5 shrink-0" />
+                              )
+                            }
                             active={tab.id === selectedTabKey}
                             editing={editingProjectViewId === tab.view.id}
                             renameValue={renameValue}
@@ -1828,16 +1201,22 @@ export function ProjectChatList({
                             onDelete={() =>
                               setDeleteProjectViewTarget(tab.view)
                             }
-                            workers={workers}
-                            worktree={
-                              tab.view.worktreeId
-                                ? worktreeById.get(tab.view.worktreeId)
-                                : undefined
-                            }
-                            worktreeStatus={
-                              tab.view.worktreeId
-                                ? worktreeStatuses[tab.view.worktreeId]
-                                : undefined
+                            trailing={
+                              tab.view.kind === "history" ? (
+                                <WorktreeIndicator
+                                  status={
+                                    tab.view.worktreeId
+                                      ? worktreeStatuses[tab.view.worktreeId]
+                                      : undefined
+                                  }
+                                  workers={workers}
+                                  worktree={
+                                    tab.view.worktreeId
+                                      ? worktreeById.get(tab.view.worktreeId)
+                                      : undefined
+                                  }
+                                />
+                              ) : undefined
                             }
                           />
                         );
