@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import type { CodeCapabilities, CodeEditorBuild } from "@cantrip/protocol";
 
 export interface CantripCodeManifest {
-  schemaVersion: 2;
+  schemaVersion: 3;
   component: "cantrip-code";
   version: string;
   target: string;
@@ -72,7 +72,7 @@ function isSafeRelative(candidate: unknown): candidate is string {
 function parseManifest(value: unknown): CantripCodeManifest {
   const candidate = value as Partial<CantripCodeManifest>;
   if (
-    candidate.schemaVersion !== 2 ||
+    candidate.schemaVersion !== 3 ||
     candidate.component !== "cantrip-code" ||
     typeof candidate.version !== "string" ||
     candidate.version.length === 0 ||

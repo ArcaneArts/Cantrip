@@ -78,7 +78,7 @@ process.on("SIGTERM", stop);
   await writeFile(
     path.join(bundle, "cantrip-code.manifest.json"),
     JSON.stringify({
-      schemaVersion: 2,
+      schemaVersion: 3,
       component: "cantrip-code",
       version: "1.109.5-cantrip.1",
       target: `${process.platform}-${process.arch}`,

@@ -20,7 +20,10 @@ afterEach(async () => {
   );
 });
 
-async function createInstallation(contents = "#!/bin/sh\nexit 0\n") {
+async function createInstallation(
+  contents = "#!/bin/sh\nexit 0\n",
+  schemaVersion = 3,
+) {
   const root = await mkdtemp(path.join(tmpdir(), "cantrip-code-installation-"));
   directories.push(root);
   await Promise.all([
@@ -43,7 +46,7 @@ async function createInstallation(contents = "#!/bin/sh\nexit 0\n") {
     path.join(root, "cantrip-code.manifest.json"),
     `${JSON.stringify(
       {
-        schemaVersion: 2,
+        schemaVersion,
         component: "cantrip-code",
         version: "1.109.5-cantrip.1",
         target: `${process.platform}-${process.arch}`,
@@ -112,5 +115,13 @@ describe("Cantrip Code installation discovery", () => {
         architecture: "definitely-not-this-architecture",
       }),
     ).rejects.toThrow("worker requires");
+  });
+
+  it("rejects obsolete manifest schemas", async () => {
+    const { root } = await createInstallation(undefined, 2);
+
+    await expect(verifyCantripCodeInstallation(root)).rejects.toThrow(
+      "Cantrip Code manifest is invalid",
+    );
   });
 });
