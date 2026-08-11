@@ -42,6 +42,12 @@ import {
   RemoteSurfaceWebRtcClient,
   type RemoteSurfaceWebRtcState,
 } from "@/lib/remote-surface-webrtc";
+import {
+  remoteSurfaceKeyText,
+  remoteSurfaceModifiers,
+  remoteSurfacePointerButton,
+  remoteSurfacePointerCoordinates,
+} from "@/lib/remote-surface-input";
 import { cn } from "@/lib/utils";
 
 const encoder = new TextEncoder();
@@ -97,42 +103,7 @@ export function desktopPointerCoordinates(
   bounds: Pick<DOMRect, "height" | "left" | "top" | "width">,
   desktop: Size,
 ) {
-  return {
-    x: Math.max(
-      0,
-      Math.min(
-        desktop.width - 1,
-        ((point.clientX - bounds.left) / bounds.width) * desktop.width,
-      ),
-    ),
-    y: Math.max(
-      0,
-      Math.min(
-        desktop.height - 1,
-        ((point.clientY - bounds.top) / bounds.height) * desktop.height,
-      ),
-    ),
-  };
-}
-
-function modifiers(event: {
-  altKey: boolean;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  shiftKey: boolean;
-}): number {
-  return (
-    (event.altKey ? 1 : 0) |
-    (event.ctrlKey ? 2 : 0) |
-    (event.metaKey ? 4 : 0) |
-    (event.shiftKey ? 8 : 0)
-  );
-}
-
-function pointerButton(button: number) {
-  return (
-    (["left", "middle", "right", "back", "forward"] as const)[button] ?? "none"
-  );
+  return remoteSurfacePointerCoordinates(point, bounds, desktop, "last-pixel");
 }
 
 export function remoteDesktopTargetMatches(
@@ -551,12 +522,12 @@ export function ManagedRemoteDesktopView({
         canvas.getBoundingClientRect(),
         desktopSizeRef.current,
       ),
-      button: pointerButton(event.button),
+      button: remoteSurfacePointerButton(event.button),
       buttons: event.buttons,
       clickCount: event.detail,
       deltaX: 0,
       deltaY: 0,
-      modifiers: modifiers(event),
+      modifiers: remoteSurfaceModifiers(event),
     });
   };
 
@@ -577,7 +548,7 @@ export function ManagedRemoteDesktopView({
       clickCount: 0,
       deltaX: event.deltaX,
       deltaY: event.deltaY,
-      modifiers: modifiers(event),
+      modifiers: remoteSurfaceModifiers(event),
     });
   };
 
@@ -592,15 +563,10 @@ export function ManagedRemoteDesktopView({
       event: type,
       key: event.key,
       code: event.code,
-      text:
-        type === "down" &&
-        event.key.length === 1 &&
-        !event.metaKey &&
-        !event.ctrlKey &&
-        !event.altKey
-          ? event.key
-          : "",
-      modifiers: modifiers(event),
+      text: remoteSurfaceKeyText(event, type, {
+        allowAltModifiedText: false,
+      }),
+      modifiers: remoteSurfaceModifiers(event),
     });
   };
 

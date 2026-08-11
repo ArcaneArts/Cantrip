@@ -43,6 +43,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
 import { getBrowserServices, remoteSurfaceWebSocketUrl } from "@/lib/api";
+import {
+  remoteSurfaceKeyText,
+  remoteSurfaceModifiers,
+  remoteSurfacePointerButton,
+  remoteSurfacePointerCoordinates,
+  remoteSurfaceTouchPoints,
+} from "@/lib/remote-surface-input";
 import { RemoteSurfaceWebRtcClient } from "@/lib/remote-surface-webrtc";
 
 const decoder = new TextDecoder();
@@ -104,22 +111,7 @@ export function browserPointerCoordinates(
   bounds: Pick<DOMRect, "left" | "top" | "width" | "height">,
   viewport: { width: number; height: number },
 ) {
-  return {
-    x: Math.max(
-      0,
-      Math.min(
-        viewport.width,
-        ((point.clientX - bounds.left) / bounds.width) * viewport.width,
-      ),
-    ),
-    y: Math.max(
-      0,
-      Math.min(
-        viewport.height,
-        ((point.clientY - bounds.top) / bounds.height) * viewport.height,
-      ),
-    ),
-  };
+  return remoteSurfacePointerCoordinates(point, bounds, viewport);
 }
 
 export function browserTouchPoints(
@@ -133,33 +125,7 @@ export function browserTouchPoints(
   bounds: Pick<DOMRect, "left" | "top" | "width" | "height">,
   viewport: { width: number; height: number },
 ) {
-  return Array.from(touches, (touch) => ({
-    id: touch.identifier,
-    ...browserPointerCoordinates(touch, bounds, viewport),
-    radiusX: Math.max(1, touch.radiusX || 1),
-    radiusY: Math.max(1, touch.radiusY || 1),
-    force: Math.max(0, Math.min(1, touch.force || 1)),
-  }));
-}
-
-function modifiers(event: {
-  altKey: boolean;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  shiftKey: boolean;
-}): number {
-  return (
-    (event.altKey ? 1 : 0) |
-    (event.ctrlKey ? 2 : 0) |
-    (event.metaKey ? 4 : 0) |
-    (event.shiftKey ? 8 : 0)
-  );
-}
-
-function pointerButton(button: number) {
-  return (
-    (["left", "middle", "right", "back", "forward"] as const)[button] ?? "none"
-  );
+  return remoteSurfaceTouchPoints(touches, bounds, viewport);
 }
 
 export function BrowserView({
@@ -541,12 +507,12 @@ export function BrowserView({
       type: "pointer",
       event: type,
       ...position,
-      button: pointerButton(event.button),
+      button: remoteSurfacePointerButton(event.button),
       buttons: event.buttons,
       clickCount: event.detail,
       deltaX: 0,
       deltaY: 0,
-      modifiers: modifiers(event),
+      modifiers: remoteSurfaceModifiers(event),
     });
   };
 
@@ -568,7 +534,7 @@ export function BrowserView({
       clickCount: 0,
       deltaX: event.deltaX,
       deltaY: event.deltaY,
-      modifiers: modifiers(event),
+      modifiers: remoteSurfaceModifiers(event),
     });
   };
 
@@ -588,7 +554,7 @@ export function BrowserView({
         canvas.getBoundingClientRect(),
         viewportRef.current,
       ),
-      modifiers: modifiers(event),
+      modifiers: remoteSurfaceModifiers(event),
     });
   };
 
@@ -614,14 +580,10 @@ export function BrowserView({
       event: type,
       key: event.key,
       code: event.code,
-      text:
-        type === "down" &&
-        event.key.length === 1 &&
-        !event.metaKey &&
-        !event.ctrlKey
-          ? event.key
-          : "",
-      modifiers: modifiers(event),
+      text: remoteSurfaceKeyText(event, type, {
+        allowAltModifiedText: true,
+      }),
+      modifiers: remoteSurfaceModifiers(event),
     });
   };
 
