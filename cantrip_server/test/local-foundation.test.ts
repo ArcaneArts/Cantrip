@@ -2070,6 +2070,20 @@ describe("local server foundation", () => {
       codeAttachment.attachmentId,
     );
     expect(
+      codeRuntimeStatusSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/code-tabs/${codeTab.id}/sessions/${codeAttachment.sessionId}/runtime`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject({
+      sessionId: codeAttachment.sessionId,
+      bridgeConnected: true,
+      status: "running",
+    });
+    expect(
       await firstApp.inject({
         method: "DELETE",
         url: `/api/code-attachments/${codeAttachment.attachmentId}`,

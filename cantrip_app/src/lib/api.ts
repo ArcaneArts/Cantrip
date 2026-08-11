@@ -1816,6 +1816,14 @@ export async function createCodeAttachment(
   );
 }
 
+export async function getCodeRuntime(codeTabId: string, sessionId: string) {
+  return codeRuntimeStatusSchema.parse(
+    await request(
+      `/api/code-tabs/${encodeURIComponent(codeTabId)}/sessions/${encodeURIComponent(sessionId)}/runtime`,
+    ),
+  );
+}
+
 export async function releaseCodeAttachment(attachmentId: string) {
   await request(`/api/code-attachments/${encodeURIComponent(attachmentId)}`, {
     keepalive: true,

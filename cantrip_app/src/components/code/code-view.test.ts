@@ -6,6 +6,7 @@ import {
   codeReconnectDelayMs,
   isCodeAttachmentUnavailableMessage,
   isCodeSessionUnavailableError,
+  isCodeWorkbenchReady,
 } from "./code-view";
 
 describe("Cantrip Code reconnect delay", () => {
@@ -49,6 +50,38 @@ describe("Cantrip Code reconnect delay", () => {
       isCodeSessionUnavailableError(
         new CantripApiError("Cantrip Code session session-1 is not open.", 409),
       ),
+    ).toBe(false);
+  });
+
+  it("reveals only the bridge-connected attachment session", () => {
+    const runtime = {
+      sessionId: "session-1",
+      status: "running" as const,
+      editorBuild: {
+        version: "1.109.5",
+        upstreamRevision: "revision",
+        patchset: 1,
+        fingerprint: "fingerprint",
+      },
+      processInstanceId: "process-1",
+      bridgeConnected: true,
+      dirtyEditors: [],
+      workbench: {
+        activeEditor: null,
+        git: null,
+        conflicts: [],
+        savePolicy: "always" as const,
+        agentStatus: "idle" as const,
+      },
+      startedAt: "2026-08-11T08:00:00.000Z",
+      lastActivityAt: "2026-08-11T08:00:01.000Z",
+      lastError: null,
+    };
+
+    expect(isCodeWorkbenchReady(runtime, "session-1")).toBe(true);
+    expect(isCodeWorkbenchReady(runtime, "session-2")).toBe(false);
+    expect(
+      isCodeWorkbenchReady({ ...runtime, bridgeConnected: false }, "session-1"),
     ).toBe(false);
   });
 });
