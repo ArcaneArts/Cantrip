@@ -17,7 +17,13 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { type FormEvent, type ReactNode, useMemo, useState } from "react";
+import {
+  type FormEvent,
+  type ReactNode,
+  useId,
+  useMemo,
+  useState,
+} from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -95,6 +101,19 @@ export function filterRepositoryTags(
   );
 }
 
+export function releaseDraftFromTags(
+  tags: GitTagSummary[],
+): GithubReleaseCreate {
+  const tagName = tags[0]?.name ?? "";
+  return {
+    tagName,
+    name: tagName,
+    body: "",
+    draft: true,
+    prerelease: false,
+  };
+}
+
 function remoteActionFromEditor(editor: RemoteEditor): GitRemoteAction {
   if (editor.type === "defaults") {
     return {
@@ -143,6 +162,7 @@ export function GitRepositoryPanel({
   worktreeId: string;
 }) {
   const queryClient = useQueryClient();
+  const releaseTagOptionsId = useId();
   const [section, setSection] = useState<Section>("remotes");
   const [search, setSearch] = useState("");
   const [remoteEditor, setRemoteEditor] = useState<RemoteEditor | null>(null);
@@ -415,17 +435,10 @@ export function GitRepositoryPanel({
             size="sm"
             variant="outline"
             className="h-7 gap-1 text-xs"
-            disabled={!tags.data?.tags.length || createRelease.isPending}
-            onClick={() => {
-              const tagName = tags.data?.tags[0]?.name ?? "";
-              setReleaseEditor({
-                tagName,
-                name: tagName,
-                body: "",
-                draft: true,
-                prerelease: false,
-              });
-            }}
+            disabled={createRelease.isPending}
+            onClick={() =>
+              setReleaseEditor(releaseDraftFromTags(tags.data?.tags ?? []))
+            }
           >
             <Plus className="size-3" /> Release
           </Button>
@@ -973,13 +986,15 @@ export function GitRepositoryPanel({
             <DialogHeader>
               <DialogTitle>Create GitHub release</DialogTitle>
               <DialogDescription>
-                Publish release notes from an existing local tag.
+                Use an existing local tag, or enter a new tag name to release
+                the selected worktree&apos;s current HEAD.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-3 py-4">
-              <select
+              <Input
                 aria-label="Release tag"
-                className="h-9 rounded-md border bg-background px-3 text-sm"
+                list={releaseTagOptionsId}
+                placeholder="Tag name, for example v1.0.0"
                 value={releaseEditor?.tagName ?? ""}
                 onChange={(event) =>
                   releaseEditor &&
@@ -988,11 +1003,12 @@ export function GitRepositoryPanel({
                     tagName: event.target.value,
                   })
                 }
-              >
+              />
+              <datalist id={releaseTagOptionsId}>
                 {tags.data?.tags.map((tag) => (
-                  <option key={tag.name}>{tag.name}</option>
+                  <option key={tag.name} value={tag.name} />
                 ))}
-              </select>
+              </datalist>
               <Input
                 placeholder="Release title"
                 value={releaseEditor?.name ?? ""}

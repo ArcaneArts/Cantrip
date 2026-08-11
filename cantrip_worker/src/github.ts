@@ -1598,18 +1598,27 @@ export class GithubClient {
     cwd: string,
     request: GithubReleaseCreate,
   ): Promise<GithubReleaseSummary> {
+    let targetCommitish: string;
     try {
-      await execFileAsync("git", [
-        "-C",
-        cwd,
-        "show-ref",
-        "--verify",
-        `refs/tags/${request.tagName}`,
-      ]);
+      targetCommitish = (
+        await execFileAsync("git", [
+          "-C",
+          cwd,
+          "rev-parse",
+          "--verify",
+          `refs/tags/${request.tagName}^{commit}`,
+        ])
+      ).stdout.trim();
     } catch {
-      throw new Error(
-        `Local tag ${request.tagName} does not exist in the selected worktree repository.`,
-      );
+      targetCommitish = (
+        await execFileAsync("git", [
+          "-C",
+          cwd,
+          "rev-parse",
+          "--verify",
+          "HEAD^{commit}",
+        ])
+      ).stdout.trim();
     }
     return parseRelease(
       (await this.api(`${this.repositoryApiPath(nameWithOwner)}/releases`, [
@@ -1617,6 +1626,8 @@ export class GithubClient {
         "POST",
         "-f",
         `tag_name=${request.tagName}`,
+        "-f",
+        `target_commitish=${targetCommitish}`,
         "-f",
         `name=${request.name}`,
         "-f",

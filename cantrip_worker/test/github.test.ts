@@ -799,6 +799,113 @@ describe("GitHub project files", () => {
     expect(invocations).toContain("commit_title=feat: lifecycle");
   });
 
+  it("targets an existing local release tag or HEAD for a new tag", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-github-release-create-"),
+    );
+    directories.push(dataDirectory);
+    const repository = path.join(dataDirectory, "repository");
+    await execFileAsync("git", ["init", "-b", "main", repository]);
+    await execFileAsync("git", [
+      "-C",
+      repository,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      repository,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(repository, "README.md"), "First release\n");
+    await execFileAsync("git", ["-C", repository, "add", "."]);
+    await execFileAsync("git", [
+      "-C",
+      repository,
+      "commit",
+      "-m",
+      "First release",
+    ]);
+    const taggedHead = (
+      await execFileAsync("git", ["-C", repository, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await execFileAsync("git", ["-C", repository, "tag", "v1.0.0"]);
+    await writeFile(path.join(repository, "README.md"), "Second release\n");
+    await execFileAsync("git", ["-C", repository, "add", "."]);
+    await execFileAsync("git", [
+      "-C",
+      repository,
+      "commit",
+      "-m",
+      "Second release",
+    ]);
+    const currentHead = (
+      await execFileAsync("git", ["-C", repository, "rev-parse", "HEAD"])
+    ).stdout.trim();
+
+    const binDirectory = path.join(dataDirectory, "bin");
+    const logPath = path.join(dataDirectory, "gh.log");
+    await mkdir(binDirectory);
+    const fakeGh = path.join(binDirectory, "gh");
+    await writeFile(
+      fakeGh,
+      [
+        "#!/usr/bin/env node",
+        'const fs = require("node:fs");',
+        `const log = ${JSON.stringify(logPath)};`,
+        "const args = process.argv.slice(2);",
+        'fs.appendFileSync(log, args.join("\\0") + "\\n");',
+        'const field = (name) => args.find((value) => value.startsWith(name + "="))?.slice(name.length + 1) ?? "";',
+        'const tag = field("tag_name");',
+        "process.stdout.write(JSON.stringify({",
+        "  id: 42,",
+        "  tag_name: tag,",
+        '  name: field("name") || tag,',
+        '  body: field("body"),',
+        "  html_url: `https://github.com/ArcaneArts/Cantrip/releases/tag/${tag}`,",
+        '  author: { login: "cantrip-test" },',
+        '  draft: field("draft") === "true",',
+        '  prerelease: field("prerelease") === "true",',
+        '  created_at: "2026-08-11T12:00:00.000Z",',
+        "  published_at: null,",
+        "}));",
+      ].join("\n"),
+    );
+    await chmod(fakeGh, 0o755);
+    process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
+
+    const github = new GithubClient(dataDirectory);
+    await expect(
+      github.createRelease("ArcaneArts/Cantrip", repository, {
+        tagName: "v1.0.0",
+        name: "Version 1",
+        body: "Existing local tag",
+        draft: true,
+        prerelease: false,
+      }),
+    ).resolves.toMatchObject({ tagName: "v1.0.0", name: "Version 1" });
+    await expect(
+      github.createRelease("ArcaneArts/Cantrip", repository, {
+        tagName: "v2.0.0",
+        name: "Version 2",
+        body: "New tag at HEAD",
+        draft: false,
+        prerelease: false,
+      }),
+    ).resolves.toMatchObject({ tagName: "v2.0.0", name: "Version 2" });
+
+    const invocations = (await readFile(logPath, "utf8")).trim().split("\n");
+    expect(
+      invocations.find((invocation) => invocation.includes("tag_name=v1.0.0")),
+    ).toContain(`target_commitish=${taggedHead}`);
+    expect(
+      invocations.find((invocation) => invocation.includes("tag_name=v2.0.0")),
+    ).toContain(`target_commitish=${currentHead}`);
+  });
+
   it("restores the last repository list for the same GitHub login", async () => {
     const dataDirectory = await mkdtemp(
       path.join(tmpdir(), "cantrip-github-cache-test-"),
