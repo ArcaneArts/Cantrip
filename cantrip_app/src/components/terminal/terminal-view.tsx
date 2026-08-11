@@ -9,6 +9,7 @@ import { terminalWebSocketUrl } from "@/lib/api";
 import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
 
 import { terminalCommandInput } from "./terminal-command-palette";
+import { rowsWithoutPartiallyVisibleLastLine } from "./terminal-fit";
 import { TerminalScriptCommandDialog } from "./terminal-script-command-dialog";
 
 import "@xterm/xterm/css/xterm.css";
@@ -102,6 +103,15 @@ export function TerminalView({
     const resize = () => {
       try {
         fit.fit();
+        const element = xterm.element;
+        if (element) {
+          const rows = rowsWithoutPartiallyVisibleLastLine(
+            xterm.rows,
+            element.getBoundingClientRect().bottom,
+            container.getBoundingClientRect().bottom,
+          );
+          if (rows !== xterm.rows) xterm.resize(xterm.cols, rows);
+        }
         sendSize();
       } catch {
         // The terminal may be between mount and layout during navigation.
