@@ -38,7 +38,15 @@ import {
   Server,
   Tag,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   createProjectWorktree,
@@ -87,6 +95,18 @@ import { GitRecoveryDialog } from "./git-recovery-dialog";
 import { GitStashPanel } from "./git-stash-panel";
 import { GitRepositoryPanel } from "./git-repository-panel";
 import { GitOperationPanel, gitOperationIsActive } from "./git-operation-panel";
+import {
+  DEFAULT_GIT_HISTORY_DRAWER_WIDTH,
+  GIT_HISTORY_DRAWER_WIDTH_STORAGE_KEY,
+  MAX_GIT_HISTORY_DRAWER_WIDTH,
+  MIN_GIT_HISTORY_DRAWER_WIDTH,
+  clampGitHistoryDrawerWidth,
+  gitHistoryDrawerWidthFromKey,
+  gitHistoryDrawerWidthFromPointer,
+  toggleGitHistoryToolDrawer,
+  type GitHistoryDrawer,
+  type GitHistoryToolDrawer,
+} from "./git-history-drawer";
 import { HistoryWorktreeMarker } from "./history-worktree-marker";
 import { GithubIssuesView } from "./github-issues";
 
@@ -400,14 +420,23 @@ export function GitHistoryView({
 }) {
   const queryClient = useQueryClient();
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const drawerShellRef = useRef<HTMLDivElement>(null);
+  const drawerWidthRef = useRef(DEFAULT_GIT_HISTORY_DRAWER_WIDTH);
+  const drawerResizePointerIdRef = useRef<number | null>(null);
+  const drawerResizeRightRef = useRef(0);
+  const drawerResizeStartWidthRef = useRef(DEFAULT_GIT_HISTORY_DRAWER_WIDTH);
+  const drawerResizeBodyStyleRef = useRef<{
+    cursor: string;
+    userSelect: string;
+  } | null>(null);
   const [section, setSection] = useState<GitViewSection>(view);
-  const [changesOpen, setChangesOpen] = useState(false);
-  const [selectedCommit, setSelectedCommit] = useState<string | null>(null);
-  const [compareOpen, setCompareOpen] = useState(false);
-  const [stashesOpen, setStashesOpen] = useState(false);
-  const [branchesOpen, setBranchesOpen] = useState(false);
-  const [repositoryOpen, setRepositoryOpen] = useState(false);
-  const [operationsOpen, setOperationsOpen] = useState(false);
+  const [activeDrawer, setActiveDrawer] = useState<GitHistoryDrawer | null>(
+    null,
+  );
+  const [drawerWidth, setDrawerWidth] = useState(
+    DEFAULT_GIT_HISTORY_DRAWER_WIDTH,
+  );
+  const [drawerResizing, setDrawerResizing] = useState(false);
   const [forcePushOpen, setForcePushOpen] = useState(false);
   const [fileHistoryOpen, setFileHistoryOpen] = useState(false);
   const [commitSearchOpen, setCommitSearchOpen] = useState(false);
@@ -426,6 +455,26 @@ export function GitHistoryView({
   const [removeTarget, setRemoveTarget] =
     useState<ProjectWorktreeSummary | null>(null);
   const [forceRemove, setForceRemove] = useState(false);
+  const changesOpen = activeDrawer?.kind === "changes";
+  const selectedCommit =
+    activeDrawer?.kind === "commit" ? activeDrawer.revision : null;
+  const compareOpen = activeDrawer?.kind === "compare";
+  const stashesOpen = activeDrawer?.kind === "stashes";
+  const branchesOpen = activeDrawer?.kind === "branches";
+  const repositoryOpen = activeDrawer?.kind === "repository";
+  const operationsOpen = activeDrawer?.kind === "operations";
+  const drawerOpen = activeDrawer !== null;
+
+  const openCommitDrawer = (revision: string) => {
+    setActiveDrawer({ kind: "commit", revision });
+  };
+  const openToolDrawer = (kind: GitHistoryToolDrawer) => {
+    setActiveDrawer({ kind });
+  };
+  const toggleToolDrawer = (kind: GitHistoryToolDrawer) => {
+    setActiveDrawer((current) => toggleGitHistoryToolDrawer(current, kind));
+  };
+  const closeDrawer = () => setActiveDrawer(null);
   const selectedWorktree = worktrees.find(({ id }) => id === worktreeId);
   const selectedWorker = workers.find(
     ({ workerId }) => workerId === selectedWorktree?.workerId,
@@ -661,19 +710,30 @@ export function GitHistoryView({
   }, [project.id, view]);
 
   useEffect(() => {
-    setChangesOpen(false);
-    setSelectedCommit(null);
-    setCompareOpen(false);
-    setStashesOpen(false);
-    setBranchesOpen(false);
-    setRepositoryOpen(false);
-    setOperationsOpen(false);
+    setActiveDrawer(null);
     setForcePushOpen(false);
     setOperationPreset(null);
     setCommitActionRequest(null);
     setCompareLeft(null);
     setCompareRight(null);
   }, [project.id, worktreeId]);
+
+  useEffect(() => {
+    const stored = Number(
+      window.localStorage.getItem(GIT_HISTORY_DRAWER_WIDTH_STORAGE_KEY),
+    );
+    if (Number.isFinite(stored) && stored > 0) {
+      const next = clampGitHistoryDrawerWidth(stored);
+      drawerWidthRef.current = next;
+      setDrawerWidth(next);
+    }
+    return () => {
+      const previous = drawerResizeBodyStyleRef.current;
+      if (!previous) return;
+      document.body.style.cursor = previous.cursor;
+      document.body.style.userSelect = previous.userSelect;
+    };
+  }, []);
 
   useEffect(() => {
     return () => onHeaderChange(null);
@@ -693,6 +753,90 @@ export function GitHistoryView({
     observer.observe(node);
     return () => observer.disconnect();
   }, [history.fetchNextPage, history.hasNextPage, history.isFetchingNextPage]);
+
+  const applyDrawerWidth = (width: number) => {
+    const next = clampGitHistoryDrawerWidth(width);
+    drawerWidthRef.current = next;
+    setDrawerWidth(next);
+    return next;
+  };
+
+  const persistDrawerWidth = (width: number) => {
+    window.localStorage.setItem(
+      GIT_HISTORY_DRAWER_WIDTH_STORAGE_KEY,
+      String(width),
+    );
+  };
+
+  const restoreDrawerResizeBodyStyle = () => {
+    const previous = drawerResizeBodyStyleRef.current;
+    if (!previous) return;
+    document.body.style.cursor = previous.cursor;
+    document.body.style.userSelect = previous.userSelect;
+    drawerResizeBodyStyleRef.current = null;
+  };
+
+  const beginDrawerResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    drawerResizePointerIdRef.current = event.pointerId;
+    drawerResizeRightRef.current =
+      drawerShellRef.current?.getBoundingClientRect().right ??
+      window.innerWidth;
+    drawerResizeStartWidthRef.current = drawerWidthRef.current;
+    drawerResizeBodyStyleRef.current = {
+      cursor: document.body.style.cursor,
+      userSelect: document.body.style.userSelect,
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDrawerResizing(true);
+  };
+
+  const moveDrawerResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (drawerResizePointerIdRef.current !== event.pointerId) return;
+    applyDrawerWidth(
+      gitHistoryDrawerWidthFromPointer(
+        event.clientX,
+        drawerResizeRightRef.current,
+      ),
+    );
+  };
+
+  const finishDrawerResize = (
+    event: ReactPointerEvent<HTMLDivElement>,
+    persist: boolean,
+  ) => {
+    if (drawerResizePointerIdRef.current !== event.pointerId) return;
+    drawerResizePointerIdRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    restoreDrawerResizeBodyStyle();
+    setDrawerResizing(false);
+    if (!persist) {
+      applyDrawerWidth(drawerResizeStartWidthRef.current);
+      return;
+    }
+    if (drawerWidthRef.current !== drawerResizeStartWidthRef.current) {
+      persistDrawerWidth(drawerWidthRef.current);
+    }
+  };
+
+  const resizeDrawerWithKeyboard = (
+    event: ReactKeyboardEvent<HTMLDivElement>,
+  ) => {
+    const next = gitHistoryDrawerWidthFromKey(
+      drawerWidthRef.current,
+      event.key,
+    );
+    if (next === null) return;
+    event.preventDefault();
+    if (next === drawerWidthRef.current) return;
+    applyDrawerWidth(next);
+    persistDrawerWidth(next);
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -772,14 +916,8 @@ export function GitHistoryView({
               className="h-6 gap-1 px-2 text-[11px]"
               disabled={!selectedAvailable}
               onClick={() => {
-                setChangesOpen(false);
-                setSelectedCommit(null);
-                setCompareOpen(false);
-                setStashesOpen(false);
-                setBranchesOpen(false);
-                setRepositoryOpen(false);
                 setOperationPreset(null);
-                setOperationsOpen((current) => !current);
+                toggleToolDrawer("operations");
               }}
             >
               <GitPullRequestArrow className="size-3" /> Operations
@@ -794,15 +932,7 @@ export function GitHistoryView({
               variant={repositoryOpen ? "outline" : "ghost"}
               className="h-6 gap-1 px-2 text-[11px]"
               disabled={!selectedAvailable}
-              onClick={() => {
-                setChangesOpen(false);
-                setSelectedCommit(null);
-                setCompareOpen(false);
-                setStashesOpen(false);
-                setBranchesOpen(false);
-                setOperationsOpen(false);
-                setRepositoryOpen((current) => !current);
-              }}
+              onClick={() => toggleToolDrawer("repository")}
             >
               <Server className="size-3" /> Repository
             </Button>
@@ -813,15 +943,7 @@ export function GitHistoryView({
               variant={branchesOpen ? "outline" : "ghost"}
               className="h-6 gap-1 px-2 text-[11px]"
               disabled={!selectedAvailable}
-              onClick={() => {
-                setChangesOpen(false);
-                setSelectedCommit(null);
-                setCompareOpen(false);
-                setStashesOpen(false);
-                setRepositoryOpen(false);
-                setOperationsOpen(false);
-                setBranchesOpen((current) => !current);
-              }}
+              onClick={() => toggleToolDrawer("branches")}
             >
               <GitBranch className="size-3" /> Branches
             </Button>
@@ -832,15 +954,7 @@ export function GitHistoryView({
               variant={stashesOpen ? "outline" : "ghost"}
               className="h-6 gap-1 px-2 text-[11px]"
               disabled={!selectedAvailable}
-              onClick={() => {
-                setChangesOpen(false);
-                setSelectedCommit(null);
-                setCompareOpen(false);
-                setBranchesOpen(false);
-                setRepositoryOpen(false);
-                setOperationsOpen(false);
-                setStashesOpen((current) => !current);
-              }}
+              onClick={() => toggleToolDrawer("stashes")}
             >
               <Archive className="size-3" /> Stashes
             </Button>
@@ -852,18 +966,10 @@ export function GitHistoryView({
               className="h-6 gap-1 px-2 text-[11px]"
               disabled={!selectedAvailable}
               onClick={() => {
-                setChangesOpen(false);
-                setSelectedCommit(null);
-                setStashesOpen(false);
-                setBranchesOpen(false);
-                setRepositoryOpen(false);
-                setOperationsOpen(false);
-                setCompareOpen((current) => {
-                  if (!current && !compareLeft) {
-                    setCompareLeft(firstPage?.head ?? status?.head ?? null);
-                  }
-                  return !current;
-                });
+                if (!compareOpen && !compareLeft) {
+                  setCompareLeft(firstPage?.head ?? status?.head ?? null);
+                }
+                toggleToolDrawer("compare");
               }}
             >
               <GitCompareArrows className="size-3" /> Compare
@@ -1086,12 +1192,7 @@ export function GitHistoryView({
                         style={{ gridTemplateColumns: historyColumns }}
                         onClick={() => {
                           onSelectWorktree(worktree.id);
-                          setSelectedCommit(null);
-                          setCompareOpen(false);
-                          setStashesOpen(false);
-                          setBranchesOpen(false);
-                          setRepositoryOpen(false);
-                          setChangesOpen(true);
+                          openToolDrawer("changes");
                         }}
                         title={`Open ${worktree.name} staged and unstaged changes`}
                       >
@@ -1190,24 +1291,14 @@ export function GitHistoryView({
                         onClick={(event) => {
                           if ((event.target as Element).closest("button"))
                             return;
-                          setChangesOpen(false);
-                          setCompareOpen(false);
-                          setStashesOpen(false);
-                          setBranchesOpen(false);
-                          setRepositoryOpen(false);
-                          setSelectedCommit(row.commit.hash);
+                          openCommitDrawer(row.commit.hash);
                         }}
                         onKeyDown={(event) => {
                           if (event.target !== event.currentTarget) return;
                           if (event.key !== "Enter" && event.key !== " ")
                             return;
                           event.preventDefault();
-                          setChangesOpen(false);
-                          setCompareOpen(false);
-                          setStashesOpen(false);
-                          setBranchesOpen(false);
-                          setRepositoryOpen(false);
-                          setSelectedCommit(row.commit.hash);
+                          openCommitDrawer(row.commit.hash);
                         }}
                       >
                         <div className="relative h-8 min-w-0 overflow-visible">
@@ -1363,88 +1454,139 @@ export function GitHistoryView({
               </div>
             )}
           </div>
-          {changesOpen ? (
-            status ? (
-              <GitChangesPanel
-                projectId={project.id}
-                worktreeId={worktreeId}
-                worktreeName={selectedWorktree?.name ?? "Worktree"}
-                status={status}
-                onClose={() => setChangesOpen(false)}
-              />
-            ) : (
-              <aside className="absolute inset-y-0 right-0 z-20 grid w-full max-w-sm place-items-center border-l bg-background text-sm text-muted-foreground shadow-2xl md:relative md:z-auto md:w-96 md:shadow-none">
-                <p className="p-6 text-center">
-                  Git status is unavailable for this worktree.
-                </p>
-              </aside>
-            )
-          ) : null}
-          {selectedCommit ? (
-            <GitCommitInspector
-              currentHead={status?.head ?? null}
-              projectId={project.id}
-              worktreeId={worktreeId}
-              revision={selectedCommit}
-              onClose={() => setSelectedCommit(null)}
-              onNavigate={setSelectedCommit}
-              onAction={setCommitActionRequest}
+          <div
+            ref={drawerShellRef}
+            data-slot="git-history-drawer-shell"
+            data-state={drawerOpen ? "open" : "closed"}
+            className={cn(
+              "group/history-drawer absolute inset-y-0 right-0 z-20 h-full max-w-full shrink-0 md:relative md:inset-auto md:z-auto",
+              drawerResizing
+                ? "transition-none"
+                : "transition-[width] duration-150 ease-out motion-reduce:transition-none",
+            )}
+            style={{ width: drawerOpen ? drawerWidth : 0 }}
+          >
+            <div className="absolute inset-0 overflow-hidden">
+              {activeDrawer ? (
+                <div
+                  data-slot="git-history-drawer"
+                  data-kind={activeDrawer.kind}
+                  className={cn(
+                    "absolute inset-y-0 right-0 h-full max-w-[100vw] bg-background transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none",
+                    "[&>aside]:!relative [&>aside]:!inset-auto [&>aside]:!z-auto [&>aside]:!h-full [&>aside]:!w-full [&>aside]:!max-w-none [&>aside]:!border-l-0 [&>aside]:!shadow-none",
+                    drawerOpen
+                      ? "translate-x-0 opacity-100"
+                      : "translate-x-2 opacity-0",
+                  )}
+                  style={{ width: drawerWidth }}
+                >
+                  {changesOpen ? (
+                    status ? (
+                      <GitChangesPanel
+                        projectId={project.id}
+                        worktreeId={worktreeId}
+                        worktreeName={selectedWorktree?.name ?? "Worktree"}
+                        status={status}
+                        onClose={closeDrawer}
+                      />
+                    ) : (
+                      <aside className="grid place-items-center bg-background text-sm text-muted-foreground">
+                        <p className="p-6 text-center">
+                          Git status is unavailable for this worktree.
+                        </p>
+                      </aside>
+                    )
+                  ) : null}
+                  {selectedCommit ? (
+                    <GitCommitInspector
+                      currentHead={status?.head ?? null}
+                      projectId={project.id}
+                      worktreeId={worktreeId}
+                      revision={selectedCommit}
+                      onClose={closeDrawer}
+                      onNavigate={openCommitDrawer}
+                      onAction={setCommitActionRequest}
+                    />
+                  ) : null}
+                  {compareOpen ? (
+                    <GitComparisonPanel
+                      projectId={project.id}
+                      worktreeId={worktreeId}
+                      left={compareLeft}
+                      right={compareRight}
+                      onLeftChange={setCompareLeft}
+                      onRightChange={setCompareRight}
+                      onClose={closeDrawer}
+                    />
+                  ) : null}
+                  {stashesOpen ? (
+                    <GitStashPanel
+                      projectId={project.id}
+                      worktreeId={worktreeId}
+                      onClose={closeDrawer}
+                    />
+                  ) : null}
+                  {branchesOpen ? (
+                    <GitBranchPanel
+                      projectId={project.id}
+                      worktreeId={worktreeId}
+                      onClose={closeDrawer}
+                      onOperation={(action) => {
+                        setOperationPreset(action);
+                        openToolDrawer("operations");
+                      }}
+                    />
+                  ) : null}
+                  {operationsOpen ? (
+                    <GitOperationPanel
+                      initialAction={operationPreset}
+                      projectId={project.id}
+                      worktreeId={worktreeId}
+                      onClose={() => {
+                        closeDrawer();
+                        setOperationPreset(null);
+                      }}
+                      onOpenWorkingChanges={() => {
+                        setOperationPreset(null);
+                        openToolDrawer("changes");
+                      }}
+                    />
+                  ) : null}
+                  {repositoryOpen ? (
+                    <GitRepositoryPanel
+                      githubEnabled={Boolean(project.github)}
+                      projectId={project.id}
+                      worktreeId={worktreeId}
+                      onClose={closeDrawer}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <div
+              data-slot="git-history-drawer-resize-handle"
+              role="separator"
+              aria-label="Resize Git details drawer"
+              aria-orientation="vertical"
+              aria-valuemin={MIN_GIT_HISTORY_DRAWER_WIDTH}
+              aria-valuemax={MAX_GIT_HISTORY_DRAWER_WIDTH}
+              aria-valuenow={drawerWidth}
+              tabIndex={drawerOpen ? 0 : -1}
+              title="Drag to resize Git details drawer"
+              className={cn(
+                "absolute inset-y-0 -left-1 z-40 w-2 cursor-col-resize touch-none outline-none",
+                "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-border after:opacity-0 after:transition-opacity after:duration-150",
+                "group-hover/history-drawer:after:opacity-100 hover:after:opacity-100 focus-visible:after:opacity-100",
+                !drawerOpen && "pointer-events-none opacity-0",
+                drawerResizing && "after:opacity-100",
+              )}
+              onKeyDown={resizeDrawerWithKeyboard}
+              onPointerDown={beginDrawerResize}
+              onPointerMove={moveDrawerResize}
+              onPointerUp={(event) => finishDrawerResize(event, true)}
+              onPointerCancel={(event) => finishDrawerResize(event, false)}
             />
-          ) : null}
-          {compareOpen ? (
-            <GitComparisonPanel
-              projectId={project.id}
-              worktreeId={worktreeId}
-              left={compareLeft}
-              right={compareRight}
-              onLeftChange={setCompareLeft}
-              onRightChange={setCompareRight}
-              onClose={() => setCompareOpen(false)}
-            />
-          ) : null}
-          {stashesOpen ? (
-            <GitStashPanel
-              projectId={project.id}
-              worktreeId={worktreeId}
-              onClose={() => setStashesOpen(false)}
-            />
-          ) : null}
-          {branchesOpen ? (
-            <GitBranchPanel
-              projectId={project.id}
-              worktreeId={worktreeId}
-              onClose={() => setBranchesOpen(false)}
-              onOperation={(action) => {
-                setBranchesOpen(false);
-                setOperationPreset(action);
-                setOperationsOpen(true);
-              }}
-            />
-          ) : null}
-          {operationsOpen ? (
-            <GitOperationPanel
-              initialAction={operationPreset}
-              projectId={project.id}
-              worktreeId={worktreeId}
-              onClose={() => {
-                setOperationsOpen(false);
-                setOperationPreset(null);
-              }}
-              onOpenWorkingChanges={() => {
-                setOperationsOpen(false);
-                setOperationPreset(null);
-                setChangesOpen(true);
-              }}
-            />
-          ) : null}
-          {repositoryOpen ? (
-            <GitRepositoryPanel
-              githubEnabled={Boolean(project.github)}
-              projectId={project.id}
-              worktreeId={worktreeId}
-              onClose={() => setRepositoryOpen(false)}
-            />
-          ) : null}
+          </div>
         </div>
       )}
 
@@ -1454,12 +1596,7 @@ export function GitHistoryView({
         request={commitActionRequest}
         onOpenChange={(open) => !open && setCommitActionRequest(null)}
         onConflict={() => {
-          setSelectedCommit(null);
-          setCompareOpen(false);
-          setStashesOpen(false);
-          setBranchesOpen(false);
-          setRepositoryOpen(false);
-          setChangesOpen(true);
+          openToolDrawer("changes");
         }}
       />
 
@@ -1601,9 +1738,7 @@ export function GitHistoryView({
         projectId={project.id}
         worktreeId={worktreeId}
         onOpenCommit={(revision) => {
-          setChangesOpen(false);
-          setCompareOpen(false);
-          setSelectedCommit(revision);
+          openCommitDrawer(revision);
         }}
       />
       <GitCommitSearchDialog
@@ -1612,9 +1747,7 @@ export function GitHistoryView({
         projectId={project.id}
         worktreeId={worktreeId}
         onOpenCommit={(revision) => {
-          setChangesOpen(false);
-          setCompareOpen(false);
-          setSelectedCommit(revision);
+          openCommitDrawer(revision);
         }}
       />
       <GitRecoveryDialog
