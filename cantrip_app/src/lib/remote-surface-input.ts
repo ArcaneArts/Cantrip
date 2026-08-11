@@ -24,6 +24,53 @@ export interface RemoteSurfaceModifierState {
 
 export type RemoteSurfaceCoordinateLimit = "edge" | "last-pixel";
 
+export interface RemoteSurfacePointerEventLike
+  extends RemoteSurfacePoint, RemoteSurfaceModifierState {
+  button: number;
+  buttons: number;
+  detail: number;
+}
+
+export interface RemoteSurfaceWheelEventLike
+  extends RemoteSurfacePoint, RemoteSurfaceModifierState {
+  deltaX: number;
+  deltaY: number;
+}
+
+export interface RemoteSurfaceKeyEventLike extends RemoteSurfaceModifierState {
+  code: string;
+  key: string;
+}
+
+export interface RemoteSurfacePointerInput {
+  button: ReturnType<typeof remoteSurfacePointerButton>;
+  buttons: number;
+  clickCount: number;
+  deltaX: number;
+  deltaY: number;
+  event: "down" | "move" | "up" | "wheel";
+  modifiers: number;
+  type: "pointer";
+  x: number;
+  y: number;
+}
+
+export interface RemoteSurfaceKeyInput {
+  code: string;
+  event: "down" | "up";
+  key: string;
+  modifiers: number;
+  text: string;
+  type: "key";
+}
+
+export interface RemoteSurfaceTouchInput {
+  event: "cancel" | "end" | "move" | "start";
+  modifiers: number;
+  points: ReturnType<typeof remoteSurfaceTouchPoints>;
+  type: "touch";
+}
+
 export function remoteSurfacePointerCoordinates(
   point: RemoteSurfacePoint,
   bounds: RemoteSurfaceBounds,
@@ -108,4 +155,87 @@ export function remoteSurfaceKeyText(
     (options.allowAltModifiedText || !event.altKey)
     ? event.key
     : "";
+}
+
+export function remoteSurfacePointerInput(
+  event: RemoteSurfacePointerEventLike,
+  type: "down" | "move" | "up",
+  bounds: RemoteSurfaceBounds,
+  target: RemoteSurfaceSize,
+  coordinateLimit: RemoteSurfaceCoordinateLimit,
+): RemoteSurfacePointerInput {
+  return {
+    type: "pointer",
+    event: type,
+    ...remoteSurfacePointerCoordinates(event, bounds, target, coordinateLimit),
+    button: remoteSurfacePointerButton(event.button),
+    buttons: event.buttons,
+    clickCount: event.detail,
+    deltaX: 0,
+    deltaY: 0,
+    modifiers: remoteSurfaceModifiers(event),
+  };
+}
+
+export function remoteSurfaceWheelInput(
+  event: RemoteSurfaceWheelEventLike,
+  bounds: RemoteSurfaceBounds,
+  target: RemoteSurfaceSize,
+  coordinateLimit: RemoteSurfaceCoordinateLimit,
+): RemoteSurfacePointerInput {
+  return {
+    type: "pointer",
+    event: "wheel",
+    ...remoteSurfacePointerCoordinates(event, bounds, target, coordinateLimit),
+    button: "none",
+    buttons: 0,
+    clickCount: 0,
+    deltaX: event.deltaX,
+    deltaY: event.deltaY,
+    modifiers: remoteSurfaceModifiers(event),
+  };
+}
+
+export function remoteSurfaceKeyInput(
+  event: RemoteSurfaceKeyEventLike,
+  type: "down" | "up",
+  options: { allowAltModifiedText: boolean },
+): RemoteSurfaceKeyInput {
+  return {
+    type: "key",
+    event: type,
+    key: event.key,
+    code: event.code,
+    text: remoteSurfaceKeyText(event, type, options),
+    modifiers: remoteSurfaceModifiers(event),
+  };
+}
+
+export function remoteSurfaceTouchInput(
+  event: RemoteSurfaceModifierState & {
+    touches: Parameters<typeof remoteSurfaceTouchPoints>[0];
+  },
+  type: "cancel" | "end" | "move" | "start",
+  bounds: RemoteSurfaceBounds,
+  target: RemoteSurfaceSize,
+): RemoteSurfaceTouchInput {
+  return {
+    type: "touch",
+    event: type,
+    points: remoteSurfaceTouchPoints(event.touches, bounds, target),
+    modifiers: remoteSurfaceModifiers(event),
+  };
+}
+
+export async function forwardRemoteSurfaceClipboard(
+  forward: (text: string) => void,
+  readText: () => Promise<string> = () => navigator.clipboard.readText(),
+): Promise<string> {
+  try {
+    const text = await readText();
+    forward(text);
+    return text ? "Clipboard pasted" : "Clipboard is empty";
+  } catch {
+    return "Clipboard access was denied by this app environment.";
+  }
 }

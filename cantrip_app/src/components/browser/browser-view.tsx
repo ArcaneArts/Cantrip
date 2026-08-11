@@ -30,19 +30,17 @@ import {
   useRef,
   useState,
   type FormEvent,
-  type KeyboardEvent,
-  type PointerEvent,
-  type TouchEvent,
-  type WheelEvent,
 } from "react";
 
+import {
+  RemoteSurfaceCanvas,
+  type RemoteSurfaceCanvasHandle,
+} from "@/components/remote-surface/remote-surface-canvas";
 import { Button } from "@/components/ui/button";
 import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
 import { getBrowserServices, remoteSurfaceWebSocketUrl } from "@/lib/api";
 import {
-  remoteSurfaceKeyText,
-  remoteSurfaceModifiers,
-  remoteSurfacePointerButton,
+  forwardRemoteSurfaceClipboard,
   remoteSurfacePointerCoordinates,
   remoteSurfaceTouchPoints,
 } from "@/lib/remote-surface-input";
@@ -146,7 +144,7 @@ export function BrowserView({
     url: string;
   }): void;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const remoteCanvasRef = useRef<RemoteSurfaceCanvasHandle>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const inputFocusedRef = useRef(false);
   const onPageStateRef = useRef(onPageState);
@@ -156,7 +154,6 @@ export function BrowserView({
     height: 720,
     devicePixelRatio: window.devicePixelRatio || 1,
   });
-  const frameChainRef = useRef(Promise.resolve());
   const [address, setAddress] = useState(browser.url);
   const [currentUrl, setCurrentUrl] = useState(browser.url);
   const [invalidAddress, setInvalidAddress] = useState(false);
@@ -170,6 +167,7 @@ export function BrowserView({
   const [clipboardMessage, setClipboardMessage] = useState<string | null>(null);
   const [serviceMenuOpen, setServiceMenuOpen] = useState(false);
   const [serviceSearch, setServiceSearch] = useState("");
+  const [cursor, setCursor] = useState<string | undefined>();
   const [renderedSurfaceId, setRenderedSurfaceId] = useState<string | null>(
     null,
   );
@@ -188,31 +186,7 @@ export function BrowserView({
   const handleFrame = useCallback(
     (frame: RemoteSurfaceInboundFrame, context: RemoteSurfaceFrameContext) => {
       if (frame.header.channel === "frame") {
-        const bytes = new Uint8Array(frame.payload);
-        frameChainRef.current = frameChainRef.current
-          .then(async () => {
-            const canvas = canvasRef.current;
-            if (!canvas || !context.isCurrent()) return;
-            const bitmap = await createImageBitmap(
-              new Blob([bytes], { type: "image/jpeg" }),
-            );
-            if (!context.isCurrent()) {
-              bitmap.close();
-              return;
-            }
-            canvas.width = bitmap.width;
-            canvas.height = bitmap.height;
-            canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
-            bitmap.close();
-            setRenderedSurfaceId(browser.id);
-          })
-          .catch(() => {
-            if (context.isCurrent()) {
-              context.reportError(
-                "The worker sent an unreadable browser frame.",
-              );
-            }
-          });
+        remoteCanvasRef.current?.pushFrame(frame.payload);
       } else if (frame.header.channel === "control") {
         const state = remoteBrowserServerMessageSchema.parse(
           JSON.parse(decoder.decode(frame.payload)),
@@ -250,10 +224,7 @@ export function BrowserView({
         const cursor = remoteBrowserCursorMessageSchema.parse(
           JSON.parse(decoder.decode(frame.payload)),
         ).cursor;
-        const canvas = canvasRef.current;
-        if (canvas && CSS.supports("cursor", cursor)) {
-          canvas.style.cursor = cursor;
-        }
+        if (CSS.supports("cursor", cursor)) setCursor(cursor);
       } else if (frame.header.channel === "clipboard") {
         const clipboard = remoteBrowserClipboardMessageSchema.parse(
           JSON.parse(decoder.decode(frame.payload)),
@@ -281,6 +252,7 @@ export function BrowserView({
       webSocketUrl: () =>
         remoteSurfaceWebSocketUrl(browser.id, viewportRef.current),
       messages: browserTransportMessages,
+      onConnecting: () => remoteCanvasRef.current?.reset(),
       onFrame: handleFrame,
     });
 
@@ -360,104 +332,12 @@ export function BrowserView({
     navigateTo(address);
   };
 
-  const pointer = (
-    event: PointerEvent<HTMLCanvasElement>,
-    type: "move" | "down" | "up",
-  ) => {
-    if (event.pointerType === "touch") return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    if (type === "down") {
-      canvas.focus();
-      canvas.setPointerCapture(event.pointerId);
-    }
-    const position = browserPointerCoordinates(
-      event,
-      canvas.getBoundingClientRect(),
-      viewportRef.current,
-    );
-    send({
-      type: "pointer",
-      event: type,
-      ...position,
-      button: remoteSurfacePointerButton(event.button),
-      buttons: event.buttons,
-      clickCount: event.detail,
-      deltaX: 0,
-      deltaY: 0,
-      modifiers: remoteSurfaceModifiers(event),
-    });
-  };
-
-  const wheel = (event: WheelEvent<HTMLCanvasElement>) => {
-    event.preventDefault();
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const position = browserPointerCoordinates(
-      event,
-      canvas.getBoundingClientRect(),
-      viewportRef.current,
-    );
-    send({
-      type: "pointer",
-      event: "wheel",
-      ...position,
-      button: "none",
-      buttons: 0,
-      clickCount: 0,
-      deltaX: event.deltaX,
-      deltaY: event.deltaY,
-      modifiers: remoteSurfaceModifiers(event),
-    });
-  };
-
-  const touch = (
-    event: TouchEvent<HTMLCanvasElement>,
-    type: "start" | "move" | "end" | "cancel",
-  ) => {
-    event.preventDefault();
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    canvas.focus();
-    send({
-      type: "touch",
-      event: type,
-      points: browserTouchPoints(
-        event.touches,
-        canvas.getBoundingClientRect(),
-        viewportRef.current,
-      ),
-      modifiers: remoteSurfaceModifiers(event),
-    });
-  };
-
   const pasteClipboard = async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      send({ type: "clipboard", operation: "paste-text", text });
-      setClipboardMessage(text ? "Clipboard pasted" : "Clipboard is empty");
-    } catch {
-      setClipboardMessage(
-        "Clipboard access was denied by this app environment.",
-      );
-    }
-  };
-
-  const key = (
-    event: KeyboardEvent<HTMLCanvasElement>,
-    type: "down" | "up",
-  ) => {
-    event.preventDefault();
-    send({
-      type: "key",
-      event: type,
-      key: event.key,
-      code: event.code,
-      text: remoteSurfaceKeyText(event, type, {
-        allowAltModifiedText: true,
-      }),
-      modifiers: remoteSurfaceModifiers(event),
-    });
+    setClipboardMessage(
+      await forwardRemoteSurfaceClipboard((text) =>
+        send({ type: "clipboard", operation: "paste-text", text }),
+      ),
+    );
   };
 
   return (
@@ -698,23 +578,23 @@ export function BrowserView({
         ref={surfaceRef}
         className="relative min-h-0 flex-1 overflow-hidden bg-black"
       >
-        <canvas
-          ref={canvasRef}
-          aria-label={`${browser.title} worker browser surface`}
+        <RemoteSurfaceCanvas
+          ref={remoteCanvasRef}
+          allowAltModifiedText
+          ariaLabel={`${browser.title} worker browser surface`}
           className="absolute inset-0 size-full touch-none object-fill outline-none"
-          tabIndex={0}
+          coordinateLimit="edge"
+          cursor={cursor}
+          framePolicy="ordered"
+          getCoordinateSpace={() => viewportRef.current}
           onFocus={() => send({ type: "focus" })}
-          onPointerDown={(event) => pointer(event, "down")}
-          onPointerMove={(event) => pointer(event, "move")}
-          onPointerUp={(event) => pointer(event, "up")}
-          onPointerCancel={(event) => pointer(event, "up")}
-          onWheel={wheel}
-          onTouchStart={(event) => touch(event, "start")}
-          onTouchMove={(event) => touch(event, "move")}
-          onTouchEnd={(event) => touch(event, "end")}
-          onTouchCancel={(event) => touch(event, "cancel")}
-          onKeyDown={(event) => key(event, "down")}
-          onKeyUp={(event) => key(event, "up")}
+          onFrameError={() =>
+            setError("The worker sent an unreadable browser frame.")
+          }
+          onKey={send}
+          onPointer={send}
+          onRendered={() => setRenderedSurfaceId(browser.id)}
+          onTouch={send}
         />
         <SurfaceLoadingVeil
           label={

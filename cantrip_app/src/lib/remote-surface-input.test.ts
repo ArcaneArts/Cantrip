@@ -1,11 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+  forwardRemoteSurfaceClipboard,
+  remoteSurfaceKeyInput,
   remoteSurfaceKeyText,
   remoteSurfaceModifiers,
   remoteSurfacePointerButton,
   remoteSurfacePointerCoordinates,
+  remoteSurfacePointerInput,
+  remoteSurfaceTouchInput,
   remoteSurfaceTouchPoints,
+  remoteSurfaceWheelInput,
 } from "./remote-surface-input";
 
 const noModifiers = {
@@ -177,5 +182,135 @@ describe("remoteSurfaceKeyText", () => {
     expect(
       remoteSurfaceKeyText(event, "down", { allowAltModifiedText: false }),
     ).toBe("");
+  });
+});
+
+describe("remote surface input messages", () => {
+  const bounds = { left: 10, top: 20, width: 100, height: 50 };
+  const target = { width: 1_000, height: 500 };
+
+  it("encodes pointer and wheel events with the selected coordinate policy", () => {
+    expect(
+      remoteSurfacePointerInput(
+        {
+          ...noModifiers,
+          clientX: 110,
+          clientY: 70,
+          button: 2,
+          buttons: 2,
+          detail: 1,
+        },
+        "down",
+        bounds,
+        target,
+        "last-pixel",
+      ),
+    ).toEqual({
+      type: "pointer",
+      event: "down",
+      x: 999,
+      y: 499,
+      button: "right",
+      buttons: 2,
+      clickCount: 1,
+      deltaX: 0,
+      deltaY: 0,
+      modifiers: 0,
+    });
+    expect(
+      remoteSurfaceWheelInput(
+        {
+          ...noModifiers,
+          shiftKey: true,
+          clientX: 60,
+          clientY: 45,
+          deltaX: -4,
+          deltaY: 12,
+        },
+        bounds,
+        target,
+        "edge",
+      ),
+    ).toMatchObject({
+      type: "pointer",
+      event: "wheel",
+      x: 500,
+      y: 250,
+      deltaX: -4,
+      deltaY: 12,
+      modifiers: 8,
+    });
+  });
+
+  it("encodes key and touch events", () => {
+    expect(
+      remoteSurfaceKeyInput(
+        { ...noModifiers, code: "KeyA", key: "a" },
+        "down",
+        { allowAltModifiedText: false },
+      ),
+    ).toEqual({
+      type: "key",
+      event: "down",
+      key: "a",
+      code: "KeyA",
+      text: "a",
+      modifiers: 0,
+    });
+    expect(
+      remoteSurfaceTouchInput(
+        {
+          ...noModifiers,
+          ctrlKey: true,
+          touches: [{ clientX: 60, clientY: 45, identifier: 3 }],
+        },
+        "move",
+        bounds,
+        target,
+      ),
+    ).toEqual({
+      type: "touch",
+      event: "move",
+      modifiers: 2,
+      points: [
+        {
+          id: 3,
+          x: 500,
+          y: 250,
+          force: 1,
+          radiusX: 1,
+          radiusY: 1,
+        },
+      ],
+    });
+  });
+});
+
+describe("forwardRemoteSurfaceClipboard", () => {
+  it("forwards non-empty and empty clipboard text", async () => {
+    const forwarded: string[] = [];
+    await expect(
+      forwardRemoteSurfaceClipboard(
+        (text) => forwarded.push(text),
+        async () => "hello",
+      ),
+    ).resolves.toBe("Clipboard pasted");
+    await expect(
+      forwardRemoteSurfaceClipboard(
+        (text) => forwarded.push(text),
+        async () => "",
+      ),
+    ).resolves.toBe("Clipboard is empty");
+    expect(forwarded).toEqual(["hello", ""]);
+  });
+
+  it("reports denied clipboard access without forwarding", async () => {
+    const forward = vi.fn();
+    await expect(
+      forwardRemoteSurfaceClipboard(forward, async () => {
+        throw new Error("denied");
+      }),
+    ).resolves.toBe("Clipboard access was denied by this app environment.");
+    expect(forward).not.toHaveBeenCalled();
   });
 });
