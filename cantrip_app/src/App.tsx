@@ -242,6 +242,7 @@ import {
   updateDesktopWindowTheme,
   updateMacosProMode,
   updateDesktopWindowTitle,
+  watchDesktopPopoutGroup,
 } from "@/lib/desktop-popout";
 import {
   desktopProjectRevealLabel,
@@ -3417,6 +3418,32 @@ export function App() {
       console.error("Could not update the pop-out window title", error);
     });
   }, [currentSurface, isPopout, selectedProject]);
+  useEffect(() => {
+    if (!desktopRuntime || isPopout || !detachedGroupId) return;
+    const observedGroupId = detachedGroupId;
+    let mounted = true;
+    let stopObserving: (() => void) | null = null;
+    const resumeLocally = () => {
+      if (!mounted) return;
+      setDetachedGroupId((current) =>
+        current === observedGroupId ? null : current,
+      );
+    };
+    void watchDesktopPopoutGroup(observedGroupId, resumeLocally)
+      .then((stop) => {
+        if (mounted) stopObserving = stop;
+        else stop();
+      })
+      .catch((error: unknown) => {
+        if (!mounted) return;
+        console.error("Could not observe the desktop pop-out window", error);
+        resumeLocally();
+      });
+    return () => {
+      mounted = false;
+      stopObserving?.();
+    };
+  }, [desktopRuntime, detachedGroupId, isPopout]);
   useEffect(() => {
     scrolledContentRef.current.clear();
     setContentScrolled(false);
