@@ -13,6 +13,7 @@ import { discoverCodexRuntime } from "./codex/discovery.js";
 import type { CodexRuntime } from "./codex/runtime.js";
 import { invokeCantripWorktreeTool } from "./codex/worktree-tool-client.js";
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
+import { discoverBrowserServices } from "./browser/service-discovery.js";
 import { discoverCantripCode } from "./code/installation.js";
 import { CodeSupervisor } from "./code/supervisor.js";
 import { CodeTunnelProxy } from "./code/tunnel-proxy.js";
@@ -325,6 +326,8 @@ async function start(): Promise<void> {
         return github.deleteRepository(command.path);
       case "project.script-commands":
         return discoverScriptCommands(command.cwd);
+      case "browser.services.discover":
+        return discoverBrowserServices();
       case "project.share.open":
         return projectShares.open(command);
       case "project.share.close":

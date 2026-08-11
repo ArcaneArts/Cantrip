@@ -7,17 +7,23 @@ import {
   remoteBrowserServerMessageSchema,
   remoteSurfaceConnectionMessageSchema,
   type BrowserSummary,
+  type BrowserService,
   type RemoteBrowserClientMessage,
   type RemoteSurfaceChannel,
 } from "@cantrip/protocol";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
+  ChevronDown,
   ClipboardCopy,
   ClipboardPaste,
   ExternalLink,
   Globe2,
   Loader2,
+  Network,
+  RefreshCw,
   RotateCw,
   X,
 } from "lucide-react";
@@ -35,11 +41,15 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
-import { remoteSurfaceWebSocketUrl } from "@/lib/api";
+import { getBrowserServices, remoteSurfaceWebSocketUrl } from "@/lib/api";
 import { RemoteSurfaceWebRtcClient } from "@/lib/remote-surface-webrtc";
 
 const decoder = new TextDecoder();
 const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
+
+export function browserServiceDisplayName(service: BrowserService): string {
+  return service.title ?? service.processName ?? `Port ${service.port}`;
+}
 
 export function normalizeBrowserAddress(value: string): string | null {
   const candidate = /^[a-z][a-z\d+.-]*:/i.test(value.trim())
@@ -172,10 +182,19 @@ export function BrowserView({
   >("ready");
   const [runtimeMessage, setRuntimeMessage] = useState<string | null>(null);
   const [clipboardMessage, setClipboardMessage] = useState<string | null>(null);
+  const [serviceMenuOpen, setServiceMenuOpen] = useState(false);
   const [renderedSurfaceId, setRenderedSurfaceId] = useState<string | null>(
     null,
   );
   const surfaceReady = renderedSurfaceId === browser.id;
+  const servicesQuery = useQuery({
+    queryKey: ["browser-services", browser.id],
+    queryFn: () => getBrowserServices(browser.id),
+    enabled: serviceMenuOpen,
+    retry: false,
+    staleTime: 5_000,
+  });
+  const services = servicesQuery.data ?? [];
   onPageStateRef.current = onPageState;
 
   const sendFrame = useCallback(
@@ -456,18 +475,23 @@ export function BrowserView({
     };
   }, [browser.id, connectionKey, send, sendFrame]);
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    const normalized = normalizeBrowserAddress(address);
+  const navigateTo = (value: string) => {
+    const normalized = normalizeBrowserAddress(value);
     if (!normalized) {
       setInvalidAddress(true);
-      return;
+      return false;
     }
     setInvalidAddress(false);
     setAddress(normalized);
     setCurrentUrl(normalized);
     setLoading(true);
     send({ type: "navigate", url: normalized });
+    return true;
+  };
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    navigateTo(address);
   };
 
   const pointer = (
@@ -637,6 +661,101 @@ export function BrowserView({
             />
           </div>
         </form>
+        <DropdownMenuPrimitive.Root
+          open={serviceMenuOpen}
+          onOpenChange={setServiceMenuOpen}
+        >
+          <DropdownMenuPrimitive.Trigger asChild>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 shrink-0 gap-1.5 px-2.5"
+              title="Open a web service running on this worker"
+            >
+              <Network className="size-3.5" />
+              <span className="hidden sm:inline">Services</span>
+              {services.length > 0 ? (
+                <span className="text-[10px] tabular-nums text-muted-foreground">
+                  {services.length}
+                </span>
+              ) : null}
+              <ChevronDown className="size-3 text-muted-foreground" />
+            </Button>
+          </DropdownMenuPrimitive.Trigger>
+          <DropdownMenuPrimitive.Portal>
+            <DropdownMenuPrimitive.Content
+              align="end"
+              sideOffset={6}
+              className="z-50 w-80 rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+            >
+              <DropdownMenuPrimitive.Label className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Worker web services
+              </DropdownMenuPrimitive.Label>
+              {servicesQuery.isLoading ? (
+                <DropdownMenuPrimitive.Item
+                  disabled
+                  className="flex items-center gap-2 rounded-sm px-2 py-2 text-xs text-muted-foreground outline-none"
+                >
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Scanning listening ports…
+                </DropdownMenuPrimitive.Item>
+              ) : servicesQuery.isError ? (
+                <DropdownMenuPrimitive.Item
+                  disabled
+                  className="rounded-sm px-2 py-2 text-xs text-destructive outline-none"
+                >
+                  Could not scan this worker.
+                </DropdownMenuPrimitive.Item>
+              ) : services.length === 0 ? (
+                <DropdownMenuPrimitive.Item
+                  disabled
+                  className="rounded-sm px-2 py-2 text-xs text-muted-foreground outline-none"
+                >
+                  No HTTP services found.
+                </DropdownMenuPrimitive.Item>
+              ) : (
+                services.map((service) => (
+                  <DropdownMenuPrimitive.Item
+                    key={service.url}
+                    className="flex cursor-default items-center gap-2 rounded-sm px-2 py-2 outline-none focus:bg-accent focus:text-accent-foreground"
+                    onSelect={() => navigateTo(service.url)}
+                  >
+                    <Network className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-medium">
+                        {browserServiceDisplayName(service)}
+                      </span>
+                      <span className="block truncate text-[10px] text-muted-foreground">
+                        {service.processName &&
+                        service.processName !== service.title
+                          ? `${service.processName} · `
+                          : ""}
+                        {service.protocol}://{service.host}:{service.port}
+                      </span>
+                    </span>
+                    <span className="text-[10px] tabular-nums text-muted-foreground">
+                      {service.statusCode}
+                    </span>
+                  </DropdownMenuPrimitive.Item>
+                ))
+              )}
+              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+              <DropdownMenuPrimitive.Item
+                className="flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-xs outline-none focus:bg-accent focus:text-accent-foreground"
+                onSelect={(event) => {
+                  event.preventDefault();
+                  void servicesQuery.refetch();
+                }}
+              >
+                <RefreshCw
+                  className={`size-3.5 ${servicesQuery.isFetching ? "animate-spin" : ""}`}
+                />
+                Scan again
+              </DropdownMenuPrimitive.Item>
+            </DropdownMenuPrimitive.Content>
+          </DropdownMenuPrimitive.Portal>
+        </DropdownMenuPrimitive.Root>
         <Button
           type="button"
           size="icon"
