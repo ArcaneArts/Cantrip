@@ -54,6 +54,10 @@ import {
 } from "@/components/sidebar/sortable-sidebar-surface-row";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
 import {
+  ProjectSurfaceCreateMenu,
+  type ProjectSurfaceCreateKind,
+} from "@/components/workspace/project-surface-create-menu";
+import {
   SurfaceActionsMenu,
   surfaceMenuContentClass,
   surfaceMenuItemClass,
@@ -300,20 +304,8 @@ function GroupedSidebarTab({
 function SortableProject({
   active,
   children,
-  creatingChat,
-  creatingBrowser,
-  creatingExplorer,
-  creatingCode,
-  creatingRemoteDesktop,
-  creatingTerminal,
-  creatingView,
-  onCreateChat,
-  onCreateBrowser,
-  onCreateCode,
-  onCreateExplorer,
-  onCreateGit,
-  onCreateRemoteDesktop,
-  onCreateTerminal,
+  creatingKinds,
+  onCreate,
   onOpenSettings,
   onReveal,
   onRemove,
@@ -324,20 +316,8 @@ function SortableProject({
 }: {
   active: boolean;
   children?: ReactNode;
-  creatingChat: boolean;
-  creatingBrowser: boolean;
-  creatingCode: boolean;
-  creatingExplorer: boolean;
-  creatingRemoteDesktop: boolean;
-  creatingTerminal: boolean;
-  creatingView: boolean;
-  onCreateChat(): void;
-  onCreateBrowser(): void;
-  onCreateCode(): void;
-  onCreateExplorer(): void;
-  onCreateGit(): void;
-  onCreateRemoteDesktop(): void;
-  onCreateTerminal(): void;
+  creatingKinds: ReadonlySet<ProjectSurfaceCreateKind>;
+  onCreate(kind: ProjectSurfaceCreateKind): void;
   onOpenSettings(): void;
   onReveal?: () => void;
   onRemove(): void;
@@ -397,8 +377,12 @@ function SortableProject({
           ) : null}
         </button>
         {project.source ? (
-          <DropdownMenuPrimitive.Root>
-            <DropdownMenuPrimitive.Trigger asChild>
+          <ProjectSurfaceCreateMenu
+            align="end"
+            contentClassName="min-w-36"
+            creatingKinds={creatingKinds}
+            onCreate={onCreate}
+            trigger={
               <button
                 type="button"
                 title={`Add to ${project.name}`}
@@ -408,65 +392,8 @@ function SortableProject({
                 <Plus className="size-3.5" />
                 <span className="sr-only">Add to {project.name}</span>
               </button>
-            </DropdownMenuPrimitive.Trigger>
-            <DropdownMenuPrimitive.Portal>
-              <DropdownMenuPrimitive.Content
-                align="end"
-                sideOffset={4}
-                className={menuContentClass}
-              >
-                <DropdownMenuPrimitive.Item
-                  className={menuItemClass}
-                  disabled={creatingChat}
-                  onSelect={onCreateChat}
-                >
-                  <MessageSquare className="size-4" /> Chat
-                </DropdownMenuPrimitive.Item>
-                <DropdownMenuPrimitive.Item
-                  className={menuItemClass}
-                  disabled={creatingTerminal}
-                  onSelect={onCreateTerminal}
-                >
-                  <SquareTerminal className="size-4" /> Terminal
-                </DropdownMenuPrimitive.Item>
-                <DropdownMenuPrimitive.Item
-                  className={menuItemClass}
-                  disabled={creatingExplorer}
-                  onSelect={onCreateExplorer}
-                >
-                  <FolderTree className="size-4" /> Explorer
-                </DropdownMenuPrimitive.Item>
-                <DropdownMenuPrimitive.Item
-                  className={menuItemClass}
-                  disabled={creatingCode}
-                  onSelect={onCreateCode}
-                >
-                  <Code2 className="size-4" /> Code
-                </DropdownMenuPrimitive.Item>
-                <DropdownMenuPrimitive.Item
-                  className={menuItemClass}
-                  disabled={creatingBrowser}
-                  onSelect={onCreateBrowser}
-                >
-                  <Globe2 className="size-4" /> Browser
-                </DropdownMenuPrimitive.Item>
-                <DropdownMenuPrimitive.Item
-                  className={menuItemClass}
-                  disabled={creatingView}
-                  onSelect={onCreateGit}
-                >
-                  <GitCommitHorizontal className="size-4" /> Git
-                </DropdownMenuPrimitive.Item>
-                <DropdownMenuPrimitive.Item
-                  className={menuItemClass}
-                  disabled={creatingRemoteDesktop}
-                  onSelect={onCreateRemoteDesktop}
-                >
-                  <MonitorUp className="size-4" /> Remote Desktop
-                </DropdownMenuPrimitive.Item>
-              </DropdownMenuPrimitive.Content>
-            </DropdownMenuPrimitive.Portal>
-          </DropdownMenuPrimitive.Root>
+            }
+          />
         ) : null}
         {cloning ? null : (
           <DropdownMenuPrimitive.Root>
@@ -529,22 +456,11 @@ export function ProjectChatList({
   browsers,
   chats,
   codeTabs,
-  creatingBrowser,
-  creatingChat,
-  creatingCode,
-  creatingExplorer,
-  creatingRemoteDesktop,
-  creatingTerminal,
-  creatingView,
+  creatingKinds,
   explorers,
   onChangeChatWorktree,
   projectViews,
-  onCreateChat,
-  onCreateBrowser,
-  onCreateCode,
-  onCreateExplorer,
-  onCreateGit,
-  onCreateRemoteDesktop,
+  onCreateSurface,
   onDeleteChat,
   onDeleteBrowser,
   onDeleteCode,
@@ -556,7 +472,6 @@ export function ProjectChatList({
   onOpenChatTerminal,
   onOpenProjectSettings,
   onRevealProject,
-  onCreateTerminal,
   onDeleteTerminal,
   onRemoveProject,
   onRequestChatWorktreeCreate,
@@ -581,13 +496,7 @@ export function ProjectChatList({
   browsers: BrowserSummary[];
   chats: ChatSummary[];
   codeTabs: CodeTabSummary[];
-  creatingBrowser: boolean;
-  creatingChat: boolean;
-  creatingCode: boolean;
-  creatingExplorer: boolean;
-  creatingRemoteDesktop: boolean;
-  creatingTerminal: boolean;
-  creatingView: boolean;
+  creatingKinds: ReadonlySet<ProjectSurfaceCreateKind>;
   explorers: ExplorerSummary[];
   onChangeChatWorktree(
     chatId: string,
@@ -595,12 +504,7 @@ export function ProjectChatList({
     mode: "agent-managed" | "pinned",
   ): void;
   projectViews: ProjectViewSummary[];
-  onCreateChat(projectId: string): void;
-  onCreateBrowser(projectId: string): void;
-  onCreateCode(projectId: string): void;
-  onCreateExplorer(projectId: string): void;
-  onCreateGit(projectId: string): void;
-  onCreateRemoteDesktop(projectId: string): void;
+  onCreateSurface(projectId: string, kind: ProjectSurfaceCreateKind): void;
   onDeleteChat(chatId: string): void;
   onDeleteBrowser(browserId: string): void;
   onDeleteCode(codeTabId: string): void;
@@ -612,7 +516,6 @@ export function ProjectChatList({
   onOpenChatTerminal(chat: ChatSummary): void;
   onOpenProjectSettings(projectId: string): void;
   onRevealProject?: (project: ProjectSummary) => Promise<void>;
-  onCreateTerminal(projectId: string): void;
   onDeleteTerminal(terminalId: string): void;
   onRemoveProject(projectId: string, deleteLocalFiles: boolean): void;
   onRequestChatWorktreeCreate(chat: ChatSummary): void;
@@ -913,20 +816,8 @@ export function ProjectChatList({
                 key={project.id}
                 project={project}
                 active={active}
-                creatingChat={creatingChat}
-                creatingBrowser={creatingBrowser}
-                creatingCode={creatingCode}
-                creatingExplorer={creatingExplorer}
-                creatingRemoteDesktop={creatingRemoteDesktop}
-                creatingTerminal={creatingTerminal}
-                creatingView={creatingView}
-                onCreateChat={() => onCreateChat(project.id)}
-                onCreateBrowser={() => onCreateBrowser(project.id)}
-                onCreateCode={() => onCreateCode(project.id)}
-                onCreateExplorer={() => onCreateExplorer(project.id)}
-                onCreateGit={() => onCreateGit(project.id)}
-                onCreateRemoteDesktop={() => onCreateRemoteDesktop(project.id)}
-                onCreateTerminal={() => onCreateTerminal(project.id)}
+                creatingKinds={creatingKinds}
+                onCreate={(kind) => onCreateSurface(project.id, kind)}
                 onOpenSettings={() => onOpenProjectSettings(project.id)}
                 onReveal={
                   project.source && projectRevealLabel && onRevealProject
