@@ -362,7 +362,10 @@ export function GithubIssuesView({
           </div>
         ) : (
           <div className="min-w-[680px] py-2 text-xs">
-            <div className="sticky top-0 z-10 grid h-7 grid-cols-[70px_minmax(320px,1fr)_130px_90px_100px] items-center border-y bg-muted/95 px-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur">
+            <div
+              data-slot="table-header-surface"
+              className="sticky top-0 z-10 grid h-7 grid-cols-[70px_minmax(320px,1fr)_130px_90px_100px] items-center border-y bg-muted/95 px-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur"
+            >
               <span>{kind === "pull-request" ? "PR" : "Issue"}</span>
               <span>Title</span>
               <span>Author</span>

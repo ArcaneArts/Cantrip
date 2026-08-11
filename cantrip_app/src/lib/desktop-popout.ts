@@ -113,15 +113,18 @@ export async function openDesktopPopoutGroup(
   const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
   const label = desktopPopoutGroupWindowLabel(target.groupId);
   const path = window.location.pathname || "/";
+  const macos = isMacosDesktopRuntime();
   const popout = new WebviewWindow(label, {
     center: true,
     focus: true,
     height: 760,
+    hiddenTitle: macos,
     minHeight: 440,
     minWidth: 640,
     resizable: true,
     title: `${title} — Cantrip`,
-    transparent: isMacosDesktopRuntime(),
+    titleBarStyle: macos ? "overlay" : undefined,
+    transparent: macos,
     url: `${path}${desktopPopoutGroupSearch(target)}`,
     width: 1100,
   });

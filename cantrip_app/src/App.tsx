@@ -732,7 +732,10 @@ function RepositoryImporter({
             ) : (
               <div className="min-h-0 flex-1 overflow-auto rounded-xl border bg-card/20">
                 <table className="w-full table-fixed border-collapse text-left text-sm">
-                  <thead className="sticky top-0 z-10 bg-background/95 text-[11px] uppercase tracking-wide text-muted-foreground backdrop-blur-xl">
+                  <thead
+                    data-slot="table-header-surface"
+                    className="sticky top-0 z-10 bg-background/95 text-[11px] uppercase tracking-wide text-muted-foreground backdrop-blur-xl"
+                  >
                     <tr className="border-b">
                       <th className="w-[42%] px-3 py-2 font-medium sm:w-[34%]">
                         Repository
@@ -2355,6 +2358,7 @@ export function App() {
     [desktopRuntime],
   );
   const isPopout = popoutTarget !== null;
+  const showContentTitlebar = !isPopout || desktopRuntime;
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     popoutTarget?.projectId ?? null,
   );
@@ -4169,18 +4173,19 @@ export function App() {
             <span className="truncate">{workspaceDragError}</span>
           </button>
         ) : null}
-        {!isPopout ? (
+        {showContentTitlebar ? (
           <header
             className={cn(
               "relative z-30 flex shrink-0 items-center justify-between",
               overlayTitlebar
                 ? "h-8 gap-2 px-3 text-[11px] sm:px-4 [&_[data-slot=badge]]:h-5 [&_[data-slot=badge]]:gap-1 [&_[data-slot=badge]]:px-1.5 [&_[data-slot=badge]]:text-[10px] [&_[data-slot=button]]:h-6 [&_[data-slot=button]]:min-w-6 [&_[data-slot=button]]:w-auto [&_[data-slot=button]]:gap-1 [&_[data-slot=button]]:px-1.5 [&_[data-slot=button]]:py-0 [&_[data-slot=button]]:text-[11px] [&_svg]:size-3"
                 : "h-16 gap-4 px-4 sm:px-6",
+              isPopout && overlayTitlebar && "pl-20",
             )}
             data-slot="content-titlebar"
             data-tauri-drag-region={overlayTitlebar ? "" : undefined}
           >
-            {sidebarCollapsed ? (
+            {sidebarCollapsed && !isPopout ? (
               <Button
                 size="icon"
                 variant="ghost"
@@ -4692,7 +4697,10 @@ export function App() {
                   </Button>
                 </>
               ) : null}
-              {!showImporter && !showSettings && selectedProject ? (
+              {!isPopout &&
+              !showImporter &&
+              !showSettings &&
+              selectedProject ? (
                 <span
                   className={cn(
                     "flex items-center",
@@ -4739,72 +4747,6 @@ export function App() {
             onRename={renameSurface}
             onSelect={selectTopTab}
           />
-        ) : null}
-
-        {isPopout && activeChat && !showImporter && !showSettings ? (
-          <div className="absolute right-3 top-12 z-40 flex gap-2">
-            <Button
-              size="icon"
-              variant="outline"
-              className="size-9 bg-background/75 shadow-md backdrop-blur-xl"
-              onClick={() => setShowCustomizations(true)}
-              title="Inspect Codex customizations"
-            >
-              <WandSparkles className="size-4" />
-              <span className="sr-only">Inspect Codex customizations</span>
-            </Button>
-            <Button
-              size="icon"
-              variant="outline"
-              className="size-9 bg-background/75 shadow-md backdrop-blur-xl"
-              aria-pressed={Boolean(linkedConsoleChat)}
-              disabled={!linkedConsoleChat && openChatConsole.isPending}
-              onClick={() =>
-                linkedConsoleChat
-                  ? setChatConsoleChatId(null)
-                  : showChatConsole(activeChat)
-              }
-              title={linkedConsoleChat ? "Show chat" : "Show Codex console"}
-            >
-              {linkedConsoleChat ? (
-                <MessageSquare className="size-4" />
-              ) : openChatConsole.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <SquareTerminal className="size-4" />
-              )}
-              <span className="sr-only">
-                {linkedConsoleChat ? "Show chat" : "Show Codex console"}
-              </span>
-            </Button>
-          </div>
-        ) : null}
-
-        {isPopout && selectedExplorer && explorerHeader ? (
-          <div className="absolute right-3 top-12 z-40">
-            <Button
-              size="icon"
-              variant="outline"
-              className="size-9 bg-background/75 shadow-md backdrop-blur-xl"
-              disabled={explorerHeader.isFetching}
-              onClick={explorerHeader.refresh}
-              title="Refresh folder"
-            >
-              <RefreshCw
-                className={cn(
-                  "size-4",
-                  explorerHeader.isFetching && "animate-spin",
-                )}
-              />
-              <span className="sr-only">Refresh folder</span>
-            </Button>
-          </div>
-        ) : null}
-
-        {isPopout && selectedCodeTab ? (
-          <div className="absolute right-3 top-12 z-40">
-            <CodeHeaderActions floating header={codeHeader} />
-          </div>
         ) : null}
 
         {showSettings ? (

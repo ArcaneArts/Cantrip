@@ -272,6 +272,23 @@
   background: color-mix(in oklab, cyan 10%, transparent);
 }
 
+.pro-mode [data-slot="git-history"] [class~="bg-background"],
+.pro-mode [data-slot="git-history"] [class~="bg-muted/50"] {
+  background-color: transparent;
+}
+
+.pro-mode
+  [data-slot="git-history"]
+  [class~="bg-background"][class~="shadow-sm"] {
+  background-color: var(--muted);
+}
+
+.pro-mode [data-slot="table-header-surface"] {
+  background: var(--popover) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  backdrop-filter: blur(16px) saturate(120%);
+}
+
 .pro-mode
   :where(
     input:not([type="checkbox"], [type="radio"], [type="range"]),
