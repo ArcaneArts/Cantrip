@@ -1,0 +1,158 @@
+diff --git a/remote/package.json b/remote/package.json
+--- a/remote/package.json
++++ b/remote/package.json
+@@ -13,6 +13,7 @@
+     "@vscode/proxy-agent": "^0.37.0",
+     "@vscode/ripgrep": "^1.15.13",
+     "@vscode/spdlog": "^0.15.7",
++    "@vscode/sqlite3": "5.1.12-vscode",
+     "@vscode/tree-sitter-wasm": "^0.3.0",
+     "@vscode/vscode-languagedetection": "1.0.21",
+     "@vscode/windows-process-tree": "^0.6.0",
+diff --git a/remote/package-lock.json b/remote/package-lock.json
+--- a/remote/package-lock.json
++++ b/remote/package-lock.json
+@@ -18,6 +18,7 @@
+         "@vscode/proxy-agent": "^0.37.0",
+         "@vscode/ripgrep": "^1.15.13",
+         "@vscode/spdlog": "^0.15.7",
++        "@vscode/sqlite3": "5.1.12-vscode",
+         "@vscode/tree-sitter-wasm": "^0.3.0",
+         "@vscode/vscode-languagedetection": "1.0.21",
+         "@vscode/windows-process-tree": "^0.6.0",
+@@ -77,6 +78,18 @@
+         "node": ">=18"
+       }
+     },
++    "node_modules/@isaacs/fs-minipass": {
++      "version": "4.0.1",
++      "resolved": "https://registry.npmjs.org/@isaacs/fs-minipass/-/fs-minipass-4.0.1.tgz",
++      "integrity": "sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==",
++      "license": "ISC",
++      "dependencies": {
++        "minipass": "^7.0.4"
++      },
++      "engines": {
++        "node": ">=18.0.0"
++      }
++    },
+     "node_modules/@microsoft/1ds-core-js": {
+       "version": "3.2.13",
+       "resolved": "https://registry.npmjs.org/@microsoft/1ds-core-js/-/1ds-core-js-3.2.13.tgz",
+@@ -521,6 +534,26 @@
+         "node-addon-api": "7.1.0"
+       }
+     },
++    "node_modules/@vscode/sqlite3": {
++      "version": "5.1.12-vscode",
++      "resolved": "https://registry.npmjs.org/@vscode/sqlite3/-/sqlite3-5.1.12-vscode.tgz",
++      "integrity": "sha512-WLTftbMtK3Ni0s+q46qtKJ2CFtA3YrS5N4GcrETDCxqNTQAvk1LlYlG3RwGE6vZLcUqPt3TCHobijYeNUhEQ9Q==",
++      "hasInstallScript": true,
++      "license": "BSD-3-Clause",
++      "dependencies": {
++        "node-addon-api": "^8.2.0",
++        "tar": "^7.5.4"
++      }
++    },
++    "node_modules/@vscode/sqlite3/node_modules/node-addon-api": {
++      "version": "8.9.1",
++      "resolved": "https://registry.npmjs.org/node-addon-api/-/node-addon-api-8.9.1.tgz",
++      "integrity": "sha512-4eUQWVPCUUUiBjLnHS3cXWeC6ryoPUc0U3rP7IuzapoGbzMqd/r6KKO0clr0b+snQhsrueFEhCZDdK+LK7hxKg==",
++      "license": "MIT",
++      "engines": {
++        "node": "^18 || ^20 || >= 21"
++      }
++    },
+     "node_modules/@vscode/tree-sitter-wasm": {
+       "version": "0.3.0",
+       "resolved": "https://registry.npmjs.org/@vscode/tree-sitter-wasm/-/tree-sitter-wasm-0.3.0.tgz",
+@@ -1063,6 +1096,27 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/minipass": {
++      "version": "7.1.3",
++      "resolved": "https://registry.npmjs.org/minipass/-/minipass-7.1.3.tgz",
++      "integrity": "sha512-tEBHqDnIoM/1rXME1zgka9g6Q2lcoCkxHLuc7ODJ5BxbP5d4c2Z5cGgtXAku59200Cx7diuHTOYfSBD8n6mm8A==",
++      "license": "BlueOak-1.0.0",
++      "engines": {
++        "node": ">=16 || 14 >=14.17"
++      }
++    },
++    "node_modules/minizlib": {
++      "version": "3.1.0",
++      "resolved": "https://registry.npmjs.org/minizlib/-/minizlib-3.1.0.tgz",
++      "integrity": "sha512-KZxYo1BUkWD2TVFLr0MQoM8vUUigWD3LlD83a/75BqC+4qE0Hb1Vo5v1FgcfaNXvfXzr+5EhQ6ing/CaBijTlw==",
++      "license": "MIT",
++      "dependencies": {
++        "minipass": "^7.1.2"
++      },
++      "engines": {
++        "node": ">= 18"
++      }
++    },
+     "node_modules/mkdirp": {
+       "version": "1.0.4",
+       "resolved": "https://registry.npmjs.org/mkdirp/-/mkdirp-1.0.4.tgz",
+@@ -1366,6 +1420,22 @@
+         "node": ">=0.10.0"
+       }
+     },
++    "node_modules/tar": {
++      "version": "7.5.22",
++      "resolved": "https://registry.npmjs.org/tar/-/tar-7.5.22.tgz",
++      "integrity": "sha512-MFO/QzvtAOmJbkhOaCTvbGcFN9L9b+JunIsDwaKljSOdcLMea3NJ1k9Usz/rjdfSXTq4dfzfeS7W4p4YOAAHeA==",
++      "license": "BlueOak-1.0.0",
++      "dependencies": {
++        "@isaacs/fs-minipass": "^4.0.0",
++        "chownr": "^3.0.0",
++        "minipass": "^7.1.2",
++        "minizlib": "^3.1.0",
++        "yallist": "^5.0.0"
++      },
++      "engines": {
++        "node": ">=18"
++      }
++    },
+     "node_modules/tar-fs": {
+       "version": "2.1.4",
+       "resolved": "https://registry.npmjs.org/tar-fs/-/tar-fs-2.1.4.tgz",
+@@ -1393,6 +1463,24 @@
+         "node": ">=6"
+       }
+     },
++    "node_modules/tar/node_modules/chownr": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/chownr/-/chownr-3.0.0.tgz",
++      "integrity": "sha512-+IxzY9BZOQd/XuYPRmrvEVjF/nqj5kgT4kEq7VofrDoM1MxoRjEWkrCC3EtLi59TVawxTAn+orJwFQcrqEN1+g==",
++      "license": "BlueOak-1.0.0",
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tar/node_modules/yallist": {
++      "version": "5.0.0",
++      "resolved": "https://registry.npmjs.org/yallist/-/yallist-5.0.0.tgz",
++      "integrity": "sha512-YgvUTfwqyc7UXVMrB+SImsVYSmTS8X/tSrtdNZMImM+n7+QTriRXyXim0mBrTXNeqzVF0KWGgHPeiyViFFrNDw==",
++      "license": "BlueOak-1.0.0",
++      "engines": {
++        "node": ">=18"
++      }
++    },
+     "node_modules/tas-client": {
+       "version": "0.3.1",
+       "resolved": "https://registry.npmjs.org/tas-client/-/tas-client-0.3.1.tgz",
+@@ -1408,6 +1496,13 @@
+       "integrity": "sha512-pkY1fj1cKHb2seWDy0B16HeWyczlJA9/WW3u3c4z/NiWDsO3DOU5D7nhTLE9CF0yXv/QZFY7sEJmj24dK+Rrqw==",
+       "license": "MIT"
+     },
++    "node_modules/tslib": {
++      "version": "2.8.1",
++      "resolved": "https://registry.npmjs.org/tslib/-/tslib-2.8.1.tgz",
++      "integrity": "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==",
++      "license": "0BSD",
++      "peer": true
++    },
+     "node_modules/tunnel-agent": {
+       "version": "0.6.0",
+       "resolved": "https://registry.npmjs.org/tunnel-agent/-/tunnel-agent-0.6.0.tgz",

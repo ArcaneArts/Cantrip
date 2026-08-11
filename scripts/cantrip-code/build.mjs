@@ -94,7 +94,14 @@ try {
     await run(
       "git",
       ["apply", "--no-index", "--unsafe-paths", item.patchPath],
-      { cwd: source },
+      {
+        cwd: source,
+        // The prepared source lives below Cantrip's worktree. Stop Git from
+        // discovering that parent repository, otherwise it filters every
+        // source-relative patch as outside the current repository prefix and
+        // exits successfully after silently skipping it.
+        env: { GIT_CEILING_DIRECTORIES: path.dirname(source) },
+      },
     );
     console.log(`Applied ${path.basename(item.patchPath)}`);
   }
