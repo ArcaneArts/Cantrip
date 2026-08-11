@@ -14,7 +14,7 @@ import {
   walkFiles,
 } from "./lib.mjs";
 
-export const CODE_BUILD_SCHEMA_VERSION = 2;
+export const CODE_BUILD_SCHEMA_VERSION = 3;
 export const CODE_MANIFEST_NAME = "cantrip-code.manifest.json";
 export const CANTRIP_WORKBENCH_PACKAGE =
   "extensions/cantrip-workbench/package.json";

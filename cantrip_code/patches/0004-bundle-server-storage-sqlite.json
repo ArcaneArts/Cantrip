@@ -1,0 +1,13 @@
+{
+  "id": "0004-bundle-server-storage-sqlite",
+  "title": "Bundle SQLite for remote workbench storage",
+  "reason": "The server-backed browser storage patch imports @vscode/sqlite3, but the reh-web distribution only packages production dependencies declared by remote/package.json. Pinning the existing upstream SQLite version in the remote dependency set keeps global and workspace state databases available in packaged Cantrip Code.",
+  "upstreamCommit": "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+  "files": ["remote/package.json", "remote/package-lock.json"],
+  "validation": [
+    "pnpm code:patch -- --source cantrip_code/upstream --check",
+    "pnpm code:build",
+    "Open a packaged Code tab and confirm the remote agent log contains no @vscode/sqlite3 module resolution errors"
+  ],
+  "removal": "Remove if the server-backed storage patch is removed or upstream reh-web begins packaging @vscode/sqlite3 itself."
+}

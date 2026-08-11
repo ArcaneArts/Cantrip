@@ -115,11 +115,12 @@ diff --git a/src/vs/workbench/browser/web.main.ts b/src/vs/workbench/browser/web
 index b9a2f073..1e7f3fe3 100644
 --- a/src/vs/workbench/browser/web.main.ts
 +++ b/src/vs/workbench/browser/web.main.ts
-@@ -34,6 +34,7 @@ import { ISignService } from '../../platform/sign/common/sign.js';
+@@ -34,6 +34,8 @@ import { ISignService } from '../../platform/sign/common/sign.js';
  import { SignService } from '../../platform/sign/browser/signService.js';
  import { IWorkbenchConstructionOptions, IWorkbench, IWorkspace, ITunnel } from './web.api.js';
  import { BrowserStorageService } from '../services/storage/browser/storageService.js';
 +import { BrowserRemoteStorageService } from '../services/storage/browser/remoteStorageService.js';
++import { IEnvironmentService } from '../../platform/environment/common/environment.js';
  import { IStorageService } from '../../platform/storage/common/storage.js';
  import { toLocalISOString } from '../../base/common/date.js';
  import { isWorkspaceToOpen, isFolderToOpen } from '../../platform/window/common/window.js';
