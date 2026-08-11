@@ -21,6 +21,34 @@ normalizes supported App Server responses into the shared protocol.
 Use `?refresh=true` to ask Codex to bypass its skill cache. This refreshes
 discovery only; it does not edit a skill or configuration.
 
+## Managed MCP configuration
+
+Cantrip owns MCP server configuration independently from the worker's
+`CODEX_HOME`:
+
+- Settings → MCP stores global servers that are inherited by every project.
+- Project Settings → MCP servers stores project-local servers. A local server
+  with the same name replaces the inherited definition for that project.
+- Project settings can copy a server from another project. The copy receives a
+  new id and can be edited or removed without changing its source.
+
+Both stdio commands and streamable HTTP endpoints are validated by the shared
+protocol before persistence. Stdio configuration supports argument arrays and
+an isolated environment map. HTTP configuration supports static headers,
+headers sourced from worker environment variables, and an optional bearer-token
+environment variable. Secret values are not shown in server list rows.
+
+The server resolves the effective name-keyed set before dispatching chats,
+Codex consoles, workflow execution or generation, and Git agent generation.
+The worker translates that set to Codex's native `mcp_servers` configuration
+and supplies it through `thread/start` or `thread/resume`. When the effective
+set changes for an already-loaded idle thread, the worker unsubscribes and
+resumes the thread so Codex rematerializes its native MCP runtime without
+editing filesystem configuration.
+
+OAuth remains a native, chat-scoped operation exposed by the customization
+panel after the configured server is present on that chat's Codex thread.
+
 ## Unified composer discovery
 
 Typing `/` at the start of an otherwise empty chat draft searches one portable

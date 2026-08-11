@@ -878,6 +878,7 @@ export interface RunAgentTurnOptions {
   cwd: string;
   isPrimary: Extract<WorkerCommand, { type: "chat.turn" }>["isPrimary"];
   model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
+  mcpServers?: Extract<WorkerCommand, { type: "chat.turn" }>["mcpServers"];
   automationPaused: Extract<
     WorkerCommand,
     { type: "chat.turn" }
@@ -931,7 +932,12 @@ export interface RuntimeChatAttachment extends WorkerChatAttachment {
 
 export type GoalRuntimeOptions = Pick<
   RunAgentTurnOptions,
-  "cwd" | "model" | "permissionProfileId" | "provider" | "threadId"
+  | "cwd"
+  | "mcpServers"
+  | "model"
+  | "permissionProfileId"
+  | "provider"
+  | "threadId"
 >;
 
 export const GOAL_CONTINUATION_PROMPT =
@@ -1308,6 +1314,33 @@ export function codexModelProviderName(
   provider: RunAgentTurnOptions["provider"],
 ): "cantrip_runtime" | "openai" {
   return provider.kind === "chatgpt" ? "openai" : "cantrip_runtime";
+}
+
+export function codexMcpConfigOverride(
+  servers: NonNullable<RunAgentTurnOptions["mcpServers"]>,
+): Record<string, unknown> {
+  return {
+    mcp_servers: Object.fromEntries(
+      servers.map((server) => [
+        server.name,
+        server.transport === "stdio"
+          ? {
+              command: server.command,
+              args: server.args,
+              env: server.environment,
+              enabled: server.enabled,
+            }
+          : {
+              url: server.url,
+              bearer_token_env_var:
+                server.bearerTokenEnvironmentVariable ?? undefined,
+              http_headers: server.headers,
+              env_http_headers: server.environmentHeaders,
+              enabled: server.enabled,
+            },
+      ]),
+    ),
+  };
 }
 
 export function codexRuntimeId(
@@ -1799,6 +1832,7 @@ export class CodexAppServer implements CodexRuntime {
   readonly #imageSupport = new Map<string, boolean>();
   readonly #loadedThreads = new Set<string>();
   readonly #mcpOauthStatuses = new Map<string, CodexMcpOauthStatus>();
+  readonly #mcpConfigFingerprintsByThread = new Map<string, string>();
   readonly #permissionProfilesByThread = new Map<string, string>();
   readonly #pending = new Map<number, PendingRpcRequest>();
   readonly #pendingAgentInteractions = new Map<
@@ -2719,6 +2753,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#runtimeId = null;
     this.#starting = null;
     this.#loadedThreads.clear();
+    this.#mcpConfigFingerprintsByThread.clear();
     this.#permissionProfilesByThread.clear();
     this.#threadKinds.clear();
     this.#workflowThreadOwners.clear();
@@ -2845,6 +2880,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#remoteUrl = null;
     this.#runtimeId = null;
     this.#loadedThreads.clear();
+    this.#mcpConfigFingerprintsByThread.clear();
     this.#permissionProfilesByThread.clear();
     this.#threadKinds.clear();
     this.#workflowThreadOwners.clear();
@@ -2860,11 +2896,20 @@ export class CodexAppServer implements CodexRuntime {
   private async loadThread(
     options: Pick<
       RunAgentTurnOptions,
-      "cwd" | "model" | "permissionProfileId" | "provider" | "threadId"
+      | "cwd"
+      | "mcpServers"
+      | "model"
+      | "permissionProfileId"
+      | "provider"
+      | "threadId"
     >,
     create = true,
   ): Promise<string | null> {
     const modelProvider = codexModelProviderName(options.provider);
+    const mcpConfig = options.mcpServers
+      ? codexMcpConfigOverride(options.mcpServers)
+      : null;
+    const mcpConfigFingerprint = mcpConfig ? JSON.stringify(mcpConfig) : null;
     let threadId = options.threadId;
     if (threadId && this.#threadKinds.get(threadId) === "workflow") {
       throw new Error(
@@ -2875,9 +2920,20 @@ export class CodexAppServer implements CodexRuntime {
       threadId &&
       (!this.#loadedThreads.has(threadId) ||
         this.#permissionProfilesByThread.get(threadId) !==
-          options.permissionProfileId)
+          options.permissionProfileId ||
+        (mcpConfigFingerprint !== null &&
+          this.#mcpConfigFingerprintsByThread.get(threadId) !==
+            mcpConfigFingerprint))
     ) {
       try {
+        if (
+          this.#loadedThreads.has(threadId) &&
+          mcpConfigFingerprint !== null &&
+          this.#mcpConfigFingerprintsByThread.get(threadId) !==
+            mcpConfigFingerprint
+        ) {
+          await this.request("thread/unsubscribe", { threadId });
+        }
         const resumed = (await this.request("thread/resume", {
           threadId,
           model: options.model.name,
@@ -2885,6 +2941,7 @@ export class CodexAppServer implements CodexRuntime {
           ...codexWorkspaceContext(options.cwd),
           approvalPolicy: "on-request",
           ...this.threadPermissionParams(options.permissionProfileId),
+          ...(mcpConfig ? { config: mcpConfig } : {}),
         })) as ThreadResponse;
         threadId = resumed.thread.id;
         this.#loadedThreads.add(threadId);
@@ -2892,6 +2949,12 @@ export class CodexAppServer implements CodexRuntime {
           threadId,
           options.permissionProfileId,
         );
+        if (mcpConfigFingerprint !== null) {
+          this.#mcpConfigFingerprintsByThread.set(
+            threadId,
+            mcpConfigFingerprint,
+          );
+        }
         this.#threadKinds.set(threadId, "chat");
       } catch {
         // Codex thread state is local to its worker/runtime. A normal turn can
@@ -2910,6 +2973,7 @@ export class CodexAppServer implements CodexRuntime {
         ...(this.compatibility.initialize?.experimentalApi
           ? { dynamicTools: CANTRIP_WORKTREE_DYNAMIC_TOOLS }
           : {}),
+        ...(mcpConfig ? { config: mcpConfig } : {}),
       })) as ThreadResponse;
       threadId = started.thread.id;
       this.#loadedThreads.add(threadId);
@@ -2917,6 +2981,9 @@ export class CodexAppServer implements CodexRuntime {
         threadId,
         options.permissionProfileId,
       );
+      if (mcpConfigFingerprint !== null) {
+        this.#mcpConfigFingerprintsByThread.set(threadId, mcpConfigFingerprint);
+      }
       this.#threadKinds.set(threadId, "chat");
     }
     return threadId;
@@ -2926,6 +2993,8 @@ export class CodexAppServer implements CodexRuntime {
     options: RunWorkflowNodeOptions,
   ): Promise<string> {
     const modelProvider = codexModelProviderName(options.provider);
+    const mcpConfig = codexMcpConfigOverride(options.mcpServers);
+    const mcpConfigFingerprint = JSON.stringify(mcpConfig);
     const approvalPolicy =
       options.approvalMode === "preauthorized" ? "never" : "on-request";
     const profileKey = options.permissionProfileId
@@ -2951,6 +3020,13 @@ export class CodexAppServer implements CodexRuntime {
 
     if (threadId) {
       try {
+        if (
+          this.#loadedThreads.has(threadId) &&
+          this.#mcpConfigFingerprintsByThread.get(threadId) !==
+            mcpConfigFingerprint
+        ) {
+          await this.request("thread/unsubscribe", { threadId });
+        }
         const resumed = (await this.request("thread/resume", {
           threadId,
           model: options.model.name,
@@ -2959,6 +3035,7 @@ export class CodexAppServer implements CodexRuntime {
           approvalPolicy,
           ...this.workflowThreadPermissionParams(options),
           developerInstructions: options.developerInstructions,
+          config: mcpConfig,
         })) as ThreadResponse;
         threadId = resumed.thread.id;
       } catch {
@@ -2973,12 +3050,14 @@ export class CodexAppServer implements CodexRuntime {
         approvalPolicy,
         ...this.workflowThreadPermissionParams(options),
         developerInstructions: options.developerInstructions,
+        config: mcpConfig,
       })) as ThreadResponse;
       threadId = started.thread.id;
     }
 
     this.#loadedThreads.add(threadId);
     this.#permissionProfilesByThread.set(threadId, profileKey);
+    this.#mcpConfigFingerprintsByThread.set(threadId, mcpConfigFingerprint);
     this.#threadKinds.set(threadId, "workflow");
     this.#workflowThreadOwners.set(threadId, ownerKey);
     return threadId;
@@ -3239,6 +3318,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#runtimeId = null;
       this.#starting = null;
       this.#loadedThreads.clear();
+      this.#mcpConfigFingerprintsByThread.clear();
       this.#permissionProfilesByThread.clear();
       this.#threadKinds.clear();
       this.#workflowThreadOwners.clear();
@@ -3268,6 +3348,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#runtimeId = null;
       this.#starting = null;
       this.#loadedThreads.clear();
+      this.#mcpConfigFingerprintsByThread.clear();
       this.#permissionProfilesByThread.clear();
       this.#threadKinds.clear();
       this.#workflowThreadOwners.clear();

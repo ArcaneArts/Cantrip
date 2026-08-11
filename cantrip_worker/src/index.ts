@@ -544,6 +544,7 @@ async function start(): Promise<void> {
           timeoutMs: command.timeoutMs,
           model: command.model,
           provider: command.provider,
+          mcpServers: command.mcpServers,
         });
       }
       case "worktree.list":
@@ -827,6 +828,7 @@ async function start(): Promise<void> {
           clientMessageId: command.clientMessageId,
           cwd: command.cwd,
           isPrimary: command.isPrimary,
+          mcpServers: command.mcpServers,
           model: command.model,
           permissionProfileId: command.permissionProfileId,
           provider: command.provider,
@@ -918,6 +920,7 @@ async function start(): Promise<void> {
           timeoutMs: command.timeoutMs,
           model: command.model,
           provider: command.provider,
+          mcpServers: command.mcpServers,
           onActivity: (activity) =>
             emit({
               type: "workflow.node.activity",
@@ -977,6 +980,7 @@ async function start(): Promise<void> {
           timeoutMs: command.timeoutMs,
           model: command.model,
           provider: command.provider,
+          mcpServers: command.mcpServers,
         });
       case "workflow.repository.scan":
         return scanWorkflowRepository(command.cwd);
@@ -1046,6 +1050,7 @@ async function start(): Promise<void> {
       case "chat.thread.ensure":
         return runtimeFor(command).ensureThread({
           cwd: command.cwd,
+          mcpServers: command.mcpServers,
           model: command.model,
           permissionProfileId: command.permissionProfileId,
           planMode: command.planMode,

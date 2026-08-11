@@ -10,6 +10,7 @@ import type {
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Cable,
   Check,
   ChevronDown,
   ChevronUp,
@@ -62,6 +63,7 @@ import {
   updateSettings,
 } from "@/lib/api";
 import { isMacosDesktopRuntime } from "@/lib/desktop-popout";
+import { McpServerSettings } from "./mcp-server-settings";
 import { WorkspaceSettings } from "./workspace-settings";
 import { SkillsSettings } from "./skills-settings";
 
@@ -248,11 +250,11 @@ function ProviderRow({
 export function SettingsPage({
   initialSection = "general",
 }: {
-  initialSection?: "general" | "skills" | "workspaces";
+  initialSection?: "general" | "skills" | "mcp" | "workspaces";
 }) {
-  const [section, setSection] = useState<"general" | "skills" | "workspaces">(
-    initialSection,
-  );
+  const [section, setSection] = useState<
+    "general" | "skills" | "mcp" | "workspaces"
+  >(initialSection);
   const queryClient = useQueryClient();
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
   const macosDesktopRuntime = isMacosDesktopRuntime();
@@ -547,6 +549,20 @@ export function SettingsPage({
         >
           <Sparkles className="size-3.5" />
           Skills
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className={`h-10 rounded-none border-b-2 px-2.5 text-xs ${
+            section === "mcp"
+              ? "border-foreground text-foreground"
+              : "border-transparent text-muted-foreground"
+          }`}
+          onClick={() => setSection("mcp")}
+        >
+          <Cable className="size-3.5" />
+          MCP
         </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
@@ -965,6 +981,11 @@ export function SettingsPage({
           </div>
         ) : null}
         {section === "skills" ? <SkillsSettings /> : null}
+        {section === "mcp" ? (
+          <div className="mx-auto max-w-6xl">
+            <McpServerSettings scope={{ kind: "global" }} />
+          </div>
+        ) : null}
       </div>
 
       {macosDesktopRuntime ? (

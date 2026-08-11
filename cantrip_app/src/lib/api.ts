@@ -116,6 +116,10 @@ import {
   modelProviderCreateSchema,
   modelProviderSummarySchema,
   modelProviderUpdateSchema,
+  mcpServerConfigurationSchema,
+  mcpServerCopySchema,
+  mcpServerListSchema,
+  mcpServerSummarySchema,
   orderedIdsSchema,
   projectListSchema,
   projectShareAttachmentSchema,
@@ -201,6 +205,8 @@ import type {
   ModelProfileUpdate,
   ModelProviderCreate,
   ModelProviderUpdate,
+  McpServerConfiguration,
+  McpServerCopy,
   ProjectViewKind,
   ProjectWorkspaceCreate,
   ProjectWorkspaceUpdate,
@@ -264,6 +270,37 @@ export async function updateSettings(input: UserSettingsUpdate) {
       body: JSON.stringify(input),
     }),
   );
+}
+
+export async function getGlobalMcpServers() {
+  return mcpServerListSchema.parse(await request("/api/settings/mcp-servers"));
+}
+
+export async function createGlobalMcpServer(input: McpServerConfiguration) {
+  return mcpServerSummarySchema.parse(
+    await post(
+      "/api/settings/mcp-servers",
+      mcpServerConfigurationSchema.parse(input),
+    ),
+  );
+}
+
+export async function updateGlobalMcpServer(
+  serverId: string,
+  input: McpServerConfiguration,
+) {
+  return mcpServerSummarySchema.parse(
+    await request(`/api/settings/mcp-servers/${encodeURIComponent(serverId)}`, {
+      method: "PUT",
+      body: JSON.stringify(mcpServerConfigurationSchema.parse(input)),
+    }),
+  );
+}
+
+export async function deleteGlobalMcpServer(serverId: string) {
+  await request(`/api/settings/mcp-servers/${encodeURIComponent(serverId)}`, {
+    method: "DELETE",
+  });
 }
 
 export async function createModelProvider(input: ModelProviderCreate) {
@@ -366,6 +403,62 @@ export async function getCachedGithubRepositories(
 
 export async function getProjects() {
   return projectListSchema.parse(await request("/api/projects"));
+}
+
+export async function getProjectMcpServers(projectId: string) {
+  return mcpServerListSchema.parse(
+    await request(`/api/projects/${encodeURIComponent(projectId)}/mcp-servers`),
+  );
+}
+
+export async function createProjectMcpServer(
+  projectId: string,
+  input: McpServerConfiguration,
+) {
+  return mcpServerSummarySchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/mcp-servers`,
+      mcpServerConfigurationSchema.parse(input),
+    ),
+  );
+}
+
+export async function updateProjectMcpServer(
+  projectId: string,
+  serverId: string,
+  input: McpServerConfiguration,
+) {
+  return mcpServerSummarySchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(mcpServerConfigurationSchema.parse(input)),
+      },
+    ),
+  );
+}
+
+export async function deleteProjectMcpServer(
+  projectId: string,
+  serverId: string,
+) {
+  await request(
+    `/api/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function copyProjectMcpServer(
+  projectId: string,
+  input: McpServerCopy,
+) {
+  return mcpServerSummarySchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/mcp-servers/copy`,
+      mcpServerCopySchema.parse(input),
+    ),
+  );
 }
 
 export async function createProjectNetworkShare(projectId: string) {

@@ -195,6 +195,10 @@ import {
   modelProviderCreateSchema,
   modelProviderSummarySchema,
   modelProviderUpdateSchema,
+  mcpServerConfigurationSchema,
+  mcpServerCopySchema,
+  mcpServerListSchema,
+  mcpServerSummarySchema,
   mentionedSkillNames,
   orderedIdsSchema,
   projectCloneResultSchema,
@@ -2492,6 +2496,10 @@ export async function buildApp({
     const turnMode = input.mode ?? "default";
     const turnPlanMode = turnMode === "plan" ? "plan" : "default";
     await prepareCodeEditorsForTurn(context);
+    const mcpServers = await repository.listEffectiveMcpServers(
+      LOCAL_USER_ID,
+      context.projectId,
+    );
     const execution = await repository.startChatExecutionLane(
       LOCAL_USER_ID,
       context.chatId,
@@ -2614,6 +2622,7 @@ export async function buildApp({
                 permissionProfileId:
                   effectivePermissionProfile(execution).effectiveId,
                 planMode: turnPlanMode,
+                mcpServers,
                 automationPaused: execution.automationPaused,
               },
               {
@@ -3443,6 +3452,63 @@ export async function buildApp({
     }
   });
 
+  app.get("/api/settings/mcp-servers", async (_request, reply) => {
+    const servers = await repository.listMcpServers(LOCAL_USER_ID, null);
+    return reply.send(mcpServerListSchema.parse(servers ?? []));
+  });
+
+  app.post("/api/settings/mcp-servers", async (request, reply) => {
+    const input = mcpServerConfigurationSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const server = await repository.createMcpServer(
+        LOCAL_USER_ID,
+        null,
+        input.data,
+      );
+      return reply.code(201).send(mcpServerSummarySchema.parse(server));
+    } catch (error) {
+      return reply.code(409).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.put<{ Params: { serverId: string } }>(
+    "/api/settings/mcp-servers/:serverId",
+    async (request, reply) => {
+      const input = mcpServerConfigurationSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const server = await repository.updateMcpServer(
+          LOCAL_USER_ID,
+          null,
+          request.params.serverId,
+          input.data,
+        );
+        return server
+          ? reply.send(mcpServerSummarySchema.parse(server))
+          : reply.code(404).send({ error: "MCP server not found." });
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.delete<{ Params: { serverId: string } }>(
+    "/api/settings/mcp-servers/:serverId",
+    async (request, reply) =>
+      (await repository.deleteMcpServer(
+        LOCAL_USER_ID,
+        null,
+        request.params.serverId,
+      ))
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "MCP server not found." }),
+  );
+
   app.patch("/api/settings", async (request, reply) => {
     const input = userSettingsUpdateSchema.safeParse(request.body);
     if (!input.success) {
@@ -3788,6 +3854,106 @@ export async function buildApp({
       ))
         ? reply.code(204).send()
         : reply.code(404).send({ error: "Automation not found." }),
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/mcp-servers",
+    async (request, reply) => {
+      const servers = await repository.listMcpServers(
+        LOCAL_USER_ID,
+        request.params.projectId,
+      );
+      return servers
+        ? reply.send(mcpServerListSchema.parse(servers))
+        : reply.code(404).send({ error: "Project not found." });
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/mcp-servers",
+    async (request, reply) => {
+      const input = mcpServerConfigurationSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const server = await repository.createMcpServer(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          input.data,
+        );
+        return server
+          ? reply.code(201).send(mcpServerSummarySchema.parse(server))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.put<{ Params: { projectId: string; serverId: string } }>(
+    "/api/projects/:projectId/mcp-servers/:serverId",
+    async (request, reply) => {
+      const input = mcpServerConfigurationSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const server = await repository.updateMcpServer(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          request.params.serverId,
+          input.data,
+        );
+        return server
+          ? reply.send(mcpServerSummarySchema.parse(server))
+          : reply.code(404).send({ error: "MCP server not found." });
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.delete<{ Params: { projectId: string; serverId: string } }>(
+    "/api/projects/:projectId/mcp-servers/:serverId",
+    async (request, reply) =>
+      (await repository.deleteMcpServer(
+        LOCAL_USER_ID,
+        request.params.projectId,
+        request.params.serverId,
+      ))
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "MCP server not found." }),
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/mcp-servers/copy",
+    async (request, reply) => {
+      const input = mcpServerCopySchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      if (input.data.sourceProjectId === request.params.projectId) {
+        return reply
+          .code(400)
+          .send({ error: "Choose a different source project." });
+      }
+      try {
+        const server = await repository.copyProjectMcpServer(
+          LOCAL_USER_ID,
+          request.params.projectId,
+          input.data.sourceProjectId,
+          input.data.sourceServerId,
+        );
+        return server
+          ? reply.code(201).send(mcpServerSummarySchema.parse(server))
+          : reply
+              .code(404)
+              .send({ error: "Source server or project not found." });
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
   );
 
   app.get("/api/workspaces", async (_request, reply) => {
@@ -4179,6 +4345,10 @@ export async function buildApp({
           .filter((value): value is string => Boolean(value))
           .join("\n\n");
         const generationId = randomUUID();
+        const mcpServers = await repository.listEffectiveMcpServers(
+          LOCAL_USER_ID,
+          context.projectId,
+        );
         const result = workflowNodeExecutionResultSchema.parse(
           await bridge.request(
             context.workerId,
@@ -4192,6 +4362,7 @@ export async function buildApp({
               timeoutMs: WORKFLOW_GENERATION_TIMEOUT_MS,
               model: runtime.model,
               provider: runtime.provider,
+              mcpServers,
             },
             { timeoutMs: WORKFLOW_GENERATION_TIMEOUT_MS + 10_000 },
           ),
@@ -4309,6 +4480,10 @@ export async function buildApp({
           });
         }
         const runtimes = await availableModelRuntimes(context, modelId);
+        const mcpServers = await repository.listEffectiveMcpServers(
+          LOCAL_USER_ID,
+          request.params.projectId,
+        );
         const generationId = randomUUID();
         let generated: ReturnType<
           typeof gitAgentDraftModelOutputSchema.parse
@@ -4335,6 +4510,7 @@ export async function buildApp({
                   timeoutMs: GIT_AGENT_GENERATION_TIMEOUT_MS,
                   model: runtime.model,
                   provider: runtime.provider,
+                  mcpServers,
                 },
                 { timeoutMs: GIT_AGENT_GENERATION_TIMEOUT_MS + 10_000 },
               ),
@@ -8733,6 +8909,10 @@ export async function buildApp({
         try {
           const modelId = await resolveModelId(context);
           const runtime = (await availableModelRuntimes(context, modelId))[0]!;
+          const mcpServers = await repository.listEffectiveMcpServers(
+            LOCAL_USER_ID,
+            context.projectId,
+          );
           const result = (await bridge.request(context.workerId, {
             type: "chat.thread.ensure",
             cwd: context.cwd,
@@ -8742,6 +8922,7 @@ export async function buildApp({
             provider: runtime.provider,
             permissionProfileId:
               effectivePermissionProfile(context).effectiveId,
+            mcpServers,
           })) as { threadId?: unknown };
           if (typeof result.threadId !== "string" || !result.threadId) {
             throw new Error("Codex did not return a console thread.");
