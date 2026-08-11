@@ -1,4 +1,4 @@
-import { chmod, cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { access, chmod, cp, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
@@ -28,6 +28,8 @@ if (!supportedTargets.has(selection)) {
 }
 
 let requestedTarget;
+let fromArtifacts = false;
+let skipProtocolBuild = false;
 for (let index = 3; index < process.argv.length; index += 1) {
   const argument = process.argv[index];
   if (argument === "--target") {
@@ -39,6 +41,10 @@ for (let index = 3; index < process.argv.length; index += 1) {
     index += 1;
   } else if (argument.startsWith("--target=")) {
     requestedTarget = argument.slice("--target=".length);
+  } else if (argument === "--from-artifacts") {
+    fromArtifacts = true;
+  } else if (argument === "--skip-protocol-build") {
+    skipProtocolBuild = true;
   } else {
     console.error(`Unknown packaging argument: ${argument}`);
     process.exit(1);
@@ -67,6 +73,16 @@ function run(command, args) {
     stdio: "inherit",
   });
   if (result.status !== 0) process.exit(result.status ?? 1);
+}
+
+async function requireDirectory(directory, description) {
+  try {
+    await access(directory);
+  } catch {
+    throw new Error(
+      `${description} is missing at ${path.relative(root, directory)}. Package or extract the native service artifact first.`,
+    );
+  }
 }
 
 async function packageService(name, destination) {
@@ -131,10 +147,20 @@ async function bundleCantripCode(workerDestination) {
   );
 }
 
-async function buildServices() {
-  run(pnpm, ["--filter", "@cantrip/protocol", "build"]);
-  run(pnpm, ["--filter", "@cantrip/server", "build"]);
-  run(pnpm, ["--filter", "@cantrip/worker", "build"]);
+function buildProtocol() {
+  if (!skipProtocolBuild) {
+    run(pnpm, ["--filter", "@cantrip/protocol", "build"]);
+  }
+}
+
+function buildSelectedServices(selection) {
+  buildProtocol();
+  if (selection === "server" || selection === "services") {
+    run(pnpm, ["--filter", "@cantrip/server", "build"]);
+  }
+  if (selection === "worker" || selection === "services") {
+    run(pnpm, ["--filter", "@cantrip/worker", "build"]);
+  }
 }
 
 function buildCodex() {
@@ -143,7 +169,7 @@ function buildCodex() {
 
 async function packageStandalone(selection) {
   if (selection === "worker" || selection === "services") buildCodex();
-  await buildServices();
+  buildSelectedServices(selection);
   if (selection === "server" || selection === "services") {
     await packageService(
       "server",
@@ -159,19 +185,45 @@ async function packageStandalone(selection) {
 }
 
 async function packageDesktopRuntime() {
-  buildCodex();
-  await buildServices();
   await rm(runtime, { force: true, recursive: true });
   await mkdir(runtime, { recursive: true });
   await writeFile(path.join(runtime, ".gitkeep"), "");
-  await packageService("server", path.join(runtime, "server"));
-  await packageService("worker", path.join(runtime, "worker"));
+  if (fromArtifacts) {
+    const serverArtifact = path.join(
+      artifacts,
+      `cantrip-server-${packageTarget.id}`,
+    );
+    const workerArtifact = path.join(
+      artifacts,
+      `cantrip-worker-${packageTarget.id}`,
+    );
+    await requireDirectory(serverArtifact, "Packaged server");
+    await requireDirectory(workerArtifact, "Packaged worker");
+    await cp(serverArtifact, path.join(runtime, "server"), { recursive: true });
+    await cp(workerArtifact, path.join(runtime, "worker"), { recursive: true });
+  } else {
+    buildCodex();
+    buildSelectedServices("services");
+    await packageService("server", path.join(runtime, "server"));
+    await packageService("worker", path.join(runtime, "worker"));
+  }
   const nodeName = process.platform === "win32" ? "node.exe" : "node";
   const bundledNode = path.join(runtime, nodeName);
   await cp(process.execPath, bundledNode);
   if (process.platform !== "win32") await chmod(bundledNode, 0o755);
   console.log(
     `Bundled Node ${process.version}: ${path.relative(root, runtime)}`,
+  );
+}
+
+if (fromArtifacts && selection !== "desktop-runtime") {
+  throw new Error(
+    "--from-artifacts is only valid for desktop-runtime packaging.",
+  );
+}
+if (skipProtocolBuild && selection === "desktop-runtime" && !fromArtifacts) {
+  throw new Error(
+    "--skip-protocol-build requires standalone service packaging or --from-artifacts.",
   );
 }
 
