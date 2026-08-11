@@ -125,6 +125,7 @@ import { WorkspaceDndProvider } from "@/components/workspace/workspace-dnd-provi
 import { WorkspaceMembershipPicker } from "@/components/workspaces/workspace-membership-picker";
 import { WorkspaceSwitcher } from "@/components/workspaces/workspace-switcher";
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
+import { GithubRepositoryCreateDialog } from "@/components/projects/github-repository-create-dialog";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { ServerSwitcher } from "@/components/servers/server-switcher";
 import {
@@ -133,6 +134,7 @@ import {
   type WorktreeStatusMap,
 } from "@/components/worktrees/worktree-control";
 import { hasScrolledContent } from "@/lib/scroll-divider";
+import { githubRepositoryOnboardingAction } from "@/lib/github-repository-onboarding";
 import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -512,17 +514,20 @@ function CodeHeaderActions({
 
 function RepositoryImporter({
   activeWorkspaceId,
+  onCreatedProject,
   projects,
   workerId,
   workspaces,
 }: {
   activeWorkspaceId: string | null;
+  onCreatedProject(project: ProjectSummary): void;
   projects: ProjectSummary[];
   workerId: string | null;
   workspaces: ProjectWorkspaceSummary[];
 }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [createRepositoryOpen, setCreateRepositoryOpen] = useState(false);
   const [pendingRepositoryIds, setPendingRepositoryIds] = useState<Set<string>>(
     new Set(),
   );
@@ -556,13 +561,13 @@ function RepositoryImporter({
     queryKey: ["github-repositories-cache", workerId, github.data?.login],
     staleTime: 30_000,
   });
-  const queueImport = (repository: GithubRepository) => {
+  const importRepository = async (repository: GithubRepository) => {
     if (
       !workerId ||
       !activeWorkspaceId ||
       pendingRepositoryIdsRef.current.has(repository.id)
     )
-      return;
+      throw new Error("The repository cannot be added right now.");
     pendingRepositoryIdsRef.current.add(repository.id);
     setPendingRepositoryIds(new Set(pendingRepositoryIdsRef.current));
     setImportErrors((current) => {
@@ -573,48 +578,73 @@ function RepositoryImporter({
 
     const workspaceIds = new Set(selectedWorkspaceIds);
     workspaceIds.add(activeWorkspaceId);
-    void createGithubProject({
-      workerId: workerId!,
-      repositoryId: repository.id,
-      nameWithOwner: repository.nameWithOwner,
-      url: repository.url,
-      workspaceIds: [...workspaceIds],
-    })
-      .then((project) => {
-        queryClient.setQueryData<ProjectSummary[]>(
-          ["projects"],
-          (current = []) =>
-            [...current.filter((item) => item.id !== project.id), project].sort(
-              (left, right) => left.position - right.position,
-            ),
-        );
-        const markImported = (queryKey: readonly unknown[]) =>
-          queryClient.setQueryData<GithubRepository[]>(queryKey, (current) =>
-            current?.map((item) =>
-              item.id === repository.id ? { ...item, imported: true } : item,
-            ),
-          );
-        markImported(["github-repositories", workerId]);
-        if (github.data?.login) {
-          markImported([
-            "github-repositories-cache",
-            workerId,
-            github.data.login,
-          ]);
-        }
-        void queryClient.invalidateQueries({
-          queryKey: ["project-workspaces"],
-        });
-      })
-      .catch((error: unknown) => {
-        setImportErrors((current) =>
-          new Map(current).set(repository.id, errorText(error)),
-        );
-      })
-      .finally(() => {
-        pendingRepositoryIdsRef.current.delete(repository.id);
-        setPendingRepositoryIds(new Set(pendingRepositoryIdsRef.current));
+    try {
+      const project = await createGithubProject({
+        workerId,
+        repositoryId: repository.id,
+        nameWithOwner: repository.nameWithOwner,
+        url: repository.url,
+        workspaceIds: [...workspaceIds],
       });
+      queryClient.setQueryData<ProjectSummary[]>(["projects"], (current = []) =>
+        [...current.filter((item) => item.id !== project.id), project].sort(
+          (left, right) => left.position - right.position,
+        ),
+      );
+      queryClient.setQueryData<ProjectWorkspaceSummary[]>(
+        ["project-workspaces"],
+        (current) =>
+          current?.map((workspace) =>
+            workspaceIds.has(workspace.id) &&
+            !workspace.projectIds.includes(project.id)
+              ? {
+                  ...workspace,
+                  projectIds: [...workspace.projectIds, project.id],
+                }
+              : workspace,
+          ),
+      );
+      const markImported = (queryKey: readonly unknown[]) =>
+        queryClient.setQueryData<GithubRepository[]>(queryKey, (current) =>
+          current?.map((item) =>
+            item.id === repository.id ? { ...item, imported: true } : item,
+          ),
+        );
+      markImported(["github-repositories", workerId]);
+      if (github.data?.login) {
+        markImported([
+          "github-repositories-cache",
+          workerId,
+          github.data.login,
+        ]);
+      }
+      void queryClient.invalidateQueries({
+        queryKey: ["project-workspaces"],
+      });
+      return project;
+    } catch (error) {
+      setImportErrors((current) =>
+        new Map(current).set(repository.id, errorText(error)),
+      );
+      throw error;
+    } finally {
+      pendingRepositoryIdsRef.current.delete(repository.id);
+      setPendingRepositoryIds(new Set(pendingRepositoryIdsRef.current));
+    }
+  };
+  const queueImport = (repository: GithubRepository) => {
+    void importRepository(repository).catch(() => undefined);
+  };
+  const rememberRepository = (repository: GithubRepository) => {
+    const addRepository = (queryKey: readonly unknown[]) =>
+      queryClient.setQueryData<GithubRepository[]>(queryKey, (current = []) => [
+        repository,
+        ...current.filter((item) => item.id !== repository.id),
+      ]);
+    addRepository(["github-repositories", workerId]);
+    if (github.data?.login) {
+      addRepository(["github-repositories-cache", workerId, github.data.login]);
+    }
   };
 
   const filtered = useMemo(() => {
@@ -712,6 +742,16 @@ function RepositoryImporter({
               <WorkspaceMembershipPicker
                 requiredWorkspaceId={activeWorkspaceId}
                 selectedIds={selectedWorkspaceIds}
+                trailingAction={
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setCreateRepositoryOpen(true)}
+                  >
+                    <Plus className="size-3.5" />
+                    Repository
+                  </Button>
+                }
                 workspaces={workspaces}
                 onChange={setSelectedWorkspaceIds}
               />
@@ -877,6 +917,22 @@ function RepositoryImporter({
                 {Array.from(importErrors.values()).at(-1)}
               </p>
             ) : null}
+
+            <GithubRepositoryCreateDialog
+              login={github.data.login!}
+              open={createRepositoryOpen}
+              workerId={workerId}
+              onOpenChange={setCreateRepositoryOpen}
+              onCreated={async (repository) => {
+                rememberRepository(repository);
+                try {
+                  const project = await importRepository(repository);
+                  onCreatedProject(project);
+                } catch {
+                  // The new repository remains in the list so Add can be retried.
+                }
+              }}
+            />
           </>
         )}
       </div>
@@ -2362,6 +2418,9 @@ export function App() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     popoutTarget?.projectId ?? null,
   );
+  const [createdRepositoryProjectId, setCreatedRepositoryProjectId] = useState<
+    string | null
+  >(null);
   const [workspaceSelection, setWorkspaceSelection] = useState(() =>
     emptyWorkspaceSelection(popoutTarget?.projectId ?? null),
   );
@@ -2504,12 +2563,12 @@ export function App() {
   const projects = useQuery({
     queryFn: getProjects,
     queryKey: ["projects"],
-    refetchInterval: projectResourcesLive
-      ? false
-      : (query) =>
-          query.state.data?.some((project) => project.setupStatus === "cloning")
-            ? 3_000
-            : 15_000,
+    refetchInterval: (query) =>
+      query.state.data?.some((project) => project.setupStatus === "cloning")
+        ? 3_000
+        : projectResourcesLive
+          ? false
+          : 15_000,
   });
   const projectWorkspaces = useQuery({
     queryFn: getProjectWorkspaces,
@@ -3687,6 +3746,20 @@ export function App() {
   }, [projects.data, selectedProjectId, visibleProjects]);
 
   useEffect(() => {
+    if (!createdRepositoryProjectId) return;
+    const action = githubRepositoryOnboardingAction(
+      createdRepositoryProjectId,
+      projects.data,
+    );
+    if (action === "wait") return;
+    const projectId = createdRepositoryProjectId;
+    setCreatedRepositoryProjectId(null);
+    if (action === "create-chat") {
+      newChat.mutate({ projectId });
+    }
+  }, [createdRepositoryProjectId, projects.data]);
+
+  useEffect(() => {
     if (!selectedProjectId) {
       setWorkspaceSelection(emptyWorkspaceSelection());
       return;
@@ -4799,6 +4872,17 @@ export function App() {
         ) : showImporter ? (
           <RepositoryImporter
             activeWorkspaceId={activeProjectWorkspace?.id ?? null}
+            onCreatedProject={(project) => {
+              setSelectedProjectId(project.id);
+              setWorkspaceSelection(emptyWorkspaceSelection(project.id));
+              setPendingSurfaceSelection(null);
+              setChatConsoleChatId(null);
+              setShowImporter(false);
+              setShowSettings(false);
+              setShowProjectSettings(false);
+              setMobileNavigationOpen(false);
+              setCreatedRepositoryProjectId(project.id);
+            }}
             projects={projects.data ?? []}
             workerId={onlineWorker?.workerId ?? null}
             workspaces={projectWorkspaces.data ?? []}

@@ -222,6 +222,10 @@ async function start(): Promise<void> {
         return github.cachedRepositories(command.login);
       case "github.repositories.list":
         return github.listRepositories();
+      case "github.repository-owners.list":
+        return github.listRepositoryOwners();
+      case "github.repositories.create":
+        return github.createRepository(command.request);
       case "github.issues.list":
         return github.listIssues(
           command.repository,

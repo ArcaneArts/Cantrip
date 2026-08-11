@@ -101,7 +101,11 @@ import {
   githubPullRequestReviewActionSchema,
   githubIssueStateSchema,
   githubProjectCreateSchema,
+  githubRepositoryCreateSchema,
   githubRepositoryListSchema,
+  githubRepositoryOwnerListSchema,
+  githubRepositorySchema,
+  githubWorkerRepositorySchema,
   githubWorkerRepositoryListSchema,
   githubReleaseCreateSchema,
   githubReleaseListSchema,
@@ -3622,6 +3626,28 @@ export async function buildApp({
   );
 
   app.get<{ Querystring: { workerId?: string } }>(
+    "/api/github/repository-owners",
+    async (request, reply) => {
+      const workerId = request.query.workerId;
+      if (!workerId) {
+        return reply.code(400).send({ error: "workerId is required" });
+      }
+      try {
+        return reply.send(
+          githubRepositoryOwnerListSchema.parse(
+            await bridge.request(workerId, {
+              type: "github.repository-owners.list",
+            }),
+          ),
+        );
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{ Querystring: { workerId?: string } }>(
     "/api/github/repositories",
     async (request, reply) => {
       const workerId = request.query.workerId;
@@ -3643,6 +3669,38 @@ export async function buildApp({
               imported: imported.has(item.id),
             })),
           ),
+        );
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Querystring: { workerId?: string } }>(
+    "/api/github/repositories",
+    async (request, reply) => {
+      const workerId = request.query.workerId;
+      if (!workerId) {
+        return reply.code(400).send({ error: "workerId is required" });
+      }
+      const input = githubRepositoryCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const created = githubWorkerRepositorySchema.parse(
+          await bridge.request(
+            workerId,
+            { type: "github.repositories.create", request: input.data },
+            { timeoutMs: null },
+          ),
+        );
+        return reply.code(201).send(
+          githubRepositorySchema.parse({
+            ...created,
+            imported: false,
+          }),
         );
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
