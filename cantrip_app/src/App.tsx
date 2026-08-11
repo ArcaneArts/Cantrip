@@ -1603,7 +1603,7 @@ function ChatTranscript({
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex-1 overflow-y-auto px-4 pb-72 pt-6 sm:px-8">
+      <div className="chat-message-scroll flex-1 overflow-y-auto px-4 pb-72 pt-6 sm:px-8">
         <div className="mx-auto flex max-w-3xl flex-col gap-5">
           {messages.data?.length === 0 ? (
             <div className="grid min-h-[45vh] place-items-center text-center">

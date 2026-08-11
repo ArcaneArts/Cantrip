@@ -337,6 +337,34 @@
   mask-image: linear-gradient(to top, black 0%, black 48%, transparent 100%);
 }
 
+/* Pro Mode's app shell already applies the configured backdrop opacity. Avoid
+   tinting that surface a second time here, which would turn an 80% window into
+   a visibly different 96% band. Fade the messages themselves instead so the
+   effective color under the composer remains the shell's exact opacity. */
+.pro-mode .chat-composer-fade {
+  background: transparent;
+}
+
+.pro-mode .chat-composer-fade::after {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.pro-mode .chat-message-scroll {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    black 0%,
+    black calc(100% - 14rem),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    black 0%,
+    black calc(100% - 14rem),
+    transparent 100%
+  );
+}
+
 .chat-composer-surface {
   background: color-mix(in oklab, var(--background) 66%, transparent);
   -webkit-backdrop-filter: blur(32px) saturate(150%);
