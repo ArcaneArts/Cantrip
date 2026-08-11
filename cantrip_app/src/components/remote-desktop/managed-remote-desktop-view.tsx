@@ -1,14 +1,10 @@
 import {
-  decodeRemoteSurfaceFrame,
-  encodeRemoteSurfaceFrame,
   remoteDesktopClientMessageSchema,
   remoteDesktopServerMessageSchema,
-  remoteSurfaceConnectionMessageSchema,
   type RemoteDesktopClientMessage,
   type RemoteDesktopSummary,
   type RemoteDesktopTarget,
   type RemoteDesktopTargetInventory,
-  type RemoteSurfaceChannel,
 } from "@cantrip/protocol";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -39,20 +35,28 @@ import {
   updateRemoteDesktopTarget,
 } from "@/lib/api";
 import {
-  RemoteSurfaceWebRtcClient,
-  type RemoteSurfaceWebRtcState,
-} from "@/lib/remote-surface-webrtc";
-import {
   remoteSurfaceKeyText,
   remoteSurfaceModifiers,
   remoteSurfacePointerButton,
   remoteSurfacePointerCoordinates,
 } from "@/lib/remote-surface-input";
+import {
+  useRemoteSurfaceTransport,
+  type RemoteSurfaceFrameContext,
+  type RemoteSurfaceInboundFrame,
+} from "@/lib/use-remote-surface-transport";
 import { cn } from "@/lib/utils";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
+const desktopTransportMessages = {
+  closeReason: "Remote Desktop view closed",
+  congestionReason: "Remote Desktop connection is congested",
+  connectionError: "Could not connect to the worker Remote Desktop.",
+  invalidConnectionMessage:
+    "The server sent an invalid Remote Desktop connection message.",
+  invalidFrame: "The server sent an invalid Remote Desktop frame.",
+};
 const menuContentClass =
   "z-50 max-h-[min(28rem,var(--radix-dropdown-menu-content-available-height))] min-w-80 overflow-y-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
 const menuItemClass =
@@ -61,6 +65,24 @@ const menuItemClass =
 interface Size {
   height: number;
   width: number;
+}
+
+interface DesktopFrameStats {
+  decodeTimeMs: number;
+  droppedFrames: number;
+  feedbackStartedAt: number;
+  receivedFrames: number;
+  renderedFrames: number;
+}
+
+function desktopFrameStats(): DesktopFrameStats {
+  return {
+    decodeTimeMs: 0,
+    droppedFrames: 0,
+    feedbackStartedAt: performance.now(),
+    receivedFrames: 0,
+    renderedFrames: 0,
+  };
 }
 
 export class LatestDesktopFrameBuffer {
@@ -145,13 +167,6 @@ export function ManagedRemoteDesktopView({
   const queryClient = useQueryClient();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
-  const socketRef = useRef<WebSocket | null>(null);
-  const webRtcRef = useRef<RemoteSurfaceWebRtcClient | null>(null);
-  const attachmentIdRef = useRef<string | null>(null);
-  const sequenceRef = useRef(0);
-  const lastInboundSequenceRef = useRef(-1);
-  const reconnectAttemptRef = useRef(0);
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPointerMoveAtRef = useRef(0);
   const viewportRef = useRef({
     width: 1_280,
@@ -159,22 +174,19 @@ export function ManagedRemoteDesktopView({
     devicePixelRatio: window.devicePixelRatio || 1,
   });
   const desktopSizeRef = useRef<Size>({ width: 1_920, height: 1_080 });
+  const frameBufferRef = useRef(new LatestDesktopFrameBuffer());
+  const frameGenerationRef = useRef(0);
+  const decodingGenerationRef = useRef<number | null>(null);
+  const frameStatsRef = useRef<DesktopFrameStats>(desktopFrameStats());
   const [desktopSize, setDesktopSize] = useState(desktopSizeRef.current);
   const [canvasSize, setCanvasSize] = useState<Size>({
     width: 1_280,
     height: 720,
   });
-  const [connectionKey, setConnectionKey] = useState(0);
-  const [connectionState, setConnectionState] = useState<
-    "connecting" | "ready" | "reconnecting"
-  >("connecting");
   const [runtimeStatus, setRuntimeStatus] = useState<
     "ready" | "launching" | "suspended" | "error"
   >("ready");
-  const [error, setError] = useState<string | null>(desktop.lastError);
   const [notice, setNotice] = useState<string | null>(null);
-  const [transportState, setTransportState] =
-    useState<RemoteSurfaceWebRtcState | null>(null);
   const [streamStatus, setStreamStatus] = useState<{
     backend: "native" | "compatibility";
     encodedWidth: number;
@@ -212,39 +224,122 @@ export function ManagedRemoteDesktopView({
     },
   });
 
-  const sendFrame = useCallback(
-    (
-      channel: RemoteSurfaceChannel,
-      payload: Uint8Array,
-      webSocketOnly = false,
-    ) => {
-      const attachmentId = attachmentIdRef.current;
-      if (!attachmentId) return false;
-      const header = {
-        protocolVersion: 1 as const,
-        surfaceId: desktop.id,
-        attachmentId,
-        sequence: sequenceRef.current,
-        channel,
-      };
-      if (!webSocketOnly && webRtcRef.current?.send(header, payload)) {
-        sequenceRef.current += 1;
-        return true;
-      }
-      const socket = socketRef.current;
-      if (!socket || socket.readyState !== WebSocket.OPEN) return false;
-      if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) {
-        socket.close(1013, "Remote Desktop connection is congested");
-        return false;
-      }
-      socket.send(
-        Uint8Array.from(encodeRemoteSurfaceFrame(header, payload)).buffer,
+  async function decodeLatestDesktopFrame(
+    generation: number,
+    context: RemoteSurfaceFrameContext,
+  ): Promise<void> {
+    const frameBuffer = frameBufferRef.current;
+    if (
+      decodingGenerationRef.current === generation ||
+      !frameBuffer.hasFrame ||
+      !context.isCurrent() ||
+      frameGenerationRef.current !== generation
+    ) {
+      return;
+    }
+    const bytes = frameBuffer.take();
+    if (!bytes) return;
+    decodingGenerationRef.current = generation;
+    const startedAt = performance.now();
+    try {
+      const canvas = canvasRef.current;
+      if (!canvas || !context.isCurrent()) return;
+      const bitmap = await createImageBitmap(
+        new Blob([Uint8Array.from(bytes).buffer], { type: "image/jpeg" }),
       );
-      sequenceRef.current += 1;
-      return true;
-    },
-    [desktop.id],
-  );
+      if (!context.isCurrent() || frameGenerationRef.current !== generation) {
+        bitmap.close();
+        return;
+      }
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
+      bitmap.close();
+      setRenderedSurfaceId(desktop.id);
+      const stats = frameStatsRef.current;
+      stats.renderedFrames += 1;
+      stats.decodeTimeMs += performance.now() - startedAt;
+    } catch {
+      if (context.isCurrent()) {
+        context.reportError("The worker sent an unreadable desktop frame.");
+      }
+    } finally {
+      if (decodingGenerationRef.current === generation) {
+        decodingGenerationRef.current = null;
+      }
+      if (
+        frameBuffer.hasFrame &&
+        context.isCurrent() &&
+        frameGenerationRef.current === generation
+      ) {
+        void decodeLatestDesktopFrame(generation, context);
+      }
+    }
+  }
+
+  function handleFrame(
+    frame: RemoteSurfaceInboundFrame,
+    context: RemoteSurfaceFrameContext,
+  ): void {
+    if (frame.header.channel === "frame") {
+      const stats = frameStatsRef.current;
+      stats.receivedFrames += 1;
+      if (frameBufferRef.current.push(frame.payload)) stats.droppedFrames += 1;
+      void decodeLatestDesktopFrame(frameGenerationRef.current, context);
+      return;
+    }
+    if (
+      frame.header.channel !== "control" &&
+      frame.header.channel !== "clipboard"
+    ) {
+      return;
+    }
+    const message = remoteDesktopServerMessageSchema.parse(
+      JSON.parse(decoder.decode(frame.payload)),
+    );
+    if (message.type === "desktop-state") {
+      const nextSize = { width: message.width, height: message.height };
+      desktopSizeRef.current = nextSize;
+      setDesktopSize(nextSize);
+      setRuntimeStatus(message.status);
+      context.reportError(message.status === "error" ? message.message : null);
+      setStreamStatus(message.stream);
+    } else if (message.type === "desktop-targets") {
+      setTargetInventory(message.inventory);
+      setRequestedTarget(message.requested);
+      setActiveTarget(message.active);
+      setLaunchingApplication(message.launchingApplication);
+      setTargetMessage(message.message);
+    } else {
+      void navigator.clipboard.writeText(message.text).then(
+        () => {
+          if (context.isCurrent()) setNotice("Remote clipboard copied");
+        },
+        () => {
+          if (context.isCurrent()) {
+            setNotice("Clipboard access was denied by this app environment.");
+          }
+        },
+      );
+    }
+  }
+
+  const { connectionState, error, retry, sendFrame, transportState } =
+    useRemoteSurfaceTransport({
+      surfaceId: desktop.id,
+      webSocketUrl: () =>
+        remoteSurfaceWebSocketUrl(desktop.id, viewportRef.current),
+      messages: desktopTransportMessages,
+      onConnecting: () => {
+        frameGenerationRef.current += 1;
+        frameBufferRef.current.clear();
+        frameStatsRef.current = desktopFrameStats();
+        setStreamStatus(null);
+        setLaunchingApplication(null);
+        setTargetMessage(null);
+      },
+      onFrame: handleFrame,
+    });
 
   const send = useCallback(
     (message: RemoteDesktopClientMessage) =>
@@ -290,212 +385,33 @@ export function ManagedRemoteDesktopView({
   }, [desktopSize, send]);
 
   useEffect(() => {
-    setConnectionState(
-      reconnectAttemptRef.current ? "reconnecting" : "connecting",
-    );
-    setError(null);
-    setTransportState(null);
-    setStreamStatus(null);
-    setLaunchingApplication(null);
-    setTargetMessage(null);
-    attachmentIdRef.current = null;
-    sequenceRef.current = 0;
-    lastInboundSequenceRef.current = -1;
-    webRtcRef.current?.close();
-    webRtcRef.current = null;
-    const socket = new WebSocket(
-      remoteSurfaceWebSocketUrl(desktop.id, viewportRef.current),
-    );
-    socket.binaryType = "arraybuffer";
-    socketRef.current = socket;
-    let disposed = false;
-    let decoding = false;
-    const frameBuffer = new LatestDesktopFrameBuffer();
-    let receivedFrames = 0;
-    let renderedFrames = 0;
-    let droppedFrames = 0;
-    let decodeTimeMs = 0;
-    let feedbackStartedAt = performance.now();
+    if (connectionState === "ready") {
+      send({ type: "viewport", viewport: viewportRef.current });
+    }
+  }, [connectionState, send]);
 
-    const scheduleReconnect = () => {
-      if (disposed || reconnectTimerRef.current) return;
-      const delay = Math.min(500 * 2 ** reconnectAttemptRef.current, 5_000);
-      reconnectAttemptRef.current += 1;
-      setConnectionState("reconnecting");
-      reconnectTimerRef.current = setTimeout(() => {
-        reconnectTimerRef.current = null;
-        setConnectionKey((key) => key + 1);
-      }, delay);
-    };
-
-    const decodeLatestFrame = async () => {
-      if (decoding || !frameBuffer.hasFrame || disposed) return;
-      const bytes = frameBuffer.take();
-      if (!bytes) return;
-      decoding = true;
-      const startedAt = performance.now();
-      try {
-        const canvas = canvasRef.current;
-        if (!canvas || disposed) return;
-        const bitmap = await createImageBitmap(
-          new Blob([Uint8Array.from(bytes).buffer], { type: "image/jpeg" }),
-        );
-        if (disposed) {
-          bitmap.close();
-          return;
-        }
-        canvas.width = bitmap.width;
-        canvas.height = bitmap.height;
-        canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
-        bitmap.close();
-        setRenderedSurfaceId(desktop.id);
-        renderedFrames += 1;
-        decodeTimeMs += performance.now() - startedAt;
-      } catch {
-        if (!disposed) setError("The worker sent an unreadable desktop frame.");
-      } finally {
-        decoding = false;
-        if (frameBuffer.hasFrame && !disposed) void decodeLatestFrame();
-      }
-    };
-
-    const drawFrame = (payload: Uint8Array) => {
-      receivedFrames += 1;
-      if (frameBuffer.push(payload)) droppedFrames += 1;
-      void decodeLatestFrame();
-    };
-
+  useEffect(() => {
     const feedbackTimer = setInterval(() => {
+      const stats = frameStatsRef.current;
       const now = performance.now();
-      const intervalMs = Math.max(250, Math.round(now - feedbackStartedAt));
+      const intervalMs = Math.max(
+        250,
+        Math.round(now - stats.feedbackStartedAt),
+      );
       send({
         type: "stream-feedback",
         intervalMs,
-        receivedFrames,
-        renderedFrames,
-        droppedFrames,
-        averageDecodeMs: renderedFrames ? decodeTimeMs / renderedFrames : 0,
+        receivedFrames: stats.receivedFrames,
+        renderedFrames: stats.renderedFrames,
+        droppedFrames: stats.droppedFrames,
+        averageDecodeMs: stats.renderedFrames
+          ? stats.decodeTimeMs / stats.renderedFrames
+          : 0,
       });
-      receivedFrames = 0;
-      renderedFrames = 0;
-      droppedFrames = 0;
-      decodeTimeMs = 0;
-      feedbackStartedAt = now;
+      frameStatsRef.current = desktopFrameStats();
     }, 2_000);
-
-    const handleFrame = (bytes: Uint8Array) => {
-      try {
-        const frame = decodeRemoteSurfaceFrame(bytes);
-        if (
-          frame.header.surfaceId !== desktop.id ||
-          frame.header.sequence <= lastInboundSequenceRef.current
-        ) {
-          return;
-        }
-        lastInboundSequenceRef.current = frame.header.sequence;
-        if (frame.header.channel === "frame") {
-          drawFrame(frame.payload);
-        } else if (
-          frame.header.channel === "control" ||
-          frame.header.channel === "clipboard"
-        ) {
-          const message = remoteDesktopServerMessageSchema.parse(
-            JSON.parse(decoder.decode(frame.payload)),
-          );
-          if (message.type === "desktop-state") {
-            const nextSize = { width: message.width, height: message.height };
-            desktopSizeRef.current = nextSize;
-            setDesktopSize(nextSize);
-            setRuntimeStatus(message.status);
-            setError(message.status === "error" ? message.message : null);
-            setStreamStatus(message.stream);
-          } else if (message.type === "desktop-targets") {
-            setTargetInventory(message.inventory);
-            setRequestedTarget(message.requested);
-            setActiveTarget(message.active);
-            setLaunchingApplication(message.launchingApplication);
-            setTargetMessage(message.message);
-          } else {
-            void navigator.clipboard.writeText(message.text).then(
-              () => setNotice("Remote clipboard copied"),
-              () =>
-                setNotice(
-                  "Clipboard access was denied by this app environment.",
-                ),
-            );
-          }
-        } else if (frame.header.channel === "webrtc-signal") {
-          void webRtcRef.current?.handleSignal(frame.payload);
-        }
-      } catch {
-        setError("The server sent an invalid Remote Desktop frame.");
-      }
-    };
-
-    socket.addEventListener("message", (event) => {
-      if (typeof event.data === "string") {
-        try {
-          const message = remoteSurfaceConnectionMessageSchema.parse(
-            JSON.parse(event.data),
-          );
-          if (message.type === "error") {
-            setError(message.message);
-            return;
-          }
-          reconnectAttemptRef.current = 0;
-          attachmentIdRef.current = message.attachmentId;
-          setConnectionState("ready");
-          if (message.transport === "webrtc" && message.webrtc) {
-            const client = new RemoteSurfaceWebRtcClient({
-              configuration: message.webrtc,
-              onFrame: handleFrame,
-              onSignal: (signal) => {
-                sendFrame(
-                  "webrtc-signal",
-                  encoder.encode(JSON.stringify(signal)),
-                  true,
-                );
-              },
-              onState: setTransportState,
-            });
-            webRtcRef.current = client;
-            void client.start();
-          } else {
-            setTransportState("fallback");
-          }
-          send({ type: "viewport", viewport: viewportRef.current });
-        } catch {
-          setError(
-            "The server sent an invalid Remote Desktop connection message.",
-          );
-        }
-        return;
-      }
-      handleFrame(new Uint8Array(event.data));
-    });
-    socket.addEventListener("close", () => {
-      attachmentIdRef.current = null;
-      if (!disposed) scheduleReconnect();
-    });
-    socket.addEventListener("error", () => {
-      if (!disposed) {
-        setError("Could not connect to the worker Remote Desktop.");
-        scheduleReconnect();
-      }
-    });
-
-    return () => {
-      disposed = true;
-      clearInterval(feedbackTimer);
-      frameBuffer.clear();
-      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
-      webRtcRef.current?.close();
-      webRtcRef.current = null;
-      if (socketRef.current === socket) socketRef.current = null;
-      socket.close(1000, "Remote Desktop view closed");
-    };
-  }, [connectionKey, desktop.id, send, sendFrame]);
+    return () => clearInterval(feedbackTimer);
+  }, [send]);
 
   const pointer = (
     event: PointerEvent<HTMLCanvasElement>,
@@ -780,7 +696,7 @@ export function ManagedRemoteDesktopView({
             size="sm"
             variant="outline"
             className="h-8 gap-1.5"
-            onClick={() => setConnectionKey((key) => key + 1)}
+            onClick={retry}
           >
             <RotateCw className="size-3.5" />
             Retry
