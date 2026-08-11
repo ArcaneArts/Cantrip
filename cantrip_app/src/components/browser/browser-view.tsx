@@ -1,15 +1,11 @@
 import {
-  decodeRemoteSurfaceFrame,
-  encodeRemoteSurfaceFrame,
   remoteBrowserClipboardMessageSchema,
   remoteBrowserClientMessageSchema,
   remoteBrowserCursorMessageSchema,
   remoteBrowserServerMessageSchema,
-  remoteSurfaceConnectionMessageSchema,
   type BrowserSummary,
   type BrowserService,
   type RemoteBrowserClientMessage,
-  type RemoteSurfaceChannel,
 } from "@cantrip/protocol";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { useQuery } from "@tanstack/react-query";
@@ -50,10 +46,21 @@ import {
   remoteSurfacePointerCoordinates,
   remoteSurfaceTouchPoints,
 } from "@/lib/remote-surface-input";
-import { RemoteSurfaceWebRtcClient } from "@/lib/remote-surface-webrtc";
+import {
+  useRemoteSurfaceTransport,
+  type RemoteSurfaceFrameContext,
+  type RemoteSurfaceInboundFrame,
+} from "@/lib/use-remote-surface-transport";
 
 const decoder = new TextDecoder();
-const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
+const browserTransportMessages = {
+  closeReason: "Browser view closed",
+  congestionReason: "Remote Surface connection is congested",
+  connectionError: "Could not connect to the worker browser.",
+  invalidConnectionMessage:
+    "The server sent an invalid browser connection message.",
+  invalidFrame: "The server sent an invalid browser frame.",
+};
 
 export function browserServiceDisplayName(service: BrowserService): string {
   return service.title ?? service.processName ?? `Port ${service.port}`;
@@ -141,13 +148,6 @@ export function BrowserView({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
-  const socketRef = useRef<WebSocket | null>(null);
-  const webRtcRef = useRef<RemoteSurfaceWebRtcClient | null>(null);
-  const attachmentIdRef = useRef<string | null>(null);
-  const sequenceRef = useRef(0);
-  const lastInboundSequenceRef = useRef(-1);
-  const reconnectAttemptRef = useRef(0);
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputFocusedRef = useRef(false);
   const onPageStateRef = useRef(onPageState);
   const pageStateRef = useRef<{ title: string; url: string } | null>(null);
@@ -157,11 +157,6 @@ export function BrowserView({
     devicePixelRatio: window.devicePixelRatio || 1,
   });
   const frameChainRef = useRef(Promise.resolve());
-  const [connectionKey, setConnectionKey] = useState(0);
-  const [connectionState, setConnectionState] = useState<
-    "connecting" | "ready" | "reconnecting"
-  >("connecting");
-  const [error, setError] = useState<string | null>(null);
   const [address, setAddress] = useState(browser.url);
   const [currentUrl, setCurrentUrl] = useState(browser.url);
   const [invalidAddress, setInvalidAddress] = useState(false);
@@ -190,39 +185,104 @@ export function BrowserView({
   const filteredServices = filterBrowserServices(services, serviceSearch);
   onPageStateRef.current = onPageState;
 
-  const sendFrame = useCallback(
-    (
-      channel: RemoteSurfaceChannel,
-      payload: Uint8Array,
-      webSocketOnly = false,
-    ) => {
-      const socket = socketRef.current;
-      const attachmentId = attachmentIdRef.current;
-      if (!attachmentId) return false;
-      const header = {
-        protocolVersion: 1 as const,
-        surfaceId: browser.id,
-        attachmentId,
-        sequence: sequenceRef.current,
-        channel,
-      };
-      if (!webSocketOnly && webRtcRef.current?.send(header, payload)) {
-        sequenceRef.current += 1;
-        return true;
+  const handleFrame = useCallback(
+    (frame: RemoteSurfaceInboundFrame, context: RemoteSurfaceFrameContext) => {
+      if (frame.header.channel === "frame") {
+        const bytes = new Uint8Array(frame.payload);
+        frameChainRef.current = frameChainRef.current
+          .then(async () => {
+            const canvas = canvasRef.current;
+            if (!canvas || !context.isCurrent()) return;
+            const bitmap = await createImageBitmap(
+              new Blob([bytes], { type: "image/jpeg" }),
+            );
+            if (!context.isCurrent()) {
+              bitmap.close();
+              return;
+            }
+            canvas.width = bitmap.width;
+            canvas.height = bitmap.height;
+            canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
+            bitmap.close();
+            setRenderedSurfaceId(browser.id);
+          })
+          .catch(() => {
+            if (context.isCurrent()) {
+              context.reportError(
+                "The worker sent an unreadable browser frame.",
+              );
+            }
+          });
+      } else if (frame.header.channel === "control") {
+        const state = remoteBrowserServerMessageSchema.parse(
+          JSON.parse(decoder.decode(frame.payload)),
+        );
+        if (state.type === "browser-runtime") {
+          setRuntimeStatus(state.status);
+          setRuntimeMessage(state.message);
+          if (state.status === "ready") context.reportError(null);
+        } else {
+          const normalized = normalizeBrowserAddress(state.url);
+          if (normalized) {
+            setCurrentUrl(normalized);
+            if (!inputFocusedRef.current) setAddress(normalized);
+            const previous = pageStateRef.current;
+            if (
+              previous?.url !== normalized ||
+              previous?.title !== state.title
+            ) {
+              pageStateRef.current = {
+                title: state.title,
+                url: normalized,
+              };
+              onPageStateRef.current({
+                previousTitle: previous?.title ?? null,
+                title: state.title,
+                url: normalized,
+              });
+            }
+          }
+          setCanGoBack(state.canGoBack);
+          setCanGoForward(state.canGoForward);
+          setLoading(state.loading);
+        }
+      } else if (frame.header.channel === "cursor") {
+        const cursor = remoteBrowserCursorMessageSchema.parse(
+          JSON.parse(decoder.decode(frame.payload)),
+        ).cursor;
+        const canvas = canvasRef.current;
+        if (canvas && CSS.supports("cursor", cursor)) {
+          canvas.style.cursor = cursor;
+        }
+      } else if (frame.header.channel === "clipboard") {
+        const clipboard = remoteBrowserClipboardMessageSchema.parse(
+          JSON.parse(decoder.decode(frame.payload)),
+        );
+        void navigator.clipboard.writeText(clipboard.text).then(
+          () => {
+            if (context.isCurrent()) setClipboardMessage("Selection copied");
+          },
+          () => {
+            if (context.isCurrent()) {
+              setClipboardMessage(
+                "Clipboard access was denied by this app environment.",
+              );
+            }
+          },
+        );
       }
-      if (!socket || socket.readyState !== WebSocket.OPEN) return false;
-      if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) {
-        socket.close(1013, "Remote Surface connection is congested");
-        return false;
-      }
-      socket.send(
-        Uint8Array.from(encodeRemoteSurfaceFrame(header, payload)).buffer,
-      );
-      sequenceRef.current += 1;
-      return true;
     },
     [browser.id],
   );
+
+  const { connectionState, error, sendFrame, setError } =
+    useRemoteSurfaceTransport({
+      surfaceId: browser.id,
+      webSocketUrl: () =>
+        remoteSurfaceWebSocketUrl(browser.id, viewportRef.current),
+      messages: browserTransportMessages,
+      onFrame: handleFrame,
+    });
 
   const send = useCallback(
     (message: RemoteBrowserClientMessage) =>
@@ -276,197 +336,10 @@ export function BrowserView({
   }, [send]);
 
   useEffect(() => {
-    const viewport = viewportRef.current;
-    setConnectionState(
-      reconnectAttemptRef.current ? "reconnecting" : "connecting",
-    );
-    setError(null);
-    attachmentIdRef.current = null;
-    sequenceRef.current = 0;
-    lastInboundSequenceRef.current = -1;
-    webRtcRef.current?.close();
-    webRtcRef.current = null;
-    const socket = new WebSocket(
-      remoteSurfaceWebSocketUrl(browser.id, viewport),
-    );
-    socket.binaryType = "arraybuffer";
-    socketRef.current = socket;
-    let disposed = false;
-    let ready = false;
-
-    const scheduleReconnect = () => {
-      if (disposed || reconnectTimerRef.current) return;
-      const delay = Math.min(500 * 2 ** reconnectAttemptRef.current, 5_000);
-      reconnectAttemptRef.current += 1;
-      setConnectionState("reconnecting");
-      reconnectTimerRef.current = setTimeout(() => {
-        reconnectTimerRef.current = null;
-        setConnectionKey((key) => key + 1);
-      }, delay);
-    };
-
-    const drawFrame = (payload: Uint8Array) => {
-      const bytes = new Uint8Array(payload);
-      frameChainRef.current = frameChainRef.current
-        .then(async () => {
-          const canvas = canvasRef.current;
-          if (!canvas || disposed) return;
-          const bitmap = await createImageBitmap(
-            new Blob([bytes], { type: "image/jpeg" }),
-          );
-          if (disposed) {
-            bitmap.close();
-            return;
-          }
-          canvas.width = bitmap.width;
-          canvas.height = bitmap.height;
-          canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
-          bitmap.close();
-          setRenderedSurfaceId(browser.id);
-        })
-        .catch(() => {
-          if (!disposed)
-            setError("The worker sent an unreadable browser frame.");
-        });
-    };
-
-    const handleFrameBytes = (bytes: Uint8Array) => {
-      try {
-        const frame = decodeRemoteSurfaceFrame(bytes);
-        if (
-          frame.header.surfaceId !== browser.id ||
-          frame.header.sequence <= lastInboundSequenceRef.current
-        ) {
-          return;
-        }
-        lastInboundSequenceRef.current = frame.header.sequence;
-        if (frame.header.channel === "frame") {
-          drawFrame(frame.payload);
-        } else if (frame.header.channel === "control") {
-          const state = remoteBrowserServerMessageSchema.parse(
-            JSON.parse(decoder.decode(frame.payload)),
-          );
-          if (state.type === "browser-runtime") {
-            setRuntimeStatus(state.status);
-            setRuntimeMessage(state.message);
-            if (state.status === "ready") setError(null);
-          } else {
-            const normalized = normalizeBrowserAddress(state.url);
-            if (normalized) {
-              setCurrentUrl(normalized);
-              if (!inputFocusedRef.current) setAddress(normalized);
-              const previous = pageStateRef.current;
-              if (
-                previous?.url !== normalized ||
-                previous?.title !== state.title
-              ) {
-                pageStateRef.current = {
-                  title: state.title,
-                  url: normalized,
-                };
-                onPageStateRef.current({
-                  previousTitle: previous?.title ?? null,
-                  title: state.title,
-                  url: normalized,
-                });
-              }
-            }
-            setCanGoBack(state.canGoBack);
-            setCanGoForward(state.canGoForward);
-            setLoading(state.loading);
-          }
-        } else if (frame.header.channel === "cursor") {
-          const cursor = remoteBrowserCursorMessageSchema.parse(
-            JSON.parse(decoder.decode(frame.payload)),
-          ).cursor;
-          const canvas = canvasRef.current;
-          if (canvas && CSS.supports("cursor", cursor)) {
-            canvas.style.cursor = cursor;
-          }
-        } else if (frame.header.channel === "clipboard") {
-          const clipboard = remoteBrowserClipboardMessageSchema.parse(
-            JSON.parse(decoder.decode(frame.payload)),
-          );
-          void navigator.clipboard.writeText(clipboard.text).then(
-            () => setClipboardMessage("Selection copied"),
-            () =>
-              setClipboardMessage(
-                "Clipboard access was denied by this app environment.",
-              ),
-          );
-        } else if (frame.header.channel === "webrtc-signal") {
-          void webRtcRef.current?.handleSignal(frame.payload);
-        }
-      } catch {
-        setError("The server sent an invalid browser frame.");
-      }
-    };
-
-    socket.addEventListener("message", (event) => {
-      if (typeof event.data === "string") {
-        try {
-          const message = remoteSurfaceConnectionMessageSchema.parse(
-            JSON.parse(event.data),
-          );
-          if (message.type === "ready") {
-            ready = true;
-            reconnectAttemptRef.current = 0;
-            attachmentIdRef.current = message.attachmentId;
-            setConnectionState("ready");
-            if (message.transport === "webrtc" && message.webrtc) {
-              const client = new RemoteSurfaceWebRtcClient({
-                configuration: message.webrtc,
-                onFrame: handleFrameBytes,
-                onSignal: (signal) => {
-                  sendFrame(
-                    "webrtc-signal",
-                    new TextEncoder().encode(JSON.stringify(signal)),
-                    true,
-                  );
-                },
-                onState: () => undefined,
-              });
-              webRtcRef.current = client;
-              void client.start();
-            }
-            send({ type: "viewport", viewport: viewportRef.current });
-          } else {
-            setError(message.message);
-          }
-        } catch {
-          setError("The server sent an invalid browser connection message.");
-        }
-        return;
-      }
-      handleFrameBytes(new Uint8Array(event.data));
-    });
-    socket.addEventListener("close", () => {
-      ready = false;
-      attachmentIdRef.current = null;
-      if (!disposed) scheduleReconnect();
-    });
-    socket.addEventListener("error", () => {
-      if (!disposed) {
-        setError("Could not connect to the worker browser.");
-        scheduleReconnect();
-      }
-    });
-
-    return () => {
-      disposed = true;
-      ready = false;
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
-      }
-      if (socketRef.current === socket) socketRef.current = null;
-      if (webRtcRef.current) {
-        webRtcRef.current.close();
-        webRtcRef.current = null;
-      }
-      socket.close(1000, "Browser view closed");
-    };
-  }, [browser.id, connectionKey, send, sendFrame]);
+    if (connectionState === "ready") {
+      send({ type: "viewport", viewport: viewportRef.current });
+    }
+  }, [connectionState, send]);
 
   const navigateTo = (value: string) => {
     const normalized = normalizeBrowserAddress(value);
