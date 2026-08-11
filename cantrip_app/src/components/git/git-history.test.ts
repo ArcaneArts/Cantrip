@@ -5,7 +5,11 @@ import type {
 } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
-import { buildHistoryDisplayRows, graphRows } from "./git-history";
+import {
+  buildHistoryDisplayRows,
+  graphCurvePath,
+  graphRows,
+} from "./git-history";
 import { historyWorktreeState } from "./history-worktree-marker";
 
 const head = "1".repeat(40);
@@ -144,5 +148,57 @@ describe("worktree history rows", () => {
         worktree: worktree("offline"),
       }).unavailable,
     ).toBe(true);
+  });
+});
+
+describe("commit graph layout", () => {
+  const commit = (hash: string, parents: string[]): GitCommit => ({
+    hash,
+    shortHash: hash,
+    parents,
+    subject: hash,
+    authorName: "Cantrip",
+    authorEmail: "test@cantrip.art",
+    authoredAt: "2026-08-08T12:00:00.000Z",
+    refs: [],
+    isHead: false,
+  });
+
+  it("keeps unaffected lanes stationary when a neighboring lane ends", () => {
+    const rows = graphRows([
+      commit("a", ["b"]),
+      commit("x", ["y"]),
+      commit("b", []),
+      commit("y", []),
+    ]).rows;
+
+    expect(rows[2]?.passthrough).toContainEqual({
+      color: rows[3]?.nodeColor,
+      from: 1,
+      to: 1,
+    });
+    expect(rows[3]?.lane).toBe(1);
+  });
+
+  it("preserves an existing lane color when another branch joins it", () => {
+    const rows = graphRows([
+      commit("a", ["b"]),
+      commit("x", ["b"]),
+      commit("b", []),
+    ]).rows;
+
+    expect(rows[2]?.nodeColor).toBe(rows[0]?.nodeColor);
+    expect(rows[2]?.nodeColor).not.toBe(rows[1]?.nodeColor);
+    expect(rows[1]?.edges[0]?.color).toBe(rows[1]?.nodeColor);
+  });
+
+  it("uses straight segments and symmetric curves between rows", () => {
+    expect(graphCurvePath(10, 10, -1, 33)).toBe("M 10 -1 L 10 33");
+    expect(graphCurvePath(10, 26, -1, 33)).toBe(
+      "M 10 -1 C 10 16, 26 16, 26 33",
+    );
+    expect(graphCurvePath(10, 26, 16, 33)).toBe(
+      "M 10 16 C 10 24.5, 26 24.5, 26 33",
+    );
   });
 });
