@@ -35,7 +35,6 @@ import {
   SquareTerminal,
   Trash2,
   Unlock,
-  X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -68,12 +67,25 @@ import { cn } from "@/lib/utils";
 import { WorkflowCenter } from "@/components/workflows/workflow-center";
 import { ProjectAutomationsSettings } from "./project-automations-settings";
 import { SkillsSettings } from "@/components/settings/skills-settings";
+import {
+  SettingsSearchField,
+  SettingsTabBar,
+  type SettingsTab,
+} from "@/components/settings/settings-controls";
 
 const menuContentClass =
   "z-50 min-w-52 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
 const menuItemClass =
   "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
 const createdDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
+
+type ProjectSettingsSection = "general" | "automations" | "skills";
+
+const projectSettingsTabs: readonly SettingsTab<ProjectSettingsSection>[] = [
+  { id: "general", label: "General", icon: SlidersHorizontal },
+  { id: "automations", label: "Automations", icon: CalendarClock },
+  { id: "skills", label: "Skills", icon: Sparkles },
+];
 
 function matchesProjectSettingsSearch(
   query: string,
@@ -203,9 +215,7 @@ export function ProjectSettingsPage({
   worktrees: ProjectWorktreeSummary[];
 }) {
   const queryClient = useQueryClient();
-  const [section, setSection] = useState<"general" | "automations" | "skills">(
-    "general",
-  );
+  const [section, setSection] = useState<ProjectSettingsSection>("general");
   const [createOpen, setCreateOpen] = useState(false);
   const [pruneOpen, setPruneOpen] = useState(false);
   const [allowExternalPrune, setAllowExternalPrune] = useState(false);
@@ -377,50 +387,12 @@ export function ProjectSettingsPage({
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
       data-slot="project-settings"
     >
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b px-4 sm:px-6">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className={cn(
-            "h-10 rounded-none border-b-2 px-2.5 text-xs",
-            section === "general"
-              ? "border-foreground text-foreground"
-              : "border-transparent text-muted-foreground",
-          )}
-          onClick={() => setSection("general")}
-        >
-          <SlidersHorizontal className="size-3.5" /> General
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className={cn(
-            "h-10 rounded-none border-b-2 px-2.5 text-xs",
-            section === "automations"
-              ? "border-foreground text-foreground"
-              : "border-transparent text-muted-foreground",
-          )}
-          onClick={() => setSection("automations")}
-        >
-          <CalendarClock className="size-3.5" /> Automations
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className={cn(
-            "h-10 rounded-none border-b-2 px-2.5 text-xs",
-            section === "skills"
-              ? "border-foreground text-foreground"
-              : "border-transparent text-muted-foreground",
-          )}
-          onClick={() => setSection("skills")}
-        >
-          <Sparkles className="size-3.5" /> Skills
-        </Button>
-      </div>
+      <SettingsTabBar<ProjectSettingsSection>
+        activeTab={section}
+        ariaLabel="Project settings sections"
+        tabs={projectSettingsTabs}
+        onTabChange={setSection}
+      />
 
       {section === "automations" ? (
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -433,30 +405,12 @@ export function ProjectSettingsPage({
           section !== "general" && "hidden",
         )}
       >
-        <div className="relative max-w-xl">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            role="searchbox"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            className="h-9 w-full rounded-md border bg-background pl-9 pr-9 text-sm outline-none ring-ring placeholder:text-muted-foreground focus:ring-2"
-            placeholder="Search project settings"
-            aria-label="Search project settings"
-          />
-          {searchQuery ? (
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className="absolute right-0.5 top-0.5 size-8"
-              onClick={() => setSearchQuery("")}
-            >
-              <X className="size-3.5" />
-              <span className="sr-only">Clear search</span>
-            </Button>
-          ) : null}
-        </div>
+        <SettingsSearchField
+          ariaLabel="Search project settings"
+          placeholder="Search project settings"
+          value={searchQuery}
+          onValueChange={setSearchQuery}
+        />
 
         {operationError ? (
           <div className="flex gap-2 rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">

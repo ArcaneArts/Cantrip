@@ -13,11 +13,9 @@ import {
   Pencil,
   RefreshCw,
   Save,
-  Search,
   ShieldCheck,
   Trash2,
   UserRound,
-  X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -40,6 +38,7 @@ import {
   updateSettingsSkillFile,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { SettingsSearchField } from "./settings-controls";
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
@@ -344,30 +343,12 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
         </Button>
       </div>
 
-      <div className="relative max-w-xl">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          type="text"
-          role="searchbox"
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
-          className="h-9 w-full rounded-md border bg-background pl-9 pr-9 text-sm outline-none ring-ring placeholder:text-muted-foreground focus:ring-2"
-          placeholder="Search skills"
-          aria-label="Search skills"
-        />
-        {searchQuery ? (
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className="absolute right-0.5 top-0.5 size-8"
-            onClick={() => setSearchQuery("")}
-          >
-            <X className="size-3.5" />
-            <span className="sr-only">Clear search</span>
-          </Button>
-        ) : null}
-      </div>
+      <SettingsSearchField
+        ariaLabel="Search skills"
+        placeholder="Search skills"
+        value={searchQuery}
+        onValueChange={setSearchQuery}
+      />
 
       <div className="grid gap-3 border-y px-3 py-3 sm:grid-cols-2">
         {!project ? (
