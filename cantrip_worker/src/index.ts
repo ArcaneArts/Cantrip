@@ -19,6 +19,7 @@ import { CodeSupervisor } from "./code/supervisor.js";
 import { CodeTunnelProxy } from "./code/tunnel-proxy.js";
 import { readWorkerConfig } from "./config.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
+import { DesktopApplicationIconStore } from "./desktop/desktop-icons.js";
 import {
   listExplorerDirectory,
   readExplorerFile,
@@ -113,7 +114,13 @@ async function start(): Promise<void> {
   const browserAdapter = new BrowserRemoteSurfaceAdapter({
     dataDirectory: config.dataDirectory,
   });
-  const desktopAdapter = new ManagedDesktopRemoteSurfaceAdapter();
+  const desktopAdapter = new ManagedDesktopRemoteSurfaceAdapter(
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    new DesktopApplicationIconStore(config.dataDirectory),
+  );
   await desktopAdapter.initialize();
   const codeDiscovery = await discoverCantripCode();
   const code = new CodeSupervisor({

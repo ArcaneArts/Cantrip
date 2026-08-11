@@ -95,6 +95,7 @@ import {
   projectTabLayoutSummarySchema,
   remoteDesktopCreateSchema,
   remoteDesktopClientMessageSchema,
+  remoteDesktopServerMessageSchema,
   remoteDesktopSummarySchema,
   remoteDesktopTargetInventorySchema,
   remoteDesktopUpdateSchema,
@@ -2702,6 +2703,7 @@ describe("Cantrip protocol", () => {
             id: "42",
             application: "Code",
             title: "Cantrip",
+            iconKey: "desktop-app-v1-abc123",
             x: 20,
             y: 30,
             width: 1200,
@@ -2731,6 +2733,24 @@ describe("Cantrip protocol", () => {
     expect(
       remoteDesktopClientMessageSchema.parse({ type: "refresh-targets" }).type,
     ).toBe("refresh-targets");
+    expect(
+      remoteDesktopClientMessageSchema.parse({
+        type: "request-target-icons",
+        keys: ["desktop-app-v1-abc123"],
+      }).type,
+    ).toBe("request-target-icons");
+    expect(
+      remoteDesktopServerMessageSchema.parse({
+        type: "desktop-target-icons",
+        icons: [
+          {
+            key: "desktop-app-v1-abc123",
+            mimeType: "image/png",
+            data: Buffer.from("png").toString("base64"),
+          },
+        ],
+      }).type,
+    ).toBe("desktop-target-icons");
     expect(
       workerCommandSchema.parse({
         type: "surface.configure",

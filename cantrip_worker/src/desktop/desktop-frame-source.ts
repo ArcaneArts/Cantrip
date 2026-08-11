@@ -266,6 +266,7 @@ function windowSummary(window: ScreenshotWindow): RemoteDesktopWindow | null {
     id: String(window.id()),
     application,
     title,
+    iconKey: null,
     x: Math.round(window.x()),
     y: Math.round(window.y()),
     width,

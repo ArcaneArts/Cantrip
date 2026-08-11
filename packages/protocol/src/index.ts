@@ -2124,11 +2124,18 @@ export const remoteDesktopMonitorSchema = z.object({
   primary: z.boolean(),
 });
 
+export const remoteDesktopApplicationIconKeySchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-zA-Z0-9:_-]+$/u);
+
 export const remoteDesktopWindowSchema = z.object({
   kind: z.literal("window"),
   id: z.string().min(1).max(200),
   application: z.string().trim().min(1).max(500),
   title: z.string().trim().min(1).max(1_000),
+  iconKey: remoteDesktopApplicationIconKeySchema.nullable().default(null),
   x: z.number().int(),
   y: z.number().int(),
   width: z.number().int().positive(),
@@ -2266,6 +2273,12 @@ export const remoteDesktopProbeResultSchema = z.object({
   message: z.string().max(2_048).nullable(),
 });
 
+export const remoteDesktopApplicationIconSchema = z.object({
+  key: remoteDesktopApplicationIconKeySchema,
+  mimeType: z.literal("image/png"),
+  data: z.string().max(180_000).nullable(),
+});
+
 export const remoteDesktopClientMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("viewport"),
@@ -2295,6 +2308,10 @@ export const remoteDesktopClientMessageSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("focus") }),
   z.object({ type: z.literal("refresh-targets") }),
+  z.object({
+    type: z.literal("request-target-icons"),
+    keys: z.array(remoteDesktopApplicationIconKeySchema).min(1).max(64),
+  }),
   z.object({
     type: z.literal("clipboard"),
     operation: z.enum(["copy", "paste-text"]),
@@ -2335,6 +2352,10 @@ export const remoteDesktopServerMessageSchema = z.discriminatedUnion("type", [
     active: remoteDesktopTargetSchema,
     launchingApplication: z.string().trim().min(1).max(500).nullable(),
     message: z.string().max(2_048).nullable(),
+  }),
+  z.object({
+    type: z.literal("desktop-target-icons"),
+    icons: z.array(remoteDesktopApplicationIconSchema).max(64),
   }),
   z.object({
     type: z.literal("desktop-clipboard"),
@@ -6677,6 +6698,9 @@ export type RemoteDesktopMonitor = z.infer<typeof remoteDesktopMonitorSchema>;
 export type RemoteDesktopWindow = z.infer<typeof remoteDesktopWindowSchema>;
 export type RemoteDesktopTargetInventory = z.infer<
   typeof remoteDesktopTargetInventorySchema
+>;
+export type RemoteDesktopApplicationIcon = z.infer<
+  typeof remoteDesktopApplicationIconSchema
 >;
 export type RemoteDesktopUpdate = z.infer<typeof remoteDesktopUpdateSchema>;
 export type RemoteDesktopSummary = z.infer<typeof remoteDesktopSummarySchema>;
