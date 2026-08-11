@@ -134,6 +134,13 @@ import {
   settingsBundleSchema,
   scriptCommandListSchema,
   skillListSchema,
+  skillSettingsContextSchema,
+  skillSettingsDeleteRequestSchema,
+  skillSettingsDocumentSchema,
+  skillSettingsFileRequestSchema,
+  skillSettingsFileUpdateSchema,
+  skillSettingsInventorySchema,
+  skillSettingsMutationResultSchema,
   systemHealthSchema,
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
@@ -195,6 +202,10 @@ import type {
   ProjectWorkspaceUpdate,
   ProjectWorktreeCreate,
   RemoteDesktopTarget,
+  SkillSettingsContext,
+  SkillSettingsDeleteRequest,
+  SkillSettingsFileRequest,
+  SkillSettingsFileUpdate,
   UserSettingsUpdate,
   ExplorerFileWrite,
   WorktreePolicy,
@@ -2002,6 +2013,43 @@ export async function getMessages(chatId: string) {
 export async function getSkills(chatId: string) {
   return skillListSchema.parse(
     await request(`/api/chats/${encodeURIComponent(chatId)}/skills`),
+  );
+}
+
+export async function getSettingsSkills(input: SkillSettingsContext) {
+  const parsed = skillSettingsContextSchema.parse(input);
+  return skillSettingsInventorySchema.parse(
+    await request(
+      withQuery("/api/skills", {
+        workerId: parsed.workerId,
+        providerId: parsed.providerId,
+        projectId: parsed.projectId ?? undefined,
+      }),
+    ),
+  );
+}
+
+export async function readSettingsSkill(input: SkillSettingsFileRequest) {
+  return skillSettingsDocumentSchema.parse(
+    await post("/api/skills/read", skillSettingsFileRequestSchema.parse(input)),
+  );
+}
+
+export async function updateSettingsSkillFile(input: SkillSettingsFileUpdate) {
+  return skillSettingsMutationResultSchema.parse(
+    await request("/api/skills/file", {
+      method: "PUT",
+      body: JSON.stringify(skillSettingsFileUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function deleteSettingsSkill(input: SkillSettingsDeleteRequest) {
+  return skillSettingsMutationResultSchema.parse(
+    await request("/api/skills", {
+      method: "DELETE",
+      body: JSON.stringify(skillSettingsDeleteRequestSchema.parse(input)),
+    }),
   );
 }
 

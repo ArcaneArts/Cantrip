@@ -79,6 +79,28 @@ the app never supplies a worker or runtime identifier directly.
   failure summaries; native source and target paths never cross the worker
   bridge.
 
+## Skills settings
+
+App Settings includes a Skills tab for browsing the selected worker and Codex
+provider's global skill roots. Project Settings adds its own Skills tab, with
+repository skills from `.agents/skills` shown before a separately labeled
+Global Skills inventory. This keeps project-owned workflows visibly distinct
+from Cantrip-account, worker-user, bundled, and administrator skills.
+
+The app talks only to the server. `GET /api/skills` resolves the requested
+provider and optional project source, verifies the project's owning worker, and
+asks that worker for a bounded inventory. Supporting files can be browsed and
+regular files in project, Cantrip-account, or worker-user skills can be edited.
+Bundled and administrator skills are read-only. Deleting an editable skill
+moves its complete directory beneath the worker's private `skill-recovery`
+directory instead of permanently erasing it.
+
+Skill ids encode only a discovered root and relative skill directory. Every
+read, write, and delete resolves the id against a fresh worker-side inventory;
+paths outside the selected skill, symbolic-link escapes, new arbitrary files,
+binary content, and files larger than 1 MB are rejected. `SKILL.md` edits must
+retain non-empty `name` and `description` frontmatter.
+
 External plugin candidates are rejected even when selected. This preserves the
 production plugin stability policy instead of reaching the same unstable
 surface indirectly through import.
