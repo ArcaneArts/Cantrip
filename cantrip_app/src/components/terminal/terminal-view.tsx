@@ -11,22 +11,35 @@ import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
 import { terminalCommandInput } from "./terminal-command-palette";
 import { rowsWithoutPartiallyVisibleLastLine } from "./terminal-fit";
 import { TerminalScriptCommandDialog } from "./terminal-script-command-dialog";
-import { terminalBackground } from "./terminal-theme";
+import {
+  attenuateTerminalCellBackgrounds,
+  proModeTerminalCellBackgroundOpacity,
+  restoreTerminalCellBackgrounds,
+  terminalBackground,
+} from "./terminal-theme";
 
 import "@xterm/xterm/css/xterm.css";
 
 const loadedTerminalIds = new Set<string>();
 
-function terminalTheme() {
+function terminalAppearance() {
   const styles = getComputedStyle(document.documentElement);
+  const proMode = document.documentElement.classList.contains("pro-mode");
   return {
-    background: terminalBackground(
-      styles.getPropertyValue("--background").trim(),
-      document.documentElement.classList.contains("pro-mode"),
-    ),
-    foreground: styles.getPropertyValue("--foreground").trim(),
-    cursor: styles.getPropertyValue("--foreground").trim(),
-    selectionBackground: styles.getPropertyValue("--accent").trim(),
+    cellBackgroundOpacity: proMode
+      ? proModeTerminalCellBackgroundOpacity(
+          styles.getPropertyValue("--pro-mode-opacity"),
+        )
+      : null,
+    theme: {
+      background: terminalBackground(
+        styles.getPropertyValue("--background").trim(),
+        proMode,
+      ),
+      foreground: styles.getPropertyValue("--foreground").trim(),
+      cursor: styles.getPropertyValue("--foreground").trim(),
+      selectionBackground: styles.getPropertyValue("--accent").trim(),
+    },
   };
 }
 
@@ -69,6 +82,8 @@ export function TerminalView({
     setState(reconnectAttemptRef.current === 0 ? "connecting" : "reconnecting");
     setError(null);
 
+    const appearance = terminalAppearance();
+    let cellBackgroundOpacity = appearance.cellBackgroundOpacity;
     const xterm = new Terminal({
       allowProposedApi: false,
       allowTransparency: true,
@@ -77,7 +92,7 @@ export function TerminalView({
       fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
       fontSize: 13,
       scrollback: 10_000,
-      theme: terminalTheme(),
+      theme: appearance.theme,
     });
     const fit = new FitAddon();
     xterm.loadAddon(fit);
@@ -125,11 +140,24 @@ export function TerminalView({
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(container);
     const themeObserver = new MutationObserver(() => {
-      xterm.options.theme = terminalTheme();
+      const next = terminalAppearance();
+      cellBackgroundOpacity = next.cellBackgroundOpacity;
+      if (xterm.element) restoreTerminalCellBackgrounds(xterm.element);
+      xterm.options.theme = next.theme;
+      xterm.refresh(0, xterm.rows - 1);
     });
     themeObserver.observe(document.documentElement, {
       attributeFilter: ["class", "style"],
       attributes: true,
+    });
+    const render = xterm.onRender(({ start, end }) => {
+      if (!xterm.element || cellBackgroundOpacity === null) return;
+      attenuateTerminalCellBackgrounds(
+        xterm.element,
+        start,
+        end,
+        cellBackgroundOpacity,
+      );
     });
     const sendInput = (data: string) => {
       if (ready && socket.readyState === WebSocket.OPEN) {
@@ -196,6 +224,7 @@ export function TerminalView({
       disposed = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       input.dispose();
+      render.dispose();
       if (inputSenderRef.current === sendInput) inputSenderRef.current = null;
       if (xtermRef.current === xterm) xtermRef.current = null;
       resizeObserver.disconnect();
