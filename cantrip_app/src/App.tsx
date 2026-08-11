@@ -30,8 +30,6 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
-  ArrowDownToLine,
-  ArrowUpFromLine,
   Bot,
   Check,
   CircleAlert,
@@ -45,18 +43,13 @@ import {
   Globe2,
   Loader2,
   Lock,
-  MessageSquare,
   PanelLeft,
   PanelLeftClose,
   PanelLeftOpen,
-  Palette,
   Pause,
   Play,
-  Power,
   Plus,
   RefreshCw,
-  RotateCcw,
-  Save,
   Send,
   Settings,
   SquareTerminal,
@@ -121,6 +114,10 @@ import {
   ProjectTabBar,
   type ProjectSurfaceCreateKind,
 } from "@/components/workspace/project-tab-bar";
+import {
+  ContentHeaderActions,
+  type ContentHeaderActionsProps,
+} from "@/components/workspace/content-header-actions";
 import { WorkspaceDndProvider } from "@/components/workspace/workspace-dnd-provider";
 import { WorkspaceMembershipPicker } from "@/components/workspaces/workspace-membership-picker";
 import { WorkspaceSwitcher } from "@/components/workspaces/workspace-switcher";
@@ -420,96 +417,6 @@ function StatusDot({ online }: { online: boolean }) {
         online ? "bg-emerald-500" : "bg-muted-foreground/40",
       )}
     />
-  );
-}
-
-function CodeHeaderActions({
-  floating = false,
-  header,
-}: {
-  floating?: boolean;
-  header: CodeHeaderState | null;
-}) {
-  const controlClass = floating
-    ? "bg-background/75 shadow-md backdrop-blur-xl"
-    : undefined;
-  const runtimeIssue =
-    header?.error ??
-    (header?.status === "failed" || header?.status === "offline"
-      ? `Editor ${header.status}.`
-      : null);
-  return (
-    <div className="flex items-center gap-1.5">
-      {runtimeIssue ? (
-        <span
-          className={cn(
-            "grid size-8 place-items-center text-destructive",
-            controlClass,
-          )}
-          role="status"
-          title={runtimeIssue}
-        >
-          <CircleAlert className="size-4" />
-          <span className="sr-only">{runtimeIssue}</span>
-        </span>
-      ) : header?.isBusy ? (
-        <span
-          className={cn(
-            "grid size-8 place-items-center text-muted-foreground",
-            controlClass,
-          )}
-          role="status"
-          title="Connecting to editor"
-        >
-          <Loader2 className="size-4 animate-spin" />
-          <span className="sr-only">Connecting to editor</span>
-        </span>
-      ) : null}
-      <Button
-        size="icon"
-        variant={floating ? "outline" : "ghost"}
-        className={cn("size-8", controlClass)}
-        disabled={!header || header.isBusy || !header.runtime}
-        onClick={() => void header?.saveAll()}
-        title="Save all editors"
-      >
-        <Save className="size-4" />
-        <span className="sr-only">Save all editors</span>
-      </Button>
-      <Button
-        size="icon"
-        variant={floating ? "outline" : "ghost"}
-        className={cn("size-8", controlClass)}
-        disabled={!header || header.isBusy}
-        onClick={header?.reload}
-        title="Reload editor surface"
-      >
-        <RefreshCw className="size-4" />
-        <span className="sr-only">Reload editor surface</span>
-      </Button>
-      <Button
-        size="icon"
-        variant={floating ? "outline" : "ghost"}
-        className={cn("size-8", controlClass)}
-        disabled={!header || header.isBusy}
-        onClick={() => void header?.restart()}
-        title="Restart editor"
-      >
-        <RotateCcw className="size-4" />
-        <span className="sr-only">Restart editor</span>
-      </Button>
-      <Button
-        size="icon"
-        variant={floating ? "outline" : "ghost"}
-        className={cn("size-8", controlClass)}
-        disabled={!header || header.isBusy || !header.runtime}
-        onClick={() => void header?.stop()}
-        title="Stop editor"
-      >
-        <Power className="size-4" />
-        <span className="sr-only">Stop editor</span>
-      </Button>
-    </div>
   );
 }
 
@@ -3965,6 +3872,48 @@ export function App() {
     reordered.splice(to, 0, moved);
     reorderProjectsMutation.mutate(reordered.map(({ id }) => id));
   };
+  const contentHeaderActions = {
+    git:
+      gitHistoryProject && gitHistoryHeader?.section === "history"
+        ? gitHistoryHeader
+        : null,
+    explorer: selectedExplorer ? explorerHeader : null,
+    code: selectedCodeTab ? { header: codeHeader } : null,
+    terminalCommandPalette:
+      !showImporter &&
+      !showSettings &&
+      !showProjectSettings &&
+      selectedStandaloneTerminal
+        ? {
+            active:
+              terminalCommandPaletteTerminalId ===
+              selectedStandaloneTerminal.id,
+            open: () =>
+              setTerminalCommandPaletteTerminalId(
+                selectedStandaloneTerminal.id,
+              ),
+          }
+        : null,
+    popout: activePopout
+      ? {
+          error: popoutError,
+          pending: popoutPending,
+          open: popOutActiveView,
+        }
+      : null,
+    chat:
+      activeChat && !showImporter && !showSettings
+        ? {
+            consoleActive: Boolean(linkedConsoleChat),
+            consolePending: openChatConsole.isPending,
+            inspectCustomizations: () => setShowCustomizations(true),
+            toggleConsole: () =>
+              linkedConsoleChat
+                ? setChatConsoleChatId(null)
+                : showChatConsole(activeChat),
+          }
+        : null,
+  } satisfies Omit<ContentHeaderActionsProps, "compact">;
   return (
     <WorkspaceDndProvider
       className="flex h-svh overflow-hidden bg-background text-foreground"
@@ -4471,140 +4420,7 @@ export function App() {
                   <span className="sr-only">Open projects and chats</span>
                 </Button>
               ) : null}
-              {gitHistoryProject &&
-              gitHistoryHeader?.section === "history" &&
-              gitHistoryHeader ? (
-                <>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    disabled={gitHistoryHeader.isGitActionPending}
-                    onClick={gitHistoryHeader.pull}
-                  >
-                    <ArrowDownToLine className="size-4" />
-                    <span className="sr-only">Fetch and pull</span>
-                  </Button>
-                  {gitHistoryHeader.canPush ? (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      disabled={gitHistoryHeader.isGitActionPending}
-                      onClick={gitHistoryHeader.push}
-                    >
-                      <ArrowUpFromLine className="size-4" />
-                      <span className="sr-only">Push</span>
-                    </Button>
-                  ) : null}
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    disabled={gitHistoryHeader.isFetching}
-                    onClick={gitHistoryHeader.refresh}
-                  >
-                    <RefreshCw
-                      className={cn(
-                        "size-4",
-                        gitHistoryHeader.isFetching && "animate-spin",
-                      )}
-                    />
-                    <span className="sr-only">Refresh Git history</span>
-                  </Button>
-                </>
-              ) : null}
-              {selectedExplorer && explorerHeader ? (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  disabled={explorerHeader.isFetching}
-                  onClick={explorerHeader.refresh}
-                >
-                  <RefreshCw
-                    className={cn(
-                      "size-4",
-                      explorerHeader.isFetching && "animate-spin",
-                    )}
-                  />
-                  <span className="sr-only">Refresh folder</span>
-                </Button>
-              ) : null}
-              {selectedCodeTab ? (
-                <CodeHeaderActions header={codeHeader} />
-              ) : null}
-              {!showImporter &&
-              !showSettings &&
-              !showProjectSettings &&
-              selectedStandaloneTerminal ? (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  aria-pressed={
-                    terminalCommandPaletteTerminalId ===
-                    selectedStandaloneTerminal.id
-                  }
-                  onClick={() =>
-                    setTerminalCommandPaletteTerminalId(
-                      selectedStandaloneTerminal.id,
-                    )
-                  }
-                  title="Run a project command"
-                >
-                  <Palette className="size-4" />
-                  <span className="sr-only">Run a project command</span>
-                </Button>
-              ) : null}
-              {activePopout ? (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  disabled={popoutPending}
-                  className={cn(popoutError && "text-destructive")}
-                  onClick={popOutActiveView}
-                  title={popoutError ?? "Open this tab in a new window"}
-                >
-                  {popoutPending ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <ExternalLink className="size-4" />
-                  )}
-                  <span className="sr-only">Open this tab in a new window</span>
-                </Button>
-              ) : null}
-              {activeChat && !showImporter && !showSettings ? (
-                <>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => setShowCustomizations(true)}
-                  >
-                    <WandSparkles className="size-4" />
-                    <span className="sr-only">
-                      Inspect Codex customizations
-                    </span>
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    aria-pressed={Boolean(linkedConsoleChat)}
-                    disabled={!linkedConsoleChat && openChatConsole.isPending}
-                    onClick={() =>
-                      linkedConsoleChat
-                        ? setChatConsoleChatId(null)
-                        : showChatConsole(activeChat)
-                    }
-                  >
-                    {linkedConsoleChat ? (
-                      <MessageSquare className="size-4" />
-                    ) : openChatConsole.isPending ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <SquareTerminal className="size-4" />
-                    )}
-                    <span className="sr-only">
-                      {linkedConsoleChat ? "Show chat" : "Show Codex console"}
-                    </span>
-                  </Button>
-                </>
-              ) : null}
+              <ContentHeaderActions {...contentHeaderActions} compact />
               {!isPopout ? (
                 <>
                   <Button
@@ -4642,146 +4458,7 @@ export function App() {
               )}
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
-              {gitHistoryProject &&
-              gitHistoryHeader?.section === "history" &&
-              gitHistoryHeader ? (
-                <>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={gitHistoryHeader.isGitActionPending}
-                    onClick={gitHistoryHeader.pull}
-                    title="Fetch remotes and pull"
-                  >
-                    <ArrowDownToLine className="size-4" /> Pull
-                  </Button>
-                  {gitHistoryHeader.canPush ? (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={gitHistoryHeader.isGitActionPending}
-                      onClick={gitHistoryHeader.push}
-                      title="Push local commits"
-                    >
-                      <ArrowUpFromLine className="size-4" /> Push
-                    </Button>
-                  ) : null}
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    disabled={gitHistoryHeader.isFetching}
-                    onClick={gitHistoryHeader.refresh}
-                    title="Refresh Git history"
-                  >
-                    <RefreshCw
-                      className={cn(
-                        "size-4",
-                        gitHistoryHeader.isFetching && "animate-spin",
-                      )}
-                    />
-                    <span className="sr-only">Refresh Git history</span>
-                  </Button>
-                </>
-              ) : null}
-              {selectedExplorer && explorerHeader ? (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  disabled={explorerHeader.isFetching}
-                  onClick={explorerHeader.refresh}
-                  title="Refresh folder"
-                >
-                  <RefreshCw
-                    className={cn(
-                      "size-4",
-                      explorerHeader.isFetching && "animate-spin",
-                    )}
-                  />
-                  <span className="sr-only">Refresh folder</span>
-                </Button>
-              ) : null}
-              {selectedCodeTab ? (
-                <CodeHeaderActions header={codeHeader} />
-              ) : null}
-              {!showImporter &&
-              !showSettings &&
-              !showProjectSettings &&
-              selectedStandaloneTerminal ? (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  aria-pressed={
-                    terminalCommandPaletteTerminalId ===
-                    selectedStandaloneTerminal.id
-                  }
-                  onClick={() =>
-                    setTerminalCommandPaletteTerminalId(
-                      selectedStandaloneTerminal.id,
-                    )
-                  }
-                  title="Run a project command"
-                >
-                  <Palette className="size-4" />
-                  <span className="sr-only">Run a project command</span>
-                </Button>
-              ) : null}
-              {activePopout ? (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  disabled={popoutPending}
-                  className={cn(popoutError && "text-destructive")}
-                  onClick={popOutActiveView}
-                  title={popoutError ?? "Open this tab in a new window"}
-                >
-                  {popoutPending ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <ExternalLink className="size-4" />
-                  )}
-                  <span className="sr-only">Open this tab in a new window</span>
-                </Button>
-              ) : null}
-              {activeChat && !showImporter && !showSettings ? (
-                <>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => setShowCustomizations(true)}
-                    title="Inspect Codex customizations"
-                  >
-                    <WandSparkles className="size-4" />
-                    <span className="sr-only">
-                      Inspect Codex customizations
-                    </span>
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    aria-pressed={Boolean(linkedConsoleChat)}
-                    disabled={!linkedConsoleChat && openChatConsole.isPending}
-                    onClick={() =>
-                      linkedConsoleChat
-                        ? setChatConsoleChatId(null)
-                        : showChatConsole(activeChat)
-                    }
-                    title={
-                      linkedConsoleChat ? "Show chat" : "Show Codex console"
-                    }
-                  >
-                    {linkedConsoleChat ? (
-                      <MessageSquare className="size-4" />
-                    ) : openChatConsole.isPending ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <SquareTerminal className="size-4" />
-                    )}
-                    <span className="sr-only">
-                      {linkedConsoleChat ? "Show chat" : "Show Codex console"}
-                    </span>
-                  </Button>
-                </>
-              ) : null}
+              <ContentHeaderActions {...contentHeaderActions} />
               {!isPopout &&
               !showImporter &&
               !showSettings &&
