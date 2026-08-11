@@ -33,7 +33,6 @@ import {
   Sparkles,
   Sun,
   Trash2,
-  X,
 } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
@@ -63,6 +62,11 @@ import {
   updateSettings,
 } from "@/lib/api";
 import { isMacosDesktopRuntime } from "@/lib/desktop-popout";
+import {
+  SettingsSearchField,
+  SettingsTabBar,
+  type SettingsTab,
+} from "./settings-controls";
 import { McpServerSettings } from "./mcp-server-settings";
 import { WorkspaceSettings } from "./workspace-settings";
 import { SkillsSettings } from "./skills-settings";
@@ -74,6 +78,15 @@ const reasoningOptions: Array<ReasoningEffort | ""> = [
   "medium",
   "high",
   "xhigh",
+];
+
+type SettingsSection = "general" | "skills" | "mcp" | "workspaces";
+
+const settingsTabs: readonly SettingsTab<SettingsSection>[] = [
+  { id: "general", label: "General", icon: SlidersHorizontal },
+  { id: "workspaces", label: "Workspaces", icon: Layers3 },
+  { id: "skills", label: "Skills", icon: Sparkles },
+  { id: "mcp", label: "MCP", icon: Cable },
 ];
 
 type ProviderSetupKind = ModelProviderKind | "openai" | "openrouter" | "xai";
@@ -250,11 +263,9 @@ function ProviderRow({
 export function SettingsPage({
   initialSection = "general",
 }: {
-  initialSection?: "general" | "skills" | "mcp" | "workspaces";
+  initialSection?: SettingsSection;
 }) {
-  const [section, setSection] = useState<
-    "general" | "skills" | "mcp" | "workspaces"
-  >(initialSection);
+  const [section, setSection] = useState<SettingsSection>(initialSection);
   const queryClient = useQueryClient();
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
   const macosDesktopRuntime = isMacosDesktopRuntime();
@@ -507,92 +518,22 @@ export function SettingsPage({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b px-4 sm:px-6">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className={`h-10 rounded-none border-b-2 px-2.5 text-xs ${
-            section === "general"
-              ? "border-foreground text-foreground"
-              : "border-transparent text-muted-foreground"
-          }`}
-          onClick={() => setSection("general")}
-        >
-          <SlidersHorizontal className="size-3.5" />
-          General
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className={`h-10 rounded-none border-b-2 px-2.5 text-xs ${
-            section === "workspaces"
-              ? "border-foreground text-foreground"
-              : "border-transparent text-muted-foreground"
-          }`}
-          onClick={() => setSection("workspaces")}
-        >
-          <Layers3 className="size-3.5" />
-          Workspaces
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className={`h-10 rounded-none border-b-2 px-2.5 text-xs ${
-            section === "skills"
-              ? "border-foreground text-foreground"
-              : "border-transparent text-muted-foreground"
-          }`}
-          onClick={() => setSection("skills")}
-        >
-          <Sparkles className="size-3.5" />
-          Skills
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className={`h-10 rounded-none border-b-2 px-2.5 text-xs ${
-            section === "mcp"
-              ? "border-foreground text-foreground"
-              : "border-transparent text-muted-foreground"
-          }`}
-          onClick={() => setSection("mcp")}
-        >
-          <Cable className="size-3.5" />
-          MCP
-        </Button>
-      </div>
+      <SettingsTabBar<SettingsSection>
+        activeTab={section}
+        ariaLabel="Account settings sections"
+        tabs={settingsTabs}
+        onTabChange={setSection}
+      />
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
         <div
           className={`${section === "general" ? "grid" : "hidden"} mx-auto max-w-6xl gap-4`}
         >
-          <div className="relative max-w-xl">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              role="searchbox"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              className="h-9 w-full rounded-md border bg-background pl-9 pr-9 text-sm outline-none ring-ring placeholder:text-muted-foreground focus:ring-2"
-              placeholder="Search settings, providers, and models"
-              aria-label="Search settings"
-            />
-            {searchQuery ? (
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className="absolute right-0.5 top-0.5 size-8"
-                onClick={() => setSearchQuery("")}
-              >
-                <X className="size-3.5" />
-                <span className="sr-only">Clear search</span>
-              </Button>
-            ) : null}
-          </div>
+          <SettingsSearchField
+            ariaLabel="Search settings"
+            placeholder="Search settings, providers, and models"
+            value={searchQuery}
+            onValueChange={setSearchQuery}
+          />
 
           {settings.isError ? (
             <p className="text-sm text-destructive">
