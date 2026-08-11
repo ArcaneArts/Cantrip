@@ -70,6 +70,15 @@ function changeLabel(change: GitFileChange, staged: boolean): string {
   return "Modified";
 }
 
+export function gitChangesPanelContentClassName(
+  hasSelectedChange: boolean,
+): string {
+  return cn(
+    "min-h-0 min-w-0 flex-col bg-background",
+    hasSelectedChange ? "hidden md:flex md:w-96 md:shrink-0" : "flex w-full",
+  );
+}
+
 function ChangeRow({
   change,
   depth,
@@ -431,14 +440,7 @@ export function GitChangesPanel({
           />
         ) : null}
 
-        <div
-          className={cn(
-            "min-h-0 min-w-0 flex-col bg-background",
-            selected
-              ? "hidden md:flex md:w-96 md:shrink-0"
-              : "flex w-full md:w-96",
-          )}
-        >
+        <div className={gitChangesPanelContentClassName(selected !== null)}>
           <div className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold">

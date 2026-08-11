@@ -8,6 +8,7 @@ import {
   partialPatchUnavailableReason,
   parseSelectablePatchHunks,
 } from "./git-partial-patch-view";
+import { gitChangesPanelContentClassName } from "./git-changes-panel";
 
 function change(path: string): GitFileChange {
   return {
@@ -21,6 +22,16 @@ function change(path: string): GitFileChange {
 }
 
 describe("Git changes panel helpers", () => {
+  it("fills the drawer until a selected diff needs a fixed changes column", () => {
+    const fullWidth = gitChangesPanelContentClassName(false).split(" ");
+    const besideDiff = gitChangesPanelContentClassName(true).split(" ");
+
+    expect(fullWidth).toContain("w-full");
+    expect(fullWidth).not.toContain("md:w-96");
+    expect(besideDiff).toContain("md:w-96");
+    expect(besideDiff).toContain("md:shrink-0");
+  });
+
   it("groups changed files into sorted nested folders", () => {
     expect(
       buildGitChangeTree([
