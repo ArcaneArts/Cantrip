@@ -123,6 +123,7 @@ import {
   mcpServerSummarySchema,
   orderedIdsSchema,
   projectListSchema,
+  projectRepositoryStatsSchema,
   projectShareAttachmentSchema,
   projectSummarySchema,
   projectWorkspaceCreateSchema,
@@ -1301,6 +1302,14 @@ export async function getGitHistory(projectId: string, cursor = 0) {
   return gitHistorySchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/git/history?limit=100&cursor=${cursor}`,
+    ),
+  );
+}
+
+export async function getProjectRepositoryStats(projectId: string) {
+  return projectRepositoryStatsSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/repository-stats`,
     ),
   );
 }

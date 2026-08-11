@@ -86,6 +86,7 @@ import {
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
 import { ProjectShareManager } from "./project-share-manager.js";
 import { ProjectShareTunnelProxy } from "./project-share-tunnel-proxy.js";
+import { readProjectRepositoryStats } from "./project-repository-stats.js";
 import { discoverScriptCommands } from "./script-command-discovery.js";
 import { TerminalManager } from "./terminal-manager.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
@@ -343,6 +344,8 @@ async function start(): Promise<void> {
         return github.deleteRepository(command.path);
       case "project.script-commands":
         return discoverScriptCommands(command.cwd);
+      case "project.repository-stats":
+        return readProjectRepositoryStats(command.cwd);
       case "browser.services.discover":
         return discoverBrowserServices();
       case "project.share.open":

@@ -2,6 +2,7 @@ import type { ProjectTabLayoutSummary } from "@cantrip/protocol";
 
 export interface WorkspaceSelection {
   activeTabByGroup: Readonly<Record<string, string>>;
+  destination: "overview" | "surface";
   projectId: string | null;
   selectedGroupId: string | null;
 }
@@ -9,13 +10,18 @@ export interface WorkspaceSelection {
 export function emptyWorkspaceSelection(
   projectId: string | null = null,
 ): WorkspaceSelection {
-  return { activeTabByGroup: {}, projectId, selectedGroupId: null };
+  return {
+    activeTabByGroup: {},
+    destination: "overview",
+    projectId,
+    selectedGroupId: null,
+  };
 }
 
 export function selectedWorkspaceTabKey(
   selection: WorkspaceSelection,
 ): string | null {
-  return selection.selectedGroupId
+  return selection.destination === "surface" && selection.selectedGroupId
     ? (selection.activeTabByGroup[selection.selectedGroupId] ?? null)
     : null;
 }
@@ -27,6 +33,8 @@ export function reconcileWorkspaceSelection(
 ): WorkspaceSelection {
   if (!layout) return emptyWorkspaceSelection(selection.projectId);
   const projectChanged = selection.projectId !== layout.projectId;
+  const overviewSelected =
+    !projectChanged && !preferredTabKey && selection.destination === "overview";
   const preferredGroup = preferredTabKey
     ? layout.groups.find(({ members }) =>
         members.some(({ tabKey }) => tabKey === preferredTabKey),
@@ -56,8 +64,9 @@ export function reconcileWorkspaceSelection(
   }
   return {
     activeTabByGroup,
+    destination: overviewSelected ? "overview" : "surface",
     projectId: layout.projectId,
-    selectedGroupId: selectedGroup?.id ?? null,
+    selectedGroupId: overviewSelected ? null : (selectedGroup?.id ?? null),
   };
 }
 
@@ -77,6 +86,7 @@ export function selectWorkspaceTab(
       ...reconciled.activeTabByGroup,
       [group.id]: tabKey,
     },
+    destination: "surface",
     selectedGroupId: group.id,
   };
 }
@@ -98,6 +108,7 @@ export function selectWorkspaceGroup(
       ...selection.activeTabByGroup,
       [group.id]: activeTabKey,
     },
+    destination: "surface",
     projectId: layout.projectId,
     selectedGroupId: group.id,
   };

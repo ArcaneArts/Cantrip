@@ -1386,6 +1386,15 @@ export const projectSummarySchema = z.object({
 
 export const projectListSchema = z.array(projectSummarySchema);
 
+export const projectRepositoryStatsSchema = z.object({
+  commitCount: z.number().int().nonnegative(),
+  trackedFileCount: z.number().int().nonnegative(),
+  textFileCount: z.number().int().nonnegative(),
+  lineCount: z.number().int().nonnegative(),
+  excludedFileCount: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+});
+
 export const chatCreateSchema = z.object({
   title: z.string().trim().min(1).max(200).default("New chat"),
   worktreeId: z.string().min(1).optional(),
@@ -5323,6 +5332,10 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("project.script-commands"),
     cwd: z.string().min(1).max(8_192),
   }),
+  z.object({
+    type: z.literal("project.repository-stats"),
+    cwd: z.string().min(1).max(8_192),
+  }),
   z.object({ type: z.literal("browser.services.discover") }),
   z.object({
     type: z.literal("project.share.open"),
@@ -6338,6 +6351,9 @@ export type UserSettings = z.infer<typeof userSettingsSchema>;
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
 export type SettingsBundle = z.infer<typeof settingsBundleSchema>;
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
+export type ProjectRepositoryStats = z.infer<
+  typeof projectRepositoryStatsSchema
+>;
 export type ProjectWorkspaceCreate = z.infer<
   typeof projectWorkspaceCreateSchema
 >;
