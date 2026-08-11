@@ -839,7 +839,7 @@ export function GitHistoryView({
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col" data-slot="git-history">
       <div className="relative flex h-8 shrink-0 items-center gap-2 px-3">
         <div className="flex rounded-md bg-muted/50 p-px">
           {(["history", "issues", "prs"] as const).map((candidate) => (
@@ -1133,6 +1133,7 @@ export function GitHistoryView({
             ) : (
               <div className="min-w-[760px] py-2 text-xs">
                 <div
+                  data-slot="table-header-surface"
                   className="sticky top-0 z-10 grid h-7 items-center border-b bg-muted/95 px-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur"
                   style={{ gridTemplateColumns: historyColumns }}
                 >

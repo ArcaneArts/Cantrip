@@ -94,7 +94,10 @@ export function GitPatchView({
             </div>
           ) : (
             <div className="min-w-[720px] font-mono text-[11px] leading-5">
-              <div className="sticky top-0 z-[1] grid grid-cols-[3rem_minmax(0,1fr)_3rem_minmax(0,1fr)] border-b bg-muted/90 text-[10px] font-semibold text-muted-foreground backdrop-blur">
+              <div
+                data-slot="table-header-surface"
+                className="sticky top-0 z-[1] grid grid-cols-[3rem_minmax(0,1fr)_3rem_minmax(0,1fr)] border-b bg-muted/90 text-[10px] font-semibold text-muted-foreground backdrop-blur"
+              >
                 <span className="px-2 text-right">Old</span>
                 <span className="border-l px-2">{oldLabel}</span>
                 <span className="border-l px-2 text-right">New</span>
