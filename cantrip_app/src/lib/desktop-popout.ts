@@ -58,6 +58,13 @@ export function shouldUseOverlayTitlebar(
   );
 }
 
+export function desktopPopoutTitlebarLeftInset(
+  popout: boolean,
+  overlayTitlebar: boolean,
+): string | undefined {
+  return popout && overlayTitlebar ? "5.5rem" : undefined;
+}
+
 export async function updateDesktopWindowTitle(title: string): Promise<void> {
   if (!isDesktopRuntime()) return;
   document.title = title;

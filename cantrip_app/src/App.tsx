@@ -236,6 +236,7 @@ import {
 } from "@/lib/api";
 import {
   closeCurrentDesktopWindow,
+  desktopPopoutTitlebarLeftInset,
   focusDesktopPopoutGroup,
   isDesktopRuntime,
   isMacosDesktopRuntime,
@@ -4253,10 +4254,15 @@ export function App() {
               overlayTitlebar
                 ? "h-8 gap-2 px-3 text-[11px] sm:px-4 [&_[data-slot=badge]]:h-5 [&_[data-slot=badge]]:gap-1 [&_[data-slot=badge]]:px-1.5 [&_[data-slot=badge]]:text-[10px] [&_[data-slot=button]]:h-6 [&_[data-slot=button]]:min-w-6 [&_[data-slot=button]]:w-auto [&_[data-slot=button]]:gap-1 [&_[data-slot=button]]:px-1.5 [&_[data-slot=button]]:py-0 [&_[data-slot=button]]:text-[11px] [&_svg]:size-3"
                 : "h-16 gap-4 px-4 sm:px-6",
-              isPopout && overlayTitlebar && "pl-20",
             )}
             data-slot="content-titlebar"
             data-tauri-drag-region={overlayTitlebar ? "" : undefined}
+            style={{
+              paddingLeft: desktopPopoutTitlebarLeftInset(
+                isPopout,
+                overlayTitlebar,
+              ),
+            }}
           >
             {sidebarCollapsed && !isPopout ? (
               <Button

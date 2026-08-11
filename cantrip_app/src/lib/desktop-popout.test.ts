@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  desktopPopoutTitlebarLeftInset,
   desktopPopoutGroupSearch,
   desktopPopoutGroupWindowLabel,
   isMacosDesktopRuntime,
@@ -63,5 +64,11 @@ describe("desktop title bar layout", () => {
 
   it("does not expose macOS desktop-only behavior in the browser", () => {
     expect(isMacosDesktopRuntime()).toBe(false);
+  });
+
+  it("reserves the macOS traffic-light area only in overlay pop-outs", () => {
+    expect(desktopPopoutTitlebarLeftInset(true, true)).toBe("5.5rem");
+    expect(desktopPopoutTitlebarLeftInset(false, true)).toBeUndefined();
+    expect(desktopPopoutTitlebarLeftInset(true, false)).toBeUndefined();
   });
 });
