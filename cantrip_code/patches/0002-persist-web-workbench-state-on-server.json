@@ -1,0 +1,18 @@
+{
+  "id": "0002-persist-web-workbench-state-on-server",
+  "title": "Persist browser workbench state in the remote Code server",
+  "reason": "OpenVSCode's browser workbench stores notification filters, dismissal flags, first-run state, and workspace UI state in browser IndexedDB. Cantrip embeds and reconnects that workbench across replaceable webviews, so the state must live in the worker-owned Code profile; extensions cannot replace the workbench storage service or expose a server storage channel.",
+  "upstreamCommit": "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+  "files": [
+    "src/vs/server/node/serverServices.ts",
+    "src/vs/server/node/serverStorageService.ts",
+    "src/vs/workbench/browser/web.main.ts",
+    "src/vs/workbench/services/storage/browser/remoteStorageService.ts"
+  ],
+  "validation": [
+    "pnpm code:patch -- --source <prepared-source> --check",
+    "pnpm code:build",
+    "Restart a Cantrip Code session and confirm notification filters and never-show choices remain applied"
+  ],
+  "removal": "Remove after upstream OpenVSCode offers a supported worker-backed browser storage service with durable profile and workspace state."
+}
