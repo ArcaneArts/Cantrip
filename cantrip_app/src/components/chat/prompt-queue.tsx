@@ -29,12 +29,11 @@ import {
 import { useState, type CSSProperties } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  StyledDropdownMenuContent,
+  StyledDropdownMenuItem,
+} from "@/components/ui/styled-menu";
 import { cn } from "@/lib/utils";
-
-const menuContentClass =
-  "z-50 min-w-36 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
-const menuItemClass =
-  "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
 
 function PromptRow({
   disabled,
@@ -134,35 +133,26 @@ function PromptRow({
           </Button>
         </DropdownMenuPrimitive.Trigger>
         <DropdownMenuPrimitive.Portal>
-          <DropdownMenuPrimitive.Content
+          <StyledDropdownMenuContent
             align="end"
             sideOffset={4}
-            className={menuContentClass}
+            className="min-w-36"
           >
-            <DropdownMenuPrimitive.Item
-              className={menuItemClass}
-              onSelect={onEdit}
-            >
+            <StyledDropdownMenuItem onSelect={onEdit}>
               <Pencil className="size-4" /> Edit
-            </DropdownMenuPrimitive.Item>
-            <DropdownMenuPrimitive.Item
-              className={menuItemClass}
-              onSelect={onFreeze}
-            >
+            </StyledDropdownMenuItem>
+            <StyledDropdownMenuItem onSelect={onFreeze}>
               <Snowflake className="size-4" />
               {prompt.frozen ? "Unfreeze" : "Freeze"}
-            </DropdownMenuPrimitive.Item>
+            </StyledDropdownMenuItem>
             <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-            <DropdownMenuPrimitive.Item
-              className={cn(
-                menuItemClass,
-                "text-destructive focus:bg-destructive/10",
-              )}
+            <StyledDropdownMenuItem
+              className="text-destructive focus:bg-destructive/10"
               onSelect={onDelete}
             >
               <Trash2 className="size-4" /> Delete
-            </DropdownMenuPrimitive.Item>
-          </DropdownMenuPrimitive.Content>
+            </StyledDropdownMenuItem>
+          </StyledDropdownMenuContent>
         </DropdownMenuPrimitive.Portal>
       </DropdownMenuPrimitive.Root>
     </div>

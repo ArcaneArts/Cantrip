@@ -19,6 +19,7 @@ import {
   setCodeTabTheme,
   stopCodeTab,
 } from "@/lib/api";
+import { errorMessage } from "@/lib/error-message";
 
 const MAX_RECONNECT_DELAY_MS = 15_000;
 const CODE_RUNTIME_POLL_DELAY_MS = 500;
@@ -66,9 +67,7 @@ export function isCodeWorkbenchReady(
 }
 
 function errorText(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : "Cantrip Code could not open.";
+  return errorMessage(error, "Cantrip Code could not open.");
 }
 
 function shouldRetry(error: unknown): boolean {

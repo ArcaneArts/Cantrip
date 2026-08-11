@@ -3,9 +3,9 @@ import { type ReactNode } from "react";
 
 import { ProjectSurfaceIcon } from "./project-surface-icon";
 import {
-  surfaceMenuContentClass,
-  surfaceMenuItemClass,
-} from "./surface-tab-controls";
+  StyledDropdownMenuContent,
+  StyledDropdownMenuItem,
+} from "@/components/ui/styled-menu";
 import type { ProjectSurface } from "@/lib/project-surface";
 import { cn } from "@/lib/utils";
 
@@ -55,25 +55,24 @@ export function ProjectSurfaceCreateMenu({
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content
+        <StyledDropdownMenuContent
           align={align}
           sideOffset={4}
-          className={cn(surfaceMenuContentClass, contentClassName)}
+          className={cn("min-w-40", contentClassName)}
         >
           {projectSurfaceCreateOptions(creatingKinds).map(
             ({ disabled, kind, label }) => (
-              <DropdownMenu.Item
+              <StyledDropdownMenuItem
                 key={kind}
-                className={surfaceMenuItemClass}
                 disabled={disabled}
                 onSelect={() => onCreate(kind)}
               >
                 <ProjectSurfaceIcon kind={kind} className="size-4" />
                 {label}
-              </DropdownMenu.Item>
+              </StyledDropdownMenuItem>
             ),
           )}
-        </DropdownMenu.Content>
+        </StyledDropdownMenuContent>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
   );

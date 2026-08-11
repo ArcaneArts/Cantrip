@@ -32,9 +32,10 @@ import {
   getProjectWorkspaces,
   updateProjectWorkspace,
 } from "@/lib/api";
+import { errorMessage } from "@/lib/error-message";
 
 function message(error: unknown): string {
-  return error instanceof Error ? error.message : "Workspace update failed.";
+  return errorMessage(error, "Workspace update failed.");
 }
 
 export function WorkspaceSettings() {

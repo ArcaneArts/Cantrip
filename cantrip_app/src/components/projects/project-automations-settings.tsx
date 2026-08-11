@@ -37,6 +37,7 @@ import {
   updateProjectAutomation,
 } from "@/lib/project-automation-api";
 import { cn } from "@/lib/utils";
+import { errorMessage } from "@/lib/error-message";
 
 const dayOptions = [
   { label: "Sun", value: 0 },
@@ -58,7 +59,7 @@ const intervalUnits: ProjectAutomationIntervalUnit[] = [
 ];
 
 function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : "The automation failed.";
+  return errorMessage(error, "The automation failed.");
 }
 
 function localInputValue(value: Date): string {

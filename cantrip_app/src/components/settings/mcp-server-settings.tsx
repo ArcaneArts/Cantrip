@@ -39,6 +39,7 @@ import {
   updateProjectMcpServer,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { errorMessage as errorText } from "@/lib/error-message";
 
 type McpScope = { kind: "global" } | { kind: "project"; projectId: string };
 
@@ -162,10 +163,6 @@ function configurationFor(draft: ServerDraft): McpServerConfiguration {
     environmentHeaders: parseMcpMapping(draft.environmentHeaders),
     enabled: draft.enabled,
   };
-}
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : "Something went wrong.";
 }
 
 function ServerRow({

@@ -62,6 +62,7 @@ import {
   updateSettings,
 } from "@/lib/api";
 import { isMacosDesktopRuntime } from "@/lib/desktop-popout";
+import { errorMessage as errorText } from "@/lib/error-message";
 import {
   SettingsSearchField,
   SettingsTabBar,
@@ -125,10 +126,6 @@ function providerSetupFor(provider: ModelProviderSummary): ProviderSetupKind {
     ([key, setup]) => key !== "ollama" && setup.baseUrl === provider.baseUrl,
   );
   return (match?.[0] as ProviderSetupKind | undefined) ?? "openai-compatible";
-}
-
-function errorText(error: unknown) {
-  return error instanceof Error ? error.message : "Something went wrong.";
 }
 
 function Field({ children, label }: { children: ReactNode; label: string }) {

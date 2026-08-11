@@ -38,11 +38,8 @@ import {
   updateSettingsSkillFile,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { errorMessage as errorText } from "@/lib/error-message";
 import { SettingsSearchField } from "./settings-controls";
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : "Something went wrong.";
-}
 
 export function preferredSkillProviderId(
   settings: SettingsBundle | undefined,

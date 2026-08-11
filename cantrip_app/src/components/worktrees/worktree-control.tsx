@@ -23,6 +23,10 @@ import { useEffect, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
+  StyledDropdownMenuContent,
+  StyledDropdownMenuItem,
+} from "@/components/ui/styled-menu";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -31,11 +35,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-
-const menuContentClass =
-  "z-50 min-w-64 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
-const menuItemClass =
-  "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
 
 export type WorktreeStatusMap = Record<string, GitStatus | undefined>;
 
@@ -203,13 +202,13 @@ export function WorktreeIndicator({
         </button>
       </DropdownMenuPrimitive.Trigger>
       <DropdownMenuPrimitive.Portal>
-        <DropdownMenuPrimitive.Content
+        <StyledDropdownMenuContent
           align="end"
           sideOffset={4}
-          className={menuContentClass}
+          className="min-w-64"
         >
           <DetailRows details={details} />
-        </DropdownMenuPrimitive.Content>
+        </StyledDropdownMenuContent>
       </DropdownMenuPrimitive.Portal>
     </DropdownMenuPrimitive.Root>
   );
@@ -276,10 +275,10 @@ export function WorktreeControl({
         </Button>
       </DropdownMenuPrimitive.Trigger>
       <DropdownMenuPrimitive.Portal>
-        <DropdownMenuPrimitive.Content
+        <StyledDropdownMenuContent
           align="end"
           sideOffset={4}
-          className={menuContentClass}
+          className="min-w-64"
         >
           <DetailRows details={details} />
           <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
@@ -287,9 +286,8 @@ export function WorktreeControl({
             Worktrees
           </DropdownMenuPrimitive.Label>
           {worktrees.map((worktree) => (
-            <DropdownMenuPrimitive.Item
+            <StyledDropdownMenuItem
               key={worktree.id}
-              className={menuItemClass}
               disabled={actions.disabled || worktree.lifecycleState !== "ready"}
               onSelect={() => actions.onSelect(worktree.id)}
             >
@@ -302,20 +300,18 @@ export function WorktreeControl({
               {worktree.id === currentWorktreeId ? (
                 <Check className="size-3.5" />
               ) : null}
-            </DropdownMenuPrimitive.Item>
+            </StyledDropdownMenuItem>
           ))}
-          <DropdownMenuPrimitive.Item
-            className={menuItemClass}
+          <StyledDropdownMenuItem
             disabled={actions.disabled}
             onSelect={actions.onCreate}
           >
             <Plus className="size-4" /> Create worktree…
-          </DropdownMenuPrimitive.Item>
+          </StyledDropdownMenuItem>
           {actions.onSetChatMode ? (
             <>
               <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-              <DropdownMenuPrimitive.Item
-                className={menuItemClass}
+              <StyledDropdownMenuItem
                 disabled={actions.disabled}
                 onSelect={() =>
                   actions.onSetChatMode!(
@@ -331,30 +327,21 @@ export function WorktreeControl({
                 {actions.chatMode === "pinned"
                   ? "Return to Agent managed"
                   : "Pin to this worktree"}
-              </DropdownMenuPrimitive.Item>
+              </StyledDropdownMenuItem>
               {actions.onOpenTerminal ? (
-                <DropdownMenuPrimitive.Item
-                  className={menuItemClass}
-                  onSelect={actions.onOpenTerminal}
-                >
+                <StyledDropdownMenuItem onSelect={actions.onOpenTerminal}>
                   <SquareTerminal className="size-4" /> Open Terminal here
-                </DropdownMenuPrimitive.Item>
+                </StyledDropdownMenuItem>
               ) : null}
               {actions.onOpenExplorer ? (
-                <DropdownMenuPrimitive.Item
-                  className={menuItemClass}
-                  onSelect={actions.onOpenExplorer}
-                >
+                <StyledDropdownMenuItem onSelect={actions.onOpenExplorer}>
                   <FolderTree className="size-4" /> Open Explorer here
-                </DropdownMenuPrimitive.Item>
+                </StyledDropdownMenuItem>
               ) : null}
               {actions.onOpenHistory ? (
-                <DropdownMenuPrimitive.Item
-                  className={menuItemClass}
-                  onSelect={actions.onOpenHistory}
-                >
+                <StyledDropdownMenuItem onSelect={actions.onOpenHistory}>
                   <History className="size-4" /> Open in Git
-                </DropdownMenuPrimitive.Item>
+                </StyledDropdownMenuItem>
               ) : null}
             </>
           ) : null}
@@ -367,7 +354,7 @@ export function WorktreeControl({
               </div>
             </>
           ) : null}
-        </DropdownMenuPrimitive.Content>
+        </StyledDropdownMenuContent>
       </DropdownMenuPrimitive.Portal>
     </DropdownMenuPrimitive.Root>
   );

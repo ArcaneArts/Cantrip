@@ -21,21 +21,14 @@ import {
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
-  Archive,
-  FileClock,
   FileDiff,
   GitBranch,
   GitCommitHorizontal,
-  GitCompareArrows,
   GitFork,
-  GitPullRequestArrow,
   Loader2,
   Plus,
   RefreshCw,
-  RotateCcw,
   ScanLine,
-  Search,
-  Server,
   Tag,
 } from "lucide-react";
 import {
@@ -109,6 +102,7 @@ import {
 } from "./git-history-drawer";
 import { HistoryWorktreeMarker } from "./history-worktree-marker";
 import { GithubIssuesView } from "./github-issues";
+import { GitWorkbenchToolbar } from "./git-workbench-toolbar";
 
 const laneColors = [
   "#22d3ee",
@@ -910,103 +904,52 @@ export function GitHistoryView({
             </>
           ) : null}
           {section === "history" ? (
-            <Button
-              size="sm"
-              variant={operationsOpen ? "outline" : "ghost"}
-              className="h-6 gap-1 px-2 text-[11px]"
+            <GitWorkbenchToolbar
               disabled={!selectedAvailable}
-              onClick={() => {
-                setOperationPreset(null);
-                toggleToolDrawer("operations");
+              tools={{
+                operations: {
+                  active: operationsOpen,
+                  attention: gitOperationIsActive(operation.data?.operation),
+                  onSelect: () => {
+                    setOperationPreset(null);
+                    toggleToolDrawer("operations");
+                  },
+                },
+                repository: {
+                  active: repositoryOpen,
+                  onSelect: () => toggleToolDrawer("repository"),
+                },
+                branches: {
+                  active: branchesOpen,
+                  onSelect: () => toggleToolDrawer("branches"),
+                },
+                stashes: {
+                  active: stashesOpen,
+                  onSelect: () => toggleToolDrawer("stashes"),
+                },
+                compare: {
+                  active: compareOpen,
+                  onSelect: () => {
+                    if (!compareOpen && !compareLeft) {
+                      setCompareLeft(firstPage?.head ?? status?.head ?? null);
+                    }
+                    toggleToolDrawer("compare");
+                  },
+                },
+                file: {
+                  active: fileHistoryOpen,
+                  onSelect: () => setFileHistoryOpen(true),
+                },
+                search: {
+                  active: commitSearchOpen,
+                  onSelect: () => setCommitSearchOpen(true),
+                },
+                recovery: {
+                  active: recoveryOpen,
+                  onSelect: () => setRecoveryOpen(true),
+                },
               }}
-            >
-              <GitPullRequestArrow className="size-3" /> Operations
-              {gitOperationIsActive(operation.data?.operation) ? (
-                <span className="size-1.5 rounded-full bg-amber-500" />
-              ) : null}
-            </Button>
-          ) : null}
-          {section === "history" ? (
-            <Button
-              size="sm"
-              variant={repositoryOpen ? "outline" : "ghost"}
-              className="h-6 gap-1 px-2 text-[11px]"
-              disabled={!selectedAvailable}
-              onClick={() => toggleToolDrawer("repository")}
-            >
-              <Server className="size-3" /> Repository
-            </Button>
-          ) : null}
-          {section === "history" ? (
-            <Button
-              size="sm"
-              variant={branchesOpen ? "outline" : "ghost"}
-              className="h-6 gap-1 px-2 text-[11px]"
-              disabled={!selectedAvailable}
-              onClick={() => toggleToolDrawer("branches")}
-            >
-              <GitBranch className="size-3" /> Branches
-            </Button>
-          ) : null}
-          {section === "history" ? (
-            <Button
-              size="sm"
-              variant={stashesOpen ? "outline" : "ghost"}
-              className="h-6 gap-1 px-2 text-[11px]"
-              disabled={!selectedAvailable}
-              onClick={() => toggleToolDrawer("stashes")}
-            >
-              <Archive className="size-3" /> Stashes
-            </Button>
-          ) : null}
-          {section === "history" ? (
-            <Button
-              size="sm"
-              variant={compareOpen ? "outline" : "ghost"}
-              className="h-6 gap-1 px-2 text-[11px]"
-              disabled={!selectedAvailable}
-              onClick={() => {
-                if (!compareOpen && !compareLeft) {
-                  setCompareLeft(firstPage?.head ?? status?.head ?? null);
-                }
-                toggleToolDrawer("compare");
-              }}
-            >
-              <GitCompareArrows className="size-3" /> Compare
-            </Button>
-          ) : null}
-          {section === "history" ? (
-            <Button
-              size="sm"
-              variant={fileHistoryOpen ? "outline" : "ghost"}
-              className="h-6 gap-1 px-2 text-[11px]"
-              disabled={!selectedAvailable}
-              onClick={() => setFileHistoryOpen(true)}
-            >
-              <FileClock className="size-3" /> File
-            </Button>
-          ) : null}
-          {section === "history" ? (
-            <Button
-              size="sm"
-              variant={commitSearchOpen ? "outline" : "ghost"}
-              className="h-6 gap-1 px-2 text-[11px]"
-              disabled={!selectedAvailable}
-              onClick={() => setCommitSearchOpen(true)}
-            >
-              <Search className="size-3" /> Search
-            </Button>
-          ) : null}
-          {section === "history" ? (
-            <Button
-              size="sm"
-              variant={recoveryOpen ? "outline" : "ghost"}
-              className="h-6 gap-1 px-2 text-[11px]"
-              disabled={!selectedAvailable}
-              onClick={() => setRecoveryOpen(true)}
-            >
-              <RotateCcw className="size-3" /> Recovery
-            </Button>
+            />
           ) : null}
           {section !== "history" ? (
             <div className="mr-0.5 flex rounded-md bg-muted/50 p-px">

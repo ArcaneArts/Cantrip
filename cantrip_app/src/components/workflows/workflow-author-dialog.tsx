@@ -36,6 +36,7 @@ import {
   getWorkflow,
   updateWorkflow,
 } from "@/lib/api";
+import { errorMessage } from "@/lib/error-message";
 
 const defaultPermissions = workflowPermissionRequirementsSchema.parse({});
 
@@ -207,8 +208,7 @@ export function valuesFromGeneratedWorkflow(
 }
 
 function errorText(error: unknown) {
-  if (error instanceof Error) return error.message;
-  return "The workflow could not be saved.";
+  return errorMessage(error, "The workflow could not be saved.");
 }
 
 function JsonField({

@@ -68,6 +68,7 @@ import {
   saveWorkflowRunRevision,
   updateWorkflowAutomationTrigger,
 } from "@/lib/api";
+import { errorMessage } from "@/lib/error-message";
 import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
 import { cn } from "@/lib/utils";
 import { WorkflowAuthorDialog } from "./workflow-author-dialog";
@@ -130,9 +131,7 @@ function identifier(prefix: string) {
 }
 
 function errorText(error: unknown) {
-  return error instanceof Error
-    ? error.message
-    : "The workflow request failed.";
+  return errorMessage(error, "The workflow request failed.");
 }
 
 function statusClass(status: string) {

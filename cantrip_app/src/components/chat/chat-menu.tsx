@@ -18,6 +18,10 @@ import {
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  styledMenuContentClassName,
+  styledMenuItemClassName,
+} from "@/components/ui/styled-menu";
 import { cn } from "@/lib/utils";
 
 interface Actions {
@@ -40,10 +44,8 @@ export interface ChatWorktreeActions {
   worktrees: ProjectWorktreeSummary[];
 }
 
-const contentClass =
-  "z-50 min-w-40 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
-const itemClass =
-  "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus:bg-accent";
+const contentClass = styledMenuContentClassName("min-w-40");
+const itemClass = styledMenuItemClassName();
 
 function ContextWorktreeItems({ actions }: { actions: ChatWorktreeActions }) {
   return (

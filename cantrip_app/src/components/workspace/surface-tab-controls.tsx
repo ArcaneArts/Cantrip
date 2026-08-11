@@ -3,12 +3,11 @@ import { CopyPlus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  StyledDropdownMenuContent,
+  StyledDropdownMenuItem,
+} from "@/components/ui/styled-menu";
 import { cn } from "@/lib/utils";
-
-export const surfaceMenuContentClass =
-  "z-50 min-w-40 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
-export const surfaceMenuItemClass =
-  "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
 
 export function InlineRenameLabel({
   ariaLabel,
@@ -82,35 +81,26 @@ export function SurfaceActionsMenu({
         )}
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content
+        <StyledDropdownMenuContent
           align={align}
-          className={cn(surfaceMenuContentClass, contentClassName)}
+          className={cn("min-w-40", contentClassName)}
         >
-          <DropdownMenu.Item
-            className={surfaceMenuItemClass}
-            onSelect={onRename}
-          >
+          <StyledDropdownMenuItem onSelect={onRename}>
             <Pencil className="size-4" /> Rename
-          </DropdownMenu.Item>
+          </StyledDropdownMenuItem>
           {onDuplicate ? (
-            <DropdownMenu.Item
-              className={surfaceMenuItemClass}
-              onSelect={onDuplicate}
-            >
+            <StyledDropdownMenuItem onSelect={onDuplicate}>
               <CopyPlus className="size-4" /> Duplicate
-            </DropdownMenu.Item>
+            </StyledDropdownMenuItem>
           ) : null}
           <DropdownMenu.Separator className="my-1 h-px bg-border" />
-          <DropdownMenu.Item
-            className={cn(
-              surfaceMenuItemClass,
-              "text-destructive focus:bg-destructive/10",
-            )}
+          <StyledDropdownMenuItem
+            className="text-destructive focus:bg-destructive/10"
             onSelect={onDelete}
           >
             <Trash2 className="size-4" /> Delete
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
+          </StyledDropdownMenuItem>
+        </StyledDropdownMenuContent>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
   );
