@@ -1,12 +1,9 @@
 import {
-  decodeCodeTunnelFrame,
   decodeRemoteSurfaceFrame,
   decodeTunnelDataPlaneFrame,
-  encodeCodeTunnelFrame,
   encodeRemoteSurfaceFrame,
   encodeTunnelDataPlaneFrame,
   workerNotificationEnvelopeSchema,
-  type CodeTunnelFrameHeader,
   type RemoteSurfaceFrameHeader,
   type TunnelDataPlaneFrameHeader,
 } from "@cantrip/protocol";
@@ -88,48 +85,12 @@ describe("WorkerBridge Remote Surface transport", () => {
     bridge.close();
   });
 
-  it("keeps Code tunnel frames distinct on the shared worker socket", () => {
-    const bridge = new WorkerBridge();
-    const socket = new TestWorkerSocket();
-    bridge.attach("worker-1", socket);
-    const listener = vi.fn();
-    bridge.subscribeCodeTunnelFrames("worker-1", listener);
-    const codeHeader: CodeTunnelFrameHeader = {
-      protocolVersion: 1,
-      attachmentId: "code-attachment-1",
-      sessionId: "code-session-1",
-      streamId: "stream-1",
-      kind: "http-response-data",
-    };
-
-    socket.emit(
-      "message",
-      encodeCodeTunnelFrame(codeHeader, new Uint8Array([7, 8])),
-      true,
-    );
-    expect(listener).toHaveBeenCalledWith(codeHeader, new Uint8Array([7, 8]));
-    expect(
-      bridge.sendCodeTunnelFrame(
-        "worker-1",
-        { ...codeHeader, kind: "http-request-end" },
-        new Uint8Array(),
-      ),
-    ).toBe(true);
-    expect(
-      decodeCodeTunnelFrame(socket.sent.at(-1) as Uint8Array).header.kind,
-    ).toBe("http-request-end");
-
-    bridge.close();
-  });
-
-  it("multiplexes generic tunnel frames without leaking them to Code listeners", () => {
+  it("multiplexes generic tunnel frames over the shared worker socket", () => {
     const bridge = new WorkerBridge();
     const socket = new TestWorkerSocket();
     bridge.attach("worker-1", socket);
     const tunnelListener = vi.fn();
-    const codeListener = vi.fn();
     bridge.subscribeTunnelDataPlaneFrames("worker-1", tunnelListener);
-    bridge.subscribeCodeTunnelFrames("worker-1", codeListener);
     const tunnelHeader: TunnelDataPlaneFrameHeader = {
       protocolVersion: 1,
       tunnelId: "tunnel-1",
@@ -151,7 +112,6 @@ describe("WorkerBridge Remote Surface transport", () => {
       tunnelHeader,
       new Uint8Array([11, 12]),
     );
-    expect(codeListener).not.toHaveBeenCalled();
 
     expect(
       bridge.sendTunnelDataPlaneFrame(

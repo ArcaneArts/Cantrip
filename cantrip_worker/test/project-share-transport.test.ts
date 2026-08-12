@@ -62,7 +62,6 @@ describe("worker project share transport", () => {
       } satisfies WorkerConfig,
       async () => undefined,
       () => undefined,
-      () => undefined,
       (header, payload) => {
         received.push({ header, payload: Uint8Array.from(payload) });
       },

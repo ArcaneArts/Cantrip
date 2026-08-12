@@ -46,7 +46,10 @@ invalid credentials both return `404`.
   remote-surface sessions are periodically revalidated.
 - Cantrip Code attachment tokens are random, idle-expiring, maximum-lifetime
   bounded, and bound to owner, authenticated user session, worker, Code tab,
-  and editor session. Revoking a login session invalidates its attachments.
+  editor session, managed tunnel, and relay attachment. The worker verifies the
+  selected editor session still belongs to the tunnel's Code tab before it
+  opens the loopback target. Revoking a login session invalidates its
+  attachments.
 - Project-share tokens remain explicit, revocable, expiring capabilities bound
   to owner, project, worker, and canonical filesystem root.
 

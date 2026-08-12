@@ -91,8 +91,11 @@ protocol, and server relay. This ADR does not enable that feature.
 
 ## Consequences
 
-- Existing Code and project-share transports migrate behind managed tunnel
-  registrations without changing their public URLs or wire compatibility.
+- Code and project-share transports are now managed tunnel registrations backed
+  by the generic stream broker, identities, framing, credit flow control,
+  cleanup, and counters without changing their public URLs. Their bounded
+  HTTP/WebSocket and WebDAV adapters remain protocol-specific edges rather than
+  parallel brokers.
 - Browser-created tunnels and user-created tunnels share one lifecycle and
   appear in the same global and project settings inventories.
 - Desktop-local listeners are attachments, not server ports. Web/mobile clients

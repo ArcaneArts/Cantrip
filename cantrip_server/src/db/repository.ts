@@ -3732,21 +3732,22 @@ export class ServerRepository {
   ): Promise<boolean> {
     return this.database.transaction(async (transaction) => {
       const tunnels = await transaction
-        .select({ id: schema.tunnels.id })
+        .select({
+          id: schema.tunnels.id,
+          sourceEndpoint: schema.tunnels.sourceEndpoint,
+        })
         .from(schema.tunnels)
         .where(
           and(
             eq(schema.tunnels.id, tunnelId),
             eq(schema.tunnels.ownerId, ownerId),
             ne(schema.tunnels.management, "user-managed"),
-            eq(schema.tunnels.sourceEndpoint, {
-              kind: "server-http",
-              adapter: "project-share",
-            }),
           ),
         )
         .limit(1);
-      if (!tunnels[0]) return false;
+      if (!tunnels[0] || tunnels[0].sourceEndpoint.kind !== "server-http") {
+        return false;
+      }
       const now = new Date();
       await transaction
         .insert(schema.tunnelAttachments)
@@ -3777,7 +3778,6 @@ export class ServerRepository {
       await transaction
         .update(schema.tunnels)
         .set({
-          activeConnectionCount: 0,
           desiredState: "started",
           lastError: null,
           status: "active",
@@ -3852,6 +3852,79 @@ export class ServerRepository {
             eq(schema.tunnels.ownerId, ownerId),
           ),
         );
+    });
+  }
+
+  async removeManagedServerRelayAttachment(
+    ownerId: string,
+    attachmentId: string,
+  ): Promise<{
+    projectId: string | null;
+    tunnelId: string;
+    tunnelRemoved: boolean;
+  } | null> {
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select({
+          activeConnectionCount: schema.tunnelAttachments.activeConnectionCount,
+          management: schema.tunnels.management,
+          projectId: schema.tunnels.projectId,
+          tunnelId: schema.tunnels.id,
+        })
+        .from(schema.tunnelAttachments)
+        .innerJoin(
+          schema.tunnels,
+          eq(schema.tunnels.id, schema.tunnelAttachments.tunnelId),
+        )
+        .where(
+          and(
+            eq(schema.tunnelAttachments.id, attachmentId),
+            eq(schema.tunnelAttachments.kind, "server-relay"),
+            eq(schema.tunnels.ownerId, ownerId),
+            ne(schema.tunnels.management, "user-managed"),
+          ),
+        )
+        .limit(1);
+      const row = rows[0];
+      if (!row) return null;
+      await transaction
+        .delete(schema.tunnelAttachments)
+        .where(eq(schema.tunnelAttachments.id, attachmentId));
+      const remaining = await transaction
+        .select({ id: schema.tunnelAttachments.id })
+        .from(schema.tunnelAttachments)
+        .where(eq(schema.tunnelAttachments.tunnelId, row.tunnelId))
+        .limit(1);
+      const tunnelRemoved =
+        remaining.length === 0 && row.management === "managed-ephemeral";
+      if (tunnelRemoved) {
+        await transaction
+          .delete(schema.tunnels)
+          .where(
+            and(
+              eq(schema.tunnels.id, row.tunnelId),
+              eq(schema.tunnels.ownerId, ownerId),
+            ),
+          );
+      } else {
+        await transaction
+          .update(schema.tunnels)
+          .set({
+            activeConnectionCount: sql<number>`greatest(0, ${schema.tunnels.activeConnectionCount} - ${row.activeConnectionCount})`,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(schema.tunnels.id, row.tunnelId),
+              eq(schema.tunnels.ownerId, ownerId),
+            ),
+          );
+      }
+      return {
+        projectId: row.projectId,
+        tunnelId: row.tunnelId,
+        tunnelRemoved,
+      };
     });
   }
 
@@ -4085,7 +4158,7 @@ export class ServerRepository {
       .delete(schema.tunnels)
       .where(
         and(
-          eq(schema.tunnels.origin, "project-share"),
+          inArray(schema.tunnels.origin, ["code", "project-share"]),
           eq(schema.tunnels.management, "managed-ephemeral"),
         ),
       );

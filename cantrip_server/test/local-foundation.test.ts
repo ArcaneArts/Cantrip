@@ -2232,6 +2232,41 @@ describe("local server foundation", () => {
     expect(secondCodeAttachment.attachmentId).not.toBe(
       codeAttachment.attachmentId,
     );
+    const codeTunnels = tunnelListSchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/tunnels`,
+        })
+      ).json(),
+    );
+    expect(codeTunnels).toEqual([
+      expect.objectContaining({
+        projectId: project.id,
+        origin: "code",
+        protocolHint: "http-websocket",
+        source: { kind: "server-http", adapter: "code" },
+        destination: expect.objectContaining({
+          kind: "worker-adapter",
+          workerId: "test-worker",
+          adapter: "code",
+          resourceId: codeTab.id,
+        }),
+        managedBy: { kind: "code", id: codeTab.id },
+        attachments: expect.arrayContaining([
+          expect.objectContaining({
+            id: codeAttachment.attachmentId,
+            kind: "server-relay",
+            status: "active",
+          }),
+          expect.objectContaining({
+            id: secondCodeAttachment.attachmentId,
+            kind: "server-relay",
+            status: "active",
+          }),
+        ]),
+      }),
+    ]);
     expect(
       codeRuntimeStatusSchema.parse(
         (
@@ -2252,6 +2287,18 @@ describe("local server foundation", () => {
         url: `/api/code-attachments/${codeAttachment.attachmentId}`,
       }),
     ).toMatchObject({ statusCode: 204 });
+    expect(
+      tunnelListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/tunnels`,
+          })
+        ).json(),
+      )[0]?.attachments,
+    ).toEqual([
+      expect.objectContaining({ id: secondCodeAttachment.attachmentId }),
+    ]);
     expect(
       codeSaveAllResultSchema.parse(
         (
@@ -2286,6 +2333,16 @@ describe("local server foundation", () => {
         ).json(),
       ).status,
     ).toBe("stopped");
+    expect(
+      tunnelListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/tunnels`,
+          })
+        ).json(),
+      ),
+    ).toEqual([]);
     expect(
       await firstApp.inject({
         method: "DELETE",

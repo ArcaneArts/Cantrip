@@ -367,7 +367,7 @@ describe.sequential("tunnel control plane", () => {
     expect(remove.statusCode).toBe(409);
   });
 
-  it("persists managed project-share server relays in global and project inventory", async () => {
+  it("persists and independently revokes managed server relays", async () => {
     const share = await database.repository.registerManagedTunnel(
       LOCAL_USER_ID,
       {
@@ -442,12 +442,49 @@ describe.sequential("tunnel control plane", () => {
       ],
     });
     expect(project.some(({ id }) => id === share!.id)).toBe(true);
-    await database.repository.resetTransientTunnelAttachments();
     expect(
-      await database.repository.getManagedTunnel(LOCAL_USER_ID, {
-        kind: "project-share",
-        id: "share-1",
-      }),
+      await database.repository.createManagedServerRelayAttachment(
+        LOCAL_USER_ID,
+        share!.id,
+        "share-2",
+        new Date(Date.now() + 60_000),
+      ),
+    ).toBe(true);
+    await database.repository.touchManagedServerRelay(
+      LOCAL_USER_ID,
+      "share-2",
+      { activeConnectionDelta: 2 },
+    );
+    expect(
+      (await database.repository.getTunnel(LOCAL_USER_ID, share!.id))
+        ?.activeConnectionCount,
+    ).toBe(3);
+    expect(
+      await database.repository.removeManagedServerRelayAttachment(
+        otherOwnerId,
+        "share-1",
+      ),
+    ).toBeNull();
+    expect(
+      await database.repository.removeManagedServerRelayAttachment(
+        LOCAL_USER_ID,
+        "share-1",
+      ),
+    ).toMatchObject({ tunnelId: share!.id, tunnelRemoved: false });
+    expect(
+      await database.repository.getTunnel(LOCAL_USER_ID, share!.id),
+    ).toMatchObject({
+      activeConnectionCount: 2,
+      attachments: [expect.objectContaining({ id: "share-2" })],
+    });
+    expect(
+      await database.repository.removeManagedServerRelayAttachment(
+        LOCAL_USER_ID,
+        "share-2",
+      ),
+    ).toMatchObject({ tunnelId: share!.id, tunnelRemoved: true });
+    expect(
+      await database.repository.getTunnel(LOCAL_USER_ID, share!.id),
     ).toBeNull();
   });
 
