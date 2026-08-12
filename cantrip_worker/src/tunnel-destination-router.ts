@@ -8,7 +8,7 @@ type FrameEmitter = (
   header: TunnelDataPlaneFrameHeader,
   payload: Uint8Array,
 ) => boolean;
-type CapacityWaiter = () => Promise<boolean>;
+type CapacityWaiter = (attachmentId: string) => Promise<boolean>;
 
 export class TunnelDestinationRouter {
   constructor(

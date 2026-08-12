@@ -3,7 +3,10 @@
 Cantrip tunnels let a local desktop application reach a TCP service owned by a
 worker without exposing the worker to inbound network connections. The server
 owns authorization and routing; workers and desktop clients keep their
-listeners on loopback.
+listeners on loopback. When the Tauri app and worker are on the same machine,
+the server can authorize a verified loopback data path so bulk bytes avoid the
+relay. The server remains the rendezvous point and automatic relay fallback is
+always available.
 
 ## Using a saved tunnel
 
@@ -59,6 +62,7 @@ from the desktop without worker-local forwarding.
 ```mermaid
 flowchart LR
     LOCAL["Desktop loopback listener"]
+    DIRECT["Verified worker loopback broker"]
     HTTP["Server HTTP adapters<br/>Code / WebDAV"]
     CONTROL["Server tunnel control plane<br/>ownership, definitions, leases"]
     BROKER["Bounded stream broker<br/>identity, credit, limits, counters"]
@@ -66,7 +70,10 @@ flowchart LR
     TCP["Worker loopback TCP service"]
     ADAPTER["Worker adapter<br/>Code / WebDAV"]
 
-    LOCAL --> BROKER
+    LOCAL -. "preferred when authorized" .-> DIRECT
+    DIRECT --> TCP
+    DIRECT --> ADAPTER
+    LOCAL -->|"relay fallback"| BROKER
     HTTP --> BROKER
     CONTROL --- BROKER
     BROKER <--> WORKER
@@ -96,6 +103,17 @@ Attachment secrets are short-lived, owner-scoped, stored only as hashes by the
 server, and held in memory by the desktop. They are not placed in opened URLs,
 process arguments, metrics labels, or payload logs. User destinations are
 restricted to validated worker-loopback TCP targets.
+
+For a local-direct attachment, the server mints a short-lived, one-use
+capability bound to the account session, worker, tunnel, attachment, endpoint
+identities, channel, and lease. Tauri accepts the route only after verifying the
+worker broker's ephemeral Ed25519 identity against the server advertisement.
+The TCP target is installed on the worker over its authenticated control channel
+and is never disclosed in the client ticket. The app does not infer locality
+from hostnames or addresses: it tries only the advertised loopback broker and
+uses the ordinary server WebSocket relay if the proof, connection, or capability
+cannot be used. Attachment, session, account, worker-control, and server
+lifecycle revocation all tear down the direct lease.
 
 ## Status and observability
 

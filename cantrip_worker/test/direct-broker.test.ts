@@ -1,6 +1,11 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
-import { directBrokerReadySchema } from "@cantrip/protocol";
+import {
+  decodeTunnelDataPlaneFrame,
+  directBrokerReadySchema,
+  encodeTunnelDataPlaneFrame,
+  type TunnelDataPlaneFrameHeader,
+} from "@cantrip/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 
@@ -112,5 +117,86 @@ describe("DirectBroker", () => {
       }),
     );
     expect(await closed).toBe(1008);
+  });
+
+  it("injects the server-authorized target into direct tunnel frames", async () => {
+    const broker = new DirectBroker();
+    brokers.push(broker);
+    const advertisement = await broker.start();
+    if (!advertisement.available) throw new Error("broker unavailable");
+    const attachmentId = randomUUID();
+    const tunnelId = randomUUID();
+    const grant = {
+      ...binding(),
+      resourceKind: "tunnel" as const,
+      resourceId: tunnelId,
+      attachmentId,
+      channels: ["tunnel-data"],
+    };
+    const route = {
+      tunnelId,
+      attachmentId,
+      sourceEndpointId: `desktop:client:${attachmentId}`,
+      destinationEndpointId: "worker:worker-1",
+      target: { kind: "tcp" as const, host: "127.0.0.1", port: 4173 },
+    };
+    const secret = randomBytes(32).toString("base64url");
+    broker.prepare({
+      type: "direct.capability.prepare",
+      binding: grant,
+      secret,
+      tunnelRoute: route,
+    });
+    const routed = new Promise<TunnelDataPlaneFrameHeader>((resolve) =>
+      broker.setTunnelFrameHandler((header) => resolve(header)),
+    );
+    const socket = await connect(advertisement.loopbackPort);
+    const ready = new Promise<void>((resolve) =>
+      socket.once("message", () => resolve()),
+    );
+    socket.send(
+      JSON.stringify({
+        type: "initialize",
+        binding: grant,
+        secret,
+        challenge: randomBytes(32).toString("base64url"),
+      }),
+    );
+    await ready;
+    const { target: _target, ...publicRoute } = route;
+    const open: TunnelDataPlaneFrameHeader = {
+      protocolVersion: 1,
+      ...publicRoute,
+      connectionId: randomUUID(),
+      sequence: 0,
+      kind: "open",
+      initialCreditBytes: 1_024,
+    };
+    socket.send(encodeTunnelDataPlaneFrame(open, new Uint8Array()));
+    await expect(routed).resolves.toMatchObject({
+      kind: "connect",
+      target: route.target,
+    });
+
+    const response = new Promise<ReturnType<typeof decodeTunnelDataPlaneFrame>>(
+      (resolve) =>
+        socket.once("message", (data) =>
+          resolve(decodeTunnelDataPlaneFrame(Buffer.from(data as Buffer))),
+        ),
+    );
+    expect(
+      broker.routeTunnelFrame(
+        {
+          ...open,
+          kind: "accepted",
+          initialCreditBytes: 1_024,
+        },
+        new Uint8Array(),
+      ),
+    ).toBe(true);
+    await expect(response).resolves.toMatchObject({
+      header: { kind: "accepted", connectionId: open.connectionId },
+    });
+    socket.close();
   });
 });

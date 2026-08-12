@@ -83,6 +83,9 @@ describe("tunnel settings", () => {
       expiresAt: now,
       localHost: "127.0.0.1",
       localPort: 41_234,
+      routeState: "relayed",
+      directCapabilityId: null,
+      directFallbackReason: null,
       tunnelId: "tunnel-1",
     };
 

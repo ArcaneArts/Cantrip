@@ -5,42 +5,43 @@ use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tokio::net::TcpStream;
 use tokio::time::timeout;
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirectBrokerAdvertisement {
-    loopback_host: String,
-    loopback_port: u16,
-    instance_id: String,
-    public_key: String,
-    fingerprint: String,
+    pub(crate) loopback_host: String,
+    pub(crate) loopback_port: u16,
+    pub(crate) instance_id: String,
+    pub(crate) public_key: String,
+    pub(crate) fingerprint: String,
 }
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirectCapabilityBinding {
-    capability_id: String,
-    owner_id: String,
-    auth_session_id: String,
-    worker_id: String,
-    resource_kind: String,
-    resource_id: String,
-    attachment_id: String,
-    channels: Vec<String>,
-    expires_at: String,
-    lease_expires_at: String,
+    pub(crate) capability_id: String,
+    pub(crate) owner_id: String,
+    pub(crate) auth_session_id: String,
+    pub(crate) worker_id: String,
+    pub(crate) resource_kind: String,
+    pub(crate) resource_id: String,
+    pub(crate) attachment_id: String,
+    pub(crate) channels: Vec<String>,
+    pub(crate) expires_at: String,
+    pub(crate) lease_expires_at: String,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirectProbeRequest {
-    broker: DirectBrokerAdvertisement,
-    binding: DirectCapabilityBinding,
-    secret: String,
+    pub(crate) broker: DirectBrokerAdvertisement,
+    pub(crate) binding: DirectCapabilityBinding,
+    pub(crate) secret: String,
 }
 
 #[derive(Deserialize)]
@@ -74,11 +75,21 @@ fn relayed(worker_id: String, reason: impl Into<String>) -> DirectProbeResult {
     }
 }
 
-async fn run_probe(mut request: DirectProbeRequest) -> Result<DirectProbeResult, String> {
+pub(crate) struct VerifiedDirectConnection {
+    pub(crate) broker_instance_id: String,
+    pub(crate) latency_ms: f64,
+    pub(crate) socket: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    pub(crate) worker_id: String,
+}
+
+pub(crate) async fn connect_verified(
+    mut request: DirectProbeRequest,
+) -> Result<VerifiedDirectConnection, String> {
     if request.broker.loopback_host != "127.0.0.1" {
         return Err("Direct broker endpoint is not loopback-only.".into());
     }
     let worker_id = request.binding.worker_id.clone();
+    let capability_id = request.binding.capability_id.clone();
     let secret = Zeroizing::new(std::mem::take(&mut request.secret));
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(Uuid::new_v4().as_bytes()));
     let url = format!("ws://127.0.0.1:{}/direct/v1", request.broker.loopback_port);
@@ -129,29 +140,33 @@ async fn run_probe(mut request: DirectProbeRequest) -> Result<DirectProbeResult,
         .map_err(|_| "Local direct broker signature was invalid.".to_string())?;
     let signature = Signature::from_slice(&signature_bytes)
         .map_err(|_| "Local direct broker signature had an invalid length.".to_string())?;
-    let payload = format!(
-        "cantrip-direct-v1\0{}\0{}",
-        request.binding.capability_id, challenge
-    );
+    let payload = format!("cantrip-direct-v1\0{}\0{}", capability_id, challenge);
     VerifyingKey::from_bytes(&public_key)
         .map_err(|_| "Local direct broker public key was invalid.".to_string())?
         .verify(payload.as_bytes(), &signature)
         .map_err(|_| "Local direct broker identity signature was rejected.".to_string())?;
-    let _ = socket.close(None).await;
-    Ok(DirectProbeResult {
-        state: "local-direct",
-        reason: None,
-        latency_ms: Some(started.elapsed().as_secs_f64() * 1_000.0),
+    Ok(VerifiedDirectConnection {
+        broker_instance_id: ready.broker_instance_id,
+        latency_ms: started.elapsed().as_secs_f64() * 1_000.0,
+        socket,
         worker_id,
-        broker_instance_id: Some(ready.broker_instance_id),
     })
 }
 
 #[tauri::command]
 pub async fn probe_direct_worker(request: DirectProbeRequest) -> DirectProbeResult {
     let worker_id = request.binding.worker_id.clone();
-    match run_probe(request).await {
-        Ok(result) => result,
+    match connect_verified(request).await {
+        Ok(mut connection) => {
+            let _ = connection.socket.close(None).await;
+            DirectProbeResult {
+                state: "local-direct",
+                reason: None,
+                latency_ms: Some(connection.latency_ms),
+                worker_id: connection.worker_id,
+                broker_instance_id: Some(connection.broker_instance_id),
+            }
+        }
         Err(reason) => relayed(worker_id, reason),
     }
 }

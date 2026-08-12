@@ -4171,6 +4171,48 @@ export class ServerRepository {
     };
   }
 
+  async getDesktopTunnelAttachment(
+    ownerId: string,
+    attachmentId: string,
+  ): Promise<TunnelAttachmentAuthorization | null> {
+    const now = new Date();
+    const rows = await this.database
+      .select({ attachment: schema.tunnelAttachments, tunnel: schema.tunnels })
+      .from(schema.tunnelAttachments)
+      .innerJoin(
+        schema.tunnels,
+        eq(schema.tunnels.id, schema.tunnelAttachments.tunnelId),
+      )
+      .where(
+        and(
+          eq(schema.tunnelAttachments.id, attachmentId),
+          eq(schema.tunnelAttachments.kind, "desktop-loopback"),
+          eq(schema.tunnels.ownerId, ownerId),
+          gt(schema.tunnelAttachments.expiresAt, now),
+          ne(schema.tunnelAttachments.status, "stopped"),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (
+      !row?.attachment.clientId ||
+      !row.attachment.expiresAt ||
+      row.tunnel.sourceEndpoint.kind !== "desktop-loopback" ||
+      row.tunnel.destinationEndpoint.kind !== "worker-tcp"
+    ) {
+      return null;
+    }
+    return {
+      attachmentId,
+      clientId: row.attachment.clientId,
+      destination: row.tunnel.destinationEndpoint,
+      expiresAt: row.attachment.expiresAt,
+      ownerId: row.tunnel.ownerId,
+      projectId: row.tunnel.projectId,
+      tunnelId: row.tunnel.id,
+    };
+  }
+
   async activateDesktopTunnelAttachment(
     attachmentId: string,
     clientId: string,

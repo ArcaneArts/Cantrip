@@ -2345,6 +2345,13 @@ export const tunnelAttachmentCreateResultSchema = z
   })
   .strict();
 
+export const tunnelDirectActivationSchema = z
+  .object({
+    capabilityId: z.string().uuid(),
+    localPort: z.number().int().min(1).max(65_535),
+  })
+  .strict();
+
 export const tunnelAttachmentInitializeSchema = z
   .object({
     type: z.literal("initialize"),

@@ -1318,6 +1318,9 @@ async function start(): Promise<void> {
       directBroker.revokeAll();
     },
   );
+  directBroker.setTunnelFrameHandler((header, payload) =>
+    tunnelDestinations.handleFrame(header, payload),
+  );
   worktrees.setObservationEmitter((notification) =>
     commandConnection.sendNotification(notification),
   );
@@ -1325,9 +1328,15 @@ async function start(): Promise<void> {
     commandConnection.sendSurfaceFrame(header, payload),
   );
   tunnelDestinations.setFrameEmitter(
-    (header, payload) =>
-      commandConnection.sendTunnelDataPlaneFrame(header, payload),
-    () => commandConnection.waitForTunnelDataPlaneCapacity(),
+    (header, payload) => {
+      const direct = directBroker.routeTunnelFrame(header, payload);
+      return (
+        direct ?? commandConnection.sendTunnelDataPlaneFrame(header, payload)
+      );
+    },
+    async (attachmentId) =>
+      (await directBroker.waitForTunnelCapacity(attachmentId)) ??
+      commandConnection.waitForTunnelDataPlaneCapacity(),
   );
 
   console.log(

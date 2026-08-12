@@ -148,6 +148,9 @@ describe("browser local tunnel URLs", () => {
         expiresAt: "2026-08-12T00:00:00.000Z",
         localHost: "127.0.0.1",
         localPort: 41_234,
+        routeState: "relayed",
+        directCapabilityId: null,
+        directFallbackReason: null,
         tunnelId: "tunnel-1",
       }),
     ).toBe("http://127.0.0.1:41234/deep/path?mode=hmr#ready");

@@ -273,6 +273,7 @@ import {
   queuedPromptUpdateSchema,
   remoteDesktopCreateSchema,
   directAttachmentTicketSchema,
+  directTunnelTicketSchema,
   remoteDesktopFleetSchema,
   remoteDesktopProbeResultSchema,
   remoteDesktopListSchema,
@@ -315,6 +316,7 @@ import {
   tunnelAttachmentCreateResultSchema,
   tunnelAttachmentCreateSchema,
   tunnelAttachmentInitializeSchema,
+  tunnelDirectActivationSchema,
   tunnelAttachmentReadySchema,
   tunnelUserCreateSchema,
   tunnelUserUpdateSchema,
@@ -5646,13 +5648,121 @@ export async function buildApp({
 
   app.delete<{ Params: { attachmentId: string } }>(
     "/api/tunnel-attachments/:attachmentId",
-    async (request, reply) =>
-      (await tunnelRuntime.revoke(
-        principalOwnerId(request),
+    async (request, reply) => {
+      const ownerId = principalOwnerId(request);
+      const revoked = await tunnelRuntime.revoke(
+        ownerId,
         request.params.attachmentId,
-      ))
-        ? reply.code(204).send()
-        : reply.code(404).send({ error: "Tunnel attachment not found." }),
+      );
+      if (!revoked) {
+        return reply.code(404).send({ error: "Tunnel attachment not found." });
+      }
+      await directAttachments.revokeAttachment(request.params.attachmentId);
+      return reply.code(204).send();
+    },
+  );
+
+  app.post<{ Params: { attachmentId: string } }>(
+    "/api/tunnel-attachments/:attachmentId/direct",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const principal = authenticatedPrincipal(request);
+      const authorization = await repository.getDesktopTunnelAttachment(
+        principal.user.id,
+        request.params.attachmentId,
+      );
+      if (!authorization) {
+        return reply.code(404).send({ error: "Tunnel attachment not found." });
+      }
+      const worker = await repository.getWorker(
+        principal.user.id,
+        authorization.destination.workerId,
+      );
+      if (!worker) {
+        return reply
+          .code(409)
+          .send({ error: "Destination worker is offline." });
+      }
+      const route = {
+        tunnelId: authorization.tunnelId,
+        attachmentId: authorization.attachmentId,
+        sourceEndpointId: `desktop:${authorization.clientId}:${authorization.attachmentId}`,
+        destinationEndpointId: `worker:${authorization.destination.workerId}`,
+      };
+      try {
+        const ticket = await directAttachments.prepare({
+          attachmentId: authorization.attachmentId,
+          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          channels: ["tunnel-data"],
+          leaseExpiresAt: authorization.expiresAt,
+          ownerId: principal.user.id,
+          resourceId: authorization.tunnelId,
+          resourceKind: "tunnel",
+          tunnelRoute: {
+            ...route,
+            target: {
+              kind: "tcp",
+              host: authorization.destination.host,
+              port: authorization.destination.port,
+            },
+          },
+          worker,
+        });
+        return reply
+          .code(201)
+          .send(directTunnelTicketSchema.parse({ ...ticket, route }));
+      } catch (error) {
+        if (error instanceof DirectAttachmentUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: { attachmentId: string } }>(
+    "/api/tunnel-attachments/:attachmentId/direct-activate",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = tunnelDirectActivationSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = authenticatedPrincipal(request);
+      const authSessionId = principal.sessionId ?? `local:${principal.user.id}`;
+      if (
+        !directAttachments.matches(input.data.capabilityId, {
+          attachmentId: request.params.attachmentId,
+          authSessionId,
+          ownerId: principal.user.id,
+        })
+      ) {
+        return reply.code(404).send({ error: "Direct attachment not found." });
+      }
+      const authorization = await repository.getDesktopTunnelAttachment(
+        principal.user.id,
+        request.params.attachmentId,
+      );
+      if (!authorization) {
+        return reply.code(404).send({ error: "Tunnel attachment not found." });
+      }
+      if (
+        !(await repository.activateDesktopTunnelAttachment(
+          authorization.attachmentId,
+          authorization.clientId,
+          input.data.localPort,
+        ))
+      ) {
+        return reply.code(409).send({ error: "Tunnel attachment is stale." });
+      }
+      publishTunnelRuntimeChange({
+        attachmentId: authorization.attachmentId,
+        ownerId: authorization.ownerId,
+        projectId: authorization.projectId,
+        tunnelId: authorization.tunnelId,
+      });
+      return reply.code(204).send();
+    },
   );
 
   app.get<{ Params: { attachmentId: string } }>(

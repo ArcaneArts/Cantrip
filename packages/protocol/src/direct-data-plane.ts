@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { tunnelDataPlaneTargetSchema } from "./tunnel-data-plane.js";
+
 export const directRouteStateSchema = z.enum([
   "probing",
   "local-direct",
@@ -64,6 +66,17 @@ export const directCapabilityPrepareCommandSchema = z.object({
   type: z.literal("direct.capability.prepare"),
   binding: directCapabilityBindingSchema,
   secret: directCapabilitySecretSchema,
+  tunnelRoute: z
+    .object({
+      tunnelId: z.string().min(1).max(200),
+      attachmentId: z.string().min(1).max(200),
+      sourceEndpointId: z.string().min(1).max(200),
+      destinationEndpointId: z.string().min(1).max(200),
+      target: tunnelDataPlaneTargetSchema,
+    })
+    .strict()
+    .nullable()
+    .default(null),
 });
 
 export const directCapabilityRevokeCommandSchema = z.object({
@@ -87,6 +100,17 @@ export const directAttachmentTicketSchema = z.object({
   broker: availableDirectBrokerSchema,
   binding: directCapabilityBindingSchema,
   secret: directCapabilitySecretSchema,
+});
+
+export const directTunnelTicketSchema = directAttachmentTicketSchema.extend({
+  route: z
+    .object({
+      tunnelId: z.string().min(1).max(200),
+      attachmentId: z.string().min(1).max(200),
+      sourceEndpointId: z.string().min(1).max(200),
+      destinationEndpointId: z.string().min(1).max(200),
+    })
+    .strict(),
 });
 
 export const directBrokerInitializeSchema = z.object({
@@ -134,3 +158,4 @@ export type DirectCapabilityBinding = z.infer<
 export type DirectProbeResult = z.infer<typeof directProbeResultSchema>;
 export type DirectResourceKind = z.infer<typeof directResourceKindSchema>;
 export type DirectRouteState = z.infer<typeof directRouteStateSchema>;
+export type DirectTunnelTicket = z.infer<typeof directTunnelTicketSchema>;
