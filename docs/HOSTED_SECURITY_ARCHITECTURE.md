@@ -47,6 +47,13 @@ enrollment credential.
 | `password` | Authenticated owner session   | Protected personal server                 | Argon2id credential creates a revocable server-side owner session.      |
 | `accounts` | Authenticated account session | Public multi-user service                 | Email/password credentials create isolated, revocable account sessions. |
 
+Account registration is license-gated by default. `CANTRIP_ADMIN_EMAIL`
+identifies the bootstrap administrator, and the server-owned whitelist records
+which additional normalized email addresses may register. Whitelist management
+requires an authenticated owner or administrator and all mutations retain the
+normal CSRF, origin, rate-limit, and audit protections. Operators may explicitly
+set `CANTRIP_LICENSE_WHITELIST_ENABLED=false` to allow open registration.
+
 `CANTRIP_ALLOW_INSECURE_REMOTE` applies only to a non-hosted anonymous server
 and remains an acknowledgement for a separately protected trusted network. It
 is not authentication and can never enable anonymous hosted mode.

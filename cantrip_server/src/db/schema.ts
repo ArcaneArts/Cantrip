@@ -125,6 +125,27 @@ export const users = pgTable(
   ],
 );
 
+export const accountLicenseWhitelist = pgTable(
+  "account_license_whitelist",
+  {
+    id: text("id").primaryKey(),
+    email: text("email").notNull(),
+    normalizedEmail: text("normalized_email").notNull(),
+    addedByUserId: text("added_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("account_license_whitelist_normalized_email_unique").on(
+      table.normalizedEmail,
+    ),
+    index("account_license_whitelist_created_at_index").on(table.createdAt),
+  ],
+);
+
 export const userSessions = pgTable(
   "user_sessions",
   {

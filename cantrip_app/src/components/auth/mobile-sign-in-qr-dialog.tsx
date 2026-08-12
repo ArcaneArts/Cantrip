@@ -32,6 +32,7 @@ type MobileSignInQrDialogProps = {
 function initialServerUrl(): string {
   const active = getActiveServerConnection();
   if (active.url) return active.url;
+  if (typeof window === "undefined") return "";
   return ["http:", "https:"].includes(window.location.protocol)
     ? window.location.origin
     : "";

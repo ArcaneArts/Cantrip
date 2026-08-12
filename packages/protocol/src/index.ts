@@ -140,6 +140,26 @@ export const accountRegistrationSchema = z.object({
   password: authPasswordSchema,
 });
 
+export const accountLicenseWhitelistEntrySchema = z.object({
+  id: z.string().min(1),
+  email: z.email().max(320),
+  registered: z.boolean(),
+  createdAt: z.iso.datetime(),
+});
+
+export const accountLicenseWhitelistCreateSchema = z.object({
+  email: z.email().max(320),
+});
+
+export const accountAdminSummarySchema = z.object({
+  userCount: z.number().int().nonnegative(),
+  licenseWhitelist: z.object({
+    enabled: z.boolean(),
+    adminEmail: z.email().max(320).nullable(),
+    entries: z.array(accountLicenseWhitelistEntrySchema).max(10_000),
+  }),
+});
+
 export const authLoginSchema = z.object({
   email: z.email().max(320).optional(),
   password: z.string().min(1).max(1_024),
@@ -250,8 +270,13 @@ export const serverBootstrapSchema = z.object({
       .object({
         enabled: z.boolean(),
         bootstrapRequired: z.boolean().default(false),
+        licenseRequired: z.boolean().default(false),
       })
-      .default({ enabled: false, bootstrapRequired: false }),
+      .default({
+        enabled: false,
+        bootstrapRequired: false,
+        licenseRequired: false,
+      }),
   }),
   routing: z.object({
     workerConnection: z.literal("server-only"),
@@ -7644,6 +7669,13 @@ export type AuditEvent = z.infer<typeof auditEventSchema>;
 export type AuditEventList = z.infer<typeof auditEventListSchema>;
 export type AuditEventQuery = z.infer<typeof auditEventQuerySchema>;
 export type AccountRegistration = z.infer<typeof accountRegistrationSchema>;
+export type AccountLicenseWhitelistEntry = z.infer<
+  typeof accountLicenseWhitelistEntrySchema
+>;
+export type AccountLicenseWhitelistCreate = z.infer<
+  typeof accountLicenseWhitelistCreateSchema
+>;
+export type AccountAdminSummary = z.infer<typeof accountAdminSummarySchema>;
 export type AuthLogin = z.infer<typeof authLoginSchema>;
 export type AuthSession = z.infer<typeof authSessionSchema>;
 export type AuthSessionState = z.infer<typeof authSessionStateSchema>;

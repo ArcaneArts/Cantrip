@@ -2,6 +2,7 @@ import path from "node:path";
 import { isIP } from "node:net";
 
 import {
+  accountRegistrationSchema,
   authModeSchema,
   bootstrapModeSchema,
   deploymentModeSchema,
@@ -30,6 +31,7 @@ function readPort(
 }
 
 export interface ServerConfig {
+  adminEmail?: string;
   adminBootstrapToken?: string;
   allowInsecureRemote: boolean;
   apiBodyLimitBytes?: number;
@@ -60,6 +62,7 @@ export interface ServerConfig {
   port: number;
   publicOrigin?: string;
   publicRegistration?: boolean;
+  licenseWhitelistEnabled?: boolean;
   redisUrl?: string;
   requireHttps?: boolean;
   schedulerLeaseTtlMs?: number;
@@ -390,6 +393,26 @@ export function readServerConfig(): ServerConfig {
       "CANTRIP_ADMIN_BOOTSTRAP_TOKEN must contain at least 32 characters.",
     );
   }
+  const adminEmailInput = process.env.CANTRIP_ADMIN_EMAIL?.trim();
+  const adminEmailResult = adminEmailInput
+    ? accountRegistrationSchema.shape.email.safeParse(adminEmailInput)
+    : null;
+  if (adminEmailResult && !adminEmailResult.success) {
+    throw new Error("CANTRIP_ADMIN_EMAIL must be a valid email address.");
+  }
+  const adminEmail = adminEmailResult?.data;
+  const licenseWhitelistEnabled =
+    process.env.CANTRIP_LICENSE_WHITELIST_ENABLED === undefined
+      ? true
+      : readBoolean(
+          "CANTRIP_LICENSE_WHITELIST_ENABLED",
+          process.env.CANTRIP_LICENSE_WHITELIST_ENABLED,
+        );
+  if (authMode === "accounts" && licenseWhitelistEnabled && !adminEmail) {
+    throw new Error(
+      "CANTRIP_AUTH_MODE=accounts requires CANTRIP_ADMIN_EMAIL when the license whitelist is enabled.",
+    );
+  }
   const metricsToken = process.env.CANTRIP_METRICS_TOKEN?.trim();
   if (metricsToken && metricsToken.length < 32) {
     throw new Error(
@@ -510,6 +533,7 @@ export function readServerConfig(): ServerConfig {
   }
 
   const config: ServerConfig = {
+    adminEmail,
     adminBootstrapToken,
     allowInsecureRemote,
     apiBodyLimitBytes: readBoundedInteger(
@@ -647,6 +671,7 @@ export function readServerConfig(): ServerConfig {
       "CANTRIP_PUBLIC_REGISTRATION",
       process.env.CANTRIP_PUBLIC_REGISTRATION,
     ),
+    licenseWhitelistEnabled,
     redisUrl,
     sessionTtlSeconds: readBoundedInteger(
       "CANTRIP_SESSION_TTL_SECONDS",

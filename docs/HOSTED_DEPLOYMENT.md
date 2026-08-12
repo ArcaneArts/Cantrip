@@ -33,13 +33,12 @@ Create the operator environment without committing it:
 ```bash
 cp deploy/hosted.env.example deploy/hosted.env
 openssl rand -base64 32
-openssl rand -hex 32
 ```
 
-Use the first value as the encryption keyring entry and the second as the
-one-time first-owner bootstrap token. Set a random URL-safe PostgreSQL password
-in both `POSTGRES_PASSWORD` and `DATABASE_URL`. Then validate and start the
-control plane:
+Use the value as the encryption keyring entry, set `CANTRIP_ADMIN_EMAIL` to the
+administrator who will create the first account, and set a random URL-safe
+PostgreSQL password in both `POSTGRES_PASSWORD` and `DATABASE_URL`. Then
+validate and start the control plane:
 
 ```bash
 docker compose --env-file deploy/hosted.env \
@@ -53,10 +52,11 @@ diagnostics. The fixed internal proxy address is the only trusted forwarding
 peer. The Caddy profile obtains certificates and serves the two public names.
 Use the supplied Nginx example when TLS is managed elsewhere.
 
-After the first owner is created, remove
-`CANTRIP_ADMIN_BOOTSTRAP_TOKEN` from the environment and recreate the server.
-Keep public registration disabled unless the operator intentionally accepts new
-accounts.
+The license whitelist is enabled by default. The configured administrator can
+open **Admin** from the server selector to add or remove licensed signup email
+addresses and see the account count. Disable
+`CANTRIP_LICENSE_WHITELIST_ENABLED` only when the operator intentionally wants
+open account registration.
 
 The optional worker image is Linux-only and intended for headless repositories,
 Codex, terminals, and Code. It cannot expose the Docker host's desktop or normal

@@ -14,6 +14,7 @@ import type {
   AgentInteractionRequestQuery,
   AgentInteractionResolutionCreate,
   AgentInteractionResponse,
+  AccountLicenseWhitelistEntry,
   AccountSessionSummary,
   AuditEvent,
   AuditEventList,
@@ -188,6 +189,8 @@ type ProjectWorkspaceRow = typeof schema.projectWorkspaces.$inferSelect;
 type UserRow = typeof schema.users.$inferSelect;
 type UserSessionRow = typeof schema.userSessions.$inferSelect;
 type AuditEventRow = typeof schema.auditEvents.$inferSelect;
+type AccountLicenseWhitelistRow =
+  typeof schema.accountLicenseWhitelist.$inferSelect;
 type WorkerCredentialRow = typeof schema.workerCredentials.$inferSelect;
 type TunnelRow = typeof schema.tunnels.$inferSelect;
 type TunnelAttachmentRow = typeof schema.tunnelAttachments.$inferSelect;
@@ -505,6 +508,18 @@ function toUserSummary(user: UserRow): UserSummary {
     displayName: user.displayName,
     email: user.email,
     role: user.role as UserSummary["role"],
+  };
+}
+
+function toAccountLicenseWhitelistEntry(
+  entry: AccountLicenseWhitelistRow,
+  registered: boolean,
+): AccountLicenseWhitelistEntry {
+  return {
+    id: entry.id,
+    email: entry.email,
+    registered,
+    createdAt: toISOString(entry.createdAt),
   };
 }
 
@@ -1611,6 +1626,72 @@ export class ServerRepository {
       .from(schema.users)
       .where(eq(schema.users.kind, "account"));
     return rows[0]?.count ?? 0;
+  }
+
+  async accountEmailIsWhitelisted(normalizedEmail: string): Promise<boolean> {
+    const rows = await this.database
+      .select({ id: schema.accountLicenseWhitelist.id })
+      .from(schema.accountLicenseWhitelist)
+      .where(
+        eq(schema.accountLicenseWhitelist.normalizedEmail, normalizedEmail),
+      )
+      .limit(1);
+    return Boolean(rows[0]);
+  }
+
+  async listAccountLicenseWhitelist(): Promise<AccountLicenseWhitelistEntry[]> {
+    const rows = await this.database
+      .select({
+        entry: schema.accountLicenseWhitelist,
+        registeredUserId: schema.users.id,
+      })
+      .from(schema.accountLicenseWhitelist)
+      .leftJoin(
+        schema.users,
+        and(
+          eq(schema.users.kind, "account"),
+          eq(
+            schema.users.normalizedEmail,
+            schema.accountLicenseWhitelist.normalizedEmail,
+          ),
+        ),
+      )
+      .orderBy(
+        asc(schema.accountLicenseWhitelist.createdAt),
+        asc(schema.accountLicenseWhitelist.email),
+      );
+    return rows.map(({ entry, registeredUserId }) =>
+      toAccountLicenseWhitelistEntry(entry, Boolean(registeredUserId)),
+    );
+  }
+
+  async createAccountLicenseWhitelistEntry(input: {
+    addedByUserId: string;
+    email: string;
+    normalizedEmail: string;
+  }): Promise<AccountLicenseWhitelistEntry | null> {
+    const rows = await this.database
+      .insert(schema.accountLicenseWhitelist)
+      .values({
+        id: randomUUID(),
+        email: input.email,
+        normalizedEmail: input.normalizedEmail,
+        addedByUserId: input.addedByUserId,
+      })
+      .onConflictDoNothing({
+        target: schema.accountLicenseWhitelist.normalizedEmail,
+      })
+      .returning();
+    const entry = rows[0];
+    return entry ? toAccountLicenseWhitelistEntry(entry, false) : null;
+  }
+
+  async deleteAccountLicenseWhitelistEntry(id: string): Promise<boolean> {
+    const rows = await this.database
+      .delete(schema.accountLicenseWhitelist)
+      .where(eq(schema.accountLicenseWhitelist.id, id))
+      .returning({ id: schema.accountLicenseWhitelist.id });
+    return Boolean(rows[0]);
   }
 
   async createAccount(input: {
