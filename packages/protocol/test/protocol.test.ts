@@ -151,6 +151,9 @@ describe("Cantrip protocol", () => {
       updatedAt: "2026-08-11T12:00:00.000Z",
     };
     expect(projectSummarySchema.parse(legacy).replicas).toEqual([]);
+    expect(
+      projectSummarySchema.parse(legacy).preferredWorkerId,
+    ).toBeUndefined();
 
     const replicas = projectReplicaListSchema.parse([
       {
@@ -3106,7 +3109,12 @@ describe("Cantrip protocol", () => {
         desktopStreamQuality: "adaptive",
         defaultModelId: null,
       }),
-    ).toMatchObject({ desktopFrameRate: 30 });
+    ).toMatchObject({
+      desktopFrameRate: 30,
+      defaultWorkerId: null,
+      automaticReplicaProvisioning: false,
+      automaticReplicaSynchronization: "off",
+    });
     expect(
       userSettingsSchema.safeParse({
         theme: "system",

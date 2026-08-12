@@ -129,6 +129,7 @@ import {
   mcpServerSummarySchema,
   orderedIdsSchema,
   projectListSchema,
+  projectPreferredWorkerUpdateSchema,
   projectReplicaJobListSchema,
   projectReplicaJobSummarySchema,
   projectReplicaListSchema,
@@ -243,6 +244,7 @@ import type {
   ProjectReplicaProvisionCreate,
   ProjectReplicaRemoveCreate,
   ProjectReplicaSynchronizeCreate,
+  ProjectPreferredWorkerUpdate,
   ProjectWorkspaceCreate,
   ProjectWorkspaceUpdate,
   ProjectWorktreeCreate,
@@ -1790,6 +1792,21 @@ export async function updateProjectWorktreePolicy(
       {
         method: "PATCH",
         body: JSON.stringify({ policy }),
+      },
+    ),
+  );
+}
+
+export async function updateProjectPreferredWorker(
+  projectId: string,
+  input: ProjectPreferredWorkerUpdate,
+) {
+  return projectSummarySchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/preferred-worker`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(projectPreferredWorkerUpdateSchema.parse(input)),
       },
     ),
   );

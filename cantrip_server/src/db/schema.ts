@@ -281,6 +281,15 @@ export const userSettings = pgTable(
         onDelete: "set null",
       },
     ),
+    defaultWorkerId: text("default_worker_id").references(() => workers.id, {
+      onDelete: "set null",
+    }),
+    automaticReplicaProvisioning: boolean("automatic_replica_provisioning")
+      .notNull()
+      .default(false),
+    automaticReplicaSynchronization: text("automatic_replica_synchronization")
+      .notNull()
+      .default("off"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -292,6 +301,10 @@ export const userSettings = pgTable(
     check(
       "user_settings_pro_mode_opacity_check",
       sql`${table.proModeOpacity} BETWEEN 0 AND 100`,
+    ),
+    check(
+      "user_settings_replica_synchronization_check",
+      sql`${table.automaticReplicaSynchronization} IN ('off', 'verify-only', 'fast-forward-primary')`,
     ),
   ],
 );
@@ -388,6 +401,10 @@ export const projects = pgTable(
     setupStatus: text("setup_status").notNull().default("ready"),
     setupError: text("setup_error"),
     worktreePolicy: text("worktree_policy").notNull().default("agent-managed"),
+    preferredWorkerId: text("preferred_worker_id").references(
+      () => workers.id,
+      { onDelete: "set null" },
+    ),
     tabLayoutRevision: integer("tab_layout_revision").notNull().default(0),
     githubRepositoryId: text("github_repository_id"),
     githubRepositoryFullName: text("github_repository_full_name"),

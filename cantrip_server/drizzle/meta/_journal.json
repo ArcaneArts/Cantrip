@@ -414,6 +414,13 @@
       "when": 1786506427283,
       "tag": "0058_gorgeous_impossible_man",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1786506903020,
+      "tag": "0059_yellow_daredevil",
+      "breakpoints": true
     }
   ]
 }

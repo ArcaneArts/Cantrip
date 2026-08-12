@@ -1767,6 +1767,9 @@ describe("local server foundation", () => {
       desktopFrameRate: 60,
       desktopStreamQuality: "balanced",
       defaultModelId: selectedModel.id,
+      defaultWorkerId: null,
+      automaticReplicaProvisioning: false,
+      automaticReplicaSynchronization: "off",
     });
     const chatGptProvider = modelProviderSummarySchema.parse(
       (
@@ -1826,6 +1829,31 @@ describe("local server foundation", () => {
       },
     });
     expect(heartbeatResponse.statusCode).toBe(202);
+    const placementSettings = settingsBundleSchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: "/api/settings",
+          payload: {
+            defaultWorkerId: "test-worker",
+            automaticReplicaProvisioning: true,
+            automaticReplicaSynchronization: "fast-forward-primary",
+          },
+        })
+      ).json(),
+    );
+    expect(placementSettings.preferences).toMatchObject({
+      defaultWorkerId: "test-worker",
+      automaticReplicaProvisioning: true,
+      automaticReplicaSynchronization: "fast-forward-primary",
+    });
+    expect(
+      await firstApp.inject({
+        method: "PATCH",
+        url: "/api/settings",
+        payload: { defaultWorkerId: "unknown-worker" },
+      }),
+    ).toMatchObject({ statusCode: 400 });
     expect(
       (
         await firstApp.inject({
@@ -1932,6 +1960,23 @@ describe("local server foundation", () => {
       setupError: null,
       source: null,
     });
+    const preferredProject = projectSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/projects/${queuedProject.id}/preferred-worker`,
+          payload: { workerId: "test-worker" },
+        })
+      ).json(),
+    );
+    expect(preferredProject.preferredWorkerId).toBe("test-worker");
+    expect(
+      await firstApp.inject({
+        method: "PATCH",
+        url: `/api/projects/${queuedProject.id}/preferred-worker`,
+        payload: { workerId: "unknown-worker" },
+      }),
+    ).toMatchObject({ statusCode: 404 });
     await vi.waitFor(() => expect(releaseProjectClone).not.toBeNull());
     const parallelResponse = await firstApp.inject({
       method: "POST",
@@ -5284,6 +5329,9 @@ describe("local server foundation", () => {
       desktopFrameRate: 60,
       desktopStreamQuality: "balanced",
       defaultModelId: selectedModel.id,
+      defaultWorkerId: "test-worker",
+      automaticReplicaProvisioning: true,
+      automaticReplicaSynchronization: "fast-forward-primary",
     });
     expect(
       explorerListSchema.parse(

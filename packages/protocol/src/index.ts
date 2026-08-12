@@ -1025,6 +1025,11 @@ export const userSettingsSchema = z.object({
   desktopFrameRate: z.union([z.literal(15), z.literal(30), z.literal(60)]),
   desktopStreamQuality: z.enum(["adaptive", "data-saver", "balanced", "sharp"]),
   defaultModelId: z.string().min(1).nullable(),
+  defaultWorkerId: z.string().min(1).nullable().default(null),
+  automaticReplicaProvisioning: z.boolean().default(false),
+  automaticReplicaSynchronization: z
+    .enum(["off", "verify-only", "fast-forward-primary"])
+    .default("off"),
 });
 
 export const userSettingsUpdateSchema = userSettingsSchema.partial();
@@ -1783,6 +1788,7 @@ export const projectSummarySchema = z.object({
   setupStatus: projectSetupStatusSchema,
   setupError: z.string().min(1).nullable(),
   worktreePolicy: worktreePolicySchema,
+  preferredWorkerId: z.string().min(1).nullable().optional(),
   github: z
     .object({
       repositoryId: z.string().min(1),
@@ -1797,6 +1803,10 @@ export const projectSummarySchema = z.object({
 });
 
 export const projectListSchema = z.array(projectSummarySchema);
+
+export const projectPreferredWorkerUpdateSchema = z.object({
+  workerId: z.string().min(1).nullable(),
+});
 
 const tunnelResourceIdSchema = z.string().trim().min(1).max(200);
 const tunnelNameSchema = z.string().trim().min(1).max(120);
@@ -7290,6 +7300,9 @@ export type UserSettings = z.infer<typeof userSettingsSchema>;
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
 export type SettingsBundle = z.infer<typeof settingsBundleSchema>;
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
+export type ProjectPreferredWorkerUpdate = z.infer<
+  typeof projectPreferredWorkerUpdateSchema
+>;
 export type ProjectReplicaSummary = z.infer<typeof projectReplicaSummarySchema>;
 export type ProjectReplicaJobKind = z.infer<typeof projectReplicaJobKindSchema>;
 export type ProjectReplicaJobState = z.infer<
