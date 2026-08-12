@@ -1,4 +1,5 @@
 import {
+  ArrowRightLeft,
   ArrowDownToLine,
   ArrowUpFromLine,
   CircleAlert,
@@ -41,6 +42,13 @@ interface ChatHeaderActions {
   consoleActive: boolean;
   consolePending: boolean;
   inspectCustomizations(): void;
+  relocation: {
+    active: boolean;
+    available: boolean;
+    open: boolean;
+    problem: boolean;
+    show(): void;
+  };
   toggleConsole(): void;
 }
 
@@ -239,6 +247,35 @@ export function ContentHeaderActions({
       ) : null}
       {chat ? (
         <>
+          {chat.relocation.available ? (
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-pressed={chat.relocation.open}
+              className={cn(chat.relocation.problem && "text-destructive")}
+              onClick={chat.relocation.show}
+              title={
+                chat.relocation.problem
+                  ? "Chat move needs attention"
+                  : chat.relocation.active
+                    ? "View chat move progress"
+                    : "Move chat to another worker"
+              }
+            >
+              {chat.relocation.problem ? (
+                <CircleAlert className="size-4" />
+              ) : chat.relocation.active ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ArrowRightLeft className="size-4" />
+              )}
+              <span className="sr-only">
+                {chat.relocation.active
+                  ? "View chat move progress"
+                  : "Move chat to another worker"}
+              </span>
+            </Button>
+          ) : null}
           <Button
             size="icon"
             variant="ghost"

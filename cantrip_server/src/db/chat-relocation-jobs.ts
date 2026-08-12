@@ -1080,6 +1080,20 @@ export class ChatRelocationJobRepository {
     error: ChatRelocationError,
   ): Promise<ChatRelocationJobSummary> {
     const now = new Date();
+    const currentRows = await this.database
+      .select()
+      .from(schema.chatRelocationJobs)
+      .where(
+        and(
+          eq(schema.chatRelocationJobs.id, jobId),
+          eq(schema.chatRelocationJobs.commandId, commandId),
+          eq(schema.chatRelocationJobs.attempt, attempt),
+          inArray(schema.chatRelocationJobs.state, [...RUNNING_STATES]),
+        ),
+      )
+      .limit(1);
+    if (!currentRows[0]) throw new ChatRelocationJobStaleAttemptError();
+    const current = toJob(currentRows[0]);
     const rows = await this.database
       .update(schema.chatRelocationJobs)
       .set({
@@ -1087,7 +1101,9 @@ export class ChatRelocationJobRepository {
         stateRevision: sql`${schema.chatRelocationJobs.stateRevision} + 1`,
         commandId: null,
         leaseExpiresAt: null,
-        progress: progress("failed", 100, error.message, now),
+        progress: error.retryable
+          ? progress("blocked", current.progress.percent, error.message, now)
+          : progress("failed", 100, error.message, now),
         lastErrorCode: error.code,
         lastErrorMessage: error.message,
         errorRetryable: error.retryable,
