@@ -10,6 +10,7 @@ import {
   normalizeTarget,
   verifyBuild,
 } from "./cantrip-code/build-lib.mjs";
+import { buildCantripCli, bundleCantripCli } from "./cantrip-cli/build.mjs";
 import {
   bundleNodeRuntime,
   writeServiceLaunchers,
@@ -113,6 +114,7 @@ async function packageService(name, destination, { standalone = true } = {}) {
   if (name === "worker") {
     const bin = path.join(destination, "bin");
     await cp(path.join(codexBuild, "bundle"), bin, { recursive: true });
+    await bundleCantripCli(root, bin);
   }
   await cp(
     path.join(root, "deploy", `${name}.README.md`),
@@ -166,8 +168,18 @@ function buildCodex() {
   run(process.execPath, ["scripts/cantrip-codex/build.mjs"]);
 }
 
+function buildCli() {
+  buildCantripCli(root, {
+    release: true,
+    run: (command, arguments_) => run(command, arguments_),
+  });
+}
+
 async function packageStandalone(selection) {
-  if (selection === "worker" || selection === "services") buildCodex();
+  if (selection === "worker" || selection === "services") {
+    buildCodex();
+    buildCli();
+  }
   buildSelectedServices(selection);
   if (selection === "server" || selection === "services") {
     await packageService(
@@ -211,6 +223,7 @@ async function packageDesktopRuntime() {
     }
   } else {
     buildCodex();
+    buildCli();
     buildSelectedServices("services");
     await packageService("server", path.join(runtime, "server"), {
       standalone: false,

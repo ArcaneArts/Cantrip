@@ -45,6 +45,7 @@ playwright-report/
 .DS_Store
 
 # Rust/Tauri build output.
+cantrip_cli/target/
 cantrip_app/src-tauri/target/
 cantrip_app/src-tauri/gen/
 cantrip_app/src-tauri/resources/runtime/*

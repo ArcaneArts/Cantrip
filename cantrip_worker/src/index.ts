@@ -14,6 +14,7 @@ import { verifyCodexInstallation } from "./codex/bundled-runtime.js";
 import { discoverCodexRuntime } from "./codex/discovery.js";
 import type { CodexRuntime } from "./codex/runtime.js";
 import { invokeCantripExecutionTool } from "./codex/worktree-tool-client.js";
+import { CantripCliBroker } from "./cli-broker.js";
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
 import { discoverBrowserServices } from "./browser/service-discovery.js";
 import { discoverCantripCode } from "./code/installation.js";
@@ -1305,9 +1306,11 @@ async function start(): Promise<void> {
       commandConnection.sendTunnelDataPlaneFrame(header, payload),
     () => commandConnection.waitForTunnelDataPlaneCapacity(),
   );
+  const cliBroker = new CantripCliBroker(config);
+  const cliConnection = await cliBroker.start();
 
   console.log(
-    `[cantrip_worker] Starting ${heartbeat.name} (${heartbeat.workerId}); Codex: ${codexRuntime.version?.raw ?? "not found"} (${codexRuntime.compatibility}, ${config.codexInstallation.source}); Code: ${codeDiscovery.capabilities.available ? `${codeDiscovery.capabilities.version} (${codeDiscovery.installation?.source ?? "unknown"})` : `unavailable (${codeDiscovery.capabilities.reason ?? "unknown error"})`}; Browser: ${browserAdapter.executable ?? "Chromium not found"}; Desktop: ${desktopAdapter.available ? `${desktopAdapter.frameBackend} capture ready` : `unavailable (${desktopAdapter.initializationError ?? "unknown error"})`}`,
+    `[cantrip_worker] Starting ${heartbeat.name} (${heartbeat.workerId}); Codex: ${codexRuntime.version?.raw ?? "not found"} (${codexRuntime.compatibility}, ${config.codexInstallation.source}); CLI: ${cliBroker.binary} (${cliConnection.endpoint}); Code: ${codeDiscovery.capabilities.available ? `${codeDiscovery.capabilities.version} (${codeDiscovery.installation?.source ?? "unknown"})` : `unavailable (${codeDiscovery.capabilities.reason ?? "unknown error"})`}; Browser: ${browserAdapter.executable ?? "Chromium not found"}; Desktop: ${desktopAdapter.available ? `${desktopAdapter.frameBackend} capture ready` : `unavailable (${desktopAdapter.initializationError ?? "unknown error"})`}`,
   );
 
   const publish = async () => {
@@ -1357,6 +1360,7 @@ async function start(): Promise<void> {
       await code.close();
       await remoteSurfaces.closeAll();
       await desktopAdapter.shutdown();
+      await cliBroker.close();
       for (const runtime of codexRuntimes.values()) {
         runtime.close();
       }
