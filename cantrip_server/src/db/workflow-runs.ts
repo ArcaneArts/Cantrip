@@ -75,6 +75,11 @@ import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
 import * as schema from "./schema.js";
 import {
+  acquireWorkflowLogicalBranchLease,
+  LogicalBranchLeaseConflictError,
+  releaseWorkflowLogicalBranchLease,
+} from "./logical-branch-leases.js";
+import {
   aggregateWorkflowUsage,
   cancelPendingWorkflowGates,
   insertWorkflowRunEvent,
@@ -1105,6 +1110,18 @@ export class WorkflowRunRepository {
           .limit(1);
         if (existing[0]) {
           this.assertWorktreeLeaseReservation(existing[0], input);
+          if (!context.run.projectId || !existing[0].branchName) {
+            throw new WorkflowRunConflictError(
+              "The workflow worktree lease is not attached to a project branch.",
+            );
+          }
+          await acquireWorkflowLogicalBranchLease(transaction, {
+            branchName: existing[0].branchName,
+            leaseId: existing[0].id,
+            projectId: context.run.projectId,
+            workerId: existing[0].workerId ?? input.workerId,
+            worktreeId: existing[0].worktreeId,
+          });
           return existing[0];
         }
         if (
@@ -1175,8 +1192,18 @@ export class WorkflowRunRepository {
             baseRevision,
           })
           .returning();
+        const reserved = rows[0] ?? null;
+        if (reserved) {
+          await acquireWorkflowLogicalBranchLease(transaction, {
+            branchName,
+            leaseId: reserved.id,
+            projectId: context.run.projectId,
+            workerId: input.workerId,
+            worktreeId: null,
+          });
+        }
         created = true;
-        return rows[0] ?? null;
+        return reserved;
       });
       if (!lease) return null;
       if (created) {
@@ -1200,6 +1227,9 @@ export class WorkflowRunRepository {
       }
       return { created, lease: toWorkflowWorktreeLease(lease) };
     } catch (error) {
+      if (error instanceof LogicalBranchLeaseConflictError) {
+        throw new WorkflowRunConflictError(error.message);
+      }
       if (!isUniqueViolation(error)) throw error;
       const existing = await this.unreleasedWorktreeLeaseRow(ownerId, input);
       if (!existing) throw error;
@@ -1222,7 +1252,10 @@ export class WorkflowRunRepository {
     let activated = false;
     const lease = await this.database.transaction(async (transaction) => {
       const rows = await transaction
-        .select({ lease: schema.workflowWorktreeLeases })
+        .select({
+          lease: schema.workflowWorktreeLeases,
+          projectId: schema.workflowRuns.projectId,
+        })
         .from(schema.workflowWorktreeLeases)
         .innerJoin(
           schema.workflowRuns,
@@ -1235,7 +1268,13 @@ export class WorkflowRunRepository {
         .for("update")
         .limit(1);
       const current = rows[0]?.lease;
+      const projectId = rows[0]?.projectId;
       if (!current) return null;
+      if (!projectId || !current.branchName || !current.workerId) {
+        throw new WorkflowRunConflictError(
+          "The workflow worktree lease is not attached to a project branch.",
+        );
+      }
       if (current.state === "active") {
         if (
           current.worktreeId !== input.worktreeId ||
@@ -1244,6 +1283,20 @@ export class WorkflowRunRepository {
           throw new WorkflowRunConflictError(
             "The workflow worktree lease is already active elsewhere.",
           );
+        }
+        try {
+          await acquireWorkflowLogicalBranchLease(transaction, {
+            branchName: current.branchName,
+            leaseId: current.id,
+            projectId,
+            workerId: current.workerId,
+            worktreeId: current.worktreeId,
+          });
+        } catch (error) {
+          if (error instanceof LogicalBranchLeaseConflictError) {
+            throw new WorkflowRunConflictError(error.message);
+          }
+          throw error;
         }
         return current;
       }
@@ -1311,6 +1364,20 @@ export class WorkflowRunRepository {
           "The workflow worktree lease changed during activation.",
         );
       }
+      try {
+        await acquireWorkflowLogicalBranchLease(transaction, {
+          branchName: current.branchName,
+          leaseId: current.id,
+          projectId,
+          workerId: current.workerId,
+          worktreeId: input.worktreeId,
+        });
+      } catch (error) {
+        if (error instanceof LogicalBranchLeaseConflictError) {
+          throw new WorkflowRunConflictError(error.message);
+        }
+        throw error;
+      }
       activated = true;
       return updated[0];
     });
@@ -1375,6 +1442,9 @@ export class WorkflowRunRepository {
         })
         .where(eq(schema.workflowWorktreeLeases.id, leaseId))
         .returning();
+      if (!input.recoverable && updated[0]) {
+        await releaseWorkflowLogicalBranchLease(transaction, leaseId);
+      }
       failed = true;
       return updated[0] ?? null;
     });
@@ -1663,6 +1733,9 @@ export class WorkflowRunRepository {
             throw new WorkflowControlConflictError(
               "The workflow worktree lease changed while resolving its outcome.",
             );
+          }
+          if (terminal) {
+            await releaseWorkflowLogicalBranchLease(transaction, leaseId);
           }
           await insertWorkflowRunEvent(transaction, {
             runId,

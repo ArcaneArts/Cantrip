@@ -175,14 +175,17 @@ Run the focused automated suites from a clean milestone worktree:
 ```shell
 pnpm --filter @cantrip/protocol test
 pnpm --filter @cantrip/worker test -- worktrees.test.ts app-server.test.ts
-pnpm --filter @cantrip/server test -- worktree-migration.test.ts worktree-api.test.ts
+pnpm --filter @cantrip/server test -- worktree-migration.test.ts worktree-api.test.ts project-placement-api.test.ts workflow-domain-migration.test.ts
 pnpm --filter @cantrip/app test -- worktree-control.test.ts git-history.test.ts project-settings-page.test.tsx desktop-popout.test.ts
 pnpm check
 pnpm --filter @cantrip/app build
 ```
 
 The migration suite applies the real SQL migration chain to PGlite and verifies
-Primary/tab/transcript backfills. To exercise the same Drizzle migration folder
+Primary/tab/transcript backfills plus deterministic project-wide logical branch
+lease backfill. The placement and workflow suites verify that different
+worker-local worktree IDs cannot concurrently acquire the same project branch.
+To exercise the same Drizzle migration folder
 against disposable PostgreSQL, start the repository's tmpfs-backed database
 and the server with `DATABASE_URL`:
 

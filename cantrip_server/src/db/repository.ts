@@ -152,6 +152,11 @@ import {
 } from "../security/secret-vault.js";
 import * as schema from "./schema.js";
 import { ChatRelocationJobRepository } from "./chat-relocation-jobs.js";
+import {
+  acquireChatLogicalBranchLease,
+  LogicalBranchLeaseConflictError,
+  releaseChatLogicalBranchLease,
+} from "./logical-branch-leases.js";
 import { ProjectAutomationRepository } from "./project-automations.js";
 import { ProjectReplicaJobRepository } from "./project-replica-jobs.js";
 import { WorkflowRunRepository } from "./workflow-runs.js";
@@ -6294,10 +6299,26 @@ export class ServerRepository {
         .update(schema.agentInteractionRequests)
         .set({ status: "interrupted", resolvedAt: now, updatedAt: now })
         .where(eq(schema.agentInteractionRequests.status, "pending"));
+      const interruptedPrimaryLanes = await transaction
+        .select({ id: schema.chatExecutionLanes.id })
+        .from(schema.chatExecutionLanes)
+        .innerJoin(
+          schema.projectWorktrees,
+          eq(schema.projectWorktrees.id, schema.chatExecutionLanes.worktreeId),
+        )
+        .where(
+          and(
+            eq(schema.chatExecutionLanes.state, "active"),
+            eq(schema.projectWorktrees.isPrimary, true),
+          ),
+        );
       await transaction
         .update(schema.chatExecutionLanes)
         .set({ state: "suspended", updatedAt: now })
         .where(eq(schema.chatExecutionLanes.state, "active"));
+      for (const lane of interruptedPrimaryLanes) {
+        await releaseChatLogicalBranchLease(transaction, lane.id);
+      }
       await transaction
         .update(schema.chats)
         .set({ status: "failed", updatedAt: now })
@@ -6489,6 +6510,15 @@ export class ServerRepository {
             .returning();
           lane = firstOrThrow(inserted, "creating an execution lane");
         }
+        await acquireChatLogicalBranchLease(transaction, {
+          branchName: row.worktree.branch,
+          chatId,
+          detached: row.worktree.detached,
+          laneId: lane.id,
+          projectId: row.chat.projectId,
+          workerId: row.worktree.workerId,
+          worktreeId: row.worktree.id,
+        });
         return {
           automationPaused: row.chat.automationPaused,
           chatId,
@@ -6511,6 +6541,9 @@ export class ServerRepository {
       });
     } catch (error) {
       if (error instanceof ExecutionLaneConflictError) throw error;
+      if (error instanceof LogicalBranchLeaseConflictError) {
+        throw new ExecutionLaneConflictError(error.message);
+      }
       if (
         /unique|duplicate/i.test(error instanceof Error ? error.message : "")
       ) {
@@ -6529,7 +6562,24 @@ export class ServerRepository {
   ): Promise<void> {
     const now = new Date();
     await this.database.transaction(async (transaction) => {
-      await transaction
+      const laneRows = await transaction
+        .select({
+          lane: schema.chatExecutionLanes,
+          isPrimary: schema.projectWorktrees.isPrimary,
+        })
+        .from(schema.chatExecutionLanes)
+        .innerJoin(
+          schema.projectWorktrees,
+          eq(schema.projectWorktrees.id, schema.chatExecutionLanes.worktreeId),
+        )
+        .where(
+          and(
+            eq(schema.chatExecutionLanes.id, laneId),
+            eq(schema.chatExecutionLanes.chatId, chatId),
+          ),
+        )
+        .limit(1);
+      const suspended = await transaction
         .update(schema.chatExecutionLanes)
         .set({ state: "suspended", updatedAt: now })
         .where(
@@ -6538,7 +6588,11 @@ export class ServerRepository {
             eq(schema.chatExecutionLanes.chatId, chatId),
             eq(schema.chatExecutionLanes.state, "active"),
           ),
-        );
+        )
+        .returning({ id: schema.chatExecutionLanes.id });
+      if (suspended[0] && laneRows[0]?.isPrimary) {
+        await releaseChatLogicalBranchLease(transaction, laneId);
+      }
       await transaction
         .update(schema.chats)
         .set({ status, updatedAt: now })
@@ -6649,6 +6703,7 @@ export class ServerRepository {
           returnedToPrimary: false,
         };
       }
+      await releaseChatLogicalBranchLease(transaction, laneId);
 
       let returnedToPrimary = false;
       if (
@@ -6896,6 +6951,15 @@ export class ServerRepository {
               updatedAt: new Date(),
             })
             .where(eq(schema.chatExecutionLanes.id, existing[0].id));
+          await acquireChatLogicalBranchLease(transaction, {
+            branchName: target.worktree.branch,
+            chatId,
+            detached: target.worktree.detached,
+            laneId: existing[0].id,
+            projectId: current.projectId,
+            workerId: target.workerId,
+            worktreeId: target.worktree.id,
+          });
           return existing[0].id;
         }
         const inserted = await transaction
@@ -6915,11 +6979,27 @@ export class ServerRepository {
             codexThreadId: runtime.codexThreadId,
           })
           .returning({ id: schema.chatExecutionLanes.id });
-        return firstOrThrow(inserted, "scheduling a worktree transition").id;
+        const insertedLane = firstOrThrow(
+          inserted,
+          "scheduling a worktree transition",
+        );
+        await acquireChatLogicalBranchLease(transaction, {
+          branchName: target.worktree.branch,
+          chatId,
+          detached: target.worktree.detached,
+          laneId: insertedLane.id,
+          projectId: current.projectId,
+          workerId: target.workerId,
+          worktreeId: target.worktree.id,
+        });
+        return insertedLane.id;
       });
       return this.getChatExecutionLaneContext(ownerId, chatId, laneId);
     } catch (error) {
       if (error instanceof ExecutionLaneConflictError) throw error;
+      if (error instanceof LogicalBranchLeaseConflictError) {
+        throw new ExecutionLaneConflictError(error.message);
+      }
       if (
         /unique|duplicate/i.test(error instanceof Error ? error.message : "")
       ) {
@@ -6999,12 +7079,21 @@ export class ServerRepository {
       laneId,
     );
     if (!context || context.lane.state !== "delivering") return false;
-    const rows = await this.database
-      .update(schema.chatExecutionLanes)
-      .set({ state: "suspended", transitionKind: null, updatedAt: new Date() })
-      .where(eq(schema.chatExecutionLanes.id, laneId))
-      .returning({ id: schema.chatExecutionLanes.id });
-    return rows.length === 1;
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .update(schema.chatExecutionLanes)
+        .set({
+          state: "suspended",
+          transitionKind: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.chatExecutionLanes.id, laneId))
+        .returning({ id: schema.chatExecutionLanes.id });
+      if (rows[0] && context.worktree.isPrimary) {
+        await releaseChatLogicalBranchLease(transaction, laneId);
+      }
+      return rows.length === 1;
+    });
   }
 
   async applyChatWorktreeTransition(
@@ -7038,7 +7127,7 @@ export class ServerRepository {
     const fromWorktreeId = pending.chat.activeWorktreeId;
     return this.database.transaction(async (transaction) => {
       if (transitionKind === "release") {
-        await transaction
+        const releasedLanes = await transaction
           .update(schema.chatExecutionLanes)
           .set({
             state: "released",
@@ -7051,7 +7140,11 @@ export class ServerRepository {
               eq(schema.chatExecutionLanes.worktreeId, fromWorktreeId),
               ne(schema.chatExecutionLanes.state, "released"),
             ),
-          );
+          )
+          .returning({ id: schema.chatExecutionLanes.id });
+        for (const releasedLane of releasedLanes) {
+          await releaseChatLogicalBranchLease(transaction, releasedLane.id);
+        }
       }
       const lanes = await transaction
         .update(schema.chatExecutionLanes)
@@ -7068,6 +7161,9 @@ export class ServerRepository {
         )
         .returning();
       const lane = firstOrThrow(lanes, "applying a worktree transition");
+      if (pending.worktree.isPrimary) {
+        await releaseChatLogicalBranchLease(transaction, lane.id);
+      }
       await transaction
         .update(schema.terminals)
         .set({

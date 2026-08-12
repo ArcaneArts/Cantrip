@@ -315,6 +315,7 @@ The database is the source of truth for Cantrip entities. Exact columns can evol
 | `project_worktrees` | Durable observations for Primary, Cantrip-managed, agent, user, and external checkouts: worker/path ownership, branch/HEAD, lifecycle, lock, detached, and scan state. |
 | `chats` | Server-owned logical conversation with project, title, active worker, runtime profile, status, model, and event cursor. |
 | `chat_execution_lanes` | Historical and active chat/worktree leases with actor, purpose, transition state, base/starting revision, runtime association, and lifecycle timestamps. |
+| `project_branch_leases` | Project-wide logical Git branch mutation fences shared by chat execution lanes and workflow worktree leases across every worker replica. |
 | `chat_runtime_sessions` | Mapping from one logical chat to a worker- and worktree-specific Codex thread/session, active model route, status, and replay/handoff metadata. |
 | `chat_messages` | Ordered server-held conversation history that remains readable independently of worker availability, including the concrete model route/provider audit for dispatched user turns. |
 | `turns` | Cantrip projection of Codex turns, status, timestamps, usage, and error summary. |

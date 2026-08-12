@@ -227,6 +227,37 @@ beforeAll(async () => {
   betaWorktreeId = worktrees.find(
     ({ workerId }) => workerId === "worker-beta",
   )!.id;
+  for (const worktree of worktrees) {
+    await database.repository.recordProjectWorktreeStatus(
+      LOCAL_USER_ID,
+      projectId,
+      worktree.id,
+      {
+        worktree: {
+          path: worktree.path,
+          head: "1".repeat(40),
+          branch: "main",
+          detached: false,
+          isPrimary: true,
+          managed: true,
+          locked: false,
+          lockReason: null,
+          prunable: false,
+          pruneReason: null,
+          missing: false,
+        },
+        status: {
+          branch: "main",
+          head: "1".repeat(40),
+          upstream: "origin/main",
+          ahead: 0,
+          behind: 0,
+          files: [],
+          branches: [],
+        },
+      },
+    );
+  }
   app = await buildApp({ config, database, logger: false, workerBridge });
 });
 
@@ -251,6 +282,69 @@ afterAll(async () => {
 });
 
 describe.sequential("project execution placement API", () => {
+  it("serializes logical branch mutation across worker replicas", async () => {
+    const alphaChat = await database.repository.createChat(
+      LOCAL_USER_ID,
+      projectId,
+      {
+        title: "Alpha branch owner",
+        worktreeId: alphaWorktreeId,
+        worktreeMode: "pinned",
+      },
+    );
+    const betaChat = await database.repository.createChat(
+      LOCAL_USER_ID,
+      projectId,
+      {
+        title: "Beta branch contender",
+        worktreeId: betaWorktreeId,
+        worktreeMode: "pinned",
+      },
+    );
+    expect(alphaChat).not.toBeNull();
+    expect(betaChat).not.toBeNull();
+
+    const alphaLane = await database.repository.startChatExecutionLane(
+      LOCAL_USER_ID,
+      alphaChat!.id,
+      "agent",
+      "Mutate main on Alpha",
+    );
+    expect(alphaLane).toMatchObject({
+      workerId: "worker-alpha",
+      worktreeId: alphaWorktreeId,
+    });
+    await expect(
+      database.repository.startChatExecutionLane(
+        LOCAL_USER_ID,
+        betaChat!.id,
+        "agent",
+        "Mutate main on Beta",
+      ),
+    ).rejects.toThrow(/Logical branch main is already leased/u);
+
+    await database.repository.finishChatExecutionLane(
+      alphaChat!.id,
+      alphaLane!.executionLaneId,
+      "idle",
+    );
+    const betaLane = await database.repository.startChatExecutionLane(
+      LOCAL_USER_ID,
+      betaChat!.id,
+      "agent",
+      "Mutate main after Alpha",
+    );
+    expect(betaLane).toMatchObject({
+      workerId: "worker-beta",
+      worktreeId: betaWorktreeId,
+    });
+    await database.repository.finishChatExecutionLane(
+      betaChat!.id,
+      betaLane!.executionLaneId,
+      "idle",
+    );
+  });
+
   it("uses project preference, global default, then a stable compatible fallback", async () => {
     const terminal = await database.repository.resolveProjectExecutionPlacement(
       LOCAL_USER_ID,

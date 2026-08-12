@@ -29,6 +29,87 @@ async function applyMigrations(
 }
 
 describe("worktree persistence migration", () => {
+  it("backfills one logical owner per project branch", async () => {
+    const database = new PGlite();
+    try {
+      await applyMigrations(database, 0, 63);
+      await database.exec(`
+        INSERT INTO users (id, kind, display_name)
+        VALUES ('user-lease', 'anonymous', 'Lease User');
+
+        INSERT INTO workers (
+          id, owner_id, name, platform, architecture, started_at, last_seen_at
+        ) VALUES
+          ('worker-lease-a', 'user-lease', 'Lease A', 'darwin', 'arm64', now(), now()),
+          ('worker-lease-b', 'user-lease', 'Lease B', 'linux', 'x64', now(), now());
+
+        INSERT INTO projects (id, owner_id, name)
+        VALUES ('project-lease', 'user-lease', 'Cantrip');
+
+        INSERT INTO project_sources (
+          id, project_id, worker_id, absolute_path, display_path
+        ) VALUES
+          ('source-lease-a', 'project-lease', 'worker-lease-a', '/repo-a', 'repo-a'),
+          ('source-lease-b', 'project-lease', 'worker-lease-b', '/repo-b', 'repo-b');
+
+        INSERT INTO project_worktrees (
+          id, project_source_id, worker_id, name, absolute_path, display_path,
+          is_primary, is_default, origin, lifecycle_state, branch, head
+        ) VALUES
+          ('primary-lease-a', 'source-lease-a', 'worker-lease-a', 'Primary', '/repo-a', 'repo-a', true, true, 'cantrip', 'ready', 'main', 'abc123'),
+          ('primary-lease-b', 'source-lease-b', 'worker-lease-b', 'Primary', '/repo-b', 'repo-b', true, true, 'cantrip', 'ready', 'main', 'abc123'),
+          ('feature-lease-b', 'source-lease-b', 'worker-lease-b', 'Feature', '/feature-b', 'feature-b', false, false, 'agent', 'ready', 'feature', 'def456');
+
+        INSERT INTO chats (
+          id, project_id, title, status, active_worker_id, active_worktree_id
+        ) VALUES
+          ('chat-lease-active', 'project-lease', 'Active', 'running', 'worker-lease-a', 'primary-lease-a'),
+          ('chat-lease-idle', 'project-lease', 'Idle', 'idle', 'worker-lease-b', 'primary-lease-b'),
+          ('chat-lease-feature', 'project-lease', 'Feature', 'idle', 'worker-lease-b', 'feature-lease-b');
+
+        INSERT INTO chat_execution_lanes (
+          id, chat_id, worktree_id, worker_id, acquiring_actor, exclusive,
+          state, purpose
+        ) VALUES
+          ('lane-lease-active', 'chat-lease-active', 'primary-lease-a', 'worker-lease-a', 'agent', false, 'active', 'Active turn'),
+          ('lane-lease-idle', 'chat-lease-idle', 'primary-lease-b', 'worker-lease-b', 'agent', false, 'suspended', 'Idle Primary'),
+          ('lane-lease-feature', 'chat-lease-feature', 'feature-lease-b', 'worker-lease-b', 'agent', true, 'suspended', 'Retained feature');
+      `);
+
+      await applyMigrations(database, 64, 64);
+
+      const leases = await database.query<{
+        branch_name: string;
+        chat_execution_lane_id: string;
+      }>(`
+        SELECT branch_name, chat_execution_lane_id
+        FROM project_branch_leases
+        ORDER BY branch_name
+      `);
+      expect(leases.rows).toEqual([
+        {
+          branch_name: "feature",
+          chat_execution_lane_id: "lane-lease-feature",
+        },
+        {
+          branch_name: "main",
+          chat_execution_lane_id: "lane-lease-active",
+        },
+      ]);
+      await expect(
+        database.exec(`
+          INSERT INTO project_branch_leases (
+            id, project_id, branch_name, chat_execution_lane_id
+          ) VALUES (
+            'duplicate-main', 'project-lease', 'main', 'lane-lease-idle'
+          );
+        `),
+      ).rejects.toThrow();
+    } finally {
+      await database.close();
+    }
+  });
+
   it("backfills Primary routing and historical execution attribution", async () => {
     const database = new PGlite();
     try {
