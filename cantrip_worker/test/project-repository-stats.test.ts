@@ -57,6 +57,7 @@ describe("project repository statistics", () => {
     await expect(readProjectRepositoryStats(root)).resolves.toEqual({
       commitCount: 1,
       trackedFileCount: 4,
+      trackedByteCount: 33,
       textFileCount: 2,
       lineCount: 3,
       excludedFileCount: 2,
@@ -70,6 +71,7 @@ describe("project repository statistics", () => {
     await expect(readProjectRepositoryStats(root)).resolves.toEqual({
       commitCount: 0,
       trackedFileCount: 0,
+      trackedByteCount: 0,
       textFileCount: 0,
       lineCount: 0,
       excludedFileCount: 0,

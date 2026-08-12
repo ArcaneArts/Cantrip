@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ProjectSurface } from "@/lib/project-surface";
 
 import {
+  formatByteCount,
   ProjectOverview,
   projectSurfaceRuntimeState,
 } from "./project-overview";
@@ -60,10 +61,11 @@ const worktree = {
 const stats = {
   commitCount: 321,
   trackedFileCount: 2_345,
+  trackedByteCount: 3.5 * 1024 ** 3,
   textFileCount: 2_300,
   lineCount: 12_345,
   excludedFileCount: 45,
-  truncated: false,
+  truncated: true,
 } satisfies ProjectRepositoryStats;
 
 function chatSurface(status: ChatSummary["status"]): ProjectSurface {
@@ -125,9 +127,19 @@ describe("project overview", () => {
     expect(markup).toContain("ArcaneArts/Cantrip");
     expect(markup).toContain("12,345");
     expect(markup).toContain("321");
+    expect(markup).toContain("3.5 GB");
     expect(markup).toContain("Ship project overview");
+    expect(markup).toContain('aria-label="Open Ship project overview"');
+    expect(markup).toContain('tabindex="0"');
     expect(markup).toContain("Running");
     expect(markup).toContain("Worker online");
+    expect(markup).not.toContain("bounded line scan");
+  });
+
+  it("formats tracked repository sizes at stable unit boundaries", () => {
+    expect(formatByteCount(0)).toBe("0 B");
+    expect(formatByteCount(1024)).toBe("1 KB");
+    expect(formatByteCount(1.5 * 1024 ** 3)).toBe("1.5 GB");
   });
 
   it("renders a useful empty state before the first project tab exists", () => {

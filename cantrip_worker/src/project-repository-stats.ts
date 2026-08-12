@@ -10,9 +10,9 @@ import {
 
 const execFileAsync = promisify(execFile);
 const MAX_GIT_OUTPUT_BYTES = 32 * 1024 * 1024;
-const MAX_SCANNED_BYTES = 256 * 1024 * 1024;
-const MAX_SCANNED_FILES = 50_000;
-const MAX_SINGLE_FILE_BYTES = 8 * 1024 * 1024;
+const MAX_TEXT_SCANNED_BYTES = 256 * 1024 * 1024;
+const MAX_TEXT_SCANNED_FILES = 50_000;
+const MAX_SINGLE_TEXT_FILE_BYTES = 8 * 1024 * 1024;
 const SCAN_CONCURRENCY = 16;
 
 async function gitOutput(cwd: string, args: string[]): Promise<string> {
@@ -43,16 +43,17 @@ export async function readProjectRepositoryStats(
   ]);
   const trackedPaths = trackedPathsText.split("\0").filter(Boolean);
   const root = path.resolve(cwd);
-  const scanPaths = trackedPaths.slice(0, MAX_SCANNED_FILES);
   let nextIndex = 0;
   let scannedBytes = 0;
+  let trackedByteCount = 0;
   let textFileCount = 0;
   let lineCount = 0;
-  let truncated = trackedPaths.length > scanPaths.length;
+  let truncated = trackedPaths.length > MAX_TEXT_SCANNED_FILES;
 
   const scanNext = async (): Promise<void> => {
-    while (nextIndex < scanPaths.length) {
-      const relativePath = scanPaths[nextIndex++]!;
+    while (nextIndex < trackedPaths.length) {
+      const pathIndex = nextIndex++;
+      const relativePath = trackedPaths[pathIndex]!;
       const absolutePath = path.resolve(root, relativePath);
       if (
         absolutePath === root ||
@@ -63,10 +64,14 @@ export async function readProjectRepositoryStats(
       }
       try {
         const stat = await lstat(absolutePath);
+        if (stat.isFile() || stat.isSymbolicLink()) {
+          trackedByteCount += stat.size;
+        }
         if (!stat.isFile()) continue;
+        if (pathIndex >= MAX_TEXT_SCANNED_FILES) continue;
         if (
-          stat.size > MAX_SINGLE_FILE_BYTES ||
-          scannedBytes + stat.size > MAX_SCANNED_BYTES
+          stat.size > MAX_SINGLE_TEXT_FILE_BYTES ||
+          scannedBytes + stat.size > MAX_TEXT_SCANNED_BYTES
         ) {
           truncated = true;
           continue;
@@ -83,14 +88,16 @@ export async function readProjectRepositoryStats(
   };
 
   await Promise.all(
-    Array.from({ length: Math.min(SCAN_CONCURRENCY, scanPaths.length) }, () =>
-      scanNext(),
+    Array.from(
+      { length: Math.min(SCAN_CONCURRENCY, trackedPaths.length) },
+      () => scanNext(),
     ),
   );
 
   return projectRepositoryStatsSchema.parse({
     commitCount: Number.parseInt(commitCountText, 10) || 0,
     trackedFileCount: trackedPaths.length,
+    trackedByteCount,
     textFileCount,
     lineCount,
     excludedFileCount: trackedPaths.length - textFileCount,
