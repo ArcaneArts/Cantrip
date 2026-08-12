@@ -150,4 +150,59 @@ describe("DirectAttachmentCoordinator", () => {
     });
     await coordinator.close();
   });
+
+  it("revokes only capabilities owned by the ended authorization session", async () => {
+    const commands: WorkerCommand[] = [];
+    const bus = {
+      isConnected: () => true,
+      request: vi.fn(async (_workerId: string, command: WorkerCommand) => {
+        commands.push(command);
+        return command.type === "direct.capability.prepare"
+          ? { accepted: true, capabilityId: command.binding.capabilityId }
+          : { revoked: true };
+      }),
+      subscribeWorkerDisconnect: () => () => undefined,
+    } as unknown as WorkerCommandBus;
+    const coordinator = new DirectAttachmentCoordinator(bus);
+    const ended = await coordinator.prepare({
+      authSessionId: "session-ended",
+      channels: ["probe"],
+      ownerId: "owner-1",
+      resourceId: "worker-1",
+      resourceKind: "probe",
+      worker: worker(),
+    });
+    const active = await coordinator.prepare({
+      authSessionId: "session-active",
+      channels: ["probe"],
+      ownerId: "owner-1",
+      resourceId: "worker-1",
+      resourceKind: "probe",
+      worker: worker(),
+    });
+
+    await coordinator.revokeSession("session-ended");
+
+    expect(
+      coordinator.matches(ended.binding.capabilityId, {
+        attachmentId: ended.binding.attachmentId,
+        authSessionId: "session-ended",
+        ownerId: "owner-1",
+      }),
+    ).toBe(false);
+    expect(
+      coordinator.matches(active.binding.capabilityId, {
+        attachmentId: active.binding.attachmentId,
+        authSessionId: "session-active",
+        ownerId: "owner-1",
+      }),
+    ).toBe(true);
+    expect(commands).toContainEqual(
+      expect.objectContaining({
+        type: "direct.capability.revoke",
+        capabilityId: ended.binding.capabilityId,
+      }),
+    );
+    await coordinator.close();
+  });
 });
