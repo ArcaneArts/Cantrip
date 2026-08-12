@@ -3,11 +3,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  tunnelAttachmentCreateResultSchema,
+  tunnelAttachmentReadySchema,
   tunnelListSchema,
   tunnelSummarySchema,
   unprobedCodexRuntimeReport,
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { WebSocket } from "ws";
 
 import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
@@ -34,8 +37,8 @@ const config: ServerConfig = {
 const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
-  isConnected() {
-    return false;
+  isConnected(workerId) {
+    return workerId === "worker-b";
   },
   sendSurfaceFrame() {
     return false;
@@ -56,6 +59,7 @@ let database: DatabaseConnection;
 let projectId: string;
 let userTunnelId: string;
 let managedTunnelId: string;
+let otherOwnerId: string;
 
 async function recordWorker(ownerId: string, workerId: string): Promise<void> {
   await database.repository.recordWorker(ownerId, {
@@ -139,6 +143,7 @@ describe.sequential("tunnel control plane", () => {
       passwordHash: "unused-test-hash",
       role: "member",
     });
+    otherOwnerId = account.id;
     await recordWorker(account.id, "other-worker");
 
     expect(
@@ -173,6 +178,138 @@ describe.sequential("tunnel control plane", () => {
       },
     });
     expect(missing.statusCode).toBe(404);
+  });
+
+  it("authenticates, rotates, and revokes short-lived desktop attachments", async () => {
+    const create = async () => {
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/tunnels/${userTunnelId}/attachments`,
+        payload: { clientId: "desktop-test" },
+      });
+      expect(response.statusCode).toBe(201);
+      return tunnelAttachmentCreateResultSchema.parse(response.json());
+    };
+    const first = await create();
+    expect(first.connectPath).not.toContain(first.secret);
+    expect(
+      await database.repository.stopDesktopTunnelAttachment(
+        otherOwnerId,
+        first.attachmentId,
+      ),
+    ).toBeNull();
+
+    let unauthorizedClose: Promise<number>;
+    const unauthorized = await app.injectWS(
+      first.connectPath,
+      { headers: { authorization: "Bearer invalid-credential" } },
+      {
+        onInit(client) {
+          unauthorizedClose = new Promise((resolve) =>
+            client.once("close", resolve),
+          );
+        },
+      },
+    );
+    expect(await unauthorizedClose!).toBe(1008);
+    unauthorized.terminate();
+
+    let firstClient: WebSocket | null = null;
+    const readyMessages: unknown[] = [];
+    const firstSocket = await app.injectWS(
+      first.connectPath,
+      { headers: { authorization: `Bearer ${first.secret}` } },
+      {
+        onInit(client) {
+          firstClient = client;
+          client.on("message", (data, binary) => {
+            if (!binary) readyMessages.push(JSON.parse(data.toString()));
+          });
+        },
+      },
+    );
+    if (!firstClient) throw new Error("Tunnel test socket did not initialize.");
+    firstClient.send(
+      JSON.stringify({
+        type: "initialize",
+        clientId: "desktop-test",
+        localHost: "127.0.0.1",
+        localPort: 45_123,
+      }),
+    );
+    await expect.poll(() => readyMessages.length).toBe(1);
+    expect(tunnelAttachmentReadySchema.parse(readyMessages[0])).toMatchObject({
+      attachmentId: first.attachmentId,
+      tunnelId: userTunnelId,
+    });
+    expect(
+      (await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId))
+        ?.attachments[0],
+    ).toMatchObject({
+      localHost: "127.0.0.1",
+      localPort: 45_123,
+      status: "active",
+    });
+
+    const editWhileActive = await app.inject({
+      method: "PATCH",
+      url: `/api/tunnels/${userTunnelId}`,
+      payload: { name: "Must remain locked" },
+    });
+    expect(editWhileActive.statusCode).toBe(409);
+
+    const firstClosed = new Promise<number>((resolve) =>
+      firstClient!.once("close", resolve),
+    );
+    const second = await create();
+    expect(second.attachmentId).toBe(first.attachmentId);
+    expect(await firstClosed).toBe(1008);
+
+    let staleClose: Promise<number>;
+    const stale = await app.injectWS(
+      first.connectPath,
+      { headers: { authorization: `Bearer ${first.secret}` } },
+      {
+        onInit(client) {
+          staleClose = new Promise((resolve) => client.once("close", resolve));
+        },
+      },
+    );
+    expect(await staleClose!).toBe(1008);
+    stale.terminate();
+
+    const revoke = await app.inject({
+      method: "DELETE",
+      url: `/api/tunnel-attachments/${second.attachmentId}`,
+    });
+    expect(revoke.statusCode).toBe(204);
+    expect(
+      (await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId))
+        ?.status,
+    ).toBe("stopped");
+    firstSocket.terminate();
+
+    const expired = await database.repository.createDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      userTunnelId,
+      {
+        clientId: "desktop-expired",
+        expiresAt: new Date(Date.now() - 1_000),
+        secretExpiresAt: new Date(Date.now() - 2_000),
+        secretHash: "expired-attachment-secret-hash",
+      },
+    );
+    expect(expired).not.toBeNull();
+    expect(await database.repository.expireDesktopTunnelAttachments()).toEqual([
+      expect.objectContaining({
+        attachmentId: expired!.attachmentId,
+        tunnelId: userTunnelId,
+      }),
+    ]);
+    expect(
+      (await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId))
+        ?.status,
+    ).toBe("failed");
   });
 
   it("registers managed tunnels idempotently and protects owner lifecycle", async () => {

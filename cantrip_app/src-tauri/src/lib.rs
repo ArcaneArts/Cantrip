@@ -11,8 +11,10 @@ use std::{
 use tauri::{Manager, RunEvent, State};
 
 mod project_share;
+mod tunnel_forward;
 
 use project_share::ProjectShareMounts;
+use tunnel_forward::TunnelForwards;
 
 struct ManagedRuntime {
     children: Mutex<Vec<Child>>,
@@ -294,11 +296,15 @@ pub fn run() {
             relay_client_log,
             set_macos_pro_mode,
             project_share::reveal_project_share,
+            tunnel_forward::start_tunnel_forward,
+            tunnel_forward::stop_tunnel_forward,
+            tunnel_forward::list_tunnel_forwards,
         ])
         .setup(|app| {
             let runtime = build_runtime(app).map_err(std::io::Error::other)?;
             app.manage(runtime);
             app.manage(ProjectShareMounts::default());
+            app.manage(TunnelForwards::default());
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -314,6 +320,7 @@ pub fn run() {
     app.run(|handle, event| {
         if matches!(event, RunEvent::Exit) {
             handle.state::<ProjectShareMounts>().cleanup();
+            handle.state::<TunnelForwards>().cleanup();
             let runtime = handle.state::<ManagedRuntime>();
             if let Ok(mut children) = runtime.children.lock() {
                 for child in children.iter_mut().rev() {

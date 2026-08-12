@@ -33,6 +33,12 @@ function routeBoundary(path) {
     return "public-authentication";
   }
   if (path.startsWith("/api/workflow-hooks/")) return "external-credential";
+  if (
+    path.endsWith("/connect") &&
+    path.startsWith("/api/tunnel-attachments/")
+  ) {
+    return "external-credential";
+  }
   if (path.startsWith("/api/internal/")) return "worker-control";
   return "application-principal";
 }
@@ -41,6 +47,12 @@ function ownerEvidence(path, text) {
   if (path === "/api" || path === "/api/bootstrap") return "public";
   if (path.startsWith("/api/auth/")) return "session-boundary";
   if (path.startsWith("/api/workflow-hooks/")) return "webhook-credential";
+  if (
+    path.endsWith("/connect") &&
+    path.startsWith("/api/tunnel-attachments/")
+  ) {
+    return "attachment-credential";
+  }
   if (path.startsWith("/api/internal/")) return "legacy-worker-token";
   if (
     text.includes("applicationOwnerId(") ||

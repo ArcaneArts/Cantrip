@@ -530,6 +530,7 @@ export const tunnelAttachments = pgTable(
       .notNull()
       .default(0),
     lastError: text("last_error"),
+    secretExpiresAt: timestamp("secret_expires_at", { withTimezone: true }),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -560,7 +561,7 @@ export const tunnelAttachments = pgTable(
     ),
     check(
       "tunnel_attachments_local_endpoint_check",
-      sql`(${table.kind} = 'desktop-loopback' AND ${table.clientId} IS NOT NULL AND ${table.localHost} IN ('127.0.0.1', 'localhost', '::1') AND ${table.localPort} BETWEEN 1 AND 65535) OR (${table.kind} = 'server-relay' AND ${table.clientId} IS NULL AND ${table.localHost} IS NULL AND ${table.localPort} IS NULL)`,
+      sql`(${table.kind} = 'desktop-loopback' AND ${table.clientId} IS NOT NULL AND ((${table.localHost} IS NULL AND ${table.localPort} IS NULL) OR (${table.localHost} IN ('127.0.0.1', 'localhost', '::1') AND ${table.localPort} BETWEEN 1 AND 65535))) OR (${table.kind} = 'server-relay' AND ${table.clientId} IS NULL AND ${table.localHost} IS NULL AND ${table.localPort} IS NULL)`,
     ),
     check(
       "tunnel_attachments_active_connections_check",

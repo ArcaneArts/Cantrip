@@ -166,6 +166,12 @@ import {
   tabGroupOrderSchema,
   terminalListSchema,
   terminalSummarySchema,
+  tunnelAttachmentCreateResultSchema,
+  tunnelAttachmentCreateSchema,
+  tunnelListSchema,
+  tunnelSummarySchema,
+  tunnelUserCreateSchema,
+  tunnelUserUpdateSchema,
   worktreeStatusResultSchema,
   workerCredentialListSchema,
   workerCredentialRotateResultSchema,
@@ -243,6 +249,9 @@ import type {
   SkillSettingsFileRequest,
   SkillSettingsFileUpdate,
   TerminalServiceConfiguration,
+  TunnelAttachmentCreate,
+  TunnelUserCreate,
+  TunnelUserUpdate,
   UserSettingsUpdate,
   ExplorerFileWrite,
   WorktreePolicy,
@@ -315,6 +324,57 @@ export async function logoutAll() {
 
 export async function getWorkers() {
   return workerListSchema.parse(await request("/api/workers"));
+}
+
+export async function getTunnels(projectId?: string) {
+  return tunnelListSchema.parse(
+    await request(
+      projectId
+        ? `/api/projects/${encodeURIComponent(projectId)}/tunnels`
+        : "/api/tunnels",
+    ),
+  );
+}
+
+export async function createTunnel(input: TunnelUserCreate) {
+  return tunnelSummarySchema.parse(
+    await post("/api/tunnels", tunnelUserCreateSchema.parse(input)),
+  );
+}
+
+export async function updateTunnel(tunnelId: string, input: TunnelUserUpdate) {
+  return tunnelSummarySchema.parse(
+    await request(`/api/tunnels/${encodeURIComponent(tunnelId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(tunnelUserUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function deleteTunnel(tunnelId: string): Promise<void> {
+  await request(`/api/tunnels/${encodeURIComponent(tunnelId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function createTunnelAttachment(
+  tunnelId: string,
+  input: TunnelAttachmentCreate,
+) {
+  return tunnelAttachmentCreateResultSchema.parse(
+    await post(
+      `/api/tunnels/${encodeURIComponent(tunnelId)}/attachments`,
+      tunnelAttachmentCreateSchema.parse(input),
+    ),
+  );
+}
+
+export async function deleteTunnelAttachment(
+  attachmentId: string,
+): Promise<void> {
+  await request(`/api/tunnel-attachments/${encodeURIComponent(attachmentId)}`, {
+    method: "DELETE",
+  });
 }
 
 export async function getWorkerManagement() {

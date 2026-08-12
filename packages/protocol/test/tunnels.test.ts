@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  tunnelAttachmentCreateResultSchema,
+  tunnelAttachmentInitializeSchema,
+  tunnelAttachmentReadySchema,
   tunnelAttachmentSummarySchema,
   tunnelManagedRegistrationSchema,
   tunnelSummarySchema,
@@ -158,5 +161,49 @@ describe("tunnel protocol", () => {
         clientId: null,
       }),
     ).toThrow(/client identity/i);
+    expect(
+      tunnelAttachmentSummarySchema.parse({
+        ...attachment,
+        localHost: null,
+        localPort: null,
+        status: "starting",
+      }),
+    ).toMatchObject({ localHost: null, localPort: null });
+    expect(() =>
+      tunnelAttachmentSummarySchema.parse({
+        ...attachment,
+        localPort: null,
+      }),
+    ).toThrow(/together/i);
+  });
+
+  it("keeps attachment credentials out of the connection URL", () => {
+    const created = tunnelAttachmentCreateResultSchema.parse({
+      attachmentId: "attachment-1",
+      tunnelId: "tunnel-1",
+      secret: "a".repeat(43),
+      connectPath: "/api/tunnel-attachments/attachment-1/connect",
+      secretExpiresAt: now,
+      expiresAt: "2026-08-12T00:00:00.000Z",
+    });
+    expect(created.connectPath).not.toContain(created.secret);
+    expect(
+      tunnelAttachmentInitializeSchema.parse({
+        type: "initialize",
+        clientId: "desktop-1",
+        localHost: "127.0.0.1",
+        localPort: 43_123,
+      }),
+    ).toMatchObject({ localPort: 43_123 });
+    expect(
+      tunnelAttachmentReadySchema.parse({
+        type: "ready",
+        attachmentId: created.attachmentId,
+        tunnelId: created.tunnelId,
+        sourceEndpointId: "desktop:desktop-1:attachment-1",
+        destinationEndpointId: "worker:worker-1",
+        expiresAt: created.expiresAt,
+      }),
+    ).toMatchObject({ type: "ready" });
   });
 });

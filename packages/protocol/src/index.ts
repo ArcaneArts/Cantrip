@@ -1958,21 +1958,65 @@ export const tunnelAttachmentSummarySchema = z
         path: ["clientId"],
       });
     }
-    if (desktop !== (attachment.localHost !== null)) {
+    if (!desktop && attachment.localHost !== null) {
       context.addIssue({
         code: "custom",
-        message: "Desktop attachments require a loopback host.",
+        message: "Server relay attachments cannot expose a local host.",
         path: ["localHost"],
       });
     }
-    if (desktop !== (attachment.localPort !== null)) {
+    if (!desktop && attachment.localPort !== null) {
       context.addIssue({
         code: "custom",
-        message: "Desktop attachments require a local port.",
+        message: "Server relay attachments cannot expose a local port.",
+        path: ["localPort"],
+      });
+    }
+    if ((attachment.localHost === null) !== (attachment.localPort === null)) {
+      context.addIssue({
+        code: "custom",
+        message: "A local attachment host and port must be reported together.",
         path: ["localPort"],
       });
     }
   });
+
+export const tunnelAttachmentCreateSchema = z
+  .object({
+    clientId: tunnelResourceIdSchema,
+  })
+  .strict();
+
+export const tunnelAttachmentCreateResultSchema = z
+  .object({
+    attachmentId: tunnelResourceIdSchema,
+    tunnelId: tunnelResourceIdSchema,
+    secret: z.string().min(32).max(512),
+    connectPath: z.string().startsWith("/api/tunnel-attachments/"),
+    secretExpiresAt: z.string().datetime(),
+    expiresAt: z.string().datetime(),
+  })
+  .strict();
+
+export const tunnelAttachmentInitializeSchema = z
+  .object({
+    type: z.literal("initialize"),
+    clientId: tunnelResourceIdSchema,
+    localHost: z.literal("127.0.0.1"),
+    localPort: z.number().int().min(1).max(65_535),
+  })
+  .strict();
+
+export const tunnelAttachmentReadySchema = z
+  .object({
+    type: z.literal("ready"),
+    attachmentId: tunnelResourceIdSchema,
+    tunnelId: tunnelResourceIdSchema,
+    sourceEndpointId: tunnelResourceIdSchema,
+    destinationEndpointId: tunnelResourceIdSchema,
+    expiresAt: z.string().datetime(),
+  })
+  .strict();
 
 export const tunnelActionCapabilitiesSchema = z
   .object({
@@ -7203,6 +7247,16 @@ export type TunnelDestinationEndpoint = z.infer<
 export type TunnelManagedResource = z.infer<typeof tunnelManagedResourceSchema>;
 export type TunnelUserCreate = z.infer<typeof tunnelUserCreateSchema>;
 export type TunnelUserUpdate = z.infer<typeof tunnelUserUpdateSchema>;
+export type TunnelAttachmentCreate = z.infer<
+  typeof tunnelAttachmentCreateSchema
+>;
+export type TunnelAttachmentCreateResult = z.infer<
+  typeof tunnelAttachmentCreateResultSchema
+>;
+export type TunnelAttachmentInitialize = z.infer<
+  typeof tunnelAttachmentInitializeSchema
+>;
+export type TunnelAttachmentReady = z.infer<typeof tunnelAttachmentReadySchema>;
 export type TunnelManagedRegistration = z.infer<
   typeof tunnelManagedRegistrationSchema
 >;

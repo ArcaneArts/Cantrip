@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
@@ -280,6 +280,10 @@ import {
   terminalUpdateSchema,
   tunnelListSchema,
   tunnelSummarySchema,
+  tunnelAttachmentCreateResultSchema,
+  tunnelAttachmentCreateSchema,
+  tunnelAttachmentInitializeSchema,
+  tunnelAttachmentReadySchema,
   tunnelUserCreateSchema,
   tunnelUserUpdateSchema,
   userSettingsUpdateSchema,
@@ -410,6 +414,7 @@ import {
   ProjectReplicaJobExecutor,
   type ProjectReplicaJobLiveChange,
 } from "./project-replicas/executor.js";
+import { TunnelRuntimeManager } from "./tunnels/runtime.js";
 import type { DatabaseConnection } from "./db/index.js";
 import {
   TabLayoutConflictError,
@@ -527,6 +532,10 @@ const CUSTOMIZATION_STATUS_OBSERVE_INTERVAL_MS = 1_000;
 const CUSTOMIZATION_STATUS_OBSERVE_RETRY_MAX_MS = 10_000;
 const CUSTOMIZATION_STATUS_OBSERVER_LIMIT = 128;
 const CUSTOMIZATION_STATUS_OBSERVE_TIMEOUT_MS = 15 * 60 * 1_000;
+const TUNNEL_ATTACHMENT_SECRET_TTL_MS = 2 * 60_000;
+const TUNNEL_ATTACHMENT_LIFETIME_MS = 12 * 60 * 60_000;
+const TUNNEL_ATTACHMENT_INITIALIZE_TIMEOUT_MS = 10_000;
+const TUNNEL_ATTACHMENT_EXPIRY_SWEEP_MS = 60_000;
 type ChatLiveResource = Extract<
   AppLiveResource,
   | "agent-interaction"
@@ -543,6 +552,7 @@ function mutationLiveResources(route: string): AppLiveResource[] {
   if (route === "/api/tunnels" || route.startsWith("/api/tunnels/")) {
     return ["tunnel"];
   }
+  if (route.startsWith("/api/tunnel-attachments/")) return ["tunnel"];
   if (route.startsWith("/api/workers/")) return ["worker"];
   if (
     route === "/api/projects/from-github" ||
@@ -746,6 +756,42 @@ export async function buildApp({
       );
     }
   };
+  const publishTunnelRuntimeChange = (change: {
+    attachmentId: string;
+    ownerId: string;
+    projectId: string | null;
+    tunnelId: string;
+  }): void => {
+    runAsOwner(change.ownerId, () => {
+      publishLiveInvalidation("tunnel", {
+        entityId: change.tunnelId,
+        projectId: change.projectId,
+      });
+    });
+  };
+  const tunnelRuntime = new TunnelRuntimeManager(
+    repository,
+    bridge,
+    publishTunnelRuntimeChange,
+  );
+  const tunnelAttachmentExpiryTimer = setInterval(() => {
+    void repository
+      .expireDesktopTunnelAttachments()
+      .then((expired) => {
+        for (const attachment of expired) {
+          tunnelRuntime.closeActive(
+            attachment.attachmentId,
+            "Attachment expired",
+            1008,
+          );
+          publishTunnelRuntimeChange(attachment);
+        }
+      })
+      .catch((error) => {
+        app.log.error({ err: error }, "Could not expire tunnel attachments");
+      });
+  }, TUNNEL_ATTACHMENT_EXPIRY_SWEEP_MS);
+  tunnelAttachmentExpiryTimer.unref();
   const worktreeObservationTimers = new Map<
     string,
     ReturnType<typeof setTimeout>
@@ -1477,6 +1523,7 @@ export async function buildApp({
     await repository.ensureBrowserRemoteSurfaces(LOCAL_USER_ID);
   }
   await repository.resetTransientRemoteSurfaceStatuses();
+  await repository.resetTransientTunnelAttachments();
   await repository.resetInterruptedChatExecutions();
   await projectReplicaJobExecutor.recoverAfterRestart();
   projectReplicaJobExecutor.queueAvailable();
@@ -1526,7 +1573,8 @@ export async function buildApp({
     route === "/api/auth/register" ||
     route === "/api/auth/session" ||
     route.startsWith("/api/internal/") ||
-    route.startsWith("/api/workflow-hooks/");
+    route.startsWith("/api/workflow-hooks/") ||
+    route === "/api/tunnel-attachments/:attachmentId/connect";
   const csrfExemptRoute = (route: string): boolean =>
     publicRoute(route) || route === "/api/auth/session";
 
@@ -1680,6 +1728,8 @@ export async function buildApp({
       params.surfaceId,
       params.viewId,
       params.workerId,
+      params.tunnelId,
+      params.attachmentId,
       params.projectId,
     ].find((value): value is string => typeof value === "string");
     for (const resource of resources) {
@@ -3698,6 +3748,132 @@ export async function buildApp({
           .code(404)
           .send({ error: "Project or destination worker not found." });
   });
+
+  app.post<{ Params: { tunnelId: string } }>(
+    "/api/tunnels/:tunnelId/attachments",
+    async (request, reply) => {
+      const input = tunnelAttachmentCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const secret = randomBytes(32).toString("base64url");
+      const now = Date.now();
+      const secretExpiresAt = new Date(now + TUNNEL_ATTACHMENT_SECRET_TTL_MS);
+      const expiresAt = new Date(now + TUNNEL_ATTACHMENT_LIFETIME_MS);
+      const created = await repository.createDesktopTunnelAttachment(
+        principalOwnerId(request),
+        request.params.tunnelId,
+        {
+          clientId: input.data.clientId,
+          expiresAt,
+          secretExpiresAt,
+          secretHash: hashSecret(secret),
+        },
+      );
+      if (!created) {
+        return reply.code(404).send({
+          error: "A user-managed desktop tunnel was not found.",
+        });
+      }
+      tunnelRuntime.closeActive(
+        created.attachmentId,
+        "Attachment credentials rotated",
+        1008,
+      );
+      publishTunnelRuntimeChange({
+        attachmentId: created.attachmentId,
+        ownerId: principalOwnerId(request),
+        projectId: created.projectId,
+        tunnelId: request.params.tunnelId,
+      });
+      return reply.code(201).send(
+        tunnelAttachmentCreateResultSchema.parse({
+          attachmentId: created.attachmentId,
+          tunnelId: request.params.tunnelId,
+          secret,
+          connectPath: `/api/tunnel-attachments/${created.attachmentId}/connect`,
+          secretExpiresAt: secretExpiresAt.toISOString(),
+          expiresAt: expiresAt.toISOString(),
+        }),
+      );
+    },
+  );
+
+  app.delete<{ Params: { attachmentId: string } }>(
+    "/api/tunnel-attachments/:attachmentId",
+    async (request, reply) =>
+      (await tunnelRuntime.revoke(
+        principalOwnerId(request),
+        request.params.attachmentId,
+      ))
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "Tunnel attachment not found." }),
+  );
+
+  app.get<{ Params: { attachmentId: string } }>(
+    "/api/tunnel-attachments/:attachmentId/connect",
+    { websocket: true },
+    async (socket, request) => {
+      const initialized = new Promise<unknown>((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error("Tunnel initialization timed out.")),
+          TUNNEL_ATTACHMENT_INITIALIZE_TIMEOUT_MS,
+        );
+        socket.once("message", (data, isBinary) => {
+          clearTimeout(timer);
+          if (isBinary) {
+            reject(new Error("Tunnel initialization must be JSON."));
+            return;
+          }
+          try {
+            resolve(JSON.parse(String(data)));
+          } catch {
+            reject(new Error("Tunnel initialization is invalid."));
+          }
+        });
+        socket.once("close", () => {
+          clearTimeout(timer);
+          reject(new Error("Tunnel attachment disconnected."));
+        });
+      });
+      void initialized.catch(() => undefined);
+      const authorizationHeader = request.headers.authorization;
+      const secret =
+        typeof authorizationHeader === "string" &&
+        authorizationHeader.startsWith("Bearer ")
+          ? authorizationHeader.slice("Bearer ".length)
+          : "";
+      if (secret.length < 32 || secret.length > 512) {
+        socket.close(1008, "Attachment authentication failed");
+        return;
+      }
+      const authorization = await repository.authorizeDesktopTunnelAttachment(
+        request.params.attachmentId,
+        hashSecret(secret),
+      );
+      if (!authorization) {
+        socket.close(1008, "Attachment authentication failed");
+        return;
+      }
+      try {
+        const initialize = tunnelAttachmentInitializeSchema.parse(
+          await initialized,
+        );
+        const ready = await tunnelRuntime.attach(
+          socket,
+          authorization,
+          initialize,
+        );
+        if (socket.readyState === 1) {
+          socket.send(JSON.stringify(tunnelAttachmentReadySchema.parse(ready)));
+        }
+      } catch (error) {
+        if (socket.readyState === 0 || socket.readyState === 1) {
+          socket.close(1008, errorMessage(error));
+        }
+      }
+    },
+  );
 
   app.patch<{ Params: { tunnelId: string } }>(
     "/api/tunnels/:tunnelId",
@@ -14411,6 +14587,7 @@ export async function buildApp({
   app.addHook("onClose", async () => {
     livePublishingEnabled = false;
     clearInterval(sessionSocketValidationTimer);
+    clearInterval(tunnelAttachmentExpiryTimer);
     closeSessionSockets(() => true, "Server is shutting down");
     clearInterval(agentInteractionExpiryTimer);
     clearInterval(workflowGateExpiryTimer);
@@ -14435,6 +14612,7 @@ export async function buildApp({
       "Application live transport stopped",
     );
     liveHub.close();
+    tunnelRuntime.close();
     codeTunnel.close();
     await projectShareTunnel.close();
     bridge.close();
