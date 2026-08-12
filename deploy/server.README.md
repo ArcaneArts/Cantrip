@@ -6,6 +6,8 @@ archive includes its own platform-matched Node.js runtime, production
 dependencies, and PGlite migrations; PostgreSQL can be selected with
 `DATABASE_URL`.
 
-Cantrip does not implement hosted user authentication yet. Do not expose a
-server publicly. `CANTRIP_ALLOW_INSECURE_REMOTE=true` is an explicit temporary
-opt-in intended for trusted networks or an authenticating reverse proxy.
+`CANTRIP_AUTH_MODE=password` protects one personal owner with an Argon2id hash.
+`CANTRIP_AUTH_MODE=accounts` enables email/password sessions and requires either
+public registration or a one-time first-owner bootstrap token. Hosted account
+deployment is still incomplete until tenant-wide ownership enforcement and
+per-worker enrollment land; do not expose this intermediate build publicly.

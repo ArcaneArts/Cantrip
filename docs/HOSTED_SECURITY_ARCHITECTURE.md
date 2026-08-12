@@ -1,7 +1,7 @@
 # Hosted relay security architecture
 
-- Status: tenancy foundation implemented; protected authentication and complete
-  owner enforcement are subsequent hosted-relay milestones
+- Status: protected authentication implemented; complete owner enforcement and
+  worker enrollment are subsequent hosted-relay milestones
 - Route inventory: [`security/server-route-inventory.json`](security/server-route-inventory.json)
 - Regenerate: `pnpm audit:server-boundaries:write`
 - Verify: `pnpm audit:server-boundaries`
@@ -39,16 +39,17 @@ enrollment credential.
 
 `CANTRIP_AUTH_MODE` has three deliberately separate meanings:
 
-| Mode       | Principal                     | Intended deployment                       | Foundation behavior                                                       |
-| ---------- | ----------------------------- | ----------------------------------------- | ------------------------------------------------------------------------- |
-| `none`     | Stable anonymous owner        | Loopback development and embedded desktop | Implemented. Every request receives the anonymous local principal.        |
-| `password` | Authenticated owner session   | Protected personal server                 | Defined but startup fails closed until password sessions are implemented. |
-| `accounts` | Authenticated account session | Public multi-user service                 | Defined but startup fails closed until account sessions are implemented.  |
+| Mode       | Principal                     | Intended deployment                       | Behavior                                                                |
+| ---------- | ----------------------------- | ----------------------------------------- | ----------------------------------------------------------------------- |
+| `none`     | Stable anonymous owner        | Loopback development and embedded desktop | Every request receives the anonymous local principal.                   |
+| `password` | Authenticated owner session   | Protected personal server                 | Argon2id credential creates a revocable server-side owner session.      |
+| `accounts` | Authenticated account session | Public multi-user service                 | Email/password credentials create isolated, revocable account sessions. |
 
-Recognizing an enum value is not evidence that its security boundary exists.
-Until the corresponding milestone is merged, `readServerConfig` rejects
-`password` and `accounts`. `CANTRIP_ALLOW_INSECURE_REMOTE` is an acknowledgement
-for a trusted network or authenticating proxy; it is not authentication.
+`CANTRIP_ALLOW_INSECURE_REMOTE` applies only to anonymous mode and remains an
+acknowledgement for a trusted network or authenticating proxy. It is not
+authentication. Multi-user public exposure remains blocked operationally until
+the owner-enforcement and worker-enrollment milestones remove the remaining
+legacy local-owner paths.
 
 The bootstrap contract now distinguishes `authenticated` from
 `authentication-required`, permits no current user before sign-in, and reports
@@ -61,8 +62,8 @@ mode, hostname, or whether a server happens to return account-shaped data.
 `cantrip_server/src/auth/principal.ts` owns the request-scoped identity:
 
 - `anonymous`: the loopback local owner, with no session credential;
-- `account`: a password or account session, added by the authentication
-  milestone; or
+- `account`: a password or account session resolved from a hashed server-side
+  session token; or
 - `unauthenticated`: no authorized owner and therefore no access to protected
   resources.
 
@@ -72,11 +73,33 @@ principal. URL parameters, request bodies, project metadata, worker messages,
 and live-event scopes must never select an owner.
 
 The local server installs its anonymous principal through the same Fastify
-request hook that protected modes will use. Bootstrap, worker listing, health
-worker counts, and the application live WebSocket already consume the request
-principal. The generated audit intentionally records remaining direct
+request hook used by protected modes. Bootstrap, worker listing, health worker
+counts, and the application live WebSocket consume the request principal. The
+generated audit intentionally records remaining direct
 `LOCAL_USER_ID` routes as migration debt for the ownership-enforcement
-milestone; protected modes remain disabled while that debt exists.
+milestone; account mode must not be treated as production-ready while that debt
+exists.
+
+## 3.1 Credential and session controls
+
+- Passwords are encoded with Argon2id (64 MiB, three passes, one lane). The
+  server never accepts a plaintext password through configuration.
+- Browser sessions use 256-bit random opaque cookies. Only SHA-256 token hashes
+  are stored in PostgreSQL/PGlite.
+- Each session has an independent CSRF secret, expiry, last-seen metadata, and
+  explicit revocation state. Sign-out can revoke one or all user sessions.
+- Hosted cookies use the `__Host-` prefix, `HttpOnly`, `Secure`, `Path=/`, and a
+  configurable SameSite policy. `SameSite=None` is rejected unless Secure is
+  enabled.
+- Cookie-authenticated mutations require the matching CSRF header. Login and
+  registration additionally reject unapproved browser origins.
+- Authentication attempts are rate limited by operation, client address, and
+  normalized identity. Missing and incorrect accounts return the same error.
+- Request logging redacts cookies, authorization, CSRF/bootstrap tokens,
+  passwords, and response cookies.
+- Public registration is independently configurable. With it disabled, the
+  first owner requires a 32+ character bootstrap token; later registration is
+  denied.
 
 ## 4. Complete boundary inventory
 
@@ -89,11 +112,12 @@ without refreshing the inventory.
 
 At this foundation revision the inventory contains:
 
-- 259 HTTP/WebSocket routes: 2 public bootstrap routes, 252 application
-  principal routes, and 5 worker-control routes;
-- 160 worker command variants;
+- 266 HTTP/WebSocket routes: 2 public bootstrap routes, 3 public authentication
+  routes, 255 application-principal routes, 1 external webhook route, and 5
+  worker-control routes;
+- 162 worker command variants;
 - 27 application live resource variants;
-- 216 database repository entry points; and
+- 227 database repository entry points; and
 - the five non-route data planes listed below.
 
 The inventory's `ownerEvidence` field is not an authorization guarantee. It is
@@ -115,7 +139,8 @@ review every delegated repository method before protected modes are enabled.
 
 ### Public bootstrap
 
-Only service identification and authentication bootstrap are public. Bootstrap
+Only service identification, authentication bootstrap, and the bounded
+registration/login/session endpoints are public. Bootstrap
 may disclose protocol/deployment/authentication capabilities, but no projects,
 workers, provider configuration, account profile, or connection counts before
 authentication. Health/readiness data must remain operational and aggregate;
@@ -169,12 +194,16 @@ loaded through a query that joins or filters their owner instead of loading by
 globally supplied ID and checking later. System state and lifecycle recovery
 are the only intentionally global query families.
 
-Migration `0047_next_madripoor` establishes the protected-mode foundation:
+Migrations `0047_next_madripoor` and `0049_flippant_meggan` establish the
+protected-mode foundation:
 
 - user role, status, normalized email, and password-change metadata;
 - hashed, expiring, revocable user sessions;
 - hashed, expiring, single-use worker enrollment codes; and
 - independently hashed, scoped, rotatable, revocable worker credentials.
+
+The CSRF upgrade revokes any session created by an older server revision rather
+than manufacturing a usable CSRF credential for it.
 
 The migration stores no raw session token, enrollment code, or worker secret.
 The tables are intentionally dormant until their authentication/enrollment

@@ -1,6 +1,7 @@
 .cantrip/
 **/dist/
 **/node_modules/
+cantrip_server/drizzle/meta/*.json
 cantrip_app/android/
 cantrip_app/ios/
 cantrip_app/src-tauri/target/

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import {
+  accountRegistrationSchema,
   agentWorktreeToolCallSchema,
   agentWorktreeToolResultSchema,
   agentThreadSyncSchema,
@@ -13,6 +14,10 @@ import {
   agentInteractionRequestSchema,
   agentInteractionResolutionCreateSchema,
   appLiveEventPayloadSchema,
+  authLoginSchema,
+  authLogoutAllResultSchema,
+  authSessionSchema,
+  authSessionStateSchema,
   browserCreateSchema,
   browserListSchema,
   browserServiceListSchema,
@@ -277,6 +282,7 @@ import {
   worktreeStatusResultSchema,
 } from "@cantrip/protocol";
 import Fastify from "fastify";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import type {
   AppLiveResource,
   AppLiveScope,
@@ -354,10 +360,20 @@ import {
 import { resolveCodeSurfaceConfig, type ServerConfig } from "./config.js";
 import {
   authenticatedPrincipal,
+  AuthenticationRequiredError,
   authenticationState,
   installRequestPrincipal,
   principalOwnerId,
 } from "./auth/principal.js";
+import {
+  AuthRateLimiter,
+  DUMMY_PASSWORD_HASH,
+  hashPassword,
+  normalizeAccountEmail,
+  safeSecretMatch,
+  UserSessionService,
+  verifyPassword,
+} from "./auth/service.js";
 import {
   canFailOverRoute,
   chatIsExecuting,
@@ -595,7 +611,23 @@ export async function buildApp({
   projectShareTunnel: providedProjectShareTunnel,
   workerBridge,
 }: BuildAppOptions) {
-  const app = Fastify({ logger });
+  const app = Fastify({
+    logger: logger
+      ? {
+          redact: {
+            paths: [
+              "req.headers.authorization",
+              "req.headers.cookie",
+              "req.headers.x-cantrip-csrf",
+              "req.headers.x-cantrip-bootstrap-token",
+              "req.body.password",
+              "res.headers.set-cookie",
+            ],
+            censor: "[REDACTED]",
+          },
+        }
+      : false,
+  });
   app.addContentTypeParser(
     "application/octet-stream",
     { bodyLimit: MAX_ATTACHMENT_BYTES, parseAs: "buffer" },
@@ -1306,16 +1338,20 @@ export async function buildApp({
     app.log,
     publishWorkflowRunChange,
   );
-  const [serverId, currentUser] = await Promise.all([
+  const [serverId, localUser] = await Promise.all([
     repository.getOrCreateServerId(),
-    repository.ensureLocalIdentity(),
+    config.authMode === "accounts"
+      ? Promise.resolve(null)
+      : repository.ensureLocalIdentity(),
   ]);
-  await repository.ensureDefaultModelConfiguration(
-    LOCAL_USER_ID,
-    config.agentModel,
-    config.ollamaBaseUrl,
-  );
-  await repository.ensureBrowserRemoteSurfaces(LOCAL_USER_ID);
+  if (localUser) {
+    await repository.ensureDefaultModelConfiguration(
+      LOCAL_USER_ID,
+      config.agentModel,
+      config.ollamaBaseUrl,
+    );
+    await repository.ensureBrowserRemoteSurfaces(LOCAL_USER_ID);
+  }
   await repository.resetTransientRemoteSurfaceStatuses();
   await repository.resetInterruptedChatExecutions();
   await workflowExecutor.recoverAfterRestart();
@@ -1331,11 +1367,58 @@ export async function buildApp({
   });
   await app.register(websocket);
 
+  const sessionService = new UserSessionService(repository, config);
+  const authRateLimiter = new AuthRateLimiter(config.authRateLimit ?? 10);
   if (config.authMode === "none") {
-    installRequestPrincipal(app, { authMode: "none", localUser: currentUser });
+    installRequestPrincipal(app, { authMode: "none", localUser: localUser! });
   } else {
-    installRequestPrincipal(app, { authMode: config.authMode });
+    installRequestPrincipal(app, {
+      authMode: config.authMode,
+      resolve: (request) => sessionService.resolvePrincipal(request),
+    });
   }
+
+  const publicRoute = (route: string): boolean =>
+    route === "/api" ||
+    route === "/api/bootstrap" ||
+    route === "/api/auth/login" ||
+    route === "/api/auth/register" ||
+    route === "/api/auth/session" ||
+    route.startsWith("/api/internal/") ||
+    route.startsWith("/api/workflow-hooks/");
+  const csrfExemptRoute = (route: string): boolean =>
+    publicRoute(route) || route === "/api/auth/session";
+
+  app.addHook("onRequest", async (request, reply) => {
+    if (config.authMode === "none" || request.method === "OPTIONS") return;
+    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
+    if (!publicRoute(route) && request.principal.state !== "authenticated") {
+      return reply.code(401).send({ error: "Authentication is required." });
+    }
+    if (
+      !["GET", "HEAD", "OPTIONS"].includes(request.method) &&
+      !csrfExemptRoute(route)
+    ) {
+      const origin = request.headers.origin;
+      if (origin && !config.appOrigins.includes(origin)) {
+        return reply.code(403).send({ error: "Origin is not allowed." });
+      }
+      const session = await sessionService.resolve(request);
+      if (
+        !session ||
+        !sessionService.csrfMatches(session, request.headers["x-cantrip-csrf"])
+      ) {
+        return reply.code(403).send({ error: "CSRF validation failed." });
+      }
+    }
+  });
+
+  app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof AuthenticationRequiredError) {
+      return reply.code(401).send({ error: error.message });
+    }
+    return reply.send(error);
+  });
 
   const authorizeLiveScope = async (
     ownerId: string,
@@ -3047,7 +3130,205 @@ export async function buildApp({
     version: "0.0.0",
   }));
 
+  const rejectUnapprovedAuthOrigin = (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): unknown | null => {
+    const origin = request.headers.origin;
+    if (origin && !config.appOrigins.includes(origin)) {
+      return reply.code(403).send({ error: "Origin is not allowed." });
+    }
+    return null;
+  };
+
+  const consumeAuthAttempt = (
+    request: FastifyRequest,
+    scope: string,
+    identity: string,
+    reply: FastifyReply,
+  ): unknown | null => {
+    const retryAfter = authRateLimiter.consume(
+      `${scope}:${request.ip}:${identity}`,
+    );
+    if (retryAfter === null) return null;
+    reply.header("retry-after", String(retryAfter));
+    return reply
+      .code(429)
+      .send({ error: "Too many authentication attempts. Try again later." });
+  };
+  let registrationTail = Promise.resolve();
+  const withRegistrationLock = async <T>(operation: () => Promise<T>) => {
+    const predecessor = registrationTail;
+    let release!: () => void;
+    registrationTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await predecessor;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  };
+
+  app.post<{
+    Headers: { "x-cantrip-bootstrap-token"?: string };
+  }>("/api/auth/register", async (request, reply) => {
+    const originRejection = rejectUnapprovedAuthOrigin(request, reply);
+    if (originRejection) return originRejection;
+    if (config.authMode !== "accounts") {
+      return reply.code(404).send({ error: "Registration is unavailable." });
+    }
+    const input = accountRegistrationSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    const normalizedEmail = normalizeAccountEmail(input.data.email);
+    const limited = consumeAuthAttempt(
+      request,
+      "register",
+      normalizedEmail,
+      reply,
+    );
+    if (limited) return limited;
+
+    return withRegistrationLock(async () => {
+      const accountCount = await repository.countAccountUsers();
+      const firstAccount = accountCount === 0;
+      if (!firstAccount && !config.publicRegistration) {
+        return reply.code(403).send({ error: "Registration is disabled." });
+      }
+      if (!config.publicRegistration && firstAccount) {
+        const candidate = request.headers["x-cantrip-bootstrap-token"];
+        if (
+          !config.adminBootstrapToken ||
+          typeof candidate !== "string" ||
+          !safeSecretMatch(candidate, config.adminBootstrapToken)
+        ) {
+          return reply.code(403).send({
+            error: "A valid first-admin bootstrap token is required.",
+          });
+        }
+      }
+
+      try {
+        const user = await repository.createAccount({
+          displayName: input.data.displayName,
+          email: input.data.email.trim(),
+          normalizedEmail,
+          passwordHash: await hashPassword(input.data.password),
+          role: firstAccount ? "owner" : "member",
+        });
+        await repository.ensureAccountConfiguration(
+          user.id,
+          config.agentModel,
+          config.ollamaBaseUrl,
+        );
+        return reply
+          .header("cache-control", "no-store")
+          .code(201)
+          .send(
+            authSessionSchema.parse(
+              await sessionService.create(
+                request,
+                reply,
+                user,
+                "account-password",
+              ),
+            ),
+          );
+      } catch {
+        return reply.code(409).send({ error: "Account could not be created." });
+      }
+    });
+  });
+
+  app.post("/api/auth/login", async (request, reply) => {
+    const originRejection = rejectUnapprovedAuthOrigin(request, reply);
+    if (originRejection) return originRejection;
+    if (config.authMode === "none") {
+      return reply.code(404).send({ error: "Sign-in is unavailable." });
+    }
+    const input = authLoginSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    const identity = input.data.email
+      ? normalizeAccountEmail(input.data.email)
+      : "single-user";
+    const limited = consumeAuthAttempt(request, "login", identity, reply);
+    if (limited) return limited;
+
+    let user = localUser;
+    let passwordHash = config.passwordHash ?? DUMMY_PASSWORD_HASH;
+    let authMethod: "password" | "account-password" = "password";
+    if (config.authMode === "accounts") {
+      const credential = input.data.email
+        ? await repository.findAccountCredential(identity)
+        : null;
+      user = credential?.user ?? null;
+      passwordHash = credential?.passwordHash ?? DUMMY_PASSWORD_HASH;
+      authMethod = "account-password";
+    }
+    const valid = await verifyPassword(passwordHash, input.data.password);
+    if (!valid || !user) {
+      return reply.code(401).send({ error: "Email or password is incorrect." });
+    }
+    await repository.ensureAccountConfiguration(
+      user.id,
+      config.agentModel,
+      config.ollamaBaseUrl,
+    );
+    return reply
+      .header("cache-control", "no-store")
+      .send(
+        authSessionSchema.parse(
+          await sessionService.create(request, reply, user, authMethod),
+        ),
+      );
+  });
+
+  app.get("/api/auth/session", async (request, reply) => {
+    const originRejection = rejectUnapprovedAuthOrigin(request, reply);
+    if (originRejection) return originRejection;
+    const session = await sessionService.resolve(request);
+    if (!session) {
+      return reply.header("cache-control", "no-store").send(
+        authSessionStateSchema.parse({
+          currentUser: null,
+          csrfToken: null,
+          expiresAt: null,
+        }),
+      );
+    }
+    return reply
+      .header("cache-control", "no-store")
+      .send(
+        authSessionStateSchema.parse(await sessionService.rotateCsrf(session)),
+      );
+  });
+
+  app.post("/api/auth/logout", async (request, reply) => {
+    const principal = authenticatedPrincipal(request);
+    await repository.revokeUserSession(principal.sessionId!, "signed-out");
+    sessionService.clear(reply);
+    return reply.code(204).send();
+  });
+
+  app.post("/api/auth/logout-all", async (request, reply) => {
+    const principal = authenticatedPrincipal(request);
+    const revokedSessions = await repository.revokeAllUserSessions(
+      principal.user.id,
+      "signed-out-all",
+    );
+    sessionService.clear(reply);
+    return reply.send(authLogoutAllResultSchema.parse({ revokedSessions }));
+  });
+
   app.get("/api/bootstrap", async (request, reply) => {
+    const accountCount =
+      config.authMode === "accounts" ? await repository.countAccountUsers() : 0;
+    const firstAccount = config.authMode === "accounts" && accountCount === 0;
     return reply.send(
       serverBootstrapSchema.parse({
         protocolVersion: 1,
@@ -3060,7 +3341,14 @@ export async function buildApp({
           mode: config.authMode,
           state: authenticationState(request.principal),
           currentUser: request.principal.user,
-          registration: { enabled: false },
+          registration: {
+            enabled:
+              config.authMode === "accounts" &&
+              (Boolean(config.publicRegistration) ||
+                (firstAccount && Boolean(config.adminBootstrapToken))),
+            bootstrapRequired:
+              firstAccount && !Boolean(config.publicRegistration),
+          },
         },
         routing: {
           workerConnection: "server-only",
@@ -3075,8 +3363,8 @@ export async function buildApp({
           modelProvider: config.agentModelProvider,
         },
         capabilities: {
-          accounts: false,
-          passwordProtection: false,
+          accounts: config.authMode === "accounts",
+          passwordProtection: config.authMode === "password",
           linkCodes: false,
           multipleWorkers: false,
           workerSwitching: false,

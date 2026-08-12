@@ -128,6 +128,35 @@ export const userSummarySchema = z.object({
   role: userRoleSchema.default("member"),
 });
 
+const authPasswordSchema = z.string().min(12).max(1_024);
+
+export const accountRegistrationSchema = z.object({
+  displayName: z.string().trim().min(1).max(120),
+  email: z.email().max(320),
+  password: authPasswordSchema,
+});
+
+export const authLoginSchema = z.object({
+  email: z.email().max(320).optional(),
+  password: z.string().min(1).max(1_024),
+});
+
+export const authSessionSchema = z.object({
+  currentUser: userSummarySchema,
+  csrfToken: z.string().min(32),
+  expiresAt: z.iso.datetime(),
+});
+
+export const authSessionStateSchema = z.object({
+  currentUser: userSummarySchema.nullable(),
+  csrfToken: z.string().min(32).nullable(),
+  expiresAt: z.iso.datetime().nullable(),
+});
+
+export const authLogoutAllResultSchema = z.object({
+  revokedSessions: z.number().int().nonnegative(),
+});
+
 export const serverBootstrapSchema = z.object({
   protocolVersion: protocolVersionSchema,
   server: z.object({
@@ -140,8 +169,11 @@ export const serverBootstrapSchema = z.object({
     state: authenticationStateSchema.default("authenticated"),
     currentUser: userSummarySchema.nullable(),
     registration: z
-      .object({ enabled: z.boolean() })
-      .default({ enabled: false }),
+      .object({
+        enabled: z.boolean(),
+        bootstrapRequired: z.boolean().default(false),
+      })
+      .default({ enabled: false, bootstrapRequired: false }),
   }),
   routing: z.object({
     workerConnection: z.literal("server-only"),
@@ -6367,6 +6399,11 @@ export type RemoteSurfaceCapabilities = z.infer<
 export type CodeTransport = z.infer<typeof codeTransportSchema>;
 export type CodeCapabilities = z.infer<typeof codeCapabilitiesSchema>;
 export type UserSummary = z.infer<typeof userSummarySchema>;
+export type AccountRegistration = z.infer<typeof accountRegistrationSchema>;
+export type AuthLogin = z.infer<typeof authLoginSchema>;
+export type AuthSession = z.infer<typeof authSessionSchema>;
+export type AuthSessionState = z.infer<typeof authSessionStateSchema>;
+export type AuthLogoutAllResult = z.infer<typeof authLogoutAllResultSchema>;
 export type ServerBootstrap = z.infer<typeof serverBootstrapSchema>;
 export type CodexRuntimeMethodState = z.infer<
   typeof codexRuntimeMethodStateSchema

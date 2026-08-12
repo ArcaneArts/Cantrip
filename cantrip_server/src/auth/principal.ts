@@ -32,7 +32,7 @@ declare module "fastify" {
   }
 }
 
-function unauthenticatedPrincipal(
+export function unauthenticatedPrincipal(
   authMode: Exclude<AuthMode, "none">,
 ): UnauthenticatedRequestPrincipal {
   return {
@@ -42,6 +42,22 @@ function unauthenticatedPrincipal(
     sessionId: null,
     state: "authentication-required",
     user: null,
+  };
+}
+
+export function sessionPrincipal(input: {
+  authMode: Exclude<AuthMode, "none">;
+  authentication: "password" | "session";
+  sessionId: string;
+  user: UserSummary;
+}): AuthenticatedRequestPrincipal {
+  return {
+    authentication: input.authentication,
+    authMode: input.authMode,
+    kind: input.user.kind,
+    sessionId: input.sessionId,
+    state: "authenticated",
+    user: input.user,
   };
 }
 
@@ -68,18 +84,20 @@ export function installRequestPrincipal(
     | {
         authMode: Exclude<AuthMode, "none">;
         localUser?: never;
+        resolve?: (
+          request: FastifyRequest,
+        ) => Promise<AuthenticatedRequestPrincipal | null>;
       },
 ): void {
-  const principal =
-    input.authMode === "none"
-      ? anonymousPrincipal(input.localUser)
-      : unauthenticatedPrincipal(input.authMode);
-
   app.decorateRequest("principal");
   app.addHook("onRequest", async (request) => {
-    // Request decoration must receive its own immutable value before session
-    // resolution starts mutating per-request state in the account milestone.
-    request.principal = { ...principal } as RequestPrincipal;
+    if (input.authMode === "none") {
+      request.principal = anonymousPrincipal(input.localUser);
+      return;
+    }
+    request.principal =
+      (await input.resolve?.(request)) ??
+      unauthenticatedPrincipal(input.authMode);
   });
 }
 

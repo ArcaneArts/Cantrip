@@ -93,6 +93,22 @@ describe("hosted authentication foundation migration", () => {
         );
       `);
 
+      await applyMigrations(database, 48, 49);
+      const upgradedSession = await database.query<{
+        csrf_token_hash: string;
+        revoked_at: Date | null;
+        revoked_reason: string | null;
+      }>(`
+        SELECT csrf_token_hash, revoked_at, revoked_reason
+        FROM user_sessions
+        WHERE id = 'session-1'
+      `);
+      expect(upgradedSession.rows[0]).toMatchObject({
+        csrf_token_hash: "legacy-session-must-reauthenticate",
+        revoked_reason: "csrf-upgrade",
+      });
+      expect(upgradedSession.rows[0]?.revoked_at).not.toBeNull();
+
       const secretColumns = await database.query<{ column_name: string }>(`
         SELECT column_name
         FROM information_schema.columns

@@ -81,4 +81,43 @@ describe("request principals", () => {
       });
     },
   );
+
+  it("resolves a protected-mode session independently for each request", async () => {
+    const app = Fastify({ logger: false });
+    apps.push(app);
+    installRequestPrincipal(app, {
+      authMode: "accounts",
+      resolve: async (request) =>
+        request.headers.authorization === "Session accepted"
+          ? {
+              authentication: "session",
+              authMode: "accounts",
+              kind: "account",
+              sessionId: "session-1",
+              state: "authenticated",
+              user: {
+                id: "account-1",
+                kind: "account",
+                displayName: "Account",
+                email: "account@example.com",
+                role: "member",
+              },
+            }
+          : null,
+    });
+    app.get("/principal", async (request) => request.principal);
+
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/principal",
+          headers: { authorization: "Session accepted" },
+        })
+      ).json(),
+    ).toMatchObject({ state: "authenticated", sessionId: "session-1" });
+    expect(
+      (await app.inject({ method: "GET", url: "/principal" })).json(),
+    ).toMatchObject({ state: "authentication-required", sessionId: null });
+  });
 });
