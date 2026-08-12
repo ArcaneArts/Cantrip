@@ -213,6 +213,8 @@ import {
   projectRepositoryStatsSchema,
   projectTokenUsageSchema,
   projectRemoveSchema,
+  projectReplicaListSchema,
+  projectReplicaSummarySchema,
   projectShareAttachmentSchema,
   projectSummarySchema,
   projectWorkspaceCreateSchema,
@@ -862,6 +864,7 @@ export async function buildApp({
       const worktrees = await repository.reconcileProjectWorktrees(
         applicationOwnerId(),
         context.projectId,
+        workerId,
         notification.inventory,
       );
       if (!worktrees) return;
@@ -2243,6 +2246,7 @@ export async function buildApp({
             await repository.reconcileProjectWorktrees(
               applicationOwnerId(),
               context.projectId,
+              target.workerId,
               result.inventory,
             );
             return result;
@@ -3585,6 +3589,7 @@ export async function buildApp({
           passwordProtection: config.authMode === "password",
           linkCodes: true,
           multipleWorkers: true,
+          projectReplicas: true,
           workerSwitching: false,
           gitSync: false,
           worktrees: true,
@@ -4706,6 +4711,33 @@ export async function buildApp({
     const projects = await repository.listProjects(applicationOwnerId());
     return reply.send(projectListSchema.parse(projects));
   });
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/replicas",
+    async (request, reply) => {
+      const replicas = await repository.listProjectReplicas(
+        applicationOwnerId(),
+        request.params.projectId,
+      );
+      return replicas
+        ? reply.send(projectReplicaListSchema.parse(replicas))
+        : reply.code(404).send({ error: "Project not found." });
+    },
+  );
+
+  app.get<{ Params: { projectId: string; replicaId: string } }>(
+    "/api/projects/:projectId/replicas/:replicaId",
+    async (request, reply) => {
+      const replica = await repository.getProjectReplica(
+        applicationOwnerId(),
+        request.params.projectId,
+        request.params.replicaId,
+      );
+      return replica
+        ? reply.send(projectReplicaSummarySchema.parse(replica))
+        : reply.code(404).send({ error: "Project replica not found." });
+    },
+  );
 
   app.get<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/automations",
@@ -7165,6 +7197,7 @@ export async function buildApp({
             const reconciled = await repository.reconcileProjectWorktrees(
               applicationOwnerId(),
               request.params.projectId,
+              context.workerId,
               result.inventory,
             );
             return (
@@ -7207,6 +7240,7 @@ export async function buildApp({
             const reconciled = await repository.reconcileProjectWorktrees(
               applicationOwnerId(),
               request.params.projectId,
+              context.workerId,
               result.inventory,
             );
             return (
@@ -7291,6 +7325,7 @@ export async function buildApp({
               const reconciled = await repository.reconcileProjectWorktrees(
                 applicationOwnerId(),
                 request.params.projectId,
+                context.workerId,
                 result.inventory,
               );
               return (
@@ -7345,6 +7380,7 @@ export async function buildApp({
             return repository.reconcileProjectWorktrees(
               applicationOwnerId(),
               request.params.projectId,
+              source.workerId,
               result.inventory,
             );
           },
@@ -9764,28 +9800,38 @@ export async function buildApp({
         request.params.projectId,
         applicationOwnerId(),
       );
-      const { cwd, workerId } = context;
-
       try {
-        if (input.data.deleteLocalFiles && cwd && workerId) {
+        if (input.data.deleteLocalFiles) {
+          const offlineReplica = context.replicas.find(
+            ({ workerId }) => !bridge.isConnected(workerId),
+          );
+          if (offlineReplica) {
+            return reply.code(503).send({
+              error:
+                "Every replica worker must be online before deleting local project files.",
+            });
+          }
           await Promise.all(
-            context.terminalIds.map((terminalId) =>
+            context.terminals.map(({ id, workerId }) =>
               bridge.request(workerId, {
                 type: "terminal.close",
-                terminalId,
+                terminalId: id,
               }),
             ),
           );
-          await bridge.request(workerId, {
-            type: "project.files.delete",
-            path: cwd,
-          });
-        } else if (workerId && bridge.isConnected(workerId)) {
-          for (const terminalId of context.terminalIds) {
+          for (const replica of context.replicas) {
+            await bridge.request(replica.workerId, {
+              type: "project.files.delete",
+              path: replica.cwd,
+            });
+          }
+        } else {
+          for (const terminal of context.terminals) {
+            if (!bridge.isConnected(terminal.workerId)) continue;
             void bridge
-              .request(workerId, {
+              .request(terminal.workerId, {
                 type: "terminal.close",
-                terminalId,
+                terminalId: terminal.id,
               })
               .catch(() => undefined);
           }

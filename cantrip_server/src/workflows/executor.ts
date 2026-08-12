@@ -553,6 +553,7 @@ export class WorkflowExecutor {
             }
             target = {
               cwd: allocation.worktree.path,
+              projectReplicaId: allocation.worktree.projectSourceId,
               workerId: allocation.worktree.workerId,
               worktreeId: allocation.worktree.id,
             };

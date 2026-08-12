@@ -58,6 +58,8 @@ import {
   modelProfileSummarySchema,
   modelProviderSummarySchema,
   projectListSchema,
+  projectReplicaListSchema,
+  projectReplicaSummarySchema,
   projectShareAttachmentSchema,
   projectSummarySchema,
   projectTokenUsageSchema,
@@ -81,6 +83,7 @@ import {
   terminalSummarySchema,
   unprobedCodexRuntimeReport,
   workerListSchema,
+  workerManagementListSchema,
 } from "@cantrip/protocol";
 import type {
   AgentInteractionRequestCreate,
@@ -272,7 +275,7 @@ const workerBridge = {
   attach() {},
   close() {},
   isConnected(workerId: string) {
-    return workerId === "test-worker";
+    return workerId === "test-worker" || workerId === "test-worker-secondary";
   },
   sendSurfaceFrame(workerId, header, payload) {
     relayedSurfaceFrames.push({
@@ -1608,6 +1611,7 @@ describe("local server foundation", () => {
     });
     expect(bootstrap.routing.directWorkerConnections).toBe(false);
     expect(bootstrap.capabilities.worktrees).toBe(true);
+    expect(bootstrap.capabilities.projectReplicas).toBe(true);
 
     const initialSettings = settingsBundleSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),
@@ -4998,6 +5002,123 @@ describe("local server foundation", () => {
     );
     approvalLiveSocket.terminate();
 
+    await firstDatabase.repository.recordWorker(LOCAL_USER_ID, {
+      workerId: "test-worker-secondary",
+      name: "Secondary Worker",
+      platform: "linux",
+      architecture: "x64",
+      codexVersion: "codex-cli 1.0.0",
+      codexRuntime: unprobedCodexRuntimeReport,
+      remoteSurfaces: {
+        browser: false,
+        desktop: false,
+        transports: ["websocket"],
+        maxSessions: 1,
+      },
+      startedAt: "2026-08-07T12:00:00.000Z",
+    });
+    const secondaryPath = path.join(
+      dataDirectory,
+      "secondary-repositories",
+      "Cantrip",
+    );
+    const completedSecondary =
+      await firstDatabase.repository.completeGithubProjectSetup(
+        LOCAL_USER_ID,
+        project.id,
+        "test-worker-secondary",
+        {
+          path: secondaryPath,
+          displayPath: "Secondary/ArcaneArts/Cantrip",
+          reused: false,
+          updated: false,
+          warning: null,
+        },
+      );
+    expect(completedSecondary?.replicas).toHaveLength(2);
+    await firstDatabase.repository.reconcileProjectWorktrees(
+      LOCAL_USER_ID,
+      project.id,
+      "test-worker-secondary",
+      {
+        sourcePath: secondaryPath,
+        primaryPath: secondaryPath,
+        gitCommonDir: path.join(secondaryPath, ".git"),
+        managedRoot: path.join(dataDirectory, "secondary-worktrees"),
+        repositoryFingerprint: "b".repeat(64),
+        worktrees: [
+          {
+            path: secondaryPath,
+            head: "2".repeat(40),
+            branch: "main",
+            detached: false,
+            isPrimary: true,
+            managed: false,
+            locked: false,
+            lockReason: null,
+            prunable: false,
+            pruneReason: null,
+            missing: false,
+          },
+        ],
+      },
+    );
+    const replicatedProjects = projectListSchema.parse(
+      (await firstApp.inject({ method: "GET", url: "/api/projects" })).json(),
+    );
+    expect(replicatedProjects).toHaveLength(1);
+    const replicatedProject = replicatedProjects[0]!;
+    expect(replicatedProject.source?.workerId).toBe("test-worker");
+    expect(replicatedProject.replicas).toHaveLength(2);
+    const replicas = projectReplicaListSchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/replicas`,
+        })
+      ).json(),
+    );
+    expect(replicas.map(({ workerId }) => workerId)).toEqual([
+      "test-worker",
+      "test-worker-secondary",
+    ]);
+    expect(
+      workerManagementListSchema
+        .parse(
+          (
+            await firstApp.inject({
+              method: "GET",
+              url: "/api/workers/management",
+            })
+          ).json(),
+        )
+        .find(({ workerId }) => workerId === "test-worker-secondary")?.sources,
+    ).toEqual([
+      expect.objectContaining({
+        projectId: project.id,
+        projectReplicaId: replicas[1]!.id,
+      }),
+    ]);
+    expect(
+      projectReplicaSummarySchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/replicas/${replicas[1]!.id}`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject({
+      projectId: project.id,
+      workerId: "test-worker-secondary",
+      workerName: "Secondary Worker",
+      repositoryFingerprint: "b".repeat(64),
+      branch: "main",
+      head: "2".repeat(40),
+      ready: true,
+      worktreeCount: 1,
+    });
+
     const layoutBeforeRestart = projectTabLayoutSummarySchema.parse(
       (
         await firstApp.inject({
@@ -5043,7 +5164,7 @@ describe("local server foundation", () => {
     );
 
     expect(projects).toHaveLength(1);
-    expect(workers).toHaveLength(1);
+    expect(workers).toHaveLength(2);
     expect(workers[0]?.codexRuntime).toEqual(unprobedCodexRuntimeReport);
     const restoredTabLayout = projectTabLayoutSummarySchema.parse(
       (
@@ -5213,6 +5334,18 @@ describe("local server foundation", () => {
       expect(current?.setupStatus).toBe("ready");
       return current!;
     });
+    await secondDatabase.repository.completeGithubProjectSetup(
+      LOCAL_USER_ID,
+      relinked.id,
+      "test-worker-secondary",
+      {
+        path: secondaryPath,
+        displayPath: "Secondary/ArcaneArts/Cantrip",
+        reused: false,
+        updated: false,
+        warning: null,
+      },
+    );
     expect(
       await secondApp.inject({
         method: "DELETE",
@@ -5222,6 +5355,7 @@ describe("local server foundation", () => {
     ).toMatchObject({ statusCode: 204 });
     expect(deletedProjectPaths).toEqual([
       path.join(dataDirectory, "repositories", "Cantrip"),
+      secondaryPath,
     ]);
 
     await secondApp.close();

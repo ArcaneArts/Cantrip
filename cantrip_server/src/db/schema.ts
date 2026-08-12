@@ -748,7 +748,10 @@ export const projectSources = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("project_sources_project_unique").on(table.projectId),
+    uniqueIndex("project_sources_project_worker_unique").on(
+      table.projectId,
+      table.workerId,
+    ),
   ],
 );
 

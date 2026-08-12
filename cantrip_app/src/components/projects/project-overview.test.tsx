@@ -35,6 +35,7 @@ const project = {
     path: "/worker/repos/cantrip",
     displayPath: "~/repos/cantrip",
   },
+  replicas: [],
   createdAt: now,
   updatedAt: now,
 } satisfies ProjectSummary;

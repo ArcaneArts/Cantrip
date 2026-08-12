@@ -19,9 +19,32 @@ are replaceable execution endpoints and never communicate directly with one
 another.
 
 This document defines the contracts later multi-worker changes must preserve.
-It does not enable project replication, Git synchronization, or chat relocation
-by itself. Bootstrap capabilities remain disabled until their complete
-lifecycles are implemented.
+The persistence and read contracts for project replicas are implemented;
+provisioning, Git synchronization, placement switching, and chat relocation
+remain disabled until their complete lifecycles are implemented.
+
+## Current replica read contract
+
+`project_sources` is the persisted replica table and enforces one row per
+`(projectId, workerId)`. Existing rows and their IDs are preserved. Project
+summaries expose a bounded `replicas` list containing worker identity and
+online state, the worker-local path, repository fingerprint, Primary worktree,
+branch and revision observations, dirty/readiness state, worktree count, and
+timestamps.
+
+During rolling compatibility, the existing singular `source` field remains a
+deterministic projection of the first ready replica. A client built against
+the replica contract defaults a missing `replicas` field to an empty list when
+connected to an older server. The bootstrap capability
+`capabilities.projectReplicas` tells clients whether the replica read APIs are
+available:
+
+- `GET /api/projects/:projectId/replicas`
+- `GET /api/projects/:projectId/replicas/:replicaId`
+
+These routes are owner-scoped and read-only. Replica materialization and
+removal are introduced through durable jobs in the next rollout stage rather
+than request-scoped mutation routes.
 
 ## Terms
 
