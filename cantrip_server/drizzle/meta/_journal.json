@@ -470,6 +470,13 @@
       "when": 1786532322513,
       "tag": "0066_marvelous_onslaught",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1786533079589,
+      "tag": "0067_sad_yellow_claw",
+      "breakpoints": true
     }
   ]
 }

@@ -10,6 +10,7 @@ function stubHostedInfrastructure(): void {
   vi.stubEnv("CANTRIP_DEPLOYMENT_MODE", "hosted");
   vi.stubEnv("CANTRIP_BOOTSTRAP_MODE", "hosted");
   vi.stubEnv("CANTRIP_AUTH_MODE", "accounts");
+  vi.stubEnv("CANTRIP_ADMIN_EMAIL", "admin@cantrip.test");
   vi.stubEnv("CANTRIP_SERVER_HOST", "0.0.0.0");
   vi.stubEnv("DATABASE_URL", "postgres://cantrip:test@db/cantrip");
   vi.stubEnv("CANTRIP_APP_ORIGINS", "https://app.cantrip.test");
@@ -40,6 +41,7 @@ describe("server configuration safety", () => {
       codeSurfaceHost: "127.0.0.1",
       codeSurfaceOrigin: "http://127.0.0.1:4311",
       codeSurfacePort: 4311,
+      licenseWhitelistEnabled: true,
     });
   });
 
@@ -74,6 +76,7 @@ describe("server configuration safety", () => {
   it("requires a versioned encryption keyring for hosted secrets", () => {
     vi.stubEnv("CANTRIP_DEPLOYMENT_MODE", "hosted");
     vi.stubEnv("CANTRIP_AUTH_MODE", "accounts");
+    vi.stubEnv("CANTRIP_ADMIN_EMAIL", "admin@cantrip.test");
     vi.stubEnv("CANTRIP_BOOTSTRAP_MODE", "hosted");
     vi.stubEnv("CANTRIP_SERVER_HOST", "0.0.0.0");
     expect(() => readServerConfig()).toThrow(/encryption_keys/i);
@@ -253,11 +256,30 @@ describe("server configuration safety", () => {
     expect(() => readServerConfig()).toThrow(/at least 32/);
 
     vi.stubEnv("CANTRIP_ADMIN_BOOTSTRAP_TOKEN", "a".repeat(32));
+    vi.stubEnv("CANTRIP_ADMIN_EMAIL", "owner@example.com");
     vi.stubEnv("CANTRIP_PUBLIC_REGISTRATION", "true");
     expect(readServerConfig()).toMatchObject({
+      adminEmail: "owner@example.com",
       adminBootstrapToken: "a".repeat(32),
       authMode: "accounts",
+      licenseWhitelistEnabled: true,
       publicRegistration: true,
+    });
+  });
+
+  it("requires a valid administrator email unless licensing is disabled", () => {
+    vi.stubEnv("CANTRIP_AUTH_MODE", "accounts");
+    expect(() => readServerConfig()).toThrow(/ADMIN_EMAIL/i);
+
+    vi.stubEnv("CANTRIP_ADMIN_EMAIL", "not-an-email");
+    expect(() => readServerConfig()).toThrow(/valid email/i);
+
+    vi.stubEnv("CANTRIP_ADMIN_EMAIL", "");
+    vi.stubEnv("CANTRIP_LICENSE_WHITELIST_ENABLED", "false");
+    expect(readServerConfig()).toMatchObject({
+      adminEmail: undefined,
+      authMode: "accounts",
+      licenseWhitelistEnabled: false,
     });
   });
 

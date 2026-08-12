@@ -1,4 +1,7 @@
 import {
+  accountAdminSummarySchema,
+  accountLicenseWhitelistCreateSchema,
+  accountLicenseWhitelistEntrySchema,
   accountRegistrationSchema,
   authLoginSchema,
   mobileSignInGrantCreateResultSchema,
@@ -355,6 +358,27 @@ export async function registerAccount(
         : undefined,
     }),
   );
+}
+
+export async function getAccountAdminSummary() {
+  return accountAdminSummarySchema.parse(await request("/api/admin/accounts"));
+}
+
+export async function addAccountLicenseWhitelistEntry(email: string) {
+  return accountLicenseWhitelistEntrySchema.parse(
+    await post(
+      "/api/admin/license-whitelist",
+      accountLicenseWhitelistCreateSchema.parse({ email }),
+    ),
+  );
+}
+
+export async function removeAccountLicenseWhitelistEntry(
+  entryId: string,
+): Promise<void> {
+  await request(`/api/admin/license-whitelist/${encodeURIComponent(entryId)}`, {
+    method: "DELETE",
+  });
 }
 
 export async function logout(): Promise<void> {

@@ -3567,7 +3567,11 @@ describe("Cantrip protocol", () => {
           email: null,
           role: "owner",
         },
-        registration: { enabled: false },
+        registration: {
+          enabled: false,
+          bootstrapRequired: false,
+          licenseRequired: false,
+        },
       },
       routing: {
         workerConnection: "server-only",

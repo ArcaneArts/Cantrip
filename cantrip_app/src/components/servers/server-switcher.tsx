@@ -6,13 +6,15 @@ import {
   Plus,
   QrCode,
   Server,
+  ShieldCheck,
   ShieldOff,
   Trash2,
 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 
-import { Button } from "@/components/ui/button";
 import { MobileSignInQrDialog } from "@/components/auth/mobile-sign-in-qr-dialog";
+import { ServerAdminDialog } from "@/components/servers/server-admin-dialog";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -48,6 +50,7 @@ export function ServerSwitcher({
   const connections = useMemo(() => [...getServerConnections()], []);
   const active = getActiveServerConnection();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [adminDialogOpen, setAdminDialogOpen] = useState(false);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [testing, setTesting] = useState(false);
@@ -198,6 +201,15 @@ export function ServerSwitcher({
             >
               <Plus className="size-4" /> Add server
             </DropdownMenuPrimitive.Item>
+            {clientSession?.authMode === "accounts" &&
+            ["owner", "admin"].includes(clientSession.user.role) ? (
+              <DropdownMenuPrimitive.Item
+                className={itemClass}
+                onSelect={() => setAdminDialogOpen(true)}
+              >
+                <ShieldCheck className="size-4" /> Admin
+              </DropdownMenuPrimitive.Item>
+            ) : null}
             {clientSession?.authMode !== "none" ? (
               <>
                 <DropdownMenuPrimitive.Item
@@ -287,6 +299,10 @@ export function ServerSwitcher({
       <MobileSignInQrDialog
         onOpenChange={setMobileQrOpen}
         open={mobileQrOpen}
+      />
+      <ServerAdminDialog
+        open={adminDialogOpen}
+        onOpenChange={setAdminDialogOpen}
       />
     </>
   );

@@ -74,7 +74,11 @@ describe("server account authentication", () => {
         mode: "accounts",
         state: "authentication-required",
         currentUser: null,
-        registration: { enabled: true, bootstrapRequired: true },
+        registration: {
+          enabled: true,
+          bootstrapRequired: true,
+          licenseRequired: false,
+        },
       });
       expect(
         (await app.inject({ method: "GET", url: "/api/projects" })).statusCode,
@@ -273,6 +277,170 @@ describe("server account authentication", () => {
           })
         ).statusCode,
       ).toBe(401);
+    } finally {
+      await app.close();
+    }
+  }, 30_000);
+
+  it("licenses account registration through the configured administrator", async () => {
+    const config = {
+      ...(await createConfig("accounts")),
+      adminEmail: "admin@example.com",
+      licenseWhitelistEnabled: true,
+    } satisfies ServerConfig;
+    const database = await connectDatabase(config);
+    const app = await buildApp({ config, database, logger: false });
+
+    try {
+      const bootstrap = await app.inject({
+        method: "GET",
+        url: "/api/bootstrap",
+      });
+      expect(bootstrap.json().auth).toMatchObject({
+        registration: {
+          enabled: true,
+          bootstrapRequired: false,
+          licenseRequired: true,
+        },
+      });
+
+      const prematureMember = await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        headers: { origin },
+        payload: {
+          displayName: "Early Member",
+          email: "member@example.com",
+          password,
+        },
+      });
+      expect(prematureMember.statusCode).toBe(403);
+      expect(prematureMember.json().error).toMatch(/administrator.*first/i);
+
+      const registeredAdmin = await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        headers: { origin },
+        payload: {
+          displayName: "Server Admin",
+          email: "ADMIN@example.com",
+          password,
+        },
+      });
+      expect(registeredAdmin.statusCode).toBe(201);
+      expect(registeredAdmin.json().currentUser).toMatchObject({
+        email: "ADMIN@example.com",
+        role: "owner",
+      });
+      const adminCookie = sessionCookie(registeredAdmin);
+      const adminCsrf = registeredAdmin.json().csrfToken as string;
+
+      const initialSummary = await app.inject({
+        method: "GET",
+        url: "/api/admin/accounts",
+        headers: { cookie: adminCookie, origin },
+      });
+      expect(initialSummary.statusCode).toBe(200);
+      expect(initialSummary.json()).toEqual({
+        userCount: 1,
+        licenseWhitelist: {
+          enabled: true,
+          adminEmail: "admin@example.com",
+          entries: [],
+        },
+      });
+
+      const licensed = await app.inject({
+        method: "POST",
+        url: "/api/admin/license-whitelist",
+        headers: {
+          cookie: adminCookie,
+          origin,
+          "x-cantrip-csrf": adminCsrf,
+        },
+        payload: { email: "Member@Example.com" },
+      });
+      expect(licensed.statusCode).toBe(201);
+      expect(licensed.json()).toMatchObject({
+        email: "Member@Example.com",
+        registered: false,
+      });
+
+      const unlicensed = await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        headers: { origin },
+        payload: {
+          displayName: "Unlicensed",
+          email: "unlicensed@example.com",
+          password,
+        },
+      });
+      expect(unlicensed.statusCode).toBe(403);
+      expect(unlicensed.json().error).toMatch(/not licensed/i);
+
+      const registeredMember = await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        headers: { origin },
+        payload: {
+          displayName: "Licensed Member",
+          email: "member@example.com",
+          password,
+        },
+      });
+      expect(registeredMember.statusCode).toBe(201);
+      expect(registeredMember.json().currentUser).toMatchObject({
+        role: "member",
+      });
+      const memberCookie = sessionCookie(registeredMember);
+
+      const refreshedSummary = await app.inject({
+        method: "GET",
+        url: "/api/admin/accounts",
+        headers: { cookie: adminCookie, origin },
+      });
+      expect(refreshedSummary.json()).toMatchObject({
+        userCount: 2,
+        licenseWhitelist: {
+          entries: [
+            {
+              email: "Member@Example.com",
+              registered: true,
+            },
+          ],
+        },
+      });
+
+      expect(
+        (
+          await app.inject({
+            method: "GET",
+            url: "/api/admin/accounts",
+            headers: { cookie: memberCookie, origin },
+          })
+        ).statusCode,
+      ).toBe(403);
+
+      const removed = await app.inject({
+        method: "DELETE",
+        url: `/api/admin/license-whitelist/${licensed.json().id as string}`,
+        headers: {
+          cookie: adminCookie,
+          origin,
+          "x-cantrip-csrf": adminCsrf,
+        },
+      });
+      expect(removed.statusCode).toBe(204);
+      const afterRemoval = await app.inject({
+        method: "GET",
+        url: "/api/admin/accounts",
+        headers: { cookie: adminCookie, origin },
+      });
+      expect(afterRemoval.json()).toMatchObject({
+        userCount: 2,
+        licenseWhitelist: { entries: [] },
+      });
     } finally {
       await app.close();
     }

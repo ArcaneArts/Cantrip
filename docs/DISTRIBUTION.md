@@ -106,10 +106,16 @@ Copy the packaged `.env.example` to `.env`. The startup scripts use Node's
 - `CANTRIP_AUTH_MODE`: `none` for loopback, `password` for one protected owner,
   or `accounts` for account sessions.
 - `CANTRIP_PASSWORD_HASH`: required Argon2id encoded hash for `password` mode.
-- `CANTRIP_ADMIN_BOOTSTRAP_TOKEN`: optional 32+ character secret required to
-  create the first account when public registration is disabled.
-- `CANTRIP_PUBLIC_REGISTRATION`, `CANTRIP_SESSION_TTL_SECONDS`, and
-  `CANTRIP_AUTH_RATE_LIMIT`: account/session policy.
+- `CANTRIP_ADMIN_EMAIL`: the licensed administrator identity. The first account
+  created with this email becomes the server owner; later matching registration
+  becomes an administrator.
+- `CANTRIP_LICENSE_WHITELIST_ENABLED`: gates account registration to the
+  administrator email and durable server whitelist. It defaults to `true`;
+  setting it to `false` permits open account registration.
+- `CANTRIP_SESSION_TTL_SECONDS` and `CANTRIP_AUTH_RATE_LIMIT`:
+  account/session policy. `CANTRIP_ADMIN_BOOTSTRAP_TOKEN` and
+  `CANTRIP_PUBLIC_REGISTRATION` remain compatible with older programmatic
+  configurations that do not set the whitelist policy.
 - `CANTRIP_COOKIE_SECURE` and `CANTRIP_COOKIE_SAME_SITE`: hosted cookie policy;
   hosted mode defaults to `Secure` plus `SameSite=None` so approved web,
   Tauri, and Capacitor origins can share the server-owned session. Same-origin

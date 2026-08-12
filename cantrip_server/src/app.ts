@@ -5,6 +5,9 @@ import { isIP } from "node:net";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import {
+  accountAdminSummarySchema,
+  accountLicenseWhitelistCreateSchema,
+  accountLicenseWhitelistEntrySchema,
   accountRegistrationSchema,
   accountSessionListSchema,
   agentExecutionToolResultSchema,
@@ -624,6 +627,12 @@ function mutationAuditDescriptor(
   method: string,
   route: string,
 ): { action: string; resourceType: string } | null {
+  if (route.startsWith("/api/admin/license-whitelist") && method !== "GET") {
+    return {
+      action: "account-license.configuration-changed",
+      resourceType: "account-license",
+    };
+  }
   if (method === "GET" && route === "/api/projects/:projectId/chats") {
     return { action: "project.accessed", resourceType: "project" };
   }
@@ -851,6 +860,12 @@ export async function buildApp({
     (_request, body, done) => done(null, body),
   );
   const repository = database.repository;
+  const licenseWhitelistConfigured =
+    config.licenseWhitelistEnabled !== undefined;
+  const licenseWhitelistEnabled = config.licenseWhitelistEnabled === true;
+  const normalizedAdminEmail = config.adminEmail
+    ? normalizeAccountEmail(config.adminEmail)
+    : null;
   const operationalMetrics = new OperationalMetrics();
   const requestMetrics = new WeakMap<
     FastifyRequest,
@@ -1803,12 +1818,22 @@ export async function buildApp({
   if (
     config.deploymentMode === "hosted" &&
     config.authMode === "accounts" &&
+    !licenseWhitelistConfigured &&
     !config.publicRegistration &&
     !config.adminBootstrapToken &&
     (await repository.countAccountUsers()) === 0
   ) {
     throw new Error(
       "A new hosted account server with public registration disabled requires CANTRIP_ADMIN_BOOTSTRAP_TOKEN.",
+    );
+  }
+  if (
+    config.authMode === "accounts" &&
+    licenseWhitelistEnabled &&
+    !normalizedAdminEmail
+  ) {
+    throw new Error(
+      "Account license whitelisting requires a configured administrator email.",
     );
   }
   const [serverId, localUser] = await Promise.all([
@@ -4815,7 +4840,42 @@ export async function buildApp({
     return withRegistrationLock(async () => {
       const accountCount = await repository.countAccountUsers();
       const firstAccount = accountCount === 0;
-      if (!firstAccount && !config.publicRegistration) {
+      const configuredAdministrator = normalizedAdminEmail === normalizedEmail;
+      if (licenseWhitelistEnabled && firstAccount && !configuredAdministrator) {
+        await appendAudit(request, {
+          action: "auth.registration-denied",
+          metadata: { reason: "administrator-bootstrap-required" },
+          ownerId: null,
+          resourceType: "account",
+          result: "denied",
+        });
+        return reply.code(403).send({
+          error:
+            "The configured administrator must create the first account on this server.",
+        });
+      }
+      if (
+        licenseWhitelistEnabled &&
+        !configuredAdministrator &&
+        !(await repository.accountEmailIsWhitelisted(normalizedEmail))
+      ) {
+        await appendAudit(request, {
+          action: "auth.registration-denied",
+          metadata: { reason: "license-required" },
+          ownerId: null,
+          resourceType: "account",
+          result: "denied",
+        });
+        return reply.code(403).send({
+          error:
+            "This email is not licensed to create an account on this server.",
+        });
+      }
+      if (
+        !licenseWhitelistConfigured &&
+        !firstAccount &&
+        !config.publicRegistration
+      ) {
         await appendAudit(request, {
           action: "auth.registration-denied",
           metadata: { reason: "registration-disabled" },
@@ -4825,7 +4885,11 @@ export async function buildApp({
         });
         return reply.code(403).send({ error: "Registration is disabled." });
       }
-      if (!config.publicRegistration && firstAccount) {
+      if (
+        !licenseWhitelistConfigured &&
+        !config.publicRegistration &&
+        firstAccount
+      ) {
         const candidate = request.headers["x-cantrip-bootstrap-token"];
         if (
           !config.adminBootstrapToken ||
@@ -4851,7 +4915,13 @@ export async function buildApp({
           email: input.data.email.trim(),
           normalizedEmail,
           passwordHash: await hashPassword(input.data.password),
-          role: firstAccount ? "owner" : "member",
+          role: configuredAdministrator
+            ? firstAccount
+              ? "owner"
+              : "admin"
+            : firstAccount
+              ? "owner"
+              : "member",
         });
         await repository.ensureAccountConfiguration(
           user.id,
@@ -5154,6 +5224,69 @@ export async function buildApp({
     );
   });
 
+  app.get("/api/admin/accounts", async (request, reply) => {
+    const principal = authenticatedPrincipal(request);
+    if (principal.user.role !== "owner" && principal.user.role !== "admin") {
+      return reply
+        .code(403)
+        .send({ error: "Administrator access is required." });
+    }
+    return reply.header("cache-control", "no-store").send(
+      accountAdminSummarySchema.parse({
+        userCount: await repository.countAccountUsers(),
+        licenseWhitelist: {
+          enabled: licenseWhitelistEnabled,
+          adminEmail: config.adminEmail ?? null,
+          entries: await repository.listAccountLicenseWhitelist(),
+        },
+      }),
+    );
+  });
+
+  app.post("/api/admin/license-whitelist", async (request, reply) => {
+    const principal = authenticatedPrincipal(request);
+    if (principal.user.role !== "owner" && principal.user.role !== "admin") {
+      return reply
+        .code(403)
+        .send({ error: "Administrator access is required." });
+    }
+    const input = accountLicenseWhitelistCreateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    const normalizedEmail = normalizeAccountEmail(input.data.email);
+    if (normalizedEmail === normalizedAdminEmail) {
+      return reply.code(409).send({
+        error: "The configured administrator is licensed automatically.",
+      });
+    }
+    const entry = await repository.createAccountLicenseWhitelistEntry({
+      addedByUserId: principal.user.id,
+      email: input.data.email.trim(),
+      normalizedEmail,
+    });
+    return entry
+      ? reply.code(201).send(accountLicenseWhitelistEntrySchema.parse(entry))
+      : reply.code(409).send({ error: "That email is already whitelisted." });
+  });
+
+  app.delete<{ Params: { entryId: string } }>(
+    "/api/admin/license-whitelist/:entryId",
+    async (request, reply) => {
+      const principal = authenticatedPrincipal(request);
+      if (principal.user.role !== "owner" && principal.user.role !== "admin") {
+        return reply
+          .code(403)
+          .send({ error: "Administrator access is required." });
+      }
+      return (await repository.deleteAccountLicenseWhitelistEntry(
+        request.params.entryId,
+      ))
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "Whitelist entry not found." });
+    },
+  );
+
   app.get("/api/bootstrap", async (request, reply) => {
     const accountCount =
       config.authMode === "accounts" ? await repository.countAccountUsers() : 0;
@@ -5173,10 +5306,14 @@ export async function buildApp({
           registration: {
             enabled:
               config.authMode === "accounts" &&
-              (Boolean(config.publicRegistration) ||
+              (licenseWhitelistConfigured ||
+                Boolean(config.publicRegistration) ||
                 (firstAccount && Boolean(config.adminBootstrapToken))),
             bootstrapRequired:
-              firstAccount && !Boolean(config.publicRegistration),
+              !licenseWhitelistConfigured &&
+              firstAccount &&
+              !Boolean(config.publicRegistration),
+            licenseRequired: licenseWhitelistEnabled,
           },
         },
         routing: {
