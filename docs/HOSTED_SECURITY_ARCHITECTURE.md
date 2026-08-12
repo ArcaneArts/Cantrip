@@ -1,7 +1,7 @@
 # Hosted relay security architecture
 
 - Status: protected authentication, owner enforcement, worker enrollment,
-  provider and MCP secret encryption, and initial HTTP/proxy hardening implemented;
+  secret encryption, public request/relay limits, and HTTP/proxy hardening implemented;
   comprehensive quotas, audit visibility, and multi-instance control remain
 - Route inventory: [`security/server-route-inventory.json`](security/server-route-inventory.json)
 - Regenerate: `pnpm audit:server-boundaries:write`
@@ -255,6 +255,17 @@ dispatched to its assigned worker. Operators must back up the keyring separately
 retain old keys until startup has completed a rotation, and never place the
 keyring in source control, logs, or support bundles. Audit events remain a later
 hardening milestone.
+
+Public API, worker-pairing, attachment-upload, and WebSocket-handshake traffic
+use independent bounded sliding windows. Active uploads and application/tunnel
+WebSockets are capped per account. Every command routed to a worker is bounded
+both by per-worker and per-account rate and concurrency ceilings; reaching a
+ceiling fails visibly instead of accumulating an unbounded queue. These guards
+do not impose a short execution timeout, so an admitted Codex turn may remain
+active for its normal lifetime. Binary transports additionally retain their
+schema payload ceilings and buffered-byte backpressure rules. The current
+limiters are process-local; the multi-instance coordination layer must provide
+the shared hosted counter before horizontal replicas are advertised.
 
 ## 8. Application connection audit
 

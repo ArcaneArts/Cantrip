@@ -487,6 +487,12 @@ import {
   requiredToolString,
 } from "./http/request-helpers.js";
 import { AppLiveHub } from "./live/hub.js";
+import {
+  ActiveLimit,
+  RelayLimitError,
+  SlidingWindowRateLimiter,
+} from "./security/abuse-limits.js";
+import { LimitedWorkerCommandBus } from "./workers/limited-command-bus.js";
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -543,6 +549,17 @@ const TUNNEL_ATTACHMENT_SECRET_TTL_MS = 2 * 60_000;
 const TUNNEL_ATTACHMENT_LIFETIME_MS = 12 * 60 * 60_000;
 const TUNNEL_ATTACHMENT_INITIALIZE_TIMEOUT_MS = 10_000;
 const TUNNEL_ATTACHMENT_EXPIRY_SWEEP_MS = 60_000;
+
+function workerRequestFailureStatus(error: unknown): 429 | 502 | 503 {
+  if (error instanceof RelayLimitError) return 429;
+  return error instanceof WorkerUnavailableError ? 503 : 502;
+}
+
+function workerConflictFailureStatus(error: unknown): 409 | 429 | 503 {
+  if (error instanceof RelayLimitError) return 429;
+  return error instanceof WorkerUnavailableError ? 503 : 409;
+}
+
 type ChatLiveResource = Extract<
   AppLiveResource,
   | "agent-interaction"
@@ -717,7 +734,15 @@ export async function buildApp({
     { bodyLimit: uploadLimitBytes, parseAs: "buffer" },
     (_request, body, done) => done(null, body),
   );
-  const bridge = workerBridge ?? new WorkerBridge();
+  const repository = database.repository;
+  const rawBridge = workerBridge ?? new WorkerBridge();
+  const bridge = new LimitedWorkerCommandBus(rawBridge, {
+    accountConcurrency: config.accountCommandConcurrency ?? 128,
+    accountRatePerMinute: config.accountCommandRatePerMinute ?? 2_400,
+    resolveOwnerId: (workerId) => repository.getWorkerOwnerId(workerId),
+    workerConcurrency: config.workerCommandConcurrency ?? 64,
+    workerRatePerMinute: config.workerCommandRatePerMinute ?? 1_200,
+  });
   const revokedWorkerCredentialIds = new Set<string>();
   const codeSurface = resolveCodeSurfaceConfig(config);
   const codeTunnel =
@@ -732,7 +757,6 @@ export async function buildApp({
       surfaceOrigin: codeSurface.origin,
     });
   const surfaceRelay = new RemoteSurfaceRelay(bridge);
-  const repository = database.repository;
   const ownerContext = new AsyncLocalStorage<string>();
   const applicationOwnerId = (): string => {
     const ownerId = ownerContext.getStore();
@@ -1754,6 +1778,21 @@ export async function buildApp({
 
   const sessionService = new UserSessionService(repository, config);
   const authRateLimiter = new AuthRateLimiter(config.authRateLimit ?? 10);
+  const apiRateLimiter = new SlidingWindowRateLimiter(
+    config.apiRateLimitPerMinute ?? 1_200,
+  );
+  const pairingRateLimiter = new SlidingWindowRateLimiter(
+    config.pairingRateLimitPerMinute ?? 20,
+  );
+  const uploadRateLimiter = new SlidingWindowRateLimiter(
+    config.uploadRateLimitPerMinute ?? 30,
+  );
+  const websocketRateLimiter = new SlidingWindowRateLimiter(
+    config.websocketHandshakeRatePerMinute ?? 120,
+  );
+  const accountWebsockets = new ActiveLimit(config.accountWebsocketLimit ?? 32);
+  const accountUploads = new ActiveLimit(config.accountUploadConcurrency ?? 4);
+  const uploadReleases = new WeakMap<FastifyRequest, () => void>();
   const sessionSockets = new Map<
     string,
     {
@@ -1814,9 +1853,83 @@ export async function buildApp({
     }
   });
 
+  app.addHook("onRequest", async (request, reply) => {
+    if (request.method === "OPTIONS") return;
+    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
+    const internalWorkerRoute =
+      route.startsWith("/api/internal/workers/") &&
+      route !== "/api/internal/workers/enroll";
+    if (internalWorkerRoute) return;
+    const key =
+      request.principal.state === "authenticated"
+        ? `owner:${request.principal.user.id}`
+        : `ip:${request.ip}`;
+    let limiter = apiRateLimiter;
+    let category = "api";
+    if (route === "/api/auth/login" || route === "/api/auth/register") {
+      return;
+    }
+    if (
+      (route === "/api/workers/enrollment-codes" &&
+        request.method === "POST") ||
+      route === "/api/internal/workers/enroll" ||
+      route.endsWith("/credentials/rotate")
+    ) {
+      limiter = pairingRateLimiter;
+      category = "pairing";
+    } else if (
+      route === "/api/chats/:chatId/attachments" &&
+      request.method === "POST"
+    ) {
+      limiter = uploadRateLimiter;
+      category = "upload";
+    } else if (request.headers.upgrade?.toLowerCase() === "websocket") {
+      limiter = websocketRateLimiter;
+      category = "websocket-handshake";
+    }
+    const retryAfter = limiter.consume(key);
+    if (retryAfter === null) {
+      if (category === "upload") {
+        const release = accountUploads.acquire(key);
+        if (!release) {
+          return reply
+            .header("retry-after", "1")
+            .code(429)
+            .send({ error: "Account upload concurrency limit reached." });
+        }
+        uploadReleases.set(request, release);
+      }
+      return;
+    }
+    request.log.warn(
+      {
+        category,
+        event: "security.rate-limited",
+        requestId: request.id,
+        route,
+      },
+      "Request rate limit reached",
+    );
+    return reply
+      .header("retry-after", String(retryAfter))
+      .code(429)
+      .send({ error: "Request rate limit reached. Retry shortly." });
+  });
+
+  app.addHook("onResponse", async (request) => {
+    uploadReleases.get(request)?.();
+    uploadReleases.delete(request);
+  });
+
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof AuthenticationRequiredError) {
       return reply.code(401).send({ error: error.message });
+    }
+    if (error instanceof RelayLimitError) {
+      return reply
+        .header("retry-after", String(error.retryAfterSeconds))
+        .code(429)
+        .send({ error: error.message });
     }
     const statusCode =
       error &&
@@ -1862,6 +1975,31 @@ export async function buildApp({
       entry.sockets.delete(socket);
       if (entry.sockets.size === 0) sessionSockets.delete(principal.sessionId!);
     });
+  };
+  const registerAccountSocket = (
+    socket: {
+      close(code?: number, reason?: string): void;
+      on(event: "close", listener: () => void): void;
+    },
+    ownerId: string,
+  ): boolean => {
+    const release = accountWebsockets.acquire(ownerId);
+    if (!release) {
+      socket.close(1013, "Account WebSocket connection limit reached");
+      return false;
+    }
+    socket.on("close", release);
+    return true;
+  };
+  const registerAuthenticatedSocket = (
+    socket: {
+      close(code?: number, reason?: string): void;
+      on(event: "close", listener: () => void): void;
+    },
+    request: FastifyRequest,
+  ): boolean => {
+    const principal = authenticatedPrincipal(request);
+    return registerAccountSocket(socket, principal.user.id);
   };
   const closeSessionSockets = (
     matches: (sessionId: string, ownerId: string) => boolean,
@@ -1923,6 +2061,7 @@ export async function buildApp({
       return;
     }
     const principal = authenticatedPrincipal(request);
+    if (!registerAccountSocket(socket, principal.user.id)) return;
     liveHub.attach(socket, {
       ownerId: principal.user.id,
       sessionId: principal.sessionId,
@@ -4089,6 +4228,7 @@ export async function buildApp({
         socket.close(1008, "Attachment authentication failed");
         return;
       }
+      if (!registerAccountSocket(socket, authorization.ownerId)) return;
       try {
         const initialize = tunnelAttachmentInitializeSchema.parse(
           await initialized,
@@ -4473,7 +4613,7 @@ export async function buildApp({
               input.data.response,
             );
           } catch (error) {
-            const status = error instanceof WorkerUnavailableError ? 503 : 409;
+            const status = workerConflictFailureStatus(error);
             return reply.code(status).send({
               error: `The workflow runtime no longer accepts this interaction: ${errorMessage(error)}`,
             });
@@ -4526,7 +4666,7 @@ export async function buildApp({
             ),
           );
         } catch (error) {
-          const status = error instanceof WorkerUnavailableError ? 503 : 409;
+          const status = workerConflictFailureStatus(error);
           return reply.code(status).send({
             error: `The runtime no longer accepts this interaction: ${errorMessage(error)}`,
           });
@@ -4580,7 +4720,7 @@ export async function buildApp({
         return reply.send(status);
       } catch (error) {
         return reply
-          .code(error instanceof WorkerUnavailableError ? 503 : 502)
+          .code(workerRequestFailureStatus(error))
           .send({ error: errorMessage(error) });
       }
     },
@@ -4618,7 +4758,7 @@ export async function buildApp({
         );
       } catch (error) {
         return reply
-          .code(error instanceof WorkerUnavailableError ? 503 : 502)
+          .code(workerRequestFailureStatus(error))
           .send({ error: errorMessage(error) });
       }
     },
@@ -4653,7 +4793,7 @@ export async function buildApp({
         return reply.code(204).send();
       } catch (error) {
         return reply
-          .code(error instanceof WorkerUnavailableError ? 503 : 502)
+          .code(workerRequestFailureStatus(error))
           .send({ error: errorMessage(error) });
       }
     },
@@ -4994,7 +5134,7 @@ export async function buildApp({
         });
         return reply.send(githubAuthStatusSchema.parse(result));
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -5031,7 +5171,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -5056,7 +5196,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -5089,7 +5229,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -5124,7 +5264,7 @@ export async function buildApp({
           }),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -6016,7 +6156,7 @@ export async function buildApp({
           }),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({
           error: `Codex could not generate a valid workflow: ${errorMessage(error)}`,
         });
@@ -6140,7 +6280,7 @@ export async function buildApp({
         );
       } catch (error) {
         return reply
-          .code(error instanceof WorkerUnavailableError ? 503 : 502)
+          .code(workerRequestFailureStatus(error))
           .send({ error: `Git assistant failed: ${errorMessage(error)}` });
       }
     },
@@ -6167,7 +6307,7 @@ export async function buildApp({
         );
       } catch (error) {
         return reply
-          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .code(workerConflictFailureStatus(error))
           .send({ error: errorMessage(error) });
       }
     },
@@ -6223,7 +6363,7 @@ export async function buildApp({
           ? reply.send(githubPullRequestCheckoutResultSchema.parse(result))
           : reply.code(404).send({ error: "Project worktree not found." });
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -6291,7 +6431,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -6362,7 +6502,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -6419,7 +6559,7 @@ export async function buildApp({
         );
         return reply.send(githubPullRequestDetailSchema.parse(pullRequest));
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -6521,7 +6661,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -6558,7 +6698,7 @@ export async function buildApp({
         );
       } catch (error) {
         return reply
-          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .code(workerConflictFailureStatus(error))
           .send({ error: errorMessage(error) });
       }
     },
@@ -6610,7 +6750,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -6662,7 +6802,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -6729,7 +6869,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -6774,7 +6914,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -6806,7 +6946,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -6856,7 +6996,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -6888,7 +7028,7 @@ export async function buildApp({
         );
       } catch (error) {
         return reply
-          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .code(workerConflictFailureStatus(error))
           .send({ error: errorMessage(error) });
       }
     },
@@ -6965,7 +7105,7 @@ export async function buildApp({
         return reply.send(result);
       } catch (error) {
         return reply
-          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .code(workerConflictFailureStatus(error))
           .send({ error: errorMessage(error) });
       }
     },
@@ -7016,7 +7156,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -7105,7 +7245,7 @@ export async function buildApp({
         if (error instanceof WorkflowConflictError) {
           return reply.code(409).send({ error: error.message });
         }
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -7506,7 +7646,7 @@ export async function buildApp({
               .code(404)
               .send({ error: "Workflow run or worktree lease not found." });
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -7752,7 +7892,7 @@ export async function buildApp({
           ? reply.send(projectWorktreeListSchema.parse(worktrees))
           : reply.code(404).send({ error: "Project source not found." });
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -7779,7 +7919,7 @@ export async function buildApp({
           ? reply.code(201).send(projectWorktreeSummarySchema.parse(created))
           : reply.code(404).send({ error: "Project source not found." });
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -7827,7 +7967,7 @@ export async function buildApp({
           ? reply.send(projectWorktreeSummarySchema.parse(worktree))
           : reply.code(404).send({ error: "Worktree not found." });
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -7870,7 +8010,7 @@ export async function buildApp({
           ? reply.send(projectWorktreeSummarySchema.parse(worktree))
           : reply.code(404).send({ error: "Worktree not found." });
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -7964,7 +8104,7 @@ export async function buildApp({
           ? reply.send(projectWorktreeSummarySchema.parse(worktree))
           : reply.code(404).send({ error: "Worktree not found." });
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -8005,7 +8145,7 @@ export async function buildApp({
           ? reply.send(projectWorktreeListSchema.parse(worktrees))
           : reply.code(404).send({ error: "Project source not found." });
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -8046,7 +8186,7 @@ export async function buildApp({
           if (snapshot)
             return reply.send(worktreeStatusResultSchema.parse(snapshot));
         }
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -8082,7 +8222,7 @@ export async function buildApp({
         });
         return reply.send(gitFileDiffSchema.parse(result));
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -8131,7 +8271,7 @@ export async function buildApp({
         });
         return reply.send(gitHistorySchema.parse(history));
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -8175,7 +8315,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -8280,7 +8420,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -8329,7 +8469,7 @@ export async function buildApp({
         return reply.send(result);
       } catch (error) {
         return reply
-          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .code(workerConflictFailureStatus(error))
           .send({ error: errorMessage(error) });
       }
     },
@@ -8441,7 +8581,7 @@ export async function buildApp({
           });
         }
         return reply
-          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .code(workerConflictFailureStatus(error))
           .send({ error: errorMessage(error) });
       }
     },
@@ -8527,7 +8667,7 @@ export async function buildApp({
         );
       } catch (error) {
         return reply
-          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .code(workerConflictFailureStatus(error))
           .send({ error: errorMessage(error) });
       }
     },
@@ -8621,7 +8761,7 @@ export async function buildApp({
         );
       } catch (error) {
         return reply
-          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .code(workerConflictFailureStatus(error))
           .send({ error: errorMessage(error) });
       }
     },
@@ -8716,7 +8856,7 @@ export async function buildApp({
         );
       } catch (error) {
         return reply
-          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .code(workerConflictFailureStatus(error))
           .send({ error: errorMessage(error) });
       }
     },
@@ -8769,7 +8909,7 @@ export async function buildApp({
         });
         return reply.send(gitCommitDetailSchema.parse(detail));
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -8821,7 +8961,7 @@ export async function buildApp({
           ]),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -8864,7 +9004,7 @@ export async function buildApp({
         });
         return reply.send(gitComparisonSchema.parse(comparison));
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -8905,7 +9045,7 @@ export async function buildApp({
         });
         return reply.send(gitRevisionFileDiffSchema.parse(diff));
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -8933,7 +9073,7 @@ export async function buildApp({
         });
         return reply.send(gitPartialPatchPreviewSchema.parse(preview));
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -8982,7 +9122,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9008,7 +9148,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9064,7 +9204,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9104,7 +9244,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9144,7 +9284,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9252,7 +9392,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9299,7 +9439,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9330,7 +9470,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9356,7 +9496,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9399,7 +9539,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9429,7 +9569,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9455,7 +9595,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9498,7 +9638,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9528,7 +9668,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9554,7 +9694,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9597,7 +9737,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9627,7 +9767,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9654,7 +9794,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9697,7 +9837,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9727,7 +9867,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9754,7 +9894,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9780,7 +9920,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9816,7 +9956,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9859,7 +9999,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9901,7 +10041,7 @@ export async function buildApp({
         );
         return reply.code(201).send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9934,7 +10074,7 @@ export async function buildApp({
         );
         return reply.send(preview);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -9985,7 +10125,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -10036,7 +10176,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -10071,7 +10211,7 @@ export async function buildApp({
       });
       return reply.send(gitHistorySchema.parse(history));
     } catch (error) {
-      const status = error instanceof WorkerUnavailableError ? 503 : 502;
+      const status = workerRequestFailureStatus(error);
       return reply.code(status).send({ error: errorMessage(error) });
     }
   });
@@ -10094,7 +10234,7 @@ export async function buildApp({
         );
         return reply.send(projectRepositoryStatsSchema.parse(stats));
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -10161,7 +10301,7 @@ export async function buildApp({
         );
         return reply.code(201).send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -10219,7 +10359,7 @@ export async function buildApp({
       });
       return reply.send(githubIssueListSchema.parse(issues));
     } catch (error) {
-      const status = error instanceof WorkerUnavailableError ? 503 : 502;
+      const status = workerRequestFailureStatus(error);
       return reply.code(status).send({ error: errorMessage(error) });
     }
   });
@@ -10246,7 +10386,7 @@ export async function buildApp({
         });
         return reply.send(githubIssueDetailSchema.parse(issue));
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -10279,7 +10419,7 @@ export async function buildApp({
         });
         return reply.send(githubIssueDetailSchema.parse(issue));
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -10312,7 +10452,7 @@ export async function buildApp({
         });
         return reply.send(githubIssueDetailSchema.parse(issue));
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -10335,7 +10475,7 @@ export async function buildApp({
         });
         return reply.send(gitStatusSchema.parse(status));
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -10377,7 +10517,7 @@ export async function buildApp({
         }
         return reply.send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -10475,7 +10615,7 @@ export async function buildApp({
             .catch(() => undefined);
         }
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
 
@@ -10543,7 +10683,7 @@ export async function buildApp({
           error: "This GitHub repository already has a Cantrip project.",
         });
       }
-      const status = error instanceof WorkerUnavailableError ? 503 : 502;
+      const status = workerRequestFailureStatus(error);
       return reply.code(status).send({ error: errorMessage(error) });
     }
   });
@@ -10642,7 +10782,7 @@ export async function buildApp({
           if (!updated) throw new Error("Chat source not found.");
           context = updated;
         } catch (error) {
-          const status = error instanceof WorkerUnavailableError ? 503 : 409;
+          const status = workerConflictFailureStatus(error);
           return reply.code(status).send({ error: errorMessage(error) });
         }
       }
@@ -10706,7 +10846,7 @@ export async function buildApp({
         );
         return reply.send(scriptCommandListSchema.parse(commands));
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -10809,7 +10949,7 @@ export async function buildApp({
         await updateTerminalStatus(context.terminalId, "running");
         return reply.code(202).send({ accepted: true });
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -11134,7 +11274,7 @@ export async function buildApp({
           failedRuntime,
         );
         return reply
-          .code(error instanceof WorkerUnavailableError ? 503 : 502)
+          .code(workerRequestFailureStatus(error))
           .send({ error: message });
       }
       if (!runtime) {
@@ -11376,7 +11516,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -11851,6 +11991,7 @@ export async function buildApp({
         socket.close(1008, "Origin not allowed");
         return;
       }
+      if (!registerAuthenticatedSocket(socket, request)) return;
       registerSessionSocket(socket, request);
       const viewport = remoteSurfaceViewportSchema.safeParse({
         width: Number(request.query.width ?? 1_280),
@@ -12204,7 +12345,7 @@ export async function buildApp({
       });
       return reply.send(explorerDirectorySchema.parse(directory));
     } catch (error) {
-      const status = error instanceof WorkerUnavailableError ? 503 : 502;
+      const status = workerRequestFailureStatus(error);
       return reply.code(status).send({ error: errorMessage(error) });
     }
   });
@@ -12229,7 +12370,7 @@ export async function buildApp({
       });
       return reply.send(explorerFileSchema.parse(file));
     } catch (error) {
-      const status = error instanceof WorkerUnavailableError ? 503 : 502;
+      const status = workerRequestFailureStatus(error);
       return reply.code(status).send({ error: errorMessage(error) });
     }
   });
@@ -12256,7 +12397,7 @@ export async function buildApp({
         });
         return reply.send(explorerFileSchema.parse(file));
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -12273,6 +12414,7 @@ export async function buildApp({
         socket.close(1008, "Origin not allowed");
         return;
       }
+      if (!registerAuthenticatedSocket(socket, request)) return;
       registerSessionSocket(socket, request);
       const attachmentId = randomUUID();
       let terminalId: string | null = null;
@@ -12664,7 +12806,7 @@ export async function buildApp({
         );
         return reply.send(released);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 409;
+        const status = workerConflictFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -13489,7 +13631,7 @@ export async function buildApp({
         });
         return reply.send(skillListSchema.parse(skills));
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -13523,7 +13665,7 @@ export async function buildApp({
       });
       return reply.send(codexCustomizationInventorySchema.parse(inventory));
     } catch (error) {
-      const status = error instanceof WorkerUnavailableError ? 503 : 502;
+      const status = workerRequestFailureStatus(error);
       return reply.code(status).send({ error: errorMessage(error) });
     }
   });
@@ -13554,7 +13696,7 @@ export async function buildApp({
         });
         return reply.send(codexExternalImportPreviewSchema.parse(preview));
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -13591,7 +13733,7 @@ export async function buildApp({
         });
         return reply.send(codexMcpResourceReadSchema.parse(resource));
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -13630,7 +13772,7 @@ export async function buildApp({
         publishChatInvalidation(context.chatId, "customization");
         return reply.send(configured);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -13669,7 +13811,7 @@ export async function buildApp({
         publishChatInvalidation(context.chatId, "customization");
         return reply.send(roots);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -13714,7 +13856,7 @@ export async function buildApp({
         observeMcpOauthStatus(context, runtime, initial);
         return reply.send(result);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -13753,7 +13895,7 @@ export async function buildApp({
         observeMcpOauthStatus(context, runtime, status);
         return reply.send(status);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -13787,7 +13929,7 @@ export async function buildApp({
         publishChatInvalidation(context.chatId, "customization");
         return reply.send(reloaded);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -13827,7 +13969,7 @@ export async function buildApp({
         observeExternalImportStatus(context, runtime, status);
         return reply.code(202).send(status);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -13868,7 +14010,7 @@ export async function buildApp({
         observeExternalImportStatus(context, runtime, status);
         return reply.send(status);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -14000,7 +14142,7 @@ export async function buildApp({
         } catch {
           // Cleanup is best effort if the worker disconnected mid-upload.
         }
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -14022,7 +14164,7 @@ export async function buildApp({
       try {
         const chunks: Buffer[] = [];
         let offset = 0;
-        let expectedSize = attachment.sizeBytes;
+        const expectedSize = attachment.sizeBytes;
         while (offset < expectedSize || (expectedSize === 0 && offset === 0)) {
           const chunk = workerAttachmentReadResultSchema.parse(
             await bridge.request(attachment.workerId, {
@@ -14034,16 +14176,38 @@ export async function buildApp({
               limit: ATTACHMENT_CHUNK_BYTES,
             }),
           );
-          expectedSize = chunk.sizeBytes;
+          if (chunk.sizeBytes !== expectedSize) {
+            throw new Error(
+              "Attachment worker returned an inconsistent content size.",
+            );
+          }
           const bytes = Buffer.from(chunk.data, "base64");
+          const remainingBytes = expectedSize - offset;
+          const maximumChunkBytes = Math.min(
+            ATTACHMENT_CHUNK_BYTES,
+            Math.max(remainingBytes, 0),
+          );
+          if (bytes.byteLength > maximumChunkBytes) {
+            throw new Error("Attachment worker returned an oversized chunk.");
+          }
           chunks.push(bytes);
           offset += bytes.byteLength;
-          if (chunk.eof) break;
+          if (chunk.eof) {
+            if (offset !== expectedSize) {
+              throw new Error("Attachment content was truncated.");
+            }
+            break;
+          }
+          if (offset === expectedSize) {
+            throw new Error(
+              "Attachment worker did not terminate the content stream.",
+            );
+          }
           if (bytes.byteLength === 0) {
             throw new Error("Attachment worker returned an empty chunk.");
           }
         }
-        const content = Buffer.concat(chunks);
+        const content = Buffer.concat(chunks, expectedSize);
         if (content.byteLength !== expectedSize) {
           throw new Error("Attachment content was truncated.");
         }
@@ -14056,7 +14220,7 @@ export async function buildApp({
           .type(attachment.mimeType)
           .send(content);
       } catch (error) {
-        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },

@@ -112,6 +112,17 @@ Copy the packaged `.env.example` to `.env`. The startup scripts use Node's
   deployments may explicitly choose `lax` or `strict`.
 - `CANTRIP_API_BODY_LIMIT_BYTES`, `CANTRIP_UPLOAD_LIMIT_BYTES`, and
   `CANTRIP_WEBSOCKET_MAX_PAYLOAD_BYTES`: independent public transport ceilings.
+- `CANTRIP_API_RATE_LIMIT_PER_MINUTE`,
+  `CANTRIP_PAIRING_RATE_LIMIT_PER_MINUTE`,
+  `CANTRIP_UPLOAD_RATE_LIMIT_PER_MINUTE`, and
+  `CANTRIP_WEBSOCKET_HANDSHAKE_RATE_PER_MINUTE`: independent in-process request
+  buckets. A shared limiter is added by the multi-instance deployment layer.
+- `CANTRIP_ACCOUNT_UPLOAD_CONCURRENCY`,
+  `CANTRIP_ACCOUNT_WEBSOCKET_LIMIT`,
+  `CANTRIP_ACCOUNT_COMMAND_CONCURRENCY`, and
+  `CANTRIP_WORKER_COMMAND_CONCURRENCY`: active relay ceilings. Account and
+  worker command rate variables provide a second backpressure boundary without
+  adding a short timeout to long-running agent work.
 
 Hosted mode never permits anonymous authentication, including when
 `CANTRIP_ALLOW_INSECURE_REMOTE=true`. It also refuses missing encryption keys,
