@@ -1414,24 +1414,108 @@ export function SettingsPage({
                     <Plus className="size-3.5" /> Add route
                   </Button>
                 </div>
-                <div className="grid gap-2">
+                <div className="divide-y overflow-hidden border-y">
+                  <div className="hidden grid-cols-[5rem_minmax(0,0.9fr)_minmax(0,1.15fr)_minmax(0,1fr)_auto] items-center gap-2 px-2 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
+                    <span>Priority</span>
+                    <span>Provider</span>
+                    <span>Provider model</span>
+                    <span>Reasoning</span>
+                    <span className="pr-1 text-right">Status &amp; order</span>
+                  </div>
                   {modelRoutes.map((route, index) => (
                     <div
                       key={route.key}
-                      className="grid gap-3 rounded-lg border bg-muted/15 p-3"
+                      data-high-contrast-row
+                      className="grid min-w-0 gap-2 px-2 py-2 even:bg-muted/20 sm:grid-cols-[5rem_minmax(0,0.9fr)_minmax(0,1.15fr)_minmax(0,1fr)_auto] sm:items-center"
                     >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <Route className="size-4 shrink-0 text-muted-foreground" />
-                        <span className="text-xs font-semibold">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <Route className="size-3.5 shrink-0 text-muted-foreground" />
+                        <span className="text-xs font-medium">
                           Priority {index + 1}
                         </span>
-                        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                          {settings.data?.providers.find(
-                            (provider) => provider.id === route.providerId,
-                          )?.name ?? "Provider"}
-                          {route.modelName ? ` · ${route.modelName}` : ""}
+                      </div>
+                      <label className="grid min-w-0 gap-1 text-xs">
+                        <span className="font-medium text-muted-foreground sm:sr-only">
+                          Provider
                         </span>
-                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <select
+                          required
+                          value={route.providerId}
+                          onChange={(event) =>
+                            setModelRoutes((routes) =>
+                              routes.map((candidate) =>
+                                candidate.key === route.key
+                                  ? {
+                                      ...candidate,
+                                      providerId: event.target.value,
+                                    }
+                                  : candidate,
+                              ),
+                            )
+                          }
+                          className="h-8 min-w-0 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2"
+                        >
+                          {(settings.data?.providers ?? []).map((provider) => (
+                            <option key={provider.id} value={provider.id}>
+                              {provider.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="grid min-w-0 gap-1 text-xs">
+                        <span className="font-medium text-muted-foreground sm:sr-only">
+                          Provider model name
+                        </span>
+                        <input
+                          required
+                          value={route.modelName}
+                          onChange={(event) =>
+                            setModelRoutes((routes) =>
+                              routes.map((candidate) =>
+                                candidate.key === route.key
+                                  ? {
+                                      ...candidate,
+                                      modelName: event.target.value,
+                                    }
+                                  : candidate,
+                              ),
+                            )
+                          }
+                          className="h-8 min-w-0 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2"
+                          placeholder="openai/gpt-5.6-sol"
+                        />
+                      </label>
+                      <label className="grid min-w-0 gap-1 text-xs">
+                        <span className="font-medium text-muted-foreground sm:sr-only">
+                          Reasoning override
+                        </span>
+                        <select
+                          value={route.reasoningEffort ?? ""}
+                          onChange={(event) =>
+                            setModelRoutes((routes) =>
+                              routes.map((candidate) =>
+                                candidate.key === route.key
+                                  ? {
+                                      ...candidate,
+                                      reasoningEffort:
+                                        (event.target
+                                          .value as ReasoningEffort) || null,
+                                    }
+                                  : candidate,
+                              ),
+                            )
+                          }
+                          className="h-8 min-w-0 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2"
+                        >
+                          {reasoningOptions.map((effort) => (
+                            <option key={effort || "inherit"} value={effort}>
+                              {effort || "Use model default"}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="flex items-center justify-end gap-0.5">
+                        <label className="mr-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                           <input
                             type="checkbox"
                             checked={route.enabled}
@@ -1507,81 +1591,6 @@ export function SettingsPage({
                           <Trash2 className="size-3.5" />
                           <span className="sr-only">Remove route</span>
                         </Button>
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        <Field label="Provider">
-                          <select
-                            required
-                            value={route.providerId}
-                            onChange={(event) =>
-                              setModelRoutes((routes) =>
-                                routes.map((candidate) =>
-                                  candidate.key === route.key
-                                    ? {
-                                        ...candidate,
-                                        providerId: event.target.value,
-                                      }
-                                    : candidate,
-                                ),
-                              )
-                            }
-                            className={inputClass}
-                          >
-                            {(settings.data?.providers ?? []).map(
-                              (provider) => (
-                                <option key={provider.id} value={provider.id}>
-                                  {provider.name}
-                                </option>
-                              ),
-                            )}
-                          </select>
-                        </Field>
-                        <Field label="Provider model name">
-                          <input
-                            required
-                            value={route.modelName}
-                            onChange={(event) =>
-                              setModelRoutes((routes) =>
-                                routes.map((candidate) =>
-                                  candidate.key === route.key
-                                    ? {
-                                        ...candidate,
-                                        modelName: event.target.value,
-                                      }
-                                    : candidate,
-                                ),
-                              )
-                            }
-                            className={inputClass}
-                            placeholder="openai/gpt-5.6-sol"
-                          />
-                        </Field>
-                        <Field label="Reasoning override">
-                          <select
-                            value={route.reasoningEffort ?? ""}
-                            onChange={(event) =>
-                              setModelRoutes((routes) =>
-                                routes.map((candidate) =>
-                                  candidate.key === route.key
-                                    ? {
-                                        ...candidate,
-                                        reasoningEffort:
-                                          (event.target
-                                            .value as ReasoningEffort) || null,
-                                      }
-                                    : candidate,
-                                ),
-                              )
-                            }
-                            className={inputClass}
-                          >
-                            {reasoningOptions.map((effort) => (
-                              <option key={effort || "inherit"} value={effort}>
-                                {effort || "Use model default"}
-                              </option>
-                            ))}
-                          </select>
-                        </Field>
                       </div>
                     </div>
                   ))}
