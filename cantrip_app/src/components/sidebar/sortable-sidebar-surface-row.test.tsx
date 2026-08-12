@@ -34,7 +34,9 @@ describe("sortable sidebar surface row", () => {
   it("renders shared surface slots in the normal state", () => {
     const markup = renderRow(false);
 
-    expect(markup).toContain("Drag to reorder");
+    expect(markup).not.toContain("Drag to reorder");
+    expect(markup).toContain('aria-roledescription="sortable"');
+    expect(markup).toContain("cursor-grab");
     expect(markup).toContain("Terminal icon");
     expect(markup).toContain("Primary terminal");
     expect(markup).toContain("Running");
@@ -50,5 +52,6 @@ describe("sortable sidebar surface row", () => {
     expect(markup).not.toContain("Running");
     expect(markup).not.toContain("Primary worktree");
     expect(markup).not.toContain("Surface actions");
+    expect(markup).not.toContain('aria-roledescription="sortable"');
   });
 });

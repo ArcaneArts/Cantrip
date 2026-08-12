@@ -27,7 +27,6 @@ import {
   type WorkspaceDropOperation,
   type WorkspaceDropTarget,
 } from "@/lib/workspace-dnd-model";
-import { cn } from "@/lib/utils";
 
 export function filterWorkspacePointerCollisions(
   pointerCollisions: Collision[],
@@ -48,6 +47,40 @@ export function filterWorkspacePointerCollisions(
 const workspaceCollisionDetection: CollisionDetection = (arguments_) => {
   return filterWorkspacePointerCollisions(pointerWithin(arguments_));
 };
+
+export function WorkspaceDragPreview({
+  decision,
+  drag,
+}: {
+  decision: WorkspaceDropDecision | null;
+  drag: WorkspaceDragItem;
+}) {
+  return (
+    <div
+      className="flex w-56 items-center gap-2 rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-xl"
+      data-drop-status={decision?.status}
+    >
+      {drag.type === "project" ? (
+        <FolderGit2 className="size-4 shrink-0" />
+      ) : (
+        <ProjectSurfaceIcon
+          kind={drag.visualKind}
+          className="size-4 shrink-0"
+        />
+      )}
+      <span className="min-w-0 flex-1 truncate">{drag.label}</span>
+      {decision?.status === "invalid" ? (
+        <span
+          className="grid size-5 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"
+          aria-label={decision.reason}
+          title={decision.reason}
+        >
+          <Ban className="size-3.5" aria-hidden="true" />
+        </span>
+      ) : null}
+    </div>
+  );
+}
 
 function dragData(
   event: Pick<DragStartEvent, "active">,
@@ -172,26 +205,7 @@ export function WorkspaceDndProvider({
       </main>
       <DragOverlay>
         {activeDrag ? (
-          <div
-            className={cn(
-              "flex w-56 items-center gap-2 rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-xl",
-              decision?.status === "invalid" &&
-                "border-destructive text-destructive ring-1 ring-destructive/40",
-            )}
-          >
-            {activeDrag.type === "project" ? (
-              <FolderGit2 className="size-4 shrink-0" />
-            ) : (
-              <ProjectSurfaceIcon
-                kind={activeDrag.visualKind}
-                className="size-4 shrink-0"
-              />
-            )}
-            <span className="min-w-0 flex-1 truncate">{activeDrag.label}</span>
-            {decision?.status === "invalid" ? (
-              <Ban className="size-4 shrink-0" aria-label={decision.reason} />
-            ) : null}
-          </div>
+          <WorkspaceDragPreview drag={activeDrag} decision={decision} />
         ) : null}
       </DragOverlay>
       <span className="sr-only" aria-live="polite">
