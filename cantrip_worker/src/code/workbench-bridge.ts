@@ -273,6 +273,18 @@ export class CodeWorkbenchBridge {
   ): Promise<CodeAgentTurnPreparationResult["sessions"][number]> {
     const session = this.#sessions.get(sessionId);
     if (!session) throw new Error("Cantrip Code session is not registered.");
+    if (!this.connected(sessionId) && session.dirtyEditors.length === 0) {
+      return codeAgentTurnPreparationSessionSchema.parse({
+        sessionId,
+        bridgeConnected: false,
+        allowed: true,
+        policy: null,
+        dirtyEditors: [],
+        saved: [],
+        failed: [],
+        reason: null,
+      });
+    }
     const connected =
       this.connected(sessionId) || (await this.waitUntilConnected(sessionId));
     if (!connected) {
@@ -285,7 +297,7 @@ export class CodeWorkbenchBridge {
         saved: [],
         failed: [],
         reason:
-          "Cantrip Code is open for this worktree, but its workbench bridge is not connected yet.",
+          "Cantrip Code has unsaved editors, but its workbench bridge is not connected.",
       });
     }
     const result = (await this.#request(
