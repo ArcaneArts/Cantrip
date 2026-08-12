@@ -246,6 +246,16 @@ Redis pub/sub carries bounded ephemeral routing envelopes. It is not a job
 queue, event history, or backup target. PostgreSQL remains authoritative, and
 application reconnects resynchronize snapshots when their server epoch changes.
 
+Startup recovery is cluster-aware. The first coordinated server instance (or a
+local single instance) resets process-transient surface, tunnel, chat execution,
+and workflow-attempt state left by a full deployment stop. A server joining an
+already-live cluster does not run those global resets, because the records may
+belong to a healthy peer. It still scans recoverable workflow worktree leases
+and queues durable work through the normal fenced paths. This distinction makes
+rolling replacement safe: adding a replica cannot mark active chats failed,
+orphan live workflow attempts, invalidate tunnel credentials, or make peer-owned
+remote surfaces idle.
+
 Scheduled automation does not use Redis pub/sub as a job queue. Each occurrence
 is claimed durably in PostgreSQL with an instance-bound lease and fencing token.
 Set `CANTRIP_SCHEDULER_LEASE_TTL_MS` longer than normal condition evaluation and

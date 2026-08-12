@@ -34,6 +34,7 @@ The checked-in route inventory must report zero `legacyLocalOwnerRoutes`.
 | Chat relocation hydrates safely, commits atomically, and recovers only expired claims      | `chat-relocation-jobs.test.ts`, `chat-relocation-api.test.ts`, `chat-relocation-executor.test.ts`, `chat-relocation-dialog.test.tsx`            |
 | Code, project-share, browser, desktop, terminal, and generic tunnels remain server-routed  | `code-tunnel.test.ts`, `project-share-tunnel.test.ts`, `remote-surface-relay.test.ts`, `tunnel-control-plane.test.ts`, `tunnel-runtime.test.ts` |
 | Two server replicas route worker commands and live invalidations through Redis             | `shared-relay-coordination.test.ts`                                                                                                             |
+| A rolling server startup preserves transient state owned by an existing peer               | `coordinated-startup-recovery.test.ts`                                                                                                          |
 | Account/worker quotas reject excess work visibly                                           | `abuse-limits.test.ts`, `managed-relay-telemetry.test.ts`                                                                                       |
 | Security activity, probes, and metrics omit product content                                | `audit-events.test.ts`, `http-hardening.test.ts`, `managed-relay-telemetry.test.ts`                                                             |
 | Scheduled workflow and project-automation occurrences are leased and fenced                | `workflow-trigger-api.test.ts`, `project-automation-api.test.ts`                                                                                |
@@ -69,9 +70,12 @@ and proxy configuration being released:
    job and a chat relocation. Verify the surviving process does not steal a
    fresh claim, then recovers it after expiry with a higher attempt; verify the
    former holder cannot publish a late completion.
-7. Trigger one scheduled occurrence during a rolling server restart and verify
+7. While one replica owns an active chat, workflow attempt, Remote Desktop, and
+   tunnel attachment, start another replica. Verify none of those records is
+   reset or orphaned and the active operations continue through the peer.
+8. Trigger one scheduled occurrence during a rolling server restart and verify
    exactly one durable run is accepted.
-8. Back up PostgreSQL and the encryption keyring, restore into an isolated
+9. Back up PostgreSQL and the encryption keyring, restore into an isolated
    deployment, migrate, and verify account login, worker metadata, chat history,
    and one secret-backed provider.
 
