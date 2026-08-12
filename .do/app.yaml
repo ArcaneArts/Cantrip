@@ -8,8 +8,10 @@ alerts:
 domains:
   - domain: cantrip.art
     type: PRIMARY
+    zone: cantrip.art
   - domain: app.cantrip.art
     type: ALIAS
+    zone: cantrip.art
 
 features:
   - buildpack-stack=ubuntu-22
