@@ -48,6 +48,23 @@ invalid credentials both return `404`.
 - Project-share tokens remain explicit, revocable, expiring capabilities bound
   to owner, project, worker, and canonical filesystem root.
 
+## Application session boundary
+
+The app selects a server before it has access to account state. A server profile
+stores only a human-readable name and HTTP(S) origin. Passwords, bootstrap
+tokens, raw session tokens, and CSRF tokens are never written to browser
+storage. The server session stays in its HttpOnly cookie and the current CSRF
+token stays in application memory.
+
+Bootstrap and `/api/auth/session` complete before React Query resources or the
+application live socket mount. A server change performs a full application
+reload, while account-owned local caches and live resume cursors include both
+the server and user ID. HTTP `401` responses and policy-close live sockets
+immediately unmount account state and return to sign-in. Hosted mode defaults
+to `Secure; SameSite=None` cookies so approved browser, Tauri, and Capacitor
+origins can authenticate cross-origin; origin validation and CSRF enforcement
+remain mandatory for mutations.
+
 ## Verification
 
 `pnpm audit:server-boundaries` checks the committed route/repository inventory.

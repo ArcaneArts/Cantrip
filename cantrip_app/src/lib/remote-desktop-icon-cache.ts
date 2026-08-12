@@ -1,3 +1,5 @@
+import { scopedClientStorageKey } from "@/lib/client-session";
+
 const STORAGE_KEY = "cantrip.remote-desktop-application-icons.v1";
 const MAX_ENTRIES = 160;
 const MAX_STORED_CHARACTERS = 3_000_000;
@@ -26,7 +28,7 @@ function hydrate(): void {
   if (!localStorage) return;
   try {
     const parsed = JSON.parse(
-      localStorage.getItem(STORAGE_KEY) ?? "{}",
+      localStorage.getItem(scopedClientStorageKey(STORAGE_KEY)) ?? "{}",
     ) as Record<string, StoredIcon>;
     for (const [key, value] of Object.entries(parsed)) {
       if (
@@ -67,7 +69,7 @@ function persist(): void {
   for (const [key, value] of retained) icons.set(key, value);
   try {
     localStorage.setItem(
-      STORAGE_KEY,
+      scopedClientStorageKey(STORAGE_KEY),
       JSON.stringify(Object.fromEntries(icons)),
     );
   } catch {

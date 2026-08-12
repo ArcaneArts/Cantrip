@@ -99,6 +99,7 @@ const settle = async () => {
 };
 
 function createHarness(input?: {
+  onAuthenticationRequired?: (reason: string) => void;
   onResync?: (
     scopes: AppLiveScope[],
     reason: AppLiveResyncReason,
@@ -114,6 +115,7 @@ function createHarness(input?: {
   const storage = input?.storage ?? new MemoryStorage();
   const client = new AppLiveClient({
     client: { id: "client-one", name: "Test client", version: "1" },
+    onAuthenticationRequired: input?.onAuthenticationRequired,
     onEvent: (event) => events.push(event),
     onResync: async (scopes, reason) => {
       recoveries.push({ scopes, reason });
@@ -440,5 +442,23 @@ describe("application live client", () => {
     client.stop();
     await vi.runAllTimersAsync();
     expect(sockets).toHaveLength(2);
+  });
+
+  it("stops reconnecting when the server rejects an expired session", async () => {
+    vi.useFakeTimers();
+    const authenticationRequired = vi.fn();
+    const { client, sockets } = createHarness({
+      onAuthenticationRequired: authenticationRequired,
+    });
+    client.start();
+    sockets[0]!.open();
+    sockets[0]!.close(1008, "Session is no longer active");
+
+    expect(authenticationRequired).toHaveBeenCalledWith(
+      "Session is no longer active",
+    );
+    expect(client.snapshot().status).toBe("stopped");
+    await vi.runAllTimersAsync();
+    expect(sockets).toHaveLength(1);
   });
 });

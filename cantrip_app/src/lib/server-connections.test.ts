@@ -8,6 +8,7 @@ import {
   removeServerConnection,
   saveServerConnection,
   selectServerConnection,
+  testServerConnection,
 } from "./server-connections";
 
 class MemoryStorage implements Storage {
@@ -68,5 +69,84 @@ describe("server connections", () => {
 
     removeServerConnection(remote.id);
     expect(getActiveServerConnection().kind).toBe("local");
+  });
+
+  it("distinguishes unreachable and incompatible servers", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("failed")));
+    await expect(
+      testServerConnection("https://offline.example"),
+    ).rejects.toMatchObject({
+      kind: "network",
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ service: "not-cantrip" }), {
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+    await expect(
+      testServerConnection("https://old.example"),
+    ).rejects.toMatchObject({
+      kind: "compatibility",
+    });
+  });
+
+  it("reports whether a compatible server still requires sign-in", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            protocolVersion: 1,
+            server: {
+              id: "hosted-one",
+              deploymentMode: "hosted",
+              bootstrapMode: "standalone",
+            },
+            auth: {
+              mode: "accounts",
+              state: "authentication-required",
+              currentUser: null,
+              registration: { enabled: true, bootstrapRequired: false },
+            },
+            routing: {
+              workerConnection: "server-only",
+              directWorkerConnections: false,
+            },
+            storage: { conversations: "server", files: "worker" },
+            agent: { model: "gpt-5.6-sol", modelProvider: "chatgpt" },
+            capabilities: {
+              accounts: true,
+              passwordProtection: false,
+              linkCodes: false,
+              multipleWorkers: false,
+              workerSwitching: false,
+              gitSync: false,
+              worktrees: true,
+              remoteSurfaces: {
+                enabled: true,
+                transports: ["websocket"],
+                relayOnly: true,
+              },
+              code: {
+                enabled: true,
+                transport: "web-proxy",
+                isolatedOrigin: true,
+              },
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    const bootstrap = await testServerConnection("https://cantrip.example");
+    expect(bootstrap.auth).toMatchObject({
+      mode: "accounts",
+      state: "authentication-required",
+    });
   });
 });

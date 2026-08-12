@@ -69,6 +69,7 @@ describe("server account authentication", () => {
         url: "/api/bootstrap",
       });
       expect(bootstrap.statusCode).toBe(200);
+      expect(bootstrap.headers["cache-control"]).toBe("no-store");
       expect(bootstrap.json().auth).toEqual({
         mode: "accounts",
         state: "authentication-required",
@@ -116,7 +117,27 @@ describe("server account authentication", () => {
       expect(registered.headers["set-cookie"]).toContain("SameSite=None");
       expect(registered.headers["set-cookie"]).toContain("Secure");
       const cookie = sessionCookie(registered);
-      const csrfToken = registered.json().csrfToken as string;
+      let csrfToken = registered.json().csrfToken as string;
+
+      const restoredSession = await app.inject({
+        method: "GET",
+        url: "/api/auth/session",
+        headers: { cookie, origin },
+      });
+      expect(restoredSession.statusCode).toBe(200);
+      expect(restoredSession.headers["cache-control"]).toBe("no-store");
+      expect(restoredSession.headers["access-control-allow-origin"]).toBe(
+        origin,
+      );
+      expect(restoredSession.headers["access-control-allow-credentials"]).toBe(
+        "true",
+      );
+      expect(restoredSession.json()).toMatchObject({
+        currentUser: { email: "Owner@Example.com" },
+        expiresAt: expect.any(String),
+      });
+      expect(restoredSession.json().csrfToken).not.toBe(csrfToken);
+      csrfToken = restoredSession.json().csrfToken as string;
 
       const missingCsrf = await app.inject({
         method: "POST",

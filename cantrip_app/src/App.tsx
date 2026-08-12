@@ -254,6 +254,7 @@ import {
   revealProjectInNativeFileManager,
 } from "@/lib/desktop-project-share";
 import { browserUpdateForPageState } from "@/lib/browser-page-state";
+import { scopedClientStorageKey } from "@/lib/client-session";
 import {
   buildProjectSurfaceIndex,
   type ProjectSurface,
@@ -2305,6 +2306,10 @@ function ChatTranscript({
 
 export function App() {
   const queryClient = useQueryClient();
+  const activeProjectWorkspaceStorageKey = useMemo(
+    () => scopedClientStorageKey("cantrip:active-project-workspace"),
+    [],
+  );
   const liveStatus = useAppLiveStatus();
   const projectResourcesLive = liveStatus === "live";
   const desktopRuntime = useMemo(() => isDesktopRuntime(), []);
@@ -2383,7 +2388,7 @@ export function App() {
     workspaceSelection.destination === "overview";
   const [activeProjectWorkspaceId, setActiveProjectWorkspaceId] = useState<
     string | null
-  >(() => window.localStorage.getItem("cantrip:active-project-workspace"));
+  >(() => window.localStorage.getItem(activeProjectWorkspaceStorageKey));
   const [selectedWorkflowIntentId, setSelectedWorkflowIntentId] = useState<
     string | null
   >(null);
@@ -2508,7 +2513,7 @@ export function App() {
       );
       setActiveProjectWorkspaceId(workspace.id);
       window.localStorage.setItem(
-        "cantrip:active-project-workspace",
+        activeProjectWorkspaceStorageKey,
         workspace.id,
       );
       setSelectedProjectId(null);
@@ -3748,11 +3753,12 @@ export function App() {
       projectWorkspaces.data[0]!;
     if (resolved.id === activeProjectWorkspaceId) return;
     setActiveProjectWorkspaceId(resolved.id);
-    window.localStorage.setItem(
-      "cantrip:active-project-workspace",
-      resolved.id,
-    );
-  }, [activeProjectWorkspaceId, projectWorkspaces.data]);
+    window.localStorage.setItem(activeProjectWorkspaceStorageKey, resolved.id);
+  }, [
+    activeProjectWorkspaceId,
+    activeProjectWorkspaceStorageKey,
+    projectWorkspaces.data,
+  ]);
 
   useEffect(() => {
     if (!projects.data) return;
@@ -3887,10 +3893,7 @@ export function App() {
     );
     if (!workspace) return;
     setActiveProjectWorkspaceId(workspace.id);
-    window.localStorage.setItem(
-      "cantrip:active-project-workspace",
-      workspace.id,
-    );
+    window.localStorage.setItem(activeProjectWorkspaceStorageKey, workspace.id);
     if (compactShell) {
       setSelectedProjectId(null);
       setWorkspaceSelection(emptyWorkspaceSelection());

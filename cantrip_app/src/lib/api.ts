@@ -1,4 +1,9 @@
 import {
+  accountRegistrationSchema,
+  authLoginSchema,
+  authLogoutAllResultSchema,
+  authSessionSchema,
+  authSessionStateSchema,
   agentInteractionRequestListSchema,
   agentInteractionRequestSchema,
   agentInteractionResolutionCreateSchema,
@@ -161,6 +166,8 @@ import {
   workerListSchema,
 } from "@cantrip/protocol";
 import type {
+  AccountRegistration,
+  AuthLogin,
   AgentInteractionRequestStatus,
   AgentInteractionResolutionCreate,
   ChatWorktreeUpdate,
@@ -224,7 +231,13 @@ import type {
   ExplorerFileWrite,
   WorktreePolicy,
 } from "@cantrip/protocol";
-import { CantripApiError, post, request, withQuery } from "@/lib/api-client";
+import {
+  CantripApiError,
+  post,
+  request,
+  requestResponse,
+  withQuery,
+} from "@/lib/api-client";
 import { getActiveServerUrl } from "@/lib/server-connections";
 
 export { CantripApiError };
@@ -235,7 +248,50 @@ export async function getSystemHealth() {
 }
 
 export async function getServerBootstrap() {
-  return serverBootstrapSchema.parse(await request("/api/bootstrap"));
+  return serverBootstrapSchema.parse(
+    await request("/api/bootstrap", {
+      signal: AbortSignal.timeout(10_000),
+    }),
+  );
+}
+
+export async function getAuthSession() {
+  return authSessionStateSchema.parse(
+    await request("/api/auth/session", {
+      signal: AbortSignal.timeout(10_000),
+    }),
+  );
+}
+
+export async function login(input: AuthLogin) {
+  return authSessionSchema.parse(
+    await post("/api/auth/login", authLoginSchema.parse(input)),
+  );
+}
+
+export async function registerAccount(
+  input: AccountRegistration,
+  bootstrapToken?: string,
+) {
+  return authSessionSchema.parse(
+    await request("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify(accountRegistrationSchema.parse(input)),
+      headers: bootstrapToken
+        ? { "x-cantrip-bootstrap-token": bootstrapToken }
+        : undefined,
+    }),
+  );
+}
+
+export async function logout(): Promise<void> {
+  await post("/api/auth/logout", {});
+}
+
+export async function logoutAll() {
+  return authLogoutAllResultSchema.parse(
+    await post("/api/auth/logout-all", {}),
+  );
 }
 
 export async function getWorkers() {
@@ -2388,8 +2444,8 @@ export async function uploadChatAttachment(
   kind: ChatAttachmentKind,
   source: ChatAttachmentSource,
 ) {
-  const response = await fetch(
-    `${getActiveServerUrl()}/api/chats/${encodeURIComponent(chatId)}/attachments`,
+  const response = await requestResponse(
+    `/api/chats/${encodeURIComponent(chatId)}/attachments`,
     {
       method: "POST",
       body: file,
@@ -2404,15 +2460,6 @@ export async function uploadChatAttachment(
       },
     },
   );
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new CantripApiError(
-      body?.error ?? `Cantrip Server returned HTTP ${response.status}.`,
-      response.status,
-    );
-  }
   return chatAttachmentSummarySchema.parse(await response.json());
 }
 

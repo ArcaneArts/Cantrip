@@ -3512,7 +3512,7 @@ export async function buildApp({
     const accountCount =
       config.authMode === "accounts" ? await repository.countAccountUsers() : 0;
     const firstAccount = config.authMode === "accounts" && accountCount === 0;
-    return reply.send(
+    return reply.header("cache-control", "no-store").send(
       serverBootstrapSchema.parse({
         protocolVersion: 1,
         server: {

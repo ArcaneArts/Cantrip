@@ -255,7 +255,9 @@ export function readServerConfig(): ServerConfig {
         ? "strict"
         : cookieSameSiteInput === "none"
           ? "none"
-          : "lax",
+          : deploymentMode === "hosted"
+            ? "none"
+            : "lax",
     cookieSecure:
       process.env.CANTRIP_COOKIE_SECURE === undefined
         ? deploymentMode === "hosted"

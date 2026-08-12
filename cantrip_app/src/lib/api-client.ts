@@ -1,4 +1,8 @@
 import { getActiveServerUrl } from "@/lib/server-connections";
+import {
+  getClientSession,
+  notifyAuthenticationRequired,
+} from "@/lib/client-session";
 
 export class CantripApiError extends Error {
   constructor(
@@ -13,26 +17,48 @@ export async function request(
   path: string,
   init?: RequestInit,
 ): Promise<unknown> {
-  const response = await fetch(`${getActiveServerUrl()}${path}`, {
+  const response = await requestResponse(path, init);
+  return response.status === 204 ? null : response.json();
+}
+
+export async function requestResponse(
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const method = (init?.method ?? "GET").toUpperCase();
+  const session = getClientSession();
+  const headers = new Headers(init?.headers);
+  if (!headers.has("accept")) headers.set("accept", "application/json");
+  if (init?.body && !headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
+  if (session?.csrfToken && !["GET", "HEAD", "OPTIONS"].includes(method)) {
+    headers.set("x-cantrip-csrf", session.csrfToken);
+  }
+  const url = /^https?:\/\//u.test(path)
+    ? path
+    : `${getActiveServerUrl()}${path}`;
+  const response = await fetch(url, {
     ...init,
     credentials: "include",
-    headers: {
-      accept: "application/json",
-      ...(init?.body ? { "content-type": "application/json" } : {}),
-      ...init?.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as {
       error?: string;
     } | null;
+    if (response.status === 401) {
+      notifyAuthenticationRequired(
+        body?.error ?? "Your Cantrip session has expired.",
+      );
+    }
     throw new CantripApiError(
       body?.error ?? `Cantrip Server returned HTTP ${response.status}.`,
       response.status,
     );
   }
-  return response.status === 204 ? null : response.json();
+  return response;
 }
 
 export function post(path: string, body: unknown): Promise<unknown> {
