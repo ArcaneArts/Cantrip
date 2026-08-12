@@ -1,6 +1,6 @@
 # Cantrip Project Plan
 
-- Status: local and hosted account foundations, independently enrolled workers, multi-worker replicas, Redis relay coordination, fenced scheduling, production deployment assets, and durable chat relocation runtime implemented; the client relocation workflow remains to land
+- Status: local and hosted account foundations, independently enrolled workers, multi-worker replicas, Redis relay coordination, fenced scheduling, production deployment assets, and end-to-end durable chat relocation implemented
 - Canonical domain: `cantrip.art`
 - Desktop/mobile application identifier: `art.cantrip`
 - Package manager: pnpm workspaces
