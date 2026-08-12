@@ -25,7 +25,11 @@ vi.mock("@/lib/server-connections", () => ({
   getActiveServerUrl: () => "https://cantrip.example",
 }));
 
-import { startDesktopTunnel, startDirectDesktopTunnel } from "./desktop-tunnel";
+import {
+  refreshDesktopTunnelRelay,
+  startDesktopTunnel,
+  startDirectDesktopTunnel,
+} from "./desktop-tunnel";
 
 const capabilityId = "1c4066d8-5798-4330-82e2-f5634c6176b7";
 const expiresAt = "2099-01-01T00:00:00.000Z";
@@ -151,5 +155,58 @@ describe("startDesktopTunnel", () => {
       request: expect.objectContaining({ relay: null }),
     });
     expect(direct.secret).toBe("");
+  });
+});
+
+describe("refreshDesktopTunnelRelay", () => {
+  it("rotates the short-lived relay credential without replacing the listener", async () => {
+    mocks.invoke.mockResolvedValue(true);
+
+    await expect(
+      refreshDesktopTunnelRelay({
+        attachmentId: "attachment-1",
+        expiresAt,
+        localHost: "127.0.0.1",
+        localPort: 41_234,
+        routeState: "degraded",
+        relayFallbackAvailable: true,
+        directCapabilityId: capabilityId,
+        directFallbackReason: null,
+        tunnelId: "tunnel-1",
+      }),
+    ).resolves.toBe(true);
+
+    expect(mocks.createTunnelAttachment).toHaveBeenCalledWith("tunnel-1", {
+      clientId: expect.any(String),
+    });
+    expect(mocks.invoke).toHaveBeenCalledWith(
+      "refresh_tunnel_forward_relay",
+      expect.objectContaining({
+        tunnelId: "tunnel-1",
+        relay: expect.objectContaining({
+          connectPath: "/api/tunnel-attachments/attachment-1/connect",
+          serverUrl: "https://cantrip.example",
+        }),
+      }),
+    );
+    expect(mocks.deleteTunnelAttachment).not.toHaveBeenCalled();
+  });
+
+  it("revokes a rotated attachment when its native forward disappeared", async () => {
+    mocks.invoke.mockResolvedValue(false);
+
+    await refreshDesktopTunnelRelay({
+      attachmentId: "attachment-1",
+      expiresAt,
+      localHost: "127.0.0.1",
+      localPort: 41_234,
+      routeState: "degraded",
+      relayFallbackAvailable: true,
+      directCapabilityId: capabilityId,
+      directFallbackReason: null,
+      tunnelId: "tunnel-1",
+    });
+
+    expect(mocks.deleteTunnelAttachment).toHaveBeenCalledWith("attachment-1");
   });
 });

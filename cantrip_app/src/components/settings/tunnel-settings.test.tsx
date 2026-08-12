@@ -116,6 +116,7 @@ describe("tunnel settings", () => {
       localHost: "127.0.0.1",
       localPort: 41_234,
       routeState: "local-direct",
+      relayFallbackAvailable: true,
       directCapabilityId: "capability-1",
       directFallbackReason: null,
       tunnelId: "tunnel-1",
@@ -132,13 +133,20 @@ describe("tunnel settings", () => {
           attachmentId: "attachment-2",
           tunnelId: "tunnel-2",
           routeState: "relayed",
+          relayFallbackAvailable: true,
           directCapabilityId: null,
           bytesFromLocal: 25,
           bytesToLocal: 25,
           connectionsOpened: 1,
         },
       ]),
-    ).toEqual({ bytes: 200, connections: 3, direct: 1, relayed: 1 });
+    ).toEqual({
+      bytes: 200,
+      connections: 3,
+      degraded: 0,
+      direct: 1,
+      relayed: 1,
+    });
   });
 
   it("searches organizational, worker, endpoint, and ownership fields", () => {

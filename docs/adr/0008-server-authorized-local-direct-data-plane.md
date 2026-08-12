@@ -28,6 +28,11 @@ expand the capability. Failed, unavailable, unsupported, expired, or invalid
 direct setup falls back to the existing authenticated server relay without
 changing the durable resource.
 
+Relay fallback credentials remain short-lived even for long-lived local
+listeners. After a direct disconnect, a degraded Tauri forwarder obtains a
+fresh attachment credential from the authoritative server and reconnects the
+same loopback listener through the relay.
+
 The generic native forwarder carries raw tunnels, PTYs, project WebDAV shares,
 and Cantrip Code HTTP/WebSocket traffic. Destinations and adapter credentials
 are installed worker-side and are not disclosed by the direct ticket. Browser

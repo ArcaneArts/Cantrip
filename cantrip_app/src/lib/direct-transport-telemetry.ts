@@ -4,6 +4,7 @@ import { recordDirectAttachmentTelemetry } from "@/lib/api";
 import {
   desktopTunnelAvailable,
   listDesktopTunnels,
+  refreshDesktopTunnelRelay,
 } from "@/lib/desktop-tunnel";
 
 const REPORT_INTERVAL_MS = 10_000;
@@ -12,11 +13,7 @@ export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
   const forwards = await listDesktopTunnels();
   await Promise.all(
     forwards
-      .filter(
-        (forward) =>
-          forward.routeState === "local-direct" &&
-          Boolean(forward.directCapabilityId),
-      )
+      .filter((forward) => Boolean(forward.directCapabilityId))
       .map((forward) =>
         recordDirectAttachmentTelemetry(forward.directCapabilityId!, {
           bytesFromLocal: forward.bytesFromLocal ?? 0,
@@ -25,6 +22,14 @@ export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
           connectionsOpened: forward.connectionsOpened ?? 0,
         }).catch(() => undefined),
       ),
+  );
+  await Promise.all(
+    forwards
+      .filter(
+        (forward) =>
+          forward.routeState === "degraded" && forward.relayFallbackAvailable,
+      )
+      .map((forward) => refreshDesktopTunnelRelay(forward).catch(() => false)),
   );
 }
 

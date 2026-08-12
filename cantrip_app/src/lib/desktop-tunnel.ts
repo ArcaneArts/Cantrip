@@ -20,7 +20,8 @@ export interface DesktopTunnelForwardSummary {
   expiresAt: string;
   localHost: "127.0.0.1";
   localPort: number;
-  routeState: "local-direct" | "relayed";
+  routeState: "local-direct" | "relayed" | "degraded";
+  relayFallbackAvailable?: boolean;
   directCapabilityId: string | null;
   directFallbackReason: string | null;
   tunnelId: string;
@@ -177,4 +178,39 @@ export async function listDesktopTunnels(): Promise<
   return isTauri()
     ? invoke<DesktopTunnelForwardSummary[]>("list_tunnel_forwards")
     : [];
+}
+
+export async function refreshDesktopTunnelRelay(
+  forward: DesktopTunnelForwardSummary,
+): Promise<boolean> {
+  if (!isTauri() || !forward.relayFallbackAvailable) return false;
+  const attachment = await createTunnelAttachment(forward.tunnelId, {
+    clientId: desktopTunnelClientId(window.localStorage),
+  });
+  if (attachment.attachmentId !== forward.attachmentId) {
+    attachment.secret = "";
+    throw new Error("The refreshed tunnel attachment identity did not match.");
+  }
+  const relay = {
+    connectPath: attachment.connectPath,
+    secret: attachment.secret,
+    secretExpiresAtEpochMs: new Date(attachment.secretExpiresAt).getTime(),
+    serverUrl: getActiveServerUrl(),
+  };
+  try {
+    const accepted = await invoke<boolean>("refresh_tunnel_forward_relay", {
+      expiresAt: attachment.expiresAt,
+      relay,
+      tunnelId: forward.tunnelId,
+    });
+    if (!accepted) {
+      await deleteTunnelAttachment(attachment.attachmentId).catch(() => {
+        // The forward disappeared while its relay credential was rotating.
+      });
+    }
+    return accepted;
+  } finally {
+    relay.secret = "";
+    attachment.secret = "";
+  }
 }

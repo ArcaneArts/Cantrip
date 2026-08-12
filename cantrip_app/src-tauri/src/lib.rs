@@ -477,6 +477,7 @@ pub fn run() {
             set_macos_pro_mode,
             project_share::reveal_project_share,
             tunnel_forward::start_tunnel_forward,
+            tunnel_forward::refresh_tunnel_forward_relay,
             tunnel_forward::stop_tunnel_forward,
             tunnel_forward::list_tunnel_forwards,
         ])
