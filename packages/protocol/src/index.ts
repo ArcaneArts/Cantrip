@@ -892,6 +892,8 @@ export const serverOperationalStatsSchema = z.object({
     dueOccurrences: operationalCounterSchema,
     lastScanAt: z.string().datetime().nullable(),
     lastScanDurationSeconds: z.number().nonnegative(),
+    leaseContentions: operationalCounterSchema,
+    leaseRecoveries: operationalCounterSchema,
     maximumLagSeconds: z.number().nonnegative(),
     scanFailures: operationalCounterSchema,
     scans: operationalCounterSchema,

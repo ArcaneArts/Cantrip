@@ -2,8 +2,8 @@
 
 - Status: protected authentication, owner enforcement, worker enrollment,
   secret encryption, account/worker quotas, HTTP/proxy hardening, operational
-  probes/metrics, owner-scoped security audit visibility, and Redis-backed
-  multi-instance relay routing implemented; scheduler fencing remains
+  probes/metrics, owner-scoped security audit visibility, Redis-backed
+  multi-instance relay routing, and database-fenced scheduler claims implemented
 - Route inventory: [`security/server-route-inventory.json`](security/server-route-inventory.json)
 - Regenerate: `pnpm audit:server-boundaries:write`
 - Verify: `pnpm audit:server-boundaries`
@@ -352,3 +352,21 @@ the destination hub's authenticated owner and authorized subscriptions.
 Per-instance epochs and authoritative HTTP snapshots remain the reconnect
 contract; Redis pub/sub is an invalidation transport, not durable history.
 PostgreSQL remains authoritative for conversations and configuration.
+
+## 11. Scheduler fencing
+
+Scheduled workflow triggers and chat-targeted project automations claim each
+calendar occurrence in PostgreSQL before dispatch. Claims persist the scheduled
+time, target ownership, serving instance, opaque lease token, expiration, and a
+monotonically increasing fencing token. An unexpired claim makes other replicas
+stand down. After `CANTRIP_SCHEDULER_LEASE_TTL_MS`, another replica may recover
+the same durable occurrence with a higher fence; the former holder can no longer
+accept, fail, or otherwise finalize it.
+
+Workflow deliveries and workflow runs retain stable idempotency keys across
+recovery. Project automation recovery checks both queued prompts and persisted
+chat messages before dispatch, so a crash after durable acceptance does not add
+the prompt twice. A moved chat/source fails closed because the claim records and
+revalidates the worker selected from the chat's active worktree. Offline or
+paused targets remain visible as failed/paused schedule decisions and are never
+silently sent to another worker.

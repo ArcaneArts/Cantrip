@@ -12,7 +12,7 @@ import {
   type WorkflowTriggerDelivery,
   type WorkflowTriggerProvenance,
 } from "@cantrip/protocol/workflows";
-import { and, asc, desc, eq, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gt, lte } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -104,6 +104,25 @@ export type WorkflowTriggerClaim =
       delivery: WorkflowTriggerDelivery;
       context: WorkflowTriggerDeliveryContext;
     }
+  | { kind: "disabled" };
+
+export interface WorkflowScheduleDispatchLease {
+  dispatchInstanceId: string;
+  fencingToken: number;
+  leaseToken: string;
+}
+
+export type WorkflowScheduleOccurrenceClaim =
+  | {
+      kind: "claimed";
+      claim: Extract<WorkflowTriggerClaim, { kind: "claimed" | "replay" }>;
+      lease: WorkflowScheduleDispatchLease;
+    }
+  | {
+      kind: "completed";
+      delivery: WorkflowTriggerDelivery;
+    }
+  | { kind: "busy" }
   | { kind: "disabled" };
 
 export class WorkflowTriggerRepository {
@@ -382,6 +401,140 @@ export class WorkflowTriggerRepository {
     return rows.map((row) => ({ row, trigger: toTrigger(row) }));
   }
 
+  async claimScheduleOccurrence(
+    ownerId: string,
+    triggerId: string,
+    scheduledFor: Date,
+    provenance: WorkflowTriggerProvenance,
+    dispatchInstanceId: string,
+    leaseTtlMs: number,
+    now = new Date(),
+  ): Promise<WorkflowScheduleOccurrenceClaim | null> {
+    const initial = await this.getDeliveryContext(ownerId, triggerId);
+    if (!initial || initial.row.type !== "schedule") return null;
+    const unattendedContext = await this.assertUnattendedContext(
+      ownerId,
+      initial.row.workflowRevisionId,
+      initial.row.projectId,
+    );
+    if (!unattendedContext) return null;
+    return this.database.transaction(async (transaction) => {
+      const triggerRows = await transaction
+        .select()
+        .from(schema.workflowAutomationTriggers)
+        .where(
+          and(
+            eq(schema.workflowAutomationTriggers.id, triggerId),
+            eq(schema.workflowAutomationTriggers.ownerId, ownerId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const row = triggerRows[0];
+      if (!row) return null;
+      if (
+        row.type !== "schedule" ||
+        !row.enabled ||
+        row.workflowRevisionId !== initial.row.workflowRevisionId ||
+        !row.nextRunAt ||
+        row.nextRunAt.toISOString() !== scheduledFor.toISOString()
+      ) {
+        return { kind: "disabled" as const };
+      }
+      const context: WorkflowTriggerDeliveryContext = {
+        row,
+        trigger: toTrigger(row),
+        credentialHash: null,
+      };
+      const idempotencyKey = scheduledFor.toISOString();
+      const existingRows = await transaction
+        .select()
+        .from(schema.workflowTriggerDeliveries)
+        .where(
+          and(
+            eq(schema.workflowTriggerDeliveries.triggerId, triggerId),
+            eq(schema.workflowTriggerDeliveries.idempotencyKey, idempotencyKey),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const existing = existingRows[0];
+      if (existing && existing.status !== "pending") {
+        return {
+          kind: "completed" as const,
+          delivery: toDelivery(existing),
+        };
+      }
+      if (
+        existing?.leaseExpiresAt &&
+        existing.leaseExpiresAt.getTime() > now.getTime()
+      ) {
+        return { kind: "busy" as const };
+      }
+      const leaseToken = randomUUID();
+      const leaseExpiresAt = new Date(now.getTime() + leaseTtlMs);
+      const delivery = existing
+        ? (
+            await transaction
+              .update(schema.workflowTriggerDeliveries)
+              .set({
+                dispatchInstanceId,
+                leaseToken,
+                fencingToken: existing.fencingToken + 1,
+                leaseExpiresAt,
+                updatedAt: now,
+              })
+              .where(
+                and(
+                  eq(schema.workflowTriggerDeliveries.id, existing.id),
+                  eq(schema.workflowTriggerDeliveries.status, "pending"),
+                  eq(
+                    schema.workflowTriggerDeliveries.fencingToken,
+                    existing.fencingToken,
+                  ),
+                ),
+              )
+              .returning()
+          )[0]
+        : (
+            await transaction
+              .insert(schema.workflowTriggerDeliveries)
+              .values({
+                id: randomUUID(),
+                triggerId,
+                status: "pending",
+                idempotencyKey,
+                triggerProvenance: provenance,
+                dispatchInstanceId,
+                leaseToken,
+                fencingToken: 1,
+                leaseExpiresAt,
+                createdAt: now,
+                updatedAt: now,
+              })
+              .returning()
+          )[0];
+      if (!delivery) return { kind: "busy" as const };
+      await transaction
+        .update(schema.workflowAutomationTriggers)
+        .set({ lastDeliveredAt: now, lastError: null, updatedAt: now })
+        .where(eq(schema.workflowAutomationTriggers.id, triggerId));
+      return {
+        kind: "claimed" as const,
+        claim: {
+          kind: existing ? ("replay" as const) : ("claimed" as const),
+          delivery: toDelivery(delivery),
+          context,
+        },
+        lease: {
+          dispatchInstanceId,
+          leaseToken,
+          fencingToken: delivery.fencingToken,
+        },
+      };
+    });
+  }
+
   async claimDelivery(
     ownerId: string,
     triggerId: string,
@@ -478,7 +631,8 @@ export class WorkflowTriggerRepository {
     deliveryId: string,
     triggerId: string,
     runId: string,
-  ): Promise<WorkflowTriggerDelivery> {
+    lease?: WorkflowScheduleDispatchLease,
+  ): Promise<WorkflowTriggerDelivery | null> {
     if (!(await this.getDeliveryContext(ownerId, triggerId))) {
       throw new WorkflowTriggerConflictError("Workflow trigger not found.");
     }
@@ -490,9 +644,28 @@ export class WorkflowTriggerRepository {
         and(
           eq(schema.workflowTriggerDeliveries.id, deliveryId),
           eq(schema.workflowTriggerDeliveries.triggerId, triggerId),
+          ...(lease
+            ? [
+                eq(schema.workflowTriggerDeliveries.status, "pending"),
+                eq(
+                  schema.workflowTriggerDeliveries.dispatchInstanceId,
+                  lease.dispatchInstanceId,
+                ),
+                eq(
+                  schema.workflowTriggerDeliveries.leaseToken,
+                  lease.leaseToken,
+                ),
+                eq(
+                  schema.workflowTriggerDeliveries.fencingToken,
+                  lease.fencingToken,
+                ),
+                gt(schema.workflowTriggerDeliveries.leaseExpiresAt, now),
+              ]
+            : []),
         ),
       )
       .returning();
+    if (!rows[0]) return null;
     await this.database
       .update(schema.workflowAutomationTriggers)
       .set({ lastRunId: runId, lastError: null, updatedAt: now })
@@ -502,7 +675,7 @@ export class WorkflowTriggerRepository {
           eq(schema.workflowAutomationTriggers.ownerId, ownerId),
         ),
       );
-    return toDelivery(rows[0]!);
+    return toDelivery(rows[0]);
   }
 
   async failDelivery(
@@ -511,10 +684,11 @@ export class WorkflowTriggerRepository {
     triggerId: string,
     errorCode: string,
     errorMessage: string,
-  ): Promise<void> {
-    if (!(await this.getDeliveryContext(ownerId, triggerId))) return;
+    lease?: WorkflowScheduleDispatchLease,
+  ): Promise<boolean> {
+    if (!(await this.getDeliveryContext(ownerId, triggerId))) return false;
     const now = new Date();
-    await this.database
+    const deliveries = await this.database
       .update(schema.workflowTriggerDeliveries)
       .set({
         status: "failed",
@@ -526,8 +700,28 @@ export class WorkflowTriggerRepository {
         and(
           eq(schema.workflowTriggerDeliveries.id, deliveryId),
           eq(schema.workflowTriggerDeliveries.triggerId, triggerId),
+          ...(lease
+            ? [
+                eq(schema.workflowTriggerDeliveries.status, "pending"),
+                eq(
+                  schema.workflowTriggerDeliveries.dispatchInstanceId,
+                  lease.dispatchInstanceId,
+                ),
+                eq(
+                  schema.workflowTriggerDeliveries.leaseToken,
+                  lease.leaseToken,
+                ),
+                eq(
+                  schema.workflowTriggerDeliveries.fencingToken,
+                  lease.fencingToken,
+                ),
+                gt(schema.workflowTriggerDeliveries.leaseExpiresAt, now),
+              ]
+            : []),
         ),
-      );
+      )
+      .returning({ id: schema.workflowTriggerDeliveries.id });
+    if (!deliveries[0]) return false;
     await this.database
       .update(schema.workflowAutomationTriggers)
       .set({ lastError: errorMessage.slice(0, 5_000), updatedAt: now })
@@ -537,6 +731,7 @@ export class WorkflowTriggerRepository {
           eq(schema.workflowAutomationTriggers.ownerId, ownerId),
         ),
       );
+    return true;
   }
 
   async advanceSchedule(

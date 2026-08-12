@@ -62,6 +62,7 @@ export interface ServerConfig {
   publicRegistration?: boolean;
   redisUrl?: string;
   requireHttps?: boolean;
+  schedulerLeaseTtlMs?: number;
   sessionTtlSeconds?: number;
   codeSurfaceHost?: string;
   codeSurfaceOrigin?: string;
@@ -597,6 +598,13 @@ export function readServerConfig(): ServerConfig {
       30_000,
       5_000,
       300_000,
+    ),
+    schedulerLeaseTtlMs: readBoundedInteger(
+      "CANTRIP_SCHEDULER_LEASE_TTL_MS",
+      process.env.CANTRIP_SCHEDULER_LEASE_TTL_MS,
+      120_000,
+      30_000,
+      600_000,
     ),
     dataDirectory: path.resolve(
       process.cwd(),

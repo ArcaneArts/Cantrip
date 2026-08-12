@@ -10,6 +10,7 @@ import {
   workflowDefinitionDetailSchema,
   workflowRunListSchema,
   workflowTriggerDeliveryResultSchema,
+  workflowTriggerProvenanceSchema,
 } from "@cantrip/protocol/workflows";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -485,5 +486,96 @@ describe.sequential("workflow trigger API", () => {
       )
       .filter(({ trigger }) => trigger.type === "schedule");
     expect(after.map(({ id }) => id)).toEqual(before.map(({ id }) => id));
+  });
+
+  it("recovers an expired schedule claim and fences the stale replica", async () => {
+    const scheduledFor = new Date(Date.now() + 60_000);
+    const trigger = workflowAutomationTriggerSchema.parse(
+      (
+        await createTrigger({
+          name: "Fenced schedule",
+          type: "schedule",
+          configuration: {
+            intervalSeconds: 60,
+            startAt: scheduledFor.toISOString(),
+            catchUpPolicy: "once",
+            offlinePolicy: "queue",
+          },
+        })
+      ).json(),
+    );
+    const provenance = workflowTriggerProvenanceSchema.parse({
+      type: "schedule",
+      sourceId: trigger.id,
+      actorType: "schedule",
+      actorId: null,
+      deliveredAt: scheduledFor.toISOString(),
+      metadata: {
+        triggerName: trigger.name,
+        projectId,
+      },
+    });
+    const first =
+      await database.repository.workflowTriggers.claimScheduleOccurrence(
+        LOCAL_USER_ID,
+        trigger.id,
+        scheduledFor,
+        provenance,
+        "relay-a",
+        30_000,
+        scheduledFor,
+      );
+    expect(first).toMatchObject({
+      kind: "claimed",
+      lease: { dispatchInstanceId: "relay-a", fencingToken: 1 },
+    });
+    expect(
+      await database.repository.workflowTriggers.claimScheduleOccurrence(
+        LOCAL_USER_ID,
+        trigger.id,
+        scheduledFor,
+        provenance,
+        "relay-b",
+        30_000,
+        new Date(scheduledFor.getTime() + 10_000),
+      ),
+    ).toEqual({ kind: "busy" });
+    const recovered =
+      await database.repository.workflowTriggers.claimScheduleOccurrence(
+        LOCAL_USER_ID,
+        trigger.id,
+        scheduledFor,
+        provenance,
+        "relay-b",
+        30_000,
+        new Date(scheduledFor.getTime() + 31_000),
+      );
+    expect(recovered).toMatchObject({
+      kind: "claimed",
+      lease: { dispatchInstanceId: "relay-b", fencingToken: 2 },
+    });
+    if (first?.kind !== "claimed" || recovered?.kind !== "claimed") {
+      throw new Error("Expected both schedule claims to be materialized.");
+    }
+    expect(
+      await database.repository.workflowTriggers.failDelivery(
+        LOCAL_USER_ID,
+        first.claim.delivery.id,
+        trigger.id,
+        "stale-holder",
+        "This holder was fenced.",
+        first.lease,
+      ),
+    ).toBe(false);
+    expect(
+      await database.repository.workflowTriggers.failDelivery(
+        LOCAL_USER_ID,
+        recovered.claim.delivery.id,
+        trigger.id,
+        "recovered-holder",
+        "Recovered after lease expiry.",
+        recovered.lease,
+      ),
+    ).toBe(true);
   });
 });

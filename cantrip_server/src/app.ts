@@ -460,6 +460,8 @@ import { WorkflowConflictError } from "./db/workflows.js";
 import {
   WorkflowTriggerConflictError,
   WorkflowTriggerRateLimitError,
+  type WorkflowScheduleDispatchLease,
+  type WorkflowTriggerClaim,
 } from "./db/workflow-triggers.js";
 import {
   WorkerBridge,
@@ -527,6 +529,8 @@ class SkillSettingsRequestError extends Error {
     this.statusCode = statusCode;
   }
 }
+
+class ScheduleDispatchLeaseLostError extends Error {}
 
 function gitManagedOperationContext(
   operation: GitManagedOperationRecord,
@@ -888,6 +892,8 @@ export async function buildApp({
     ownerContext.run(ownerId, operation);
   const workerOwnerId = (workerId: string): Promise<string | null> =>
     repository.getWorkerOwnerId(workerId);
+  const serverInstanceId = config.serverInstanceId ?? "local-single-instance";
+  const schedulerLeaseTtlMs = config.schedulerLeaseTtlMs ?? 120_000;
   const liveHub = new AppLiveHub({
     publishExternal: coordinator
       ? (publication) =>
@@ -901,7 +907,7 @@ export async function buildApp({
   });
   app.log.info(
     {
-      instanceId: config.serverInstanceId ?? "local-single-instance",
+      instanceId: serverInstanceId,
       sharedCoordination: Boolean(coordinator),
     },
     "Server relay instance initialized",
@@ -2441,6 +2447,7 @@ export async function buildApp({
     allowedType,
     idempotencyKey,
     metadata,
+    preclaimed,
     structuredInput,
     triggerId,
   }: {
@@ -2450,13 +2457,19 @@ export async function buildApp({
     allowedType: "api" | "schedule" | "webhook" | "git" | "saved-command";
     idempotencyKey: string;
     metadata: Record<string, unknown>;
+    preclaimed?: {
+      claim: Extract<WorkflowTriggerClaim, { kind: "claimed" | "replay" }>;
+      lease: WorkflowScheduleDispatchLease;
+    };
     structuredInput: Record<string, unknown>;
     triggerId: string;
   }) => {
-    const context = await repository.workflowTriggers.getDeliveryContext(
-      applicationOwnerId(),
-      triggerId,
-    );
+    const context =
+      preclaimed?.claim.context ??
+      (await repository.workflowTriggers.getDeliveryContext(
+        applicationOwnerId(),
+        triggerId,
+      ));
     if (!context || context.trigger.type !== allowedType) {
       throw new WorkflowTriggerConflictError(
         "Workflow trigger not found for this delivery route.",
@@ -2485,24 +2498,28 @@ export async function buildApp({
       );
     }
     const deliveredAt = new Date().toISOString();
-    const provenance = workflowTriggerProvenanceSchema.parse({
-      type: context.trigger.type,
-      sourceId: context.trigger.id,
-      actorType,
-      actorId,
-      deliveredAt,
-      metadata: {
-        ...metadata,
-        triggerName: context.trigger.name,
-        projectId: context.trigger.projectId,
-      },
-    });
-    const claim = await repository.workflowTriggers.claimDelivery(
-      applicationOwnerId(),
-      triggerId,
-      idempotencyKey,
-      provenance,
-    );
+    const provenance = preclaimed
+      ? preclaimed.claim.delivery.trigger
+      : workflowTriggerProvenanceSchema.parse({
+          type: context.trigger.type,
+          sourceId: context.trigger.id,
+          actorType,
+          actorId,
+          deliveredAt,
+          metadata: {
+            ...metadata,
+            triggerName: context.trigger.name,
+            projectId: context.trigger.projectId,
+          },
+        });
+    const claim =
+      preclaimed?.claim ??
+      (await repository.workflowTriggers.claimDelivery(
+        applicationOwnerId(),
+        triggerId,
+        idempotencyKey,
+        provenance,
+      ));
     if (!claim || claim.kind === "disabled") {
       throw new WorkflowTriggerConflictError(
         "Workflow trigger is disabled or unavailable.",
@@ -2555,7 +2572,13 @@ export async function buildApp({
         claim.delivery.id,
         triggerId,
         runResult.run.run.id,
+        preclaimed?.lease,
       );
+      if (!delivery) {
+        throw new ScheduleDispatchLeaseLostError(
+          "The schedule dispatch lease expired before completion.",
+        );
+      }
       publishWorkflowTriggerChange(triggerId, context.trigger.projectId);
       publishWorkflowRunChange({
         projectId: runResult.run.run.projectId,
@@ -2570,13 +2593,19 @@ export async function buildApp({
         replayed: claim.kind === "replay" || !runResult.created,
       });
     } catch (error) {
-      await repository.workflowTriggers.failDelivery(
+      const failed = await repository.workflowTriggers.failDelivery(
         applicationOwnerId(),
         claim.delivery.id,
         triggerId,
         "workflow-trigger-delivery-failed",
         errorMessage(error),
+        preclaimed?.lease,
       );
+      if (preclaimed && !failed) {
+        throw new ScheduleDispatchLeaseLostError(
+          "The schedule dispatch lease expired before failure was recorded.",
+        );
+      }
       publishWorkflowTriggerChange(triggerId, context.trigger.projectId);
       throw error;
     }
@@ -2591,6 +2620,8 @@ export async function buildApp({
     let dispatchFailures = 0;
     let dispatches = 0;
     let dueOccurrences = 0;
+    let leaseContentions = 0;
+    let leaseRecoveries = 0;
     let maximumLagMs = 0;
     let scanFailed = true;
     try {
@@ -2609,16 +2640,91 @@ export async function buildApp({
         );
         await runAsOwner(trigger.ownerId, async () => {
           const intervalMs = trigger.configuration.intervalSeconds * 1_000;
+          const provenance = workflowTriggerProvenanceSchema.parse({
+            type: "schedule",
+            sourceId: trigger.id,
+            actorType: "schedule",
+            actorId: null,
+            deliveredAt: now.toISOString(),
+            metadata: {
+              triggerName: trigger.name,
+              projectId: trigger.projectId,
+            },
+          });
+          const occurrence =
+            await repository.workflowTriggers.claimScheduleOccurrence(
+              trigger.ownerId,
+              trigger.id,
+              expected,
+              provenance,
+              serverInstanceId,
+              schedulerLeaseTtlMs,
+              now,
+            );
+          if (!occurrence) return;
+          if (occurrence.kind === "busy") {
+            leaseContentions += 1;
+            return;
+          }
+          if (occurrence.kind === "disabled") return;
+          if (occurrence.kind === "completed") {
+            if (occurrence.delivery.status === "accepted") {
+              if (occurrence.delivery.runId) {
+                workflowExecutor.queueRun(
+                  occurrence.delivery.runId,
+                  trigger.ownerId,
+                );
+              }
+              await advanceLiveWorkflowSchedule(
+                trigger.id,
+                trigger.projectId,
+                expected,
+                new Date(Date.now() + intervalMs),
+              );
+            } else {
+              await advanceLiveWorkflowSchedule(
+                trigger.id,
+                trigger.projectId,
+                expected,
+                new Date(Date.now() + Math.min(intervalMs, 30_000)),
+                occurrence.delivery.errorMessage ??
+                  "Scheduled delivery failed before the schedule advanced.",
+              );
+            }
+            return;
+          }
+          if (occurrence.lease.fencingToken > 1) leaseRecoveries += 1;
+          const failClaimedOccurrence = async (
+            code: string,
+            message: string,
+            next: Date,
+          ) => {
+            const failed = await repository.workflowTriggers.failDelivery(
+              trigger.ownerId,
+              occurrence.claim.delivery.id,
+              trigger.id,
+              code,
+              message,
+              occurrence.lease,
+            );
+            if (failed) {
+              await advanceLiveWorkflowSchedule(
+                trigger.id,
+                trigger.projectId,
+                expected,
+                next,
+                message,
+              );
+            }
+          };
           if (
             trigger.configuration.catchUpPolicy === "skip" &&
             now.getTime() - expected.getTime() > intervalMs
           ) {
-            await advanceLiveWorkflowSchedule(
-              trigger.id,
-              trigger.projectId,
-              expected,
-              new Date(now.getTime() + intervalMs),
+            await failClaimedOccurrence(
+              "schedule-overdue-skipped",
               "Skipped an overdue scheduled delivery by policy.",
+              new Date(now.getTime() + intervalMs),
             );
             return;
           }
@@ -2630,12 +2736,10 @@ export async function buildApp({
             trigger.configuration.offlinePolicy === "pause" &&
             (!source || !bridge.isConnected(source.workerId))
           ) {
-            await advanceLiveWorkflowSchedule(
-              trigger.id,
-              trigger.projectId,
-              expected,
-              new Date(now.getTime() + Math.min(intervalMs, 30_000)),
+            await failClaimedOccurrence(
+              "schedule-worker-offline",
               "Project worker is offline; scheduled delivery is paused.",
+              new Date(now.getTime() + Math.min(intervalMs, 30_000)),
             );
             return;
           }
@@ -2648,6 +2752,7 @@ export async function buildApp({
               allowedType: "schedule",
               idempotencyKey: expected.toISOString(),
               metadata: {},
+              preclaimed: occurrence,
               structuredInput: {},
               triggerId: trigger.id,
             });
@@ -2659,6 +2764,13 @@ export async function buildApp({
               new Date(Date.now() + intervalMs),
             );
           } catch (error) {
+            if (error instanceof ScheduleDispatchLeaseLostError) {
+              app.log.info(
+                { workflowTriggerId: trigger.id },
+                "Scheduled workflow dispatch lease was fenced",
+              );
+              return;
+            }
             dispatchFailures += 1;
             app.log.warn(
               { err: error, workflowTriggerId: trigger.id },
@@ -2683,6 +2795,8 @@ export async function buildApp({
         dueOccurrences,
         durationMs: performance.now() - scanStartedAt,
         failed: scanFailed,
+        leaseContentions,
+        leaseRecoveries,
         maximumLagMs,
       });
     }
@@ -15541,6 +15655,8 @@ export async function buildApp({
           request.query.workerId!,
           request.params.automationId,
           input.data,
+          serverInstanceId,
+          schedulerLeaseTtlMs,
         );
         if (!claim) {
           const current = await repository.projectAutomations.get(
@@ -15566,6 +15682,35 @@ export async function buildApp({
           if (!context || context.workerId !== request.query.workerId) {
             throw new Error("The automation target moved to another worker.");
           }
+          const [existingMessage, existingPrompt] = await Promise.all([
+            repository.getMessageByIdempotencyKey(
+              workerAuth.ownerId,
+              automation.chatId,
+              idempotencyKey,
+            ),
+            repository.getQueuedPromptByIdempotencyKey(
+              workerAuth.ownerId,
+              automation.chatId,
+              idempotencyKey,
+            ),
+          ]);
+          if (existingMessage || existingPrompt) {
+            const status = existingPrompt ? "queued" : "started";
+            const finalized =
+              await repository.projectAutomations.finishDispatch(claim, status);
+            if (!finalized) {
+              return reply.code(409).send({
+                error: "Automation dispatch lease expired before recovery.",
+              });
+            }
+            return reply.code(202).send(
+              projectAutomationDispatchResultSchema.parse({
+                accepted: true,
+                status,
+                nextRunAt: claim.nextRunAt?.toISOString() ?? null,
+              }),
+            );
+          }
           if (automation.condition) {
             const githubContext =
               automation.condition.type === "open-issues"
@@ -15587,10 +15732,16 @@ export async function buildApp({
               ),
             );
             if (!condition.allowed) {
-              await repository.projectAutomations.finishDispatch(
-                automation.id,
-                "skipped",
-              );
+              const finalized =
+                await repository.projectAutomations.finishDispatch(
+                  claim,
+                  "skipped",
+                );
+              if (!finalized) {
+                return reply.code(409).send({
+                  error: "Automation dispatch lease expired before completion.",
+                });
+              }
               return reply.code(202).send(
                 projectAutomationDispatchResultSchema.parse({
                   accepted: true,
@@ -15631,10 +15782,15 @@ export async function buildApp({
             });
             status = "started";
           }
-          await repository.projectAutomations.finishDispatch(
-            automation.id,
+          const finalized = await repository.projectAutomations.finishDispatch(
+            claim,
             status,
           );
+          if (!finalized) {
+            return reply.code(409).send({
+              error: "Automation dispatch lease expired before completion.",
+            });
+          }
           return reply.code(202).send(
             projectAutomationDispatchResultSchema.parse({
               accepted: true,
@@ -15644,7 +15800,7 @@ export async function buildApp({
           );
         } catch (error) {
           await repository.projectAutomations.finishDispatch(
-            automation.id,
+            claim,
             "failed",
             errorMessage(error),
           );

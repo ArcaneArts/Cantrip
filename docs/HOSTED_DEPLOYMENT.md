@@ -243,6 +243,15 @@ Redis pub/sub carries bounded ephemeral routing envelopes. It is not a job
 queue, event history, or backup target. PostgreSQL remains authoritative, and
 application reconnects resynchronize snapshots when their server epoch changes.
 
+Scheduled automation does not use Redis pub/sub as a job queue. Each occurrence
+is claimed durably in PostgreSQL with an instance-bound lease and fencing token.
+Set `CANTRIP_SCHEDULER_LEASE_TTL_MS` longer than normal condition evaluation and
+dispatch latency (the default is 120 seconds). A crashed replica's claim becomes
+recoverable after that interval; reducing it too aggressively can cause healthy
+dispatchers to be fenced during temporary database or worker latency. Monitor
+`cantrip_scheduler_lease_contentions_total`,
+`cantrip_scheduler_lease_recoveries_total`, dispatch failures, and maximum lag.
+
 Security audit events are durable PostgreSQL records and are included in normal
 database backups. Account users can review their own audit stream and current
 active sessions; server owners/admins can review the global stream. Establish a

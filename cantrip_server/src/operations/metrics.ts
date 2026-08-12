@@ -15,6 +15,8 @@ export interface SchedulerStats {
   dueOccurrences: number;
   lastScanAt: string | null;
   lastScanDurationSeconds: number;
+  leaseContentions: number;
+  leaseRecoveries: number;
   maximumLagSeconds: number;
   scanFailures: number;
   scans: number;
@@ -69,6 +71,8 @@ export class OperationalMetrics {
     dueOccurrences: 0,
     lastScanAt: null,
     lastScanDurationSeconds: 0,
+    leaseContentions: 0,
+    leaseRecoveries: 0,
     maximumLagSeconds: 0,
     scanFailures: 0,
     scans: 0,
@@ -114,12 +118,16 @@ export class OperationalMetrics {
     dueOccurrences: number;
     durationMs: number;
     failed: boolean;
+    leaseContentions: number;
+    leaseRecoveries: number;
     maximumLagMs: number;
   }): void {
     this.#scheduler.scans += 1;
     this.#scheduler.dueOccurrences += input.dueOccurrences;
     this.#scheduler.dispatches += input.dispatches;
     this.#scheduler.dispatchFailures += input.dispatchFailures;
+    this.#scheduler.leaseContentions += input.leaseContentions;
+    this.#scheduler.leaseRecoveries += input.leaseRecoveries;
     if (input.failed) this.#scheduler.scanFailures += 1;
     this.#scheduler.lastScanAt = new Date().toISOString();
     this.#scheduler.lastScanDurationSeconds =
@@ -294,6 +302,14 @@ export class OperationalMetrics {
       metricLine(
         "cantrip_scheduler_dispatch_failures_total",
         this.#scheduler.dispatchFailures,
+      ),
+      metricLine(
+        "cantrip_scheduler_lease_contentions_total",
+        this.#scheduler.leaseContentions,
+      ),
+      metricLine(
+        "cantrip_scheduler_lease_recoveries_total",
+        this.#scheduler.leaseRecoveries,
       ),
       metricLine(
         "cantrip_scheduler_maximum_lag_seconds",

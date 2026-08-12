@@ -11,7 +11,7 @@ import {
   type ProjectAutomationSchedule,
   type ProjectAutomationUpdate,
 } from "@cantrip/protocol/automations";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gt, lte } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -60,9 +60,14 @@ function nextRunFor(
   return enabled ? firstProjectAutomationRunAt(schedule, now) : null;
 }
 
-export interface ClaimedProjectAutomation {
+export interface ProjectAutomationDispatchLease {
   automation: ProjectAutomation;
+  dispatchInstanceId: string;
+  fencingToken: number;
+  leaseToken: string;
   nextRunAt: Date | null;
+  runId: string;
+  scheduledFor: Date;
 }
 
 export class ProjectAutomationRepository {
@@ -310,8 +315,10 @@ export class ProjectAutomationRepository {
     workerId: string,
     automationId: string,
     input: ProjectAutomationDispatchRequest,
+    dispatchInstanceId: string,
+    leaseTtlMs: number,
     now = new Date(),
-  ): Promise<ClaimedProjectAutomation | null> {
+  ): Promise<ProjectAutomationDispatchLease | null> {
     return this.database.transaction(async (transaction) => {
       const rows = await transaction
         .select({
@@ -356,10 +363,79 @@ export class ProjectAutomationRepository {
         row.schedule,
         new Date(Math.max(now.getTime(), expected.getTime())),
       );
+      const existingRuns = await transaction
+        .select()
+        .from(schema.projectAutomationRuns)
+        .where(
+          and(
+            eq(schema.projectAutomationRuns.automationId, automationId),
+            eq(schema.projectAutomationRuns.scheduledFor, expected),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const existing = existingRuns[0];
+      if (existing && existing.status !== "dispatching") return null;
+      if (existing && existing.leaseExpiresAt.getTime() > now.getTime()) {
+        return null;
+      }
+      const leaseToken = randomUUID();
+      const leaseExpiresAt = new Date(now.getTime() + leaseTtlMs);
+      const run = existing
+        ? (
+            await transaction
+              .update(schema.projectAutomationRuns)
+              .set({
+                dispatchInstanceId,
+                leaseToken,
+                fencingToken: existing.fencingToken + 1,
+                leaseExpiresAt,
+                attemptCount: existing.attemptCount + 1,
+                errorMessage: null,
+                claimedAt: now,
+                updatedAt: now,
+              })
+              .where(
+                and(
+                  eq(schema.projectAutomationRuns.id, existing.id),
+                  eq(
+                    schema.projectAutomationRuns.fencingToken,
+                    existing.fencingToken,
+                  ),
+                  lte(schema.projectAutomationRuns.leaseExpiresAt, now),
+                  eq(schema.projectAutomationRuns.status, "dispatching"),
+                ),
+              )
+              .returning()
+          )[0]
+        : (
+            await transaction
+              .insert(schema.projectAutomationRuns)
+              .values({
+                id: randomUUID(),
+                automationId,
+                ownerId,
+                projectId: row.projectId,
+                chatId: row.chatId,
+                workerId,
+                automationRevision: row.revision,
+                scheduledFor: expected,
+                status: "dispatching",
+                dispatchInstanceId,
+                leaseToken,
+                fencingToken: 1,
+                leaseExpiresAt,
+                attemptCount: 1,
+                claimedAt: now,
+                createdAt: now,
+                updatedAt: now,
+              })
+              .returning()
+          )[0];
+      if (!run) return null;
       const updated = await transaction
         .update(schema.projectAutomations)
         .set({
-          nextRunAt,
           lastRunAt: expected,
           lastStatus: "dispatching",
           lastError: null,
@@ -373,30 +449,74 @@ export class ProjectAutomationRepository {
           ),
         )
         .returning();
-      if (!updated[0]) return null;
+      if (!updated[0]) {
+        throw new ProjectAutomationConflictError(
+          "The automation changed while its occurrence was claimed.",
+        );
+      }
       return {
         automation: toAutomation(
           updated[0],
           selected.chatTitle,
           selected.workerId,
         ),
+        dispatchInstanceId,
+        fencingToken: run.fencingToken,
+        leaseToken,
         nextRunAt,
+        runId: run.id,
+        scheduledFor: expected,
       };
     });
   }
 
   async finishDispatch(
-    automationId: string,
+    lease: ProjectAutomationDispatchLease,
     status: "started" | "queued" | "skipped" | "failed",
     error: string | null = null,
-  ): Promise<void> {
-    await this.database
-      .update(schema.projectAutomations)
-      .set({
-        lastStatus: status,
-        lastError: error?.slice(0, 5_000) ?? null,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.projectAutomations.id, automationId));
+    now = new Date(),
+  ): Promise<boolean> {
+    return this.database.transaction(async (transaction) => {
+      const runs = await transaction
+        .update(schema.projectAutomationRuns)
+        .set({
+          status,
+          errorMessage: error?.slice(0, 5_000) ?? null,
+          completedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.projectAutomationRuns.id, lease.runId),
+            eq(
+              schema.projectAutomationRuns.dispatchInstanceId,
+              lease.dispatchInstanceId,
+            ),
+            eq(schema.projectAutomationRuns.leaseToken, lease.leaseToken),
+            eq(schema.projectAutomationRuns.fencingToken, lease.fencingToken),
+            eq(schema.projectAutomationRuns.status, "dispatching"),
+            gt(schema.projectAutomationRuns.leaseExpiresAt, now),
+          ),
+        )
+        .returning({ id: schema.projectAutomationRuns.id });
+      if (!runs[0]) return false;
+      await transaction
+        .update(schema.projectAutomations)
+        .set({
+          nextRunAt: lease.nextRunAt,
+          lastRunAt: lease.scheduledFor,
+          lastStatus: status,
+          lastError: error?.slice(0, 5_000) ?? null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.projectAutomations.id, lease.automation.id),
+            eq(schema.projectAutomations.revision, lease.automation.revision),
+            eq(schema.projectAutomations.nextRunAt, lease.scheduledFor),
+          ),
+        );
+      return true;
+    });
   }
 }
