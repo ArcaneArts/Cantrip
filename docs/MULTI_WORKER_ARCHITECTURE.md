@@ -42,9 +42,20 @@ available:
 - `GET /api/projects/:projectId/replicas`
 - `GET /api/projects/:projectId/replicas/:replicaId`
 
-These routes are owner-scoped and read-only. Replica materialization and
-removal are introduced through durable jobs in the next rollout stage rather
-than request-scoped mutation routes.
+These routes are owner-scoped. Exact-revision provisioning is exposed through
+durable server jobs when `capabilities.replicaProvisioning` is true:
+
+- `POST /api/projects/:projectId/replicas`
+- `GET /api/projects/:projectId/replica-jobs`
+- `GET /api/project-replica-jobs/:jobId`
+- `POST /api/project-replica-jobs/:jobId/retry`
+- `POST /api/project-replica-jobs/:jobId/cancel`
+
+Workers advertise replica operations independently. Older workers default all
+replica-operation capabilities to unavailable, so a rolling server never sends
+them an unsupported command. Provisioning requires both `provision` and
+`exactRevision`; synchronization and removal remain disabled until their safe
+job lifecycles ship.
 
 ## Terms
 
@@ -206,6 +217,14 @@ without being shown unnecessary fleet controls.
 
 Provisioning is a durable server job. A worker creates temporary state and
 publishes bounded progress; the server exposes the canonical job state.
+
+The server persists the request before dispatch, increments an attempt for
+every delivery, and accepts completion only when the command ID, attempt, and
+job ID still match. Server restart requeues interrupted attempts; a worker
+disconnect produces a retryable `worker-offline` block that is requeued when
+that worker reconnects. A reused checkout is never pulled implicitly: dirty
+state yields `worktree-dirty`, and an explicit revision mismatch yields
+`revision-diverged` without changing files.
 
 ```mermaid
 stateDiagram-v2

@@ -13,6 +13,11 @@ import type {
   GitInteractiveRebaseTodoAction,
   PendingPlanQuestion,
   PlanStep,
+  ProjectReplicaCapabilities,
+  ProjectReplicaJobErrorCode,
+  ProjectReplicaJobKind,
+  ProjectReplicaJobProgress,
+  ProjectReplicaJobState,
   RemoteSurfaceCapabilities,
   RemoteSurfaceConfiguration,
   TunnelDestinationEndpoint,
@@ -60,6 +65,13 @@ const unavailableCodeCapabilities = {
   maxSessions: 1,
   reason: "This worker has not reported Cantrip Code capability.",
 } satisfies CodeCapabilities;
+
+const unavailableProjectReplicaCapabilities = {
+  provision: false,
+  synchronize: false,
+  remove: false,
+  exactRevision: false,
+} satisfies ProjectReplicaCapabilities;
 
 export const systemState = pgTable("system_state", {
   key: text("key").primaryKey(),
@@ -311,6 +323,10 @@ export const workers = pgTable("workers", {
     .$type<CodeCapabilities>()
     .notNull()
     .default(unavailableCodeCapabilities),
+  projectReplicaCapabilities: jsonb("project_replica_capabilities")
+    .$type<ProjectReplicaCapabilities>()
+    .notNull()
+    .default(unavailableProjectReplicaCapabilities),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
   unlinkedAt: timestamp("unlinked_at", { withTimezone: true }),
@@ -800,6 +816,93 @@ export const projectWorktrees = pgTable(
     uniqueIndex("project_worktrees_source_default_unique")
       .on(table.projectSourceId)
       .where(sql`${table.isDefault} = true`),
+  ],
+);
+
+export const projectReplicaJobs = pgTable(
+  "project_replica_jobs",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    projectReplicaId: text("project_replica_id").references(
+      () => projectSources.id,
+      { onDelete: "set null" },
+    ),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<ProjectReplicaJobKind>().notNull(),
+    state: text("state").$type<ProjectReplicaJobState>().notNull(),
+    stateRevision: integer("state_revision").notNull().default(1),
+    idempotencyKey: text("idempotency_key").notNull(),
+    payloadFingerprint: text("payload_fingerprint").notNull(),
+    repository: text("repository").notNull(),
+    expectedRevision: text("expected_revision"),
+    resolvedRevision: text("resolved_revision"),
+    attempt: integer("attempt").notNull().default(0),
+    commandId: text("command_id"),
+    progress: jsonb("progress").$type<ProjectReplicaJobProgress>().notNull(),
+    lastErrorCode: text("last_error_code").$type<ProjectReplicaJobErrorCode>(),
+    lastErrorMessage: text("last_error_message"),
+    errorRetryable: boolean("error_retryable"),
+    availableAt: timestamp("available_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    cancellationUnsafeAt: timestamp("cancellation_unsafe_at", {
+      withTimezone: true,
+    }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("project_replica_jobs_owner_idempotency_unique").on(
+      table.ownerId,
+      table.idempotencyKey,
+    ),
+    uniqueIndex("project_replica_jobs_command_unique")
+      .on(table.commandId)
+      .where(sql`${table.commandId} IS NOT NULL`),
+    uniqueIndex("project_replica_jobs_active_target_unique")
+      .on(table.projectId, table.workerId, table.kind)
+      .where(sql`${table.state} IN ('queued', 'running', 'blocked')`),
+    index("project_replica_jobs_dispatch_index").on(
+      table.state,
+      table.availableAt,
+      table.createdAt,
+    ),
+    index("project_replica_jobs_project_created_index").on(
+      table.projectId,
+      table.createdAt,
+    ),
+    check(
+      "project_replica_jobs_kind_check",
+      sql`${table.kind} IN ('provision', 'synchronize', 'remove')`,
+    ),
+    check(
+      "project_replica_jobs_state_check",
+      sql`${table.state} IN ('queued', 'running', 'blocked', 'succeeded', 'failed', 'cancelled')`,
+    ),
+    check(
+      "project_replica_jobs_revision_check",
+      sql`${table.stateRevision} > 0`,
+    ),
+    check("project_replica_jobs_attempt_check", sql`${table.attempt} >= 0`),
+    check(
+      "project_replica_jobs_error_shape_check",
+      sql`(${table.lastErrorCode} IS NULL AND ${table.lastErrorMessage} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.lastErrorMessage} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
+    ),
   ],
 );
 

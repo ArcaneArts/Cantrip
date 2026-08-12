@@ -4,6 +4,7 @@ import {
   agentInteractionRequestSchema,
   normalizeResponsesBaseUrl,
   unavailableCodeCapabilities,
+  unavailableProjectReplicaCapabilities,
 } from "@cantrip/protocol";
 import type {
   AgentInteractionRequest,
@@ -132,6 +133,7 @@ import {
 } from "../security/secret-vault.js";
 import * as schema from "./schema.js";
 import { ProjectAutomationRepository } from "./project-automations.js";
+import { ProjectReplicaJobRepository } from "./project-replica-jobs.js";
 import { WorkflowRunRepository } from "./workflow-runs.js";
 import { WorkflowRepository } from "./workflows.js";
 import { WorkflowTriggerRepository } from "./workflow-triggers.js";
@@ -913,6 +915,7 @@ function toWorkerSummary(
     codexRuntime: worker.codexRuntime,
     remoteSurfaces: worker.remoteSurfaceCapabilities,
     code: worker.codeCapabilities,
+    projectReplicas: worker.projectReplicaCapabilities,
     startedAt: toISOString(worker.startedAt),
     lastSeenAt: toISOString(worker.lastSeenAt),
     online: Date.now() - worker.lastSeenAt.getTime() <= WORKER_ONLINE_WINDOW_MS,
@@ -1221,6 +1224,7 @@ function toQueuedPrompt(
 
 export class ServerRepository {
   readonly projectAutomations: ProjectAutomationRepository;
+  readonly projectReplicaJobs: ProjectReplicaJobRepository;
   readonly tabLayouts: ProjectTabLayoutRepository;
   readonly workflows: WorkflowRepository;
   readonly workflowRuns: WorkflowRunRepository;
@@ -1231,6 +1235,7 @@ export class ServerRepository {
     private readonly secretVault: SecretVault,
   ) {
     this.projectAutomations = new ProjectAutomationRepository(database);
+    this.projectReplicaJobs = new ProjectReplicaJobRepository(database);
     this.workflows = new WorkflowRepository(database);
     this.workflowRuns = new WorkflowRunRepository(database);
     this.workflowTriggers = new WorkflowTriggerRepository(database);
@@ -2684,6 +2689,8 @@ export class ServerRepository {
       codexRuntime: heartbeat.codexRuntime,
       remoteSurfaceCapabilities: heartbeat.remoteSurfaces,
       codeCapabilities: heartbeat.code ?? unavailableCodeCapabilities,
+      projectReplicaCapabilities:
+        heartbeat.projectReplicas ?? unavailableProjectReplicaCapabilities,
       startedAt: new Date(heartbeat.startedAt),
       lastSeenAt: now,
       unlinkedAt: null,

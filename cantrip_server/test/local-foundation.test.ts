@@ -58,6 +58,7 @@ import {
   modelProfileSummarySchema,
   modelProviderSummarySchema,
   projectListSchema,
+  projectReplicaJobListSchema,
   projectReplicaListSchema,
   projectReplicaSummarySchema,
   projectShareAttachmentSchema,
@@ -609,6 +610,28 @@ const workerBridge = {
           reused: false,
           updated: false,
           warning: null,
+        };
+      case "project.replica.provision":
+        if (command.repository.nameWithOwner === heldProjectCloneName) {
+          await new Promise<void>((resolve) => {
+            releaseProjectClone = resolve;
+          });
+        }
+        return {
+          status: "ready",
+          jobId: command.jobId,
+          attempt: command.attempt,
+          path: path.join(
+            dataDirectory,
+            "repositories",
+            command.repository.nameWithOwner.split("/").at(-1)!,
+          ),
+          displayPath: command.repository.nameWithOwner,
+          repositoryFingerprint: "a".repeat(64),
+          resolvedRevision: "b".repeat(40),
+          branch: "main",
+          reused: false,
+          worktreePolicy: null,
         };
       case "project.files.delete":
         deletedProjectPaths.push(command.path);
@@ -1612,6 +1635,7 @@ describe("local server foundation", () => {
     expect(bootstrap.routing.directWorkerConnections).toBe(false);
     expect(bootstrap.capabilities.worktrees).toBe(true);
     expect(bootstrap.capabilities.projectReplicas).toBe(true);
+    expect(bootstrap.capabilities.replicaProvisioning).toBe(true);
 
     const initialSettings = settingsBundleSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),
@@ -1791,6 +1815,12 @@ describe("local server foundation", () => {
           maxSessions: 4,
           reason: null,
         },
+        projectReplicas: {
+          provision: true,
+          synchronize: false,
+          remove: false,
+          exactRevision: true,
+        },
         startedAt: "2026-08-07T12:00:00.000Z",
       },
     });
@@ -1901,7 +1931,7 @@ describe("local server foundation", () => {
       setupError: null,
       source: null,
     });
-    expect(releaseProjectClone).not.toBeNull();
+    await vi.waitFor(() => expect(releaseProjectClone).not.toBeNull());
     const parallelResponse = await firstApp.inject({
       method: "POST",
       url: "/api/projects/from-github",
@@ -1952,6 +1982,34 @@ describe("local server foundation", () => {
       });
       return current!;
     });
+    expect(
+      projectReplicaJobListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/replica-jobs`,
+          })
+        ).json(),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        state: "succeeded",
+        attempt: 1,
+        resolvedRevision: "b".repeat(40),
+        projectReplicaId: expect.any(String),
+      }),
+    ]);
+    expect(
+      await firstApp.inject({
+        method: "POST",
+        url: `/api/projects/${project.id}/replicas`,
+        payload: {
+          workerId: "test-worker",
+          expectedRevision: null,
+          idempotencyKey: "duplicate-existing-replica",
+        },
+      }),
+    ).toMatchObject({ statusCode: 409 });
     const defaultWorkspace = projectWorkspaceListSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/workspaces" })).json(),
     )[0]!;

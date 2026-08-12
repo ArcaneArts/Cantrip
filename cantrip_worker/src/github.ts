@@ -1,10 +1,11 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   access,
   lstat,
   mkdir,
   readFile,
+  realpath,
   rename,
   rm,
   writeFile,
@@ -28,6 +29,7 @@ import {
   githubWorkerRepositorySchema,
   githubWorkerRepositoryListSchema,
   projectCloneResultSchema,
+  projectReplicaProvisionResultSchema,
   worktreePolicySchema,
   type GithubAuthStatus,
   type GithubIssueDetail,
@@ -56,6 +58,8 @@ import {
   type GithubRepositoryOwner,
   type GithubWorkerRepository,
   type ProjectCloneResult,
+  type ProjectReplicaJobProgressEvent,
+  type ProjectReplicaProvisionResult,
   type WorktreePolicy,
 } from "@cantrip/protocol";
 
@@ -713,6 +717,8 @@ function parseRelease(value: GithubApiRelease): GithubReleaseSummary {
 }
 
 export class GithubClient {
+  private readonly replicaProvisionQueues = new Map<string, Promise<void>>();
+
   constructor(private readonly dataDirectory: string) {}
 
   private repositoriesRoot(): string {
@@ -1661,7 +1667,76 @@ export class GithubClient {
   }
 
   async cloneRepository(nameWithOwner: string): Promise<ProjectCloneResult> {
-    const [owner, repository] = repositorySegments(nameWithOwner);
+    const provisioned = await this.provisionReplica({
+      jobId: randomUUID(),
+      attempt: 1,
+      nameWithOwner,
+      expectedRevision: null,
+    });
+    if (provisioned.status === "blocked") {
+      throw new Error(provisioned.error.message);
+    }
+    return projectCloneResultSchema.parse({
+      path: provisioned.path,
+      displayPath: provisioned.displayPath,
+      reused: provisioned.reused,
+      updated: false,
+      warning: null,
+      worktreePolicy: provisioned.worktreePolicy,
+    });
+  }
+
+  async provisionReplica(
+    input: {
+      jobId: string;
+      attempt: number;
+      nameWithOwner: string;
+      expectedRevision: string | null;
+    },
+    reportProgress: (progress: ProjectReplicaJobProgressEvent) => void = () =>
+      undefined,
+  ): Promise<ProjectReplicaProvisionResult> {
+    const [owner, repository] = repositorySegments(input.nameWithOwner);
+    const target = path.join(
+      this.dataDirectory,
+      "repositories",
+      owner,
+      repository,
+    );
+    const previous =
+      this.replicaProvisionQueues.get(target) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const queued = previous.catch(() => undefined).then(() => gate);
+    this.replicaProvisionQueues.set(target, queued);
+    await previous.catch(() => undefined);
+    try {
+      return await this.provisionReplicaUnlocked(input, reportProgress);
+    } finally {
+      release();
+      if (this.replicaProvisionQueues.get(target) === queued) {
+        this.replicaProvisionQueues.delete(target);
+      }
+    }
+  }
+
+  private async provisionReplicaUnlocked(
+    input: {
+      jobId: string;
+      attempt: number;
+      nameWithOwner: string;
+      expectedRevision: string | null;
+    },
+    reportProgress: (progress: ProjectReplicaJobProgressEvent) => void,
+  ): Promise<ProjectReplicaProvisionResult> {
+    reportProgress({
+      stage: "validating",
+      percent: 10,
+      message: "Validating the managed replica target.",
+    });
+    const [owner, repository] = repositorySegments(input.nameWithOwner);
     const repositoriesDirectory = path.join(
       this.dataDirectory,
       "repositories",
@@ -1670,78 +1745,233 @@ export class GithubClient {
     const target = path.join(repositoriesDirectory, repository);
     await mkdir(repositoriesDirectory, { recursive: true });
 
-    let reused = false;
-    let updated = false;
-    let warning: string | null = null;
+    const blocked = (
+      code:
+        | "target-not-found"
+        | "target-mismatch"
+        | "worktree-dirty"
+        | "revision-diverged"
+        | "remote-unavailable",
+      message: string,
+      retryable: boolean,
+    ): ProjectReplicaProvisionResult =>
+      projectReplicaProvisionResultSchema.parse({
+        status: "blocked",
+        jobId: input.jobId,
+        attempt: input.attempt,
+        error: { code, message: message.slice(0, 4_000), retryable },
+      });
+
+    let reused = true;
     try {
       await access(target);
-      reused = true;
-      const { stdout } = await execFileAsync(
-        "git",
-        ["-C", target, "remote", "get-url", "origin"],
-        { maxBuffer: 1024 * 1024 },
-      );
-      const remote = stdout
-        .trim()
-        .replace(/\.git$/, "")
-        .toLowerCase();
-      if (!remote.includes(nameWithOwner.toLowerCase())) {
-        throw new Error(
-          `Clone destination already exists for a different repository: ${target}`,
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      reused = false;
+    }
+
+    if (reused) {
+      let origin: string;
+      try {
+        origin = (
+          await execFileAsync(
+            "git",
+            ["-C", target, "remote", "get-url", "origin"],
+            { maxBuffer: 1024 * 1024 },
+          )
+        ).stdout.trim();
+      } catch {
+        return blocked(
+          "target-mismatch",
+          "The managed replica path exists but is not a Git repository with an origin remote.",
+          false,
         );
       }
+      const normalizedOrigin = origin
+        .replace(/\.git$/u, "")
+        .replaceAll("\\", "/")
+        .toLowerCase();
+      const expectedSuffix = input.nameWithOwner.toLowerCase();
+      if (
+        !normalizedOrigin.endsWith(`/${expectedSuffix}`) &&
+        !normalizedOrigin.endsWith(`:${expectedSuffix}`)
+      ) {
+        return blocked(
+          "target-mismatch",
+          `The managed replica path points at a different origin: ${origin}`,
+          false,
+        );
+      }
+      reportProgress({
+        stage: "fetching",
+        percent: 35,
+        message:
+          "Fetching repository references without changing the worktree.",
+      });
       try {
         await execFileAsync(
           "git",
-          ["-C", target, "fetch", "--all", "--prune"],
+          ["-C", target, "fetch", "origin", "--prune"],
+          { maxBuffer: 32 * 1024 * 1024 },
+        );
+      } catch (error) {
+        return blocked(
+          "remote-unavailable",
+          `Could not fetch the repository origin: ${(error as Error).message}`,
+          true,
+        );
+      }
+      reportProgress({
+        stage: "inspecting",
+        percent: 55,
+        message: "Checking worktree cleanliness and revision identity.",
+      });
+      const status = (
+        await execFileAsync(
+          "git",
+          ["-C", target, "status", "--porcelain=v1", "--untracked-files=all"],
+          { maxBuffer: 4 * 1024 * 1024 },
+        )
+      ).stdout.trim();
+      if (status) {
+        return blocked(
+          "worktree-dirty",
+          "The existing replica has tracked or untracked changes and was not modified.",
+          false,
+        );
+      }
+      const currentRevision = (
+        await execFileAsync(
+          "git",
+          ["-C", target, "rev-parse", "--verify", "HEAD^{commit}"],
+          { maxBuffer: 1024 * 1024 },
+        )
+      ).stdout
+        .trim()
+        .toLowerCase();
+      if (
+        input.expectedRevision &&
+        currentRevision !== input.expectedRevision.toLowerCase()
+      ) {
+        return blocked(
+          "revision-diverged",
+          `The existing replica is at ${currentRevision}; exact revision ${input.expectedRevision} was requested. Synchronization must be requested explicitly.`,
+          false,
+        );
+      }
+    } else {
+      const staging = `${target}.cantrip-provision-${input.jobId}`;
+      reportProgress({
+        stage: "materializing",
+        percent: 30,
+        message: "Cloning into worker-owned staging storage.",
+      });
+      try {
+        await rm(staging, { recursive: true, force: true });
+        await execFileAsync(
+          "gh",
+          ["repo", "clone", input.nameWithOwner, staging],
+          { maxBuffer: 32 * 1024 * 1024 },
+        );
+        await execFileAsync(
+          "git",
+          ["-C", staging, "fetch", "origin", "--prune"],
           {
             maxBuffer: 32 * 1024 * 1024,
           },
         );
-        const { stdout: status } = await execFileAsync(
-          "git",
-          ["-C", target, "status", "--porcelain"],
-          { maxBuffer: 4 * 1024 * 1024 },
-        );
-        const { stdout: branch } = await execFileAsync(
-          "git",
-          ["-C", target, "branch", "--show-current"],
-          { maxBuffer: 1024 * 1024 },
-        );
-        if (status.trim()) {
-          warning =
-            "Existing repository was re-linked but not pulled because it has local changes.";
-        } else if (branch.trim()) {
-          await execFileAsync("git", ["-C", target, "pull", "--ff-only"], {
-            maxBuffer: 32 * 1024 * 1024,
+        if (input.expectedRevision) {
+          reportProgress({
+            stage: "resolving-revision",
+            percent: 65,
+            message:
+              "Resolving and checking out the requested immutable revision.",
           });
-          updated = true;
-        } else {
-          warning =
-            "Existing repository was re-linked at a detached HEAD; fetched without pulling.";
+          try {
+            await execFileAsync(
+              "git",
+              [
+                "-C",
+                staging,
+                "cat-file",
+                "-e",
+                `${input.expectedRevision}^{commit}`,
+              ],
+              { maxBuffer: 1024 * 1024 },
+            );
+          } catch {
+            await rm(staging, { recursive: true, force: true });
+            return blocked(
+              "target-not-found",
+              `Revision ${input.expectedRevision} is not available from the repository origin.`,
+              false,
+            );
+          }
+          await execFileAsync(
+            "git",
+            ["-C", staging, "checkout", "--detach", input.expectedRevision],
+            { maxBuffer: 32 * 1024 * 1024 },
+          );
         }
+        await rename(staging, target);
       } catch (error) {
-        warning = `Existing repository was re-linked, but could not be updated: ${(error as Error).message}`;
+        await rm(staging, { recursive: true, force: true }).catch(
+          () => undefined,
+        );
+        return blocked(
+          "remote-unavailable",
+          `Could not clone the repository: ${(error as Error).message}`,
+          true,
+        );
       }
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "ENOENT") {
-        throw error;
-      }
-      await execFileAsync("gh", ["repo", "clone", nameWithOwner, target], {
-        maxBuffer: 32 * 1024 * 1024,
-      });
     }
 
+    reportProgress({
+      stage: "verifying",
+      percent: 90,
+      message: "Verifying the materialized repository identity and revision.",
+    });
+
+    const resolvedRevision = (
+      await execFileAsync(
+        "git",
+        ["-C", target, "rev-parse", "--verify", "HEAD^{commit}"],
+        { maxBuffer: 1024 * 1024 },
+      )
+    ).stdout
+      .trim()
+      .toLowerCase();
+    const branch = (
+      await execFileAsync("git", ["-C", target, "branch", "--show-current"], {
+        maxBuffer: 1024 * 1024,
+      })
+    ).stdout.trim();
+    const commonDirOutput = (
+      await execFileAsync(
+        "git",
+        ["-C", target, "rev-parse", "--git-common-dir"],
+        { maxBuffer: 1024 * 1024 },
+      )
+    ).stdout.trim();
+    const commonDir = await realpath(
+      path.isAbsolute(commonDirOutput)
+        ? commonDirOutput
+        : path.resolve(target, commonDirOutput),
+    );
+
     const projectPolicy = await readProjectWorktreePolicy(target);
-    warning =
-      [warning, projectPolicy.warning].filter(Boolean).join(" ") || null;
-    return projectCloneResultSchema.parse({
+    return projectReplicaProvisionResultSchema.parse({
+      status: "ready",
+      jobId: input.jobId,
+      attempt: input.attempt,
       path: target,
       displayPath: `${owner}/${repository}`,
+      repositoryFingerprint: createHash("sha256")
+        .update(commonDir)
+        .digest("hex"),
+      resolvedRevision,
+      branch: branch || null,
       reused,
-      updated,
-      warning,
       worktreePolicy: projectPolicy.policy,
     });
   }

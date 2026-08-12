@@ -90,6 +90,7 @@ import {
   normalizeResponsesBaseUrl,
   chatPermissionProfileStateSchema,
   queuedPromptSchema,
+  projectReplicaJobSummarySchema,
   projectReplicaListSchema,
   projectSummarySchema,
   projectWorkspaceCreateSchema,
@@ -263,6 +264,12 @@ describe("Cantrip protocol", () => {
         heartbeat,
       }).heartbeat.workerId,
     ).toBe("worker-one");
+    expect(heartbeat.projectReplicas).toEqual({
+      provision: false,
+      synchronize: false,
+      remove: false,
+      exactRevision: false,
+    });
     expect(
       workerEnrollmentCodeResultSchema.safeParse({
         code: "short",
@@ -322,6 +329,60 @@ describe("Cantrip protocol", () => {
         credential: `ctwk_${"b".repeat(43)}`,
       }).type,
     ).toBe("worker.credential.rotate");
+  });
+
+  it("validates exact-revision replica job commands and durable state", () => {
+    const jobId = "019fe8a8-6473-7b1f-9152-e06964be098a";
+    expect(
+      workerCommandSchema.parse({
+        type: "project.replica.provision",
+        jobId,
+        attempt: 2,
+        repository: { nameWithOwner: "ArcaneArts/Cantrip" },
+        expectedRevision: "a".repeat(40),
+      }),
+    ).toMatchObject({ attempt: 2, expectedRevision: "a".repeat(40) });
+    expect(
+      projectReplicaJobSummarySchema.parse({
+        id: jobId,
+        projectId: "project-one",
+        projectReplicaId: null,
+        workerId: "worker-one",
+        kind: "provision",
+        state: "blocked",
+        stateRevision: 3,
+        idempotencyKey: "replica:project-one:worker-one",
+        repository: "ArcaneArts/Cantrip",
+        expectedRevision: "a".repeat(40),
+        resolvedRevision: null,
+        attempt: 2,
+        progress: {
+          stage: "blocked",
+          percent: 0,
+          message: "Waiting for worker.",
+          updatedAt: "2026-08-11T12:00:00.000Z",
+        },
+        error: {
+          code: "worker-offline",
+          message: "Waiting for worker.",
+          retryable: true,
+        },
+        createdAt: "2026-08-11T12:00:00.000Z",
+        updatedAt: "2026-08-11T12:00:00.000Z",
+        startedAt: "2026-08-11T12:00:00.000Z",
+        cancellationUnsafeAt: null,
+        completedAt: null,
+      }).error,
+    ).toMatchObject({ code: "worker-offline", retryable: true });
+    expect(
+      workerCommandSchema.safeParse({
+        type: "project.replica.provision",
+        jobId,
+        attempt: 1,
+        repository: { nameWithOwner: "ArcaneArts/Cantrip" },
+        expectedRevision: "main",
+      }).success,
+    ).toBe(false);
   });
 
   it("validates split project token usage analytics", () => {

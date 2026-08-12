@@ -355,6 +355,22 @@ async function start(): Promise<void> {
         );
       case "project.clone":
         return github.cloneRepository(command.repository.nameWithOwner);
+      case "project.replica.provision":
+        return github.provisionReplica(
+          {
+            jobId: command.jobId,
+            attempt: command.attempt,
+            nameWithOwner: command.repository.nameWithOwner,
+            expectedRevision: command.expectedRevision,
+          },
+          (progress) =>
+            emit({
+              type: "project.replica.progress",
+              jobId: command.jobId,
+              attempt: command.attempt,
+              progress,
+            }),
+        );
       case "project.files.delete":
         return github.deleteRepository(command.path);
       case "project.script-commands":

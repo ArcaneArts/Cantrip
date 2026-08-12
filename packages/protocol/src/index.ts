@@ -195,6 +195,7 @@ export const serverBootstrapSchema = z.object({
     linkCodes: z.boolean(),
     multipleWorkers: z.boolean(),
     projectReplicas: z.boolean().default(false),
+    replicaProvisioning: z.boolean().default(false),
     workerSwitching: z.boolean(),
     gitSync: z.boolean(),
     worktrees: z.boolean(),
@@ -266,6 +267,21 @@ export const unprobedCodexRuntimeReport = codexRuntimeReportSchema.parse({
   degradedReasons: ["This worker has not reported runtime compatibility."],
 });
 
+export const projectReplicaCapabilitiesSchema = z.object({
+  provision: z.boolean(),
+  synchronize: z.boolean(),
+  remove: z.boolean(),
+  exactRevision: z.boolean(),
+});
+
+export const unavailableProjectReplicaCapabilities =
+  projectReplicaCapabilitiesSchema.parse({
+    provision: false,
+    synchronize: false,
+    remove: false,
+    exactRevision: false,
+  });
+
 export const workerHeartbeatSchema = z.object({
   workerId: z.string().min(1),
   name: z.string().min(1),
@@ -277,6 +293,9 @@ export const workerHeartbeatSchema = z.object({
     defaultRemoteSurfaceCapabilities,
   ),
   code: codeCapabilitiesSchema.optional(),
+  projectReplicas: projectReplicaCapabilitiesSchema.default(
+    unavailableProjectReplicaCapabilities,
+  ),
   startedAt: z.string().datetime(),
 });
 
@@ -1496,6 +1515,100 @@ export const projectReplicaSummarySchema = z.object({
 export const projectReplicaListSchema = z
   .array(projectReplicaSummarySchema)
   .max(1_000);
+
+export const projectReplicaJobKindSchema = z.enum([
+  "provision",
+  "synchronize",
+  "remove",
+]);
+
+export const projectReplicaJobStateSchema = z.enum([
+  "queued",
+  "running",
+  "blocked",
+  "succeeded",
+  "failed",
+  "cancelled",
+]);
+
+export const projectReplicaJobErrorCodeSchema = z.enum([
+  "target-not-found",
+  "target-mismatch",
+  "worker-offline",
+  "capability-missing",
+  "replica-not-ready",
+  "worktree-dirty",
+  "revision-diverged",
+  "lease-conflict",
+  "attachment-unavailable",
+  "runtime-incompatible",
+  "stale-attempt",
+  "policy-denied",
+  "remote-unavailable",
+  "worker-error",
+]);
+
+export const projectReplicaJobErrorSchema = z.object({
+  code: projectReplicaJobErrorCodeSchema,
+  message: z.string().min(1).max(4_000),
+  retryable: z.boolean(),
+});
+
+export const projectReplicaJobProgressSchema = z.object({
+  stage: z.string().min(1).max(120),
+  percent: z.number().int().min(0).max(100),
+  message: z.string().min(1).max(1_000),
+  updatedAt: z.string().datetime(),
+});
+
+export const projectReplicaJobProgressEventSchema =
+  projectReplicaJobProgressSchema.omit({ updatedAt: true });
+
+const gitObjectRevisionSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^[0-9a-f]{40,64}$/u);
+
+export const projectReplicaJobSummarySchema = z.object({
+  id: z.string().uuid(),
+  projectId: z.string().min(1),
+  projectReplicaId: z.string().min(1).nullable(),
+  workerId: z.string().min(1),
+  kind: projectReplicaJobKindSchema,
+  state: projectReplicaJobStateSchema,
+  stateRevision: z.number().int().positive(),
+  idempotencyKey: z.string().min(1).max(200),
+  repository: z.string().min(1),
+  expectedRevision: gitObjectRevisionSchema.nullable(),
+  resolvedRevision: gitObjectRevisionSchema.nullable(),
+  attempt: z.number().int().nonnegative(),
+  progress: projectReplicaJobProgressSchema,
+  error: projectReplicaJobErrorSchema.nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  startedAt: z.string().datetime().nullable(),
+  cancellationUnsafeAt: z.string().datetime().nullable(),
+  completedAt: z.string().datetime().nullable(),
+});
+
+export const projectReplicaJobListSchema = z
+  .array(projectReplicaJobSummarySchema)
+  .max(1_000);
+
+export const projectReplicaProvisionCreateSchema = z.object({
+  workerId: z.string().min(1),
+  expectedRevision: gitObjectRevisionSchema.nullable().default(null),
+  idempotencyKey: z.string().trim().min(1).max(200),
+});
+
+export const projectReplicaJobRetrySchema = z.object({
+  stateRevision: z.number().int().positive(),
+});
+
+export const projectReplicaJobCancelSchema = z.object({
+  stateRevision: z.number().int().positive(),
+});
 
 const executionResourceIdSchema = z.string().min(1).max(200);
 
@@ -4109,6 +4222,31 @@ export const projectCloneResultSchema = z.object({
   worktreePolicy: worktreePolicySchema.nullable().optional(),
 });
 
+export const projectReplicaProvisionBlockedSchema = z.object({
+  status: z.literal("blocked"),
+  jobId: z.string().uuid(),
+  attempt: z.number().int().positive(),
+  error: projectReplicaJobErrorSchema,
+});
+
+export const projectReplicaProvisionReadySchema = z.object({
+  status: z.literal("ready"),
+  jobId: z.string().uuid(),
+  attempt: z.number().int().positive(),
+  path: z.string().min(1),
+  displayPath: z.string().min(1),
+  repositoryFingerprint: z.string().min(1),
+  resolvedRevision: gitObjectRevisionSchema,
+  branch: z.string().min(1).nullable(),
+  reused: z.boolean(),
+  worktreePolicy: worktreePolicySchema.nullable().optional(),
+});
+
+export const projectReplicaProvisionResultSchema = z.discriminatedUnion(
+  "status",
+  [projectReplicaProvisionBlockedSchema, projectReplicaProvisionReadySchema],
+);
+
 export const projectRemoveSchema = z.object({
   deleteLocalFiles: z.boolean().default(false),
 });
@@ -5912,6 +6050,15 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     }),
   }),
   z.object({
+    type: z.literal("project.replica.provision"),
+    jobId: z.string().uuid(),
+    attempt: z.number().int().positive(),
+    repository: z.object({
+      nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
+    }),
+    expectedRevision: gitObjectRevisionSchema.nullable(),
+  }),
+  z.object({
     type: z.literal("project.files.delete"),
     path: z.string().min(1),
   }),
@@ -6792,6 +6939,12 @@ export const workerResponseEnvelopeSchema = z.discriminatedUnion("ok", [
 
 export const workerEventSchema = z.discriminatedUnion("type", [
   z.object({
+    type: z.literal("project.replica.progress"),
+    jobId: z.string().uuid(),
+    attempt: z.number().int().positive(),
+    progress: projectReplicaJobProgressEventSchema,
+  }),
+  z.object({
     type: z.literal("agent.activity"),
     activity: agentActivitySchema,
   }),
@@ -6928,6 +7081,9 @@ export type CodexRuntimeFeature = z.infer<typeof codexRuntimeFeatureSchema>;
 export type CodexRuntimeReport = z.infer<typeof codexRuntimeReportSchema>;
 export type WorkerHeartbeat = z.infer<typeof workerHeartbeatSchema>;
 export type WorkerSummary = z.infer<typeof workerSummarySchema>;
+export type ProjectReplicaCapabilities = z.infer<
+  typeof projectReplicaCapabilitiesSchema
+>;
 export type WorkerManagementSource = z.infer<
   typeof workerManagementSourceSchema
 >;
@@ -6987,6 +7143,34 @@ export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
 export type SettingsBundle = z.infer<typeof settingsBundleSchema>;
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
 export type ProjectReplicaSummary = z.infer<typeof projectReplicaSummarySchema>;
+export type ProjectReplicaJobKind = z.infer<typeof projectReplicaJobKindSchema>;
+export type ProjectReplicaJobState = z.infer<
+  typeof projectReplicaJobStateSchema
+>;
+export type ProjectReplicaJobErrorCode = z.infer<
+  typeof projectReplicaJobErrorCodeSchema
+>;
+export type ProjectReplicaJobError = z.infer<
+  typeof projectReplicaJobErrorSchema
+>;
+export type ProjectReplicaJobProgress = z.infer<
+  typeof projectReplicaJobProgressSchema
+>;
+export type ProjectReplicaJobProgressEvent = z.infer<
+  typeof projectReplicaJobProgressEventSchema
+>;
+export type ProjectReplicaJobSummary = z.infer<
+  typeof projectReplicaJobSummarySchema
+>;
+export type ProjectReplicaProvisionCreate = z.infer<
+  typeof projectReplicaProvisionCreateSchema
+>;
+export type ProjectReplicaJobRetry = z.infer<
+  typeof projectReplicaJobRetrySchema
+>;
+export type ProjectReplicaJobCancel = z.infer<
+  typeof projectReplicaJobCancelSchema
+>;
 export type ProjectRepositoryStats = z.infer<
   typeof projectRepositoryStatsSchema
 >;
@@ -7113,6 +7297,9 @@ export type GithubWorkerRepository = z.infer<
 >;
 export type GithubProjectCreate = z.infer<typeof githubProjectCreateSchema>;
 export type ProjectCloneResult = z.infer<typeof projectCloneResultSchema>;
+export type ProjectReplicaProvisionResult = z.infer<
+  typeof projectReplicaProvisionResultSchema
+>;
 export type ProjectRemove = z.infer<typeof projectRemoveSchema>;
 export type GitRef = z.infer<typeof gitRefSchema>;
 export type GitCommit = z.infer<typeof gitCommitSchema>;

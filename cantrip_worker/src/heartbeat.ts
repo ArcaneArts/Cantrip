@@ -32,6 +32,12 @@ export function createHeartbeat(
     codexRuntime,
     remoteSurfaces,
     code,
+    projectReplicas: {
+      provision: true,
+      synchronize: false,
+      remove: false,
+      exactRevision: true,
+    },
     startedAt,
   });
 }

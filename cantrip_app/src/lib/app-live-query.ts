@@ -44,6 +44,15 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
       return projectId
         ? [["projects"], ["project-tab-layout", projectId]]
         : [["projects"]];
+    case "project-replica-job":
+      return projectId
+        ? [
+            ["project-replica-jobs", projectId],
+            ...(event.entityId
+              ? [["project-replica-job", event.entityId]]
+              : []),
+          ]
+        : [["project-replica-jobs"]];
     case "project-tab-layout":
       return projectId
         ? [["project-tab-layout", projectId]]
