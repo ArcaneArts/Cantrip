@@ -10,6 +10,7 @@ import {
   browserListSchema,
   browserServiceListSchema,
   browserSummarySchema,
+  browserTunnelRequestSchema,
   agentThreadSyncSchema,
   chatListSchema,
   chatAttachmentSummarySchema,
@@ -252,6 +253,7 @@ import type {
   SkillSettingsFileUpdate,
   TerminalServiceConfiguration,
   TunnelAttachmentCreate,
+  BrowserTunnelRequest,
   TunnelUserCreate,
   TunnelUserUpdate,
   UserSettingsUpdate,
@@ -2010,6 +2012,18 @@ export async function getBrowsers(projectId: string) {
 export async function getBrowserServices(browserId: string) {
   return browserServiceListSchema.parse(
     await request(`/api/browsers/${encodeURIComponent(browserId)}/services`),
+  );
+}
+
+export async function ensureBrowserTunnel(
+  browserId: string,
+  input: BrowserTunnelRequest,
+) {
+  return tunnelSummarySchema.parse(
+    await post(
+      `/api/browsers/${encodeURIComponent(browserId)}/tunnel`,
+      browserTunnelRequestSchema.parse(input),
+    ),
   );
 }
 

@@ -4,6 +4,8 @@ import path from "node:path";
 
 import {
   browserServiceListSchema,
+  tunnelAttachmentCreateResultSchema,
+  tunnelSummarySchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
 } from "@cantrip/protocol";
@@ -34,6 +36,7 @@ const config: ServerConfig = {
 
 const services = browserServiceListSchema.parse([
   {
+    workerId: "test-worker",
     host: "127.0.0.1",
     port: 5173,
     protocol: "http",
@@ -62,7 +65,12 @@ const workerBridge: WorkerCommandBus = {
   },
   async request(_workerId, command) {
     commands.push(command);
-    if (command.type === "browser.services.discover") return services;
+    if (command.type === "browser.services.discover") {
+      return services.map((service) => ({
+        ...service,
+        workerId: "untrusted-worker-claim",
+      }));
+    }
     throw new Error(`Unexpected worker command ${command.type}.`);
   },
 };
@@ -70,6 +78,7 @@ const workerBridge: WorkerCommandBus = {
 let app: Awaited<ReturnType<typeof buildApp>>;
 let database: DatabaseConnection;
 let browserId: string;
+let browserTunnelId: string;
 
 beforeAll(async () => {
   database = await connectDatabase(config);
@@ -82,6 +91,20 @@ beforeAll(async () => {
     codexRuntime: unprobedCodexRuntimeReport,
     remoteSurfaces: {
       browser: true,
+      transports: ["websocket"],
+      maxSessions: 1,
+    },
+    startedAt: new Date().toISOString(),
+  });
+  await database.repository.recordWorker(LOCAL_USER_ID, {
+    workerId: "secondary-worker",
+    name: "Secondary Worker",
+    platform: "linux",
+    architecture: "x64",
+    codexVersion: "0.146.1",
+    codexRuntime: unprobedCodexRuntimeReport,
+    remoteSurfaces: {
+      browser: false,
       transports: ["websocket"],
       maxSessions: 1,
     },
@@ -132,6 +155,108 @@ describe.sequential("browser service discovery API", () => {
     expect(commands.at(-1)).toEqual({ type: "browser.services.discover" });
   });
 
+  it("creates an attachable managed tunnel using the Browser surface worker", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/browsers/${browserId}/tunnel`,
+      payload: { url: "http://localhost:5173/app?mode=dev#ready" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const tunnel = tunnelSummarySchema.parse(response.json());
+    browserTunnelId = tunnel.id;
+    expect(tunnel).toMatchObject({
+      projectId: expect.any(String),
+      origin: "browser",
+      management: "managed-ephemeral",
+      protocolHint: "http-websocket",
+      source: { kind: "desktop-loopback" },
+      destination: {
+        kind: "worker-tcp",
+        workerId: "test-worker",
+        host: "localhost",
+        port: 5173,
+      },
+      managedBy: { kind: "browser", id: browserId },
+      capabilities: {
+        canEdit: false,
+        canDelete: false,
+        canAttach: true,
+        canOpenOwner: true,
+      },
+    });
+
+    const attachmentResponse = await app.inject({
+      method: "POST",
+      url: `/api/tunnels/${tunnel.id}/attachments`,
+      payload: { clientId: "browser-desktop" },
+    });
+    expect(attachmentResponse.statusCode).toBe(201);
+    const attachment = tunnelAttachmentCreateResultSchema.parse(
+      attachmentResponse.json(),
+    );
+
+    const sameTarget = await app.inject({
+      method: "POST",
+      url: `/api/browsers/${browserId}/tunnel`,
+      payload: {
+        url: "http://localhost:5173/another-path",
+        workerId: "test-worker",
+      },
+    });
+    expect(tunnelSummarySchema.parse(sameTarget.json()).id).toBe(tunnel.id);
+
+    const retarget = await app.inject({
+      method: "POST",
+      url: `/api/browsers/${browserId}/tunnel`,
+      payload: { url: "https://127.0.0.1:8443/stream" },
+    });
+    const retargeted = tunnelSummarySchema.parse(retarget.json());
+    expect(retargeted).toMatchObject({
+      id: tunnel.id,
+      protocolHint: "https-websocket",
+      destination: { workerId: "test-worker", port: 8443 },
+    });
+    expect(
+      retargeted.attachments.find(({ id }) => id === attachment.attachmentId)
+        ?.status,
+    ).toBe("stopped");
+
+    const explicitWorker = await app.inject({
+      method: "POST",
+      url: `/api/browsers/${browserId}/tunnel`,
+      payload: {
+        url: "http://127.0.0.1:3000/",
+        workerId: "secondary-worker",
+      },
+    });
+    expect(tunnelSummarySchema.parse(explicitWorker.json())).toMatchObject({
+      id: tunnel.id,
+      projectId: tunnel.projectId,
+      status: "offline",
+      destination: {
+        kind: "worker-tcp",
+        workerId: "secondary-worker",
+        port: 3000,
+      },
+    });
+  });
+
+  it("rejects non-loopback and credentialed Browser tunnel targets", async () => {
+    const external = await app.inject({
+      method: "POST",
+      url: `/api/browsers/${browserId}/tunnel`,
+      payload: { url: "https://example.com/" },
+    });
+    const credentialed = await app.inject({
+      method: "POST",
+      url: `/api/browsers/${browserId}/tunnel`,
+      payload: { url: "http://user:password@localhost:5173/" },
+    });
+    expect(external.statusCode).toBe(400);
+    expect(credentialed.statusCode).toBe(400);
+  });
+
   it("reports an offline project worker", async () => {
     connected = false;
     const response = await app.inject({
@@ -150,5 +275,16 @@ describe.sequential("browser service discovery API", () => {
       url: "/api/browsers/missing/services",
     });
     expect(response.statusCode).toBe(404);
+  });
+
+  it("removes the managed tunnel with its owning Browser tab", async () => {
+    const response = await app.inject({
+      method: "DELETE",
+      url: `/api/browsers/${browserId}`,
+    });
+    expect(response.statusCode).toBe(204);
+    expect(
+      await database.repository.getTunnel(LOCAL_USER_ID, browserTunnelId),
+    ).toBeNull();
   });
 });

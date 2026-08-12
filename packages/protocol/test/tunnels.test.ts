@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  browserTunnelRequestSchema,
   tunnelAttachmentCreateResultSchema,
   tunnelAttachmentInitializeSchema,
   tunnelAttachmentReadySchema,
@@ -13,6 +14,21 @@ import {
 const now = "2026-08-11T12:00:00.000Z";
 
 describe("tunnel protocol", () => {
+  it("carries an explicit discovered-service worker into Browser tunneling", () => {
+    expect(
+      browserTunnelRequestSchema.parse({
+        url: "http://127.0.0.1:5173/app",
+        workerId: "worker-b",
+      }),
+    ).toEqual({
+      url: "http://127.0.0.1:5173/app",
+      workerId: "worker-b",
+    });
+    expect(() =>
+      browserTunnelRequestSchema.parse({ url: "file:///tmp/index.html" }),
+    ).toThrow();
+  });
+
   it("keeps user-created routes on desktop loopback and an explicit worker", () => {
     expect(
       tunnelUserCreateSchema.parse({
