@@ -6,6 +6,7 @@ import type {
   WorkerSummary,
 } from "@cantrip/protocol";
 import {
+  Bot,
   Check,
   FolderTree,
   GitBranch,
@@ -14,7 +15,6 @@ import {
   History,
   Lock,
   LockOpen,
-  MessageSquare,
   SquareTerminal,
   Trash2,
 } from "lucide-react";
@@ -187,7 +187,7 @@ export function HistoryWorktreeMarker({
               </dd>
               {boundChats.length ? (
                 <>
-                  <dt>Chats</dt>
+                  <dt>Agents</dt>
                   <dd className="truncate text-foreground">
                     {boundChats.map(({ title }) => title).join(", ")}
                   </dd>
@@ -197,7 +197,7 @@ export function HistoryWorktreeMarker({
           </div>
           <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
           <StyledDropdownMenuItem onSelect={() => onOpenChat()}>
-            <MessageSquare className="size-4" /> Open Chat here
+            <Bot className="size-4" /> Open Agent here
           </StyledDropdownMenuItem>
           <StyledDropdownMenuItem onSelect={onOpenTerminal}>
             <SquareTerminal className="size-4" /> Open Terminal here
@@ -213,7 +213,7 @@ export function HistoryWorktreeMarker({
               key={chat.id}
               onSelect={() => onOpenChat(chat.id)}
             >
-              <MessageSquare className="size-4" /> Open {chat.title}
+              <Bot className="size-4" /> Open {chat.title}
             </StyledDropdownMenuItem>
           ))}
           {!worktree.isPrimary ? (

@@ -345,7 +345,7 @@ function SkillInventory({
     <>
       <Diagnostics errors={inventory.skills.errors} />
       {inventory.skills.items.length === 0 ? (
-        <Empty>No skills were reported for this chat runtime.</Empty>
+        <Empty>No skills were reported for this agent runtime.</Empty>
       ) : (
         <div className="divide-y border-y">
           {inventory.skills.items.map((skill) => (
@@ -607,7 +607,7 @@ function McpInventory({
   return (
     <div className="grid gap-3">
       {inventory.mcpServers.length === 0 ? (
-        <Empty>No MCP servers are connected to this chat runtime.</Empty>
+        <Empty>No MCP servers are connected to this agent runtime.</Empty>
       ) : (
         <div className="divide-y border-y">
           {inventory.mcpServers.map((server) => (
@@ -1102,7 +1102,7 @@ export function CustomizationPanel({
             <div>
               <p className="font-medium">Isolated native controls</p>
               <p className="text-xs leading-5 text-muted-foreground">
-                This chat uses a Cantrip-owned Codex home. Changes below go
+                This agent uses a Cantrip-owned Codex home. Changes below go
                 through capability-checked App Server methods: skill toggles are
                 reversible, extra roots are process scoped, and external imports
                 require an explicit reviewed selection. Plugin controls remain
@@ -1154,7 +1154,7 @@ export function CustomizationPanel({
               <Section
                 icon={<PackageSearch className="size-4" />}
                 title={`Skills (${inventory.data.skills.items.length})`}
-                description="Native skills visible to this isolated chat runtime, including disabled and scoped entries."
+                description="Native skills visible to this isolated agent runtime, including disabled and scoped entries."
               >
                 <SkillInventory
                   inventory={inventory.data}

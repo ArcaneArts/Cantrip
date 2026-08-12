@@ -1,11 +1,11 @@
 import {
+  Bot,
   CircleDot,
   Code2,
   FolderTree,
   GitCommitHorizontal,
   Globe2,
   Layers3,
-  MessageSquare,
   MonitorUp,
   SquareTerminal,
   type LucideProps,
@@ -20,7 +20,7 @@ export function ProjectSurfaceIcon({
 }: LucideProps & { filled?: boolean; kind: ProjectTabGroupVisualKind }) {
   const Icon =
     kind === "chat"
-      ? MessageSquare
+      ? Bot
       : kind === "terminal"
         ? SquareTerminal
         : kind === "explorer"

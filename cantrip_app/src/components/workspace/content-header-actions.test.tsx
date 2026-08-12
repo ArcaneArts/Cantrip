@@ -100,7 +100,7 @@ describe("ContentHeaderActions", () => {
     );
     expect(markup).toContain('title="Open this tab in a new window"');
     expect(markup).toContain('title="Inspect Codex customizations"');
-    expect(markup).toContain('title="View chat move progress"');
+    expect(markup).toContain('title="View agent move progress"');
     expect(markup).toContain('title="Show Codex console"');
   });
 

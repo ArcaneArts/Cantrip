@@ -2387,7 +2387,7 @@ export const projectTokenUsageSchema = z.object({
 
 export const chatCreateSchema = z
   .object({
-    title: z.string().trim().min(1).max(200).default("New chat"),
+    title: z.string().trim().min(1).max(200).default("New agent"),
     worktreeId: z.string().min(1).optional(),
     worktreeMode: z.enum(["agent-managed", "pinned"]).default("agent-managed"),
     tabGroupId: z.string().min(1).optional(),

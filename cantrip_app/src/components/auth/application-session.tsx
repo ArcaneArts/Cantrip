@@ -260,7 +260,7 @@ function AuthenticationScreen({
             </h1>
             <p className="mt-1 text-sm leading-5 text-muted-foreground">
               {accounts
-                ? "Your projects, chats, and workers remain isolated on this server."
+                ? "Your projects, agents, and workers remain isolated on this server."
                 : "Enter the password configured by this server's operator."}
             </p>
           </div>

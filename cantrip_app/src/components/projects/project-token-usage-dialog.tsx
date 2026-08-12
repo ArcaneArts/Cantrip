@@ -202,7 +202,7 @@ export function ProjectTokenUsageDialog({
             <Coins className="size-5" /> Token usage
           </DialogTitle>
           <DialogDescription>
-            {projectName} · tracked across chats, workflows, and agent tools.
+            {projectName} · tracked across agents, workflows, and agent tools.
           </DialogDescription>
         </DialogHeader>
         <ProjectTokenUsageAnalytics usage={usage} />

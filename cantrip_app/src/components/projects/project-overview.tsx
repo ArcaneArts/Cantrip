@@ -101,6 +101,7 @@ export function projectSurfaceRuntimeState(
 }
 
 function surfaceKindLabel(kind: ProjectSurface["kind"]): string {
+  if (kind === "chat") return "Agent";
   if (kind === "remote-desktop") return "Remote desktop";
   return `${kind.slice(0, 1).toUpperCase()}${kind.slice(1)}`;
 }
@@ -305,7 +306,7 @@ export function ProjectOverview({
             icon={<Play className="size-3.5" />}
             label="Running now"
             value={countFormat.format(runningCount)}
-            detail="Chats, terminals, and Code"
+            detail="Agents, terminals, and Code"
           />
           <MetricCard
             icon={<GitCommitHorizontal className="size-3.5" />}
@@ -469,7 +470,7 @@ export function ProjectOverview({
                     No project tabs yet
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Use New to start a chat, terminal, Code workspace, or
+                    Use New to start an agent, terminal, Code workspace, or
                     browser.
                   </p>
                 </div>

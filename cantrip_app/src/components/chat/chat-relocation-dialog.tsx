@@ -108,16 +108,16 @@ export function chatRelocationSourceIssue(
     ({ workerId }) => workerId === sourceWorkerId,
   );
   if (!sourceWorker?.chatRelocation) {
-    return "The current worker must be upgraded before this chat can move.";
+    return "The current worker must be upgraded before this agent can move.";
   }
   if (!sourceWorktree || sourceWorktree.lifecycleState !== "ready") {
-    return "The current chat worktree is not ready.";
+    return "The current agent worktree is not ready.";
   }
   if (!sourceWorktree.head) {
     return "Refresh the current worktree so its Git revision can be verified.";
   }
   if ((statuses[sourceWorktree.id]?.files.length ?? 0) > 0) {
-    return "Commit or preserve the current worktree changes before moving this chat.";
+    return "Commit or preserve the current worktree changes before moving this agent.";
   }
   return null;
 }
@@ -244,7 +244,7 @@ export function ChatRelocationStatus({
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs font-medium capitalize">
-            Moving chat · {stateLabel(job.state)}
+            Moving agent · {stateLabel(job.state)}
           </span>
           <span className="text-[10px] text-muted-foreground">
             {job.progress.percent}% · attempt {job.attempt}
@@ -349,7 +349,7 @@ export function ChatRelocationDialog({
   const activeJob = activeChatRelocationJob(jobs);
   const latestJob = latestChatRelocationJob(jobs);
   const sourceIssue = !available
-    ? "This server does not support durable chat relocation."
+    ? "This server does not support durable agent relocation."
     : chatRelocationSourceIssue(chat, placement, statuses);
 
   const refresh = async () => {
@@ -436,7 +436,7 @@ export function ChatRelocationDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Move chat to another worker</DialogTitle>
+          <DialogTitle>Move agent to another worker</DialogTitle>
           <DialogDescription>
             Cantrip waits for an idle boundary, verifies both checkouts and
             runtimes, relays canonical context through the server, and changes
@@ -549,7 +549,7 @@ export function ChatRelocationDialog({
                 ))}
                 {targets.length === 0 ? (
                   <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-                    Add a second worker replica before moving this chat.
+                    Add a second worker replica before moving this agent.
                   </p>
                 ) : null}
               </div>
@@ -617,7 +617,7 @@ export function ChatRelocationDialog({
               ) : (
                 <GitCompareArrows className="size-4" />
               )}
-              Move chat
+              Move agent
             </Button>
           ) : null}
         </DialogFooter>

@@ -1460,7 +1460,7 @@ function ChatTranscript({
     } else if (name === "new" || name === "clear") {
       onCreateChat();
     } else if (name === "rename") {
-      const title = window.prompt("Rename chat", chat.title)?.trim();
+      const title = window.prompt("Rename agent", chat.title)?.trim();
       if (title) onRename(title);
     } else if (name === "delete") {
       if (window.confirm(`Delete “${chat.title}”? This cannot be undone.`)) {
@@ -1653,13 +1653,13 @@ function ChatTranscript({
                         size="icon"
                         variant="ghost"
                         className="size-7"
-                        title="Fork chat from this response"
+                        title="Fork agent from this response"
                         disabled={fork.isPending}
                         onClick={() => fork.mutate(message.id)}
                       >
                         <GitFork className="size-3.5" />
                         <span className="sr-only">
-                          Fork chat from this response
+                          Fork agent from this response
                         </span>
                       </Button>
                     </div>
@@ -2132,7 +2132,7 @@ function ChatTranscript({
                   }}
                   placeholder={
                     relocationActive
-                      ? "Chat relocation is in progress…"
+                      ? "Agent relocation is in progress…"
                       : editingPrompt
                         ? "Edit queued prompt…"
                         : composerMode === "goal"
@@ -2178,7 +2178,7 @@ function ChatTranscript({
                   <span className="sr-only">Attach files</span>
                 </Button>
                 <select
-                  aria-label="Chat model"
+                  aria-label="Agent model"
                   value={selectedModelId}
                   disabled={
                     relocationActive ||
@@ -2244,7 +2244,7 @@ function ChatTranscript({
                   }
                   title={
                     chat.automationPaused
-                      ? "Resume automatic chat work"
+                      ? "Resume automatic agent work"
                       : "Pause after the current safe boundary"
                   }
                 >
@@ -2748,7 +2748,7 @@ export function App() {
     }) =>
       createChat(
         projectId,
-        "New chat",
+        "New agent",
         worktreeId,
         worktreeMode,
         tabGroupId,
@@ -4355,7 +4355,7 @@ export function App() {
         }
       : undefined;
   const surfaceCreationFailure = newChat.isError
-    ? { label: "chat", error: newChat.error }
+    ? { label: "Agent", error: newChat.error }
     : newTerminal.isError
       ? { label: "terminal", error: newTerminal.error }
       : newExplorer.isError
@@ -4846,7 +4846,7 @@ export function App() {
                                     ? selectedExplorer.title
                                     : selectedTerminal
                                       ? selectedTerminal.linkedChatId
-                                        ? (linkedConsoleChat?.title ?? "Chat")
+                                        ? (linkedConsoleChat?.title ?? "Agent")
                                         : selectedTerminal.title
                                       : selectedChat
                                         ? selectedChat.title
@@ -4968,7 +4968,7 @@ export function App() {
                   selectedTerminal.linkedChatId ? (
                     (activeWorktree?.displayPath ??
                     selectedProject?.source?.displayPath ??
-                    "Chat")
+                    "Agent")
                   ) : (
                     (activeWorktree?.displayPath ??
                     selectedProject?.source?.displayPath ??
@@ -4977,7 +4977,7 @@ export function App() {
                 ) : selectedChat ? (
                   (activeWorktree?.displayPath ??
                   selectedProject?.source?.displayPath ??
-                  "Chat")
+                  "Agent")
                 ) : (
                   (selectedProject?.source?.displayPath ??
                   "Choose a project to begin")
@@ -5544,7 +5544,7 @@ export function App() {
                 </div>
                 <h1 className="mt-4 font-semibold">No tabs yet</h1>
                 <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
-                  Start a Codex chat, shell, file explorer, Code workspace, or
+                  Start a Codex agent, shell, file explorer, Code workspace, or
                   browser in {selectedProject.name}.
                 </p>
                 <div className="mt-5 flex justify-center gap-2">
@@ -5559,7 +5559,7 @@ export function App() {
                     ) : (
                       <Plus className="size-4" />
                     )}
-                    Chat
+                    Agent
                   </Button>
                   <Button
                     variant="outline"

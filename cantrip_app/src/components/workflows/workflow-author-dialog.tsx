@@ -420,7 +420,7 @@ export function WorkflowAuthorDialog({
                   }
                 >
                   <option value="task">Task</option>
-                  <option value="chat">Selected chat</option>
+                  <option value="chat">Selected agent</option>
                   <option value="runbook">Runbook</option>
                   <option value="demonstration">Demonstrated process</option>
                 </select>
@@ -450,7 +450,7 @@ export function WorkflowAuthorDialog({
                 className="min-h-24 rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
                 placeholder={
                   generationSource === "chat"
-                    ? "Describe which process in the selected chat should become a workflow."
+                    ? "Describe which process in the selected agent should become a workflow."
                     : "Describe or paste the process Codex should turn into a workflow."
                 }
                 value={generationPrompt}
@@ -477,7 +477,7 @@ export function WorkflowAuthorDialog({
               </Button>
               {!chats.length ? (
                 <span className="text-xs text-amber-700 dark:text-amber-300">
-                  Create a project chat to select a Codex runtime.
+                  Create a project agent to select a Codex runtime.
                 </span>
               ) : null}
               {generationResult ? (

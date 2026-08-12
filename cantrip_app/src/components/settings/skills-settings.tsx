@@ -476,7 +476,7 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
       </section>
 
       <p className="pb-2 text-xs text-muted-foreground">
-        To install another personal skill, invoke $skill-installer in a chat
+        To install another personal skill, invoke $skill-installer in an agent
         using the same worker and provider.
       </p>
 

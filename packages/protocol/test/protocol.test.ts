@@ -366,6 +366,10 @@ describe("Cantrip protocol", () => {
     ).toBe(false);
   });
 
+  it("uses the product-facing Agent name for untitled chat surfaces", () => {
+    expect(chatCreateSchema.parse({}).title).toBe("New agent");
+  });
+
   it("bounds fleet browser discovery and validates initial Browser placement", () => {
     expect(
       browserCreateSchema.parse({

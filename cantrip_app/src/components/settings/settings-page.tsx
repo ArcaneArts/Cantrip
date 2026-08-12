@@ -496,7 +496,7 @@ export function SettingsPage({
     !search ||
     matchesSearch(
       search,
-      "models model default reasoning effort provider routes priority failover new chats",
+      "models model default reasoning effort provider routes priority failover new agents",
     );
   const visibleModels = modelSectionMatches
     ? models
@@ -806,7 +806,7 @@ export function SettingsPage({
                   </div>
 
                   <label className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2.5 text-xs">
-                    <span className="font-medium">Default for new chats</span>
+                    <span className="font-medium">Default for new agents</span>
                     <select
                       value={settings.data?.preferences.defaultModelId ?? ""}
                       onChange={(event) =>
@@ -926,8 +926,8 @@ export function SettingsPage({
           ) : null}
 
           <p className="pb-2 text-xs text-muted-foreground">
-            The default initializes new chats. A chat’s selected model applies
-            to its next message.
+            The default initializes new agents. An agent’s selected model
+            applies to its next message.
           </p>
         </div>
         {section === "workspaces" ? (
@@ -1334,7 +1334,7 @@ export function SettingsPage({
                 {editingModel ? "Edit model" : "Add model"}
               </DialogTitle>
               <DialogDescription>
-                Select this logical model in chat; Cantrip tries its enabled
+                Select this logical model in an agent; Cantrip tries its enabled
                 provider routes from top to bottom.
               </DialogDescription>
             </DialogHeader>

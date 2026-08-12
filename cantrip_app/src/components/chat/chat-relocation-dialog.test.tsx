@@ -311,7 +311,7 @@ describe("chat relocation UI model", () => {
       succeeded.id,
     );
     const markup = renderToStaticMarkup(<ChatRelocationStatus job={blocked} />);
-    expect(markup).toContain("Moving chat · blocked");
+    expect(markup).toContain("Moving agent · blocked");
     expect(markup).toContain("Target worker is offline.");
     expect(markup).toContain("35%");
   });
