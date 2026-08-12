@@ -16,6 +16,7 @@ import {
   codexMcpOauthStatusSchema,
   codexMcpResourceReadRequestSchema,
   chatAttachmentSummarySchema,
+  chatCreateSchema,
   chatExecutionLaneSummarySchema,
   chatGoalCreateSchema,
   chatGoalResponseSchema,
@@ -32,6 +33,8 @@ import {
   encodeCodeTunnelFrame,
   encodeRemoteSurfaceFrame,
   executionPlacementSchema,
+  executionPlacementResolveRequestSchema,
+  executionPlacementResolutionSchema,
   executionTargetSchema,
   explorerFileWriteSchema,
   remoteBrowserClipboardMessageSchema,
@@ -112,6 +115,7 @@ import {
   serverBootstrapSchema,
   systemHealthSchema,
   terminalClientMessageSchema,
+  terminalCreateSchema,
   terminalServiceConfigurationSchema,
   terminalSummarySchema,
   terminalServerMessageSchema,
@@ -251,6 +255,61 @@ describe("Cantrip protocol", () => {
         surfaceKind: "terminal",
         surfaceId: "terminal-four",
         workerId: "untrusted-worker-claim",
+      }).success,
+    ).toBe(false);
+
+    expect(
+      executionPlacementResolveRequestSchema.parse({
+        surfaceKind: "terminal",
+        target: {
+          kind: "worker",
+          projectId: "project-one",
+          workerId: "worker-two",
+        },
+      }),
+    ).toMatchObject({ surfaceKind: "terminal" });
+    expect(
+      executionPlacementResolutionSchema.parse({
+        placement: {
+          projectId: "project-one",
+          workerId: "worker-two",
+          projectReplicaId: "replica-two",
+          worktreeId: "worktree-three",
+          surface: null,
+        },
+        selection: "project-preference",
+      }).selection,
+    ).toBe("project-preference");
+  });
+
+  it("accepts placement targets on new surfaces without accepting ambiguous worktrees", () => {
+    const target = {
+      kind: "worktree" as const,
+      projectId: "project-one",
+      worktreeId: "worktree-three",
+    };
+    expect(
+      chatCreateSchema.safeParse({
+        title: "Placed chat",
+        target,
+      }).success,
+    ).toBe(true);
+    expect(
+      terminalCreateSchema.safeParse({
+        title: "Placed terminal",
+        target,
+      }).success,
+    ).toBe(true);
+    expect(
+      chatCreateSchema.safeParse({
+        worktreeId: "legacy-worktree",
+        target,
+      }).success,
+    ).toBe(false);
+    expect(
+      terminalCreateSchema.safeParse({
+        worktreeId: "legacy-worktree",
+        target,
       }).success,
     ).toBe(false);
   });
