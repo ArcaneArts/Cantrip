@@ -1399,6 +1399,7 @@ export const projectListSchema = z.array(projectSummarySchema);
 export const projectRepositoryStatsSchema = z.object({
   commitCount: z.number().int().nonnegative(),
   trackedFileCount: z.number().int().nonnegative(),
+  trackedByteCount: z.number().int().nonnegative(),
   textFileCount: z.number().int().nonnegative(),
   lineCount: z.number().int().nonnegative(),
   excludedFileCount: z.number().int().nonnegative(),

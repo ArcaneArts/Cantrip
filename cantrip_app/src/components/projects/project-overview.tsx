@@ -4,11 +4,13 @@ import type {
   ProjectWorktreeSummary,
 } from "@cantrip/protocol";
 import {
+  ArrowRight,
   ArrowUpRight,
   Files,
   FolderGit2,
   GitBranch,
   GitCommitHorizontal,
+  HardDrive,
   Loader2,
   Play,
   Plus,
@@ -25,6 +27,19 @@ import type { ProjectSurface } from "@/lib/project-surface";
 import { cn } from "@/lib/utils";
 
 const countFormat = new Intl.NumberFormat();
+const byteUnits = ["B", "KB", "MB", "GB", "TB", "PB"] as const;
+
+export function formatByteCount(bytes: number): string {
+  if (bytes <= 0) return "0 B";
+  const unitIndex = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    byteUnits.length - 1,
+  );
+  if (unitIndex === 0) return `${Math.round(bytes)} B`;
+  const value = bytes / 1024 ** unitIndex;
+  const fractionDigits = value >= 100 ? 0 : value >= 10 ? 1 : 2;
+  return `${Number(value.toFixed(fractionDigits))} ${byteUnits[unitIndex]}`;
+}
 
 export interface ProjectSurfaceRuntimeState {
   label: string;
@@ -240,7 +255,7 @@ export function ProjectOverview({
           </div>
         </section>
 
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <MetricCard
             icon={<Rows3 className="size-3.5" />}
             label="Open tabs"
@@ -265,6 +280,14 @@ export function ProjectOverview({
             value={stats ? countFormat.format(stats.lineCount) : loadingValue}
             detail="Lines in tracked text files"
           />
+          <MetricCard
+            icon={<HardDrive className="size-3.5" />}
+            label="Repository size"
+            value={
+              stats ? formatByteCount(stats.trackedByteCount) : loadingValue
+            }
+            detail="Tracked files on this worker"
+          />
         </section>
 
         <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
@@ -279,53 +302,90 @@ export function ProjectOverview({
               <Badge variant="secondary">{orderedSurfaces.length} open</Badge>
             </div>
             {orderedSurfaces.length > 0 ? (
-              <div className="divide-y">
-                {orderedSurfaces.map((surface) => {
-                  const state = projectSurfaceRuntimeState(surface);
-                  const worktreeId = surfaceWorktreeId(surface);
-                  const worktree = worktreeId
-                    ? worktreesById.get(worktreeId)
-                    : undefined;
-                  return (
-                    <button
-                      key={surface.tabKey}
-                      type="button"
-                      className="flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
-                      onClick={() => onOpenSurface(surface.tabKey)}
-                    >
-                      <div className="grid size-9 shrink-0 place-items-center rounded-lg border bg-background">
-                        <ProjectSurfaceIcon
-                          kind={surface.kind}
-                          className="size-4"
-                        />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium">
-                          {surface.title}
-                        </div>
-                        <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {surfaceKindLabel(surface.kind)}
-                          {worktree ? ` · ${worktree.name}` : ""}
-                        </div>
-                      </div>
-                      <span
-                        className={cn(
-                          "shrink-0 rounded-full px-2 py-1 text-[10px] font-medium",
-                          state.tone === "default" &&
-                            "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-                          state.tone === "warning" &&
-                            "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-                          state.tone === "destructive" &&
-                            "bg-destructive/10 text-destructive",
-                          state.tone === "muted" &&
-                            "bg-muted text-muted-foreground",
-                        )}
-                      >
-                        {state.label}
-                      </span>
-                    </button>
-                  );
-                })}
+              <div className="overflow-x-auto">
+                <table className="w-full table-fixed text-left">
+                  <thead className="border-b bg-muted/20 text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-2 font-medium">Service</th>
+                      <th className="hidden w-28 px-3 py-2 font-medium sm:table-cell">
+                        Type
+                      </th>
+                      <th className="hidden w-28 px-3 py-2 font-medium md:table-cell">
+                        Worktree
+                      </th>
+                      <th className="w-24 px-3 py-2 text-right font-medium">
+                        Status
+                      </th>
+                      <th className="w-8" aria-label="Open tab" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {orderedSurfaces.map((surface) => {
+                      const state = projectSurfaceRuntimeState(surface);
+                      const worktreeId = surfaceWorktreeId(surface);
+                      const worktree = worktreeId
+                        ? worktreesById.get(worktreeId)
+                        : undefined;
+                      const openSurface = () => onOpenSurface(surface.tabKey);
+                      return (
+                        <tr
+                          key={surface.tabKey}
+                          aria-label={`Open ${surface.title}`}
+                          className="group cursor-pointer transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+                          tabIndex={0}
+                          onClick={openSurface}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter" && event.key !== " ")
+                              return;
+                            event.preventDefault();
+                            openSurface();
+                          }}
+                        >
+                          <td className="px-4 py-2">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <ProjectSurfaceIcon
+                                kind={surface.kind}
+                                className="size-3.5 shrink-0 text-muted-foreground"
+                              />
+                              <span className="truncate text-xs font-medium">
+                                {surface.title}
+                              </span>
+                              <span className="truncate text-[10px] text-muted-foreground sm:hidden">
+                                {surfaceKindLabel(surface.kind)}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="hidden truncate px-3 py-2 text-xs text-muted-foreground sm:table-cell">
+                            {surfaceKindLabel(surface.kind)}
+                          </td>
+                          <td className="hidden truncate px-3 py-2 text-xs text-muted-foreground md:table-cell">
+                            {worktree?.name ?? "—"}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <span
+                              className={cn(
+                                "inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium",
+                                state.tone === "default" &&
+                                  "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+                                state.tone === "warning" &&
+                                  "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+                                state.tone === "destructive" &&
+                                  "bg-destructive/10 text-destructive",
+                                state.tone === "muted" &&
+                                  "bg-muted text-muted-foreground",
+                              )}
+                            >
+                              {state.label}
+                            </span>
+                          </td>
+                          <td className="pr-3 text-right">
+                            <ArrowRight className="size-3 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             ) : (
               <div className="px-5 py-10 text-center">
@@ -361,11 +421,7 @@ export function ProjectOverview({
                   </dd>
                 </div>
               </dl>
-              {stats?.truncated ? (
-                <p className="mt-4 rounded-lg bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-700 dark:text-amber-300">
-                  The bounded line scan skipped some large or unavailable files.
-                </p>
-              ) : statsError ? (
+              {statsError ? (
                 <p className="mt-4 rounded-lg bg-destructive/10 px-3 py-2 text-xs leading-5 text-destructive">
                   {statsError}
                 </p>
