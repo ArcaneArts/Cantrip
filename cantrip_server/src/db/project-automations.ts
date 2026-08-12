@@ -164,7 +164,10 @@ export class ProjectAutomationRepository {
     );
   }
 
-  async listForWorker(workerId: string): Promise<ProjectAutomation[]> {
+  async listForWorker(
+    ownerId: string,
+    workerId: string,
+  ): Promise<ProjectAutomation[]> {
     const rows = await this.database
       .select({
         automation: schema.projectAutomations,
@@ -173,7 +176,10 @@ export class ProjectAutomationRepository {
       .from(schema.projectAutomations)
       .innerJoin(
         schema.chats,
-        eq(schema.chats.id, schema.projectAutomations.chatId),
+        and(
+          eq(schema.chats.id, schema.projectAutomations.chatId),
+          eq(schema.projectAutomations.ownerId, ownerId),
+        ),
       )
       .innerJoin(
         schema.projectWorktrees,
@@ -300,6 +306,7 @@ export class ProjectAutomationRepository {
   }
 
   async claimDue(
+    ownerId: string,
     workerId: string,
     automationId: string,
     input: ProjectAutomationDispatchRequest,
@@ -321,7 +328,12 @@ export class ProjectAutomationRepository {
           schema.projectWorktrees,
           eq(schema.projectWorktrees.id, schema.chats.activeWorktreeId),
         )
-        .where(eq(schema.projectAutomations.id, automationId))
+        .where(
+          and(
+            eq(schema.projectAutomations.id, automationId),
+            eq(schema.projectAutomations.ownerId, ownerId),
+          ),
+        )
         .for("update")
         .limit(1);
       const selected = rows[0];

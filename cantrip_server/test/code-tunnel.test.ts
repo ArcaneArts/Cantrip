@@ -141,6 +141,7 @@ describe("Cantrip Code isolated editor surface", () => {
       allowedFrameAncestors: ["tauri://localhost"],
     });
     const first = broker.createAttachment({
+      authSessionId: "auth-session-1",
       codeTabId: "code-1",
       ownerId: "user-1",
       runtime,
@@ -148,6 +149,7 @@ describe("Cantrip Code isolated editor surface", () => {
       workerId: "worker-1",
     });
     const second = broker.createAttachment({
+      authSessionId: "auth-session-2",
       codeTabId: "code-1",
       ownerId: "user-1",
       runtime,
@@ -165,6 +167,8 @@ describe("Cantrip Code isolated editor surface", () => {
     expect(broker.revokeAttachment(first.attachmentId, "user-1")).toBe(true);
     expect(broker.hasAttachment(firstToken)).toBe(false);
     expect(broker.hasAttachment(secondToken)).toBe(true);
+    broker.revokeAuthSession("auth-session-2");
+    expect(broker.hasAttachment(secondToken)).toBe(false);
     broker.close();
   });
 

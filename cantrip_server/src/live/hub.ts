@@ -40,11 +40,14 @@ export type AppLivePublication = Omit<
   "cursor" | "occurredAt" | "type"
 > & {
   occurredAt?: string;
+  ownerId: string;
 };
 
 export interface AppLiveConnectionContext {
   authorizeScope(scope: AppLiveScope): Promise<boolean> | boolean;
+  isActive?(): Promise<boolean> | boolean;
   ownerId: string;
+  sessionId?: string | null;
 }
 
 export interface AppLiveHubOptions {
@@ -93,6 +96,11 @@ interface Connection {
   scopes: Map<string, AppLiveScope>;
   serial: Promise<void>;
   socket: AppLiveSocket;
+}
+
+interface RetainedEvent {
+  event: AppLiveEvent;
+  ownerId: string;
 }
 
 function frameByteLength(data: unknown): number {
@@ -145,8 +153,10 @@ export class AppLiveHub {
   readonly #maxInboundBytes: number;
   readonly #maxReplayEvents: number;
   readonly #now: () => number;
-  readonly #replayEvents: AppLiveEvent[] = [];
+  readonly #ownerCursors = new Map<string, number>();
+  readonly #replayEvents: RetainedEvent[] = [];
   readonly #heartbeatTimer: ReturnType<typeof setInterval>;
+  #maintainingConnections = false;
   #acceptedConnectionCount = 0;
   #closed = false;
   #currentCursor = 0;
@@ -189,7 +199,7 @@ export class AppLiveHub {
     }
 
     this.#heartbeatTimer = setInterval(
-      () => this.#closeStaleConnections(),
+      () => void this.#maintainConnections(),
       this.#heartbeatIntervalMs,
     );
     this.#heartbeatTimer.unref();
@@ -239,9 +249,10 @@ export class AppLiveHub {
     if (this.#closed) {
       throw new Error("Cannot publish after the live hub has closed.");
     }
-    const cursor = this.#currentCursor + 1;
+    const { ownerId, ...event } = publication;
+    const cursor = this.#ownerCursor(ownerId) + 1;
     const parsed = appLiveServerMessageSchema.parse({
-      ...publication,
+      ...event,
       type: "event",
       cursor,
       occurredAt: publication.occurredAt ?? new Date(this.#now()).toISOString(),
@@ -249,9 +260,10 @@ export class AppLiveHub {
     if (parsed.type !== "event") {
       throw new Error("Live publication did not produce an event.");
     }
-    this.#currentCursor = cursor;
+    this.#ownerCursors.set(ownerId, cursor);
+    this.#currentCursor += 1;
     this.#publicationCount += 1;
-    this.#replayEvents.push(parsed);
+    this.#replayEvents.push({ event: parsed, ownerId });
     if (this.#replayEvents.length > this.#maxReplayEvents) {
       this.#replayEvents.splice(
         0,
@@ -262,6 +274,7 @@ export class AppLiveHub {
     const scopeKey = appLiveScopeKey(parsed.scope);
     for (const connection of this.#connections) {
       if (
+        connection.context.ownerId === ownerId &&
         connection.initialized &&
         connection.scopes.has(scopeKey) &&
         !connection.resume
@@ -306,12 +319,30 @@ export class AppLiveHub {
     }
   }
 
+  revokeOwner(ownerId: string): number {
+    return this.#revokeConnections(
+      (connection) => connection.context.ownerId === ownerId,
+      "Account sessions were revoked",
+    );
+  }
+
+  revokeSession(sessionId: string): number {
+    return this.#revokeConnections(
+      (connection) => connection.context.sessionId === sessionId,
+      "Session was revoked",
+    );
+  }
+
   async #handleFrame(
     connection: Connection,
     data: unknown,
     isBinary: boolean,
   ): Promise<void> {
     if (connection.closed) return;
+    if (!(await this.#isConnectionActive(connection))) {
+      this.#closeConnection(connection, 1008, "Session is no longer active");
+      return;
+    }
     connection.lastSeenAt = this.#now();
 
     if (isBinary) {
@@ -401,7 +432,7 @@ export class AppLiveHub {
       this.#send(connection, {
         type: "pong",
         nonce: message.nonce,
-        cursor: this.#currentCursor,
+        cursor: this.#ownerCursor(connection.context.ownerId),
       });
       return;
     }
@@ -445,6 +476,7 @@ export class AppLiveHub {
     if (message.resume) {
       this.#resumeAttemptCount += 1;
       const reason = this.#resumeFailureReason(
+        connection.context.ownerId,
         message.resume.serverEpoch,
         message.resume.cursor,
       );
@@ -457,7 +489,7 @@ export class AppLiveHub {
       protocolVersion: 1,
       serverEpoch: this.#epoch,
       connectionId: connection.id,
-      currentCursor: this.#currentCursor,
+      currentCursor: this.#ownerCursor(connection.context.ownerId),
       heartbeatIntervalMs: this.#heartbeatIntervalMs,
       resume: resumeMode,
     });
@@ -498,7 +530,7 @@ export class AppLiveHub {
       type: "subscribed",
       requestId: message.requestId,
       scopes: message.scopes,
-      cursor: this.#currentCursor,
+      cursor: this.#ownerCursor(connection.context.ownerId),
     };
     this.#rememberAndSend(connection, response);
     this.#finishResume(connection);
@@ -515,7 +547,7 @@ export class AppLiveHub {
       type: "unsubscribed",
       requestId: message.requestId,
       scopes: message.scopes,
-      cursor: this.#currentCursor,
+      cursor: this.#ownerCursor(connection.context.ownerId),
     });
   }
 
@@ -534,7 +566,11 @@ export class AppLiveHub {
       return;
     }
 
-    const reason = this.#resumeFailureReason(this.#epoch, message.cursor);
+    const reason = this.#resumeFailureReason(
+      connection.context.ownerId,
+      this.#epoch,
+      message.cursor,
+    );
     connection.scopes = new Map(
       message.scopes.map((scope) => [appLiveScopeKey(scope), scope]),
     );
@@ -542,7 +578,7 @@ export class AppLiveHub {
       connection.resume = { cursor: message.cursor, reason };
       const response = {
         type: "resync-required",
-        cursor: this.#currentCursor,
+        cursor: this.#ownerCursor(connection.context.ownerId),
         reason,
         scopes: [...connection.scopes.values()],
       } satisfies Extract<AppLiveServerMessage, { type: "resync-required" }>;
@@ -555,7 +591,7 @@ export class AppLiveHub {
       type: "subscribed",
       requestId: message.requestId,
       scopes: message.scopes,
-      cursor: this.#currentCursor,
+      cursor: this.#ownerCursor(connection.context.ownerId),
     };
     this.#rememberAndSend(connection, response);
     this.#replay(connection, message.cursor);
@@ -581,7 +617,7 @@ export class AppLiveHub {
     if (resume.reason) {
       this.#sendResyncRequired(connection, {
         type: "resync-required",
-        cursor: this.#currentCursor,
+        cursor: this.#ownerCursor(connection.context.ownerId),
         reason: resume.reason,
         scopes: [...connection.scopes.values()],
       });
@@ -594,8 +630,10 @@ export class AppLiveHub {
     connection.resume = null;
     this.#replaySessionCount += 1;
     let replayedCount = 0;
-    for (const event of this.#replayEvents) {
+    for (const retained of this.#replayEvents) {
+      const { event } = retained;
       if (
+        retained.ownerId === connection.context.ownerId &&
         event.cursor > cursor &&
         connection.scopes.has(appLiveScopeKey(event.scope))
       ) {
@@ -607,25 +645,54 @@ export class AppLiveHub {
     }
     this.#send(connection, {
       type: "caught-up",
-      cursor: this.#currentCursor,
+      cursor: this.#ownerCursor(connection.context.ownerId),
       replayedCount,
     });
   }
 
   #resumeFailureReason(
+    ownerId: string,
     serverEpoch: string,
     cursor: number,
   ): AppLiveResyncReason | null {
     if (serverEpoch !== this.#epoch) return "server-epoch-changed";
-    if (cursor > this.#currentCursor) return "cursor-expired";
-    const oldestCursor = this.#replayEvents[0]?.cursor;
+    const currentCursor = this.#ownerCursor(ownerId);
+    if (cursor > currentCursor) return "cursor-expired";
+    const oldestCursor = this.#replayEvents.find(
+      (retained) => retained.ownerId === ownerId,
+    )?.event.cursor;
     if (oldestCursor !== undefined && cursor < oldestCursor - 1) {
       return "cursor-expired";
     }
-    if (oldestCursor === undefined && cursor !== this.#currentCursor) {
+    if (oldestCursor === undefined && cursor !== currentCursor) {
       return "cursor-expired";
     }
     return null;
+  }
+
+  #ownerCursor(ownerId: string): number {
+    return this.#ownerCursors.get(ownerId) ?? 0;
+  }
+
+  async #isConnectionActive(connection: Connection): Promise<boolean> {
+    try {
+      return (await connection.context.isActive?.()) ?? true;
+    } catch {
+      return false;
+    }
+  }
+
+  #revokeConnections(
+    matches: (connection: Connection) => boolean,
+    reason: string,
+  ): number {
+    let revoked = 0;
+    for (const connection of [...this.#connections]) {
+      if (!matches(connection)) continue;
+      this.#closeConnection(connection, 1008, reason);
+      revoked += 1;
+    }
+    return revoked;
   }
 
   #protocolViolation(
@@ -738,13 +805,29 @@ export class AppLiveHub {
     }
   }
 
-  #closeStaleConnections(): void {
+  async #maintainConnections(): Promise<void> {
+    if (this.#maintainingConnections) return;
+    this.#maintainingConnections = true;
     const staleBefore = this.#now() - this.#heartbeatIntervalMs * 3;
-    for (const connection of this.#connections) {
-      if (connection.lastSeenAt < staleBefore) {
-        this.#heartbeatTimeoutCount += 1;
-        this.#closeConnection(connection, 1001, "Live heartbeat timed out");
-      }
+    try {
+      await Promise.all(
+        [...this.#connections].map(async (connection) => {
+          if (connection.lastSeenAt < staleBefore) {
+            this.#heartbeatTimeoutCount += 1;
+            this.#closeConnection(connection, 1001, "Live heartbeat timed out");
+            return;
+          }
+          if (!(await this.#isConnectionActive(connection))) {
+            this.#closeConnection(
+              connection,
+              1008,
+              "Session is no longer active",
+            );
+          }
+        }),
+      );
+    } finally {
+      this.#maintainingConnections = false;
     }
   }
 

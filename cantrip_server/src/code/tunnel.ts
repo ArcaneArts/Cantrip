@@ -22,6 +22,7 @@ import {
 
 export interface CodeAttachmentBinding {
   attachmentId: string;
+  authSessionId: string | null;
   codeTabId: string;
   createdAt: number;
   expiresAt: number;
@@ -33,6 +34,7 @@ export interface CodeAttachmentBinding {
 }
 
 export interface CreateCodeAttachmentInput {
+  authSessionId?: string | null;
   codeTabId: string;
   ownerId: string;
   runtime: CodeRuntimeStatus;
@@ -160,6 +162,7 @@ export class CodeTunnelBroker {
     const token = randomBytes(32).toString("base64url");
     const binding: CodeAttachmentBinding = {
       attachmentId: randomUUID(),
+      authSessionId: input.authSessionId ?? null,
       codeTabId: input.codeTabId,
       createdAt: now,
       expiresAt: now + this.#idleTtlMs,
@@ -211,6 +214,20 @@ export class CodeTunnelBroker {
       if (binding.sessionId === sessionId) {
         this.#removeAttachment(token, binding);
       }
+    }
+  }
+
+  revokeAuthSession(authSessionId: string): void {
+    for (const [token, binding] of this.#attachments) {
+      if (binding.authSessionId === authSessionId) {
+        this.#removeAttachment(token, binding);
+      }
+    }
+  }
+
+  revokeOwner(ownerId: string): void {
+    for (const [token, binding] of this.#attachments) {
+      if (binding.ownerId === ownerId) this.#removeAttachment(token, binding);
     }
   }
 

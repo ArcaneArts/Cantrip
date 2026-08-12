@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import {
   agentInteractionAcceptedSchema,
   worktreeStatusResultSchema,
@@ -40,6 +42,7 @@ interface WorkflowExecutorLogger {
 }
 
 export interface WorkflowRunLiveChange {
+  ownerId: string;
   projectId: string | null;
   resource: "workflow-gate" | "workflow-node" | "workflow-run";
   revision: number | null;
@@ -68,6 +71,7 @@ export function workflowAgentPrompt(
 
 export class WorkflowExecutor {
   readonly #activeRuns = new Map<string, Promise<void>>();
+  readonly #ownerContext = new AsyncLocalStorage<string>();
   readonly #rerunRequested = new Set<string>();
   readonly #respondingInteractions = new Set<string>();
   #stopping = false;
@@ -82,19 +86,29 @@ export class WorkflowExecutor {
     ) => void = () => undefined,
   ) {}
 
+  #ownerId(): string {
+    return this.#ownerContext.getStore() ?? LOCAL_USER_ID;
+  }
+
   private notifyRunChanged(
     runId: string,
     projectId: string | null,
     resource: WorkflowRunLiveChange["resource"] = "workflow-run",
     revision: number | null = null,
   ): void {
-    this.onRunChanged({ projectId, resource, revision, runId });
+    this.onRunChanged({
+      ownerId: this.#ownerId(),
+      projectId,
+      resource,
+      revision,
+      runId,
+    });
   }
 
   async recoverAfterRestart(): Promise<number> {
     const interruptedAttempts =
       await this.repository.workflowRuns.recoverInterruptedAttempts(
-        LOCAL_USER_ID,
+        this.#ownerId(),
       );
     try {
       await this.recoverWorktreeLeases();
@@ -110,7 +124,7 @@ export class WorkflowExecutor {
   async recoverWorktreeLeases(workerId: string | null = null): Promise<number> {
     const candidates =
       await this.repository.workflowRuns.listRecoverableWorktreeLeases(
-        LOCAL_USER_ID,
+        this.#ownerId(),
         workerId,
       );
     let resumed = 0;
@@ -120,7 +134,7 @@ export class WorkflowExecutor {
         try {
           if (candidate.pendingOutcomeRequest) {
             const resolved = await this.worktreeCoordinator.resolveWorkflowLane(
-              LOCAL_USER_ID,
+              this.#ownerId(),
               candidate.runId,
               candidate.leaseId,
               candidate.pendingOutcomeRequest,
@@ -153,13 +167,15 @@ export class WorkflowExecutor {
     return resumed;
   }
 
-  queueRun(runId: string): void {
+  queueRun(runId: string, ownerId = this.#ownerId()): void {
     if (this.#stopping) return;
-    if (this.#activeRuns.has(runId)) {
-      this.#rerunRequested.add(runId);
+    const runKey = `${ownerId}\0${runId}`;
+    if (this.#activeRuns.has(runKey)) {
+      this.#rerunRequested.add(runKey);
       return;
     }
-    const task = this.executeRun(runId)
+    const task = this.#ownerContext
+      .run(ownerId, () => this.executeRun(runId))
       .catch((error: unknown) => {
         this.logger.error(
           { err: error, workflowRunId: runId },
@@ -167,71 +183,85 @@ export class WorkflowExecutor {
         );
       })
       .finally(() => {
-        this.#activeRuns.delete(runId);
-        if (this.#rerunRequested.delete(runId)) this.queueRun(runId);
+        this.#activeRuns.delete(runKey);
+        if (this.#rerunRequested.delete(runKey)) this.queueRun(runId, ownerId);
       });
-    this.#activeRuns.set(runId, task);
+    this.#activeRuns.set(runKey, task);
   }
 
   async queueAvailableRuns(): Promise<void> {
     if (this.#stopping) return;
-    const runIds =
-      await this.repository.workflowRuns.listDispatchableRunIds(LOCAL_USER_ID);
+    const runIds = await this.repository.workflowRuns.listDispatchableRunIds(
+      this.#ownerId(),
+    );
     for (const runId of runIds) this.queueRun(runId);
   }
 
   async cancelRun(
+    ownerId: string,
     runId: string,
     input: WorkflowRunCancel,
   ): Promise<WorkflowRunDetail | null> {
-    const requested = await this.repository.workflowRuns.requestCancellation(
-      LOCAL_USER_ID,
-      runId,
-      input,
-    );
-    if (requested) {
-      this.notifyRunChanged(runId, requested.run.run.projectId, "workflow-run");
-    }
-    if (!requested?.executions.length || requested.replayed) {
-      return requested?.run ?? null;
-    }
-    await this.interruptExecutions(
-      requested.executions,
-      "Workflow cancellation was persisted but runtime interruption failed",
-    );
-    return (
-      (await this.repository.workflowRuns.getRun(LOCAL_USER_ID, runId)) ??
-      requested.run
-    );
+    return this.#ownerContext.run(ownerId, async () => {
+      const requested = await this.repository.workflowRuns.requestCancellation(
+        this.#ownerId(),
+        runId,
+        input,
+      );
+      if (requested) {
+        this.notifyRunChanged(
+          runId,
+          requested.run.run.projectId,
+          "workflow-run",
+        );
+      }
+      if (!requested?.executions.length || requested.replayed) {
+        return requested?.run ?? null;
+      }
+      await this.interruptExecutions(
+        requested.executions,
+        "Workflow cancellation was persisted but runtime interruption failed",
+      );
+      return (
+        (await this.repository.workflowRuns.getRun(this.#ownerId(), runId)) ??
+        requested.run
+      );
+    });
   }
 
   async pauseRun(
+    ownerId: string,
     runId: string,
     input: WorkflowRunPause,
   ): Promise<WorkflowRunDetail | null> {
-    const run = await this.repository.workflowRuns.pauseRun(
-      LOCAL_USER_ID,
-      runId,
-      input,
-    );
-    if (run) this.notifyRunChanged(runId, run.run.projectId, "workflow-run");
-    return run;
+    return this.#ownerContext.run(ownerId, async () => {
+      const run = await this.repository.workflowRuns.pauseRun(
+        this.#ownerId(),
+        runId,
+        input,
+      );
+      if (run) this.notifyRunChanged(runId, run.run.projectId, "workflow-run");
+      return run;
+    });
   }
 
   async resumeRun(
+    ownerId: string,
     runId: string,
     input: WorkflowRunResume,
   ): Promise<WorkflowRunDetail | null> {
-    const run = await this.repository.workflowRuns.resumeRun(
-      LOCAL_USER_ID,
-      runId,
-      input,
-    );
-    if (run && !["completed", "failed"].includes(run.run.status)) {
-      this.queueRun(runId);
-    }
-    if (run) this.notifyRunChanged(runId, run.run.projectId, "workflow-run");
-    return run;
+    return this.#ownerContext.run(ownerId, async () => {
+      const run = await this.repository.workflowRuns.resumeRun(
+        this.#ownerId(),
+        runId,
+        input,
+      );
+      if (run && !["completed", "failed"].includes(run.run.status)) {
+        this.queueRun(runId);
+      }
+      if (run) this.notifyRunChanged(runId, run.run.projectId, "workflow-run");
+      return run;
+    });
   }
 
   private async interruptExecutions(
@@ -241,7 +271,7 @@ export class WorkflowExecutor {
     await Promise.all(
       executions.map(async (execution) => {
         const runtime = await this.repository.getModelRuntimeByRoute(
-          LOCAL_USER_ID,
+          this.#ownerId(),
           execution.modelRouteId,
         );
         if (!runtime || !this.bridge.isConnected(execution.workerId)) return;
@@ -274,49 +304,55 @@ export class WorkflowExecutor {
   }
 
   async retryNode(
+    ownerId: string,
     runId: string,
     runNodeId: string,
     input: WorkflowNodeRetry,
   ): Promise<WorkflowRunDetail | null> {
-    const run = await this.repository.workflowRuns.retryNode(
-      LOCAL_USER_ID,
-      runId,
-      runNodeId,
-      input,
-    );
-    if (run) {
-      this.notifyRunChanged(runId, run.run.projectId, "workflow-node");
-      this.queueRun(runId);
-    }
-    return run;
+    return this.#ownerContext.run(ownerId, async () => {
+      const run = await this.repository.workflowRuns.retryNode(
+        this.#ownerId(),
+        runId,
+        runNodeId,
+        input,
+      );
+      if (run) {
+        this.notifyRunChanged(runId, run.run.projectId, "workflow-node");
+        this.queueRun(runId);
+      }
+      return run;
+    });
   }
 
   async decideGate(
+    ownerId: string,
     runId: string,
     gateId: string,
     input: WorkflowGateDecision,
   ): Promise<WorkflowRunDetail | null> {
-    const result = await this.repository.workflowRuns.decideGate(
-      LOCAL_USER_ID,
-      runId,
-      gateId,
-      input,
-    );
-    if (result) {
-      this.notifyRunChanged(runId, result.run.run.projectId, "workflow-gate");
-      this.queueRun(runId);
-    }
-    return result?.run ?? null;
+    return this.#ownerContext.run(ownerId, async () => {
+      const result = await this.repository.workflowRuns.decideGate(
+        this.#ownerId(),
+        runId,
+        gateId,
+        input,
+      );
+      if (result) {
+        this.notifyRunChanged(runId, result.run.run.projectId, "workflow-gate");
+        this.queueRun(runId);
+      }
+      return result?.run ?? null;
+    });
   }
 
   async expireGates(now = new Date()): Promise<number> {
     const runIds = await this.repository.workflowRuns.expirePendingGates(
-      LOCAL_USER_ID,
+      this.#ownerId(),
       now,
     );
     for (const runId of runIds) {
       const run = await this.repository.workflowRuns.getRun(
-        LOCAL_USER_ID,
+        this.#ownerId(),
         runId,
       );
       if (run) {
@@ -336,6 +372,7 @@ export class WorkflowExecutor {
   }
 
   async respondToInteraction(
+    ownerId: string,
     interaction: AgentInteractionRequest,
     response: AgentInteractionResponse,
   ): Promise<{ accepted: true }> {
@@ -350,7 +387,7 @@ export class WorkflowExecutor {
     }
     const context =
       await this.repository.workflowRuns.getInteractionExecutionContext(
-        LOCAL_USER_ID,
+        ownerId,
         runId,
         runNodeId,
         threadId,
@@ -364,7 +401,7 @@ export class WorkflowExecutor {
       );
     }
     const runtime = await this.repository.getModelRuntimeByRoute(
-      LOCAL_USER_ID,
+      ownerId,
       context.modelRouteId,
     );
     if (!runtime) throw new Error("The workflow model route is unavailable.");
@@ -395,7 +432,7 @@ export class WorkflowExecutor {
 
   private async executeRun(runId: string): Promise<void> {
     const initial = await this.repository.workflowRuns.getRun(
-      LOCAL_USER_ID,
+      this.#ownerId(),
       runId,
     );
     if (!initial) return;
@@ -404,7 +441,7 @@ export class WorkflowExecutor {
     const active = new Set<Promise<void>>();
     while (!this.#stopping) {
       const budget = await this.repository.workflowRuns.enforceRunBudget(
-        LOCAL_USER_ID,
+        this.#ownerId(),
         runId,
       );
       if (!budget) break;
@@ -418,7 +455,7 @@ export class WorkflowExecutor {
       }
       const collectionAdvanced =
         await this.repository.workflowRuns.advanceReadyCollectionNode(
-          LOCAL_USER_ID,
+          this.#ownerId(),
           runId,
         );
       if (collectionAdvanced === null) break;
@@ -428,7 +465,7 @@ export class WorkflowExecutor {
       }
       const repeatUntilAdvanced =
         await this.repository.workflowRuns.advanceReadyRepeatUntilNode(
-          LOCAL_USER_ID,
+          this.#ownerId(),
           runId,
         );
       if (repeatUntilAdvanced === null) break;
@@ -438,7 +475,7 @@ export class WorkflowExecutor {
       }
       const controlAdvanced =
         await this.repository.workflowRuns.advanceReadyControlNode(
-          LOCAL_USER_ID,
+          this.#ownerId(),
           runId,
         );
       if (controlAdvanced === null) break;
@@ -448,7 +485,7 @@ export class WorkflowExecutor {
       }
       const candidates =
         await this.repository.workflowRuns.getReadyAgentCandidates(
-          LOCAL_USER_ID,
+          this.#ownerId(),
           runId,
         );
       if (candidates === null) break;
@@ -458,7 +495,7 @@ export class WorkflowExecutor {
       );
       if (unsupported) {
         await this.repository.workflowRuns.failUnsupportedRun(
-          LOCAL_USER_ID,
+          this.#ownerId(),
           runId,
           unsupported.unsupportedReason ??
             "The workflow node configuration is unavailable.",
@@ -469,7 +506,7 @@ export class WorkflowExecutor {
       const candidate = candidates[0];
       const source = candidate?.projectId
         ? await this.repository.getProjectSource(
-            LOCAL_USER_ID,
+            this.#ownerId(),
             candidate.projectId,
           )
         : null;
@@ -477,7 +514,7 @@ export class WorkflowExecutor {
       if (source && !this.bridge.isConnected(source.workerId)) break;
       if (candidates.length > 0 && !source) {
         await this.repository.workflowRuns.failUnsupportedRun(
-          LOCAL_USER_ID,
+          this.#ownerId(),
           runId,
           "The workflow project source is unavailable.",
         );
@@ -489,7 +526,7 @@ export class WorkflowExecutor {
         const runtime = await this.runtimeFor(ready);
         if (!runtime) {
           await this.repository.workflowRuns.failUnsupportedRun(
-            LOCAL_USER_ID,
+            this.#ownerId(),
             runId,
             "The workflow has no available model route.",
           );
@@ -501,7 +538,7 @@ export class WorkflowExecutor {
           try {
             const allocation =
               await this.worktreeCoordinator.allocateWorkflowLane(
-                LOCAL_USER_ID,
+                this.#ownerId(),
                 ready.projectId!,
                 {
                   runId: ready.run.id,
@@ -534,7 +571,7 @@ export class WorkflowExecutor {
           }
         }
         const lease = await this.repository.workflowRuns.claimAgentAttempt(
-          LOCAL_USER_ID,
+          this.#ownerId(),
           ready,
           {
             cwd: target.cwd,
@@ -566,7 +603,7 @@ export class WorkflowExecutor {
     const { cwd, workerId, worktreeId } = lease.assignment;
     try {
       const mcpServers = await this.repository.listEffectiveMcpServers(
-        LOCAL_USER_ID,
+        this.#ownerId(),
         lease.candidate.run.projectId,
       );
       const rawResult = await this.bridge.request(
@@ -629,7 +666,7 @@ export class WorkflowExecutor {
         );
       }
       await this.repository.workflowRuns.completeAgentAttempt(
-        LOCAL_USER_ID,
+        this.#ownerId(),
         lease,
         result,
         await this.captureWorktreeCheckpoint(lease),
@@ -641,7 +678,7 @@ export class WorkflowExecutor {
       );
     } catch (error) {
       const failure = await this.repository.workflowRuns.failAgentAttempt(
-        LOCAL_USER_ID,
+        this.#ownerId(),
         lease,
         this.failureFrom(error),
       );
@@ -668,7 +705,7 @@ export class WorkflowExecutor {
       );
     }
     const context = await this.repository.getProjectWorktreeContext(
-      LOCAL_USER_ID,
+      this.#ownerId(),
       projectId,
       lease.assignment.worktreeId,
     );
@@ -694,7 +731,7 @@ export class WorkflowExecutor {
       );
     }
     const observed = await this.repository.observeProjectWorktree(
-      LOCAL_USER_ID,
+      this.#ownerId(),
       projectId,
       context.worktree.id,
       result.worktree,
@@ -776,7 +813,7 @@ export class WorkflowExecutor {
     try {
       const revision =
         await this.repository.workflowRuns.recordAttemptWorkerEvent(
-          LOCAL_USER_ID,
+          this.#ownerId(),
           lease,
           event,
         );
@@ -806,7 +843,7 @@ export class WorkflowExecutor {
           );
         }
         const budget = await this.repository.workflowRuns.enforceRunBudget(
-          LOCAL_USER_ID,
+          this.#ownerId(),
           lease.candidate.run.id,
         );
         if (budget?.violation) {
@@ -871,7 +908,7 @@ export class WorkflowExecutor {
     reason: string,
   ): Promise<void> {
     const runtime = await this.repository.getModelRuntimeByRoute(
-      LOCAL_USER_ID,
+      this.#ownerId(),
       lease.assignment.modelRouteId,
     );
     if (!runtime || !this.bridge.isConnected(workerId)) return;
@@ -893,14 +930,14 @@ export class WorkflowExecutor {
   ): Promise<ModelRuntime | null> {
     if (candidate.node.modelRouteId) {
       return this.repository.getModelRuntimeByRoute(
-        LOCAL_USER_ID,
+        this.#ownerId(),
         candidate.node.modelRouteId,
       );
     }
-    const settings = await this.repository.getSettings(LOCAL_USER_ID);
+    const settings = await this.repository.getSettings(this.#ownerId());
     const modelId = settings.preferences.defaultModelId;
     return modelId
-      ? this.repository.getModelRuntime(LOCAL_USER_ID, modelId)
+      ? this.repository.getModelRuntime(this.#ownerId(), modelId)
       : null;
   }
 

@@ -123,7 +123,7 @@ export function principalOwnerId(request: FastifyRequest): string {
 export class AuthenticationRequiredError extends Error {
   readonly statusCode = 401;
 
-  constructor() {
-    super("Authentication is required.");
+  constructor(message = "Authentication is required.") {
+    super(message);
   }
 }

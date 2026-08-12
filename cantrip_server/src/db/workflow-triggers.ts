@@ -310,6 +310,31 @@ export class WorkflowTriggerRepository {
     };
   }
 
+  async getWebhookDeliveryContext(
+    triggerId: string,
+  ): Promise<WorkflowTriggerDeliveryContext | null> {
+    const rows = await this.database
+      .select()
+      .from(schema.workflowAutomationTriggers)
+      .where(
+        and(
+          eq(schema.workflowAutomationTriggers.id, triggerId),
+          eq(schema.workflowAutomationTriggers.type, "webhook"),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      row,
+      trigger: toTrigger(row),
+      credentialHash:
+        typeof row.configuration.credentialHash === "string"
+          ? row.configuration.credentialHash
+          : null,
+    };
+  }
+
   async update(
     ownerId: string,
     triggerId: string,
@@ -449,29 +474,45 @@ export class WorkflowTriggerRepository {
   }
 
   async acceptDelivery(
+    ownerId: string,
     deliveryId: string,
     triggerId: string,
     runId: string,
   ): Promise<WorkflowTriggerDelivery> {
+    if (!(await this.getDeliveryContext(ownerId, triggerId))) {
+      throw new WorkflowTriggerConflictError("Workflow trigger not found.");
+    }
     const now = new Date();
     const rows = await this.database
       .update(schema.workflowTriggerDeliveries)
       .set({ status: "accepted", runId, updatedAt: now })
-      .where(eq(schema.workflowTriggerDeliveries.id, deliveryId))
+      .where(
+        and(
+          eq(schema.workflowTriggerDeliveries.id, deliveryId),
+          eq(schema.workflowTriggerDeliveries.triggerId, triggerId),
+        ),
+      )
       .returning();
     await this.database
       .update(schema.workflowAutomationTriggers)
       .set({ lastRunId: runId, lastError: null, updatedAt: now })
-      .where(eq(schema.workflowAutomationTriggers.id, triggerId));
+      .where(
+        and(
+          eq(schema.workflowAutomationTriggers.id, triggerId),
+          eq(schema.workflowAutomationTriggers.ownerId, ownerId),
+        ),
+      );
     return toDelivery(rows[0]!);
   }
 
   async failDelivery(
+    ownerId: string,
     deliveryId: string,
     triggerId: string,
     errorCode: string,
     errorMessage: string,
   ): Promise<void> {
+    if (!(await this.getDeliveryContext(ownerId, triggerId))) return;
     const now = new Date();
     await this.database
       .update(schema.workflowTriggerDeliveries)
@@ -481,14 +522,25 @@ export class WorkflowTriggerRepository {
         errorMessage: errorMessage.slice(0, 5_000),
         updatedAt: now,
       })
-      .where(eq(schema.workflowTriggerDeliveries.id, deliveryId));
+      .where(
+        and(
+          eq(schema.workflowTriggerDeliveries.id, deliveryId),
+          eq(schema.workflowTriggerDeliveries.triggerId, triggerId),
+        ),
+      );
     await this.database
       .update(schema.workflowAutomationTriggers)
       .set({ lastError: errorMessage.slice(0, 5_000), updatedAt: now })
-      .where(eq(schema.workflowAutomationTriggers.id, triggerId));
+      .where(
+        and(
+          eq(schema.workflowAutomationTriggers.id, triggerId),
+          eq(schema.workflowAutomationTriggers.ownerId, ownerId),
+        ),
+      );
   }
 
   async advanceSchedule(
+    ownerId: string,
     triggerId: string,
     expected: Date,
     next: Date,
@@ -500,6 +552,7 @@ export class WorkflowTriggerRepository {
       .where(
         and(
           eq(schema.workflowAutomationTriggers.id, triggerId),
+          eq(schema.workflowAutomationTriggers.ownerId, ownerId),
           eq(schema.workflowAutomationTriggers.nextRunAt, expected),
         ),
       )
