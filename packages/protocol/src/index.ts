@@ -251,6 +251,7 @@ export const serverBootstrapSchema = z.object({
     projectReplicas: z.boolean().default(false),
     replicaProvisioning: z.boolean().default(false),
     browserFleetDiscovery: z.boolean().default(false),
+    crossWorkerExecutionTargets: z.boolean().default(false),
     workerSwitching: z.boolean(),
     gitSync: z.boolean(),
     worktrees: z.boolean(),
@@ -2920,7 +2921,14 @@ export const browserCreateSchema = z.object({
 export const browserUpdateSchema = z
   .object({
     title: z.string().trim().min(1).max(200).optional(),
-    url: z.string().url().max(4_096).optional(),
+    url: z
+      .string()
+      .url()
+      .max(4_096)
+      .refine((value) => /^https?:\/\//u.test(value), {
+        message: "Browser URLs must use HTTP or HTTPS.",
+      })
+      .optional(),
   })
   .refine((input) => input.title !== undefined || input.url !== undefined, {
     message: "At least one browser field is required.",
@@ -4372,6 +4380,10 @@ export const agentExecutionTargetToolNameSchema = z.enum([
   "cantrip_explorer_read",
   "cantrip_terminal_read",
   "cantrip_browser_services",
+  "cantrip_explorer_write",
+  "cantrip_terminal_input",
+  "cantrip_terminal_service_restart",
+  "cantrip_browser_navigate",
 ]);
 
 export const agentExecutionToolNameSchema = z.union([
@@ -4420,6 +4432,7 @@ export const agentExecutionToolResultSchema = z.object({
   target: executionTargetSchema.nullable().default(null),
   worktreeId: z.string().min(1).nullable().default(null),
   continuationScheduled: z.boolean().default(false),
+  mutated: z.boolean().default(false),
   data: z.unknown().optional(),
 });
 

@@ -138,7 +138,7 @@ describe("BrowserRemoteSurfaceAdapter", () => {
       const server = createServer((request, response) => {
         response.setHeader("content-type", "text/html; charset=utf-8");
         response.end(
-          `<title>${request.url === "/next" ? "Next" : "Home"}</title><style>body{margin:0}a{display:block;height:100px;cursor:pointer}</style><a id="target">Cantrip browser</a><textarea id="input"></textarea>`,
+          `<title>${request.url === "/next" ? "Next" : request.url === "/configured" ? "Configured" : "Home"}</title><style>body{margin:0}a{display:block;height:100px;cursor:pointer}</style><a id="target">Cantrip browser</a><textarea id="input"></textarea>`,
         );
       });
       await new Promise<void>((resolve) =>
@@ -223,6 +223,26 @@ describe("BrowserRemoteSurfaceAdapter", () => {
           () =>
             emissions.filter(({ channel }) => channel === "frame").length >
             framesBeforeNavigation,
+        );
+
+        await session.updateConfiguration?.({
+          kind: "browser",
+          initialUrl: `${root}configured`,
+          profileId: null,
+        });
+        await eventually(() =>
+          emissions
+            .filter(({ channel }) => channel === "control")
+            .some(({ payload }) => {
+              const state = remoteBrowserServerMessageSchema.parse(
+                JSON.parse(new TextDecoder().decode(payload)),
+              );
+              return (
+                state.type === "browser-state" &&
+                state.url === `${root}configured` &&
+                state.title === "Configured"
+              );
+            }),
         );
 
         await session.handleFrame(
@@ -325,7 +345,8 @@ describe("BrowserRemoteSurfaceAdapter", () => {
                 JSON.parse(new TextDecoder().decode(payload)),
               );
               return (
-                state.type === "browser-state" && state.url === `${root}next`
+                state.type === "browser-state" &&
+                state.url === `${root}configured`
               );
             }),
         );

@@ -155,6 +155,13 @@ read-only target tools (`cantrip_targets_list`, `cantrip_target_inspect`,
 target resolver. They never let the source worker contact the target worker
 directly.
 
+Bounded mutation tools (`cantrip_explorer_write`, `cantrip_terminal_input`,
+`cantrip_terminal_service_restart`, and `cantrip_browser_navigate`) share that
+route and exact-target validation. Explorer writes require the version token
+from the corresponding read, terminal service restarts require an enabled
+service, Browser navigation accepts HTTP(S) only, and every mutation attempt is
+audited by the server.
+
 The server validates the current chat lane, actor, policy, ownership, and
 removal authority before routing an operation. Runtime identity includes chat,
 worker, and worktree. See

@@ -29,8 +29,9 @@ advertises worker switching when these runtime contracts are available; the
 app exposes that lifecycle as an explicit, progress-aware chat move workflow.
 Canonical existing-target resolution and a bounded project target catalog now
 cover worker, replica, worktree, chat, terminal, Explorer, Code, Browser, and
-Remote Surface identities. Cross-worker agent operations consume this shared
-resolver in the following implementation increment.
+Remote Surface identities. Cross-worker agent reads and bounded mutations now
+consume this shared resolver. Servers advertise this end-to-end contract with
+`capabilities.crossWorkerExecutionTargets`.
 
 ## Current replica read contract
 
@@ -297,7 +298,7 @@ Operational callers fail closed by default. The catalog never accepts a
 client-supplied worker claim for a surface and does not expose worker-local
 paths.
 
-### Agent read operations use the same targets
+### Agent operations use the same targets
 
 Interactive Codex turns receive the existing worktree lifecycle tools plus a
 small read-only target toolset:
@@ -315,6 +316,26 @@ small read-only target toolset:
 - `cantrip_worktree_status` accepts an exact worktree target while retaining
   its legacy worktree-id input for older runtimes.
 
+Four bounded mutation tools use the same exact target contract:
+
+- `cantrip_explorer_write` requires the current SHA-256 version returned by
+  `cantrip_explorer_read`; stale files fail instead of overwriting concurrent
+  changes, writes are capped at 500,000 characters, and successful results
+  return metadata rather than echoing file content;
+- `cantrip_terminal_input` sends at most 100,000 characters to the selected
+  Terminal without changing its placement;
+- `cantrip_terminal_service_restart` only restarts an already enabled service
+  belonging to the selected Terminal;
+- `cantrip_browser_navigate` accepts HTTP(S) URLs only, persists the Browser's
+  desired URL, and configures its live worker session when connected. The
+  persisted URL remains authoritative for the next attachment if no session is
+  currently attached.
+
+Every attempted target mutation records an
+`agent.execution-target-mutated` audit event with the source worker, tool,
+target resource, and a succeeded, failed, or denied result. Worker credentials
+do not become user identities in these records.
+
 The source worker sends the dynamic-tool call to
 `POST /api/internal/agent-tools/execution` using its worker credential. The
 server proves that the call came from the chat's current executing lane, loads
@@ -327,9 +348,10 @@ offline targets fail closed without fallback placement.
 
 Worktree lifecycle tools continue using their compatibility endpoint so older
 workers and existing activity/invalidation behavior remain valid. New
-read-only tools are advertised to newly created Codex threads when the runtime
+target tools are advertised to newly created Codex threads when the runtime
 supports dynamic tools; resumed threads retain the tool declarations stored by
-their Codex runtime.
+their Codex runtime. Rolling clients must treat a missing
+`crossWorkerExecutionTargets` capability as false.
 
 ## Default placement selection
 
