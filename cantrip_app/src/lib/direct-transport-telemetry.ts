@@ -2,6 +2,10 @@ import { useEffect } from "react";
 
 import { recordDirectAttachmentTelemetry } from "@/lib/api";
 import {
+  fallbackDirectDesktopProjectShare,
+  listDirectDesktopProjectShares,
+} from "@/lib/desktop-project-share";
+import {
   desktopTunnelAvailable,
   listDesktopTunnels,
   refreshDesktopTunnelRelay,
@@ -11,6 +15,7 @@ const REPORT_INTERVAL_MS = 10_000;
 
 export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
   const forwards = await listDesktopTunnels();
+  const forwardIds = new Set(forwards.map((forward) => forward.tunnelId));
   await Promise.all(
     forwards
       .filter((forward) => Boolean(forward.directCapabilityId))
@@ -30,6 +35,14 @@ export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
           forward.routeState === "degraded" && forward.relayFallbackAvailable,
       )
       .map((forward) => refreshDesktopTunnelRelay(forward).catch(() => false)),
+  );
+  const directProjectShares = await listDirectDesktopProjectShares();
+  await Promise.all(
+    directProjectShares
+      .filter((tunnelId) => !forwardIds.has(tunnelId))
+      .map((tunnelId) =>
+        fallbackDirectDesktopProjectShare(tunnelId).catch(() => false),
+      ),
   );
 }
 

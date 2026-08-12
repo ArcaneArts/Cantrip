@@ -58,6 +58,9 @@ port out of the client ticket. Tauri mounts a local forwarded URL that preserves
 the server-issued capability path and WebDAV credentials. If the direct broker
 cannot be reached or verified, the app mounts the existing authenticated server
 URL instead; remote and mobile clients therefore retain the same relay behavior.
+If an established local-direct share later disconnects, the native mount
+manager remounts the same server-authorized share URL through the relay. The
+share credential and hard mount lease do not change during that cutover.
 
 In a Browser tab, **Open locally** creates or reuses a managed desktop tunnel,
 preserves the page path and query, and opens its loopback URL in the system

@@ -83,6 +83,11 @@ travel through the inherited URLMount credential descriptor, not process
 arguments, and the resulting volume opens in Finder. Native mounts are reused
 for repeated reveals and released when they are replaced, when the server's
 bounded maximum mount lease elapses, or when the desktop runtime shuts down.
+While a direct mount is active, Tauri retains the already issued server share
+endpoint and random WebDAV credential in native memory. If its local direct
+forward disappears, the desktop remounts that same attachment through the
+server relay and preserves the original lease rather than asking the user to
+reveal the project again.
 
 ## Security and lifecycle invariants
 

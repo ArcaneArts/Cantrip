@@ -7,6 +7,7 @@ import {
   deleteProjectNetworkShare,
 } from "@/lib/api";
 import {
+  desktopTunnelAvailable,
   desktopTunnelClientId,
   startDirectDesktopTunnel,
 } from "@/lib/desktop-tunnel";
@@ -36,9 +37,12 @@ export function desktopProjectRevealLabel(
 export function nativeProjectShareRequest(
   attachment: ProjectShareAttachment,
   project: ProjectSummary,
+  direct?: { fallbackUrl: string; tunnelId: string },
 ) {
   return {
     attachmentId: attachment.attachmentId,
+    directTunnelId: direct?.tunnelId ?? null,
+    fallbackUrl: direct?.fallbackUrl ?? null,
     mountLeaseMs: attachment.mountLeaseMs,
     password: attachment.password,
     projectId: attachment.projectId,
@@ -99,6 +103,10 @@ export async function revealProjectInNativeFileManager(
                 url: directProjectShareUrl(attachment, forward.localPort),
               },
               target,
+              {
+                fallbackUrl: attachment.url,
+                tunnelId: direct.route.tunnelId,
+              },
             ),
           });
           return;
@@ -116,4 +124,18 @@ export async function revealProjectInNativeFileManager(
     },
     revokeAttachment: deleteProjectNetworkShare,
   });
+}
+
+export async function listDirectDesktopProjectShares(): Promise<string[]> {
+  if (!desktopTunnelAvailable()) return [];
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string[]>("list_direct_project_share_tunnels");
+}
+
+export async function fallbackDirectDesktopProjectShare(
+  tunnelId: string,
+): Promise<boolean> {
+  if (!desktopTunnelAvailable()) return false;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<boolean>("fallback_project_share", { tunnelId });
 }
