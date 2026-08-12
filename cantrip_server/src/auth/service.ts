@@ -79,6 +79,7 @@ function requestMetadataHash(value: string | undefined): string | null {
 
 export class UserSessionService {
   readonly cookieName: string;
+  readonly partitionedCookieName: string | null;
   private readonly cookieSecure: boolean;
   private readonly cookieSameSite: "Lax" | "None" | "Strict";
   private readonly sessionTtlSeconds: number;
@@ -98,6 +99,10 @@ export class UserSessionService {
         : config.cookieSameSite === "strict"
           ? "Strict"
           : "Lax";
+    this.partitionedCookieName =
+      this.cookieSecure && this.cookieSameSite === "None"
+        ? "__Host-cantrip_partitioned_session"
+        : null;
     if (this.cookieSameSite === "None" && !this.cookieSecure) {
       throw new Error("SameSite=None authentication cookies must be Secure.");
     }
@@ -105,9 +110,16 @@ export class UserSessionService {
   }
 
   async resolve(request: FastifyRequest): Promise<ActiveUserSession | null> {
-    const token = cookieValue(request, this.cookieName);
-    if (!token || token.length > 512) return null;
-    return this.repository.getActiveUserSession(hashSecret(token));
+    for (const name of [this.cookieName, this.partitionedCookieName]) {
+      if (!name) continue;
+      const token = cookieValue(request, name);
+      if (!token || token.length > 512) continue;
+      const session = await this.repository.getActiveUserSession(
+        hashSecret(token),
+      );
+      if (session) return session;
+    }
+    return null;
   }
 
   async resolvePrincipal(request: FastifyRequest) {
@@ -141,10 +153,20 @@ export class UserSessionService {
       userAgentHash: requestMetadataHash(request.headers["user-agent"]),
       userId: user.id,
     });
-    reply.header(
-      "set-cookie",
-      this.serializeCookie(token, this.sessionTtlSeconds),
-    );
+    const cookies = [
+      this.serializeCookie(this.cookieName, token, this.sessionTtlSeconds),
+    ];
+    if (this.partitionedCookieName) {
+      cookies.push(
+        this.serializeCookie(
+          this.partitionedCookieName,
+          token,
+          this.sessionTtlSeconds,
+          true,
+        ),
+      );
+    }
+    reply.header("set-cookie", cookies);
     return { currentUser: user, csrfToken, expiresAt: expiresAt.toISOString() };
   }
 
@@ -172,18 +194,30 @@ export class UserSessionService {
   }
 
   clear(reply: FastifyReply): void {
-    reply.header("set-cookie", this.serializeCookie("", 0));
+    const cookies = [this.serializeCookie(this.cookieName, "", 0)];
+    if (this.partitionedCookieName) {
+      cookies.push(
+        this.serializeCookie(this.partitionedCookieName, "", 0, true),
+      );
+    }
+    reply.header("set-cookie", cookies);
   }
 
-  private serializeCookie(value: string, maxAge: number): string {
+  private serializeCookie(
+    name: string,
+    value: string,
+    maxAge: number,
+    partitioned = false,
+  ): string {
     const attributes = [
-      `${this.cookieName}=${encodeURIComponent(value)}`,
+      `${name}=${encodeURIComponent(value)}`,
       "Path=/",
       "HttpOnly",
       `SameSite=${this.cookieSameSite}`,
       `Max-Age=${maxAge}`,
     ];
     if (this.cookieSecure) attributes.push("Secure");
+    if (partitioned) attributes.push("Partitioned");
     return attributes.join("; ");
   }
 }
