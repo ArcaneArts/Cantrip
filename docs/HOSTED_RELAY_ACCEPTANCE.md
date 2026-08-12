@@ -31,6 +31,7 @@ The checked-in route inventory must report zero `legacyLocalOwnerRoutes`.
 | Provider and MCP secrets are encrypted and redacted                                       | `provider-secret-encryption.test.ts`, `mcp-secret-encryption.test.ts`, `secret-vault.test.ts`                                                   |
 | Hosted origin, proxy, cookie, size, and startup rules fail closed                         | `http-hardening.test.ts`, `config.test.ts`, `abuse-limits.test.ts`                                                                              |
 | Project replicas use explicit worker/source placement and guarded synchronization         | `project-placement-api.test.ts`, `project-replica-jobs.test.ts`, `project-replica-executor.test.ts`                                             |
+| Chat relocation waits for idle, hydrates safely, commits atomically, and exposes controls | `chat-relocation-api.test.ts`, `chat-relocation-executor.test.ts`, `chat-relocation-store.test.ts`, `chat-relocation-dialog.test.tsx`           |
 | Code, project-share, browser, desktop, terminal, and generic tunnels remain server-routed | `code-tunnel.test.ts`, `project-share-tunnel.test.ts`, `remote-surface-relay.test.ts`, `tunnel-control-plane.test.ts`, `tunnel-runtime.test.ts` |
 | Two server replicas route worker commands and live invalidations through Redis            | `shared-relay-coordination.test.ts`                                                                                                             |
 | Account/worker quotas reject excess work visibly                                          | `abuse-limits.test.ts`, `managed-relay-telemetry.test.ts`                                                                                       |
@@ -82,10 +83,10 @@ Bootstrap flags are conservative. Multi-worker enrollment, placement, replica
 provisioning, and exact-revision synchronization are advertised only when their
 complete server configuration is available. Durable chat relocation is
 advertised now that the server and worker implement context handoff, target
-hydration, atomic placement commit, replay, fencing, and recovery; the app's
-interactive target-selection and confirmation workflow is tracked separately.
-Cantrip never treats equal project IDs as equal files or silently moves dirty
-worktrees, active turns, PTYs, or uncommitted state.
+hydration, atomic placement commit, replay, fencing, and recovery, and the app
+provides explicit target selection, safety reasons, progress, retry, and
+cancellation controls. Cantrip never treats equal project IDs as equal files or
+silently moves dirty worktrees, active turns, PTYs, or uncommitted state.
 
 Operational configuration, migration, backup, recovery, quotas, Redis failure
 semantics, and incident response are documented in
