@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ActiveLimit,
   RelayLimitError,
+  SlidingWindowByteLimiter,
   SlidingWindowRateLimiter,
 } from "../src/security/abuse-limits.js";
 import type {
@@ -11,6 +12,7 @@ import type {
   WorkerRequestOptions,
 } from "../src/workers/bridge.js";
 import { LimitedWorkerCommandBus } from "../src/workers/limited-command-bus.js";
+import { RelayQuotaManager } from "../src/operations/relay-quotas.js";
 
 class PendingCommandBus implements WorkerCommandBus {
   readonly pending: Array<{
@@ -59,6 +61,44 @@ describe("hosted relay abuse limits", () => {
     release!();
     expect(active.count("account")).toBe(0);
     expect(active.acquire("account")).not.toBeNull();
+
+    const bytes = new SlidingWindowByteLimiter(10, 1_000);
+    expect(bytes.consume("account", 6, 1_000)).toBeNull();
+    expect(bytes.consume("account", 5, 1_100)).toBe(1);
+    expect(bytes.consume("account", 5, 2_001)).toBeNull();
+  });
+
+  it("enforces account and worker surface, upload, and bandwidth quotas", () => {
+    const quotas = new RelayQuotaManager({
+      accountRelayBytesPerMinute: 10,
+      accountRemoteSurfaceLimit: 1,
+      accountUploadBytesPerMinute: 10,
+      workerRelayBytesPerMinute: 8,
+      workerRemoteSurfaceLimit: 1,
+      workerUploadBytesPerMinute: 8,
+    } as never);
+    const release = quotas.acquireRemoteSurface("owner-1", "worker-1");
+    expect(() => quotas.acquireRemoteSurface("owner-1", "worker-2")).toThrow(
+      /Account Remote Surface/u,
+    );
+    release();
+    expect(quotas.acquireRemoteSurface("owner-1", "worker-1")).toBeTypeOf(
+      "function",
+    );
+
+    quotas.consumeUpload("owner-1", "worker-1", 8);
+    expect(() => quotas.consumeUpload("owner-1", "worker-1", 1)).toThrow(
+      /upload byte quota/u,
+    );
+    expect(quotas.consumeRelay("owner-1", "worker-1", 8)).toBe(true);
+    expect(quotas.consumeRelay("owner-1", "worker-1", 1)).toBe(false);
+    expect(quotas.stats()).toMatchObject({
+      rejectedRelayBandwidth: 1,
+      rejectedRemoteSurfaces: 1,
+      rejectedUploads: 1,
+      relayBytes: 8,
+      uploadBytes: 8,
+    });
   });
 
   it("enforces worker and account command concurrency without timing out long work", async () => {
@@ -102,6 +142,34 @@ describe("hosted relay abuse limits", () => {
     ).rejects.toMatchObject({
       name: "RelayLimitError",
       retryAfterSeconds: expect.any(Number),
+    });
+  });
+
+  it("charges worker commands to both account and worker relay byte quotas", async () => {
+    const delegate = new PendingCommandBus();
+    const consumeRelayBytes = vi.fn(() => false);
+    const limited = new LimitedWorkerCommandBus(delegate, {
+      accountConcurrency: 2,
+      accountRatePerMinute: 10,
+      consumeRelayBytes,
+      resolveOwnerId: async () => "owner-1",
+      workerConcurrency: 2,
+      workerRatePerMinute: 10,
+    });
+
+    await expect(
+      limited.request("worker-1", { type: "code.probe" }),
+    ).rejects.toBeInstanceOf(RelayLimitError);
+    expect(consumeRelayBytes).toHaveBeenCalledWith(
+      "owner-1",
+      "worker-1",
+      expect.any(Number),
+    );
+    expect(delegate.pending).toHaveLength(0);
+    expect(limited.stats()).toMatchObject({
+      activeRequests: 0,
+      failedRequests: 1,
+      routedRequests: 0,
     });
   });
 });

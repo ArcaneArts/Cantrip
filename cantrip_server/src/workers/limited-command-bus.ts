@@ -17,14 +17,24 @@ import type {
   WorkerRequestOptions,
   WorkerSurfaceFrameListener,
   WorkerTunnelDataPlaneFrameListener,
+  WorkerCommandBusStats,
 } from "./bridge.js";
 
 interface LimitedWorkerCommandBusOptions {
   accountConcurrency: number;
   accountRatePerMinute: number;
+  consumeRelayBytes?(ownerId: string, workerId: string, bytes: number): boolean;
   resolveOwnerId(workerId: string): Promise<string | null>;
   workerConcurrency: number;
   workerRatePerMinute: number;
+}
+
+function serializedBytes(value: unknown): number {
+  try {
+    return Buffer.byteLength(JSON.stringify(value));
+  } catch {
+    return 0;
+  }
 }
 
 export class LimitedWorkerCommandBus implements WorkerCommandBus {
@@ -33,6 +43,9 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
   readonly #ownerIds = new Map<string, string>();
   readonly #workerActive: ActiveLimit;
   readonly #workerRate: SlidingWindowRateLimiter;
+  #failedRequests = 0;
+  #routedRequests = 0;
+  #succeededRequests = 0;
 
   constructor(
     readonly delegate: WorkerCommandBus,
@@ -63,6 +76,17 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
 
   isConnected(workerId: string): boolean {
     return this.delegate.isConnected(workerId);
+  }
+
+  stats(): WorkerCommandBusStats {
+    const delegate = this.delegate.stats?.();
+    return {
+      activeRequests: this.#accountActive.total(),
+      connectedWorkers: delegate?.connectedWorkers ?? 0,
+      failedRequests: this.#failedRequests,
+      routedRequests: this.#routedRequests,
+      succeededRequests: this.#succeededRequests,
+    };
   }
 
   sendSurfaceFrame(
@@ -141,10 +165,22 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
     options?: WorkerRequestOptions,
   ): Promise<unknown> {
     const ownerId = await this.#ownerId(workerId);
+    if (
+      this.options.consumeRelayBytes &&
+      !this.options.consumeRelayBytes(
+        ownerId,
+        workerId,
+        serializedBytes(command),
+      )
+    ) {
+      this.#failedRequests += 1;
+      throw new RelayLimitError("Relay bandwidth quota reached. Retry later.");
+    }
     const accountRetry = this.#accountRate.consume(ownerId);
     const workerRetry = this.#workerRate.consume(workerId);
     const retryAfter = Math.max(accountRetry ?? 0, workerRetry ?? 0);
     if (retryAfter > 0) {
+      this.#failedRequests += 1;
       throw new RelayLimitError(
         "Worker command rate limit reached. Retry shortly.",
         retryAfter,
@@ -152,6 +188,7 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
     }
     const releaseAccount = this.#accountActive.acquire(ownerId);
     if (!releaseAccount) {
+      this.#failedRequests += 1;
       throw new RelayLimitError(
         "Account worker-command concurrency limit reached.",
       );
@@ -159,10 +196,57 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
     const releaseWorker = this.#workerActive.acquire(workerId);
     if (!releaseWorker) {
       releaseAccount();
+      this.#failedRequests += 1;
       throw new RelayLimitError("Worker command concurrency limit reached.");
     }
+    this.#routedRequests += 1;
     try {
-      return await this.delegate.request(workerId, command, options);
+      const delegatedOptions =
+        options?.onEvent && this.options.consumeRelayBytes
+          ? {
+              ...options,
+              onEvent: async (
+                event: Parameters<
+                  NonNullable<WorkerRequestOptions["onEvent"]>
+                >[0],
+              ) => {
+                if (
+                  !this.options.consumeRelayBytes!(
+                    ownerId,
+                    workerId,
+                    serializedBytes(event),
+                  )
+                ) {
+                  throw new RelayLimitError(
+                    "Relay bandwidth quota reached. Retry later.",
+                  );
+                }
+                await options.onEvent!(event);
+              },
+            }
+          : options;
+      const result = await this.delegate.request(
+        workerId,
+        command,
+        delegatedOptions,
+      );
+      if (
+        this.options.consumeRelayBytes &&
+        !this.options.consumeRelayBytes(
+          ownerId,
+          workerId,
+          serializedBytes(result),
+        )
+      ) {
+        throw new RelayLimitError(
+          "Relay bandwidth quota reached. Retry later.",
+        );
+      }
+      this.#succeededRequests += 1;
+      return result;
+    } catch (error) {
+      this.#failedRequests += 1;
+      throw error;
     } finally {
       releaseWorker();
       releaseAccount();

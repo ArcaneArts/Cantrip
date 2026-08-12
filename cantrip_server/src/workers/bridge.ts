@@ -95,6 +95,15 @@ export interface WorkerCommandBus {
     command: WorkerCommand,
     options?: WorkerRequestOptions,
   ): Promise<unknown>;
+  stats?(): WorkerCommandBusStats;
+}
+
+export interface WorkerCommandBusStats {
+  activeRequests: number;
+  connectedWorkers: number;
+  failedRequests: number;
+  routedRequests: number;
+  succeededRequests: number;
 }
 
 export interface WorkerRequestOptions {
@@ -270,6 +279,16 @@ export class WorkerBridge implements WorkerCommandBus {
 
   isConnected(workerId: string): boolean {
     return this.#sockets.get(workerId)?.readyState === 1;
+  }
+
+  stats(): WorkerCommandBusStats {
+    return {
+      activeRequests: this.#pending.size,
+      connectedWorkers: this.#sockets.size,
+      failedRequests: 0,
+      routedRequests: 0,
+      succeededRequests: 0,
+    };
   }
 
   subscribeNotifications(

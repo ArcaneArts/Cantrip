@@ -77,6 +77,7 @@ describe("RemoteSurfaceRelay", () => {
     } satisfies WorkerCommandBus;
     const socket = new TestClientSocket();
     new RemoteSurfaceRelay(bridge).bind(socket, {
+      ownerId: "owner-1",
       workerId: "worker-1",
       surfaceId: "surface-1",
       attachmentId: "attachment-1",
@@ -113,6 +114,7 @@ describe("RemoteSurfaceRelay", () => {
     } satisfies WorkerCommandBus;
     const socket = new TestClientSocket();
     new RemoteSurfaceRelay(bridge).bind(socket, {
+      ownerId: "owner-1",
       workerId: "worker-1",
       surfaceId: "surface-1",
       attachmentId: "attachment-1",
@@ -148,6 +150,7 @@ describe("RemoteSurfaceRelay", () => {
     } satisfies WorkerCommandBus;
     const socket = new TestClientSocket();
     new RemoteSurfaceRelay(bridge).bind(socket, {
+      ownerId: "owner-1",
       workerId: "worker-1",
       surfaceId: "surface-1",
       attachmentId: "attachment-1",
@@ -178,6 +181,7 @@ describe("RemoteSurfaceRelay", () => {
     const socket = new TestClientSocket();
     socket.bufferedAmount = 9 * 1_024 * 1_024;
     new RemoteSurfaceRelay(bridge).bind(socket, {
+      ownerId: "owner-1",
       workerId: "worker-1",
       surfaceId: "surface-1",
       attachmentId: "attachment-1",
@@ -191,6 +195,33 @@ describe("RemoteSurfaceRelay", () => {
     expect(socket.closes).toContainEqual({
       code: 1013,
       reason: "Remote Surface client is too slow",
+    });
+  });
+
+  it("closes the stream visibly when its relay byte quota is exhausted", () => {
+    const bridge = {
+      attach() {},
+      close() {},
+      isConnected: () => true,
+      request: async () => undefined,
+      sendSurfaceFrame: () => true,
+      subscribeWorkerDisconnect: () => () => undefined,
+      subscribeSurfaceFrames: () => () => undefined,
+    } satisfies WorkerCommandBus;
+    const socket = new TestClientSocket();
+    new RemoteSurfaceRelay(bridge, () => false).bind(socket, {
+      ownerId: "owner-1",
+      workerId: "worker-1",
+      surfaceId: "surface-1",
+      attachmentId: "attachment-1",
+    });
+
+    socket.receive(
+      encodeRemoteSurfaceFrame(header(0), new Uint8Array([1, 2, 3])),
+    );
+    expect(socket.closes).toContainEqual({
+      code: 1013,
+      reason: "Remote Surface relay bandwidth quota reached",
     });
   });
 });

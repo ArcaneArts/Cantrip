@@ -31,6 +31,8 @@ export interface TunnelRouteRegistration {
   destinationTarget: TunnelDataPlaneTarget;
   source: TunnelDataPlaneEndpoint;
   tunnelId: string;
+  ownerId?: string;
+  workerId?: string;
 }
 
 export interface TunnelRouteHandle {
@@ -38,6 +40,7 @@ export interface TunnelRouteHandle {
 }
 
 export interface TunnelStreamBrokerOptions {
+  consumeRelayBytes?(ownerId: string, workerId: string, bytes: number): boolean;
   idleTimeoutMs?: number;
   maxBytesPerSecond?: number;
   maxConnections?: number;
@@ -63,9 +66,11 @@ interface Route {
   destination: TunnelDataPlaneEndpoint;
   destinationTarget: TunnelDataPlaneTarget;
   key: string;
+  ownerId?: string;
   source: TunnelDataPlaneEndpoint;
   tunnelId: string;
   unsubscribe: Array<() => void>;
+  workerId?: string;
 }
 
 interface Connection {
@@ -106,6 +111,9 @@ function identities(route: Route, connectionId: string, sequence: number) {
 
 export class TunnelStreamBroker {
   readonly #connections = new Map<string, Connection>();
+  readonly #consumeRelayBytes: NonNullable<
+    TunnelStreamBrokerOptions["consumeRelayBytes"]
+  >;
   readonly #idleTimeoutMs: number;
   readonly #maxBytesPerSecond: number;
   readonly #maxConnections: number;
@@ -122,6 +130,7 @@ export class TunnelStreamBroker {
   #rejectedConnections = 0;
 
   constructor(options: TunnelStreamBrokerOptions = {}) {
+    this.#consumeRelayBytes = options.consumeRelayBytes ?? (() => true);
     this.#idleTimeoutMs = options.idleTimeoutMs ?? 5 * 60_000;
     this.#maxLifetimeMs = options.maxLifetimeMs ?? 12 * 60 * 60_000;
     this.#maxBytesPerSecond = options.maxBytesPerSecond ?? 64 * 1_024 * 1_024;
@@ -320,6 +329,18 @@ export class TunnelStreamBroker {
     }
     if (header.kind === "data") {
       if (!this.#consumeBandwidth(connection, payload.byteLength)) {
+        this.#terminate(connection, "bandwidth-limit");
+        return;
+      }
+      if (
+        route.ownerId &&
+        route.workerId &&
+        !this.#consumeRelayBytes(
+          route.ownerId,
+          route.workerId,
+          payload.byteLength,
+        )
+      ) {
         this.#terminate(connection, "bandwidth-limit");
         return;
       }

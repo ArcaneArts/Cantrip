@@ -6,6 +6,7 @@ import {
   createCodeSurfaceServer,
 } from "./code/tunnel.js";
 import { connectDatabase } from "./db/index.js";
+import { RelayQuotaManager } from "./operations/relay-quotas.js";
 import { ProjectShareTunnelBroker } from "./project-shares/tunnel.js";
 import { WorkerBridge } from "./workers/bridge.js";
 
@@ -33,9 +34,12 @@ async function start(): Promise<void> {
   const config = readServerConfig();
   const database = await connectDatabase(config);
   const workerBridge = new WorkerBridge();
+  const relayQuotas = new RelayQuotaManager(config);
   const surfaceConfig = resolveCodeSurfaceConfig(config);
   const codeTunnel = new CodeTunnelBroker(workerBridge, {
     allowedFrameAncestors: config.appOrigins,
+    consumeRelayBytes: (ownerId, workerId, bytes) =>
+      relayQuotas.consumeRelay(ownerId, workerId, bytes),
     surfaceOrigin: surfaceConfig.origin,
   });
   const projectShareTunnel = new ProjectShareTunnelBroker(workerBridge, {
@@ -46,6 +50,7 @@ async function start(): Promise<void> {
     config,
     database,
     projectShareTunnel,
+    relayQuotas,
     workerBridge,
   });
   const codeSurface = createCodeSurfaceServer(

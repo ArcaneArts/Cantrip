@@ -179,6 +179,39 @@ relay bandwidth, scheduler lag, and TURN usage. Health and readiness semantics
 are documented by the server version; a live process does not imply that
 PostgreSQL, shared coordination, or a required worker is ready.
 
+Use the three operator endpoints according to their distinct contracts:
+
+- `GET /healthz` is a dependency-free process liveness probe;
+- `GET /readyz` probes PostgreSQL/PGlite and returns 503 when the database is
+  unavailable; and
+- `GET /metrics` returns Prometheus text after either an owner/admin session or
+  `Authorization: Bearer $CANTRIP_METRICS_TOKEN` authentication.
+
+Set `CANTRIP_METRICS_TOKEN` to an independently generated value of at least 32
+characters and store it in the monitoring system's secret store. The Compose
+healthcheck uses `/readyz`. The proxy may expose probes to an internal load
+balancer, but `/metrics` must never be public. Exported series cover HTTP volume
+and latency, database probes, worker/command activity, live and tunnel
+connections, relay bytes and quota rejections, and scheduler throughput/lag.
+They contain no account, project, prompt, source, or credential labels.
+
+The following per-minute byte and active-session controls supplement the
+existing request, WebSocket, upload-concurrency, and worker-command limits:
+
+| Variable                                  |   Default | Scope                                           |
+| ----------------------------------------- | --------: | ----------------------------------------------- |
+| `CANTRIP_ACCOUNT_UPLOAD_BYTES_PER_MINUTE` | 268435456 | Attachment bytes per account                    |
+| `CANTRIP_WORKER_UPLOAD_BYTES_PER_MINUTE`  | 134217728 | Attachment bytes per worker                     |
+| `CANTRIP_ACCOUNT_RELAY_BYTES_PER_MINUTE`  | 536870912 | Relayed data per account                        |
+| `CANTRIP_WORKER_RELAY_BYTES_PER_MINUTE`   | 268435456 | Relayed data per worker                         |
+| `CANTRIP_ACCOUNT_REMOTE_SURFACE_LIMIT`    |        16 | Concurrent browser/desktop surfaces per account |
+| `CANTRIP_WORKER_REMOTE_SURFACE_LIMIT`     |         8 | Concurrent browser/desktop surfaces per worker  |
+
+Quota rejection is explicit (HTTP 429, WebSocket close code 1013, or a worker
+command error) and does not silently queue work. These counters are currently
+process-local. Run one server replica until the documented Redis-backed
+coordination layer replaces them with shared atomic counters.
+
 Security audit events are durable PostgreSQL records and are included in normal
 database backups. Account users can review their own audit stream and current
 active sessions; server owners/admins can review the global stream. Establish a

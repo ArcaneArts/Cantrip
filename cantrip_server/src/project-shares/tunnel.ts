@@ -387,6 +387,8 @@ export class ProjectShareTunnelBroker {
         },
         source,
         tunnelId: managedTunnelId,
+        ownerId: input.ownerId,
+        workerId: input.workerId,
       });
       binding = {
         attachment,

@@ -6,15 +6,15 @@
     "workerCommands": "packages/protocol/src/index.ts"
   },
   "summary": {
-    "application-principal": 287,
+    "application-principal": 290,
     "external-credential": 2,
     "public-authentication": 3,
     "public-bootstrap": 2,
     "worker-control": 6,
-    "http": 295,
+    "http": 298,
     "legacyLocalOwnerRoutes": 1,
-    "requestPrincipalRoutes": 277,
-    "total": 300,
+    "requestPrincipalRoutes": 278,
+    "total": 303,
     "websocket": 5,
     "workerCommands": 166,
     "liveResources": 29,
@@ -30,7 +30,7 @@
   "routes": [
     {
       "boundary": "public-bootstrap",
-      "line": 3912,
+      "line": 3985,
       "method": "GET",
       "ownerEvidence": "public",
       "path": "/api",
@@ -38,7 +38,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4210,
+      "line": 4283,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/account/audit-events",
@@ -46,7 +46,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4201,
+      "line": 4274,
       "method": "GET",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/account/sessions",
@@ -54,7 +54,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4222,
+      "line": 4295,
       "method": "GET",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/admin/audit-events",
@@ -62,7 +62,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4799,
+      "line": 4952,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/agent-requests",
@@ -70,7 +70,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4813,
+      "line": 4966,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/agent-requests/:requestId",
@@ -78,7 +78,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4827,
+      "line": 4980,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/agent-requests/:requestId/respond",
@@ -86,7 +86,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 14579,
+      "line": 14761,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/attachments/:attachmentId",
@@ -94,7 +94,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 14501,
+      "line": 14683,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/attachments/:attachmentId/content",
@@ -102,7 +102,7 @@
     },
     {
       "boundary": "public-authentication",
-      "line": 4069,
+      "line": 4142,
       "method": "POST",
       "ownerEvidence": "session-boundary",
       "path": "/api/auth/login",
@@ -110,7 +110,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4159,
+      "line": 4232,
       "method": "POST",
       "ownerEvidence": "session-boundary",
       "path": "/api/auth/logout",
@@ -118,7 +118,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4178,
+      "line": 4251,
       "method": "POST",
       "ownerEvidence": "session-boundary",
       "path": "/api/auth/logout-all",
@@ -126,7 +126,7 @@
     },
     {
       "boundary": "public-authentication",
-      "line": 3958,
+      "line": 4031,
       "method": "POST",
       "ownerEvidence": "session-boundary",
       "path": "/api/auth/register",
@@ -134,7 +134,7 @@
     },
     {
       "boundary": "public-authentication",
-      "line": 4139,
+      "line": 4212,
       "method": "GET",
       "ownerEvidence": "session-boundary",
       "path": "/api/auth/session",
@@ -142,7 +142,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5847,
+      "line": 6000,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/automations/:automationId",
@@ -150,7 +150,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5822,
+      "line": 5975,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/automations/:automationId",
@@ -158,7 +158,7 @@
     },
     {
       "boundary": "public-bootstrap",
-      "line": 4238,
+      "line": 4311,
       "method": "GET",
       "ownerEvidence": "public",
       "path": "/api/bootstrap",
@@ -166,7 +166,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11973,
+      "line": 12126,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/browsers/:browserId",
@@ -174,7 +174,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11955,
+      "line": 12108,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/browsers/:browserId",
@@ -182,7 +182,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11817,
+      "line": 11970,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/browsers/:browserId/services",
@@ -190,7 +190,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11852,
+      "line": 12005,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/browsers/:browserId/tunnel",
@@ -198,7 +198,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 13165,
+      "line": 13341,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId",
@@ -206,7 +206,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 13036,
+      "line": 13212,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId",
@@ -214,7 +214,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 14388,
+      "line": 14564,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/attachments",
@@ -222,7 +222,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 13208,
+      "line": 13384,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/compact",
@@ -230,7 +230,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11044,
+      "line": 11197,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/console",
@@ -238,7 +238,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 13990,
+      "line": 14166,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/customizations",
@@ -246,7 +246,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 14288,
+      "line": 14464,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/customizations/external-import",
@@ -254,7 +254,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 14328,
+      "line": 14504,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/customizations/external-import/status",
@@ -262,7 +262,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 14023,
+      "line": 14199,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/customizations/external-preview",
@@ -270,7 +270,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 14170,
+      "line": 14346,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/customizations/mcp-oauth",
@@ -278,7 +278,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 14215,
+      "line": 14391,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/customizations/mcp-oauth/status",
@@ -286,7 +286,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 14254,
+      "line": 14430,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/customizations/mcp-reload",
@@ -294,7 +294,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 14055,
+      "line": 14231,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/customizations/mcp-resource",
@@ -302,7 +302,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 14092,
+      "line": 14268,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/customizations/skill",
@@ -310,7 +310,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 14131,
+      "line": 14307,
       "method": "PUT",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/customizations/skill-roots",
@@ -318,7 +318,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 13076,
+      "line": 13252,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/execution-lanes",
@@ -326,7 +326,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 13087,
+      "line": 13263,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/execution-lanes/:laneId/release",
@@ -334,7 +334,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 13181,
+      "line": 13357,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/fork",
@@ -342,7 +342,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 13761,
+      "line": 13937,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/goal",
@@ -350,7 +350,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 13581,
+      "line": 13757,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/goal",
@@ -358,130 +358,10 @@
     },
     {
       "boundary": "application-principal",
-      "line": 13696,
+      "line": 13872,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/goal",
-      "transport": "http"
-    },
-    {
-      "boundary": "application-principal",
-      "line": 13620,
-      "method": "POST",
-      "ownerEvidence": "request-principal",
-      "path": "/api/chats/:chatId/goal",
-      "transport": "http"
-    },
-    {
-      "boundary": "application-principal",
-      "line": 13248,
-      "method": "POST",
-      "ownerEvidence": "request-principal",
-      "path": "/api/chats/:chatId/interrupt",
-      "transport": "http"
-    },
-    {
-      "boundary": "application-principal",
-      "line": 13947,
-      "method": "GET",
-      "ownerEvidence": "request-principal",
-      "path": "/api/chats/:chatId/messages",
-      "transport": "http"
-    },
-    {
-      "boundary": "application-principal",
-      "line": 14369,
-      "method": "POST",
-      "ownerEvidence": "request-principal",
-      "path": "/api/chats/:chatId/messages",
-      "transport": "http"
-    },
-    {
-      "boundary": "application-principal",
-      "line": 14604,
-      "method": "PATCH",
-      "ownerEvidence": "request-principal",
-      "path": "/api/chats/:chatId/model",
-      "transport": "http"
-    },
-    {
-      "boundary": "application-principal",
-      "line": 13288,
-      "method": "PATCH",
-      "ownerEvidence": "request-principal",
-      "path": "/api/chats/:chatId/pause",
-      "transport": "http"
-    },
-    {
-      "boundary": "application-principal",
-      "line": 14637,
-      "method": "PATCH",
-      "ownerEvidence": "request-principal",
-      "path": "/api/chats/:chatId/permission-profile",
-      "transport": "http"
-    },
-    {
-      "boundary": "application-principal",
-      "line": 14623,
-      "method": "GET",
-      "ownerEvidence": "request-principal",
-      "path": "/api/chats/:chatId/permission-profiles",
-      "transport": "http"
-    },
-    {
-      "boundary": "application-principal",
-      "line": 13387,
-      "method": "GET",
-      "ownerEvidence": "request-principal",
-      "path": "/api/chats/:chatId/plan",
-      "transport": "http"
-    },
-    {
-      "boundary": "application-principal",
-      "line": 13435,
-      "method": "PATCH",
-      "ownerEvidence": "request-principal",
-      "path": "/api/chats/:chatId/plan",
-      "transport": "http"
-    },
-    {
-      "boundary": "application-principal",
-      "line": 13494,
-      "method": "POST",
-      "ownerEvidence": "request-principal",
-      "path": "/api/chats/:chatId/plan/answer",
-      "transport": "http"
-    },
-    {
-      "boundary": "application-principal",
-      "line": 14721,
-      "method": "GET",
-      "ownerEvidence": "request-principal",
-      "path": "/api/chats/:chatId/queue",
-      "transport": "http"
-    },
-    {
-      "boundary": "application-principal",
-      "line": 14735,
-      "method": "POST",
-      "ownerEvidence": "request-principal",
-      "path": "/api/chats/:chatId/queue",
-      "transport": "http"
-    },
-    {
-      "boundary": "application-principal",
-      "line": 14773,
-      "method": "PATCH",
-      "ownerEvidence": "request-principal",
-      "path": "/api/chats/:chatId/queue/order",
-      "transport": "http"
-    },
-    {
-      "boundary": "application-principal",
-      "line": 13958,
-      "method": "GET",
-      "ownerEvidence": "request-principal",
-      "path": "/api/chats/:chatId/skills",
       "transport": "http"
     },
     {
@@ -489,12 +369,132 @@
       "line": 13796,
       "method": "POST",
       "ownerEvidence": "request-principal",
+      "path": "/api/chats/:chatId/goal",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
+      "line": 13424,
+      "method": "POST",
+      "ownerEvidence": "request-principal",
+      "path": "/api/chats/:chatId/interrupt",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
+      "line": 14123,
+      "method": "GET",
+      "ownerEvidence": "request-principal",
+      "path": "/api/chats/:chatId/messages",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
+      "line": 14545,
+      "method": "POST",
+      "ownerEvidence": "request-principal",
+      "path": "/api/chats/:chatId/messages",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
+      "line": 14786,
+      "method": "PATCH",
+      "ownerEvidence": "request-principal",
+      "path": "/api/chats/:chatId/model",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
+      "line": 13464,
+      "method": "PATCH",
+      "ownerEvidence": "request-principal",
+      "path": "/api/chats/:chatId/pause",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
+      "line": 14819,
+      "method": "PATCH",
+      "ownerEvidence": "request-principal",
+      "path": "/api/chats/:chatId/permission-profile",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
+      "line": 14805,
+      "method": "GET",
+      "ownerEvidence": "request-principal",
+      "path": "/api/chats/:chatId/permission-profiles",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
+      "line": 13563,
+      "method": "GET",
+      "ownerEvidence": "request-principal",
+      "path": "/api/chats/:chatId/plan",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
+      "line": 13611,
+      "method": "PATCH",
+      "ownerEvidence": "request-principal",
+      "path": "/api/chats/:chatId/plan",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
+      "line": 13670,
+      "method": "POST",
+      "ownerEvidence": "request-principal",
+      "path": "/api/chats/:chatId/plan/answer",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
+      "line": 14903,
+      "method": "GET",
+      "ownerEvidence": "request-principal",
+      "path": "/api/chats/:chatId/queue",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
+      "line": 14917,
+      "method": "POST",
+      "ownerEvidence": "request-principal",
+      "path": "/api/chats/:chatId/queue",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
+      "line": 14955,
+      "method": "PATCH",
+      "ownerEvidence": "request-principal",
+      "path": "/api/chats/:chatId/queue/order",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
+      "line": 14134,
+      "method": "GET",
+      "ownerEvidence": "request-principal",
+      "path": "/api/chats/:chatId/skills",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
+      "line": 13972,
+      "method": "POST",
+      "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/sync",
       "transport": "http"
     },
     {
       "boundary": "application-principal",
-      "line": 14975,
+      "line": 15157,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/turns",
@@ -502,7 +502,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 6314,
+      "line": 6467,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/workflow-generation",
@@ -510,7 +510,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 13054,
+      "line": 13230,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/worktree",
@@ -518,7 +518,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11629,
+      "line": 11782,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/code-attachments/:attachmentId",
@@ -526,7 +526,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11773,
+      "line": 11926,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/code-tabs/:codeTabId",
@@ -534,7 +534,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11385,
+      "line": 11538,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/code-tabs/:codeTabId",
@@ -542,7 +542,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11482,
+      "line": 11635,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/code-tabs/:codeTabId/attachments",
@@ -550,7 +550,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11640,
+      "line": 11793,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/code-tabs/:codeTabId/save-all",
@@ -558,7 +558,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11425,
+      "line": 11578,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/code-tabs/:codeTabId/sessions",
@@ -566,7 +566,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11438,
+      "line": 11591,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/code-tabs/:codeTabId/sessions/:sessionId/runtime",
@@ -574,7 +574,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11679,
+      "line": 11832,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/code-tabs/:codeTabId/stop",
@@ -582,7 +582,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11722,
+      "line": 11875,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/code-tabs/:codeTabId/theme",
@@ -590,7 +590,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11403,
+      "line": 11556,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/code-tabs/:codeTabId/worktree",
@@ -598,7 +598,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4982,
+      "line": 5135,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/codex/auth/device-login",
@@ -606,7 +606,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5020,
+      "line": 5173,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/codex/auth/logout",
@@ -614,7 +614,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4945,
+      "line": 5098,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/codex/auth/status",
@@ -622,7 +622,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12670,
+      "line": 12846,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/explorers/:explorerId",
@@ -630,7 +630,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12634,
+      "line": 12810,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/explorers/:explorerId",
@@ -638,7 +638,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12681,
+      "line": 12857,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/explorers/:explorerId/directory",
@@ -646,7 +646,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12703,
+      "line": 12879,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/explorers/:explorerId/file",
@@ -654,7 +654,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12728,
+      "line": 12904,
       "method": "PUT",
       "ownerEvidence": "request-principal",
       "path": "/api/explorers/:explorerId/file",
@@ -662,7 +662,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12652,
+      "line": 12828,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/explorers/:explorerId/worktree",
@@ -670,7 +670,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5460,
+      "line": 5613,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/github/repositories",
@@ -678,7 +678,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5493,
+      "line": 5646,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/github/repositories",
@@ -686,7 +686,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5398,
+      "line": 5551,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/github/repositories/cache",
@@ -694,7 +694,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5435,
+      "line": 5588,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/github/repository-owners",
@@ -702,7 +702,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5376,
+      "line": 5529,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/github/status",
@@ -710,7 +710,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4302,
+      "line": 4375,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/health",
@@ -718,7 +718,7 @@
     },
     {
       "boundary": "worker-control",
-      "line": 15300,
+      "line": 15482,
       "method": "POST",
       "ownerEvidence": "legacy-worker-token",
       "path": "/api/internal/agent-tools/worktree",
@@ -726,7 +726,7 @@
     },
     {
       "boundary": "worker-control",
-      "line": 15110,
+      "line": 15292,
       "method": "GET",
       "ownerEvidence": "legacy-worker-token",
       "path": "/api/internal/workers/automations",
@@ -734,7 +734,7 @@
     },
     {
       "boundary": "worker-control",
-      "line": 15146,
+      "line": 15328,
       "method": "POST",
       "ownerEvidence": "legacy-worker-token",
       "path": "/api/internal/workers/automations/:automationId/dispatch",
@@ -742,7 +742,7 @@
     },
     {
       "boundary": "worker-control",
-      "line": 15451,
+      "line": 15633,
       "method": "GET",
       "ownerEvidence": "legacy-worker-token",
       "path": "/api/internal/workers/connect",
@@ -750,7 +750,7 @@
     },
     {
       "boundary": "worker-control",
-      "line": 15056,
+      "line": 15238,
       "method": "POST",
       "ownerEvidence": "legacy-worker-token",
       "path": "/api/internal/workers/enroll",
@@ -758,7 +758,7 @@
     },
     {
       "boundary": "worker-control",
-      "line": 15398,
+      "line": 15580,
       "method": "POST",
       "ownerEvidence": "legacy-worker-token",
       "path": "/api/internal/workers/heartbeat",
@@ -766,7 +766,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 2192,
+      "line": 2243,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/live",
@@ -774,7 +774,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5699,
+      "line": 5852,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/project-replica-jobs/:jobId",
@@ -782,7 +782,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5747,
+      "line": 5900,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/project-replica-jobs/:jobId/cancel",
@@ -790,7 +790,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5712,
+      "line": 5865,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/project-replica-jobs/:jobId/retry",
@@ -798,7 +798,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8118,
+      "line": 8271,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/project-shares/:attachmentId",
@@ -806,7 +806,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12579,
+      "line": 12755,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/project-views/:viewId",
@@ -814,7 +814,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12537,
+      "line": 12713,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/project-views/:viewId",
@@ -822,7 +822,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12555,
+      "line": 12731,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/project-views/:viewId/worktree",
@@ -830,7 +830,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5528,
+      "line": 5681,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects",
@@ -838,7 +838,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10838,
+      "line": 10991,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId",
@@ -846,7 +846,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5782,
+      "line": 5935,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/automations",
@@ -854,7 +854,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5795,
+      "line": 5948,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/automations",
@@ -862,7 +862,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11804,
+      "line": 11957,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/browsers",
@@ -870,7 +870,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11927,
+      "line": 12080,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/browsers",
@@ -878,7 +878,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10993,
+      "line": 11146,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/chats",
@@ -886,7 +886,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11004,
+      "line": 11157,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/chats",
@@ -894,7 +894,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11339,
+      "line": 11492,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/code-tabs",
@@ -902,7 +902,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11352,
+      "line": 11505,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/code-tabs",
@@ -910,7 +910,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11328,
+      "line": 11481,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/explorers",
@@ -918,7 +918,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12606,
+      "line": 12782,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/explorers",
@@ -926,7 +926,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10786,
+      "line": 10939,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/git/actions",
@@ -934,7 +934,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10487,
+      "line": 10640,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/git/history",
@@ -942,7 +942,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10763,
+      "line": 10916,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/git/status",
@@ -950,7 +950,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10612,
+      "line": 10765,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/github/issues",
@@ -958,7 +958,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10669,
+      "line": 10822,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/github/issues/:issueNumber",
@@ -966,7 +966,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10730,
+      "line": 10883,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/github/issues/:issueNumber/close",
@@ -974,7 +974,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10697,
+      "line": 10850,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/github/issues/:issueNumber/comments",
@@ -982,7 +982,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5858,
+      "line": 6011,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/mcp-servers",
@@ -990,7 +990,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5871,
+      "line": 6024,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/mcp-servers",
@@ -998,7 +998,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5916,
+      "line": 6069,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/mcp-servers/:serverId",
@@ -1006,7 +1006,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5893,
+      "line": 6046,
       "method": "PUT",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/mcp-servers/:serverId",
@@ -1014,7 +1014,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5928,
+      "line": 6081,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/mcp-servers/copy",
@@ -1022,7 +1022,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8084,
+      "line": 8237,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/network-shares",
@@ -1030,7 +1030,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5533,
+      "line": 5686,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/placement/resolve",
@@ -1038,7 +1038,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8129,
+      "line": 8282,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/preferred-worker",
@@ -1046,7 +1046,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12013,
+      "line": 12166,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/remote-desktops",
@@ -1054,7 +1054,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12100,
+      "line": 12253,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/remote-desktops",
@@ -1062,7 +1062,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12168,
+      "line": 12321,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/remote-surfaces",
@@ -1070,7 +1070,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12181,
+      "line": 12334,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/remote-surfaces",
@@ -1078,7 +1078,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5686,
+      "line": 5839,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/replica-jobs",
@@ -1086,7 +1086,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5562,
+      "line": 5715,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/replicas",
@@ -1094,7 +1094,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5589,
+      "line": 5742,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/replicas",
@@ -1102,7 +1102,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5575,
+      "line": 5728,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/replicas/:replicaId",
@@ -1110,7 +1110,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5654,
+      "line": 5807,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/replicas/:replicaId/remove",
@@ -1118,7 +1118,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5620,
+      "line": 5773,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/replicas/:replicaId/synchronize",
@@ -1126,7 +1126,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10521,
+      "line": 10674,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/repository-stats",
@@ -1134,7 +1134,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12925,
+      "line": 13101,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tab-groups",
@@ -1142,7 +1142,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12975,
+      "line": 13151,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tab-groups/:groupId/members/order",
@@ -1150,7 +1150,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 13006,
+      "line": 13182,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tab-groups/member",
@@ -1158,7 +1158,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12945,
+      "line": 13121,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tab-groups/order",
@@ -1166,7 +1166,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11110,
+      "line": 11263,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/terminals",
@@ -1174,7 +1174,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11121,
+      "line": 11274,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/terminals",
@@ -1182,7 +1182,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10545,
+      "line": 10698,
       "method": "GET",
       "ownerEvidence": "legacy-local-owner",
       "path": "/api/projects/:projectId/token-usage",
@@ -1190,7 +1190,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4329,
+      "line": 4482,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tunnels",
@@ -1198,7 +1198,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12500,
+      "line": 12676,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/views",
@@ -1206,7 +1206,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12513,
+      "line": 12689,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/views",
@@ -1214,7 +1214,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7420,
+      "line": 7573,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/workflow-repository",
@@ -1222,7 +1222,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7449,
+      "line": 7602,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/workflow-repository/import",
@@ -1230,7 +1230,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8147,
+      "line": 8300,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktree-policy",
@@ -1238,7 +1238,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8165,
+      "line": 8318,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees",
@@ -1246,7 +1246,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8203,
+      "line": 8356,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees",
@@ -1254,7 +1254,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8321,
+      "line": 8474,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId",
@@ -1262,7 +1262,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10436,
+      "line": 10589,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/actions",
@@ -1270,7 +1270,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 6451,
+      "line": 6604,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/agent/drafts",
@@ -1278,7 +1278,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9781,
+      "line": 9934,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/branches",
@@ -1286,7 +1286,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9703,
+      "line": 9856,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/branches/actions/apply",
@@ -1294,7 +1294,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9750,
+      "line": 9903,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/branches/actions/preview",
@@ -1302,7 +1302,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9167,
+      "line": 9320,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/:revision",
@@ -1310,7 +1310,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8626,
+      "line": 8779,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/actions/apply",
@@ -1318,7 +1318,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8582,
+      "line": 8735,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/actions/preview",
@@ -1326,7 +1326,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7095,
+      "line": 7248,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/search",
@@ -1334,7 +1334,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9272,
+      "line": 9425,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/compare",
@@ -1342,7 +1342,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 6573,
+      "line": 6726,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts",
@@ -1350,7 +1350,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7321,
+      "line": 7474,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts/apply",
@@ -1358,7 +1358,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 6954,
+      "line": 7107,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts/detail",
@@ -1366,7 +1366,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7289,
+      "line": 7442,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts/preview",
@@ -1374,7 +1374,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8497,
+      "line": 8650,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/diff",
@@ -1382,7 +1382,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7043,
+      "line": 7196,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/files/blame",
@@ -1390,7 +1390,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 6991,
+      "line": 7144,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/files/history",
@@ -1398,7 +1398,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10385,
+      "line": 10538,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/force-push/apply",
@@ -1406,7 +1406,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10352,
+      "line": 10505,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/force-push/preview",
@@ -1414,7 +1414,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10078,
+      "line": 10231,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/lfs",
@@ -1422,7 +1422,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10005,
+      "line": 10158,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/lfs/actions/apply",
@@ -1430,7 +1430,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10048,
+      "line": 10201,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/lfs/actions/preview",
@@ -1438,7 +1438,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8780,
+      "line": 8933,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations",
@@ -1446,7 +1446,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9072,
+      "line": 9225,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations/:operationId/amend",
@@ -1454,7 +1454,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8978,
+      "line": 9131,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations/:operationId/control",
@@ -1462,7 +1462,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8892,
+      "line": 9045,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations/current",
@@ -1470,7 +1470,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8731,
+      "line": 8884,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/operations/preview",
@@ -1478,7 +1478,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9384,
+      "line": 9537,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/patch/apply",
@@ -1486,7 +1486,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9356,
+      "line": 9509,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/patch/preview",
@@ -1494,7 +1494,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7162,
+      "line": 7315,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/recovery",
@@ -1502,7 +1502,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7239,
+      "line": 7392,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/recovery/apply",
@@ -1510,7 +1510,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7207,
+      "line": 7360,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/recovery/preview",
@@ -1518,7 +1518,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9220,
+      "line": 9373,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/refs",
@@ -1526,7 +1526,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9880,
+      "line": 10033,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/remotes",
@@ -1534,7 +1534,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9807,
+      "line": 9960,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/remotes/actions/apply",
@@ -1542,7 +1542,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9850,
+      "line": 10003,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/remotes/actions/preview",
@@ -1550,7 +1550,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9315,
+      "line": 9468,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/revisions/:revision/diff",
@@ -1558,7 +1558,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9433,
+      "line": 9586,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes",
@@ -1566,7 +1566,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9459,
+      "line": 9612,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes",
@@ -1574,7 +1574,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9515,
+      "line": 9668,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes/:hash/diff",
@@ -1582,7 +1582,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9595,
+      "line": 9748,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes/actions/apply",
@@ -1590,7 +1590,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9555,
+      "line": 9708,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/stashes/actions/preview",
@@ -1598,7 +1598,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9979,
+      "line": 10132,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/submodules",
@@ -1606,7 +1606,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9906,
+      "line": 10059,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/submodules/actions/apply",
@@ -1614,7 +1614,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 9949,
+      "line": 10102,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/submodules/actions/preview",
@@ -1622,7 +1622,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10205,
+      "line": 10358,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/tags",
@@ -1630,7 +1630,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10178,
+      "line": 10331,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/tags/:name",
@@ -1638,7 +1638,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10105,
+      "line": 10258,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/tags/actions/apply",
@@ -1646,7 +1646,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10148,
+      "line": 10301,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/tags/actions/preview",
@@ -1654,7 +1654,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10558,
+      "line": 10711,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests",
@@ -1662,7 +1662,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 6795,
+      "line": 6948,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber",
@@ -1670,7 +1670,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 6852,
+      "line": 7005,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/actions",
@@ -1678,7 +1678,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 6600,
+      "line": 6753,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/checkout",
@@ -1686,7 +1686,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 6724,
+      "line": 6877,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/lifecycle/apply",
@@ -1694,7 +1694,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 6656,
+      "line": 6809,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/github/pull-requests/:pullRequestNumber/lifecycle/preview",
@@ -1702,7 +1702,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10231,
+      "line": 10384,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/github/releases",
@@ -1710,7 +1710,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10310,
+      "line": 10463,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/github/releases",
@@ -1718,7 +1718,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10267,
+      "line": 10420,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/github/releases/:releaseId",
@@ -1726,7 +1726,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8533,
+      "line": 8686,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/history",
@@ -1734,7 +1734,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8230,
+      "line": 8383,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/lock",
@@ -1742,7 +1742,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8456,
+      "line": 8609,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/status",
@@ -1750,7 +1750,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8278,
+      "line": 8431,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/unlock",
@@ -1758,7 +1758,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8415,
+      "line": 8568,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/prune",
@@ -1766,7 +1766,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8185,
+      "line": 8338,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/reconcile",
@@ -1774,7 +1774,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10933,
+      "line": 11086,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/from-github",
@@ -1782,7 +1782,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 10828,
+      "line": 10981,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/order",
@@ -1790,7 +1790,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 14846,
+      "line": 15028,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/queued-prompts/:promptId",
@@ -1798,7 +1798,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 14791,
+      "line": 14973,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/queued-prompts/:promptId",
@@ -1806,7 +1806,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 14859,
+      "line": 15041,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/queued-prompts/:promptId/steer",
@@ -1814,7 +1814,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12026,
+      "line": 12179,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/remote-desktops/:desktopId",
@@ -1822,7 +1822,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12039,
+      "line": 12192,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/remote-desktops/:desktopId",
@@ -1830,7 +1830,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12293,
+      "line": 12446,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/remote-surfaces/:surfaceId",
@@ -1838,7 +1838,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12225,
+      "line": 12378,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/remote-surfaces/:surfaceId",
@@ -1846,7 +1846,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12320,
+      "line": 12473,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/remote-surfaces/:surfaceId/connect",
@@ -1854,7 +1854,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12250,
+      "line": 12403,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/remote-surfaces/:surfaceId/resume",
@@ -1862,7 +1862,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12250,
+      "line": 12403,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/remote-surfaces/:surfaceId/suspend",
@@ -1870,7 +1870,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5055,
+      "line": 5208,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/settings",
@@ -1878,7 +1878,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5242,
+      "line": 5395,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/settings",
@@ -1886,7 +1886,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5185,
+      "line": 5338,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/settings/mcp-servers",
@@ -1894,7 +1894,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5190,
+      "line": 5343,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/settings/mcp-servers",
@@ -1902,7 +1902,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5230,
+      "line": 5383,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/settings/mcp-servers/:serverId",
@@ -1910,7 +1910,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5207,
+      "line": 5360,
       "method": "PUT",
       "ownerEvidence": "request-principal",
       "path": "/api/settings/mcp-servers/:serverId",
@@ -1918,7 +1918,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5316,
+      "line": 5469,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/settings/models",
@@ -1926,7 +1926,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5335,
+      "line": 5488,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/settings/models/:modelId",
@@ -1934,7 +1934,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5354,
+      "line": 5507,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/settings/models/:modelId",
@@ -1942,7 +1942,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5259,
+      "line": 5412,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/settings/providers",
@@ -1950,7 +1950,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5275,
+      "line": 5428,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/settings/providers/:providerId",
@@ -1958,7 +1958,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5294,
+      "line": 5447,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/settings/providers/:providerId",
@@ -1966,7 +1966,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5156,
+      "line": 5309,
       "method": "DELETE",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/skills",
@@ -1974,7 +1974,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5063,
+      "line": 5216,
       "method": "GET",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/skills",
@@ -1982,7 +1982,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5125,
+      "line": 5278,
       "method": "PUT",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/skills/file",
@@ -1990,7 +1990,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5098,
+      "line": 5251,
       "method": "POST",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/skills/read",
@@ -1998,7 +1998,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11301,
+      "line": 11454,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/terminals/:terminalId",
@@ -2006,7 +2006,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11176,
+      "line": 11329,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/terminals/:terminalId",
@@ -2014,7 +2014,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 12756,
+      "line": 12932,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/terminals/:terminalId/connect",
@@ -2022,7 +2022,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11149,
+      "line": 11302,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/terminals/:terminalId/script-commands",
@@ -2030,7 +2030,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11194,
+      "line": 11347,
       "method": "PUT",
       "ownerEvidence": "request-principal",
       "path": "/api/terminals/:terminalId/service",
@@ -2038,7 +2038,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11244,
+      "line": 11397,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/terminals/:terminalId/service/restart",
@@ -2046,7 +2046,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 11279,
+      "line": 11432,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/terminals/:terminalId/worktree",
@@ -2054,7 +2054,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4428,
+      "line": 4581,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/tunnel-attachments/:attachmentId",
@@ -2062,7 +2062,7 @@
     },
     {
       "boundary": "external-credential",
-      "line": 4439,
+      "line": 4592,
       "method": "GET",
       "ownerEvidence": "attachment-credential",
       "path": "/api/tunnel-attachments/:attachmentId/connect",
@@ -2070,7 +2070,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4324,
+      "line": 4477,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/tunnels",
@@ -2078,7 +2078,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4362,
+      "line": 4515,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/tunnels",
@@ -2086,7 +2086,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4532,
+      "line": 4685,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/tunnels/:tunnelId",
@@ -2094,7 +2094,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4348,
+      "line": 4501,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/tunnels/:tunnelId",
@@ -2102,7 +2102,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4505,
+      "line": 4658,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/tunnels/:tunnelId",
@@ -2110,7 +2110,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4378,
+      "line": 4531,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/tunnels/:tunnelId/attachments",
@@ -2118,7 +2118,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4319,
+      "line": 4472,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/workers",
@@ -2126,7 +2126,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4612,
+      "line": 4765,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/workers/:workerId",
@@ -2134,7 +2134,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4578,
+      "line": 4731,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/workers/:workerId",
@@ -2142,7 +2142,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4693,
+      "line": 4846,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/workers/:workerId/credentials",
@@ -2150,7 +2150,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4776,
+      "line": 4929,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/workers/:workerId/credentials/:credentialId",
@@ -2158,7 +2158,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4707,
+      "line": 4860,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/workers/:workerId/credentials/rotate",
@@ -2166,7 +2166,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4646,
+      "line": 4799,
       "method": "POST",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/workers/enrollment-codes",
@@ -2174,7 +2174,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4679,
+      "line": 4832,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/workers/enrollment-codes/:enrollmentCodeId",
@@ -2182,7 +2182,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 4551,
+      "line": 4704,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/workers/management",
@@ -2190,7 +2190,7 @@
     },
     {
       "boundary": "external-credential",
-      "line": 6149,
+      "line": 6302,
       "method": "POST",
       "ownerEvidence": "webhook-credential",
       "path": "/api/workflow-hooks/:triggerId",
@@ -2198,7 +2198,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7735,
+      "line": 7888,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/workflow-runs",
@@ -2206,7 +2206,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7758,
+      "line": 7911,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/workflow-runs",
@@ -2214,7 +2214,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7798,
+      "line": 7951,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/workflow-runs/:runId",
@@ -2222,7 +2222,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7989,
+      "line": 8142,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/workflow-runs/:runId/cancel",
@@ -2230,7 +2230,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8066,
+      "line": 8219,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/workflow-runs/:runId/events",
@@ -2238,7 +2238,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8014,
+      "line": 8167,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/workflow-runs/:runId/gates/:gateId/decision",
@@ -2246,7 +2246,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 8040,
+      "line": 8193,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/workflow-runs/:runId/nodes/:runNodeId/retry",
@@ -2254,7 +2254,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7939,
+      "line": 8092,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/workflow-runs/:runId/pause",
@@ -2262,7 +2262,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7964,
+      "line": 8117,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/workflow-runs/:runId/resume",
@@ -2270,7 +2270,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7811,
+      "line": 7964,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/workflow-runs/:runId/save-revision",
@@ -2278,7 +2278,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7903,
+      "line": 8056,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/workflow-runs/:runId/worktree-leases/:leaseId/outcome",
@@ -2286,7 +2286,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 6025,
+      "line": 6178,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/workflow-triggers",
@@ -2294,7 +2294,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 6047,
+      "line": 6200,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/workflow-triggers",
@@ -2302,7 +2302,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 6079,
+      "line": 6232,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/workflow-triggers/:triggerId",
@@ -2310,7 +2310,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 6109,
+      "line": 6262,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/workflow-triggers/:triggerId/deliver",
@@ -2318,7 +2318,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 6204,
+      "line": 6357,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/workflow-triggers/:triggerId/git-event",
@@ -2326,7 +2326,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 6267,
+      "line": 6420,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/workflow-triggers/:triggerId/invoke",
@@ -2334,7 +2334,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7398,
+      "line": 7551,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/workflows",
@@ -2342,7 +2342,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7538,
+      "line": 7691,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/workflows",
@@ -2350,7 +2350,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7562,
+      "line": 7715,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/workflows/:workflowId",
@@ -2358,7 +2358,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7655,
+      "line": 7808,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/workflows/:workflowId",
@@ -2366,7 +2366,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7575,
+      "line": 7728,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/workflows/:workflowId/repository-export",
@@ -2374,7 +2374,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7676,
+      "line": 7829,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/workflows/:workflowId/revisions",
@@ -2382,7 +2382,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7689,
+      "line": 7842,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/workflows/:workflowId/revisions",
@@ -2390,7 +2390,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 7717,
+      "line": 7870,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/workflows/:workflowId/revisions/:revision",
@@ -2398,7 +2398,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5958,
+      "line": 6111,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/workspaces",
@@ -2406,7 +2406,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5966,
+      "line": 6119,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/workspaces",
@@ -2414,7 +2414,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 6009,
+      "line": 6162,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/workspaces/:workspaceId",
@@ -2422,10 +2422,34 @@
     },
     {
       "boundary": "application-principal",
-      "line": 5987,
+      "line": 6140,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/workspaces/:workspaceId",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
+      "line": 4403,
+      "method": "GET",
+      "ownerEvidence": "delegated-or-missing-review",
+      "path": "/healthz",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
+      "line": 4445,
+      "method": "GET",
+      "ownerEvidence": "request-principal",
+      "path": "/metrics",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
+      "line": 4413,
+      "method": "GET",
+      "ownerEvidence": "delegated-or-missing-review",
+      "path": "/readyz",
       "transport": "http"
     }
   ],

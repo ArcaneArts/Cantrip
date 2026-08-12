@@ -1,9 +1,9 @@
 # Hosted relay security architecture
 
 - Status: protected authentication, owner enforcement, worker enrollment,
-  secret encryption, public request/relay limits, HTTP/proxy hardening, and
-  owner-scoped security audit visibility implemented; comprehensive quotas and
-  multi-instance control remain
+  secret encryption, account/worker quotas, HTTP/proxy hardening, operational
+  probes/metrics, and owner-scoped security audit visibility implemented;
+  shared multi-instance control remains
 - Route inventory: [`security/server-route-inventory.json`](security/server-route-inventory.json)
 - Regenerate: `pnpm audit:server-boundaries:write`
 - Verify: `pnpm audit:server-boundaries`
@@ -268,14 +268,24 @@ session metadata without any stored token, CSRF, address, or user-agent hash.
 
 Public API, worker-pairing, attachment-upload, and WebSocket-handshake traffic
 use independent bounded sliding windows. Active uploads and application/tunnel
-WebSockets are capped per account. Every command routed to a worker is bounded
-both by per-worker and per-account rate and concurrency ceilings; reaching a
-ceiling fails visibly instead of accumulating an unbounded queue. These guards
-do not impose a short execution timeout, so an admitted Codex turn may remain
-active for its normal lifetime. Binary transports additionally retain their
-schema payload ceilings and buffered-byte backpressure rules. The current
-limiters are process-local; the multi-instance coordination layer must provide
-the shared hosted counter before horizontal replicas are advertised.
+WebSockets are capped per account. Attachment bytes, Remote Surface sessions,
+and relayed Code, browser, desktop, terminal, project-share, and generic tunnel
+bytes are charged against both the account and worker. Every command routed to
+a worker is bounded by per-worker and per-account byte, rate, and concurrency
+ceilings; reaching a ceiling fails visibly instead of accumulating an unbounded
+queue. These guards do not impose a short execution timeout, so an admitted
+Codex turn may remain active for its normal lifetime. Binary transports retain
+their schema payload ceilings and buffered-byte backpressure rules. The current
+limiters are process-local; the multi-instance coordination layer must replace
+them with shared counters before horizontal replicas are advertised.
+
+`/healthz` proves only that the server process can answer HTTP. `/readyz` probes
+the authoritative database and returns 503 while it is unavailable. `/metrics`
+exposes aggregate Prometheus text to an owner/admin session or a dedicated
+operator bearer token. Metrics include request counts and latency, database
+probe health, worker and command activity, live connections, tunnel and relay
+traffic, quota rejections, and scheduler throughput/lag. They deliberately omit
+owner IDs, resource IDs, URLs, prompts, terminal output, filenames, and secrets.
 
 ## 8. Application connection audit
 

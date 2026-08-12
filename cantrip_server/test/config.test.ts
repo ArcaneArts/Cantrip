@@ -138,24 +138,41 @@ describe("server configuration safety", () => {
     vi.stubEnv("CANTRIP_WORKER_COMMAND_CONCURRENCY", "40");
     vi.stubEnv("CANTRIP_ACCOUNT_COMMAND_RATE_PER_MINUTE", "1800");
     vi.stubEnv("CANTRIP_WORKER_COMMAND_RATE_PER_MINUTE", "800");
+    vi.stubEnv("CANTRIP_ACCOUNT_REMOTE_SURFACE_LIMIT", "12");
+    vi.stubEnv("CANTRIP_WORKER_REMOTE_SURFACE_LIMIT", "6");
+    vi.stubEnv("CANTRIP_ACCOUNT_UPLOAD_BYTES_PER_MINUTE", "33554432");
+    vi.stubEnv("CANTRIP_WORKER_UPLOAD_BYTES_PER_MINUTE", "16777216");
+    vi.stubEnv("CANTRIP_ACCOUNT_RELAY_BYTES_PER_MINUTE", "67108864");
+    vi.stubEnv("CANTRIP_WORKER_RELAY_BYTES_PER_MINUTE", "33554432");
+    vi.stubEnv("CANTRIP_METRICS_TOKEN", "m".repeat(32));
     expect(readServerConfig()).toMatchObject({
       apiBodyLimitBytes: 65_536,
       apiRateLimitPerMinute: 900,
       accountCommandConcurrency: 80,
       accountCommandRatePerMinute: 1_800,
+      accountRelayBytesPerMinute: 67_108_864,
+      accountRemoteSurfaceLimit: 12,
+      accountUploadBytesPerMinute: 33_554_432,
       accountUploadConcurrency: 3,
       accountWebsocketLimit: 20,
       pairingRateLimitPerMinute: 9,
+      metricsToken: "m".repeat(32),
       uploadLimitBytes: 1_048_576,
       uploadRateLimitPerMinute: 12,
       websocketHandshakeRatePerMinute: 90,
       websocketMaxPayloadBytes: 131_072,
       workerCommandConcurrency: 40,
       workerCommandRatePerMinute: 800,
+      workerRelayBytesPerMinute: 33_554_432,
+      workerRemoteSurfaceLimit: 6,
+      workerUploadBytesPerMinute: 16_777_216,
     });
 
     vi.stubEnv("CANTRIP_API_BODY_LIMIT_BYTES", "100");
     expect(() => readServerConfig()).toThrow(/API_BODY_LIMIT/i);
+    vi.stubEnv("CANTRIP_API_BODY_LIMIT_BYTES", "65536");
+    vi.stubEnv("CANTRIP_METRICS_TOKEN", "too-short");
+    expect(() => readServerConfig()).toThrow(/METRICS_TOKEN/i);
   });
 
   it("confines shared worker tokens to explicit loopback dev bootstraps", () => {

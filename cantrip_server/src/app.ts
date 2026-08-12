@@ -215,6 +215,7 @@ import {
   mcpServerSummarySchema,
   mentionedSkillNames,
   orderedIdsSchema,
+  operationalProbeSchema,
   projectListSchema,
   projectRepositoryStatsSchema,
   projectTokenUsageSchema,
@@ -495,6 +496,8 @@ import {
   requiredToolString,
 } from "./http/request-helpers.js";
 import { AppLiveHub } from "./live/hub.js";
+import { OperationalMetrics } from "./operations/metrics.js";
+import { RelayQuotaManager } from "./operations/relay-quotas.js";
 import {
   ActiveLimit,
   RelayLimitError,
@@ -509,6 +512,7 @@ export interface BuildAppOptions {
   codeTunnel?: CodeTunnelBroker;
   projectShareTunnel?: ProjectShareTunnelBroker;
   workerBridge?: WorkerCommandBus;
+  relayQuotas?: RelayQuotaManager;
 }
 
 class SkillSettingsRequestError extends Error {
@@ -755,6 +759,7 @@ export async function buildApp({
   database,
   logger = true,
   projectShareTunnel: providedProjectShareTunnel,
+  relayQuotas: providedRelayQuotas,
   workerBridge,
 }: BuildAppOptions) {
   const apiBodyLimitBytes =
@@ -797,10 +802,38 @@ export async function buildApp({
     (_request, body, done) => done(null, body),
   );
   const repository = database.repository;
+  const operationalMetrics = new OperationalMetrics();
+  const requestMetrics = new WeakMap<
+    FastifyRequest,
+    { release: () => void; startedAt: number }
+  >();
+  app.addHook("onRequest", (request, _reply, done) => {
+    requestMetrics.set(request, {
+      release: operationalMetrics.beginHttpRequest(),
+      startedAt: performance.now(),
+    });
+    done();
+  });
+  app.addHook("onResponse", (request, reply, done) => {
+    const metric = requestMetrics.get(request);
+    if (metric) {
+      metric.release();
+      operationalMetrics.recordHttpResponse(
+        request.method,
+        reply.statusCode,
+        metric.startedAt,
+      );
+      requestMetrics.delete(request);
+    }
+    done();
+  });
+  const relayQuotas = providedRelayQuotas ?? new RelayQuotaManager(config);
   const rawBridge = workerBridge ?? new WorkerBridge();
   const bridge = new LimitedWorkerCommandBus(rawBridge, {
     accountConcurrency: config.accountCommandConcurrency ?? 128,
     accountRatePerMinute: config.accountCommandRatePerMinute ?? 2_400,
+    consumeRelayBytes: (ownerId, workerId, bytes) =>
+      relayQuotas.consumeRelay(ownerId, workerId, bytes),
     resolveOwnerId: (workerId) => repository.getWorkerOwnerId(workerId),
     workerConcurrency: config.workerCommandConcurrency ?? 64,
     workerRatePerMinute: config.workerCommandRatePerMinute ?? 1_200,
@@ -811,6 +844,8 @@ export async function buildApp({
     providedCodeTunnel ??
     new CodeTunnelBroker(bridge, {
       allowedFrameAncestors: config.appOrigins,
+      consumeRelayBytes: (ownerId, workerId, bytes) =>
+        relayQuotas.consumeRelay(ownerId, workerId, bytes),
       surfaceOrigin: codeSurface.origin,
     });
   const projectShareTunnel =
@@ -818,7 +853,11 @@ export async function buildApp({
     new ProjectShareTunnelBroker(bridge, {
       surfaceOrigin: codeSurface.origin,
     });
-  const surfaceRelay = new RemoteSurfaceRelay(bridge);
+  const surfaceRelay = new RemoteSurfaceRelay(
+    bridge,
+    (ownerId, workerId, bytes) =>
+      relayQuotas.consumeRelay(ownerId, workerId, bytes),
+  );
   const ownerContext = new AsyncLocalStorage<string>();
   const applicationOwnerId = (): string => {
     const ownerId = ownerContext.getStore();
@@ -881,7 +920,10 @@ export async function buildApp({
       });
     });
   };
-  const tunnelStreamBroker = new TunnelStreamBroker();
+  const tunnelStreamBroker = new TunnelStreamBroker({
+    consumeRelayBytes: (ownerId, workerId, bytes) =>
+      relayQuotas.consumeRelay(ownerId, workerId, bytes),
+  });
   const tunnelRuntime = new TunnelRuntimeManager(
     repository,
     bridge,
@@ -1695,6 +1737,12 @@ export async function buildApp({
     const hasForwardedHeaders = Boolean(
       forwarded || forwardedFor || forwardedHost || forwardedProto,
     );
+    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
+    const directLoopbackProbe =
+      (route === "/healthz" || route === "/readyz") &&
+      !hasForwardedHeaders &&
+      ["127.0.0.1", "::1"].includes(request.ip);
+    if (directLoopbackProbe) return;
     if (hasForwardedHeaders && !trustedProxyConfigured) {
       return rejectSecurityRequest(
         request,
@@ -1958,6 +2006,9 @@ export async function buildApp({
 
   const publicRoute = (route: string): boolean =>
     route === "/api" ||
+    route === "/healthz" ||
+    route === "/readyz" ||
+    route === "/metrics" ||
     route === "/api/bootstrap" ||
     route === "/api/auth/login" ||
     route === "/api/auth/register" ||
@@ -2497,15 +2548,26 @@ export async function buildApp({
   const deliverDueSchedules = async () => {
     if (scheduleTickRunning) return;
     scheduleTickRunning = true;
+    const scanStartedAt = performance.now();
+    let dispatchFailures = 0;
+    let dispatches = 0;
+    let dueOccurrences = 0;
+    let maximumLagMs = 0;
+    let scanFailed = true;
     try {
       const now = new Date();
       const due = await repository.workflowTriggers.listDueSchedules(now);
+      dueOccurrences = due.length;
       for (const candidate of due) {
         if (candidate.trigger.type !== "schedule" || !candidate.row.nextRunAt) {
           continue;
         }
         const trigger = candidate.trigger;
         const expected = candidate.row.nextRunAt;
+        maximumLagMs = Math.max(
+          maximumLagMs,
+          now.getTime() - expected.getTime(),
+        );
         await runAsOwner(trigger.ownerId, async () => {
           const intervalMs = trigger.configuration.intervalSeconds * 1_000;
           if (
@@ -2550,6 +2612,7 @@ export async function buildApp({
               structuredInput: {},
               triggerId: trigger.id,
             });
+            dispatches += 1;
             await advanceLiveWorkflowSchedule(
               trigger.id,
               trigger.projectId,
@@ -2557,6 +2620,7 @@ export async function buildApp({
               new Date(Date.now() + intervalMs),
             );
           } catch (error) {
+            dispatchFailures += 1;
             app.log.warn(
               { err: error, workflowTriggerId: trigger.id },
               "Scheduled workflow delivery failed",
@@ -2571,8 +2635,17 @@ export async function buildApp({
           }
         });
       }
+      scanFailed = false;
     } finally {
       scheduleTickRunning = false;
+      operationalMetrics.recordSchedulerScan({
+        dispatchFailures,
+        dispatches,
+        dueOccurrences,
+        durationMs: performance.now() - scanStartedAt,
+        failed: scanFailed,
+        maximumLagMs,
+      });
     }
   };
 
@@ -4300,7 +4373,12 @@ export async function buildApp({
   });
 
   app.get("/api/health", { logLevel: "warn" }, async (request, reply) => {
+    const probeStartedAt = performance.now();
     await database.ping();
+    operationalMetrics.recordDatabaseProbe(
+      true,
+      performance.now() - probeStartedAt,
+    );
     const ownerId = principalOwnerId(request);
     return reply.send(
       systemHealthSchema.parse({
@@ -4311,7 +4389,82 @@ export async function buildApp({
           connected: await repository.onlineWorkerCount(ownerId),
         },
         live: liveHub.stats(),
+        operations: {
+          ...operationalMetrics.snapshot(),
+          quotas: relayQuotas.stats(),
+          tunnels: tunnelRuntime.stats(),
+          workerCommands: bridge.stats(),
+        },
         timestamp: new Date().toISOString(),
+      }),
+    );
+  });
+
+  app.get("/healthz", { logLevel: "warn" }, (_request, reply) =>
+    reply.send(
+      operationalProbeSchema.parse({
+        status: "alive",
+        service: "cantrip_server",
+        timestamp: new Date().toISOString(),
+      }),
+    ),
+  );
+
+  app.get("/readyz", { logLevel: "warn" }, async (_request, reply) => {
+    const startedAt = performance.now();
+    try {
+      await database.ping();
+      const latencyMs = performance.now() - startedAt;
+      operationalMetrics.recordDatabaseProbe(true, latencyMs);
+      return reply.send(
+        operationalProbeSchema.parse({
+          status: "ready",
+          service: "cantrip_server",
+          database: { engine: database.engine, status: "ready", latencyMs },
+          timestamp: new Date().toISOString(),
+        }),
+      );
+    } catch {
+      const latencyMs = performance.now() - startedAt;
+      operationalMetrics.recordDatabaseProbe(false, latencyMs);
+      return reply.code(503).send(
+        operationalProbeSchema.parse({
+          status: "not-ready",
+          service: "cantrip_server",
+          database: {
+            engine: database.engine,
+            status: "unavailable",
+            latencyMs,
+          },
+          timestamp: new Date().toISOString(),
+        }),
+      );
+    }
+  });
+
+  app.get("/metrics", { logLevel: "warn" }, (request, reply) => {
+    const authorization = request.headers.authorization;
+    const bearer = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : null;
+    const tokenAuthorized = Boolean(
+      config.metricsToken &&
+      bearer &&
+      safeSecretMatch(bearer, config.metricsToken),
+    );
+    const accountAuthorized =
+      request.principal.state === "authenticated" &&
+      ["owner", "admin"].includes(request.principal.user.role);
+    if (!tokenAuthorized && !accountAuthorized) {
+      reply.header("www-authenticate", 'Bearer realm="Cantrip metrics"');
+      return reply.code(401).send({ error: "Metrics authorization required." });
+    }
+    return reply.type("text/plain; version=0.0.4; charset=utf-8").send(
+      operationalMetrics.renderPrometheus({
+        live: liveHub.stats(),
+        quotas: relayQuotas.stats(),
+        tunnels: tunnelRuntime.stats(),
+        workers: bridge.stats(),
       }),
     );
   });
@@ -12346,6 +12499,7 @@ export async function buildApp({
       const attachmentId = randomUUID();
       let attached = false;
       let closed = false;
+      let releaseSurfaceQuota: (() => void) | null = null;
       let surfaceId: string | null = null;
       let workerId: string | null = null;
 
@@ -12359,6 +12513,8 @@ export async function buildApp({
 
       socket.on("close", () => {
         closed = true;
+        releaseSurfaceQuota?.();
+        releaseSurfaceQuota = null;
         if (!attached || !surfaceId || !workerId) return;
         attached = false;
         const remaining = Math.max(
@@ -12401,6 +12557,25 @@ export async function buildApp({
         }
         surfaceId = context.surface.id;
         workerId = context.workerId;
+        try {
+          releaseSurfaceQuota = relayQuotas.acquireRemoteSurface(
+            applicationOwnerId(),
+            workerId,
+          );
+        } catch (error) {
+          send({
+            type: "error",
+            message: errorMessage(error),
+            recoverable: true,
+          });
+          socket.close(1013, "Remote Surface quota reached");
+          return;
+        }
+        if (closed) {
+          releaseSurfaceQuota();
+          releaseSurfaceQuota = null;
+          return;
+        }
         const desktopStream =
           context.surface.kind === "desktop"
             ? await repository
@@ -12438,6 +12613,7 @@ export async function buildApp({
         const cleanupRelay = surfaceRelay.bind(socket, {
           surfaceId,
           attachmentId,
+          ownerId: applicationOwnerId(),
           workerId,
         });
         try {
@@ -14427,6 +14603,12 @@ export async function buildApp({
       ) {
         return reply.code(400).send({ error: "Invalid attachment upload." });
       }
+
+      relayQuotas.consumeUpload(
+        applicationOwnerId(),
+        context.workerId,
+        request.body.byteLength,
+      );
 
       const attachmentId = randomUUID();
       try {
