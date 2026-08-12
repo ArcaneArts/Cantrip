@@ -1,7 +1,7 @@
 # Hosted relay security architecture
 
 - Status: protected authentication, owner enforcement, worker enrollment,
-  provider-secret encryption, and initial HTTP/proxy hardening implemented;
+  provider and MCP secret encryption, and initial HTTP/proxy hardening implemented;
   comprehensive quotas, audit visibility, and multi-instance control remain
 - Route inventory: [`security/server-route-inventory.json`](security/server-route-inventory.json)
 - Regenerate: `pnpm audit:server-boundaries:write`
@@ -235,8 +235,9 @@ The enrollment service consumes link codes transactionally and returns a raw
 credential exactly once; list APIs expose metadata but never hashes or raw
 secrets.
 
-Provider API keys use versioned AES-256-GCM envelopes authenticated to their
-owner and provider IDs. `CANTRIP_SECRET_ENCRYPTION_KEYS` supplies a bounded JSON
+Provider API keys and MCP static-header/environment values use versioned
+AES-256-GCM envelopes authenticated to their owner, record, and field IDs.
+`CANTRIP_SECRET_ENCRYPTION_KEYS` supplies a bounded JSON
 keyring of key IDs to canonical base64 32-byte keys, and
 `CANTRIP_ACTIVE_SECRET_ENCRYPTION_KEY_ID` selects the writer. Hosted startup
 fails without the keyring. Startup decrypts every existing envelope to detect a
@@ -245,9 +246,12 @@ rows, clears their plaintext column, and rewraps envelopes written by older
 keys. Anonymous local deployments instead persist an ignored mode-0600 key in
 their server data directory.
 
-Provider list and mutation responses expose only `hasApiKey`; plaintext exists
-briefly in server memory when an authorized model route is dispatched to its
-assigned worker. Operators must back up the keyring separately from PostgreSQL,
+Provider list and mutation responses expose only `hasApiKey`. MCP list and
+mutation responses expose secret key names with a fixed mask, and sending that
+mask back preserves the stored value. The server decrypts MCP values only for
+the effective runtime configuration routed to an authorized worker. Plaintext
+exists briefly in server memory when an authorized provider or MCP runtime is
+dispatched to its assigned worker. Operators must back up the keyring separately from PostgreSQL,
 retain old keys until startup has completed a rotation, and never place the
 keyring in source control, logs, or support bundles. Audit events remain a later
 hardening milestone.

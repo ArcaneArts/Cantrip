@@ -938,7 +938,24 @@ const mcpKeyValueSchema = z
   .record(z.string().trim().min(1).max(256), z.string().max(65_536))
   .refine((value) => Object.keys(value).length <= 100, {
     message: "MCP key/value collections cannot contain more than 100 entries.",
-  });
+  })
+  .refine(
+    (value) =>
+      Object.entries(value).reduce(
+        (size, [key, item]) => size + key.length + item.length,
+        0,
+      ) <= 524_288,
+    {
+      message: "MCP key/value collections cannot exceed 512 KiB.",
+    },
+  );
+
+/**
+ * Placeholder returned for persisted MCP values that may contain credentials.
+ * Sending the placeholder back during an update preserves the existing value;
+ * Cantrip never sends the underlying secret to an application client.
+ */
+export const MCP_SECRET_MASK = "••••••••";
 
 export const mcpServerNameSchema = z
   .string()
