@@ -22,6 +22,32 @@ The architecture decision is recorded in
 | Raw TCP, project-share, and Cantrip Code bytes                    | Unified binary tunnel data plane             |
 | Worker commands and events                                        | Authenticated outbound worker WebSocket      |
 
+## Server-authorized local direct broker
+
+Desktop clients may bypass the server data relay only after the server has
+authorized a specific attachment. Each worker binds an ephemeral broker to a
+random `127.0.0.1` port and reports its Ed25519 public-key fingerprint in the
+authenticated heartbeat. The advertised port is rendezvous metadata, not
+proof that the desktop app and worker are on the same machine.
+
+For a locality probe, the server resolves the owner and worker, mints a
+short-lived one-use capability, and installs its complete binding on the worker
+over the authenticated command channel before returning it to the app. The
+binding includes the account session, worker, resource, attachment, allowed
+channels, capability expiry, and lease expiry. Tauri connects only to loopback,
+consumes the capability once, challenges the broker, and verifies the signed
+identity against the server advertisement. A failed probe is ordinary relay
+fallback; no hostname or IP comparison grants trust.
+
+Prepared grants and active direct sessions are revoked on expiry, explicit
+release, account-session revocation, worker command-channel loss, or process
+shutdown. The browser-facing layer receives no reusable worker credential.
+The transient one-use attachment secret is handed immediately to native Tauri
+code, cleared after invocation, and never written to browser storage or logs.
+Later PTY, project-share, Code, and generic tunnel transports reuse this
+authorization and locality-proof foundation while their server routes remain
+the baseline fallback.
+
 ## Version 1 contract
 
 The client begins with `initialize`, protocol version `1`, a bounded client

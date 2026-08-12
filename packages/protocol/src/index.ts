@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+import {
+  directBrokerAdvertisementSchema,
+  directCapabilityPrepareCommandSchema,
+  directCapabilityRenewCommandSchema,
+  directCapabilityRevokeCommandSchema,
+  unavailableDirectBroker,
+} from "./direct-data-plane.js";
+
+export * from "./direct-data-plane.js";
+
 import { tunnelDataPlaneCloseCodeSchema } from "./tunnel-data-plane.js";
 
 export * from "./tunnel-data-plane.js";
@@ -401,6 +411,9 @@ export const workerHeartbeatSchema = z.object({
   codexRuntime: codexRuntimeReportSchema.default(unprobedCodexRuntimeReport),
   remoteSurfaces: remoteSurfaceCapabilitiesSchema.default(
     defaultRemoteSurfaceCapabilities,
+  ),
+  directBroker: directBrokerAdvertisementSchema.default(
+    unavailableDirectBroker,
   ),
   code: codeCapabilitiesSchema.optional(),
   projectReplicas: projectReplicaCapabilitiesSchema.default(
@@ -6448,6 +6461,9 @@ export const workerProjectShareOpenResultSchema = z.object({
 });
 
 export const workerCommandSchema = z.discriminatedUnion("type", [
+  directCapabilityPrepareCommandSchema,
+  directCapabilityRevokeCommandSchema,
+  directCapabilityRenewCommandSchema,
   z.object({
     type: z.literal("worker.credential.rotate"),
     credential: workerCredentialSecretSchema,

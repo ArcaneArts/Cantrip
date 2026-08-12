@@ -86,6 +86,7 @@ import {
   startGitManagedOperation,
 } from "./git.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
+import { DirectBroker } from "./direct-broker.js";
 import { enrollWorker } from "./enrollment.js";
 import { ProjectShareManager } from "./project-share-manager.js";
 import { ProjectShareTunnelDestinationAdapter } from "./project-share-tunnel-adapter.js";
@@ -140,6 +141,8 @@ async function start(): Promise<void> {
   });
   await code.start();
   const codeTunnel = new CodeTunnelProxy(code);
+  const directBroker = new DirectBroker();
+  await directBroker.start();
   const heartbeat = createHeartbeat(
     config,
     codexRuntime,
@@ -152,6 +155,7 @@ async function start(): Promise<void> {
       maxSessions: 4,
     },
     codeDiscovery.capabilities,
+    directBroker.advertisement,
   );
   await enrollWorker(config, heartbeat);
   let connected = false;
@@ -232,6 +236,22 @@ async function start(): Promise<void> {
     emit: (event: WorkerEvent) => void,
   ): Promise<unknown> => {
     switch (command.type) {
+      case "direct.capability.prepare":
+        if (command.binding.workerId !== config.workerId) {
+          throw new Error("Direct capability targets another worker.");
+        }
+        return directBroker.prepare(command);
+      case "direct.capability.revoke":
+        return {
+          revoked: directBroker.revoke(command.capabilityId, command.reason),
+        };
+      case "direct.capability.renew":
+        return {
+          renewed: directBroker.renew(
+            command.capabilityId,
+            command.leaseExpiresAt,
+          ),
+        };
       case "worker.credential.rotate":
         saveWorkerCredential({
           credential: command.credential,
@@ -1293,7 +1313,10 @@ async function start(): Promise<void> {
     handleCommand,
     (header, payload) => remoteSurfaces.handleFrame(header, payload),
     (header, payload) => tunnelDestinations.handleFrame(header, payload),
-    () => tunnelDestinations.disconnect(),
+    () => {
+      tunnelDestinations.disconnect();
+      directBroker.revokeAll();
+    },
   );
   worktrees.setObservationEmitter((notification) =>
     commandConnection.sendNotification(notification),
@@ -1351,6 +1374,7 @@ async function start(): Promise<void> {
       automationScheduler.close();
       worktrees.close();
       commandConnection.close();
+      await directBroker.close();
       for (const client of codexAuthClients.values()) client.close();
       terminals.closeAll();
       tunnelDestinations.close();

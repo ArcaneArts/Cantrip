@@ -12,6 +12,7 @@ import type {
   ChatTurnMode,
   CodeCapabilities,
   CodexRuntimeReport,
+  DirectBrokerAdvertisement,
   GitManagedOperationState,
   GitManagedOperationType,
   GitInteractiveRebaseTodoAction,
@@ -78,6 +79,10 @@ const unavailableProjectReplicaCapabilities = {
   remove: false,
   exactRevision: false,
 } satisfies ProjectReplicaCapabilities;
+
+const unavailableDirectBroker = {
+  available: false,
+} satisfies DirectBrokerAdvertisement;
 
 export const systemState = pgTable("system_state", {
   key: text("key").primaryKey(),
@@ -424,6 +429,10 @@ export const workers = pgTable("workers", {
       iceTransportPolicies: ["relay"],
       maxSessions: 4,
     }),
+  directBrokerAdvertisement: jsonb("direct_broker_advertisement")
+    .$type<DirectBrokerAdvertisement>()
+    .notNull()
+    .default(unavailableDirectBroker),
   codeCapabilities: jsonb("code_capabilities")
     .$type<CodeCapabilities>()
     .notNull()
