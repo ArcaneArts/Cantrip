@@ -7,6 +7,7 @@ import type {
   ReasoningEffort,
   ThemePreference,
   UserSettings,
+  TunnelSummary,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -74,6 +75,7 @@ import { McpServerSettings } from "./mcp-server-settings";
 import { WorkspaceSettings } from "./workspace-settings";
 import { SkillsSettings } from "./skills-settings";
 import { WorkerSettings } from "./worker-settings";
+import { TunnelSettings } from "./tunnel-settings";
 
 const reasoningOptions: Array<ReasoningEffort | ""> = [
   "",
@@ -84,11 +86,13 @@ const reasoningOptions: Array<ReasoningEffort | ""> = [
   "xhigh",
 ];
 
-type SettingsSection = "general" | "workers" | "skills" | "mcp" | "workspaces";
+type SettingsSection =
+  "general" | "workers" | "tunnels" | "skills" | "mcp" | "workspaces";
 
 const settingsTabs: readonly SettingsTab<SettingsSection>[] = [
   { id: "general", label: "General", icon: SlidersHorizontal },
   { id: "workers", label: "Workers", icon: Network },
+  { id: "tunnels", label: "Tunnels", icon: Route },
   { id: "workspaces", label: "Workspaces", icon: Layers3 },
   { id: "skills", label: "Skills", icon: Sparkles },
   { id: "mcp", label: "MCP", icon: Cable },
@@ -266,8 +270,10 @@ function ProviderRow({
 
 export function SettingsPage({
   initialSection = "general",
+  onOpenTunnelOwner,
 }: {
   initialSection?: SettingsSection;
+  onOpenTunnelOwner?(tunnel: TunnelSummary): void;
 }) {
   const [section, setSection] = useState<SettingsSection>(initialSection);
   const queryClient = useQueryClient();
@@ -930,6 +936,9 @@ export function SettingsPage({
           </div>
         ) : null}
         {section === "workers" ? <WorkerSettings /> : null}
+        {section === "tunnels" ? (
+          <TunnelSettings onOpenOwner={onOpenTunnelOwner} />
+        ) : null}
         {section === "skills" ? <SkillsSettings /> : null}
         {section === "mcp" ? (
           <div className="mx-auto w-full min-w-0 max-w-6xl">

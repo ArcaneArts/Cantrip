@@ -9,6 +9,7 @@ import type {
   ProjectWorktreeCreate,
   ProjectWorktreeSummary,
   TerminalSummary,
+  TunnelSummary,
   WorkerSummary,
   WorktreePolicy,
 } from "@cantrip/protocol";
@@ -29,6 +30,7 @@ import {
   MoreHorizontal,
   Plus,
   RefreshCw,
+  Route,
   ScanLine,
   Search,
   SlidersHorizontal,
@@ -38,7 +40,7 @@ import {
   Unlock,
   Workflow,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -73,6 +75,7 @@ import { cn } from "@/lib/utils";
 import { WorkflowCenter } from "@/components/workflows/workflow-center";
 import { ProjectAutomationsSettings } from "./project-automations-settings";
 import { SkillsSettings } from "@/components/settings/skills-settings";
+import { TunnelSettings } from "@/components/settings/tunnel-settings";
 import {
   SettingsSearchField,
   SettingsTabBar,
@@ -82,13 +85,20 @@ import {
 const createdDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 
 type ProjectSettingsSection =
-  "general" | "automations" | "workflows" | "worktrees" | "skills" | "mcp";
+  | "general"
+  | "automations"
+  | "workflows"
+  | "worktrees"
+  | "tunnels"
+  | "skills"
+  | "mcp";
 
 const projectSettingsTabs: readonly SettingsTab<ProjectSettingsSection>[] = [
   { id: "general", label: "General", icon: SlidersHorizontal },
   { id: "automations", label: "Automations", icon: CalendarClock },
   { id: "workflows", label: "Workflows", icon: Workflow },
   { id: "worktrees", label: "Worktrees", icon: GitFork },
+  { id: "tunnels", label: "Tunnels", icon: Route },
   { id: "skills", label: "Skills", icon: Sparkles },
   { id: "mcp", label: "MCP", icon: Cable },
 ];
@@ -198,6 +208,7 @@ export function ProjectSettingsPage({
   onCreateExplorer,
   onCreateHistory,
   onCreateTerminal,
+  onOpenTunnelOwner,
   project,
   projectViews,
   statuses,
@@ -215,6 +226,7 @@ export function ProjectSettingsPage({
   onCreateExplorer(worktreeId: string): void;
   onCreateHistory(worktreeId: string): void;
   onCreateTerminal(worktreeId: string): void;
+  onOpenTunnelOwner?(tunnel: TunnelSummary): void;
   project: ProjectSummary;
   projectViews: ProjectViewSummary[];
   statuses: WorktreeStatusMap;
@@ -235,6 +247,10 @@ export function ProjectSettingsPage({
   const projectWorker = workers.find(
     ({ workerId }) => workerId === project.source?.workerId,
   );
+
+  useEffect(() => {
+    setSection(initialSection);
+  }, [initialSection]);
 
   const updatePolicy = useMutation({
     mutationFn: (policy: WorktreePolicy) =>
@@ -796,6 +812,11 @@ export function ProjectSettingsPage({
       {section === "skills" ? (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
           <SkillsSettings project={project} />
+        </div>
+      ) : null}
+      {section === "tunnels" ? (
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+          <TunnelSettings onOpenOwner={onOpenTunnelOwner} project={project} />
         </div>
       ) : null}
       {section === "mcp" ? (
