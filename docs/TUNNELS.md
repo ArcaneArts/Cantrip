@@ -51,6 +51,14 @@ retargeted or deleted independently of their owner. **Open owner** returns to
 the owning surface when it still exists. An eligible Browser tunnel can be
 copied into a user-managed definition with **Save as custom tunnel**.
 
+Finder and File Explorer project shares also use the local-direct path when the
+Tauri app can verify the selected worker on the same device. The server opens
+and authorizes the worker's loopback-only WebDAV service, but keeps its host and
+port out of the client ticket. Tauri mounts a local forwarded URL that preserves
+the server-issued capability path and WebDAV credentials. If the direct broker
+cannot be reached or verified, the app mounts the existing authenticated server
+URL instead; remote and mobile clients therefore retain the same relay behavior.
+
 In a Browser tab, **Open locally** creates or reuses a managed desktop tunnel,
 preserves the page path and query, and opens its loopback URL in the system
 browser. The tunnel carries ordinary HTTP streaming and WebSocket/HMR traffic.

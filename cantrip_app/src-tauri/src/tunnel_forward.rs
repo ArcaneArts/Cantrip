@@ -28,14 +28,20 @@ pub struct DirectTunnelRoute {
 pub struct StartTunnelForwardRequest {
     pub attachment_id: String,
     pub client_id: String,
-    pub connect_path: String,
     pub direct: Option<DirectTunnelRequest>,
     pub expires_at: String,
     pub preferred_local_port: Option<u16>,
+    pub relay: Option<RelayTunnelRequest>,
+    pub tunnel_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayTunnelRequest {
+    pub connect_path: String,
     pub secret: String,
     pub secret_expires_at_epoch_ms: u64,
     pub server_url: String,
-    pub tunnel_id: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -315,7 +321,11 @@ mod desktop {
         request: StartTunnelForwardRequest,
     ) -> Result<TunnelForwardSummary, String> {
         validate_identifiers(&request)?;
-        let web_socket_url = web_socket_url(&request.server_url, &request.connect_path)?;
+        let web_socket_url = request
+            .relay
+            .as_ref()
+            .map(|relay| web_socket_url(&relay.server_url, &relay.connect_path))
+            .transpose()?;
         stop(state, &request.tunnel_id)?;
         let listener = bind_listener(request.preferred_local_port).await?;
         let local_port = listener
@@ -417,14 +427,22 @@ mod desktop {
                 return Err(format!("The {label} identity is invalid."));
             }
         }
-        if request.secret.len() < 32 || request.secret.len() > 512 {
-            return Err("The tunnel attachment credential is invalid.".into());
+        if let Some(relay) = &request.relay {
+            if relay.secret.len() < 32 || relay.secret.len() > 512 {
+                return Err("The tunnel attachment credential is invalid.".into());
+            }
+        } else if request.direct.is_none() {
+            return Err("The tunnel has no authorized data route.".into());
         }
         if let Some(direct) = &request.direct {
             if direct.route.tunnel_id != request.tunnel_id
                 || direct.route.attachment_id != request.attachment_id
-                || direct.binding.resource_kind != "tunnel"
-                || direct.binding.resource_id != request.tunnel_id
+                || !matches!(
+                    direct.binding.resource_kind.as_str(),
+                    "tunnel" | "project-share" | "terminal" | "code"
+                )
+                || (direct.binding.resource_kind == "tunnel"
+                    && direct.binding.resource_id != request.tunnel_id)
                 || direct.binding.attachment_id != request.attachment_id
                 || !direct
                     .binding
@@ -489,22 +507,19 @@ mod desktop {
         listener: TcpListener,
         local_port: u16,
         mut request: StartTunnelForwardRequest,
-        web_socket_url: Url,
+        web_socket_url: Option<Url>,
         mut stop: oneshot::Receiver<()>,
         ready: oneshot::Sender<Result<StartupRoute, String>>,
     ) {
-        let secret = Zeroizing::new(std::mem::take(&mut request.secret));
+        let relay = request.relay.take().map(|mut relay| {
+            let secret = Zeroizing::new(std::mem::take(&mut relay.secret));
+            (relay.secret_expires_at_epoch_ms, secret)
+        });
         let mut ready = Some(ready);
         let mut retry_delay = Duration::from_millis(250);
         let mut direct = request.direct.take();
         let mut direct_fallback_reason = None;
         loop {
-            if unix_epoch_ms() >= request.secret_expires_at_epoch_ms {
-                if let Some(ready) = ready.take() {
-                    let _ = ready.send(Err("The tunnel attachment credential expired.".into()));
-                }
-                return;
-            }
             let direct_capability_id = direct
                 .as_ref()
                 .map(|candidate| candidate.binding.capability_id.clone());
@@ -533,41 +548,54 @@ mod desktop {
                     )),
                     Err(reason) => {
                         direct_fallback_reason = Some(reason);
-                        connect_attachment(&web_socket_url, &secret, &request, local_port)
-                            .await
-                            .map(|(socket, identity)| {
-                                (
-                                    socket,
-                                    identity,
-                                    StartupRoute {
-                                        direct_capability_id: None,
-                                        direct_fallback_reason: direct_fallback_reason.clone(),
-                                        state: "relayed",
-                                    },
-                                )
-                            })
+                        connect_relay(
+                            web_socket_url.as_ref(),
+                            relay.as_ref(),
+                            &request,
+                            local_port,
+                        )
+                        .await
+                        .map(|(socket, identity)| {
+                            (
+                                socket,
+                                identity,
+                                StartupRoute {
+                                    direct_capability_id: None,
+                                    direct_fallback_reason: direct_fallback_reason.clone(),
+                                    state: "relayed",
+                                },
+                            )
+                        })
                     }
                 }
             } else {
-                connect_attachment(&web_socket_url, &secret, &request, local_port)
-                    .await
-                    .map(|(socket, identity)| {
-                        (
-                            socket,
-                            identity,
-                            StartupRoute {
-                                direct_capability_id: None,
-                                direct_fallback_reason: direct_fallback_reason.clone(),
-                                state: "relayed",
-                            },
-                        )
-                    })
+                connect_relay(
+                    web_socket_url.as_ref(),
+                    relay.as_ref(),
+                    &request,
+                    local_port,
+                )
+                .await
+                .map(|(socket, identity)| {
+                    (
+                        socket,
+                        identity,
+                        StartupRoute {
+                            direct_capability_id: None,
+                            direct_fallback_reason: direct_fallback_reason.clone(),
+                            state: "relayed",
+                        },
+                    )
+                })
             };
             let (web_socket, identity, startup) = match connected {
                 Ok(connected) => connected,
                 Err(error) => {
                     if let Some(ready) = ready.take() {
                         let _ = ready.send(Err(error));
+                        return;
+                    }
+                    if relay.is_none() {
                         return;
                     }
                     tokio::select! {
@@ -587,6 +615,27 @@ mod desktop {
                 Ok(false) | Err(_) => {}
             }
         }
+    }
+
+    async fn connect_relay(
+        url: Option<&Url>,
+        relay: Option<&(u64, Zeroizing<String>)>,
+        request: &StartTunnelForwardRequest,
+        local_port: u16,
+    ) -> Result<
+        (
+            tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>,
+            RouteIdentity,
+        ),
+        String,
+    > {
+        let (url, (expires_at, secret)) = url
+            .zip(relay)
+            .ok_or_else(|| "The local direct tunnel disconnected.".to_string())?;
+        if unix_epoch_ms() >= *expires_at {
+            return Err("The tunnel attachment credential expired.".into());
+        }
+        connect_attachment(url, secret, request, local_port).await
     }
 
     async fn connect_attachment(
@@ -1103,16 +1152,19 @@ mod desktop {
             let request = StartTunnelForwardRequest {
                 attachment_id: "attachment".into(),
                 client_id: "client".into(),
-                connect_path: "/api/tunnel-attachments/attachment/connect".into(),
                 direct: None,
                 expires_at: "2099-01-01T00:00:00.000Z".into(),
                 preferred_local_port: None,
-                secret: secret.into(),
-                secret_expires_at_epoch_ms: u64::MAX,
-                server_url: format!("http://127.0.0.1:{server_port}"),
+                relay: Some(crate::tunnel_forward::RelayTunnelRequest {
+                    connect_path: "/api/tunnel-attachments/attachment/connect".into(),
+                    secret: secret.into(),
+                    secret_expires_at_epoch_ms: u64::MAX,
+                    server_url: format!("http://127.0.0.1:{server_port}"),
+                }),
                 tunnel_id: "tunnel".into(),
             };
-            let url = web_socket_url(&request.server_url, &request.connect_path).unwrap();
+            let relay = request.relay.as_ref().unwrap();
+            let url = web_socket_url(&relay.server_url, &relay.connect_path).unwrap();
             let (web_socket, identity) = connect_attachment(&url, secret, &request, local_port)
                 .await
                 .unwrap();

@@ -153,6 +153,7 @@ import {
   projectRepositoryStatsSchema,
   projectTokenUsageSchema,
   projectShareAttachmentSchema,
+  projectShareDirectCreateSchema,
   projectSummarySchema,
   projectWorkspaceCreateSchema,
   projectWorkspaceListSchema,
@@ -786,6 +787,18 @@ export async function deleteProjectNetworkShare(attachmentId: string) {
   await request(`/api/project-shares/${encodeURIComponent(attachmentId)}`, {
     method: "DELETE",
   });
+}
+
+export async function createDirectProjectNetworkShare(
+  attachmentId: string,
+  clientId: string,
+) {
+  return directTunnelTicketSchema.parse(
+    await post(
+      `/api/project-shares/${encodeURIComponent(attachmentId)}/direct`,
+      projectShareDirectCreateSchema.parse({ clientId }),
+    ),
+  );
 }
 
 export async function getProjectWorkspaces() {

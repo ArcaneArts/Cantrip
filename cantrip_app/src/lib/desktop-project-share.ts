@@ -1,9 +1,15 @@
 import type { ProjectShareAttachment, ProjectSummary } from "@cantrip/protocol";
 
 import {
+  createDirectProjectNetworkShare,
   createProjectNetworkShare,
+  deleteDirectAttachment,
   deleteProjectNetworkShare,
 } from "@/lib/api";
+import {
+  desktopTunnelClientId,
+  startDirectDesktopTunnel,
+} from "@/lib/desktop-tunnel";
 
 export type DesktopProjectRevealLabel =
   "Reveal in File Explorer" | "Reveal in Finder";
@@ -42,6 +48,17 @@ export function nativeProjectShareRequest(
   };
 }
 
+export function directProjectShareUrl(
+  attachment: ProjectShareAttachment,
+  localPort: number,
+): string {
+  const url = new URL(attachment.url);
+  url.protocol = "http:";
+  url.hostname = "127.0.0.1";
+  url.port = String(localPort);
+  return url.toString();
+}
+
 export async function coordinateDesktopProjectReveal(
   project: ProjectSummary,
   operations: DesktopProjectRevealOperations,
@@ -64,6 +81,35 @@ export async function revealProjectInNativeFileManager(
     createAttachment: createProjectNetworkShare,
     invokeNative: async (attachment, target) => {
       const { invoke } = await import("@tauri-apps/api/core");
+      const clientId = desktopTunnelClientId(window.localStorage);
+      const direct = await createDirectProjectNetworkShare(
+        attachment.attachmentId,
+        clientId,
+      ).catch(() => null);
+      if (direct) {
+        try {
+          const forward = await startDirectDesktopTunnel(
+            direct,
+            attachment.expiresAt,
+          );
+          await invoke("reveal_project_share", {
+            request: nativeProjectShareRequest(
+              {
+                ...attachment,
+                url: directProjectShareUrl(attachment, forward.localPort),
+              },
+              target,
+            ),
+          });
+          return;
+        } catch {
+          await deleteDirectAttachment(direct.binding.capabilityId).catch(
+            () => {
+              // The server URL remains the authoritative relay fallback.
+            },
+          );
+        }
+      }
       await invoke("reveal_project_share", {
         request: nativeProjectShareRequest(attachment, target),
       });

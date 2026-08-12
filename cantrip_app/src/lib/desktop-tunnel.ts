@@ -1,5 +1,8 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import type { TunnelAttachmentCreateResult } from "@cantrip/protocol";
+import type {
+  DirectTunnelTicket,
+  TunnelAttachmentCreateResult,
+} from "@cantrip/protocol";
 
 import {
   activateDirectTunnelAttachment,
@@ -48,13 +51,15 @@ function nativeStartRequest(
   return {
     attachmentId: attachment.attachmentId,
     clientId,
-    connectPath: attachment.connectPath,
     direct,
     expiresAt: attachment.expiresAt,
     preferredLocalPort: preferredLocalPort ?? null,
-    secret: attachment.secret,
-    secretExpiresAtEpochMs: new Date(attachment.secretExpiresAt).getTime(),
-    serverUrl: getActiveServerUrl(),
+    relay: {
+      connectPath: attachment.connectPath,
+      secret: attachment.secret,
+      secretExpiresAtEpochMs: new Date(attachment.secretExpiresAt).getTime(),
+      serverUrl: getActiveServerUrl(),
+    },
     tunnelId: attachment.tunnelId,
   };
 }
@@ -84,7 +89,7 @@ export async function startDesktopTunnel(
       "start_tunnel_forward",
       { request },
     );
-    request.secret = "";
+    request.relay.secret = "";
     if (request.direct) request.direct.secret = "";
     attachment.secret = "";
     if (started.routeState === "local-direct") {
@@ -104,7 +109,7 @@ export async function startDesktopTunnel(
     }
     return started;
   } catch (error) {
-    request.secret = "";
+    request.relay.secret = "";
     if (request.direct) request.direct.secret = "";
     attachment.secret = "";
     await invoke("stop_tunnel_forward", { tunnelId }).catch(() => {
@@ -114,6 +119,39 @@ export async function startDesktopTunnel(
       // Preserve the native bind/connection error if best-effort cleanup fails.
     });
     throw error;
+  }
+}
+
+export async function startDirectDesktopTunnel(
+  ticket: DirectTunnelTicket,
+  expiresAt: string,
+): Promise<DesktopTunnelForwardSummary> {
+  if (!isTauri()) {
+    throw new Error(
+      "Local direct tunnel attachments are only available in the desktop app.",
+    );
+  }
+  const request = {
+    attachmentId: ticket.route.attachmentId,
+    clientId: desktopTunnelClientId(window.localStorage),
+    direct: ticket,
+    expiresAt,
+    preferredLocalPort: null,
+    relay: null,
+    tunnelId: ticket.route.tunnelId,
+  };
+  try {
+    const started = await invoke<DesktopTunnelForwardSummary>(
+      "start_tunnel_forward",
+      { request },
+    );
+    if (started.routeState !== "local-direct") {
+      throw new Error("The worker is not available on this device.");
+    }
+    return started;
+  } finally {
+    request.direct.secret = "";
+    ticket.secret = "";
   }
 }
 
