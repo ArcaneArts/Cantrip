@@ -14,6 +14,9 @@ Cantrip organizes work into GitHub-backed projects. Each project has one source 
 - Real PTY terminal tabs that run in the project folder on the worker.
 - Read-only Explorer tabs with a source or Markdown preview for supported text files.
 - Worker-streamed Browser tabs for project-related web pages.
+- Saved and feature-managed tunnels that expose explicit worker-local services
+  on Tauri desktop loopback without opening inbound worker ports. See
+  [the tunnels guide](docs/TUNNELS.md).
 - One-click Remote Desktop tabs for the project worker's screen.
 - Git history with a branch graph, refs and tags, every known worktree HEAD, per-worktree WIP state, clickable commit inspection and revision patches, staged and unstaged changes, commits, branches, pull/push operations, and GitHub issue browsing and management. See [the Git client guide](docs/GIT_CLIENT.md).
 
@@ -118,6 +121,12 @@ profile for committed state notifications and cache synchronization. HTTP
 remains authoritative for snapshots and mutations, with bounded disconnected
 recovery polling. See the [live transport contract](docs/LIVE_TRANSPORT.md) and
 [measured audit](docs/LIVE_TRANSPORT_AUDIT.md).
+
+Network forwarding uses the separate
+[unified tunnel framework](docs/TUNNELS.md): the server owns definitions and
+authorization, a bounded binary data plane carries bytes, and explicit endpoint
+placements preserve the path to future worker-to-worker adapters without
+claiming that feature is available today.
 
 ## Codex-native customization and workflows
 

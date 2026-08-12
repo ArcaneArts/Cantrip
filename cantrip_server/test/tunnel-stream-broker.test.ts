@@ -244,6 +244,7 @@ describe("generic tunnel stream broker", () => {
       kind: "close",
       code: "protocol-error",
     });
+    expect(broker.stats().terminationsByReason["protocol-error"]).toBe(1);
     broker.close();
 
     const congested = setup();

@@ -194,6 +194,11 @@ balancer, but `/metrics` must never be public. Exported series cover HTTP volume
 and latency, database probes, worker/command activity, live and tunnel
 connections, relay bytes and quota rejections, and scheduler throughput/lag.
 They contain no account, project, prompt, source, or credential labels.
+Tunnel diagnostics also include directional byte counters, opened/closed and
+rejected connection totals, and bounded termination reasons such as congestion,
+idle expiry, bandwidth limits, or endpoint disconnects. See
+[the tunnel operations guide](TUNNELS.md#status-and-observability) for the exact
+series.
 
 The following per-minute byte and active-session controls supplement the
 existing request, WebSocket, upload-concurrency, and worker-command limits:

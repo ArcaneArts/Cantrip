@@ -40,6 +40,7 @@ class FakeDesktopSocket extends EventEmitter {
 }
 
 class EchoWorkerBridge implements WorkerCommandBus {
+  readonly disconnectListeners = new Set<() => void>();
   readonly listeners = new Set<WorkerTunnelDataPlaneFrameListener>();
 
   attach() {}
@@ -53,8 +54,9 @@ class EchoWorkerBridge implements WorkerCommandBus {
   subscribeSurfaceFrames() {
     return () => undefined;
   }
-  subscribeWorkerDisconnect() {
-    return () => undefined;
+  subscribeWorkerDisconnect(_workerId: string, listener: () => void) {
+    this.disconnectListeners.add(listener);
+    return () => this.disconnectListeners.delete(listener);
   }
   subscribeTunnelDataPlaneFrames(
     _workerId: string,
@@ -216,5 +218,90 @@ describe("desktop tunnel runtime", () => {
       activeConnections: 0,
       activeRoutes: 0,
     });
+  });
+
+  it("authorizes revocation before closing another owner's active route", async () => {
+    const repository = {
+      activateDesktopTunnelAttachment: async () => true,
+      markDesktopTunnelAttachmentOffline: async () => undefined,
+      stopDesktopTunnelAttachment: async (ownerId: string) =>
+        ownerId === authorization.ownerId
+          ? {
+              projectId: authorization.projectId,
+              tunnelId: authorization.tunnelId,
+            }
+          : null,
+    } as unknown as ServerRepository;
+    const bridge = new EchoWorkerBridge();
+    const runtime = new TunnelRuntimeManager(repository, bridge, () => {});
+    const socket = new FakeDesktopSocket();
+    await runtime.attach(socket, authorization, {
+      type: "initialize",
+      clientId: authorization.clientId,
+      localHost: "127.0.0.1",
+      localPort: 45_001,
+    });
+
+    expect(await runtime.revoke("owner-2", authorization.attachmentId)).toBe(
+      false,
+    );
+    expect(runtime.stats().activeRoutes).toBe(1);
+    expect(socket.readyState).toBe(1);
+    expect(await runtime.revoke("owner-1", authorization.attachmentId)).toBe(
+      true,
+    );
+    expect(runtime.stats().activeRoutes).toBe(0);
+    expect(socket.readyState).toBe(3);
+    runtime.close();
+  });
+
+  it("unsubscribes worker disconnect handling when the desktop socket closes", async () => {
+    const repository = {
+      activateDesktopTunnelAttachment: async () => true,
+      markDesktopTunnelAttachmentOffline: async () => undefined,
+    } as unknown as ServerRepository;
+    const bridge = new EchoWorkerBridge();
+    const runtime = new TunnelRuntimeManager(repository, bridge, () => {});
+    const socket = new FakeDesktopSocket();
+    await runtime.attach(socket, authorization, {
+      type: "initialize",
+      clientId: authorization.clientId,
+      localHost: "127.0.0.1",
+      localPort: 45_001,
+    });
+    expect(bridge.disconnectListeners).toHaveLength(2);
+
+    socket.close();
+    expect(bridge.disconnectListeners).toHaveLength(0);
+    expect(runtime.stats().activeRoutes).toBe(0);
+    runtime.close();
+  });
+
+  it("cleans up the route when attachment activation fails", async () => {
+    const repository = {
+      activateDesktopTunnelAttachment: async () => {
+        throw new Error("database unavailable");
+      },
+      markDesktopTunnelAttachmentOffline: async () => undefined,
+    } as unknown as ServerRepository;
+    const bridge = new EchoWorkerBridge();
+    const runtime = new TunnelRuntimeManager(repository, bridge, () => {});
+    const socket = new FakeDesktopSocket();
+
+    await expect(
+      runtime.attach(socket, authorization, {
+        type: "initialize",
+        clientId: authorization.clientId,
+        localHost: "127.0.0.1",
+        localPort: 45_001,
+      }),
+    ).rejects.toThrow("database unavailable");
+    expect(bridge.disconnectListeners).toHaveLength(0);
+    expect(runtime.stats()).toMatchObject({
+      activeConnections: 0,
+      activeRoutes: 0,
+    });
+    expect(socket.readyState).toBe(3);
+    runtime.close();
   });
 });

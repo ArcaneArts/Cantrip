@@ -222,6 +222,12 @@ describe("public HTTP hardening", () => {
       expect(metrics.body).toContain("cantrip_http_requests_total");
       expect(metrics.body).toContain("cantrip_database_ready");
       expect(metrics.body).toContain("cantrip_workers_connected");
+      expect(metrics.body).toContain(
+        'cantrip_tunnel_bytes_total{direction="source_to_destination"}',
+      );
+      expect(metrics.body).toContain(
+        'cantrip_tunnel_terminations_total{reason="protocol-error"}',
+      );
       expect(metrics.body).toContain("cantrip_scheduler_scans_total");
       expect(metrics.body).not.toContain("operator-metrics-token");
     } finally {
