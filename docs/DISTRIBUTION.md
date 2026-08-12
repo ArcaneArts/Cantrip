@@ -9,6 +9,28 @@ Server and Worker are Node.js deployment trees. Desktop is a native Tauri
 bundle containing the frontend plus those same service trees and the Node.js
 runtime used to build it.
 
+The two browser-only surfaces are deployed separately through DigitalOcean App
+Platform using `.do/app.yaml`. Both static components watch `release` with
+automatic deploys enabled. Host-based ingress serves the marketing site at
+`cantrip.app`, the browser application at `app.cantrip.app`, and redirects the
+DigitalOcean starter hostname to the marketing site. The components build from
+the repository root so pnpm can resolve the shared workspace protocol package.
+
+Once the `release` branch exists, update the existing App Platform
+configuration with:
+
+```shell
+doctl apps spec validate .do/app.yaml
+doctl apps update 81fa8bbd-668f-4c1f-848c-7b49442af6b2 \
+  --spec .do/app.yaml --update-sources --wait
+```
+
+DigitalOcean validates the configured source branch when the specification is
+submitted, so the update is rejected until the first `pnpm release` creates
+`release`. Updating the spec then builds both components, and subsequent pushes
+to `release` trigger them automatically. Custom-domain certificates become
+active only after the DNS records requested by App Platform have propagated.
+
 ## Build matrix
 
 Run packaging on the target operating system because the Worker contains
