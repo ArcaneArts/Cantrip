@@ -2,6 +2,7 @@ import type {
   ChatSummary,
   ProjectRepositoryStats,
   ProjectSummary,
+  ProjectTokenUsage,
   ProjectWorktreeSummary,
 } from "@cantrip/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -67,6 +68,36 @@ const stats = {
   excludedFileCount: 45,
   truncated: true,
 } satisfies ProjectRepositoryStats;
+const usage = {
+  total: { inputTokens: 8_000, outputTokens: 2_500, totalTokens: 10_500 },
+  daily: [
+    {
+      date: "2026-08-11",
+      inputTokens: 8_000,
+      outputTokens: 2_500,
+      totalTokens: 10_500,
+    },
+  ],
+  providers: [
+    {
+      id: "provider-1",
+      name: "ChatGPT",
+      inputTokens: 8_000,
+      outputTokens: 2_500,
+      totalTokens: 10_500,
+    },
+  ],
+  models: [
+    {
+      id: "model-1",
+      name: "GPT 5.6 Sol",
+      inputTokens: 8_000,
+      outputTokens: 2_500,
+      totalTokens: 10_500,
+    },
+  ],
+  range: { start: "2025-08-12", end: "2026-08-11" },
+} satisfies ProjectTokenUsage;
 
 function chatSurface(status: ChatSummary["status"]): ProjectSurface {
   const chat = {
@@ -116,6 +147,8 @@ describe("project overview", () => {
         project={project}
         stats={stats}
         statsLoading={false}
+        usage={usage}
+        usageLoading={false}
         surfaces={[chatSurface("running")]}
         workerOnline
         worktrees={[worktree]}
@@ -128,6 +161,8 @@ describe("project overview", () => {
     expect(markup).toContain("12,345");
     expect(markup).toContain("321");
     expect(markup).toContain("3.5 GB");
+    expect(markup).toContain("10.5K");
+    expect(markup).toContain("Input and output tokens");
     expect(markup).toContain("Ship project overview");
     expect(markup).toContain('aria-label="Open Ship project overview"');
     expect(markup).toContain('tabindex="0"');
@@ -148,6 +183,7 @@ describe("project overview", () => {
         creatingKinds={new Set()}
         project={project}
         statsLoading
+        usageLoading
         surfaces={[]}
         workerOnline={false}
         worktrees={[worktree]}

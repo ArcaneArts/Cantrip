@@ -738,6 +738,12 @@ export const reasoningEffortSchema = z.enum([
   "xhigh",
 ]);
 
+export const tokenUsageTotalsSchema = z.object({
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  totalTokens: z.number().int().nonnegative(),
+});
+
 export const modelProviderCreateSchema = z.object({
   name: z.string().trim().min(1).max(80),
   kind: modelProviderKindSchema,
@@ -752,6 +758,11 @@ export const modelProviderSummarySchema = modelProviderCreateSchema
   .extend({
     id: z.string().min(1),
     hasApiKey: z.boolean(),
+    tokenUsage: tokenUsageTotalsSchema.default({
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+    }),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   });
@@ -792,6 +803,11 @@ export const modelProfileSummarySchema = modelProfileCreateSchema.extend({
   reasoningEffort: reasoningEffortSchema.nullable(),
   routingPolicy: z.literal("priority"),
   routes: z.array(modelRouteSummarySchema).min(1),
+  tokenUsage: tokenUsageTotalsSchema.default({
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+  }),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -1436,6 +1452,26 @@ export const projectRepositoryStatsSchema = z.object({
   lineCount: z.number().int().nonnegative(),
   excludedFileCount: z.number().int().nonnegative(),
   truncated: z.boolean(),
+});
+
+export const projectTokenUsageDaySchema = tokenUsageTotalsSchema.extend({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+});
+
+export const projectTokenUsageBreakdownSchema = tokenUsageTotalsSchema.extend({
+  id: z.string().min(1).nullable(),
+  name: z.string().min(1),
+});
+
+export const projectTokenUsageSchema = z.object({
+  total: tokenUsageTotalsSchema,
+  daily: z.array(projectTokenUsageDaySchema).max(366),
+  providers: z.array(projectTokenUsageBreakdownSchema),
+  models: z.array(projectTokenUsageBreakdownSchema),
+  range: z.object({
+    start: projectTokenUsageDaySchema.shape.date,
+    end: projectTokenUsageDaySchema.shape.date,
+  }),
 });
 
 export const chatCreateSchema = z.object({
@@ -6422,6 +6458,7 @@ export type ModelProviderKind = z.infer<typeof modelProviderKindSchema>;
 export type CodexAuthStatus = z.infer<typeof codexAuthStatusSchema>;
 export type CodexDeviceLogin = z.infer<typeof codexDeviceLoginSchema>;
 export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>;
+export type TokenUsageTotals = z.infer<typeof tokenUsageTotalsSchema>;
 export type ModelProviderCreate = z.infer<typeof modelProviderCreateSchema>;
 export type ModelProviderUpdate = z.infer<typeof modelProviderUpdateSchema>;
 export type ModelProviderSummary = z.infer<typeof modelProviderSummarySchema>;
@@ -6443,6 +6480,11 @@ export type ProjectSummary = z.infer<typeof projectSummarySchema>;
 export type ProjectRepositoryStats = z.infer<
   typeof projectRepositoryStatsSchema
 >;
+export type ProjectTokenUsageDay = z.infer<typeof projectTokenUsageDaySchema>;
+export type ProjectTokenUsageBreakdown = z.infer<
+  typeof projectTokenUsageBreakdownSchema
+>;
+export type ProjectTokenUsage = z.infer<typeof projectTokenUsageSchema>;
 export type ProjectWorkspaceCreate = z.infer<
   typeof projectWorkspaceCreateSchema
 >;

@@ -38,6 +38,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { formatTokenCount } from "@/components/projects/token-usage-analytics";
 import {
   Dialog,
   DialogClose,
@@ -188,6 +189,9 @@ function ProviderRow({
       <div className="flex min-w-0 items-center gap-2.5">
         <Server className="size-4 shrink-0 text-muted-foreground" />
         <p className="truncate text-sm font-medium">{provider.name}</p>
+        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+          {formatTokenCount(provider.tokenUsage.totalTokens)} tokens
+        </span>
         <Badge className="sm:hidden" variant="secondary">
           {provider.kind}
         </Badge>
@@ -830,6 +834,10 @@ export function SettingsPage({
                           <p className="truncate text-sm font-medium">
                             {model.name}
                           </p>
+                          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                            {formatTokenCount(model.tokenUsage.totalTokens)}{" "}
+                            tokens
+                          </span>
                           {settings.data?.preferences.defaultModelId ===
                           model.id ? (
                             <Badge className="sm:hidden" variant="secondary">

@@ -1,11 +1,13 @@
 import type {
   ProjectRepositoryStats,
   ProjectSummary,
+  ProjectTokenUsage,
   ProjectWorktreeSummary,
 } from "@cantrip/protocol";
 import {
   ArrowRight,
   ArrowUpRight,
+  Coins,
   Files,
   FolderGit2,
   GitBranch,
@@ -16,7 +18,7 @@ import {
   Plus,
   Rows3,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +27,9 @@ import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon"
 import type { ProjectSurfaceCreateKind } from "@/components/workspace/project-surface-create-menu";
 import type { ProjectSurface } from "@/lib/project-surface";
 import { cn } from "@/lib/utils";
+
+import { ProjectTokenUsageDialog } from "./project-token-usage-dialog";
+import { formatTokenCount } from "./token-usage-analytics";
 
 const countFormat = new Intl.NumberFormat();
 const byteUnits = ["B", "KB", "MB", "GB", "TB", "PB"] as const;
@@ -120,21 +125,34 @@ function MetricCard({
   label,
   value,
   detail,
+  onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   value: React.ReactNode;
   detail: string;
+  onClick?: () => void;
 }) {
-  return (
-    <div className="rounded-xl border bg-card/70 p-4 shadow-sm">
+  const content = (
+    <>
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         {icon}
         {label}
       </div>
       <div className="mt-3 text-2xl font-semibold tracking-tight">{value}</div>
       <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
-    </div>
+    </>
+  );
+  return onClick ? (
+    <button
+      type="button"
+      className="rounded-xl border bg-card/70 p-4 text-left shadow-sm transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      onClick={onClick}
+    >
+      {content}
+    </button>
+  ) : (
+    <div className="rounded-xl border bg-card/70 p-4 shadow-sm">{content}</div>
   );
 }
 
@@ -147,6 +165,9 @@ export function ProjectOverview({
   statsError,
   statsLoading,
   surfaces,
+  usage,
+  usageError,
+  usageLoading,
   workerOnline,
   worktrees,
 }: {
@@ -158,9 +179,13 @@ export function ProjectOverview({
   statsError?: string | null;
   statsLoading: boolean;
   surfaces: readonly ProjectSurface[];
+  usage?: ProjectTokenUsage;
+  usageError?: string | null;
+  usageLoading: boolean;
   workerOnline: boolean;
   worktrees: readonly ProjectWorktreeSummary[];
 }) {
+  const [usageOpen, setUsageOpen] = useState(false);
   const orderedSurfaces = useMemo(
     () =>
       [...surfaces].sort((left, right) =>
@@ -255,7 +280,7 @@ export function ProjectOverview({
           </div>
         </section>
 
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
           <MetricCard
             icon={<Rows3 className="size-3.5" />}
             label="Open tabs"
@@ -287,6 +312,19 @@ export function ProjectOverview({
               stats ? formatByteCount(stats.trackedByteCount) : loadingValue
             }
             detail="Tracked files on this worker"
+          />
+          <MetricCard
+            icon={<Coins className="size-3.5" />}
+            label="Token usage"
+            value={
+              usage
+                ? formatTokenCount(usage.total.totalTokens)
+                : usageLoading
+                  ? loadingValue
+                  : "—"
+            }
+            detail={usageError ?? "Input and output tokens"}
+            onClick={usage ? () => setUsageOpen(true) : undefined}
           />
         </section>
 
@@ -454,6 +492,14 @@ export function ProjectOverview({
           </aside>
         </section>
       </main>
+      {usage ? (
+        <ProjectTokenUsageDialog
+          open={usageOpen}
+          onOpenChange={setUsageOpen}
+          projectName={project.name}
+          usage={usage}
+        />
+      ) : null}
     </div>
   );
 }

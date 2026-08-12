@@ -67,6 +67,7 @@ import type {
   RemoteSurfaceUpdate,
   ProjectCloneResult,
   ProjectSummary,
+  ProjectTokenUsage,
   ProjectWorkspaceCreate,
   ProjectWorkspaceSummary,
   ProjectWorkspaceUpdate,
@@ -82,6 +83,7 @@ import type {
   TerminalSummary,
   TerminalUpdate,
   ThemePreference,
+  TokenUsageTotals,
   UserSettings,
   UserSettingsUpdate,
   UserSummary,
@@ -99,6 +101,7 @@ import {
   desc,
   eq,
   gt,
+  gte,
   inArray,
   isNull,
   lte,
@@ -292,6 +295,7 @@ export interface ModelRuntime {
   routeId: string;
   model: {
     id: string;
+    profileName: string;
     routeId: string;
     name: string;
     reasoningEffort: ModelProfileSummary["reasoningEffort"];
@@ -302,6 +306,40 @@ export interface ModelRuntime {
     kind: ModelProviderSummary["kind"];
     baseUrl: string;
     apiKey: string | null;
+  };
+}
+
+export interface TokenUsageRecordInput {
+  sourceKey: string;
+  projectId: string | null;
+  chatId: string | null;
+  modelRouteId: string;
+  modelName: string;
+  providerName: string;
+  providerModelName: string;
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    cachedInputTokens?: number;
+    reasoningOutputTokens?: number;
+  };
+}
+
+const ZERO_TOKEN_USAGE: TokenUsageTotals = {
+  inputTokens: 0,
+  outputTokens: 0,
+  totalTokens: 0,
+};
+
+function tokenUsageTotals(
+  inputTokens: number,
+  outputTokens: number,
+): TokenUsageTotals {
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: inputTokens + outputTokens,
   };
 }
 
@@ -877,6 +915,7 @@ function toRemoteDesktopSummary(
 
 function toProviderSummary(
   provider: typeof schema.modelProviders.$inferSelect,
+  tokenUsage: TokenUsageTotals = ZERO_TOKEN_USAGE,
 ): ModelProviderSummary {
   return {
     id: provider.id,
@@ -884,6 +923,7 @@ function toProviderSummary(
     kind: provider.kind as ModelProviderSummary["kind"],
     baseUrl: provider.baseUrl,
     hasApiKey: provider.apiKey !== null,
+    tokenUsage,
     createdAt: toISOString(provider.createdAt),
     updatedAt: toISOString(provider.updatedAt),
   };
@@ -908,6 +948,7 @@ function toModelRouteSummary(
 function toModelSummary(
   model: typeof schema.modelProfiles.$inferSelect,
   routes: ModelRouteSummary[],
+  tokenUsage: TokenUsageTotals = ZERO_TOKEN_USAGE,
 ): ModelProfileSummary {
   return {
     id: model.id,
@@ -916,6 +957,7 @@ function toModelSummary(
       model.reasoningEffort as ModelProfileSummary["reasoningEffort"],
     routingPolicy: "priority",
     routes,
+    tokenUsage,
     createdAt: toISOString(model.createdAt),
     updatedAt: toISOString(model.updatedAt),
   };
@@ -1276,41 +1318,91 @@ export class ServerRepository {
   }
 
   async getSettings(ownerId: string): Promise<SettingsBundle> {
-    const [settingsRows, providerRows, modelRows, routeRows] =
-      await Promise.all([
-        this.database
-          .select()
-          .from(schema.userSettings)
-          .where(eq(schema.userSettings.userId, ownerId))
-          .limit(1),
-        this.database
-          .select()
-          .from(schema.modelProviders)
-          .where(eq(schema.modelProviders.ownerId, ownerId))
-          .orderBy(asc(schema.modelProviders.name)),
-        this.database
-          .select()
-          .from(schema.modelProfiles)
-          .where(eq(schema.modelProfiles.ownerId, ownerId))
-          .orderBy(asc(schema.modelProfiles.name)),
-        this.database
-          .select({
-            route: schema.modelRoutes,
-            providerName: schema.modelProviders.name,
-          })
-          .from(schema.modelRoutes)
-          .innerJoin(
-            schema.modelProfiles,
-            eq(schema.modelProfiles.id, schema.modelRoutes.modelId),
-          )
-          .innerJoin(
-            schema.modelProviders,
-            eq(schema.modelProviders.id, schema.modelRoutes.providerId),
-          )
-          .where(eq(schema.modelProfiles.ownerId, ownerId))
-          .orderBy(asc(schema.modelRoutes.position)),
-      ]);
+    const [
+      settingsRows,
+      providerRows,
+      modelRows,
+      routeRows,
+      providerUsageRows,
+      modelUsageRows,
+    ] = await Promise.all([
+      this.database
+        .select()
+        .from(schema.userSettings)
+        .where(eq(schema.userSettings.userId, ownerId))
+        .limit(1),
+      this.database
+        .select()
+        .from(schema.modelProviders)
+        .where(eq(schema.modelProviders.ownerId, ownerId))
+        .orderBy(asc(schema.modelProviders.name)),
+      this.database
+        .select()
+        .from(schema.modelProfiles)
+        .where(eq(schema.modelProfiles.ownerId, ownerId))
+        .orderBy(asc(schema.modelProfiles.name)),
+      this.database
+        .select({
+          route: schema.modelRoutes,
+          providerName: schema.modelProviders.name,
+        })
+        .from(schema.modelRoutes)
+        .innerJoin(
+          schema.modelProfiles,
+          eq(schema.modelProfiles.id, schema.modelRoutes.modelId),
+        )
+        .innerJoin(
+          schema.modelProviders,
+          eq(schema.modelProviders.id, schema.modelRoutes.providerId),
+        )
+        .where(eq(schema.modelProfiles.ownerId, ownerId))
+        .orderBy(asc(schema.modelRoutes.position)),
+      this.database
+        .select({
+          id: schema.tokenUsageRecords.providerId,
+          inputTokens:
+            sql<number>`coalesce(sum(${schema.tokenUsageRecords.inputTokens}), 0)`.mapWith(
+              Number,
+            ),
+          outputTokens:
+            sql<number>`coalesce(sum(${schema.tokenUsageRecords.outputTokens}), 0)`.mapWith(
+              Number,
+            ),
+        })
+        .from(schema.tokenUsageRecords)
+        .where(eq(schema.tokenUsageRecords.ownerId, ownerId))
+        .groupBy(schema.tokenUsageRecords.providerId),
+      this.database
+        .select({
+          id: schema.tokenUsageRecords.modelId,
+          inputTokens:
+            sql<number>`coalesce(sum(${schema.tokenUsageRecords.inputTokens}), 0)`.mapWith(
+              Number,
+            ),
+          outputTokens:
+            sql<number>`coalesce(sum(${schema.tokenUsageRecords.outputTokens}), 0)`.mapWith(
+              Number,
+            ),
+        })
+        .from(schema.tokenUsageRecords)
+        .where(eq(schema.tokenUsageRecords.ownerId, ownerId))
+        .groupBy(schema.tokenUsageRecords.modelId),
+    ]);
     const settings = firstOrThrow(settingsRows, "loading user settings");
+    const providerUsage = new Map(
+      providerUsageRows.flatMap((row) =>
+        row.id
+          ? [[row.id, tokenUsageTotals(row.inputTokens, row.outputTokens)]]
+          : [],
+      ),
+    );
+    const modelUsage = new Map(
+      modelUsageRows.flatMap((row) =>
+        row.id
+          ? [[row.id, tokenUsageTotals(row.inputTokens, row.outputTokens)]]
+          : [],
+      ),
+    );
     return {
       preferences: {
         theme: settings.theme as ThemePreference,
@@ -1324,7 +1416,9 @@ export class ServerRepository {
           settings.desktopStreamQuality as UserSettings["desktopStreamQuality"],
         defaultModelId: settings.defaultModelId,
       },
-      providers: providerRows.map(toProviderSummary),
+      providers: providerRows.map((provider) =>
+        toProviderSummary(provider, providerUsage.get(provider.id)),
+      ),
       models: modelRows.map((model) =>
         toModelSummary(
           model,
@@ -1333,8 +1427,235 @@ export class ServerRepository {
             .map(({ route, providerName }) =>
               toModelRouteSummary(route, providerName),
             ),
+          modelUsage.get(model.id),
         ),
       ),
+    };
+  }
+
+  async recordTokenUsage(
+    ownerId: string,
+    input: TokenUsageRecordInput,
+  ): Promise<void> {
+    const routeRows = await this.database
+      .select({
+        modelId: schema.modelProfiles.id,
+        modelName: schema.modelProfiles.name,
+        modelRouteId: schema.modelRoutes.id,
+        providerId: schema.modelProviders.id,
+        providerName: schema.modelProviders.name,
+        providerModelName: schema.modelRoutes.modelName,
+      })
+      .from(schema.modelRoutes)
+      .innerJoin(
+        schema.modelProfiles,
+        and(
+          eq(schema.modelProfiles.id, schema.modelRoutes.modelId),
+          eq(schema.modelProfiles.ownerId, ownerId),
+        ),
+      )
+      .innerJoin(
+        schema.modelProviders,
+        and(
+          eq(schema.modelProviders.id, schema.modelRoutes.providerId),
+          eq(schema.modelProviders.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.modelRoutes.id, input.modelRouteId))
+      .limit(1);
+    const route = routeRows[0];
+    const inputTokens = Math.max(0, Math.round(input.usage.inputTokens));
+    const reportedOutputTokens = Math.max(
+      0,
+      Math.round(input.usage.outputTokens),
+    );
+    const reasoningOutputTokens = Math.max(
+      0,
+      Math.round(input.usage.reasoningOutputTokens ?? 0),
+    );
+    const totalTokens = Math.max(
+      inputTokens + reportedOutputTokens + reasoningOutputTokens,
+      Math.round(input.usage.totalTokens),
+    );
+    const outputTokens = Math.max(
+      reportedOutputTokens + reasoningOutputTokens,
+      totalTokens - inputTokens,
+    );
+    const updatedAt = new Date();
+    await this.database
+      .insert(schema.tokenUsageRecords)
+      .values({
+        id: randomUUID(),
+        ownerId,
+        projectId: input.projectId,
+        chatId: input.chatId,
+        sourceKey: input.sourceKey,
+        modelId: route?.modelId ?? null,
+        modelRouteId: route?.modelRouteId ?? null,
+        providerId: route?.providerId ?? null,
+        modelName: route?.modelName ?? input.modelName,
+        providerName: route?.providerName ?? input.providerName,
+        providerModelName: route?.providerModelName ?? input.providerModelName,
+        inputTokens,
+        outputTokens,
+        cachedInputTokens: Math.max(
+          0,
+          Math.round(input.usage.cachedInputTokens ?? 0),
+        ),
+        reasoningOutputTokens,
+        updatedAt,
+      })
+      .onConflictDoUpdate({
+        target: [
+          schema.tokenUsageRecords.ownerId,
+          schema.tokenUsageRecords.sourceKey,
+        ],
+        set: {
+          projectId: input.projectId,
+          chatId: input.chatId,
+          modelId: route?.modelId ?? null,
+          modelRouteId: route?.modelRouteId ?? null,
+          providerId: route?.providerId ?? null,
+          modelName: route?.modelName ?? input.modelName,
+          providerName: route?.providerName ?? input.providerName,
+          providerModelName:
+            route?.providerModelName ?? input.providerModelName,
+          inputTokens,
+          outputTokens,
+          cachedInputTokens: Math.max(
+            0,
+            Math.round(input.usage.cachedInputTokens ?? 0),
+          ),
+          reasoningOutputTokens,
+          updatedAt,
+        },
+      });
+  }
+
+  async getProjectTokenUsage(
+    ownerId: string,
+    projectId: string,
+  ): Promise<ProjectTokenUsage | null> {
+    const projects = await this.database
+      .select({ id: schema.projects.id })
+      .from(schema.projects)
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    if (!projects[0]) return null;
+
+    const now = new Date();
+    const rangeStart = new Date(now);
+    rangeStart.setUTCHours(0, 0, 0, 0);
+    rangeStart.setUTCDate(rangeStart.getUTCDate() - 364);
+    const rangeEnd = new Date(now);
+    rangeEnd.setUTCHours(0, 0, 0, 0);
+    const filter = and(
+      eq(schema.tokenUsageRecords.ownerId, ownerId),
+      eq(schema.tokenUsageRecords.projectId, projectId),
+    );
+    const sumInput =
+      sql<number>`coalesce(sum(${schema.tokenUsageRecords.inputTokens}), 0)`.mapWith(
+        Number,
+      );
+    const sumOutput =
+      sql<number>`coalesce(sum(${schema.tokenUsageRecords.outputTokens}), 0)`.mapWith(
+        Number,
+      );
+    const day = sql<string>`to_char(${schema.tokenUsageRecords.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`;
+    const [totalRows, dailyRows, providerRows, modelRows] = await Promise.all([
+      this.database
+        .select({ inputTokens: sumInput, outputTokens: sumOutput })
+        .from(schema.tokenUsageRecords)
+        .where(filter),
+      this.database
+        .select({
+          date: day,
+          inputTokens: sumInput,
+          outputTokens: sumOutput,
+        })
+        .from(schema.tokenUsageRecords)
+        .where(and(filter, gte(schema.tokenUsageRecords.createdAt, rangeStart)))
+        .groupBy(day)
+        .orderBy(day),
+      this.database
+        .select({
+          id: schema.tokenUsageRecords.providerId,
+          name: schema.tokenUsageRecords.providerName,
+          inputTokens: sumInput,
+          outputTokens: sumOutput,
+        })
+        .from(schema.tokenUsageRecords)
+        .where(filter)
+        .groupBy(
+          schema.tokenUsageRecords.providerId,
+          schema.tokenUsageRecords.providerName,
+        ),
+      this.database
+        .select({
+          id: schema.tokenUsageRecords.modelId,
+          name: schema.tokenUsageRecords.modelName,
+          inputTokens: sumInput,
+          outputTokens: sumOutput,
+        })
+        .from(schema.tokenUsageRecords)
+        .where(filter)
+        .groupBy(
+          schema.tokenUsageRecords.modelId,
+          schema.tokenUsageRecords.modelName,
+        ),
+    ]);
+    const mergeBreakdowns = (
+      rows: Array<{
+        id: string | null;
+        name: string;
+        inputTokens: number;
+        outputTokens: number;
+      }>,
+    ) => {
+      const merged = new Map<
+        string,
+        {
+          id: string | null;
+          name: string;
+          inputTokens: number;
+          outputTokens: number;
+        }
+      >();
+      for (const row of rows) {
+        const key = row.id ?? `deleted:${row.name}`;
+        const existing = merged.get(key);
+        merged.set(key, {
+          id: row.id,
+          name: row.name,
+          inputTokens: (existing?.inputTokens ?? 0) + row.inputTokens,
+          outputTokens: (existing?.outputTokens ?? 0) + row.outputTokens,
+        });
+      }
+      return [...merged.values()]
+        .map((row) => ({
+          ...row,
+          totalTokens: row.inputTokens + row.outputTokens,
+        }))
+        .sort((left, right) => right.totalTokens - left.totalTokens);
+    };
+    const totalRow = totalRows[0] ?? ZERO_TOKEN_USAGE;
+    return {
+      total: tokenUsageTotals(totalRow.inputTokens, totalRow.outputTokens),
+      daily: dailyRows.map((row) => ({
+        date: row.date,
+        ...tokenUsageTotals(row.inputTokens, row.outputTokens),
+      })),
+      providers: mergeBreakdowns(providerRows),
+      models: mergeBreakdowns(modelRows),
+      range: {
+        start: rangeStart.toISOString().slice(0, 10),
+        end: rangeEnd.toISOString().slice(0, 10),
+      },
     };
   }
 
@@ -1697,6 +2018,7 @@ export class ServerRepository {
       routeId: row.route.id,
       model: {
         id: row.model.id,
+        profileName: row.model.name,
         routeId: row.route.id,
         name: row.route.modelName,
         reasoningEffort: (row.route.reasoningEffort ??
