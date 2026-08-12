@@ -14,6 +14,10 @@ import type {
   AgentInteractionRequestQuery,
   AgentInteractionResolutionCreate,
   AgentInteractionResponse,
+  AccountSessionSummary,
+  AuditEvent,
+  AuditEventList,
+  AuditEventQuery,
   BrowserCreate,
   BrowserSummary,
   BrowserUpdate,
@@ -119,6 +123,7 @@ import {
   gte,
   inArray,
   isNull,
+  lt,
   lte,
   ne,
   notInArray,
@@ -164,6 +169,7 @@ type GitOperationRow = typeof schema.gitOperations.$inferSelect;
 type ProjectWorkspaceRow = typeof schema.projectWorkspaces.$inferSelect;
 type UserRow = typeof schema.users.$inferSelect;
 type UserSessionRow = typeof schema.userSessions.$inferSelect;
+type AuditEventRow = typeof schema.auditEvents.$inferSelect;
 type WorkerCredentialRow = typeof schema.workerCredentials.$inferSelect;
 type TunnelRow = typeof schema.tunnels.$inferSelect;
 type TunnelAttachmentRow = typeof schema.tunnelAttachments.$inferSelect;
@@ -181,6 +187,20 @@ export interface ActiveUserSession {
   user: UserSummary;
 }
 
+export interface AuditEventCreate {
+  action: string;
+  actorSessionId: string | null;
+  actorUserId: string | null;
+  ipAddressHash: string | null;
+  metadata?: Record<string, string>;
+  ownerId: string | null;
+  requestId: string | null;
+  resourceId: string | null;
+  resourceType: string;
+  result: AuditEvent["result"];
+  userAgentHash: string | null;
+}
+
 export interface ActiveWorkerCredential {
   id: string;
   ownerId: string;
@@ -190,6 +210,7 @@ export interface ActiveWorkerCredential {
 
 export interface WorkerEnrollmentProvision {
   credential: WorkerCredentialSummary;
+  ownerId: string;
   worker: WorkerSummary;
 }
 
@@ -449,6 +470,26 @@ function toUserSummary(user: UserRow): UserSummary {
     displayName: user.displayName,
     email: user.email,
     role: user.role as UserSummary["role"],
+  };
+}
+
+function toAuditEvent(event: AuditEventRow): AuditEvent {
+  return {
+    id: event.id,
+    ownerId: event.ownerId,
+    actor: {
+      userId: event.actorUserId,
+      sessionId: event.actorSessionId,
+    },
+    action: event.action,
+    result: event.result as AuditEvent["result"],
+    resource: {
+      type: event.resourceType,
+      id: event.resourceId,
+    },
+    requestId: event.requestId,
+    metadata: event.metadata,
+    occurredAt: toISOString(event.occurredAt),
   };
 }
 
@@ -1690,6 +1731,63 @@ export class ServerRepository {
     return rows.length;
   }
 
+  async listUserSessions(
+    userId: string,
+    currentSessionId: string | null,
+  ): Promise<AccountSessionSummary[]> {
+    const rows = await this.database
+      .select()
+      .from(schema.userSessions)
+      .where(
+        and(
+          eq(schema.userSessions.userId, userId),
+          isNull(schema.userSessions.revokedAt),
+          gt(schema.userSessions.expiresAt, new Date()),
+        ),
+      )
+      .orderBy(desc(schema.userSessions.lastSeenAt))
+      .limit(1_000);
+    return rows.map((session) => ({
+      id: session.id,
+      authMethod: session.authMethod as AccountSessionSummary["authMethod"],
+      label: session.label,
+      current: session.id === currentSessionId,
+      createdAt: toISOString(session.createdAt),
+      lastSeenAt: toISOString(session.lastSeenAt),
+      expiresAt: toISOString(session.expiresAt),
+    }));
+  }
+
+  async appendAuditEvent(input: AuditEventCreate): Promise<AuditEvent> {
+    const rows = await this.database
+      .insert(schema.auditEvents)
+      .values(input)
+      .returning();
+    return toAuditEvent(firstOrThrow(rows, "appending an audit event"));
+  }
+
+  async listAuditEvents(
+    query: AuditEventQuery,
+    ownerId?: string,
+  ): Promise<AuditEventList> {
+    const filters = [
+      ...(ownerId ? [eq(schema.auditEvents.ownerId, ownerId)] : []),
+      ...(query.before ? [lt(schema.auditEvents.id, query.before)] : []),
+    ];
+    const rows = await this.database
+      .select()
+      .from(schema.auditEvents)
+      .where(filters.length > 0 ? and(...filters) : undefined)
+      .orderBy(desc(schema.auditEvents.id))
+      .limit(query.limit + 1);
+    const hasMore = rows.length > query.limit;
+    const items = rows.slice(0, query.limit).map(toAuditEvent);
+    return {
+      items,
+      nextCursor: hasMore ? (items.at(-1)?.id ?? null) : null,
+    };
+  }
+
   async ensureDefaultModelConfiguration(
     ownerId: string,
     modelName: string,
@@ -2741,6 +2839,7 @@ export class ServerRepository {
         })
         .returning();
       return {
+        ownerId: code.ownerId,
         worker: toWorkerSummary(firstOrThrow(workerRows, "enrolling a worker")),
         credential: toWorkerCredentialSummary(
           firstOrThrow(credentialRows, "creating a worker credential"),

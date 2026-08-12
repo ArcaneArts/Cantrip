@@ -6,6 +6,7 @@ import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import {
   accountRegistrationSchema,
+  accountSessionListSchema,
   agentWorktreeToolCallSchema,
   agentWorktreeToolResultSchema,
   agentThreadSyncSchema,
@@ -20,6 +21,8 @@ import {
   authLogoutAllResultSchema,
   authSessionSchema,
   authSessionStateSchema,
+  auditEventListSchema,
+  auditEventQuerySchema,
   browserCreateSchema,
   browserListSchema,
   browserServiceListSchema,
@@ -560,6 +563,59 @@ function workerRequestFailureStatus(error: unknown): 429 | 502 | 503 {
 function workerConflictFailureStatus(error: unknown): 409 | 429 | 503 {
   if (error instanceof RelayLimitError) return 429;
   return error instanceof WorkerUnavailableError ? 503 : 409;
+}
+
+function mutationAuditDescriptor(
+  method: string,
+  route: string,
+): { action: string; resourceType: string } | null {
+  if (method === "GET" && route === "/api/projects/:projectId/chats") {
+    return { action: "project.accessed", resourceType: "project" };
+  }
+  if (method === "POST" && route === "/api/workers/enrollment-codes") {
+    return { action: "worker.pairing-code-created", resourceType: "worker" };
+  }
+  if (route.startsWith("/api/workers/") && method !== "GET") {
+    return { action: "worker.configuration-changed", resourceType: "worker" };
+  }
+  if (
+    (route.startsWith("/api/settings/providers") ||
+      route.includes("/mcp-servers")) &&
+    method !== "GET"
+  ) {
+    return { action: "secret.configuration-changed", resourceType: "secret" };
+  }
+  if (route.includes("/git/") && method !== "GET") {
+    return { action: "git.operation-requested", resourceType: "project" };
+  }
+  if (route.includes("/replica") && method !== "GET") {
+    return {
+      action: "project-replica.configuration-changed",
+      resourceType: "project-replica",
+    };
+  }
+  if (route.startsWith("/api/projects") && method !== "GET") {
+    return { action: "project.configuration-changed", resourceType: "project" };
+  }
+  return null;
+}
+
+function auditResourceId(request: FastifyRequest): string | null {
+  if (!request.params || typeof request.params !== "object") return null;
+  const params = request.params as Record<string, unknown>;
+  for (const key of [
+    "credentialId",
+    "workerId",
+    "providerId",
+    "serverId",
+    "projectReplicaId",
+    "replicaId",
+    "projectId",
+  ]) {
+    const value = params[key];
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return null;
 }
 
 type ChatLiveResource = Extract<
@@ -1825,6 +1881,76 @@ export async function buildApp({
       return;
     }
     ownerContext.run(request.principal.user.id, done);
+  });
+
+  const appendAudit = async (
+    request: FastifyRequest,
+    input: {
+      action: string;
+      actorSessionId?: string | null;
+      actorUserId?: string | null;
+      metadata?: Record<string, string>;
+      ownerId?: string | null;
+      resourceId?: string | null;
+      resourceType: string;
+      result: "denied" | "failed" | "succeeded";
+    },
+  ): Promise<void> => {
+    const principal = request.principal;
+    const authenticated = principal.state === "authenticated";
+    try {
+      await repository.appendAuditEvent({
+        action: input.action,
+        actorSessionId:
+          input.actorSessionId ?? (authenticated ? principal.sessionId : null),
+        actorUserId:
+          input.actorUserId ?? (authenticated ? principal.user.id : null),
+        ipAddressHash: request.ip ? hashSecret(request.ip) : null,
+        metadata: input.metadata,
+        ownerId:
+          input.ownerId === undefined
+            ? authenticated
+              ? principal.user.id
+              : null
+            : input.ownerId,
+        requestId: request.id,
+        resourceId: input.resourceId ?? null,
+        resourceType: input.resourceType,
+        result: input.result,
+        userAgentHash:
+          typeof request.headers["user-agent"] === "string"
+            ? hashSecret(request.headers["user-agent"])
+            : null,
+      });
+    } catch (error) {
+      request.log.error(
+        {
+          action: input.action,
+          err: error,
+          event: "security.audit-write-failed",
+          requestId: request.id,
+        },
+        "Could not append security audit event",
+      );
+    }
+  };
+
+  app.addHook("onResponse", async (request, reply) => {
+    if (request.principal.state !== "authenticated") return;
+    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
+    const descriptor = mutationAuditDescriptor(request.method, route);
+    if (!descriptor) return;
+    await appendAudit(request, {
+      ...descriptor,
+      metadata: { method: request.method, route },
+      resourceId: auditResourceId(request),
+      result:
+        reply.statusCode < 400
+          ? "succeeded"
+          : reply.statusCode === 401 || reply.statusCode === 403
+            ? "denied"
+            : "failed",
+    });
   });
 
   const publicRoute = (route: string): boolean =>
@@ -3845,12 +3971,28 @@ export async function buildApp({
       normalizedEmail,
       reply,
     );
-    if (limited) return limited;
+    if (limited) {
+      await appendAudit(request, {
+        action: "auth.registration-rate-limited",
+        metadata: { identityHash: hashSecret(normalizedEmail) },
+        ownerId: null,
+        resourceType: "account",
+        result: "denied",
+      });
+      return limited;
+    }
 
     return withRegistrationLock(async () => {
       const accountCount = await repository.countAccountUsers();
       const firstAccount = accountCount === 0;
       if (!firstAccount && !config.publicRegistration) {
+        await appendAudit(request, {
+          action: "auth.registration-denied",
+          metadata: { reason: "registration-disabled" },
+          ownerId: null,
+          resourceType: "account",
+          result: "denied",
+        });
         return reply.code(403).send({ error: "Registration is disabled." });
       }
       if (!config.publicRegistration && firstAccount) {
@@ -3860,6 +4002,13 @@ export async function buildApp({
           typeof candidate !== "string" ||
           !safeSecretMatch(candidate, config.adminBootstrapToken)
         ) {
+          await appendAudit(request, {
+            action: "auth.registration-denied",
+            metadata: { reason: "invalid-bootstrap-token" },
+            ownerId: null,
+            resourceType: "account",
+            result: "denied",
+          });
           return reply.code(403).send({
             error: "A valid first-admin bootstrap token is required.",
           });
@@ -3879,6 +4028,15 @@ export async function buildApp({
           config.agentModel,
           config.ollamaBaseUrl,
         );
+        await appendAudit(request, {
+          action: "auth.registration-succeeded",
+          actorUserId: user.id,
+          metadata: { role: user.role },
+          ownerId: user.id,
+          resourceId: user.id,
+          resourceType: "account",
+          result: "succeeded",
+        });
         return reply
           .header("cache-control", "no-store")
           .code(201)
@@ -3893,6 +4051,13 @@ export async function buildApp({
             ),
           );
       } catch {
+        await appendAudit(request, {
+          action: "auth.registration-failed",
+          metadata: { identityHash: hashSecret(normalizedEmail) },
+          ownerId: null,
+          resourceType: "account",
+          result: "failed",
+        });
         return reply.code(409).send({ error: "Account could not be created." });
       }
     });
@@ -3912,7 +4077,16 @@ export async function buildApp({
       ? normalizeAccountEmail(input.data.email)
       : "single-user";
     const limited = consumeAuthAttempt(request, "login", identity, reply);
-    if (limited) return limited;
+    if (limited) {
+      await appendAudit(request, {
+        action: "auth.login-rate-limited",
+        metadata: { identityHash: hashSecret(identity) },
+        ownerId: null,
+        resourceType: "session",
+        result: "denied",
+      });
+      return limited;
+    }
 
     let user = localUser;
     let passwordHash = config.passwordHash ?? DUMMY_PASSWORD_HASH;
@@ -3927,6 +4101,13 @@ export async function buildApp({
     }
     const valid = await verifyPassword(passwordHash, input.data.password);
     if (!valid || !user) {
+      await appendAudit(request, {
+        action: "auth.login-failed",
+        metadata: { identityHash: hashSecret(identity) },
+        ownerId: user?.id ?? null,
+        resourceType: "session",
+        result: "denied",
+      });
       return reply.code(401).send({ error: "Email or password is incorrect." });
     }
     await repository.ensureAccountConfiguration(
@@ -3934,6 +4115,15 @@ export async function buildApp({
       config.agentModel,
       config.ollamaBaseUrl,
     );
+    await appendAudit(request, {
+      action: "auth.login-succeeded",
+      actorUserId: user.id,
+      metadata: { authMethod },
+      ownerId: user.id,
+      resourceId: user.id,
+      resourceType: "session",
+      result: "succeeded",
+    });
     return reply
       .header("cache-control", "no-store")
       .send(
@@ -3973,6 +4163,12 @@ export async function buildApp({
       "Session was revoked",
     );
     sessionService.clear(reply);
+    await appendAudit(request, {
+      action: "auth.session-revoked",
+      resourceId: principal.sessionId,
+      resourceType: "session",
+      result: "succeeded",
+    });
     return reply.code(204).send();
   });
 
@@ -3989,7 +4185,51 @@ export async function buildApp({
       "Account sessions were revoked",
     );
     sessionService.clear(reply);
+    await appendAudit(request, {
+      action: "auth.all-sessions-revoked",
+      metadata: { revokedSessions: String(revokedSessions) },
+      resourceId: principal.user.id,
+      resourceType: "account",
+      result: "succeeded",
+    });
     return reply.send(authLogoutAllResultSchema.parse({ revokedSessions }));
+  });
+
+  app.get("/api/account/sessions", async (request, reply) => {
+    const principal = authenticatedPrincipal(request);
+    const sessions = await repository.listUserSessions(
+      principal.user.id,
+      principal.sessionId,
+    );
+    return reply.send(accountSessionListSchema.parse(sessions));
+  });
+
+  app.get("/api/account/audit-events", async (request, reply) => {
+    const query = auditEventQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.code(400).send(invalidBody(query.error.issues));
+    }
+    const events = await repository.listAuditEvents(
+      query.data,
+      principalOwnerId(request),
+    );
+    return reply.send(auditEventListSchema.parse(events));
+  });
+
+  app.get("/api/admin/audit-events", async (request, reply) => {
+    const principal = authenticatedPrincipal(request);
+    if (principal.user.role !== "owner" && principal.user.role !== "admin") {
+      return reply
+        .code(403)
+        .send({ error: "Administrator access is required." });
+    }
+    const query = auditEventQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.code(400).send(invalidBody(query.error.issues));
+    }
+    return reply.send(
+      auditEventListSchema.parse(await repository.listAuditEvents(query.data)),
+    );
   });
 
   app.get("/api/bootstrap", async (request, reply) => {
@@ -14750,6 +14990,17 @@ export async function buildApp({
           heartbeat: input.data.heartbeat,
           scopes: DEFAULT_WORKER_CREDENTIAL_SCOPES,
         });
+        await appendAudit(request, {
+          action: "worker.paired",
+          metadata: {
+            architecture: provision.worker.architecture,
+            platform: provision.worker.platform,
+          },
+          ownerId: provision.ownerId,
+          resourceId: provision.worker.workerId,
+          resourceType: "worker",
+          result: "succeeded",
+        });
         publishWorkerPresence(provision.worker);
         scheduleWorkerOfflineInvalidation(provision.worker.workerId);
         return reply.code(201).send(
@@ -14761,6 +15012,14 @@ export async function buildApp({
         );
       } catch (error) {
         if (error instanceof WorkerEnrollmentError) {
+          await appendAudit(request, {
+            action: "worker.pairing-failed",
+            metadata: { reason: "invalid-or-conflicting-enrollment" },
+            ownerId: null,
+            resourceId: input.data.heartbeat.workerId,
+            resourceType: "worker",
+            result: "denied",
+          });
           return reply.code(409).send({ error: error.message });
         }
         throw error;

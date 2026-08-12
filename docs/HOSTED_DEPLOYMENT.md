@@ -179,14 +179,22 @@ relay bandwidth, scheduler lag, and TURN usage. Health and readiness semantics
 are documented by the server version; a live process does not imply that
 PostgreSQL, shared coordination, or a required worker is ready.
 
+Security audit events are durable PostgreSQL records and are included in normal
+database backups. Account users can review their own audit stream and current
+active sessions; server owners/admins can review the global stream. Establish a
+retention and export policy appropriate for the deployment before opening public
+registration. Preserve request IDs and audit rows during incident response, but
+do not enrich the ledger with request bodies, prompts, terminal output, source
+content, email addresses, or credentials.
+
 When a worker is offline, server-owned conversations and configuration remain
 available while worker-backed tabs become unavailable/read-only. Do not move a
 dirty worktree, running process, or active agent to another worker implicitly.
 
 ## Incident recovery checklist
 
-1. Block new public traffic and preserve logs without copying secrets, prompts,
-   source, or terminal contents into the incident system.
+1. Block new public traffic and preserve logs and audit events without copying
+   secrets, prompts, source, or terminal contents into the incident system.
 2. Revoke affected sessions and worker credentials from a trusted account.
 3. Rotate provider credentials and add a new envelope key. Keep old envelope
    keys until all rows rewrap and a verified backup completes.
