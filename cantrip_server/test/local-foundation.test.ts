@@ -1588,7 +1588,9 @@ describe("local server foundation", () => {
     );
     expect(bootstrap.auth).toMatchObject({
       mode: "none",
-      currentUser: { kind: "anonymous" },
+      state: "authenticated",
+      currentUser: { kind: "anonymous", role: "owner" },
+      registration: { enabled: false },
     });
     expect(bootstrap.routing.directWorkerConnections).toBe(false);
     expect(bootstrap.capabilities.worktrees).toBe(true);

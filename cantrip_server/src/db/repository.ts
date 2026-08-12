@@ -968,13 +968,15 @@ export class ServerRepository {
       .values({
         id: LOCAL_USER_ID,
         kind: "anonymous",
+        role: "owner",
+        status: "active",
         displayName: "Local User",
         email: null,
         updatedAt: now,
       })
       .onConflictDoUpdate({
         target: schema.users.id,
-        set: { updatedAt: now },
+        set: { role: "owner", status: "active", updatedAt: now },
       })
       .returning();
     const user = firstOrThrow(result, "ensuring the local user");
@@ -985,6 +987,7 @@ export class ServerRepository {
       kind: "anonymous",
       displayName: user.displayName,
       email: user.email,
+      role: "owner",
     };
   }
 

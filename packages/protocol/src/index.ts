@@ -20,6 +20,11 @@ export const bootstrapModeSchema = z.enum([
   "hosted",
 ]);
 export const authModeSchema = z.enum(["none", "password", "accounts"]);
+export const authenticationStateSchema = z.enum([
+  "authenticated",
+  "authentication-required",
+]);
+export const userRoleSchema = z.enum(["owner", "admin", "member"]);
 
 export const remoteSurfaceProtocolVersionSchema = z.literal(1);
 export const remoteSurfaceKindSchema = z.enum(["browser", "desktop"]);
@@ -120,6 +125,7 @@ export const userSummarySchema = z.object({
   kind: z.enum(["anonymous", "account"]),
   displayName: z.string().min(1),
   email: z.email().nullable(),
+  role: userRoleSchema.default("member"),
 });
 
 export const serverBootstrapSchema = z.object({
@@ -131,7 +137,11 @@ export const serverBootstrapSchema = z.object({
   }),
   auth: z.object({
     mode: authModeSchema,
-    currentUser: userSummarySchema,
+    state: authenticationStateSchema.default("authenticated"),
+    currentUser: userSummarySchema.nullable(),
+    registration: z
+      .object({ enabled: z.boolean() })
+      .default({ enabled: false }),
   }),
   routing: z.object({
     workerConnection: z.literal("server-only"),
@@ -6303,6 +6313,8 @@ export type DatabaseEngine = z.infer<typeof databaseEngineSchema>;
 export type DeploymentMode = z.infer<typeof deploymentModeSchema>;
 export type BootstrapMode = z.infer<typeof bootstrapModeSchema>;
 export type AuthMode = z.infer<typeof authModeSchema>;
+export type AuthenticationState = z.infer<typeof authenticationStateSchema>;
+export type UserRole = z.infer<typeof userRoleSchema>;
 export type RemoteSurfaceKind = z.infer<typeof remoteSurfaceKindSchema>;
 export type RemoteSurfaceTransport = z.infer<
   typeof remoteSurfaceTransportSchema

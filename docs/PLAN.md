@@ -107,6 +107,11 @@ flowchart LR
 
 The server is always the rendezvous point. There is no app-to-worker connection mode: worker listing, files, terminals, commands, Codex events, and presence all travel through the server. Workers initiate outbound connections, so a cloud-hosted server does not require an inbound port on a laptop. When a local server eventually needs to reach a phone, a documented reverse proxy, VPN, tunnel, link code, or Cantrip relay can be evaluated after loopback use is complete.
 
+The hosted authentication and ownership trust boundaries, request-principal
+contract, generated route/worker-command/repository inventory, and fail-closed
+mode rollout are maintained in
+[`HOSTED_SECURITY_ARCHITECTURE.md`](HOSTED_SECURITY_ARCHITECTURE.md).
+
 ### 4.3 Server authority and client bootstrap
 
 An app starts with only a server origin. Its first request is the server bootstrap document, which includes:

@@ -4168,7 +4168,7 @@ export function App() {
               <div className="flex items-center gap-1">
                 <ServerSwitcher
                   currentUserName={
-                    bootstrap.data?.auth.currentUser.displayName ??
+                    bootstrap.data?.auth.currentUser?.displayName ??
                     "Cantrip User"
                   }
                   workerName={onlineWorker?.name ?? "Worker offline"}

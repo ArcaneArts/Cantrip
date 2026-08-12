@@ -69,10 +69,15 @@ describe("server configuration safety", () => {
     expect(() => readServerConfig()).toThrow(/unique CANTRIP_WORKER_TOKEN/);
   });
 
-  it("refuses unimplemented account mode", () => {
-    vi.stubEnv("CANTRIP_AUTH_MODE", "accounts");
-    expect(() => readServerConfig()).toThrow(/not implemented/);
-  });
+  it.each(["password", "accounts"])(
+    "recognizes but fails closed for unimplemented %s mode",
+    (authMode) => {
+      vi.stubEnv("CANTRIP_AUTH_MODE", authMode);
+      expect(() => readServerConfig()).toThrow(
+        new RegExp(`CANTRIP_AUTH_MODE=${authMode}.*not implemented`),
+      );
+    },
+  );
 
   it("accepts complete TURN configuration and rejects partial or direct URLs", () => {
     vi.stubEnv(

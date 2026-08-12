@@ -2905,12 +2905,15 @@ describe("Cantrip protocol", () => {
       },
       auth: {
         mode: "none",
+        state: "authenticated",
         currentUser: {
           id: "local-user",
           kind: "anonymous",
           displayName: "Local User",
           email: null,
+          role: "owner",
         },
+        registration: { enabled: false },
       },
       routing: {
         workerConnection: "server-only",
@@ -2939,7 +2942,9 @@ describe("Cantrip protocol", () => {
       },
     });
 
-    expect(bootstrap.auth.currentUser.kind).toBe("anonymous");
+    expect(bootstrap.auth.currentUser?.kind).toBe("anonymous");
+    expect(bootstrap.auth.currentUser?.role).toBe("owner");
+    expect(bootstrap.auth.state).toBe("authenticated");
     expect(bootstrap.routing.directWorkerConnections).toBe(false);
     expect(bootstrap.storage).toEqual({
       conversations: "server",

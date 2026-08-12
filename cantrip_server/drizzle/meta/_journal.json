@@ -330,6 +330,13 @@
       "when": 1786485844557,
       "tag": "0046_salty_jubilee",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1786492245346,
+      "tag": "0047_next_madripoor",
+      "breakpoints": true
     }
   ]
 }
