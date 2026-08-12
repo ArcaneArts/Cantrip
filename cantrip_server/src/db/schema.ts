@@ -66,19 +66,110 @@ export const systemState = pgTable("system_state", {
     .defaultNow(),
 });
 
-export const users = pgTable("users", {
-  id: text("id").primaryKey(),
-  kind: text("kind").notNull(),
-  displayName: text("display_name").notNull(),
-  email: text("email").unique(),
-  passwordHash: text("password_hash"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const users = pgTable(
+  "users",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    role: text("role").notNull().default("member"),
+    status: text("status").notNull().default("active"),
+    displayName: text("display_name").notNull(),
+    email: text("email").unique(),
+    normalizedEmail: text("normalized_email"),
+    passwordHash: text("password_hash"),
+    passwordChangedAt: timestamp("password_changed_at", {
+      withTimezone: true,
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("users_normalized_email_unique")
+      .on(table.normalizedEmail)
+      .where(sql`${table.normalizedEmail} IS NOT NULL`),
+    check("users_kind_check", sql`${table.kind} IN ('anonymous', 'account')`),
+    check(
+      "users_role_check",
+      sql`${table.role} IN ('owner', 'admin', 'member')`,
+    ),
+    check("users_status_check", sql`${table.status} IN ('active', 'disabled')`),
+    check(
+      "users_account_email_check",
+      sql`${table.kind} <> 'account' OR ${table.normalizedEmail} IS NOT NULL`,
+    ),
+  ],
+);
+
+export const userSessions = pgTable(
+  "user_sessions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    authMethod: text("auth_method").notNull(),
+    label: text("label"),
+    userAgentHash: text("user_agent_hash"),
+    ipAddressHash: text("ip_address_hash"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedReason: text("revoked_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("user_sessions_token_hash_unique").on(table.tokenHash),
+    index("user_sessions_user_active_index").on(
+      table.userId,
+      table.revokedAt,
+      table.expiresAt,
+    ),
+    check(
+      "user_sessions_auth_method_check",
+      sql`${table.authMethod} IN ('password', 'account-password')`,
+    ),
+  ],
+);
+
+export const workerEnrollmentCodes = pgTable(
+  "worker_enrollment_codes",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdBySessionId: text("created_by_session_id").references(
+      () => userSessions.id,
+      { onDelete: "set null" },
+    ),
+    codeHash: text("code_hash").notNull(),
+    label: text("label"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("worker_enrollment_codes_hash_unique").on(table.codeHash),
+    index("worker_enrollment_codes_owner_expiry_index").on(
+      table.ownerId,
+      table.expiresAt,
+    ),
+  ],
+);
 
 export const modelProviders = pgTable(
   "model_providers",
@@ -222,6 +313,44 @@ export const workers = pgTable("workers", {
     .notNull()
     .defaultNow(),
 });
+
+export const workerCredentials = pgTable(
+  "worker_credentials",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    secretHash: text("secret_hash").notNull(),
+    label: text("label"),
+    scopes: jsonb("scopes").$type<string[]>().notNull().default([]),
+    replacesCredentialId: text("replaces_credential_id"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedReason: text("revoked_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("worker_credentials_secret_hash_unique").on(table.secretHash),
+    index("worker_credentials_owner_worker_index").on(
+      table.ownerId,
+      table.workerId,
+    ),
+    index("worker_credentials_worker_active_index").on(
+      table.workerId,
+      table.revokedAt,
+    ),
+  ],
+);
 
 export const projects = pgTable(
   "projects",

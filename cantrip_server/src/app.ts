@@ -352,6 +352,12 @@ import {
 
 import { resolveCodeSurfaceConfig, type ServerConfig } from "./config.js";
 import {
+  authenticatedPrincipal,
+  authenticationState,
+  installRequestPrincipal,
+  principalOwnerId,
+} from "./auth/principal.js";
+import {
   canFailOverRoute,
   chatIsExecuting,
   continuationPrompt,
@@ -1324,21 +1330,30 @@ export async function buildApp({
   });
   await app.register(websocket);
 
-  const authorizeLiveScope = async (scope: AppLiveScope): Promise<boolean> => {
+  if (config.authMode === "none") {
+    installRequestPrincipal(app, { authMode: "none", localUser: currentUser });
+  } else {
+    installRequestPrincipal(app, { authMode: config.authMode });
+  }
+
+  const authorizeLiveScope = async (
+    ownerId: string,
+    scope: AppLiveScope,
+  ): Promise<boolean> => {
     switch (scope.kind) {
       case "current-user":
         return true;
       case "project":
-        return (await repository.listProjects(LOCAL_USER_ID)).some(
+        return (await repository.listProjects(ownerId)).some(
           (project) => project.id === scope.projectId,
         );
       case "chat":
         return Boolean(
-          await repository.getChatExecutionContext(LOCAL_USER_ID, scope.chatId),
+          await repository.getChatExecutionContext(ownerId, scope.chatId),
         );
       case "workflow-run":
         return Boolean(
-          await repository.workflowRuns.getRun(LOCAL_USER_ID, scope.runId),
+          await repository.workflowRuns.getRun(ownerId, scope.runId),
         );
     }
   };
@@ -1349,9 +1364,14 @@ export async function buildApp({
       socket.close(1008, "Origin is not allowed");
       return;
     }
+    if (request.principal.state !== "authenticated") {
+      socket.close(1008, "Authentication is required");
+      return;
+    }
+    const principal = authenticatedPrincipal(request);
     liveHub.attach(socket, {
-      ownerId: LOCAL_USER_ID,
-      authorizeScope: authorizeLiveScope,
+      ownerId: principal.user.id,
+      authorizeScope: (scope) => authorizeLiveScope(principal.user.id, scope),
     });
   });
 
@@ -3010,7 +3030,7 @@ export async function buildApp({
     version: "0.0.0",
   }));
 
-  app.get("/api/bootstrap", async (_request, reply) => {
+  app.get("/api/bootstrap", async (request, reply) => {
     return reply.send(
       serverBootstrapSchema.parse({
         protocolVersion: 1,
@@ -3021,7 +3041,9 @@ export async function buildApp({
         },
         auth: {
           mode: config.authMode,
-          currentUser,
+          state: authenticationState(request.principal),
+          currentUser: request.principal.user,
+          registration: { enabled: false },
         },
         routing: {
           workerConnection: "server-only",
@@ -3060,15 +3082,16 @@ export async function buildApp({
     );
   });
 
-  app.get("/api/health", { logLevel: "warn" }, async (_request, reply) => {
+  app.get("/api/health", { logLevel: "warn" }, async (request, reply) => {
     await database.ping();
+    const ownerId = principalOwnerId(request);
     return reply.send(
       systemHealthSchema.parse({
         status: "ok",
         service: "cantrip_server",
         database: { engine: database.engine, ready: true },
         workers: {
-          connected: await repository.onlineWorkerCount(LOCAL_USER_ID),
+          connected: await repository.onlineWorkerCount(ownerId),
         },
         live: liveHub.stats(),
         timestamp: new Date().toISOString(),
@@ -3076,8 +3099,8 @@ export async function buildApp({
     );
   });
 
-  app.get("/api/workers", { logLevel: "warn" }, async (_request, reply) => {
-    const workers = await repository.listWorkers(LOCAL_USER_ID);
+  app.get("/api/workers", { logLevel: "warn" }, async (request, reply) => {
+    const workers = await repository.listWorkers(principalOwnerId(request));
     return reply.send(workerListSchema.parse(workers));
   });
 
