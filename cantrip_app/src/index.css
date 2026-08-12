@@ -376,3 +376,14 @@
   -webkit-backdrop-filter: blur(40px) saturate(125%);
   backdrop-filter: blur(40px) saturate(125%);
 }
+
+@supports (padding: max(0px)) {
+  .mobile-safe-top {
+    min-height: calc(4rem + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .mobile-safe-bottom {
+    padding-bottom: max(0.375rem, env(safe-area-inset-bottom));
+  }
+}

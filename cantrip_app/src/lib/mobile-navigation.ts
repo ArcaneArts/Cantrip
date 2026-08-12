@@ -5,6 +5,42 @@ export interface ProjectSelectionAction {
   showImporter?: boolean;
 }
 
+export type MobileSecondNavigationTarget =
+  { kind: "grid" } | { kind: "surface"; tabKey: string };
+
+export function validMobileSurfaceTabKey(
+  tabKey: string | null,
+  validTabKeys: ReadonlySet<string>,
+): string | null {
+  return tabKey && validTabKeys.has(tabKey) ? tabKey : null;
+}
+
+export function mobileSecondNavigationTarget({
+  gridOpen,
+  overviewSelected,
+  rememberedTabKey,
+  selectedTabKey,
+  validTabKeys,
+}: {
+  gridOpen: boolean;
+  overviewSelected: boolean;
+  rememberedTabKey: string | null;
+  selectedTabKey: string | null;
+  validTabKeys: ReadonlySet<string>;
+}): MobileSecondNavigationTarget {
+  if (gridOpen) return { kind: "grid" };
+  if (
+    !overviewSelected &&
+    validMobileSurfaceTabKey(selectedTabKey, validTabKeys)
+  ) {
+    return { kind: "grid" };
+  }
+  const remembered = validMobileSurfaceTabKey(rememberedTabKey, validTabKeys);
+  return remembered
+    ? { kind: "surface", tabKey: remembered }
+    : { kind: "grid" };
+}
+
 export function projectSelectionAction({
   compact,
   projects,

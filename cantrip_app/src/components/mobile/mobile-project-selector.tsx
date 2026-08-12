@@ -82,7 +82,7 @@ export function MobileProjectSelector({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
-      <header className="flex shrink-0 items-center gap-3 px-4 py-4">
+      <header className="mobile-safe-top flex shrink-0 items-center gap-3 px-4 py-4">
         <div className="grid size-9 place-items-center rounded-full border">
           <WandSparkles className="size-4" />
         </div>
@@ -230,7 +230,7 @@ export function MobileProjectSelector({
           New Project
         </Button>
       </div>
-      <footer className="flex shrink-0 items-center gap-1 border-t px-3 py-2">
+      <footer className="mobile-safe-bottom flex shrink-0 items-center gap-1 border-t px-3 py-2">
         <ServerSwitcher
           currentUserName={currentUserName}
           workerName={onlineWorker?.name ?? "Worker offline"}

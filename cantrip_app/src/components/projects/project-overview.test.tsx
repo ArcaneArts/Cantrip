@@ -196,6 +196,30 @@ describe("project overview", () => {
     expect(markup).toContain("Worker offline");
   });
 
+  it("replaces the full surface inventory with a compact tabs action", () => {
+    const markup = renderToStaticMarkup(
+      <ProjectOverview
+        compact
+        creatingKinds={new Set()}
+        project={project}
+        stats={stats}
+        statsLoading={false}
+        usageLoading={false}
+        surfaces={[chatSurface("running")]}
+        workerOnline
+        worktrees={[worktree]}
+        onCreateSurface={vi.fn()}
+        onOpenSurface={vi.fn()}
+        onOpenTabs={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain("Open tabs");
+    expect(markup).toContain("1 open · 1 running");
+    expect(markup).not.toContain("Active services");
+    expect(markup).not.toContain("Ship project overview");
+  });
+
   it("surfaces approval and failure states without marking them as running", () => {
     expect(
       projectSurfaceRuntimeState(chatSurface("waiting-for-approval")),

@@ -118,8 +118,10 @@ import {
 import { WorkspaceDndProvider } from "@/components/workspace/workspace-dnd-provider";
 import { WorkspaceMembershipPicker } from "@/components/workspaces/workspace-membership-picker";
 import { WorkspaceSwitcher } from "@/components/workspaces/workspace-switcher";
+import { MobileBottomNavigation } from "@/components/mobile/mobile-bottom-navigation";
 import { MobileProjectHeader } from "@/components/mobile/mobile-project-header";
 import { MobileProjectSelector } from "@/components/mobile/mobile-project-selector";
+import { MobileProjectTabGrid } from "@/components/mobile/mobile-project-tab-grid";
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
 import { GithubRepositoryCreateDialog } from "@/components/projects/github-repository-create-dialog";
@@ -133,7 +135,11 @@ import {
 import { hasScrolledContent } from "@/lib/scroll-divider";
 import { errorMessage as errorText } from "@/lib/error-message";
 import { githubRepositoryOnboardingAction } from "@/lib/github-repository-onboarding";
-import { projectSelectionAction } from "@/lib/mobile-navigation";
+import {
+  mobileSecondNavigationTarget,
+  projectSelectionAction,
+  validMobileSurfaceTabKey,
+} from "@/lib/mobile-navigation";
 import { useCompactLayout } from "@/lib/use-compact-layout";
 import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
 import { Badge } from "@/components/ui/badge";
@@ -2382,6 +2388,10 @@ export function App() {
     string | null
   >(null);
   const [showCustomizations, setShowCustomizations] = useState(false);
+  const [mobileTabGridOpen, setMobileTabGridOpen] = useState(false);
+  const [mobileLastSurfaceTabKey, setMobileLastSurfaceTabKey] = useState<
+    string | null
+  >(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const [sidebarResizing, setSidebarResizing] = useState(false);
@@ -2413,6 +2423,7 @@ export function App() {
   );
   const [proModeActive, setProModeActive] = useState(false);
   const contentRootRef = useRef<HTMLElement>(null);
+  const mobileProjectIdRef = useRef<string | null>(selectedProjectId);
   const scrolledContentRef = useRef(new Set<EventTarget>());
   const sidebarRef = useRef<HTMLElement>(null);
   const sidebarWidthRef = useRef(DEFAULT_SIDEBAR_WIDTH);
@@ -2432,6 +2443,8 @@ export function App() {
     const tabKey = projectSurfaceTabKey(kind, tabId);
     setSelectedProjectId(projectId);
     setPendingSurfaceSelection({ projectId, tabKey });
+    setMobileLastSurfaceTabKey(tabKey);
+    setMobileTabGridOpen(false);
     setChatConsoleChatId(null);
     void queryClient.invalidateQueries({
       queryKey: ["project-tab-layout", projectId],
@@ -2452,6 +2465,7 @@ export function App() {
     setShowSettings(false);
     setShowProjectSettings(true);
     setSelectedWorkflowIntentId(workflowId);
+    setMobileTabGridOpen(false);
   };
 
   const bootstrap = useQuery({
@@ -2499,6 +2513,8 @@ export function App() {
       );
       setSelectedProjectId(null);
       setWorkspaceSelection(emptyWorkspaceSelection());
+      setMobileTabGridOpen(false);
+      setMobileLastSurfaceTabKey(null);
       setShowImporter(!compactShell);
       setShowSettings(false);
       setShowProjectSettings(false);
@@ -3254,6 +3270,7 @@ export function App() {
       showImporter ||
       showSettings ||
       showProjectSettings ||
+      mobileTabGridOpen ||
       (projectOverviewSelected && Boolean(selectedProject)));
   const projectSurfaceIndex = useMemo(
     () =>
@@ -3278,6 +3295,29 @@ export function App() {
   const selectedSurface = selectedTabKey
     ? projectSurfaceIndex.byTabKey.get(selectedTabKey)
     : undefined;
+  const validMobileTabKeys = useMemo(
+    () =>
+      new Set(
+        tabLayout.data?.projectId === selectedProjectId
+          ? tabLayout.data.groups.flatMap((group) =>
+              group.members.map(({ tabKey }) => tabKey),
+            )
+          : [],
+      ),
+    [selectedProjectId, tabLayout.data],
+  );
+  const validMobileLastSurfaceTabKey = validMobileSurfaceTabKey(
+    mobileLastSurfaceTabKey,
+    validMobileTabKeys,
+  );
+  const mobileRememberedSurface = validMobileLastSurfaceTabKey
+    ? projectSurfaceIndex.byTabKey.get(validMobileLastSurfaceTabKey)
+    : undefined;
+  const mobileDynamicSurface = mobileTabGridOpen
+    ? undefined
+    : workspaceSelection.destination === "surface"
+      ? selectedSurface
+      : mobileRememberedSurface;
   const projectSurfaces = useMemo(
     () => [...projectSurfaceIndex.byTabKey.values()],
     [projectSurfaceIndex],
@@ -3784,6 +3824,42 @@ export function App() {
   }, [pendingSurfaceSelection, selectedProjectId, tabLayout.data]);
 
   useEffect(() => {
+    if (mobileProjectIdRef.current === selectedProjectId) return;
+    mobileProjectIdRef.current = selectedProjectId;
+    setMobileTabGridOpen(false);
+    setMobileLastSurfaceTabKey(null);
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (!compactShell) {
+      setMobileTabGridOpen(false);
+      return;
+    }
+    if (selectedTabKey && validMobileTabKeys.has(selectedTabKey)) {
+      setMobileLastSurfaceTabKey(selectedTabKey);
+    }
+  }, [compactShell, selectedTabKey, validMobileTabKeys]);
+
+  useEffect(() => {
+    if (
+      !compactShell ||
+      !mobileLastSurfaceTabKey ||
+      tabLayout.data?.projectId !== selectedProjectId ||
+      validMobileTabKeys.has(mobileLastSurfaceTabKey)
+    ) {
+      return;
+    }
+    setMobileLastSurfaceTabKey(null);
+    setMobileTabGridOpen(true);
+  }, [
+    compactShell,
+    mobileLastSurfaceTabKey,
+    selectedProjectId,
+    tabLayout.data?.projectId,
+    validMobileTabKeys,
+  ]);
+
+  useEffect(() => {
     if (!popoutTarget || !tabLayout.isSuccess || tabLayoutMutation.isPending) {
       return;
     }
@@ -3818,6 +3894,8 @@ export function App() {
     if (compactShell) {
       setSelectedProjectId(null);
       setWorkspaceSelection(emptyWorkspaceSelection());
+      setMobileTabGridOpen(false);
+      setMobileLastSurfaceTabKey(null);
       setPendingSurfaceSelection(null);
       setChatConsoleChatId(null);
       setShowImporter(false);
@@ -3840,6 +3918,8 @@ export function App() {
   const selectProjectFromSidebar = (projectId: string) => {
     setSelectedProjectId(projectId);
     setWorkspaceSelection(emptyWorkspaceSelection(projectId));
+    setMobileTabGridOpen(false);
+    setMobileLastSurfaceTabKey(null);
     setPendingSurfaceSelection(null);
     setChatConsoleChatId(null);
     setDetachedGroupId(null);
@@ -3848,6 +3928,8 @@ export function App() {
   const closeCompactProject = () => {
     setSelectedProjectId(null);
     setWorkspaceSelection(emptyWorkspaceSelection());
+    setMobileTabGridOpen(false);
+    setMobileLastSurfaceTabKey(null);
     setPendingSurfaceSelection(null);
     setChatConsoleChatId(null);
     setDetachedGroupId(null);
@@ -3861,6 +3943,8 @@ export function App() {
   ) => {
     setSelectedProjectId(null);
     setWorkspaceSelection(emptyWorkspaceSelection());
+    setMobileTabGridOpen(false);
+    setMobileLastSurfaceTabKey(null);
     setPendingSurfaceSelection(null);
     setSettingsSection(section);
     setShowSettings(true);
@@ -3870,6 +3954,7 @@ export function App() {
   const returnToCompactProjectOverview = () => {
     setShowProjectSettings(false);
     setSelectedWorkflowIntentId(null);
+    setMobileTabGridOpen(false);
     setWorkspaceSelection((current) =>
       selectWorkspaceOverview(current, selectedProjectId),
     );
@@ -3883,9 +3968,35 @@ export function App() {
     } else if (selectedProjectId) {
       setPendingSurfaceSelection({ projectId: selectedProjectId, tabKey });
     }
+    setMobileLastSurfaceTabKey(tabKey);
+    setMobileTabGridOpen(false);
     setChatConsoleChatId(null);
     setDetachedGroupId(null);
     revealWorkspace();
+  };
+  const selectMobileOverview = () => {
+    if (selectedTabKey && validMobileTabKeys.has(selectedTabKey)) {
+      setMobileLastSurfaceTabKey(selectedTabKey);
+    }
+    setMobileTabGridOpen(false);
+    setChatConsoleChatId(null);
+    setWorkspaceSelection((current) =>
+      selectWorkspaceOverview(current, selectedProjectId),
+    );
+  };
+  const selectMobileSecondDestination = () => {
+    const target = mobileSecondNavigationTarget({
+      gridOpen: mobileTabGridOpen,
+      overviewSelected: workspaceSelection.destination === "overview",
+      rememberedTabKey: mobileLastSurfaceTabKey,
+      selectedTabKey,
+      validTabKeys: validMobileTabKeys,
+    });
+    if (target.kind === "surface") {
+      selectTopTab(target.tabKey);
+    } else {
+      setMobileTabGridOpen(true);
+    }
   };
   const selectGroupFromSidebar = (groupId: string) => {
     const layout = tabLayout.data;
@@ -4339,6 +4450,19 @@ export function App() {
             onBack={returnToCompactProjectOverview}
             title="Project settings"
           />
+        ) : compactShell && mobileTabGridOpen && selectedProject ? (
+          <MobileProjectHeader
+            context={`Tabs · ${
+              selectedProject.github?.nameWithOwner ??
+              selectedProject.source?.displayPath ??
+              selectedProject.name
+            }`}
+            onCloseProject={closeCompactProject}
+            onOpenProjectSettings={() =>
+              openProjectSettings(selectedProject.id)
+            }
+            title={selectedProject.name}
+          />
         ) : compactShell && projectOverviewSelected && selectedProject ? (
           <MobileProjectHeader
             context={
@@ -4356,6 +4480,7 @@ export function App() {
           <header
             className={cn(
               "relative z-30 flex shrink-0 items-center justify-between",
+              compactShell && "mobile-safe-top",
               overlayTitlebar
                 ? "h-8 gap-2 px-3 text-[11px] sm:px-4 [&_[data-slot=badge]]:h-5 [&_[data-slot=badge]]:gap-1 [&_[data-slot=badge]]:px-1.5 [&_[data-slot=badge]]:text-[10px] [&_[data-slot=button]]:h-6 [&_[data-slot=button]]:min-w-6 [&_[data-slot=button]]:w-auto [&_[data-slot=button]]:gap-1 [&_[data-slot=button]]:px-1.5 [&_[data-slot=button]]:py-0 [&_[data-slot=button]]:text-[11px] [&_svg]:size-3"
                 : "h-16 gap-4 px-4 sm:px-6",
@@ -4638,7 +4763,8 @@ export function App() {
           </header>
         ) : null}
 
-        {!showImporter &&
+        {!compactShell &&
+        !showImporter &&
         !showSettings &&
         !showProjectSettings &&
         !groupOwnedElsewhere &&
@@ -4679,6 +4805,8 @@ export function App() {
             onNewProject={() => {
               setSelectedProjectId(null);
               setWorkspaceSelection(emptyWorkspaceSelection());
+              setMobileTabGridOpen(false);
+              setMobileLastSurfaceTabKey(null);
               setPendingSurfaceSelection(null);
               setShowImporter(true);
               setShowSettings(false);
@@ -4741,6 +4869,8 @@ export function App() {
             onCreatedProject={(project) => {
               setSelectedProjectId(project.id);
               setWorkspaceSelection(emptyWorkspaceSelection(project.id));
+              setMobileTabGridOpen(false);
+              setMobileLastSurfaceTabKey(null);
               setPendingSurfaceSelection(null);
               setChatConsoleChatId(null);
               setShowImporter(false);
@@ -4754,6 +4884,21 @@ export function App() {
             projects={projects.data ?? []}
             workerId={onlineWorker?.workerId ?? null}
             workspaces={projectWorkspaces.data ?? []}
+          />
+        ) : compactShell && mobileTabGridOpen && selectedProject ? (
+          <MobileProjectTabGrid
+            creatingKinds={creatingSurfaceKinds}
+            layout={tabLayout.data}
+            surfaces={projectSurfaces}
+            onCreate={(kind) => createProjectSurface(selectedProject.id, kind)}
+            onDelete={deleteSurface}
+            onDuplicate={(surface) => {
+              if (surface.kind === "chat") {
+                forkChatMutation.mutate(surface.tabId);
+              }
+            }}
+            onRename={renameSurface}
+            onSelect={selectTopTab}
           />
         ) : groupOwnedElsewhere && selectedTabGroup ? (
           <div className="grid flex-1 place-items-center p-6 text-center">
@@ -5010,6 +5155,7 @@ export function App() {
             </div>
           ) : projectOverviewSelected ? (
             <ProjectOverview
+              compact={compactShell}
               creatingKinds={creatingSurfaceKinds}
               project={selectedProject}
               stats={repositoryStats.data}
@@ -5038,6 +5184,7 @@ export function App() {
                 createProjectSurface(selectedProject.id, kind)
               }
               onOpenSurface={selectTopTab}
+              onOpenTabs={() => setMobileTabGridOpen(true)}
             />
           ) : (
             <div className="grid flex-1 place-items-center p-6 text-center">
@@ -5154,6 +5301,22 @@ export function App() {
             </div>
           </div>
         )}
+        {compactShell &&
+        selectedProject &&
+        !showImporter &&
+        !showSettings &&
+        !showProjectSettings ? (
+          <MobileBottomNavigation
+            gridOpen={mobileTabGridOpen}
+            onOverview={selectMobileOverview}
+            onSecondDestination={selectMobileSecondDestination}
+            overviewSelected={
+              !mobileTabGridOpen &&
+              workspaceSelection.destination === "overview"
+            }
+            surface={mobileDynamicSurface}
+          />
+        ) : null}
       </section>
 
       <WorktreeCreateDialog

@@ -16,7 +16,7 @@ export function MobileProjectHeader({
   title: string;
 }) {
   return (
-    <header className="relative z-30 flex h-16 shrink-0 items-center gap-2 border-b px-3">
+    <header className="mobile-safe-top relative z-30 flex h-16 shrink-0 items-center gap-2 border-b px-3">
       {onBack ? (
         <Button
           aria-label="Back"
