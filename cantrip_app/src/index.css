@@ -311,6 +311,35 @@
   backdrop-filter: blur(20px) saturate(125%);
 }
 
+/* Keep dialog text off transformed compositing layers. WebKit can retain a
+   softened text raster after transform/scale animations, especially when the
+   same surface also uses backdrop-filter in Pro Mode. */
+@keyframes cantrip-dialog-enter {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes cantrip-dialog-exit {
+  to {
+    opacity: 0;
+  }
+}
+
+.cantrip-dialog-content[data-state="open"] {
+  animation: cantrip-dialog-enter 150ms ease-out;
+}
+
+.cantrip-dialog-content[data-state="closed"] {
+  animation: cantrip-dialog-exit 150ms ease-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cantrip-dialog-content {
+    animation: none !important;
+  }
+}
+
 .chat-composer-fade {
   background: linear-gradient(
     to top,
