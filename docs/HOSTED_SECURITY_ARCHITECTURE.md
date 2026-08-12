@@ -277,9 +277,13 @@ bytes are charged against both the account and worker. Every command routed to
 a worker is bounded by per-worker and per-account byte, rate, and concurrency
 ceilings; reaching a ceiling fails visibly instead of accumulating an unbounded
 queue. These guards do not impose a short execution timeout, so an admitted
-Codex turn may remain active for its normal lifetime. Binary transports retain
-their schema payload ceilings and buffered-byte backpressure rules. Each process
-enforces a conservative partition of the configured global limits.
+Codex turn or attached terminal may remain active for its normal lifetime.
+Those two event streams are the only application routes that intentionally use
+the streaming worker-command policy. Finite Git and GitHub control operations
+have an explicit 30-minute deadline; all other finite worker requests retain a
+bounded command deadline as well. Binary transports retain their schema payload
+ceilings and buffered-byte backpressure rules. Each process enforces a
+conservative partition of the configured global limits.
 `CANTRIP_COORDINATION_MAX_INSTANCES` is the hard deployment ceiling and Redis
 readiness fails when more live server leases exist. This preserves the global
 bound without putting synchronous media frames behind a Redis round trip. It

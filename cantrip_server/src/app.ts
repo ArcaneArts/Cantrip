@@ -598,6 +598,8 @@ const REMOTE_DESKTOP_FLEET_TIMEOUT_MS = 20_000;
 const REMOTE_DESKTOP_FLEET_WORKER_LIMIT = 64;
 const REMOTE_DESKTOP_FLEET_TARGET_LIMIT = 4_096;
 const REMOTE_DESKTOP_FLEET_SURFACE_LIMIT = 64;
+const FINITE_WORKER_COMMAND_TIMEOUT_MS = 30 * 60_000;
+const STREAMING_WORKER_COMMAND_TIMEOUT_MS = null;
 const AGENT_EXECUTION_MUTATION_TOOLS = new Set([
   "cantrip_explorer_write",
   "cantrip_terminal_input",
@@ -4340,7 +4342,7 @@ export async function buildApp({
                 automationPaused: execution.automationPaused,
               },
               {
-                timeoutMs: null,
+                timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
                 onEvent: async (event) => {
                   attemptActivity = true;
                   anyActivity = true;
@@ -6431,7 +6433,7 @@ export async function buildApp({
           await bridge.request(
             workerId,
             { type: "github.repositories.create", request: input.data },
-            { timeoutMs: null },
+            { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
           ),
         );
         return reply.code(201).send(
@@ -7832,7 +7834,7 @@ export async function buildApp({
                 number: pullRequestNumber,
                 action: action.data,
               },
-              { timeoutMs: null },
+              { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
             ),
           ),
         );
@@ -7901,7 +7903,7 @@ export async function buildApp({
                   number: pullRequestNumber,
                   request: input.data,
                 },
-                { timeoutMs: null },
+                { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
               ),
             );
           },
@@ -7961,7 +7963,7 @@ export async function buildApp({
             repository: github.nameWithOwner,
             number: pullRequestNumber,
           },
-          { timeoutMs: null },
+          { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
         );
         return reply.send(githubPullRequestDetailSchema.parse(pullRequest));
       } catch (error) {
@@ -8030,7 +8032,7 @@ export async function buildApp({
                       ...shared,
                       body: action.data.body,
                     },
-                    { timeoutMs: null },
+                    { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
                   )
                 : action.data.type === "submit-review"
                   ? await bridge.request(
@@ -8040,7 +8042,7 @@ export async function buildApp({
                         ...shared,
                         review: action.data.review,
                       },
-                      { timeoutMs: null },
+                      { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
                     )
                   : action.data.type === "inline-comment"
                     ? await bridge.request(
@@ -8050,7 +8052,7 @@ export async function buildApp({
                           ...shared,
                           comment: action.data.comment,
                         },
-                        { timeoutMs: null },
+                        { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
                       )
                     : await bridge.request(
                         worktree.workerId,
@@ -8060,7 +8062,7 @@ export async function buildApp({
                           commentId: action.data.commentId,
                           body: action.data.body,
                         },
-                        { timeoutMs: null },
+                        { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
                       );
             return githubPullRequestDetailSchema.parse(response);
           },
@@ -8383,7 +8385,7 @@ export async function buildApp({
                   cwd: context.worktree.path,
                   request: input.data,
                 },
-                { timeoutMs: null },
+                { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
               ),
             );
             await recordLiveWorktreeStatus(
@@ -9958,7 +9960,7 @@ export async function buildApp({
                     action: input.data.action,
                     token: input.data.token,
                   },
-                  { timeoutMs: null },
+                  { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
                 ),
               );
             } finally {
@@ -10147,7 +10149,7 @@ export async function buildApp({
                     context: gitManagedOperationContext(durable),
                     action: input.data.action,
                   },
-                  { timeoutMs: null },
+                  { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
                 ),
               );
             } finally {
@@ -10242,7 +10244,7 @@ export async function buildApp({
                     context: gitManagedOperationContext(durable),
                     message: input.data.message,
                   },
-                  { timeoutMs: null },
+                  { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
                 ),
               );
             } finally {
@@ -11491,7 +11493,7 @@ export async function buildApp({
                   type: "git.force-push.preview",
                   cwd: context.worktree.path,
                 },
-                { timeoutMs: null },
+                { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
               ),
             );
           },
@@ -11529,7 +11531,7 @@ export async function buildApp({
                   cwd: context.worktree.path,
                   token: input.data.token,
                 },
-                { timeoutMs: null },
+                { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
               ),
             );
             await recordLiveWorktreeStatus(
@@ -11718,7 +11720,7 @@ export async function buildApp({
                   repository: github.nameWithOwner,
                   request: input.data,
                 },
-                { timeoutMs: null },
+                { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
               ),
             );
           },
@@ -14279,7 +14281,7 @@ export async function buildApp({
                 launch,
               },
               {
-                timeoutMs: null,
+                timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
                 onEvent: async (event) => {
                   if (event.type === "terminal.ready") {
                     if (closed) {
