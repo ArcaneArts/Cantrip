@@ -19,6 +19,7 @@ export function createHeartbeat(
     browser: false,
     desktop: false,
     transports: ["websocket"],
+    iceTransportPolicies: ["relay"],
     maxSessions: 4,
   },
   code: CodeCapabilities = unavailableCodeCapabilities,

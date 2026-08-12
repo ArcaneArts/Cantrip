@@ -421,6 +421,7 @@ export const workers = pgTable("workers", {
       browser: false,
       desktop: false,
       transports: ["websocket"],
+      iceTransportPolicies: ["relay"],
       maxSessions: 4,
     }),
   codeCapabilities: jsonb("code_capabilities")

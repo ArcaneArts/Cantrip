@@ -217,11 +217,13 @@ The Code origin is intentionally isolated. Do not rewrite it below the API path
 or relax frame ancestors beyond exact application origins. The server refuses
 wildcard credentialed origins and ambiguous forwarding headers.
 
-For remote desktop and browser WebRTC, configure relay-only TURN with
-`CANTRIP_TURN_URLS` and `CANTRIP_TURN_SHARED_SECRET`. Use TLS (`turns:`) outside
-trusted networks, monitor TURN egress, and plan capacity for the full encoded
-desktop/browser bandwidth. WebSocket relay remains the compatibility fallback
-and also consumes server bandwidth.
+Remote desktop and browser streams prefer direct WebRTC, including host-only
+negotiation when no ICE service is configured. `CANTRIP_STUN_URLS` may help
+peers discover public candidates. Configure TURN fallback with
+`CANTRIP_TURN_URLS` and `CANTRIP_TURN_SHARED_SECRET`; use TLS (`turns:`) outside
+trusted networks and monitor TURN egress. Deployments that prohibit direct peer
+traffic may set `CANTRIP_WEBRTC_ICE_TRANSPORT_POLICY=relay`. WebSocket relay
+remains the compatibility fallback and also consumes server bandwidth.
 
 ## Persistence, permissions, and operations
 

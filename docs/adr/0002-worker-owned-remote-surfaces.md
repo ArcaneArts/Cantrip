@@ -52,11 +52,13 @@ the authorized binding, rejects cross-surface frames, ignores stale sequences,
 drops disposable visual frames under pressure, and closes congested reliable
 channels rather than growing memory without bounds.
 
-WebRTC is the preferred low-latency data plane when TURN is configured.
-Signaling always travels through the server. Configured deployments use
-short-lived TURN credentials and relay-only ICE when direct app-to-worker
-traffic is prohibited. Failure to negotiate WebRTC returns to the authenticated
-WebSocket data plane without changing the durable session.
+WebRTC is the preferred low-latency data plane. Signaling always travels through
+the server. Host candidates permit direct same-machine and reachable-network
+attachments without an ICE service; optional STUN discovers public candidates,
+and configured TURN supplies short-lived relay credentials. Deployments may
+enforce relay-only ICE when direct app-to-worker traffic is prohibited. Failure
+to negotiate WebRTC returns to the authenticated WebSocket data plane without
+changing the durable session.
 
 The server holds the long-lived TURN REST shared secret and derives expiring
 HMAC credentials per authorized attachment. Only the short-lived username and
@@ -156,12 +158,13 @@ probe rejects creation rather than persisting a known-broken tab.
   private macOS API or transparent native-view layering.
 - The same Browser and managed desktop components can run in Vite, Tauri, Capacitor, and
   popout windows.
-- Local browser streaming still traverses the loopback server. Backpressure
-  and efficient encoding therefore matter even in local mode.
+- Local browser streaming uses direct WebRTC when host candidates negotiate and
+  otherwise retains the authenticated server WebSocket fallback.
 - Browser and managed desktop share transport and lifecycle code but retain distinct
   worker adapters and channel semantics.
-- WebRTC requires operational STUN/TURN configuration. WebSocket remains a
-  tested compatibility and recovery path rather than a development-only stub.
+- STUN/TURN improve WebRTC reachability but are not required for host-only
+  negotiation. WebSocket remains a tested compatibility and recovery path
+  rather than a development-only stub.
 - Remote Desktop capture is tied to the worker's active graphical session;
   separate multi-seat displays and operating-system login screens require
   future platform-specific work.

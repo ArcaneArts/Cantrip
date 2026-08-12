@@ -148,6 +148,7 @@ async function start(): Promise<void> {
       browser: browserAdapter.available,
       desktop: desktopAdapter.available,
       transports: ["websocket", "webrtc"],
+      iceTransportPolicies: ["all", "relay"],
       maxSessions: 4,
     },
     codeDiscovery.capabilities,

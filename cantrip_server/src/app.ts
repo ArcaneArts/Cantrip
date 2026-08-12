@@ -5346,7 +5346,8 @@ export async function buildApp({
             transports: config.remoteSurfaceWebRtc
               ? ["websocket", "webrtc"]
               : ["websocket"],
-            relayOnly: true,
+            relayOnly:
+              config.remoteSurfaceWebRtc?.iceTransportPolicy === "relay",
           },
           code: {
             enabled: true,
@@ -14055,7 +14056,10 @@ export async function buildApp({
         const webRtcConfiguration =
           context.surface.preferredTransport === "webrtc" &&
           context.remoteSurfaceCapabilities.transports.includes("webrtc") &&
-          config.remoteSurfaceWebRtc
+          config.remoteSurfaceWebRtc &&
+          context.remoteSurfaceCapabilities.iceTransportPolicies.includes(
+            config.remoteSurfaceWebRtc.iceTransportPolicy,
+          )
             ? createRemoteSurfaceWebRtcConfiguration(
                 config.remoteSurfaceWebRtc,
                 applicationOwnerId(),
