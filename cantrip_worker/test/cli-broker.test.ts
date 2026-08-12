@@ -16,6 +16,7 @@ import {
   CANTRIP_CLI_CONNECTION_ENV,
   CantripCliBroker,
 } from "../src/cli-broker.js";
+import { TerminalManager } from "../src/terminal-manager.js";
 
 const directories: string[] = [];
 const originalConnection = process.env[CANTRIP_CLI_CONNECTION_ENV];
@@ -48,6 +49,68 @@ afterEach(async () => {
 });
 
 describe("Cantrip CLI worker broker", () => {
+  it.skipIf(process.platform === "win32")(
+    "makes the authenticated CLI available in terminal tabs",
+    async () => {
+      const directory = await temporaryDirectory();
+      const binary = path.join(directory, "cantrip");
+      await writeFile(
+        binary,
+        [
+          "#!/bin/sh",
+          "printf 'CANTRIP_TERMINAL_OK:%s\\n' \"$CANTRIP_CLI_CONNECTION\"",
+        ].join("\n"),
+      );
+      await chmod(binary, 0o755);
+      const broker = new CantripCliBroker(
+        {
+          dataDirectory: path.join(directory, "worker-data"),
+          serverUrl: "https://cantrip.example",
+          workerId: "worker-example",
+        },
+        { binary },
+      );
+      await broker.start();
+      const environment = broker.childEnvironment();
+
+      if (originalConnection === undefined) {
+        delete process.env[CANTRIP_CLI_CONNECTION_ENV];
+      } else {
+        process.env[CANTRIP_CLI_CONNECTION_ENV] = originalConnection;
+      }
+      if (originalPath === undefined) delete process.env[pathKey];
+      else process.env[pathKey] = originalPath;
+
+      const manager = new TerminalManager({ environment });
+      let output = "";
+      const exited = manager.open(
+        "terminal-cli",
+        "attachment-cli",
+        directory,
+        80,
+        24,
+        { type: "shell" },
+        (event) => {
+          if (event.type === "terminal.output") output += event.data;
+        },
+      );
+      try {
+        manager.input("terminal-cli", "cantrip\r");
+        await expect
+          .poll(() => output, { timeout: 5_000 })
+          .toContain(`CANTRIP_TERMINAL_OK:${broker.connectionPath}`);
+        manager.input("terminal-cli", "exit\r");
+        await expect(exited).resolves.toMatchObject({
+          status: "exited",
+          exitCode: 0,
+        });
+      } finally {
+        manager.closeAll();
+        await broker.close();
+      }
+    },
+  );
+
   it("publishes a protected authenticated loopback handshake", async () => {
     const directory = await temporaryDirectory();
     const binary = path.join(

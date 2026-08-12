@@ -170,6 +170,7 @@ async function start(): Promise<void> {
   const projectShareTunnel = new ProjectShareTunnelDestinationAdapter(
     projectShares,
   );
+  const cliBroker = new CantripCliBroker(config);
   const tunnelTcpDestination = new TunnelTcpDestinationAdapter();
   const tunnelDestinations = new TunnelDestinationRouter(
     tunnelTcpDestination,
@@ -177,7 +178,9 @@ async function start(): Promise<void> {
     codeTunnel,
   );
   const skillManager = new SkillManager(config.dataDirectory);
-  const terminals = new TerminalManager();
+  const terminals = new TerminalManager({
+    environment: cliBroker.childEnvironment(),
+  });
   const remoteSurfaces = new RemoteSurfaceManager({
     browser: browserAdapter,
     desktop: desktopAdapter,
@@ -1306,7 +1309,6 @@ async function start(): Promise<void> {
       commandConnection.sendTunnelDataPlaneFrame(header, payload),
     () => commandConnection.waitForTunnelDataPlaneCapacity(),
   );
-  const cliBroker = new CantripCliBroker(config);
   const cliConnection = await cliBroker.start();
 
   console.log(

@@ -73,15 +73,38 @@ function authorized(requestValue: string | undefined, expected: string) {
   return provided.length === wanted.length && timingSafeEqual(provided, wanted);
 }
 
-function prependPath(directory: string): void {
-  const key =
-    Object.keys(process.env).find((candidate) => {
+function pathEnvironmentKey(
+  environment: NodeJS.ProcessEnv = process.env,
+): string {
+  return (
+    Object.keys(environment).find((candidate) => {
       return candidate.toLowerCase() === "path";
-    }) ?? "PATH";
-  const existing = process.env[key] ?? "";
+    }) ?? "PATH"
+  );
+}
+
+function environmentWithCli(
+  binary: string,
+  connectionPath: string,
+  environment: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+  const directory = path.dirname(binary);
+  const key = pathEnvironmentKey(environment);
+  const existing = environment[key] ?? "";
   const entries = existing.split(path.delimiter).filter(Boolean);
-  if (entries.includes(directory)) return;
-  process.env[key] = [directory, ...entries].join(path.delimiter);
+  const cliPath = entries.includes(directory)
+    ? entries.join(path.delimiter)
+    : [directory, ...entries].join(path.delimiter);
+  return {
+    [CANTRIP_CLI_CONNECTION_ENV]: connectionPath,
+    [key]: cliPath,
+  };
+}
+
+function publishEnvironment(overrides: Record<string, string>): void {
+  for (const [key, value] of Object.entries(overrides)) {
+    process.env[key] = value;
+  }
 }
 
 function writeConnectionDocument(
@@ -139,6 +162,10 @@ export class CantripCliBroker {
     return this.#connectionPath;
   }
 
+  childEnvironment(): Record<string, string> {
+    return environmentWithCli(this.#binary, this.#connectionPath);
+  }
+
   async start(): Promise<CantripCliConnectionDocument> {
     if (this.#server) {
       throw new Error("Cantrip CLI broker is already running.");
@@ -188,8 +215,7 @@ export class CantripCliBroker {
     };
     try {
       writeConnectionDocument(this.#connectionPath, document);
-      process.env[CANTRIP_CLI_CONNECTION_ENV] = this.#connectionPath;
-      prependPath(path.dirname(this.#binary));
+      publishEnvironment(this.childEnvironment());
       return document;
     } catch (error) {
       await this.close();
