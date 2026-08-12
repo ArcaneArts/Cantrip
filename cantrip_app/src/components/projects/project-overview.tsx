@@ -1,4 +1,5 @@
 import type {
+  ExecutionTarget,
   ProjectRepositoryStats,
   ProjectSummary,
   ProjectTokenUsage,
@@ -23,8 +24,11 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ProjectSurfaceCreateMenu } from "@/components/workspace/project-surface-create-menu";
+import type {
+  ProjectSurfaceCreateKind,
+  ProjectSurfacePlacementContext,
+} from "@/components/workspace/project-surface-create-menu";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
-import type { ProjectSurfaceCreateKind } from "@/components/workspace/project-surface-create-menu";
 import type { ProjectSurface } from "@/lib/project-surface";
 import { cn } from "@/lib/utils";
 
@@ -162,6 +166,7 @@ export function ProjectOverview({
   onCreateSurface,
   onOpenSurface,
   onOpenTabs,
+  placement,
   project,
   stats,
   statsError,
@@ -175,9 +180,13 @@ export function ProjectOverview({
 }: {
   compact?: boolean;
   creatingKinds: ReadonlySet<ProjectSurfaceCreateKind>;
-  onCreateSurface(kind: ProjectSurfaceCreateKind): void;
+  onCreateSurface(
+    kind: ProjectSurfaceCreateKind,
+    target?: ExecutionTarget,
+  ): void;
   onOpenSurface(tabKey: string): void;
   onOpenTabs?: () => void;
+  placement?: ProjectSurfacePlacementContext;
   project: ProjectSummary;
   stats?: ProjectRepositoryStats;
   statsError?: string | null;
@@ -273,6 +282,7 @@ export function ProjectOverview({
               <ProjectSurfaceCreateMenu
                 creatingKinds={creatingKinds}
                 onCreate={onCreateSurface}
+                placement={placement}
                 trigger={
                   <Button size="sm" disabled={!project.source}>
                     <Plus className="size-3.5" />

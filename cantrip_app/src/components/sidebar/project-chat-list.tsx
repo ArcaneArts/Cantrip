@@ -10,6 +10,7 @@ import type {
   BrowserSummary,
   ChatSummary,
   CodeTabSummary,
+  ExecutionTarget,
   ExplorerSummary,
   ProjectSummary,
   ProjectTabLayoutSummary,
@@ -55,6 +56,7 @@ import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon"
 import {
   ProjectSurfaceCreateMenu,
   type ProjectSurfaceCreateKind,
+  type ProjectSurfacePlacementContext,
 } from "@/components/workspace/project-surface-create-menu";
 import { SurfaceActionsMenu } from "@/components/workspace/surface-tab-controls";
 import {
@@ -77,6 +79,7 @@ import {
   workspaceSidebarDropId,
 } from "@/lib/workspace-dnd-model";
 import {
+  WorkerPlacementIndicator,
   WorktreeIndicator,
   type WorktreeStatusMap,
 } from "@/components/worktrees/worktree-control";
@@ -303,6 +306,7 @@ function SortableProject({
   creatingKinds,
   onCreate,
   onOpenSettings,
+  placement,
   onReveal,
   onRemove,
   onSelect,
@@ -313,11 +317,12 @@ function SortableProject({
   active: boolean;
   children?: ReactNode;
   creatingKinds: ReadonlySet<ProjectSurfaceCreateKind>;
-  onCreate(kind: ProjectSurfaceCreateKind): void;
+  onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onOpenSettings(): void;
   onReveal?: () => void;
   onRemove(): void;
   onSelect(): void;
+  placement: ProjectSurfacePlacementContext;
   project: ProjectSummary;
   projectRevealLabel?: string;
   revealDisabled: boolean;
@@ -380,6 +385,7 @@ function SortableProject({
             contentClassName="min-w-36"
             creatingKinds={creatingKinds}
             onCreate={onCreate}
+            placement={placement}
             trigger={
               <button
                 type="button"
@@ -495,7 +501,11 @@ export function ProjectChatList({
     mode: "agent-managed" | "pinned",
   ): void;
   projectViews: ProjectViewSummary[];
-  onCreateSurface(projectId: string, kind: ProjectSurfaceCreateKind): void;
+  onCreateSurface(
+    projectId: string,
+    kind: ProjectSurfaceCreateKind,
+    target?: ExecutionTarget,
+  ): void;
   onDeleteChat(chatId: string): void;
   onDeleteBrowser(browserId: string): void;
   onDeleteCode(codeTabId: string): void;
@@ -808,8 +818,18 @@ export function ProjectChatList({
                 project={project}
                 active={active}
                 creatingKinds={creatingKinds}
-                onCreate={(kind) => onCreateSurface(project.id, kind)}
+                onCreate={(kind, target) =>
+                  onCreateSurface(project.id, kind, target)
+                }
                 onOpenSettings={() => onOpenProjectSettings(project.id)}
+                placement={{
+                  projectId: project.id,
+                  replicas: project.replicas,
+                  workers,
+                  worktrees: worktrees.filter(
+                    (worktree) => worktree.projectId === project.id,
+                  ),
+                }}
                 onReveal={
                   project.source && projectRevealLabel && onRevealProject
                     ? () => {
@@ -1018,6 +1038,12 @@ export function ProjectChatList({
                             onSelect={selectGroup}
                             onRename={() => beginBrowserRename(tab.browser)}
                             onDelete={() => setDeleteBrowserTarget(tab.browser)}
+                            trailing={
+                              <WorkerPlacementIndicator
+                                workerId={tab.browser.workerId}
+                                workers={workers}
+                              />
+                            }
                           />
                         ) : tab.kind === "code" ? (
                           <StandardSidebarSurfaceTab

@@ -8,6 +8,7 @@ import type {
 import {
   Check,
   CircleAlert,
+  Cpu,
   FolderTree,
   GitBranch,
   GitFork,
@@ -94,6 +95,34 @@ function workerFor(worktree: ProjectWorktreeSummary, workers: WorkerSummary[]) {
   };
 }
 
+export function WorkerPlacementIndicator({
+  workerId,
+  workers,
+}: {
+  workerId?: string | null;
+  workers: WorkerSummary[];
+}) {
+  if (!workerId || workers.length <= 1) return null;
+  const worker = workers.find((candidate) => candidate.workerId === workerId);
+  const workerName = worker?.name ?? workerId;
+  const online = worker?.online ?? false;
+  return (
+    <span
+      className={cn(
+        "grid size-6 shrink-0 place-items-center rounded text-muted-foreground",
+        online ? "text-sky-400" : "text-muted-foreground/60",
+      )}
+      title={`Runs on ${workerName}${online ? "" : " · offline"}`}
+    >
+      <Cpu className="size-3.5" />
+      <span className="sr-only">
+        Runs on {workerName}
+        {online ? "" : ", offline"}
+      </span>
+    </span>
+  );
+}
+
 function DetailRows({ details }: { details: WorktreeDetails }) {
   const conflict = worktreeHasConflicts(details.status);
   const dirty = Boolean(details.status?.files.length);
@@ -169,7 +198,15 @@ export function WorktreeIndicator({
   workers: WorkerSummary[];
   worktree?: ProjectWorktreeSummary;
 }) {
-  if (!worktree || worktree.isPrimary) return null;
+  if (!worktree) return null;
+  if (worktree.isPrimary) {
+    return (
+      <WorkerPlacementIndicator
+        workerId={worktree.workerId}
+        workers={workers}
+      />
+    );
+  }
   const worker = workerFor(worktree, workers);
   const details = { ...worker, leaseOwner, status, worktree };
   const conflict = worktreeHasConflicts(status);

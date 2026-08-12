@@ -8,6 +8,7 @@ import type {
   ChatTurnMode,
   CodeAppearance,
   CodeTabSummary,
+  ExecutionTarget,
   ExplorerSummary,
   GithubRepository,
   ModelProfileSummary,
@@ -112,6 +113,7 @@ import type { ExplorerHeaderState } from "@/components/explorer/explorer-view";
 import { ProjectChatList } from "@/components/sidebar/project-chat-list";
 import { ProjectTabBar } from "@/components/workspace/project-tab-bar";
 import type { ProjectSurfaceCreateKind } from "@/components/workspace/project-surface-create-menu";
+import type { ProjectSurfacePlacementContext } from "@/components/workspace/project-surface-create-menu";
 import {
   ContentHeaderActions,
   type ContentHeaderActionsProps,
@@ -2667,14 +2669,23 @@ export function App() {
       tabGroupId,
       worktreeId,
       worktreeMode,
+      target,
     }: {
       open?: boolean;
       projectId: string;
       tabGroupId?: string;
       worktreeId?: string;
       worktreeMode?: "agent-managed" | "pinned";
+      target?: ExecutionTarget;
     }) =>
-      createChat(projectId, "New chat", worktreeId, worktreeMode, tabGroupId),
+      createChat(
+        projectId,
+        "New chat",
+        worktreeId,
+        worktreeMode,
+        tabGroupId,
+        target,
+      ),
     onSuccess: (chat, { open }) => {
       queryClient.setQueryData<ChatSummary[]>(
         ["chats", chat.projectId],
@@ -2700,11 +2711,13 @@ export function App() {
       projectId,
       tabGroupId,
       worktreeId,
+      target,
     }: {
       projectId: string;
       tabGroupId?: string;
       worktreeId?: string;
-    }) => createTerminal(projectId, "Terminal", worktreeId, tabGroupId),
+      target?: ExecutionTarget;
+    }) => createTerminal(projectId, "Terminal", worktreeId, tabGroupId, target),
     onSuccess: (terminal) => {
       queryClient.setQueryData<TerminalSummary[]>(
         ["terminals", terminal.projectId],
@@ -2737,11 +2750,13 @@ export function App() {
       projectId,
       tabGroupId,
       worktreeId,
+      target,
     }: {
       projectId: string;
       tabGroupId?: string;
       worktreeId?: string;
-    }) => createExplorer(projectId, "Explorer", worktreeId, tabGroupId),
+      target?: ExecutionTarget;
+    }) => createExplorer(projectId, "Explorer", worktreeId, tabGroupId, target),
     onSuccess: (explorer) => {
       queryClient.setQueryData<ExplorerSummary[]>(
         ["explorers", explorer.projectId],
@@ -2760,10 +2775,12 @@ export function App() {
     mutationFn: ({
       projectId,
       tabGroupId,
+      target,
     }: {
       projectId: string;
       tabGroupId?: string;
-    }) => createBrowser(projectId, "Browser", tabGroupId),
+      target?: ExecutionTarget;
+    }) => createBrowser(projectId, "Browser", tabGroupId, target),
     onSuccess: (browser) => {
       queryClient.setQueryData<BrowserSummary[]>(
         ["browsers", browser.projectId],
@@ -2783,11 +2800,13 @@ export function App() {
       projectId,
       tabGroupId,
       worktreeId,
+      target,
     }: {
       projectId: string;
       tabGroupId?: string;
       worktreeId?: string;
-    }) => createCodeTab(projectId, "Code", worktreeId, tabGroupId),
+      target?: ExecutionTarget;
+    }) => createCodeTab(projectId, "Code", worktreeId, tabGroupId, target),
     onSuccess: (codeTab) => {
       queryClient.setQueryData<CodeTabSummary[]>(
         ["code-tabs", codeTab.projectId],
@@ -2989,10 +3008,12 @@ export function App() {
     mutationFn: ({
       projectId,
       tabGroupId,
+      target,
     }: {
       projectId: string;
       tabGroupId?: string;
-    }) => createRemoteDesktop(projectId, tabGroupId),
+      target?: ExecutionTarget;
+    }) => createRemoteDesktop(projectId, tabGroupId, target),
     onSuccess: (desktop) => {
       queryClient.setQueryData<ProjectViewSummary[]>(
         ["project-views", desktop.projectId],
@@ -3437,14 +3458,15 @@ export function App() {
   const activeWorktree = worktrees.data?.find(
     (worktree) => worktree.id === activeWorktreeId,
   );
-  const selectedWorker = workers.data?.find(
-    (worker) =>
-      worker.workerId ===
-      (selectedCodeTab?.activeWorkerId ??
+  const selectedWorkerId =
+    selectedProjectView?.kind === "remote-desktop"
+      ? remoteDesktop.data?.workerId
+      : (selectedCodeTab?.activeWorkerId ??
         selectedBrowser?.workerId ??
-        remoteDesktop.data?.workerId ??
         activeWorktree?.workerId ??
-        selectedProject?.source?.workerId),
+        selectedProject?.source?.workerId);
+  const selectedWorker = workers.data?.find(
+    (worker) => worker.workerId === selectedWorkerId,
   );
   const explorerDisplayPath = selectedExplorer
     ? `${activeWorktree?.displayPath ?? selectedProject?.source?.displayPath ?? "Explorer"}${explorerHeader?.directoryPath ? `/${explorerHeader.directoryPath}` : ""}`
@@ -4111,9 +4133,15 @@ export function App() {
     projectId: string,
     kind: ProjectSurfaceCreateKind,
     tabGroupId?: string,
+    target?: ExecutionTarget,
   ) => {
-    const input: { projectId: string; tabGroupId?: string } = { projectId };
+    const input: {
+      projectId: string;
+      tabGroupId?: string;
+      target?: ExecutionTarget;
+    } = { projectId };
     if (tabGroupId) input.tabGroupId = tabGroupId;
+    if (target) input.target = target;
     if (kind === "chat") newChat.mutate(input);
     else if (kind === "terminal") newTerminal.mutate(input);
     else if (kind === "explorer") newExplorer.mutate(input);
@@ -4122,11 +4150,16 @@ export function App() {
     else if (kind === "remote-desktop") {
       if (!tabGroupId) newRemoteDesktop.reset();
       newRemoteDesktop.mutate(input);
-    } else newProjectView.mutate({ ...input, kind });
+    } else {
+      newProjectView.mutate({ projectId, tabGroupId, kind });
+    }
   };
-  const createSurfaceInSelectedGroup = (kind: ProjectSurfaceCreateKind) => {
+  const createSurfaceInSelectedGroup = (
+    kind: ProjectSurfaceCreateKind,
+    target?: ExecutionTarget,
+  ) => {
     if (!selectedProject || !selectedTabGroup) return;
-    createProjectSurface(selectedProject.id, kind, selectedTabGroup.id);
+    createProjectSurface(selectedProject.id, kind, selectedTabGroup.id, target);
   };
   const renameSurface = (surface: ProjectSurface, title: string) => {
     if (surface.kind === "chat") {
@@ -4167,6 +4200,31 @@ export function App() {
     ...(newProjectView.isPending ? (["history", "issues"] as const) : []),
     ...(newRemoteDesktop.isPending ? (["remote-desktop"] as const) : []),
   ]);
+  const selectedPlacementContext: ProjectSurfacePlacementContext | undefined =
+    selectedProject
+      ? {
+          projectId: selectedProject.id,
+          replicas: selectedProject.replicas,
+          workers: workers.data ?? [],
+          worktrees: worktrees.data ?? [],
+        }
+      : undefined;
+  const surfaceCreationFailure = newChat.isError
+    ? { label: "chat", error: newChat.error }
+    : newTerminal.isError
+      ? { label: "terminal", error: newTerminal.error }
+      : newExplorer.isError
+        ? { label: "Explorer", error: newExplorer.error }
+        : newBrowser.isError
+          ? { label: "Browser", error: newBrowser.error }
+          : newCodeTab.isError
+            ? { label: "Code tab", error: newCodeTab.error }
+            : newRemoteDesktop.isError
+              ? {
+                  label: "Remote Desktop",
+                  error: newRemoteDesktop.error,
+                }
+              : null;
   const handleWorkspaceDrop = (operation: WorkspaceDropOperation) => {
     setWorkspaceDragError(null);
     if (operation.type === "tab-layout") {
@@ -4373,7 +4431,9 @@ export function App() {
                 selectedTabKey={selectedTabKey}
                 tabLayout={tabLayout.data ?? null}
                 creatingKinds={creatingSurfaceKinds}
-                onCreateSurface={createProjectSurface}
+                onCreateSurface={(projectId, kind, target) =>
+                  createProjectSurface(projectId, kind, undefined, target)
+                }
                 onChangeChatWorktree={(chatId, worktreeId, mode) => {
                   const chat = chats.data?.find(({ id }) => id === chatId);
                   if (chat) bindChatWorktree(chat, worktreeId, mode);
@@ -4859,6 +4919,7 @@ export function App() {
             }}
             onRename={renameSurface}
             onSelect={selectTopTab}
+            placement={selectedPlacementContext}
           />
         ) : null}
 
@@ -4969,7 +5030,10 @@ export function App() {
             creatingKinds={creatingSurfaceKinds}
             layout={tabLayout.data}
             surfaces={projectSurfaces}
-            onCreate={(kind) => createProjectSurface(selectedProject.id, kind)}
+            onCreate={(kind, target) =>
+              createProjectSurface(selectedProject.id, kind, undefined, target)
+            }
+            placement={selectedPlacementContext}
             onRemoveBottomTab={
               activeMobileBottomTabId === PRIMARY_MOBILE_BOTTOM_TAB_ID
                 ? undefined
@@ -5257,9 +5321,15 @@ export function App() {
                 )?.online,
               )}
               worktrees={worktrees.data ?? []}
-              onCreateSurface={(kind) =>
-                createProjectSurface(selectedProject.id, kind)
+              onCreateSurface={(kind, target) =>
+                createProjectSurface(
+                  selectedProject.id,
+                  kind,
+                  undefined,
+                  target,
+                )
               }
+              placement={selectedPlacementContext}
               onOpenSurface={selectTopTab}
               onOpenTabs={() => setMobileTabGridOpen(true)}
             />
@@ -5434,14 +5504,10 @@ export function App() {
         />
       ) : null}
 
-      {newRemoteDesktop.isError ? (
+      {surfaceCreationFailure ? (
         <div className="fixed bottom-5 right-5 z-50 max-w-md rounded-lg bg-destructive px-4 py-3 text-sm text-destructive-foreground shadow-xl">
-          Could not start Remote Desktop: {errorText(newRemoteDesktop.error)}
-        </div>
-      ) : null}
-      {newCodeTab.isError ? (
-        <div className="fixed bottom-5 right-5 z-50 max-w-md rounded-lg bg-destructive px-4 py-3 text-sm text-destructive-foreground shadow-xl">
-          Could not create Code tab: {errorText(newCodeTab.error)}
+          Could not create {surfaceCreationFailure.label}:{" "}
+          {errorText(surfaceCreationFailure.error)}
         </div>
       ) : null}
     </WorkspaceDndProvider>
