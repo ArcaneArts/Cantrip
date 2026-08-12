@@ -13,7 +13,7 @@ import { CodexAuthClient } from "./codex/auth-client.js";
 import { verifyCodexInstallation } from "./codex/bundled-runtime.js";
 import { discoverCodexRuntime } from "./codex/discovery.js";
 import type { CodexRuntime } from "./codex/runtime.js";
-import { invokeCantripWorktreeTool } from "./codex/worktree-tool-client.js";
+import { invokeCantripExecutionTool } from "./codex/worktree-tool-client.js";
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
 import { discoverBrowserServices } from "./browser/service-discovery.js";
 import { discoverCantripCode } from "./code/installation.js";
@@ -890,6 +890,8 @@ async function start(): Promise<void> {
       case "terminal.close":
         terminals.close(command.terminalId);
         return { accepted: true };
+      case "terminal.snapshot":
+        return terminals.snapshot(command.terminalId, command.maxChars);
       case "terminal.services.reconcile":
         terminals.reconcileServices(command.services);
         return { accepted: true };
@@ -962,13 +964,13 @@ async function start(): Promise<void> {
             emit({ type: "agent.plan.question", question }),
           onPlanQuestionResolved: (questionId) =>
             emit({ type: "agent.plan.question-resolved", questionId }),
-          onWorktreeToolCall: async ({
+          onExecutionToolCall: async ({
             arguments: toolArguments,
             callId,
             tool,
           }) => {
             try {
-              const result = await invokeCantripWorktreeTool({
+              const result = await invokeCantripExecutionTool({
                 arguments: toolArguments,
                 callId,
                 chatId: command.chatId,
@@ -978,31 +980,35 @@ async function start(): Promise<void> {
                 tool,
                 workerId: config.workerId,
               });
-              emit({
-                type: "agent.activity",
-                activity: {
-                  type: "worktree",
-                  id: `worktree-tool:${callId}`,
-                  operation: tool,
-                  status: "completed",
-                  summary: result.summary,
-                  worktreeId: result.worktreeId,
-                },
-              });
+              if (tool.startsWith("cantrip_worktree")) {
+                emit({
+                  type: "agent.activity",
+                  activity: {
+                    type: "worktree",
+                    id: `worktree-tool:${callId}`,
+                    operation: tool,
+                    status: "completed",
+                    summary: result.summary,
+                    worktreeId: result.worktreeId,
+                  },
+                });
+              }
               return result;
             } catch (error) {
-              emit({
-                type: "agent.activity",
-                activity: {
-                  type: "worktree",
-                  id: `worktree-tool:${callId}`,
-                  operation: tool,
-                  status: "failed",
-                  summary:
-                    error instanceof Error ? error.message : String(error),
-                  worktreeId: null,
-                },
-              });
+              if (tool.startsWith("cantrip_worktree")) {
+                emit({
+                  type: "agent.activity",
+                  activity: {
+                    type: "worktree",
+                    id: `worktree-tool:${callId}`,
+                    operation: tool,
+                    status: "failed",
+                    summary:
+                      error instanceof Error ? error.message : String(error),
+                    worktreeId: null,
+                  },
+                });
+              }
               throw error;
             }
           },

@@ -1,10 +1,84 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { invokeCantripWorktreeTool } from "../src/codex/worktree-tool-client.js";
+import {
+  invokeCantripExecutionTool,
+  invokeCantripWorktreeTool,
+} from "../src/codex/worktree-tool-client.js";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("invokeCantripWorktreeTool", () => {
+  it("routes generalized execution tools through the lane-authenticated endpoint", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            summary: "Terminal is running.",
+            target: {
+              kind: "surface",
+              projectId: "project-1",
+              surfaceKind: "terminal",
+              surfaceId: "terminal-2",
+            },
+            data: { status: "running", data: "ready" },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      invokeCantripExecutionTool({
+        arguments: {
+          target: {
+            kind: "surface",
+            projectId: "project-1",
+            surfaceKind: "terminal",
+            surfaceId: "terminal-2",
+          },
+        },
+        callId: "call-target-1",
+        chatId: "chat-1",
+        executionLaneId: "lane-1",
+        serverUrl: "http://127.0.0.1:4310",
+        token: "secret",
+        tool: "cantrip_terminal_read",
+        workerId: "worker-1",
+      }),
+    ).resolves.toMatchObject({ summary: "Terminal is running." });
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      "http://127.0.0.1:4310/api/internal/agent-tools/execution",
+    );
+  });
+
+  it("keeps worktree operations on their compatibility endpoint", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            summary: "Found 1 validated worktree.",
+            worktreeId: "primary-1",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await invokeCantripExecutionTool({
+      arguments: {},
+      callId: "call-worktree-generic",
+      chatId: "chat-1",
+      executionLaneId: "lane-1",
+      serverUrl: "http://127.0.0.1:4310",
+      token: "secret",
+      tool: "cantrip_worktrees_list",
+      workerId: "worker-1",
+    });
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      "http://127.0.0.1:4310/api/internal/agent-tools/worktree",
+    );
+  });
+
   it("authenticates and scopes an agent tool call to its active lane", async () => {
     const fetchMock = vi.fn(
       async () =>
