@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   appLiveClientMessageSchema,
   appLiveEventPayloadSchema,
+  appLiveResourceSchema,
   appLiveScopeKey,
   appLiveServerMessageSchema,
   type AppLiveScope,
@@ -14,6 +15,10 @@ const projectScope = {
 };
 
 describe("application live protocol", () => {
+  it("advertises tunnel state as an invalidation resource", () => {
+    expect(appLiveResourceSchema.parse("tunnel")).toBe("tunnel");
+  });
+
   it("initializes with an optional same-epoch replay cursor", () => {
     expect(
       appLiveClientMessageSchema.parse({

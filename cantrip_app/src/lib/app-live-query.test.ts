@@ -99,6 +99,14 @@ describe("application live query bridge", () => {
         }),
       ),
     ).toEqual([["workflow-repository", "project-one"]]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
+          resource: "tunnel",
+          scope: { kind: "project", projectId: "project-one" },
+        }),
+      ),
+    ).toEqual([["tunnels"], ["project-tunnels", "project-one"]]);
   });
 
   it("coalesces repeated events before invalidating TanStack Query", async () => {

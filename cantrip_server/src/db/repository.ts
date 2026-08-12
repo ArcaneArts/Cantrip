@@ -83,6 +83,13 @@ import type {
   TerminalSummary,
   TerminalUpdate,
   ThemePreference,
+  TunnelAttachmentSummary,
+  TunnelDestinationEndpoint,
+  TunnelManagedRegistration,
+  TunnelSourceEndpoint,
+  TunnelSummary,
+  TunnelUserCreate,
+  TunnelUserUpdate,
   TokenUsageTotals,
   UserSettings,
   UserSettingsUpdate,
@@ -148,6 +155,8 @@ type ProjectWorkspaceRow = typeof schema.projectWorkspaces.$inferSelect;
 type UserRow = typeof schema.users.$inferSelect;
 type UserSessionRow = typeof schema.userSessions.$inferSelect;
 type WorkerCredentialRow = typeof schema.workerCredentials.$inferSelect;
+type TunnelRow = typeof schema.tunnels.$inferSelect;
+type TunnelAttachmentRow = typeof schema.tunnelAttachments.$inferSelect;
 
 export interface AccountCredentialRecord {
   passwordHash: string;
@@ -212,6 +221,7 @@ export class AgentInteractionConflictError extends Error {}
 export class CodeCapabilityUnavailableError extends Error {}
 export class ProjectWorkspaceInvariantError extends Error {}
 export class WorkerEnrollmentError extends Error {}
+export class TunnelManagementError extends Error {}
 
 export interface TerminalExecutionContext {
   cwd: string;
@@ -450,6 +460,103 @@ function toProjectSummary(
     createdAt: toISOString(project.createdAt),
     updatedAt: toISOString(project.updatedAt),
   };
+}
+
+function toTunnelAttachmentSummary(
+  attachment: TunnelAttachmentRow,
+): TunnelAttachmentSummary {
+  return {
+    id: attachment.id,
+    tunnelId: attachment.tunnelId,
+    kind: attachment.kind as TunnelAttachmentSummary["kind"],
+    clientId: attachment.clientId,
+    localHost: attachment.localHost as TunnelAttachmentSummary["localHost"],
+    localPort: attachment.localPort,
+    status: attachment.status as TunnelAttachmentSummary["status"],
+    activeConnectionCount: attachment.activeConnectionCount,
+    bytesFromSource: attachment.bytesFromSource,
+    bytesToSource: attachment.bytesToSource,
+    lastError: attachment.lastError,
+    expiresAt: attachment.expiresAt?.toISOString() ?? null,
+    lastSeenAt: attachment.lastSeenAt?.toISOString() ?? null,
+    createdAt: attachment.createdAt.toISOString(),
+    updatedAt: attachment.updatedAt.toISOString(),
+  };
+}
+
+function tunnelCapabilities(
+  tunnel: TunnelRow,
+  attachments: TunnelAttachmentSummary[],
+): TunnelSummary["capabilities"] {
+  const userManaged = tunnel.management === "user-managed";
+  if (!userManaged) {
+    return {
+      canEdit: false,
+      canDelete: false,
+      canStart: false,
+      canStop: false,
+      canAttach: false,
+      canOpenOwner: tunnel.managedByKind !== null,
+    };
+  }
+  const attached = attachments.some(
+    ({ status }) => status !== "stopped" && status !== "failed",
+  );
+  const stopped = tunnel.status === "stopped" || tunnel.status === "failed";
+  return {
+    canEdit: stopped && !attached,
+    canDelete: stopped && !attached,
+    canStart: stopped && !attached,
+    canStop: attached || (!stopped && tunnel.status !== "stopping"),
+    canAttach: tunnel.status !== "stopping",
+    canOpenOwner: false,
+  };
+}
+
+function toTunnelSummary(
+  tunnel: TunnelRow,
+  attachmentRows: TunnelAttachmentRow[] = [],
+): TunnelSummary {
+  const attachments = attachmentRows.map(toTunnelAttachmentSummary);
+  return {
+    id: tunnel.id,
+    name: tunnel.name,
+    description: tunnel.description,
+    projectId: tunnel.projectId,
+    position: tunnel.position,
+    origin: tunnel.origin as TunnelSummary["origin"],
+    management: tunnel.management as TunnelSummary["management"],
+    protocolHint: tunnel.protocolHint as TunnelSummary["protocolHint"],
+    source: tunnel.sourceEndpoint,
+    destination: tunnel.destinationEndpoint,
+    managedBy:
+      tunnel.managedByKind && tunnel.managedById
+        ? {
+            kind: tunnel.managedByKind as NonNullable<
+              TunnelSummary["managedBy"]
+            >["kind"],
+            id: tunnel.managedById,
+          }
+        : null,
+    desiredState: tunnel.desiredState as TunnelSummary["desiredState"],
+    status: tunnel.status as TunnelSummary["status"],
+    lastError: tunnel.lastError,
+    activeConnectionCount: tunnel.activeConnectionCount,
+    bytesFromSource: tunnel.bytesFromSource,
+    bytesToSource: tunnel.bytesToSource,
+    attachments,
+    capabilities: tunnelCapabilities(tunnel, attachments),
+    createdAt: tunnel.createdAt.toISOString(),
+    updatedAt: tunnel.updatedAt.toISOString(),
+  };
+}
+
+function sourceWorkerId(source: TunnelSourceEndpoint): string | null {
+  return source.kind === "worker-listener" ? source.workerId : null;
+}
+
+function destinationWorkerId(destination: TunnelDestinationEndpoint): string {
+  return destination.workerId;
 }
 
 function toMcpServerSummary(server: McpServerRow): McpServerSummary {
@@ -2682,6 +2789,336 @@ export class ServerRepository {
   async onlineWorkerCount(ownerId: string): Promise<number> {
     const workers = await this.listWorkers(ownerId);
     return workers.filter((worker) => worker.online).length;
+  }
+
+  private async tunnelReferencesAreOwned(
+    ownerId: string,
+    projectId: string | null,
+    source: TunnelSourceEndpoint,
+    destination: TunnelDestinationEndpoint,
+  ): Promise<boolean> {
+    const workerIds = [
+      ...new Set(
+        [sourceWorkerId(source), destinationWorkerId(destination)].filter(
+          (workerId): workerId is string => workerId !== null,
+        ),
+      ),
+    ];
+    const [projectRows, workerRows] = await Promise.all([
+      projectId
+        ? this.database
+            .select({ id: schema.projects.id })
+            .from(schema.projects)
+            .where(
+              and(
+                eq(schema.projects.id, projectId),
+                eq(schema.projects.ownerId, ownerId),
+              ),
+            )
+            .limit(1)
+        : Promise.resolve([{ id: null }]),
+      this.database
+        .select({ id: schema.workers.id })
+        .from(schema.workers)
+        .where(
+          and(
+            eq(schema.workers.ownerId, ownerId),
+            isNull(schema.workers.unlinkedAt),
+            inArray(schema.workers.id, workerIds),
+          ),
+        ),
+    ]);
+    return projectRows.length === 1 && workerRows.length === workerIds.length;
+  }
+
+  private async nextTunnelPosition(ownerId: string): Promise<number> {
+    const rows = await this.database
+      .select({ position: schema.tunnels.position })
+      .from(schema.tunnels)
+      .where(eq(schema.tunnels.ownerId, ownerId))
+      .orderBy(desc(schema.tunnels.position))
+      .limit(1);
+    return (rows[0]?.position ?? -1) + 1;
+  }
+
+  async listTunnels(
+    ownerId: string,
+    projectId?: string,
+  ): Promise<TunnelSummary[]> {
+    const tunnelRows = await this.database
+      .select()
+      .from(schema.tunnels)
+      .where(
+        and(
+          eq(schema.tunnels.ownerId, ownerId),
+          projectId ? eq(schema.tunnels.projectId, projectId) : undefined,
+        ),
+      )
+      .orderBy(asc(schema.tunnels.position), asc(schema.tunnels.createdAt));
+    if (tunnelRows.length === 0) return [];
+    const attachmentRows = await this.database
+      .select()
+      .from(schema.tunnelAttachments)
+      .where(
+        inArray(
+          schema.tunnelAttachments.tunnelId,
+          tunnelRows.map(({ id }) => id),
+        ),
+      )
+      .orderBy(
+        asc(schema.tunnelAttachments.createdAt),
+        asc(schema.tunnelAttachments.id),
+      );
+    const attachmentsByTunnel = new Map<string, TunnelAttachmentRow[]>();
+    for (const attachment of attachmentRows) {
+      const attachments = attachmentsByTunnel.get(attachment.tunnelId) ?? [];
+      attachments.push(attachment);
+      attachmentsByTunnel.set(attachment.tunnelId, attachments);
+    }
+    return tunnelRows.map((tunnel) =>
+      toTunnelSummary(tunnel, attachmentsByTunnel.get(tunnel.id)),
+    );
+  }
+
+  async getTunnel(
+    ownerId: string,
+    tunnelId: string,
+  ): Promise<TunnelSummary | null> {
+    const tunnelRows = await this.database
+      .select()
+      .from(schema.tunnels)
+      .where(
+        and(
+          eq(schema.tunnels.id, tunnelId),
+          eq(schema.tunnels.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    const tunnel = tunnelRows[0];
+    if (!tunnel) return null;
+    const attachments = await this.database
+      .select()
+      .from(schema.tunnelAttachments)
+      .where(eq(schema.tunnelAttachments.tunnelId, tunnel.id))
+      .orderBy(
+        asc(schema.tunnelAttachments.createdAt),
+        asc(schema.tunnelAttachments.id),
+      );
+    return toTunnelSummary(tunnel, attachments);
+  }
+
+  async createUserTunnel(
+    ownerId: string,
+    input: TunnelUserCreate,
+  ): Promise<TunnelSummary | null> {
+    const source = { kind: "desktop-loopback" as const };
+    if (
+      !(await this.tunnelReferencesAreOwned(
+        ownerId,
+        input.projectId,
+        source,
+        input.destination,
+      ))
+    ) {
+      return null;
+    }
+    const rows = await this.database
+      .insert(schema.tunnels)
+      .values({
+        id: randomUUID(),
+        ownerId,
+        projectId: input.projectId,
+        name: input.name,
+        description: input.description,
+        position: await this.nextTunnelPosition(ownerId),
+        origin: "user",
+        management: "user-managed",
+        protocolHint: input.protocolHint,
+        sourceEndpoint: source,
+        sourceWorkerId: null,
+        destinationEndpoint: input.destination,
+        destinationWorkerId: input.destination.workerId,
+        managedByKind: null,
+        managedById: null,
+        desiredState: "stopped",
+        status: "stopped",
+      })
+      .returning();
+    return toTunnelSummary(firstOrThrow(rows, "creating a tunnel"));
+  }
+
+  async updateUserTunnel(
+    ownerId: string,
+    tunnelId: string,
+    input: TunnelUserUpdate,
+  ): Promise<TunnelSummary | null> {
+    const existingRows = await this.database
+      .select()
+      .from(schema.tunnels)
+      .where(
+        and(
+          eq(schema.tunnels.id, tunnelId),
+          eq(schema.tunnels.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    const existing = existingRows[0];
+    if (!existing) return null;
+    if (existing.management !== "user-managed") {
+      throw new TunnelManagementError(
+        "Managed tunnels are controlled by their owning feature.",
+      );
+    }
+    const projectId =
+      input.projectId === undefined ? existing.projectId : input.projectId;
+    const destination = input.destination ?? existing.destinationEndpoint;
+    if (
+      !(await this.tunnelReferencesAreOwned(
+        ownerId,
+        projectId,
+        existing.sourceEndpoint,
+        destination,
+      ))
+    ) {
+      return null;
+    }
+    const rows = await this.database
+      .update(schema.tunnels)
+      .set({
+        ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.description === undefined
+          ? {}
+          : { description: input.description }),
+        ...(input.projectId === undefined ? {} : { projectId }),
+        ...(input.protocolHint === undefined
+          ? {}
+          : { protocolHint: input.protocolHint }),
+        ...(input.destination === undefined
+          ? {}
+          : {
+              destinationEndpoint: destination,
+              destinationWorkerId: destination.workerId,
+            }),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.tunnels.id, tunnelId),
+          eq(schema.tunnels.ownerId, ownerId),
+          eq(schema.tunnels.management, "user-managed"),
+        ),
+      )
+      .returning();
+    return rows[0] ? this.getTunnel(ownerId, rows[0].id) : null;
+  }
+
+  async deleteUserTunnel(ownerId: string, tunnelId: string): Promise<boolean> {
+    const existingRows = await this.database
+      .select({ management: schema.tunnels.management })
+      .from(schema.tunnels)
+      .where(
+        and(
+          eq(schema.tunnels.id, tunnelId),
+          eq(schema.tunnels.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    const existing = existingRows[0];
+    if (!existing) return false;
+    if (existing.management !== "user-managed") {
+      throw new TunnelManagementError(
+        "Managed tunnels are controlled by their owning feature.",
+      );
+    }
+    const rows = await this.database
+      .delete(schema.tunnels)
+      .where(
+        and(
+          eq(schema.tunnels.id, tunnelId),
+          eq(schema.tunnels.ownerId, ownerId),
+          eq(schema.tunnels.management, "user-managed"),
+        ),
+      )
+      .returning({ id: schema.tunnels.id });
+    return rows.length === 1;
+  }
+
+  async registerManagedTunnel(
+    ownerId: string,
+    input: TunnelManagedRegistration,
+  ): Promise<TunnelSummary | null> {
+    if (
+      !(await this.tunnelReferencesAreOwned(
+        ownerId,
+        input.projectId,
+        input.source,
+        input.destination,
+      ))
+    ) {
+      return null;
+    }
+    const existingRows = await this.database
+      .select({ id: schema.tunnels.id })
+      .from(schema.tunnels)
+      .where(
+        and(
+          eq(schema.tunnels.ownerId, ownerId),
+          eq(schema.tunnels.managedByKind, input.managedBy.kind),
+          eq(schema.tunnels.managedById, input.managedBy.id),
+        ),
+      )
+      .limit(1);
+    const values = {
+      projectId: input.projectId,
+      name: input.name,
+      description: input.description,
+      origin: input.origin,
+      management: input.management,
+      protocolHint: input.protocolHint,
+      sourceEndpoint: input.source,
+      sourceWorkerId: sourceWorkerId(input.source),
+      destinationEndpoint: input.destination,
+      destinationWorkerId: destinationWorkerId(input.destination),
+      managedByKind: input.managedBy.kind,
+      managedById: input.managedBy.id,
+      desiredState: input.desiredState,
+      status: input.status,
+      lastError: null,
+      updatedAt: new Date(),
+    };
+    if (existingRows[0]) {
+      await this.database
+        .update(schema.tunnels)
+        .set(values)
+        .where(eq(schema.tunnels.id, existingRows[0].id));
+      return this.getTunnel(ownerId, existingRows[0].id);
+    }
+    const id = randomUUID();
+    await this.database.insert(schema.tunnels).values({
+      id,
+      ownerId,
+      position: await this.nextTunnelPosition(ownerId),
+      ...values,
+    });
+    return this.getTunnel(ownerId, id);
+  }
+
+  async removeManagedTunnel(
+    ownerId: string,
+    managedBy: NonNullable<TunnelSummary["managedBy"]>,
+  ): Promise<boolean> {
+    const rows = await this.database
+      .delete(schema.tunnels)
+      .where(
+        and(
+          eq(schema.tunnels.ownerId, ownerId),
+          ne(schema.tunnels.management, "user-managed"),
+          eq(schema.tunnels.managedByKind, managedBy.kind),
+          eq(schema.tunnels.managedById, managedBy.id),
+        ),
+      )
+      .returning({ id: schema.tunnels.id });
+    return rows.length === 1;
   }
 
   async listProjects(ownerId: string): Promise<ProjectSummary[]> {

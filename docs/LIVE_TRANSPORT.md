@@ -17,8 +17,9 @@ The architecture decision is recorded in
 | Committed state notifications and cache synchronization           | Application live WebSocket                   |
 | Terminal PTY streams                                              | Dedicated terminal WebSocket                 |
 | Browser and Remote Desktop frames/input                           | Dedicated Remote Surface WebSocket or WebRTC |
-| Cantrip Code proxy                                                | Dedicated HTTP/WebSocket tunnel              |
-| Project network-share request/response bytes                      | Dedicated HTTP/WebDAV worker tunnel          |
+| Tunnel control snapshots and mutations                            | HTTP                                         |
+| Tunnel state invalidation                                         | Application live WebSocket                   |
+| Cantrip Code, project-share, and raw tunnel bytes                 | Dedicated tunnel data planes                 |
 | Worker commands and events                                        | Authenticated outbound worker WebSocket      |
 
 ## Version 1 contract
@@ -32,7 +33,9 @@ heartbeat interval, and replay decision.
 Every event contains exactly one authorized scope, typed resource and action,
 optional entity ID and revision, committed timestamp, and optional bounded JSON
 payload. Resource types cover settings, workers, projects, worktrees, project
-tabs and tab layouts, chat state, interactions, workflows, and customization.
+tabs and tab layouts, chat state, interactions, workflows, customization, and
+tunnels. Tunnel stream bytes and flow control remain on dedicated binary
+transports.
 
 The server may replay retained events after a same-epoch cursor and ends replay
 with `caught-up`. It emits `resync-required` when the server restarted, the

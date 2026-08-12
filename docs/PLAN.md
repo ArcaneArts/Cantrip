@@ -318,6 +318,8 @@ The database is the source of truth for Cantrip entities. Exact columns can evol
 | `model_providers` | Independent API endpoints or isolated ChatGPT accounts, including server-held endpoint configuration and worker-held authentication identity. |
 | `model_profiles` | Logical user-facing models selected by chats and queued prompts, with a default reasoning effort and routing policy. |
 | `model_routes` | Ordered provider bindings for a logical model: provider-specific model name, enabled state, priority, and optional reasoning override. |
+| `tunnels` | Owner-scoped logical routes with explicit source and destination endpoints, optional organizational project association, management policy, desired/observed state, and aggregate traffic counters. |
+| `tunnel_attachments` | Revocable consumers of a logical tunnel, including desktop loopback listeners and server relays, with hashed credentials, leases, status, and per-attachment counters. |
 | `audit_events` | Security-sensitive operations such as pairing, terminal creation, approvals, policy changes, and secret updates. |
 
 A project source path is meaningful only on its worker. Two workers may bind the same logical project to different clones and different absolute paths. The server stores only source metadata and paths needed for routing; it does not mirror the working tree or file contents. File reads, edits, Git operations, and terminals always execute on the selected worker.
@@ -347,6 +349,7 @@ Use ordinary versioned HTTP endpoints for snapshots and mutations, plus one auth
 - `/v1/chats/:id/interrupt` and `/v1/chats/:id/compact`;
 - `/v1/chats/:id/pending-requests/:requestId/respond` for approvals and questions;
 - `/v1/runtime-profiles/*` for provider/auth/model configuration; and
+- `/v1/tunnels/*` for owner-authorized tunnel configuration, attachments, and lifecycle actions; and
 - `/v1/events` for a cursor-based WebSocket stream.
 
 Every mutation receives an idempotency key. The server acknowledges durable acceptance, while later events describe dispatch, execution, and completion. Reconnecting clients provide their last event cursor, receive missed events, and then continue live. Initial page load uses a database snapshot followed by events after the snapshot cursor to avoid gaps.
