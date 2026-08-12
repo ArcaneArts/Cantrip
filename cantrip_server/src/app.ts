@@ -24,6 +24,7 @@ import {
   auditEventListSchema,
   auditEventQuerySchema,
   browserCreateSchema,
+  browserServiceFleetDiscoverySchema,
   browserListSchema,
   browserServiceListSchema,
   browserSummarySchema,
@@ -561,6 +562,9 @@ const TUNNEL_ATTACHMENT_SECRET_TTL_MS = 2 * 60_000;
 const TUNNEL_ATTACHMENT_LIFETIME_MS = 12 * 60 * 60_000;
 const TUNNEL_ATTACHMENT_INITIALIZE_TIMEOUT_MS = 10_000;
 const TUNNEL_ATTACHMENT_EXPIRY_SWEEP_MS = 60_000;
+const BROWSER_FLEET_DISCOVERY_TIMEOUT_MS = 20_000;
+const BROWSER_FLEET_DISCOVERY_WORKER_LIMIT = 64;
+const BROWSER_FLEET_DISCOVERY_SERVICE_LIMIT = 1_024;
 
 function workerRequestFailureStatus(error: unknown): 429 | 502 | 503 {
   if (error instanceof RelayLimitError) return 429;
@@ -4352,6 +4356,7 @@ export async function buildApp({
           multipleWorkers: true,
           projectReplicas: true,
           replicaProvisioning: true,
+          browserFleetDiscovery: true,
           workerSwitching: false,
           gitSync: true,
           worktrees: true,
@@ -11965,6 +11970,120 @@ export async function buildApp({
           ),
         ),
       ),
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/browser-services",
+    async (request, reply) => {
+      const ownerId = applicationOwnerId();
+      const replicas = await repository.listProjectReplicas(
+        ownerId,
+        request.params.projectId,
+      );
+      if (!replicas) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
+      const capableWorkers = (await repository.listWorkers(ownerId))
+        .filter((worker) => worker.remoteSurfaces.browser)
+        .sort(
+          (left, right) =>
+            left.name.localeCompare(right.name) ||
+            left.workerId.localeCompare(right.workerId),
+        );
+      const fleetTruncated =
+        capableWorkers.length > BROWSER_FLEET_DISCOVERY_WORKER_LIMIT;
+      const workerResults = await Promise.all(
+        capableWorkers
+          .slice(0, BROWSER_FLEET_DISCOVERY_WORKER_LIMIT)
+          .map(async (worker) => {
+            const workerName = worker.name.slice(0, 200);
+            if (!worker.online || !bridge.isConnected(worker.workerId)) {
+              return {
+                workerId: worker.workerId,
+                workerName,
+                status: "offline" as const,
+                services: [],
+                error: {
+                  code: "worker-offline" as const,
+                  message: `${workerName} is offline.`,
+                },
+                truncated: false,
+              };
+            }
+            try {
+              const response = await bridge.request(
+                worker.workerId,
+                { type: "browser.services.discover" },
+                { timeoutMs: BROWSER_FLEET_DISCOVERY_TIMEOUT_MS },
+              );
+              const services = browserServiceListSchema.parse(response);
+              return {
+                workerId: worker.workerId,
+                workerName,
+                status: "ok" as const,
+                services: services.map((service) => ({
+                  ...service,
+                  workerId: worker.workerId,
+                  workerName,
+                  placement: {
+                    projectId: request.params.projectId,
+                    workerId: worker.workerId,
+                    projectReplicaId: null,
+                    worktreeId: null,
+                    surface: null,
+                  },
+                })),
+                error: null,
+                truncated: false,
+              };
+            } catch (error) {
+              const message = errorMessage(error).slice(0, 1_000);
+              const unavailable = error instanceof WorkerUnavailableError;
+              const timedOut = /timed out/iu.test(message);
+              return {
+                workerId: worker.workerId,
+                workerName,
+                status: unavailable
+                  ? ("offline" as const)
+                  : timedOut
+                    ? ("timed-out" as const)
+                    : ("error" as const),
+                services: [],
+                error: {
+                  code: unavailable
+                    ? ("worker-offline" as const)
+                    : timedOut
+                      ? ("worker-timeout" as const)
+                      : ("worker-error" as const),
+                  message: message || `Could not scan ${workerName}.`,
+                },
+                truncated: false,
+              };
+            }
+          }),
+      );
+      let remainingServices = BROWSER_FLEET_DISCOVERY_SERVICE_LIMIT;
+      let serviceTruncated = false;
+      const boundedResults = workerResults.map((result) => {
+        const services = result.services.slice(0, remainingServices);
+        remainingServices -= services.length;
+        const truncated = services.length < result.services.length;
+        serviceTruncated ||= truncated;
+        return { ...result, services, truncated };
+      });
+      const truncated = fleetTruncated || serviceTruncated;
+      return reply.send(
+        browserServiceFleetDiscoverySchema.parse({
+          projectId: request.params.projectId,
+          observedAt: new Date().toISOString(),
+          partial:
+            truncated ||
+            boundedResults.some((result) => result.status !== "ok"),
+          truncated,
+          workers: boundedResults,
+        }),
+      );
+    },
   );
 
   app.get<{ Params: { browserId: string } }>(

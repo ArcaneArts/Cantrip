@@ -236,6 +236,21 @@ describe("hosted tenant authorization", () => {
         expect(response.json(), collection).toEqual([]);
       }
 
+      for (const projectId of [project.id, unknownProjectId]) {
+        const response = await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/browser-services`,
+          headers: headers(second),
+        });
+        expect({
+          body: response.json(),
+          statusCode: response.statusCode,
+        }).toEqual({
+          body: { error: "Project not found." },
+          statusCode: 404,
+        });
+      }
+
       await Promise.all([
         app.inject({
           method: "PATCH",

@@ -1,6 +1,7 @@
 import type {
   AgentInteractionResponse,
   BrowserSummary,
+  BrowserFleetService,
   ChatAttachmentSummary,
   ChatMessage,
   ChatPlanAnswer,
@@ -2776,11 +2777,15 @@ export function App() {
       projectId,
       tabGroupId,
       target,
+      title,
+      url,
     }: {
       projectId: string;
       tabGroupId?: string;
       target?: ExecutionTarget;
-    }) => createBrowser(projectId, "Browser", tabGroupId, target),
+      title?: string;
+      url?: string;
+    }) => createBrowser(projectId, title ?? "Browser", tabGroupId, target, url),
     onSuccess: (browser) => {
       queryClient.setQueryData<BrowserSummary[]>(
         ["browsers", browser.projectId],
@@ -5187,6 +5192,25 @@ export function App() {
           >
             <BrowserView
               browser={selectedBrowser}
+              fleetDiscovery={
+                bootstrap.data?.capabilities.browserFleetDiscovery ?? false
+              }
+              onOpenService={(service: BrowserFleetService) =>
+                newBrowser.mutate({
+                  projectId: selectedBrowser.projectId,
+                  tabGroupId: selectedTabGroup?.id,
+                  target: {
+                    kind: "worker",
+                    projectId: selectedBrowser.projectId,
+                    workerId: service.workerId,
+                  },
+                  title:
+                    service.title ??
+                    service.processName ??
+                    `Port ${service.port}`,
+                  url: service.url,
+                })
+              }
               onPageState={(state) => {
                 const input = browserUpdateForPageState(selectedBrowser, state);
                 if (input) {

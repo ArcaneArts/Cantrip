@@ -15,6 +15,8 @@ import {
   codexExternalImportApplySchema,
   codexMcpOauthStatusSchema,
   codexMcpResourceReadRequestSchema,
+  browserCreateSchema,
+  browserServiceFleetDiscoverySchema,
   chatAttachmentSummarySchema,
   chatCreateSchema,
   chatExecutionLaneSummarySchema,
@@ -313,6 +315,73 @@ describe("Cantrip protocol", () => {
         target,
       }).success,
     ).toBe(false);
+  });
+
+  it("bounds fleet browser discovery and validates initial Browser placement", () => {
+    expect(
+      browserCreateSchema.parse({
+        title: "Worker service",
+        url: "http://127.0.0.1:4310/health",
+        target: {
+          kind: "worker",
+          projectId: "project-one",
+          workerId: "worker-two",
+        },
+      }).url,
+    ).toBe("http://127.0.0.1:4310/health");
+    expect(
+      browserCreateSchema.safeParse({
+        url: "file:///etc/passwd",
+      }).success,
+    ).toBe(false);
+
+    const discovery = browserServiceFleetDiscoverySchema.parse({
+      projectId: "project-one",
+      observedAt: "2026-08-11T12:00:00.000Z",
+      partial: true,
+      workers: [
+        {
+          workerId: "worker-one",
+          workerName: "Desk Mac",
+          status: "ok",
+          services: [
+            {
+              workerId: "worker-one",
+              workerName: "Desk Mac",
+              host: "127.0.0.1",
+              port: 4310,
+              protocol: "http",
+              url: "http://127.0.0.1:4310/",
+              title: "Cantrip",
+              processName: "node",
+              statusCode: 200,
+              placement: {
+                projectId: "project-one",
+                workerId: "worker-one",
+                projectReplicaId: null,
+                worktreeId: null,
+                surface: null,
+              },
+            },
+          ],
+          error: null,
+        },
+        {
+          workerId: "worker-two",
+          workerName: "Build host",
+          status: "offline",
+          services: [],
+          error: {
+            code: "worker-offline",
+            message: "Build host is offline.",
+          },
+        },
+      ],
+    });
+    expect(discovery.workers[0]?.services[0]?.placement.workerId).toBe(
+      "worker-one",
+    );
+    expect(discovery.workers[1]?.status).toBe("offline");
   });
 
   it("validates bounded worker enrollment and redacted credential metadata", () => {
@@ -3378,6 +3447,7 @@ describe("Cantrip protocol", () => {
     });
     expect(bootstrap.capabilities.worktrees).toBe(true);
     expect(bootstrap.capabilities.projectReplicas).toBe(false);
+    expect(bootstrap.capabilities.browserFleetDiscovery).toBe(false);
   });
 
   it("round-trips versioned binary Remote Surface frames", () => {

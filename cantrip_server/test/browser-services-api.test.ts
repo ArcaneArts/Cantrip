@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  browserServiceFleetDiscoverySchema,
   browserServiceListSchema,
+  browserSummarySchema,
   tunnelAttachmentCreateResultSchema,
   tunnelSummarySchema,
   unprobedCodexRuntimeReport,
@@ -47,12 +49,17 @@ const services = browserServiceListSchema.parse([
   },
 ]);
 const commands: WorkerCommand[] = [];
-let connected = true;
+const requestedWorkers: string[] = [];
+const connectedWorkers = new Set([
+  "test-worker",
+  "healthy-worker",
+  "failing-worker",
+]);
 const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
   isConnected(workerId) {
-    return connected && workerId === "test-worker";
+    return connectedWorkers.has(workerId);
   },
   sendSurfaceFrame() {
     return false;
@@ -63,11 +70,22 @@ const workerBridge: WorkerCommandBus = {
   subscribeSurfaceFrames() {
     return () => undefined;
   },
-  async request(_workerId, command) {
+  async request(workerId, command) {
     commands.push(command);
+    requestedWorkers.push(workerId);
     if (command.type === "browser.services.discover") {
+      if (workerId === "failing-worker") {
+        throw new Error("Worker command browser.services.discover timed out.");
+      }
       return services.map((service) => ({
         ...service,
+        port: workerId === "healthy-worker" ? 8080 : service.port,
+        title:
+          workerId === "healthy-worker" ? "Healthy Service" : service.title,
+        url:
+          workerId === "healthy-worker"
+            ? "http://127.0.0.1:8080/"
+            : service.url,
         workerId: "untrusted-worker-claim",
       }));
     }
@@ -79,6 +97,7 @@ let app: Awaited<ReturnType<typeof buildApp>>;
 let database: DatabaseConnection;
 let browserId: string;
 let browserTunnelId: string;
+let projectId: string;
 
 beforeAll(async () => {
   database = await connectDatabase(config);
@@ -110,12 +129,33 @@ beforeAll(async () => {
     },
     startedAt: new Date().toISOString(),
   });
+  for (const [workerId, name] of [
+    ["healthy-worker", "Healthy Worker"],
+    ["offline-worker", "Offline Worker"],
+    ["failing-worker", "Failing Worker"],
+  ] as const) {
+    await database.repository.recordWorker(LOCAL_USER_ID, {
+      workerId,
+      name,
+      platform: "linux",
+      architecture: "x64",
+      codexVersion: "0.146.1",
+      codexRuntime: unprobedCodexRuntimeReport,
+      remoteSurfaces: {
+        browser: true,
+        transports: ["websocket"],
+        maxSessions: 2,
+      },
+      startedAt: new Date().toISOString(),
+    });
+  }
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "test-worker",
     repositoryId: "browser-services-api",
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",
   });
+  projectId = project.id;
   await database.repository.completeGithubProjectSetup(
     LOCAL_USER_ID,
     project.id,
@@ -131,7 +171,14 @@ beforeAll(async () => {
   const browser = await database.repository.createBrowser(
     LOCAL_USER_ID,
     project.id,
-    { title: "Browser" },
+    {
+      title: "Browser",
+      target: {
+        kind: "worker",
+        projectId: project.id,
+        workerId: "test-worker",
+      },
+    },
   );
   if (!browser) throw new Error("Expected test browser creation to succeed.");
   browserId = browser.id;
@@ -153,6 +200,86 @@ describe.sequential("browser service discovery API", () => {
     expect(response.statusCode).toBe(200);
     expect(browserServiceListSchema.parse(response.json())).toEqual(services);
     expect(commands.at(-1)).toEqual({ type: "browser.services.discover" });
+  });
+
+  it("returns healthy fleet results alongside bounded per-worker failures", async () => {
+    requestedWorkers.length = 0;
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/browser-services`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const fleet = browserServiceFleetDiscoverySchema.parse(response.json());
+    expect(fleet).toMatchObject({
+      projectId,
+      partial: true,
+      truncated: false,
+    });
+    expect(
+      fleet.workers.find(({ workerId }) => workerId === "healthy-worker"),
+    ).toMatchObject({
+      status: "ok",
+      error: null,
+      services: [
+        {
+          workerId: "healthy-worker",
+          workerName: "Healthy Worker",
+          port: 8080,
+          placement: {
+            projectId,
+            workerId: "healthy-worker",
+            projectReplicaId: null,
+            worktreeId: null,
+          },
+        },
+      ],
+    });
+    expect(
+      fleet.workers.find(({ workerId }) => workerId === "offline-worker"),
+    ).toMatchObject({
+      status: "offline",
+      services: [],
+      error: { code: "worker-offline" },
+    });
+    expect(
+      fleet.workers.find(({ workerId }) => workerId === "failing-worker"),
+    ).toMatchObject({
+      status: "timed-out",
+      services: [],
+      error: { code: "worker-timeout" },
+    });
+    expect(requestedWorkers).toEqual(
+      expect.arrayContaining([
+        "test-worker",
+        "healthy-worker",
+        "failing-worker",
+      ]),
+    );
+    expect(requestedWorkers).not.toContain("offline-worker");
+    expect(requestedWorkers).not.toContain("secondary-worker");
+  });
+
+  it("creates a discovered-service Browser pinned to its worker", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/browsers`,
+      payload: {
+        title: "Healthy Service",
+        url: "http://127.0.0.1:8080/",
+        target: {
+          kind: "worker",
+          projectId,
+          workerId: "healthy-worker",
+        },
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(browserSummarySchema.parse(response.json())).toMatchObject({
+      title: "Healthy Service",
+      url: "http://127.0.0.1:8080/",
+      workerId: "healthy-worker",
+    });
   });
 
   it("creates an attachable managed tunnel using the Browser surface worker", async () => {
@@ -258,12 +385,12 @@ describe.sequential("browser service discovery API", () => {
   });
 
   it("reports an offline project worker", async () => {
-    connected = false;
+    connectedWorkers.delete("test-worker");
     const response = await app.inject({
       method: "GET",
       url: `/api/browsers/${browserId}/services`,
     });
-    connected = true;
+    connectedWorkers.add("test-worker");
 
     expect(response.statusCode).toBe(503);
     expect(response.json()).toEqual({ error: "Project worker is offline." });

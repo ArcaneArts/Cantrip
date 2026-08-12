@@ -248,6 +248,7 @@ export const serverBootstrapSchema = z.object({
     multipleWorkers: z.boolean(),
     projectReplicas: z.boolean().default(false),
     replicaProvisioning: z.boolean().default(false),
+    browserFleetDiscovery: z.boolean().default(false),
     workerSwitching: z.boolean(),
     gitSync: z.boolean(),
     worktrees: z.boolean(),
@@ -2897,6 +2898,14 @@ export function decodeCodeTunnelFrame(frame: Uint8Array): {
 
 export const browserCreateSchema = z.object({
   title: z.string().trim().min(1).max(200).default("Browser"),
+  url: z
+    .string()
+    .url()
+    .max(4_096)
+    .refine((value) => /^https?:\/\//u.test(value), {
+      message: "Browser URLs must use HTTP or HTTPS.",
+    })
+    .optional(),
   tabGroupId: z.string().min(1).optional(),
   target: executionTargetSchema.optional(),
 });
@@ -2943,6 +2952,40 @@ export const browserServiceSchema = z.object({
 });
 
 export const browserServiceListSchema = z.array(browserServiceSchema).max(128);
+
+export const browserFleetServiceSchema = browserServiceSchema.extend({
+  workerName: z.string().min(1).max(200),
+  placement: executionPlacementSchema,
+});
+
+export const browserServiceDiscoveryWorkerStatusSchema = z.enum([
+  "ok",
+  "offline",
+  "timed-out",
+  "error",
+]);
+
+export const browserServiceDiscoveryErrorSchema = z.object({
+  code: z.enum(["worker-offline", "worker-timeout", "worker-error"]),
+  message: z.string().min(1).max(1_000),
+});
+
+export const browserServiceDiscoveryWorkerResultSchema = z.object({
+  workerId: z.string().min(1).max(200),
+  workerName: z.string().min(1).max(200),
+  status: browserServiceDiscoveryWorkerStatusSchema,
+  services: z.array(browserFleetServiceSchema).max(128),
+  error: browserServiceDiscoveryErrorSchema.nullable(),
+  truncated: z.boolean().default(false),
+});
+
+export const browserServiceFleetDiscoverySchema = z.object({
+  projectId: z.string().min(1),
+  observedAt: z.string().datetime(),
+  partial: z.boolean(),
+  truncated: z.boolean().default(false),
+  workers: z.array(browserServiceDiscoveryWorkerResultSchema).max(64),
+});
 
 export const browserTunnelRequestSchema = z
   .object({
@@ -7823,6 +7866,16 @@ export type BrowserServiceProtocol = z.infer<
   typeof browserServiceProtocolSchema
 >;
 export type BrowserService = z.infer<typeof browserServiceSchema>;
+export type BrowserFleetService = z.infer<typeof browserFleetServiceSchema>;
+export type BrowserServiceDiscoveryWorkerStatus = z.infer<
+  typeof browserServiceDiscoveryWorkerStatusSchema
+>;
+export type BrowserServiceDiscoveryWorkerResult = z.infer<
+  typeof browserServiceDiscoveryWorkerResultSchema
+>;
+export type BrowserServiceFleetDiscovery = z.infer<
+  typeof browserServiceFleetDiscoverySchema
+>;
 export type BrowserTunnelRequest = z.infer<typeof browserTunnelRequestSchema>;
 export type RemoteDesktopCreate = z.infer<typeof remoteDesktopCreateSchema>;
 export type RemoteDesktopTarget = z.infer<typeof remoteDesktopTargetSchema>;

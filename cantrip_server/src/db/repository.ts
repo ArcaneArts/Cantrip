@@ -7762,6 +7762,7 @@ export class ServerRepository {
           projectId,
           title: input.title,
           position,
+          ...(input.url ? { url: input.url } : {}),
         })
         .returning();
       const browser = firstOrThrow(result, "creating a browser");
