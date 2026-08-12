@@ -50,6 +50,10 @@ export interface WorkflowRunLiveChange {
 }
 
 const MAX_WORKFLOW_PROMPT_LENGTH = 100_000;
+const ATTEMPT_HEARTBEAT_INTERVAL_MS = 30_000;
+const ATTEMPT_RECOVERY_SWEEP_INTERVAL_MS = 30_000;
+export const WORKFLOW_ATTEMPT_STALE_MS = 2 * 60_000;
+const MAX_WORKER_REQUEST_TIMEOUT_MS = 24 * 60 * 60_000;
 
 class WorkflowProgressPersistenceError extends Error {}
 class WorkflowVerificationError extends Error {}
@@ -74,6 +78,8 @@ export class WorkflowExecutor {
   readonly #ownerContext = new AsyncLocalStorage<string>();
   readonly #rerunRequested = new Set<string>();
   readonly #respondingInteractions = new Set<string>();
+  #recoveryTimer: ReturnType<typeof setInterval> | null = null;
+  #recoverySweepRunning = false;
   #stopping = false;
 
   constructor(
@@ -108,11 +114,11 @@ export class WorkflowExecutor {
   async recoverAfterRestart(
     recoverInterruptedAttempts = true,
   ): Promise<number> {
-    const interruptedAttempts = recoverInterruptedAttempts
-      ? await this.repository.workflowRuns.recoverInterruptedAttempts(
-          this.#ownerId(),
-        )
-      : 0;
+    const recovered = recoverInterruptedAttempts
+      ? await this.repository.workflowRuns.recoverInterruptedAttempts(null)
+      : [];
+    this.notifyRecoveryChanges(recovered);
+    await this.interruptRecoveryChanges(recovered);
     try {
       await this.recoverWorktreeLeases();
     } catch (error) {
@@ -121,51 +127,118 @@ export class WorkflowExecutor {
         "Workflow worktree recovery scan could not complete during startup",
       );
     }
-    return interruptedAttempts;
+    return recovered.length;
+  }
+
+  private notifyRecoveryChanges(
+    changes: Array<{
+      interruptions: WorkflowCancellationExecutionContext[];
+      ownerId: string;
+      projectId: string | null;
+      runId: string;
+    }>,
+  ): void {
+    for (const change of changes) {
+      this.#ownerContext.run(change.ownerId, () => {
+        this.notifyRunChanged(change.runId, change.projectId, "workflow-node");
+      });
+    }
+  }
+
+  private async interruptRecoveryChanges(
+    changes: Array<{
+      interruptions: WorkflowCancellationExecutionContext[];
+      ownerId: string;
+    }>,
+  ): Promise<void> {
+    await Promise.all(
+      changes.map((change) =>
+        this.#ownerContext.run(change.ownerId, () =>
+          this.interruptExecutions(
+            change.interruptions,
+            "Workflow recovery was persisted but stale runtime interruption failed",
+          ),
+        ),
+      ),
+    );
+  }
+
+  startRecoverySweep(): void {
+    if (this.#recoveryTimer || this.#stopping) return;
+    this.#recoveryTimer = setInterval(() => {
+      if (this.#recoverySweepRunning) return;
+      this.#recoverySweepRunning = true;
+      void this.repository.workflowRuns
+        .recoverInterruptedAttempts(null, WORKFLOW_ATTEMPT_STALE_MS)
+        .then(async (recovered) => {
+          if (recovered.length === 0) return;
+          this.notifyRecoveryChanges(recovered);
+          await this.interruptRecoveryChanges(recovered);
+          this.logger.warn(
+            { recoveredWorkflowRuns: recovered.length },
+            "Recovered stale workflow attempt leases",
+          );
+          await this.recoverWorktreeLeases();
+          await this.queueAvailableRuns();
+        })
+        .catch((error: unknown) => {
+          this.logger.error(
+            { err: error },
+            "Could not recover stale workflow attempt leases",
+          );
+        })
+        .finally(() => {
+          this.#recoverySweepRunning = false;
+        });
+    }, ATTEMPT_RECOVERY_SWEEP_INTERVAL_MS);
+    this.#recoveryTimer.unref();
   }
 
   async recoverWorktreeLeases(workerId: string | null = null): Promise<number> {
     const candidates =
       await this.repository.workflowRuns.listRecoverableWorktreeLeases(
-        this.#ownerId(),
+        null,
         workerId,
       );
     let resumed = 0;
     await Promise.all(
-      candidates.map(async (candidate) => {
-        if (!this.bridge.isConnected(candidate.workerId)) return;
-        try {
-          if (candidate.pendingOutcomeRequest) {
-            const resolved = await this.worktreeCoordinator.resolveWorkflowLane(
-              this.#ownerId(),
-              candidate.runId,
-              candidate.leaseId,
-              candidate.pendingOutcomeRequest,
-            );
-            if (resolved) {
-              resumed += 1;
-              this.notifyRunChanged(
-                candidate.runId,
-                candidate.projectId,
-                "workflow-node",
-              );
+      candidates.map((candidate) =>
+        this.#ownerContext.run(candidate.ownerId, async () => {
+          if (!this.bridge.isConnected(candidate.workerId)) return;
+          try {
+            if (candidate.pendingOutcomeRequest) {
+              const resolved =
+                await this.worktreeCoordinator.resolveWorkflowLane(
+                  candidate.ownerId,
+                  candidate.runId,
+                  candidate.leaseId,
+                  candidate.pendingOutcomeRequest,
+                );
+              if (resolved) {
+                resumed += 1;
+                this.notifyRunChanged(
+                  candidate.runId,
+                  candidate.projectId,
+                  "workflow-node",
+                );
+              }
+              return;
             }
-            return;
+            this.queueRun(candidate.runId, candidate.ownerId);
+            resumed += 1;
+          } catch (error) {
+            this.logger.warn(
+              {
+                err: error,
+                workflowRunId: candidate.runId,
+                workflowWorktreeLeaseId: candidate.leaseId,
+                workerId: candidate.workerId,
+              },
+              "Workflow worktree recovery could not complete",
+            );
           }
-          this.queueRun(candidate.runId);
-          resumed += 1;
-        } catch (error) {
-          this.logger.warn(
-            {
-              err: error,
-              workflowRunId: candidate.runId,
-              workflowWorktreeLeaseId: candidate.leaseId,
-              workerId: candidate.workerId,
-            },
-            "Workflow worktree recovery could not complete",
-          );
-        }
-      }),
+        }),
+      ),
     );
     return resumed;
   }
@@ -194,10 +267,8 @@ export class WorkflowExecutor {
 
   async queueAvailableRuns(): Promise<void> {
     if (this.#stopping) return;
-    const runIds = await this.repository.workflowRuns.listDispatchableRunIds(
-      this.#ownerId(),
-    );
-    for (const runId of runIds) this.queueRun(runId);
+    const runs = await this.repository.workflowRuns.listDispatchableRuns();
+    for (const run of runs) this.queueRun(run.runId, run.ownerId);
   }
 
   async cancelRun(
@@ -368,6 +439,10 @@ export class WorkflowExecutor {
 
   stop(): void {
     this.#stopping = true;
+    if (this.#recoveryTimer) {
+      clearInterval(this.#recoveryTimer);
+      this.#recoveryTimer = null;
+    }
   }
 
   async drain(): Promise<void> {
@@ -605,6 +680,32 @@ export class WorkflowExecutor {
     runtime: ModelRuntime,
   ): Promise<void> {
     const { cwd, workerId, worktreeId } = lease.assignment;
+    const ownerId = this.#ownerId();
+    let heartbeatInFlight = false;
+    const heartbeatTimer = setInterval(() => {
+      if (heartbeatInFlight) return;
+      heartbeatInFlight = true;
+      void this.repository.workflowRuns
+        .renewAttemptHeartbeat(ownerId, lease.attemptId)
+        .then((renewed) => {
+          if (!renewed) {
+            this.logger.warn(
+              { workflowAttemptId: lease.attemptId },
+              "Workflow attempt no longer owns its durable heartbeat lease",
+            );
+          }
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            { err: error, workflowAttemptId: lease.attemptId },
+            "Could not renew workflow attempt heartbeat lease",
+          );
+        })
+        .finally(() => {
+          heartbeatInFlight = false;
+        });
+    }, ATTEMPT_HEARTBEAT_INTERVAL_MS);
+    heartbeatTimer.unref();
     try {
       const mcpServers = await this.repository.listEffectiveMcpServers(
         this.#ownerId(),
@@ -643,7 +744,10 @@ export class WorkflowExecutor {
           mcpServers,
         },
         {
-          timeoutMs: null,
+          timeoutMs: Math.min(
+            lease.timeoutMs + ATTEMPT_HEARTBEAT_INTERVAL_MS,
+            MAX_WORKER_REQUEST_TIMEOUT_MS,
+          ),
           onEvent: async (event) => {
             try {
               await this.recordWorkerEvent(lease, event, workerId);
@@ -695,6 +799,8 @@ export class WorkflowExecutor {
         failure.interruptions,
         "Map failure was persisted but sibling runtime interruption failed",
       );
+    } finally {
+      clearInterval(heartbeatTimer);
     }
   }
 

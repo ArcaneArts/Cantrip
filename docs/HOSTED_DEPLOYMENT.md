@@ -256,6 +256,24 @@ rolling replacement safe: adding a replica cannot mark active chats failed,
 orphan live workflow attempts, invalidate tunnel credentials, or make peer-owned
 remote surfaces idle.
 
+Workflow attempts use their existing PostgreSQL heartbeat as a renewable
+execution lease. The dispatching server refreshes it every 30 seconds, and every
+server scans for attempts stale by at least two minutes every 30 seconds. The
+stale cutoff uses PostgreSQL time, and the recovery update compares the exact
+observed heartbeat, so application clock skew or a concurrent renewal cannot
+let a stale scanner win; a late worker completion is rejected after a successful
+recovery because the attempt is no longer active. Cantrip also sends a bounded
+best-effort interrupt when the stale runtime is still reachable. Recovered run invalidations,
+worktree recovery, and queued-run dispatch retain the owning account across all
+server replicas. The server-to-worker request deadline is the bounded node
+budget plus a short response grace, capped at 24 hours.
+
+This workflow hardening adds no wire or schema migration. Older workers continue
+to execute the same idempotent workflow command. During a rolling server upgrade,
+start new replicas before retiring old ones; do not introduce a newly started
+older server into the upgraded cluster because older startup code cannot honor
+the peer-preservation rule.
+
 Scheduled automation does not use Redis pub/sub as a job queue. Each occurrence
 is claimed durably in PostgreSQL with an instance-bound lease and fencing token.
 Set `CANTRIP_SCHEDULER_LEASE_TTL_MS` longer than normal condition evaluation and

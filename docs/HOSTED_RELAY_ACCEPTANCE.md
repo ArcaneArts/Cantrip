@@ -38,6 +38,7 @@ The checked-in route inventory must report zero `legacyLocalOwnerRoutes`.
 | Account/worker quotas reject excess work visibly                                           | `abuse-limits.test.ts`, `managed-relay-telemetry.test.ts`                                                                                       |
 | Security activity, probes, and metrics omit product content                                | `audit-events.test.ts`, `http-hardening.test.ts`, `managed-relay-telemetry.test.ts`                                                             |
 | Scheduled workflow and project-automation occurrences are leased and fenced                | `workflow-trigger-api.test.ts`, `project-automation-api.test.ts`                                                                                |
+| In-flight workflow attempts renew, expire, recover, and dispatch with account attribution  | `workflow-execution.test.ts`, `workflow-executor-coordination.test.ts`                                                                          |
 | Migration and packaged-runtime contracts remain usable                                     | migration tests under `cantrip_server/test`, `bundled-runtime.test.ts`, and release-script tests under `scripts/test`                           |
 
 The route inventory is review evidence rather than a proof by itself. Routes
@@ -75,9 +76,13 @@ and proxy configuration being released:
    reset or orphaned and the active operations continue through the peer.
 8. Trigger one scheduled occurrence during a rolling server restart and verify
    exactly one durable run is accepted.
-9. Back up PostgreSQL and the encryption keyring, restore into an isolated
-   deployment, migrate, and verify account login, worker metadata, chat history,
-   and one secret-backed provider.
+9. Kill a server during a silent and an approval-waiting workflow attempt. Verify
+   a live peer leaves each fresh heartbeat alone, recovers it only after the
+   stale window, publishes the owning account's invalidation, and rejects the
+   former holder's late completion.
+10. Back up PostgreSQL and the encryption keyring, restore into an isolated
+    deployment, migrate, and verify account login, worker metadata, chat history,
+    and one secret-backed provider.
 
 Record the release version, commit, platform artifacts, proxy/TURN configuration,
 and pass/fail result outside the repository. Do not record credentials, prompts,

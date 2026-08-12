@@ -1839,6 +1839,7 @@ export async function buildApp({
   chatRelocationJobExecutor.queueAvailable();
   chatRelocationJobExecutor.startRecoverySweep();
   await workflowExecutor.recoverAfterRestart(recoverGlobalStartupState);
+  workflowExecutor.startRecoverySweep();
   await workflowExecutor.expireGates();
   void workflowExecutor.queueAvailableRuns().catch((error) => {
     app.log.error({ err: error }, "Could not resume queued workflow runs");
