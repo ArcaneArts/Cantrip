@@ -1,0 +1,61 @@
+name: cantrip-app
+region: nyc
+
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DOMAIN_FAILED
+
+domains:
+  - domain: cantrip.app
+    type: PRIMARY
+  - domain: app.cantrip.app
+    type: ALIAS
+
+features:
+  - buildpack-stack=ubuntu-22
+
+ingress:
+  rules:
+    - component:
+        name: site
+      match:
+        authority:
+          exact: cantrip.app
+        path:
+          prefix: /
+    - component:
+        name: app
+      match:
+        authority:
+          exact: app.cantrip.app
+        path:
+          prefix: /
+    - match:
+        authority:
+          exact: ${STARTER_DOMAIN}
+        path:
+          prefix: /
+      redirect:
+        authority: cantrip.app
+
+static_sites:
+  - name: app
+    environment_slug: node-js
+    github:
+      branch: release
+      deploy_on_push: true
+      repo: ArcaneArts/Cantrip
+    source_dir: /
+    output_dir: cantrip_app/dist
+    index_document: index.html
+    catchall_document: index.html
+  - name: site
+    environment_slug: node-js
+    github:
+      branch: release
+      deploy_on_push: true
+      repo: ArcaneArts/Cantrip
+    source_dir: /
+    output_dir: cantrip_site/dist
+    index_document: index.html
+    catchall_document: index.html
