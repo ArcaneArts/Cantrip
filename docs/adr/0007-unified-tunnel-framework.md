@@ -60,6 +60,23 @@ bounded binary data plane will carry stream open/data/half-close/close messages,
 with per-stream flow control, attachment credentials, connection limits, idle
 timeouts, and aggregate metrics.
 
+The version 1 binary envelope has a distinct magic value and a bounded JSON
+header followed by an optional binary payload. Every frame repeats the logical
+tunnel, attachment, source endpoint, destination endpoint, connection, and
+monotonic per-sender sequence identities. Control frames cover open, destination
+connect, accepted/rejected, credit, half-close, close, and error. Only data
+frames carry payload bytes, capped at 64 KiB. Each direction begins with an
+explicit byte-credit window; exceeding credit, sequence, connection, bandwidth,
+idle, lifetime, or transport-buffer limits closes the affected stream instead
+of accumulating unbounded memory. The broker does not inspect or log payload
+content.
+
+Endpoint adapters implement the same send/subscribe/disconnect interface. The
+initial worker destination adapter connects only to protocol-validated worker
+loopback TCP targets. The broker is placement-agnostic: desktop, server-adapter,
+and worker placements are metadata on endpoints rather than branches in stream
+routing.
+
 All remote routing follows the established server-only trust boundary:
 
 ```text

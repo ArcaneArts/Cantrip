@@ -2,14 +2,18 @@ import {
   decodeCodeTunnelFrame,
   decodeProjectShareTunnelFrame,
   decodeRemoteSurfaceFrame,
+  decodeTunnelDataPlaneFrame,
   encodeCodeTunnelFrame,
   encodeProjectShareTunnelFrame,
   encodeRemoteSurfaceFrame,
+  encodeTunnelDataPlaneFrame,
   isCodeTunnelFrame,
   isProjectShareTunnelFrame,
+  isTunnelDataPlaneFrame,
   type CodeTunnelFrameHeader,
   type ProjectShareTunnelFrameHeader,
   type RemoteSurfaceFrameHeader,
+  type TunnelDataPlaneFrameHeader,
   type WorkerCommand,
   workerEventEnvelopeSchema,
   type WorkerEvent,
@@ -42,6 +46,11 @@ type ProjectShareTunnelFrameHandler = (
   payload: Uint8Array,
 ) => Promise<void> | void;
 
+type TunnelDataPlaneFrameHandler = (
+  header: TunnelDataPlaneFrameHeader,
+  payload: Uint8Array,
+) => Promise<void> | void;
+
 const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
 const MAX_BUFFERED_NOTIFICATION_BYTES = 1 * 1_024 * 1_024;
 const CODE_TUNNEL_LOW_WATER_BYTES = 256 * 1_024;
@@ -67,6 +76,9 @@ export class WorkerConnection {
       undefined,
     private readonly handleProjectShareTunnelFrame: ProjectShareTunnelFrameHandler = () =>
       undefined,
+    private readonly handleTunnelDataPlaneFrame: TunnelDataPlaneFrameHandler = () =>
+      undefined,
+    private readonly handleTransportDisconnect: () => void = () => undefined,
   ) {}
 
   start(): void {
@@ -113,8 +125,10 @@ export class WorkerConnection {
       }
     });
     socket.once("close", (code, reason) => {
-      if (this.#socket === socket) {
+      const wasCurrent = this.#socket === socket;
+      if (wasCurrent) {
         this.#socket = null;
+        this.handleTransportDisconnect();
       }
       if (code === 1008) {
         this.#authenticationRejected = true;
@@ -186,6 +200,23 @@ export class WorkerConnection {
     }
   }
 
+  sendTunnelDataPlaneFrame(
+    header: TunnelDataPlaneFrameHeader,
+    payload: Uint8Array,
+  ): boolean {
+    const socket = this.#socket;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+    if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) return false;
+    try {
+      socket.send(encodeTunnelDataPlaneFrame(header, payload), {
+        binary: true,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   sendNotification(notification: WorkerNotification): boolean {
     const socket = this.#socket;
     if (
@@ -224,6 +255,10 @@ export class WorkerConnection {
     return this.waitForCodeTunnelCapacity();
   }
 
+  waitForTunnelDataPlaneCapacity(): Promise<boolean> {
+    return this.waitForCodeTunnelCapacity();
+  }
+
   private async onMessage(
     socket: WebSocket,
     data: RawData,
@@ -232,7 +267,10 @@ export class WorkerConnection {
     if (isBinary) {
       try {
         const bytes = rawDataBytes(data);
-        if (isProjectShareTunnelFrame(bytes)) {
+        if (isTunnelDataPlaneFrame(bytes)) {
+          const frame = decodeTunnelDataPlaneFrame(bytes);
+          await this.handleTunnelDataPlaneFrame(frame.header, frame.payload);
+        } else if (isProjectShareTunnelFrame(bytes)) {
           const frame = decodeProjectShareTunnelFrame(bytes);
           await this.handleProjectShareTunnelFrame(frame.header, frame.payload);
         } else if (isCodeTunnelFrame(bytes)) {

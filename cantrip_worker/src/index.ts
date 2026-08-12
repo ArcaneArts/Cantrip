@@ -91,6 +91,7 @@ import { ProjectShareTunnelProxy } from "./project-share-tunnel-proxy.js";
 import { readProjectRepositoryStats } from "./project-repository-stats.js";
 import { discoverScriptCommands } from "./script-command-discovery.js";
 import { TerminalManager } from "./terminal-manager.js";
+import { TunnelTcpDestinationAdapter } from "./tunnel-tcp-adapter.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
 import { SkillManager } from "./skill-manager.js";
 import { WorkerConnection } from "./transport.js";
@@ -161,6 +162,7 @@ async function start(): Promise<void> {
   const pausedChats = new Set<string>();
   const projectShares = new ProjectShareManager();
   const projectShareTunnel = new ProjectShareTunnelProxy(projectShares);
+  const tunnelTcpDestination = new TunnelTcpDestinationAdapter();
   const skillManager = new SkillManager(config.dataDirectory);
   const terminals = new TerminalManager();
   const remoteSurfaces = new RemoteSurfaceManager({
@@ -1163,6 +1165,8 @@ async function start(): Promise<void> {
     (header, payload) => remoteSurfaces.handleFrame(header, payload),
     (header, payload) => codeTunnel.handleFrame(header, payload),
     (header, payload) => projectShareTunnel.handleFrame(header, payload),
+    (header, payload) => tunnelTcpDestination.handleFrame(header, payload),
+    () => tunnelTcpDestination.disconnect(),
   );
   worktrees.setObservationEmitter((notification) =>
     commandConnection.sendNotification(notification),
@@ -1178,6 +1182,11 @@ async function start(): Promise<void> {
     (header, payload) =>
       commandConnection.sendProjectShareTunnelFrame(header, payload),
     () => commandConnection.waitForProjectShareTunnelCapacity(),
+  );
+  tunnelTcpDestination.setFrameEmitter(
+    (header, payload) =>
+      commandConnection.sendTunnelDataPlaneFrame(header, payload),
+    () => commandConnection.waitForTunnelDataPlaneCapacity(),
   );
 
   console.log(
@@ -1227,6 +1236,7 @@ async function start(): Promise<void> {
       for (const client of codexAuthClients.values()) client.close();
       terminals.closeAll();
       projectShareTunnel.close();
+      tunnelTcpDestination.close();
       await projectShares.closeAll();
       codeTunnel.close();
       await code.close();

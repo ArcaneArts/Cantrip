@@ -1,0 +1,188 @@
+import { z } from "zod";
+
+export const TUNNEL_DATA_PLANE_PROTOCOL_VERSION = 1;
+export const TUNNEL_DATA_PLANE_MAX_HEADER_BYTES = 8 * 1_024;
+export const TUNNEL_DATA_PLANE_MAX_PAYLOAD_BYTES = 64 * 1_024;
+export const TUNNEL_DATA_PLANE_MAX_CREDIT_BYTES = 8 * 1_024 * 1_024;
+
+const FRAME_MAGIC = new Uint8Array([0x43, 0x54, 0x54, 0x4e]);
+const idSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .regex(/^[^\u0000-\u001f\u007f]+$/u);
+const sequenceSchema = z.number().int().nonnegative().safe();
+const creditSchema = z
+  .number()
+  .int()
+  .positive()
+  .max(TUNNEL_DATA_PLANE_MAX_CREDIT_BYTES);
+
+export const tunnelDataDirectionSchema = z.enum([
+  "source-to-destination",
+  "destination-to-source",
+]);
+
+export const tunnelDataPlaneTargetSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("tcp"),
+      host: z.enum(["127.0.0.1", "localhost", "::1"]),
+      port: z.number().int().min(1).max(65_535),
+    })
+    .strict(),
+]);
+
+const frameBaseSchema = z
+  .object({
+    protocolVersion: z.literal(TUNNEL_DATA_PLANE_PROTOCOL_VERSION),
+    tunnelId: idSchema,
+    attachmentId: idSchema,
+    sourceEndpointId: idSchema,
+    destinationEndpointId: idSchema,
+    connectionId: idSchema,
+    sequence: sequenceSchema,
+  })
+  .strict();
+
+export const tunnelDataPlaneFrameHeaderSchema = z.discriminatedUnion("kind", [
+  frameBaseSchema.extend({
+    kind: z.literal("open"),
+    initialCreditBytes: creditSchema,
+  }),
+  frameBaseSchema.extend({
+    kind: z.literal("connect"),
+    target: tunnelDataPlaneTargetSchema,
+    initialCreditBytes: creditSchema,
+  }),
+  frameBaseSchema.extend({
+    kind: z.literal("accepted"),
+    initialCreditBytes: creditSchema,
+  }),
+  frameBaseSchema.extend({
+    kind: z.literal("rejected"),
+    code: z.enum([
+      "target-unavailable",
+      "target-rejected",
+      "limit-exceeded",
+      "unauthorized",
+      "protocol-error",
+      "congested",
+    ]),
+    message: z.string().trim().min(1).max(1_024),
+  }),
+  frameBaseSchema.extend({
+    kind: z.literal("data"),
+    direction: tunnelDataDirectionSchema,
+  }),
+  frameBaseSchema.extend({
+    kind: z.literal("credit"),
+    direction: tunnelDataDirectionSchema,
+    bytes: creditSchema,
+  }),
+  frameBaseSchema.extend({
+    kind: z.literal("half-close"),
+    direction: tunnelDataDirectionSchema,
+  }),
+  frameBaseSchema.extend({
+    kind: z.literal("close"),
+    code: z.enum([
+      "normal",
+      "revoked",
+      "endpoint-disconnected",
+      "idle-timeout",
+      "lifetime-expired",
+      "congested",
+      "bandwidth-limit",
+      "protocol-error",
+    ]),
+    message: z.string().trim().min(1).max(1_024).nullable(),
+  }),
+  frameBaseSchema.extend({
+    kind: z.literal("error"),
+    code: z.enum(["connection-failed", "io-error", "protocol-error"]),
+    message: z.string().trim().min(1).max(1_024),
+  }),
+]);
+
+export function isTunnelDataPlaneFrame(frame: Uint8Array): boolean {
+  return (
+    frame.byteLength >= FRAME_MAGIC.byteLength &&
+    FRAME_MAGIC.every((value, index) => frame[index] === value)
+  );
+}
+
+function validatePayload(
+  header: TunnelDataPlaneFrameHeader,
+  payload: Uint8Array,
+): void {
+  if (payload.byteLength > TUNNEL_DATA_PLANE_MAX_PAYLOAD_BYTES) {
+    throw new Error("Tunnel data payload exceeds the protocol limit.");
+  }
+  if (header.kind === "data" && payload.byteLength === 0) {
+    throw new Error("Tunnel data frames require a payload.");
+  }
+  if (header.kind !== "data" && payload.byteLength !== 0) {
+    throw new Error("Tunnel control frames cannot contain a payload.");
+  }
+}
+
+export function encodeTunnelDataPlaneFrame(
+  header: TunnelDataPlaneFrameHeader,
+  payload: Uint8Array,
+): Uint8Array {
+  const parsedHeader = tunnelDataPlaneFrameHeaderSchema.parse(header);
+  validatePayload(parsedHeader, payload);
+  const encodedHeader = new TextEncoder().encode(JSON.stringify(parsedHeader));
+  if (encodedHeader.byteLength > TUNNEL_DATA_PLANE_MAX_HEADER_BYTES) {
+    throw new Error("Tunnel data header exceeds the protocol limit.");
+  }
+  const frame = new Uint8Array(
+    8 + encodedHeader.byteLength + payload.byteLength,
+  );
+  frame.set(FRAME_MAGIC, 0);
+  new DataView(frame.buffer).setUint32(4, encodedHeader.byteLength, false);
+  frame.set(encodedHeader, 8);
+  frame.set(payload, 8 + encodedHeader.byteLength);
+  return frame;
+}
+
+export function decodeTunnelDataPlaneFrame(frame: Uint8Array): {
+  header: TunnelDataPlaneFrameHeader;
+  payload: Uint8Array;
+} {
+  if (frame.byteLength < 8 || !isTunnelDataPlaneFrame(frame)) {
+    throw new Error("Tunnel data frame has an invalid magic value.");
+  }
+  const headerLength = new DataView(
+    frame.buffer,
+    frame.byteOffset,
+    frame.byteLength,
+  ).getUint32(4, false);
+  if (headerLength < 1 || headerLength > TUNNEL_DATA_PLANE_MAX_HEADER_BYTES) {
+    throw new Error("Tunnel data frame header length is invalid.");
+  }
+  const payloadOffset = 8 + headerLength;
+  if (payloadOffset > frame.byteLength) {
+    throw new Error("Tunnel data frame header is truncated.");
+  }
+  let rawHeader: unknown;
+  try {
+    rawHeader = JSON.parse(
+      new TextDecoder().decode(frame.subarray(8, payloadOffset)),
+    );
+  } catch {
+    throw new Error("Tunnel data frame header is not valid JSON.");
+  }
+  const header = tunnelDataPlaneFrameHeaderSchema.parse(rawHeader);
+  const payload = frame.subarray(payloadOffset);
+  validatePayload(header, payload);
+  return { header, payload };
+}
+
+export type TunnelDataDirection = z.infer<typeof tunnelDataDirectionSchema>;
+export type TunnelDataPlaneTarget = z.infer<typeof tunnelDataPlaneTargetSchema>;
+export type TunnelDataPlaneFrameHeader = z.infer<
+  typeof tunnelDataPlaneFrameHeaderSchema
+>;
