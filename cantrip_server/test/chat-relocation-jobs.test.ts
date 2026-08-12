@@ -8,7 +8,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { ChatRelocationJobConflictError } from "../src/db/chat-relocation-jobs.js";
-import { LOCAL_USER_ID } from "../src/db/repository.js";
+import {
+  DEFAULT_MODEL_ROUTE_ID,
+  ExecutionLaneConflictError,
+  LOCAL_USER_ID,
+} from "../src/db/repository.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-chat-relocation-jobs-"),
@@ -59,6 +63,12 @@ function betaPlacement(chatId: string) {
 
 beforeAll(async () => {
   database = await connectDatabase(config);
+  await database.repository.ensureLocalIdentity();
+  await database.repository.ensureDefaultModelConfiguration(
+    LOCAL_USER_ID,
+    config.agentModel,
+    config.ollamaBaseUrl,
+  );
   for (const [workerId, name] of [
     ["worker-alpha", "Alpha"],
     ["worker-beta", "Beta"],
@@ -115,6 +125,26 @@ beforeAll(async () => {
   alphaWorktreeId = alpha.id;
   betaWorktreeId = beta.id;
   betaReplicaId = beta.projectSourceId;
+  for (const worktree of [alpha, beta]) {
+    await database.repository.observeProjectWorktree(
+      LOCAL_USER_ID,
+      projectId,
+      worktree.id,
+      {
+        path: worktree.path,
+        head: "a".repeat(40),
+        branch: "main",
+        detached: false,
+        isPrimary: true,
+        managed: true,
+        locked: false,
+        lockReason: null,
+        prunable: false,
+        pruneReason: null,
+        missing: false,
+      },
+    );
+  }
 });
 
 afterAll(async () => {
@@ -252,7 +282,11 @@ describe.sequential("durable chat relocation jobs", () => {
       "hydrating-runtime",
       "ready-to-commit",
       { stage: "ready-to-commit", percent: 95, message: "Runtime ready." },
-      { cancellationUnsafe: true, targetRuntimeThreadId: "thread-beta" },
+      {
+        cancellationUnsafe: true,
+        targetModelRouteId: DEFAULT_MODEL_ROUTE_ID,
+        targetRuntimeThreadId: "thread-beta",
+      },
     );
     const committed = await database.repository.chatRelocationJobs.commit(
       job.id,
@@ -280,10 +314,41 @@ describe.sequential("durable chat relocation jobs", () => {
     );
     expect(waitingJob.state).toBe("waiting-for-idle");
     expect(await database.repository.chatRelocationJobs.claimNext()).toBeNull();
+    const completedMessage = await database.repository.appendMessage(
+      LOCAL_USER_ID,
+      waitingChat.id,
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "The active turn completed." }],
+        idempotencyKey: "relocation-waiting-completion",
+      },
+    );
     await database.repository.setChatStatus(waitingChat.id, "idle");
+    await expect(
+      database.repository.startChatExecutionLane(
+        LOCAL_USER_ID,
+        waitingChat.id,
+        "user",
+        "Should remain frozen",
+      ),
+    ).rejects.toBeInstanceOf(ExecutionLaneConflictError);
     const waitingClaim =
       await database.repository.chatRelocationJobs.claimNext();
     expect(waitingClaim?.job.id).toBe(waitingJob.id);
+    expect(waitingClaim?.snapshot).toMatchObject({
+      summary: {
+        messageCount: 1,
+        throughSequence: completedMessage!.sequence,
+      },
+      payload: {
+        messages: [
+          expect.objectContaining({
+            role: "assistant",
+            content: [{ type: "text", text: "The active turn completed." }],
+          }),
+        ],
+      },
+    });
     const cancelled = await database.repository.chatRelocationJobs.cancel(
       LOCAL_USER_ID,
       waitingJob.id,
@@ -323,6 +388,7 @@ describe.sequential("durable chat relocation jobs", () => {
         to === "ready-to-commit"
           ? {
               cancellationUnsafe: true,
+              targetModelRouteId: DEFAULT_MODEL_ROUTE_ID,
               targetRuntimeThreadId: "thread-stale",
             }
           : {},

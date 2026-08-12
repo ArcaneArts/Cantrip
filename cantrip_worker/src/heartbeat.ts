@@ -38,6 +38,7 @@ export function createHeartbeat(
       remove: true,
       exactRevision: true,
     },
+    chatRelocation: true,
     startedAt,
   });
 }

@@ -351,6 +351,7 @@ export const workerHeartbeatSchema = z.object({
   projectReplicas: projectReplicaCapabilitiesSchema.default(
     unavailableProjectReplicaCapabilities,
   ),
+  chatRelocation: z.boolean().default(false),
   startedAt: z.string().datetime(),
 });
 
@@ -3910,7 +3911,30 @@ export const chatRelocationSnapshotSummarySchema = z.object({
   modelId: z.string().min(1).nullable(),
   modelRouteId: z.string().min(1).nullable(),
   permissionProfileId: z.string().min(1).max(200).nullable(),
+  requiredRevision: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[0-9a-f]{40,64}$/u),
   createdAt: z.string().datetime(),
+});
+
+export const chatRelocationHydrationBeginResultSchema = z.discriminatedUnion(
+  "status",
+  [
+    z.object({ status: z.literal("upload") }),
+    z.object({
+      status: z.literal("hydrated"),
+      threadId: z.string().min(1),
+    }),
+  ],
+);
+
+export const chatRelocationHydrationResultSchema = z.object({
+  snapshotId: z.string().uuid(),
+  transcriptSha256: z.string().regex(/^[0-9a-f]{64}$/u),
+  threadId: z.string().min(1),
+  reused: z.boolean(),
 });
 
 export const chatRelocationJobSummarySchema = z.object({
@@ -3925,6 +3949,7 @@ export const chatRelocationJobSummarySchema = z.object({
   targetPlacement: executionPlacementSchema,
   contextSnapshotId: z.string().uuid(),
   targetRuntimeThreadId: z.string().min(1).nullable(),
+  targetModelRouteId: z.string().min(1).nullable(),
   attempt: z.number().int().nonnegative(),
   progress: chatRelocationProgressSchema,
   error: chatRelocationErrorSchema.nullable(),
@@ -7174,6 +7199,41 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     mcpServers: z.array(mcpServerConfigurationSchema).max(200).default([]),
   }),
   z.object({
+    type: z.literal("chat.relocation.hydration.begin"),
+    chatId: z.string().min(1).max(200),
+    snapshotId: z.string().uuid(),
+    transcriptSha256: z.string().regex(/^[0-9a-f]{64}$/u),
+    sizeBytes: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(256 * 1_024 * 1_024),
+    cwd: z.string().min(1).max(8_192),
+    requiredSkillNames: z.array(z.string().min(1).max(200)).max(64).default([]),
+    planMode: planModeSchema,
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+    permissionProfileId: permissionProfileIdSchema,
+    mcpServers: z.array(mcpServerConfigurationSchema).max(200).default([]),
+  }),
+  z.object({
+    type: z.literal("chat.relocation.hydration.chunk"),
+    snapshotId: z.string().uuid(),
+    chunkIndex: z.number().int().nonnegative(),
+    data: z.string().max(400_000),
+  }),
+  z.object({
+    type: z.literal("chat.relocation.hydration.complete"),
+    snapshotId: z.string().uuid(),
+  }),
+  z.object({
+    type: z.literal("chat.relocation.thread.release"),
+    threadId: z.string().min(1).nullable(),
+    discard: z.boolean().default(false),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
     type: z.literal("chat.plan.get"),
     cwd: z.string().min(1),
     threadId: z.string().min(1).nullable(),
@@ -7885,6 +7945,12 @@ export type ChatRelocationContextPayload = z.infer<
 >;
 export type ChatRelocationSnapshotSummary = z.infer<
   typeof chatRelocationSnapshotSummarySchema
+>;
+export type ChatRelocationHydrationBeginResult = z.infer<
+  typeof chatRelocationHydrationBeginResultSchema
+>;
+export type ChatRelocationHydrationResult = z.infer<
+  typeof chatRelocationHydrationResultSchema
 >;
 export type ChatRelocationJobSummary = z.infer<
   typeof chatRelocationJobSummarySchema

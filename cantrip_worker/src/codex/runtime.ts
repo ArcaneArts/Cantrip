@@ -23,6 +23,7 @@ import type {
   CodexSkill,
   CompactAgentThreadOptions,
   GoalRuntimeOptions,
+  HydrateChatRelocationOptions,
   RuntimeChatAttachment,
   RunAgentTurnOptions,
   RunWorkflowNodeOptions,
@@ -118,6 +119,19 @@ export interface CodexRuntime {
   ensureThread(
     options: GoalRuntimeOptions & { planMode: PlanMode },
   ): Promise<{ threadId: string }>;
+  hydrateChatRelocation(
+    options: HydrateChatRelocationOptions,
+  ): Promise<{ threadId: string }>;
+  discardRelocationThread(
+    threadId: string,
+    model: RunAgentTurnOptions["model"],
+    provider: RunAgentTurnOptions["provider"],
+  ): Promise<void>;
+  releaseRelocationThread(
+    threadId: string | null,
+    model: RunAgentTurnOptions["model"],
+    provider: RunAgentTurnOptions["provider"],
+  ): Promise<{ released: boolean }>;
   getGoal(
     options: GoalRuntimeOptions & { threadId: string },
   ): Promise<ChatGoalResponse>;

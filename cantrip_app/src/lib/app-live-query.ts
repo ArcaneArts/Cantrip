@@ -99,6 +99,15 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
           : event.scope.kind === "current-user"
             ? [["chats"]]
             : [];
+    case "chat-relocation-job":
+      return event.scope.kind === "chat"
+        ? [
+            ["chat-relocation-jobs", event.scope.chatId],
+            ...(event.entityId
+              ? [["chat-relocation-job", event.entityId]]
+              : []),
+          ]
+        : [];
     case "chat-message":
       return event.scope.kind === "chat"
         ? [["messages", event.scope.chatId]]
@@ -221,6 +230,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
     case "chat":
       return [
         ["chat-sync", scope.chatId],
+        ["chat-relocation-jobs", scope.chatId],
         ["messages", scope.chatId],
         ["prompt-queue", scope.chatId],
         ["goal", scope.chatId],

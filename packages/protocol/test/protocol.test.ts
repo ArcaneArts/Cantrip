@@ -407,6 +407,7 @@ describe("Cantrip protocol", () => {
       remove: false,
       exactRevision: false,
     });
+    expect(heartbeat.chatRelocation).toBe(false);
     expect(
       workerEnrollmentCodeResultSchema.safeParse({
         code: "short",
@@ -3996,6 +3997,7 @@ describe("Cantrip protocol", () => {
         targetPlacement,
         contextSnapshotId: "11111111-1111-4111-8111-111111111111",
         targetRuntimeThreadId: null,
+        targetModelRouteId: null,
         attempt: 0,
         progress: {
           stage: "waiting-for-idle",

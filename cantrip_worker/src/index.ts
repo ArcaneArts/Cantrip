@@ -4,6 +4,7 @@ import path from "node:path";
 import type { WorkerCommand, WorkerEvent } from "@cantrip/protocol";
 
 import { AttachmentStore } from "./attachment-store.js";
+import { ChatRelocationHydrationStore } from "./chat-relocation-store.js";
 import { evaluateProjectAutomationCondition } from "./automation-conditions.js";
 import { ProjectAutomationScheduler } from "./automation-scheduler.js";
 import { codexAccountHome } from "./codex/account-home.js";
@@ -157,6 +158,9 @@ async function start(): Promise<void> {
   let lastConnectionError: string | null = null;
   let stopping = false;
   const attachments = new AttachmentStore(config.dataDirectory);
+  const chatRelocations = new ChatRelocationHydrationStore(
+    config.dataDirectory,
+  );
   const github = new GithubClient(config.dataDirectory);
   const codexAuthClients = new Map<string, CodexAuthClient>();
   const codexRuntimes = new Map<string, CodexRuntime>();
@@ -1161,6 +1165,62 @@ async function start(): Promise<void> {
           provider: command.provider,
           threadId: command.threadId,
         });
+      case "chat.relocation.hydration.begin":
+        return chatRelocations.begin(command);
+      case "chat.relocation.hydration.chunk":
+        await chatRelocations.append(
+          command.snapshotId,
+          command.chunkIndex,
+          Buffer.from(command.data, "base64"),
+        );
+        return { accepted: true };
+      case "chat.relocation.hydration.complete": {
+        const upload = await chatRelocations.completeUpload(command.snapshotId);
+        const runtime = runtimeFor(upload.command);
+        if (upload.abandonedThreadId) {
+          await runtime.discardRelocationThread(
+            upload.abandonedThreadId,
+            upload.command.model,
+            upload.command.provider,
+          );
+        }
+        const hydrated = await runtime.hydrateChatRelocation({
+          cwd: upload.command.cwd,
+          mcpServers: upload.command.mcpServers,
+          model: upload.command.model,
+          payload: upload.payload,
+          permissionProfileId: upload.command.permissionProfileId,
+          planMode: upload.command.planMode,
+          provider: upload.command.provider,
+          requiredSkillNames: upload.command.requiredSkillNames,
+          threadId: null,
+          onThreadStarted: (threadId) =>
+            chatRelocations.markHydrating(
+              upload.command.snapshotId,
+              upload.command.transcriptSha256,
+              threadId,
+            ),
+        });
+        return chatRelocations.markHydrated(
+          upload.command.snapshotId,
+          upload.command.transcriptSha256,
+          hydrated.threadId,
+        );
+      }
+      case "chat.relocation.thread.release":
+        if (command.discard && command.threadId) {
+          await runtimeFor(command).discardRelocationThread(
+            command.threadId,
+            command.model,
+            command.provider,
+          );
+          return { released: true };
+        }
+        return runtimeFor(command).releaseRelocationThread(
+          command.threadId,
+          command.model,
+          command.provider,
+        );
       case "chat.plan.get":
         return runtimeFor(command).getPlanMode({
           cwd: command.cwd,

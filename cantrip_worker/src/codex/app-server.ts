@@ -36,6 +36,7 @@ import {
   type AgentThreadSyncItem,
   type AgentTurnResult,
   type ChatGoalResponse,
+  type ChatRelocationContextPayload,
   type CodexCustomizationInventory,
   type CodexExternalImportPreview,
   type CodexExternalImportStatus,
@@ -939,6 +940,79 @@ export type GoalRuntimeOptions = Pick<
   | "provider"
   | "threadId"
 >;
+
+export interface HydrateChatRelocationOptions extends GoalRuntimeOptions {
+  payload: ChatRelocationContextPayload;
+  planMode: PlanMode;
+  requiredSkillNames: string[];
+  onThreadStarted(threadId: string): Promise<void>;
+}
+
+function relocationContentText(
+  content: ChatRelocationContextPayload["messages"][number]["content"],
+): string {
+  return content
+    .map((item) => {
+      if (item.type === "text") return item.text;
+      if (item.type === "attachment") {
+        return `[Cantrip attachment: ${item.attachment.fileName} (${item.attachment.mimeType}), id ${item.attachment.id}]`;
+      }
+      return `[Cantrip ${item.activity.type} activity: ${JSON.stringify(item.activity)}]`;
+    })
+    .join("\n\n")
+    .trim();
+}
+
+export function relocationResponseItems(
+  payload: ChatRelocationContextPayload,
+): Array<Record<string, unknown>> {
+  return payload.messages.map((message) => {
+    const text = relocationContentText(message.content) || "[Empty message]";
+    const annotated =
+      message.mode === "default"
+        ? text
+        : `[Cantrip ${message.mode} mode]\n${text}`;
+    const role = message.role === "system" ? "developer" : message.role;
+    return {
+      type: "message",
+      role,
+      content: [
+        {
+          type: role === "assistant" ? "output_text" : "input_text",
+          text: annotated,
+        },
+      ],
+    };
+  });
+}
+
+function relocationItemBatches(
+  items: Array<Record<string, unknown>>,
+): Array<Array<Record<string, unknown>>> {
+  const batches: Array<Array<Record<string, unknown>>> = [];
+  let current: Array<Record<string, unknown>> = [];
+  let currentBytes = 0;
+  for (const item of items) {
+    const itemBytes = Buffer.byteLength(JSON.stringify(item), "utf8");
+    if (itemBytes > 1_000_000) {
+      throw new Error(
+        "A canonical chat message is too large to hydrate safely.",
+      );
+    }
+    if (
+      current.length &&
+      (current.length >= 100 || currentBytes + itemBytes > 1_000_000)
+    ) {
+      batches.push(current);
+      current = [];
+      currentBytes = 0;
+    }
+    current.push(item);
+    currentBytes += itemBytes;
+  }
+  if (current.length) batches.push(current);
+  return batches;
+}
 
 export const GOAL_CONTINUATION_PROMPT =
   "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
@@ -2635,6 +2709,99 @@ export class CodexAppServer implements CodexRuntime {
     return { threadId };
   }
 
+  async hydrateChatRelocation(
+    options: HydrateChatRelocationOptions,
+  ): Promise<{ threadId: string }> {
+    await this.ensureStarted(options.model, options.provider);
+    if (!this.methodAvailable("thread/inject_items")) {
+      throw new Error(
+        "The installed Codex runtime cannot inject canonical thread history.",
+      );
+    }
+    const availableSkills = options.requiredSkillNames.length
+      ? await this.listSkills(options, true)
+      : [];
+    const availableSkillNames = new Set(
+      availableSkills.map((skill) => skill.name),
+    );
+    const missingSkills = options.requiredSkillNames.filter(
+      (name) => !availableSkillNames.has(name),
+    );
+    if (missingSkills.length) {
+      throw new Error(
+        `Required skills are unavailable on the target worker: ${missingSkills.join(", ")}.`,
+      );
+    }
+    const profiles = await this.listPermissionProfiles(options);
+    if (
+      !profiles.available ||
+      !profiles.profiles.some(
+        (profile) =>
+          profile.id === options.permissionProfileId && profile.allowed,
+      )
+    ) {
+      throw new Error(
+        profiles.reason ??
+          `Permission profile ${options.permissionProfileId} is unavailable on the target worker.`,
+      );
+    }
+    const threadId = await this.loadThread({ ...options, threadId: null });
+    if (!threadId) {
+      throw new Error("Could not create the target Codex thread.");
+    }
+    await options.onThreadStarted(threadId);
+    for (const items of relocationItemBatches(
+      relocationResponseItems(options.payload),
+    )) {
+      await this.request("thread/inject_items", { threadId, items });
+    }
+    await this.updatePlanModeOnThread(
+      threadId,
+      options.planMode,
+      options.model,
+    );
+    return { threadId };
+  }
+
+  async discardRelocationThread(
+    threadId: string,
+    model: RunAgentTurnOptions["model"],
+    provider: RunAgentTurnOptions["provider"],
+  ): Promise<void> {
+    await this.ensureStarted(model, provider);
+    try {
+      if (this.methodAvailable("thread/delete")) {
+        await this.request("thread/delete", { threadId });
+      } else {
+        await this.request("thread/unsubscribe", { threadId });
+      }
+    } catch {
+      // An interrupted attempt may have died before Codex persisted the thread.
+    }
+    this.forgetThread(threadId);
+  }
+
+  async releaseRelocationThread(
+    threadId: string | null,
+    model: RunAgentTurnOptions["model"],
+    provider: RunAgentTurnOptions["provider"],
+  ): Promise<{ released: boolean }> {
+    if (!threadId) return { released: false };
+    await this.ensureStarted(model, provider);
+    if (this.hasActiveThread(threadId)) {
+      throw new Error(`Codex thread ${threadId} still has an active turn.`);
+    }
+    try {
+      await this.request("thread/unsubscribe", { threadId });
+    } catch (error) {
+      if (!/not found|not loaded|unknown thread/iu.test(String(error))) {
+        throw error;
+      }
+    }
+    this.forgetThread(threadId);
+    return { released: true };
+  }
+
   async setPlanMode(
     options: GoalRuntimeOptions & { mode: PlanMode },
   ): Promise<{ mode: PlanMode; threadId: string }> {
@@ -3067,6 +3234,15 @@ export class CodexAppServer implements CodexRuntime {
     return [...this.#activeTurns.values()].some(
       (active) => active.threadId === threadId,
     );
+  }
+
+  private forgetThread(threadId: string): void {
+    this.#loadedThreads.delete(threadId);
+    this.#mcpConfigFingerprintsByThread.delete(threadId);
+    this.#permissionProfilesByThread.delete(threadId);
+    this.#threadKinds.delete(threadId);
+    this.#collaborationModes.delete(threadId);
+    this.#goals.delete(threadId);
   }
 
   private permissionProfilesSupported(): boolean {

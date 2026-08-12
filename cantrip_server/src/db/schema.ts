@@ -378,6 +378,9 @@ export const workers = pgTable("workers", {
     .$type<ProjectReplicaCapabilities>()
     .notNull()
     .default(unavailableProjectReplicaCapabilities),
+  chatRelocationCapability: boolean("chat_relocation_capability")
+    .notNull()
+    .default(false),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
   unlinkedAt: timestamp("unlinked_at", { withTimezone: true }),
@@ -1606,6 +1609,10 @@ export const chatRelocationJobs = pgTable(
       .$type<ExecutionPlacement>()
       .notNull(),
     targetRuntimeThreadId: text("target_runtime_thread_id"),
+    targetModelRouteId: text("target_model_route_id").references(
+      () => modelRoutes.id,
+      { onDelete: "set null" },
+    ),
     attempt: integer("attempt").notNull().default(0),
     commandId: text("command_id"),
     progress: jsonb("progress").$type<ChatRelocationProgress>().notNull(),
@@ -1692,6 +1699,7 @@ export const chatRelocationSnapshots = pgTable(
       onDelete: "set null",
     }),
     permissionProfileId: text("permission_profile_id"),
+    requiredRevision: text("required_revision").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
