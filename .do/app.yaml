@@ -6,9 +6,9 @@ alerts:
   - rule: DOMAIN_FAILED
 
 domains:
-  - domain: cantrip.app
+  - domain: cantrip.art
     type: PRIMARY
-  - domain: app.cantrip.app
+  - domain: app.cantrip.art
     type: ALIAS
 
 features:
@@ -20,14 +20,14 @@ ingress:
         name: site
       match:
         authority:
-          exact: cantrip.app
+          exact: cantrip.art
         path:
           prefix: /
     - component:
         name: app
       match:
         authority:
-          exact: app.cantrip.app
+          exact: app.cantrip.art
         path:
           prefix: /
     - match:
@@ -36,7 +36,7 @@ ingress:
         path:
           prefix: /
       redirect:
-        authority: cantrip.app
+        authority: cantrip.art
 
 static_sites:
   - name: app
