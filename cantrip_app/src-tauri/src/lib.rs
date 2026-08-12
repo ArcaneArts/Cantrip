@@ -3,18 +3,23 @@ use std::{
     net::{TcpListener, TcpStream},
     path::Path,
     process::{Child, Command, Stdio},
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use tauri::{
-    menu::{Menu, MenuItem},
+    menu::{Menu, MenuItem, MenuItemKind},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, RunEvent, State, WindowEvent,
 };
 #[cfg(desktop)]
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+#[cfg(desktop)]
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 mod desktop_worker;
 mod project_share;
@@ -26,6 +31,18 @@ use tunnel_forward::TunnelForwards;
 struct ManagedRuntime {
     children: Mutex<Vec<Child>>,
     server_url: String,
+}
+
+#[cfg(desktop)]
+#[derive(Default)]
+struct DesktopExitState {
+    approved: AtomicBool,
+    confirmation_open: AtomicBool,
+}
+
+#[cfg(desktop)]
+fn exit_request_needs_confirmation(approved: bool, code: Option<i32>) -> bool {
+    !approved && code != Some(tauri::RESTART_EXIT_CODE)
 }
 
 #[tauri::command]
@@ -239,6 +256,71 @@ fn show_main_window(app: &tauri::AppHandle) {
 }
 
 #[cfg(desktop)]
+fn close_desktop_windows(app: &tauri::AppHandle) {
+    for (label, window) in app.webview_windows() {
+        if label == "main" {
+            let _ = window.hide();
+        } else {
+            let _ = window.close();
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn setup_macos_application_menu(app: &tauri::App) -> tauri::Result<()> {
+    let menu = Menu::default(app.handle())?;
+    let Some(MenuItemKind::Submenu(application_menu)) = menu.items()?.into_iter().next() else {
+        return Err(tauri::Error::AssetNotFound("macOS application menu".into()));
+    };
+    let items = application_menu.items()?;
+    if !items.is_empty() {
+        application_menu.remove_at(items.len() - 1)?;
+    }
+    application_menu.append(&MenuItem::with_id(
+        app,
+        "close-cantrip-windows",
+        "Close Cantrip Windows",
+        true,
+        Some("CmdOrCtrl+Q"),
+    )?)?;
+    menu.set_as_app_menu()?;
+    Ok(())
+}
+
+#[cfg(desktop)]
+fn request_quit_confirmation(app: &tauri::AppHandle) {
+    let exit_state = app.state::<DesktopExitState>();
+    if exit_state.confirmation_open.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
+    show_main_window(app);
+    let app_handle = app.clone();
+    let mut dialog = app
+        .dialog()
+        .message(
+            "Quitting Cantrip stops the local worker and server. Other devices will no longer be able to connect to this machine or run work on it.",
+        )
+        .title("Quit Cantrip?")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Quit Cantrip".into(),
+            "Keep Running".into(),
+        ));
+    if let Some(window) = app.get_webview_window("main") {
+        dialog = dialog.parent(&window);
+    }
+    dialog.show(move |confirmed| {
+        let exit_state = app_handle.state::<DesktopExitState>();
+        exit_state.confirmation_open.store(false, Ordering::SeqCst);
+        if confirmed {
+            exit_state.approved.store(true, Ordering::SeqCst);
+            app_handle.exit(0);
+        }
+    });
+}
+
+#[cfg(desktop)]
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "Open Cantrip", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Cantrip", true, None::<&str>)?;
@@ -249,7 +331,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     }
     tray.on_menu_event(|app, event| match event.id.as_ref() {
         "show" => show_main_window(app),
-        "quit" => app.exit(0),
+        "quit" => request_quit_confirmation(app),
         _ => {}
     })
     .on_tray_icon_event(|tray, event| {
@@ -380,6 +462,7 @@ pub fn run() {
             #[cfg(desktop)]
             show_main_window(app);
         }))
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             desktop_autostart_enabled,
@@ -409,7 +492,15 @@ pub fn run() {
             app.manage(TunnelForwards::default());
             #[cfg(desktop)]
             {
+                app.manage(DesktopExitState::default());
                 setup_tray(app)?;
+                #[cfg(target_os = "macos")]
+                setup_macos_application_menu(app)?;
+                app.on_menu_event(|app, event| {
+                    if event.id().as_ref() == "close-cantrip-windows" {
+                        close_desktop_windows(app);
+                    }
+                });
                 if std::env::args().any(|argument| argument == "--background") {
                     if let Some(window) = app.get_webview_window("main") {
                         window.hide()?;
@@ -425,14 +516,28 @@ pub fn run() {
     #[cfg(desktop)]
     {
         let shutdown_handle = app.handle().clone();
-        ctrlc::set_handler(move || shutdown_handle.exit(0))
-            .expect("could not install Cantrip shutdown handler");
+        ctrlc::set_handler(move || {
+            shutdown_handle
+                .state::<DesktopExitState>()
+                .approved
+                .store(true, Ordering::SeqCst);
+            shutdown_handle.exit(0);
+        })
+        .expect("could not install Cantrip shutdown handler");
     }
 
     app.run(|handle, event| {
         #[cfg(target_os = "macos")]
         if let RunEvent::Reopen { .. } = &event {
             show_main_window(handle);
+        }
+        #[cfg(desktop)]
+        if let RunEvent::ExitRequested { code, api, .. } = &event {
+            let state = handle.state::<DesktopExitState>();
+            if exit_request_needs_confirmation(state.approved.load(Ordering::SeqCst), *code) {
+                api.prevent_exit();
+                request_quit_confirmation(handle);
+            }
         }
         #[cfg(desktop)]
         if let RunEvent::WindowEvent {
@@ -461,4 +566,24 @@ pub fn run() {
             };
         }
     });
+}
+
+#[cfg(all(test, desktop))]
+mod tests {
+    use super::exit_request_needs_confirmation;
+
+    #[test]
+    fn unsolicited_exit_requests_require_confirmation() {
+        assert!(exit_request_needs_confirmation(false, None));
+        assert!(exit_request_needs_confirmation(false, Some(0)));
+    }
+
+    #[test]
+    fn approved_exits_and_restarts_skip_confirmation() {
+        assert!(!exit_request_needs_confirmation(true, Some(0)));
+        assert!(!exit_request_needs_confirmation(
+            false,
+            Some(tauri::RESTART_EXIT_CODE)
+        ));
+    }
 }
