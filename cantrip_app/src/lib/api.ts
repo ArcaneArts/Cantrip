@@ -166,6 +166,7 @@ import {
   queuedPromptListSchema,
   queuedPromptSchema,
   directAttachmentTicketSchema,
+  directTunnelTicketSchema,
   remoteDesktopListSchema,
   remoteDesktopFleetSchema,
   remoteDesktopSummarySchema,
@@ -188,6 +189,7 @@ import {
   terminalSummarySchema,
   tunnelAttachmentCreateResultSchema,
   tunnelAttachmentCreateSchema,
+  tunnelDirectActivationSchema,
   tunnelListSchema,
   tunnelSummarySchema,
   tunnelUserCreateSchema,
@@ -459,6 +461,25 @@ export async function deleteTunnelAttachment(
   await request(`/api/tunnel-attachments/${encodeURIComponent(attachmentId)}`, {
     method: "DELETE",
   });
+}
+
+export async function createDirectTunnelAttachment(attachmentId: string) {
+  return directTunnelTicketSchema.parse(
+    await post(
+      `/api/tunnel-attachments/${encodeURIComponent(attachmentId)}/direct`,
+      {},
+    ),
+  );
+}
+
+export async function activateDirectTunnelAttachment(
+  attachmentId: string,
+  input: { capabilityId: string; localPort: number },
+): Promise<void> {
+  await post(
+    `/api/tunnel-attachments/${encodeURIComponent(attachmentId)}/direct-activate`,
+    tunnelDirectActivationSchema.parse(input),
+  );
 }
 
 export async function getWorkerManagement() {

@@ -5,12 +5,14 @@ import {
   directCapabilityPrepareResultSchema,
   type DirectAttachmentTicket,
   type DirectResourceKind,
+  type WorkerCommand,
   type WorkerSummary,
 } from "@cantrip/protocol";
 
 import type { WorkerCommandBus } from "../workers/bridge.js";
 
 interface DirectGrant {
+  attachmentId: string;
   authSessionId: string;
   ownerId: string;
   timer: ReturnType<typeof setTimeout>;
@@ -25,6 +27,11 @@ export interface DirectAttachmentPrepareInput {
   ownerId: string;
   resourceId: string;
   resourceKind: DirectResourceKind;
+  leaseExpiresAt?: Date;
+  tunnelRoute?: Extract<
+    WorkerCommand,
+    { type: "direct.capability.prepare" }
+  >["tunnelRoute"];
   worker: WorkerSummary;
 }
 
@@ -55,6 +62,16 @@ export class DirectAttachmentCoordinator {
     const now = Date.now();
     const capabilityId = randomUUID();
     const secret = randomBytes(32).toString("base64url");
+    const requestedLease = input.leaseExpiresAt?.getTime();
+    const leaseExpiresAt = Math.min(
+      Number.isFinite(requestedLease) ? requestedLease! : now + LEASE_TTL_MS,
+      now + 12 * 60 * 60_000,
+    );
+    if (leaseExpiresAt <= now) {
+      throw new DirectAttachmentUnavailableError(
+        "Direct attachment lease has already expired.",
+      );
+    }
     const binding = {
       capabilityId,
       ownerId: input.ownerId,
@@ -65,7 +82,7 @@ export class DirectAttachmentCoordinator {
       attachmentId: input.attachmentId ?? randomUUID(),
       channels: [...new Set(input.channels)],
       expiresAt: new Date(now + CAPABILITY_TTL_MS).toISOString(),
-      leaseExpiresAt: new Date(now + LEASE_TTL_MS).toISOString(),
+      leaseExpiresAt: new Date(leaseExpiresAt).toISOString(),
     };
     const ticket = directAttachmentTicketSchema.parse({
       broker: input.worker.directBroker,
@@ -77,7 +94,12 @@ export class DirectAttachmentCoordinator {
       prepared = directCapabilityPrepareResultSchema.parse(
         await this.workers.request(
           input.worker.workerId,
-          { type: "direct.capability.prepare", binding, secret },
+          {
+            type: "direct.capability.prepare",
+            binding,
+            secret,
+            tunnelRoute: input.tunnelRoute ?? null,
+          },
           { ownerId: input.ownerId, timeoutMs: 5_000 },
         ),
       );
@@ -91,7 +113,7 @@ export class DirectAttachmentCoordinator {
     }
     const timer = setTimeout(
       () => void this.revoke(capabilityId, "Direct capability expired"),
-      LEASE_TTL_MS,
+      Math.max(1, leaseExpiresAt - now),
     );
     timer.unref();
     const unsubscribeDisconnect = this.workers.subscribeWorkerDisconnect(
@@ -99,6 +121,7 @@ export class DirectAttachmentCoordinator {
       () => this.#forget(capabilityId),
     );
     this.#grants.set(capabilityId, {
+      attachmentId: binding.attachmentId,
       authSessionId: input.authSessionId,
       ownerId: input.ownerId,
       timer,
@@ -143,6 +166,33 @@ export class DirectAttachmentCoordinator {
         .filter(([, grant]) => grant.authSessionId === authSessionId)
         .map(([capabilityId]) =>
           this.revoke(capabilityId, "Authorization session was revoked"),
+        ),
+    );
+  }
+
+  matches(
+    capabilityId: string,
+    authorization: {
+      attachmentId: string;
+      authSessionId: string;
+      ownerId: string;
+    },
+  ): boolean {
+    const grant = this.#grants.get(capabilityId);
+    return Boolean(
+      grant &&
+      grant.ownerId === authorization.ownerId &&
+      grant.authSessionId === authorization.authSessionId &&
+      grant.attachmentId === authorization.attachmentId,
+    );
+  }
+
+  async revokeAttachment(attachmentId: string): Promise<void> {
+    await Promise.all(
+      [...this.#grants]
+        .filter(([, grant]) => grant.attachmentId === attachmentId)
+        .map(([capabilityId]) =>
+          this.revoke(capabilityId, "Owning attachment was revoked"),
         ),
     );
   }

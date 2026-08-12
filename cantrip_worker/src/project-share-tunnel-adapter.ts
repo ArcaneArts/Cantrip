@@ -20,7 +20,7 @@ type FrameEmitter = (
   header: TunnelDataPlaneFrameHeader,
   payload: Uint8Array,
 ) => boolean;
-type CapacityWaiter = () => Promise<boolean>;
+type CapacityWaiter = (attachmentId: string) => Promise<boolean>;
 
 interface ProjectShareStream {
   destinationToSourceCredit: number;
@@ -555,7 +555,7 @@ export class ProjectShareTunnelDestinationAdapter {
             },
             payload,
           ) ||
-          !(await this.#waitForCapacity())
+          !(await this.#waitForCapacity(stream.header.attachmentId))
         ) {
           this.#closeStream(stream, "congested");
           return;

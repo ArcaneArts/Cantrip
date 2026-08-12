@@ -11,8 +11,11 @@ import {
   directBrokerInitializeSchema,
   directBrokerReadySchema,
   directCapabilityPrepareResultSchema,
+  decodeTunnelDataPlaneFrame,
+  encodeTunnelDataPlaneFrame,
   type DirectBrokerAdvertisement,
   type DirectCapabilityBinding,
+  type TunnelDataPlaneFrameHeader,
   type WorkerCommand,
 } from "@cantrip/protocol";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
@@ -24,18 +27,29 @@ type PrepareCommand = Extract<
 
 interface PreparedCapability {
   binding: DirectCapabilityBinding;
+  tunnelRoute: PrepareCommand["tunnelRoute"];
   secretHash: Buffer;
   timer: ReturnType<typeof setTimeout>;
 }
 
 interface ActiveSession {
+  binding: DirectCapabilityBinding;
   capabilityId: string;
+  connections: Map<string, TunnelDataPlaneFrameHeader>;
   socket: WebSocket;
   timer: ReturnType<typeof setTimeout>;
+  tunnelRoute: NonNullable<PrepareCommand["tunnelRoute"]> | null;
 }
 
 const INITIALIZE_TIMEOUT_MS = 5_000;
 const MAX_PREPARED_CAPABILITIES = 128;
+const MAX_BUFFERED_TUNNEL_BYTES = 8 * 1_024 * 1_024;
+const TUNNEL_LOW_WATER_BYTES = 256 * 1_024;
+
+type TunnelFrameHandler = (
+  header: TunnelDataPlaneFrameHeader,
+  payload: Uint8Array,
+) => void;
 
 function rawText(data: RawData): string {
   if (Array.isArray(data)) return Buffer.concat(data).toString("utf8");
@@ -64,6 +78,7 @@ export class DirectBroker {
   #server: HttpServer | null = null;
   #webSockets: WebSocketServer | null = null;
   #advertisement: DirectBrokerAdvertisement = { available: false };
+  #handleTunnelFrame: TunnelFrameHandler = () => undefined;
 
   get advertisement(): DirectBrokerAdvertisement {
     return this.#advertisement;
@@ -81,7 +96,7 @@ export class DirectBroker {
     });
     const webSockets = new WebSocketServer({
       noServer: true,
-      maxPayload: 16_384,
+      maxPayload: 80 * 1_024,
     });
     server.on("upgrade", (request, socket, head) => {
       if (request.url !== "/direct/v1") {
@@ -121,6 +136,7 @@ export class DirectBroker {
 
   prepare(command: PrepareCommand): { accepted: true; capabilityId: string } {
     const now = Date.now();
+    const tunnelRoute = command.tunnelRoute ?? null;
     const expiresAt = Date.parse(command.binding.expiresAt);
     const leaseExpiresAt = Date.parse(command.binding.leaseExpiresAt);
     if (
@@ -131,6 +147,15 @@ export class DirectBroker {
       leaseExpiresAt <= now
     ) {
       throw new Error("Direct capability has already expired.");
+    }
+    if (
+      (command.binding.resourceKind === "tunnel") !== (tunnelRoute !== null) ||
+      (tunnelRoute !== null &&
+        (tunnelRoute.tunnelId !== command.binding.resourceId ||
+          tunnelRoute.attachmentId !== command.binding.attachmentId ||
+          !command.binding.channels.includes("tunnel-data")))
+    ) {
+      throw new Error("Direct tunnel route does not match its capability.");
     }
     if (this.#prepared.size >= MAX_PREPARED_CAPABILITIES) {
       throw new Error("Direct capability queue is full.");
@@ -145,6 +170,7 @@ export class DirectBroker {
       binding: command.binding,
       secretHash: secretHash(command.secret),
       timer,
+      tunnelRoute,
     });
     return directCapabilityPrepareResultSchema.parse({
       accepted: true,
@@ -178,6 +204,7 @@ export class DirectBroker {
     if (active) {
       clearTimeout(active.timer);
       this.#active.delete(capabilityId);
+      this.#closeTunnelConnections(active);
       active.socket.close(1008, reason.slice(0, 123));
       revoked = true;
     }
@@ -191,6 +218,55 @@ export class DirectBroker {
     ]) {
       this.revoke(capabilityId, reason);
     }
+  }
+
+  setTunnelFrameHandler(handler: TunnelFrameHandler): void {
+    this.#handleTunnelFrame = handler;
+  }
+
+  routeTunnelFrame(
+    header: TunnelDataPlaneFrameHeader,
+    payload: Uint8Array,
+  ): boolean | null {
+    const active = [...this.#active.values()].find(
+      (session) =>
+        session.tunnelRoute?.attachmentId === header.attachmentId &&
+        session.tunnelRoute.tunnelId === header.tunnelId &&
+        session.tunnelRoute.sourceEndpointId === header.sourceEndpointId &&
+        session.tunnelRoute.destinationEndpointId ===
+          header.destinationEndpointId &&
+        session.connections.has(header.connectionId),
+    );
+    if (!active) return null;
+    if (
+      active.socket.readyState !== WebSocket.OPEN ||
+      active.socket.bufferedAmount > MAX_BUFFERED_TUNNEL_BYTES
+    ) {
+      return false;
+    }
+    try {
+      active.socket.send(encodeTunnelDataPlaneFrame(header, payload), {
+        binary: true,
+      });
+      if (header.kind === "close" || header.kind === "error") {
+        active.connections.delete(header.connectionId);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async waitForTunnelCapacity(attachmentId: string): Promise<boolean | null> {
+    const active = [...this.#active.values()].find(
+      (session) => session.tunnelRoute?.attachmentId === attachmentId,
+    );
+    if (!active) return null;
+    while (active.socket.readyState === WebSocket.OPEN) {
+      if (active.socket.bufferedAmount <= TUNNEL_LOW_WATER_BYTES) return true;
+      await new Promise<void>((resolve) => setTimeout(resolve, 5));
+    }
+    return false;
   }
 
   async close(): Promise<void> {
@@ -244,9 +320,12 @@ export class DirectBroker {
         initialized = true;
         const leaseExpiry = Date.parse(capability.binding.leaseExpiresAt);
         const active: ActiveSession = {
+          binding: capability.binding,
           capabilityId: capability.binding.capabilityId,
+          connections: new Map(),
           socket,
           timer: this.#leaseTimer(capability.binding.capabilityId, leaseExpiry),
+          tunnelRoute: capability.tunnelRoute,
         };
         this.#active.set(capability.binding.capabilityId, active);
         socket.send(
@@ -276,6 +355,14 @@ export class DirectBroker {
           if (current?.socket !== socket) return;
           clearTimeout(current.timer);
           this.#active.delete(capability.binding.capabilityId);
+          this.#closeTunnelConnections(current);
+        });
+        socket.on("message", (data, isBinary) => {
+          if (!isBinary) {
+            socket.close(1003, "Direct data frames must be binary");
+            return;
+          }
+          this.#handleDirectFrame(active, data);
         });
       } catch {
         socket.close(1008, "Direct initialization is invalid");
@@ -285,6 +372,77 @@ export class DirectBroker {
       clearTimeout(timeout);
       if (!initialized && socket.readyState === WebSocket.OPEN) socket.close();
     });
+  }
+
+  #handleDirectFrame(active: ActiveSession, data: RawData): void {
+    const route = active.tunnelRoute;
+    if (!route || !active.binding.channels.includes("tunnel-data")) {
+      active.socket.close(1008, "Direct tunnel channel is not authorized");
+      return;
+    }
+    try {
+      const bytes =
+        data instanceof ArrayBuffer
+          ? new Uint8Array(data)
+          : Array.isArray(data)
+            ? Buffer.concat(data)
+            : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      const frame = decodeTunnelDataPlaneFrame(bytes);
+      const { header } = frame;
+      if (
+        header.tunnelId !== route.tunnelId ||
+        header.attachmentId !== route.attachmentId ||
+        header.sourceEndpointId !== route.sourceEndpointId ||
+        header.destinationEndpointId !== route.destinationEndpointId ||
+        header.kind === "connect"
+      ) {
+        throw new Error("Direct tunnel frame escaped its capability binding.");
+      }
+      let routed: TunnelDataPlaneFrameHeader = header;
+      if (header.kind === "open") {
+        if (
+          header.sequence !== 0 ||
+          active.connections.has(header.connectionId)
+        ) {
+          throw new Error("Direct tunnel connection identity is invalid.");
+        }
+        routed = { ...header, kind: "connect", target: route.target };
+        active.connections.set(header.connectionId, routed);
+      } else {
+        const previous = active.connections.get(header.connectionId);
+        if (!previous || header.sequence !== previous.sequence + 1) {
+          throw new Error("Direct tunnel frame sequence is invalid.");
+        }
+        active.connections.set(header.connectionId, header);
+        if (header.kind === "close" || header.kind === "error") {
+          active.connections.delete(header.connectionId);
+        }
+      }
+      this.#handleTunnelFrame(routed, frame.payload);
+    } catch {
+      active.socket.close(1003, "Invalid direct tunnel frame");
+    }
+  }
+
+  #closeTunnelConnections(active: ActiveSession): void {
+    for (const header of active.connections.values()) {
+      this.#handleTunnelFrame(
+        {
+          protocolVersion: 1,
+          tunnelId: header.tunnelId,
+          attachmentId: header.attachmentId,
+          sourceEndpointId: header.sourceEndpointId,
+          destinationEndpointId: header.destinationEndpointId,
+          connectionId: header.connectionId,
+          sequence: header.sequence + 1,
+          kind: "close",
+          code: "endpoint-disconnected",
+          message: null,
+        },
+        new Uint8Array(),
+      );
+    }
+    active.connections.clear();
   }
 
   #leaseTimer(

@@ -3,12 +3,33 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::State;
 
-#[derive(Debug, Deserialize)]
+use crate::direct_probe::{DirectBrokerAdvertisement, DirectCapabilityBinding};
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectTunnelRequest {
+    pub broker: DirectBrokerAdvertisement,
+    pub binding: DirectCapabilityBinding,
+    pub secret: String,
+    pub route: DirectTunnelRoute,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectTunnelRoute {
+    pub tunnel_id: String,
+    pub attachment_id: String,
+    pub source_endpoint_id: String,
+    pub destination_endpoint_id: String,
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartTunnelForwardRequest {
     pub attachment_id: String,
     pub client_id: String,
     pub connect_path: String,
+    pub direct: Option<DirectTunnelRequest>,
     pub expires_at: String,
     pub preferred_local_port: Option<u16>,
     pub secret: String,
@@ -24,6 +45,9 @@ pub struct TunnelForwardSummary {
     pub expires_at: String,
     pub local_host: &'static str,
     pub local_port: u16,
+    pub route_state: &'static str,
+    pub direct_capability_id: Option<String>,
+    pub direct_fallback_reason: Option<String>,
     pub tunnel_id: String,
 }
 
@@ -124,6 +148,8 @@ mod desktop {
     use url::Url;
     use uuid::Uuid;
     use zeroize::Zeroizing;
+
+    use crate::direct_probe::{connect_verified, DirectProbeRequest};
 
     const MAGIC: [u8; 4] = [0x43, 0x54, 0x54, 0x4e];
     const MAX_HEADER_BYTES: usize = 8 * 1024;
@@ -275,6 +301,12 @@ mod desktop {
         }
     }
 
+    struct StartupRoute {
+        direct_capability_id: Option<String>,
+        direct_fallback_reason: Option<String>,
+        state: &'static str,
+    }
+
     type OutboundFrame = (FrameHeader, Vec<u8>);
     type InboundFrame = (FrameHeader, Vec<u8>);
 
@@ -290,13 +322,11 @@ mod desktop {
             .local_addr()
             .map_err(|error| format!("Could not inspect the local tunnel listener: {error}"))?
             .port();
-        let summary = TunnelForwardSummary {
-            attachment_id: request.attachment_id.clone(),
-            expires_at: request.expires_at.clone(),
-            local_host: "127.0.0.1",
-            local_port,
-            tunnel_id: request.tunnel_id.clone(),
-        };
+        let summary_identity = (
+            request.attachment_id.clone(),
+            request.expires_at.clone(),
+            request.tunnel_id.clone(),
+        );
         let tunnel_id = request.tunnel_id.clone();
         let (stop_sender, stop_receiver) = oneshot::channel();
         let (ready_sender, ready_receiver) = oneshot::channel();
@@ -308,8 +338,8 @@ mod desktop {
             stop_receiver,
             ready_sender,
         ));
-        match timeout(Duration::from_secs(15), ready_receiver).await {
-            Ok(Ok(Ok(()))) => {}
+        let startup = match timeout(Duration::from_secs(15), ready_receiver).await {
+            Ok(Ok(Ok(startup))) => startup,
             Ok(Ok(Err(error))) => {
                 task.abort();
                 return Err(error);
@@ -322,7 +352,17 @@ mod desktop {
                 task.abort();
                 return Err("The local tunnel did not become ready in time.".into());
             }
-        }
+        };
+        let summary = TunnelForwardSummary {
+            attachment_id: summary_identity.0,
+            expires_at: summary_identity.1,
+            local_host: "127.0.0.1",
+            local_port,
+            route_state: startup.state,
+            direct_capability_id: startup.direct_capability_id,
+            direct_fallback_reason: startup.direct_fallback_reason,
+            tunnel_id: summary_identity.2,
+        };
         let mut forwards = state
             .forwards
             .lock()
@@ -380,6 +420,21 @@ mod desktop {
         if request.secret.len() < 32 || request.secret.len() > 512 {
             return Err("The tunnel attachment credential is invalid.".into());
         }
+        if let Some(direct) = &request.direct {
+            if direct.route.tunnel_id != request.tunnel_id
+                || direct.route.attachment_id != request.attachment_id
+                || direct.binding.resource_kind != "tunnel"
+                || direct.binding.resource_id != request.tunnel_id
+                || direct.binding.attachment_id != request.attachment_id
+                || !direct
+                    .binding
+                    .channels
+                    .iter()
+                    .any(|channel| channel == "tunnel-data")
+            {
+                return Err("The direct tunnel capability identity is invalid.".into());
+            }
+        }
         Ok(())
     }
 
@@ -436,11 +491,13 @@ mod desktop {
         mut request: StartTunnelForwardRequest,
         web_socket_url: Url,
         mut stop: oneshot::Receiver<()>,
-        ready: oneshot::Sender<Result<(), String>>,
+        ready: oneshot::Sender<Result<StartupRoute, String>>,
     ) {
         let secret = Zeroizing::new(std::mem::take(&mut request.secret));
         let mut ready = Some(ready);
         let mut retry_delay = Duration::from_millis(250);
+        let mut direct = request.direct.take();
+        let mut direct_fallback_reason = None;
         loop {
             if unix_epoch_ms() >= request.secret_expires_at_epoch_ms {
                 if let Some(ready) = ready.take() {
@@ -448,9 +505,65 @@ mod desktop {
                 }
                 return;
             }
-            let connected =
-                connect_attachment(&web_socket_url, &secret, &request, local_port).await;
-            let (web_socket, identity) = match connected {
+            let direct_capability_id = direct
+                .as_ref()
+                .map(|candidate| candidate.binding.capability_id.clone());
+            let connected = if let Some(candidate) = direct.take() {
+                let identity = RouteIdentity {
+                    attachment_id: candidate.route.attachment_id,
+                    destination_endpoint_id: candidate.route.destination_endpoint_id,
+                    source_endpoint_id: candidate.route.source_endpoint_id,
+                    tunnel_id: candidate.route.tunnel_id,
+                };
+                match connect_verified(DirectProbeRequest {
+                    broker: candidate.broker,
+                    binding: candidate.binding,
+                    secret: candidate.secret,
+                })
+                .await
+                {
+                    Ok(connection) => Ok((
+                        connection.socket,
+                        identity,
+                        StartupRoute {
+                            direct_capability_id,
+                            direct_fallback_reason: None,
+                            state: "local-direct",
+                        },
+                    )),
+                    Err(reason) => {
+                        direct_fallback_reason = Some(reason);
+                        connect_attachment(&web_socket_url, &secret, &request, local_port)
+                            .await
+                            .map(|(socket, identity)| {
+                                (
+                                    socket,
+                                    identity,
+                                    StartupRoute {
+                                        direct_capability_id: None,
+                                        direct_fallback_reason: direct_fallback_reason.clone(),
+                                        state: "relayed",
+                                    },
+                                )
+                            })
+                    }
+                }
+            } else {
+                connect_attachment(&web_socket_url, &secret, &request, local_port)
+                    .await
+                    .map(|(socket, identity)| {
+                        (
+                            socket,
+                            identity,
+                            StartupRoute {
+                                direct_capability_id: None,
+                                direct_fallback_reason: direct_fallback_reason.clone(),
+                                state: "relayed",
+                            },
+                        )
+                    })
+            };
+            let (web_socket, identity, startup) = match connected {
                 Ok(connected) => connected,
                 Err(error) => {
                     if let Some(ready) = ready.take() {
@@ -466,7 +579,7 @@ mod desktop {
                 }
             };
             if let Some(ready) = ready.take() {
-                let _ = ready.send(Ok(()));
+                let _ = ready.send(Ok(startup));
             }
             retry_delay = Duration::from_millis(250);
             match run_session(&listener, web_socket, identity, &mut stop).await {
@@ -991,6 +1104,7 @@ mod desktop {
                 attachment_id: "attachment".into(),
                 client_id: "client".into(),
                 connect_path: "/api/tunnel-attachments/attachment/connect".into(),
+                direct: None,
                 expires_at: "2099-01-01T00:00:00.000Z".into(),
                 preferred_local_port: None,
                 secret: secret.into(),
