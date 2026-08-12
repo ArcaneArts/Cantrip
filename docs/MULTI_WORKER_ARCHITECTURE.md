@@ -724,6 +724,14 @@ commit a job after its attempt was superseded. Project-wide logical-branch
 leases prevent separate replicas from granting concurrent write ownership to
 the same branch.
 
+Worker requests distinguish finite control operations from event streams.
+Replica commands, relocation hydration, and user-triggered Git or GitHub
+controls have explicit deadlines; the Git and GitHub ceiling is 30 minutes.
+Only an active Codex turn and an attached terminal intentionally remain open
+for their stream lifetime (with a 24-hour relay ceiling when routed through a
+peer server). Disconnect, stop, detach, or job cancellation closes the relevant
+stream or supersedes its durable attempt.
+
 Recommended stable error families are `target-not-found`, `target-mismatch`,
 `worker-offline`, `capability-missing`, `replica-not-ready`, `worktree-dirty`,
 `revision-diverged`, `unpushed-commits`, `replica-in-use`, `lease-conflict`, `attachment-unavailable`,
