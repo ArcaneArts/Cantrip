@@ -47,4 +47,15 @@ describe("GitWorkbenchToolbar", () => {
     expect(markup).toContain('aria-label="Operations active"');
     expect(markup.match(/disabled=""/g)).toHaveLength(gitWorkbenchTools.length);
   });
+
+  it("collapses compact tools into one overflow trigger", () => {
+    const markup = renderToStaticMarkup(
+      <GitWorkbenchToolbar compact disabled={false} tools={toolStates()} />,
+    );
+
+    expect(markup.match(/<button/g)).toHaveLength(1);
+    expect(markup).toContain('aria-label="Open Git tools"');
+    expect(markup).not.toContain("Operations");
+    expect(markup).not.toContain("Branches");
+  });
 });
