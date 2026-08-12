@@ -24,6 +24,10 @@ export interface DesktopTunnelForwardSummary {
   directCapabilityId: string | null;
   directFallbackReason: string | null;
   tunnelId: string;
+  bytesFromLocal?: number;
+  bytesToLocal?: number;
+  connectionsClosed?: number;
+  connectionsOpened?: number;
 }
 
 export interface StartDesktopTunnelOptions {

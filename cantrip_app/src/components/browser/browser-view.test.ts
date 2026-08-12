@@ -152,6 +152,10 @@ describe("browser local tunnel URLs", () => {
         directCapabilityId: null,
         directFallbackReason: null,
         tunnelId: "tunnel-1",
+        bytesFromLocal: 0,
+        bytesToLocal: 0,
+        connectionsClosed: 0,
+        connectionsOpened: 0,
       }),
     ).toBe("http://127.0.0.1:41234/deep/path?mode=hmr#ready");
   });

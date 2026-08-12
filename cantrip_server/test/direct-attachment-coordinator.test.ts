@@ -91,6 +91,48 @@ describe("DirectAttachmentCoordinator", () => {
       },
     });
     expect(
+      coordinator.recordTelemetry(
+        ticket.binding.capabilityId,
+        { ownerId: "owner-1", authSessionId: "session-1" },
+        {
+          bytesFromLocal: 120,
+          bytesToLocal: 80,
+          connectionsClosed: 1,
+          connectionsOpened: 2,
+        },
+      ),
+    ).toEqual({
+      bytesFromLocal: 120,
+      bytesToLocal: 80,
+      connectionsClosed: 1,
+      connectionsOpened: 2,
+      resourceKind: "probe",
+    });
+    expect(
+      coordinator.recordTelemetry(
+        ticket.binding.capabilityId,
+        { ownerId: "owner-1", authSessionId: "session-1" },
+        {
+          bytesFromLocal: 150,
+          bytesToLocal: 80,
+          connectionsClosed: 1,
+          connectionsOpened: 2,
+        },
+      ),
+    ).toMatchObject({ bytesFromLocal: 30, bytesToLocal: 0 });
+    expect(
+      coordinator.recordTelemetry(
+        ticket.binding.capabilityId,
+        { ownerId: "another-owner", authSessionId: "session-1" },
+        {
+          bytesFromLocal: 999,
+          bytesToLocal: 999,
+          connectionsClosed: 9,
+          connectionsOpened: 9,
+        },
+      ),
+    ).toBeNull();
+    expect(
       await coordinator.revoke(ticket.binding.capabilityId, "wrong session", {
         ownerId: "owner-1",
         authSessionId: "session-2",

@@ -5,6 +5,7 @@ import {
   directCapabilityPrepareResultSchema,
   type DirectAttachmentTicket,
   type DirectResourceKind,
+  type DirectTransportTelemetry,
   type WorkerCommand,
   type WorkerSummary,
 } from "@cantrip/protocol";
@@ -20,6 +21,11 @@ interface DirectGrant {
   timer: ReturnType<typeof setTimeout>;
   unsubscribeDisconnect: () => void;
   workerId: string;
+  telemetry: DirectTransportTelemetry;
+}
+
+export interface DirectTransportTelemetryDelta extends DirectTransportTelemetry {
+  resourceKind: DirectResourceKind;
 }
 
 export interface DirectAttachmentPrepareInput {
@@ -131,6 +137,12 @@ export class DirectAttachmentCoordinator {
       timer,
       unsubscribeDisconnect,
       workerId: input.worker.workerId,
+      telemetry: {
+        bytesFromLocal: 0,
+        bytesToLocal: 0,
+        connectionsClosed: 0,
+        connectionsOpened: 0,
+      },
     });
     return ticket;
   }
@@ -189,6 +201,40 @@ export class DirectAttachmentCoordinator {
       grant.authSessionId === authorization.authSessionId &&
       grant.attachmentId === authorization.attachmentId,
     );
+  }
+
+  recordTelemetry(
+    capabilityId: string,
+    authorization: { authSessionId: string; ownerId: string },
+    telemetry: DirectTransportTelemetry,
+  ): DirectTransportTelemetryDelta | null {
+    const grant = this.#grants.get(capabilityId);
+    if (
+      !grant ||
+      grant.ownerId !== authorization.ownerId ||
+      grant.authSessionId !== authorization.authSessionId
+    ) {
+      return null;
+    }
+    const previous = grant.telemetry;
+    const delta = {
+      bytesFromLocal: Math.max(
+        0,
+        telemetry.bytesFromLocal - previous.bytesFromLocal,
+      ),
+      bytesToLocal: Math.max(0, telemetry.bytesToLocal - previous.bytesToLocal),
+      connectionsClosed: Math.max(
+        0,
+        telemetry.connectionsClosed - previous.connectionsClosed,
+      ),
+      connectionsOpened: Math.max(
+        0,
+        telemetry.connectionsOpened - previous.connectionsOpened,
+      ),
+      resourceKind: grant.resourceKind,
+    };
+    grant.telemetry = { ...telemetry };
+    return delta;
   }
 
   async revokeAttachment(attachmentId: string): Promise<void> {

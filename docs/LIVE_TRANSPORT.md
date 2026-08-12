@@ -44,9 +44,11 @@ release, account-session revocation, worker command-channel loss, or process
 shutdown. The browser-facing layer receives no reusable worker credential.
 The transient one-use attachment secret is handed immediately to native Tauri
 code, cleared after invocation, and never written to browser storage or logs.
-Later PTY, project-share, Code, and generic tunnel transports reuse this
-authorization and locality-proof foundation while their server routes remain
-the baseline fallback.
+PTY, project-share, Code, and generic tunnel transports reuse this authorization
+and locality-proof foundation. Tauri owns the loopback forwarder; browser and
+Capacitor clients retain the server route. Remote Surfaces do not use this
+broker: their server-signaled WebRTC transport can negotiate directly from any
+supported client and falls back to the authenticated WebSocket relay.
 
 ## Version 1 contract
 
@@ -146,7 +148,10 @@ tests and diagnostics.
 
 Tunnel route, stream, traffic, rejection, and termination counters are exposed
 beside these live diagnostics, but tunnel bytes never enter the application
-live channel. Operational details are in [the tunnels guide](TUNNELS.md).
+live channel. Native direct forwarders report monotonic counters through a
+bounded authenticated HTTP endpoint; the server exports direct-versus-relayed
+aggregate series without tenant-specific labels. Operational details are in
+[the tunnels guide](TUNNELS.md).
 
 The measured request reduction, real-browser trace, timer inventory, recovery
 matrix, troubleshooting steps, and remaining deployment limits are recorded in

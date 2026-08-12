@@ -55,6 +55,10 @@ pub struct TunnelForwardSummary {
     pub direct_capability_id: Option<String>,
     pub direct_fallback_reason: Option<String>,
     pub tunnel_id: String,
+    pub bytes_from_local: u64,
+    pub bytes_to_local: u64,
+    pub connections_closed: u64,
+    pub connections_opened: u64,
 }
 
 pub struct TunnelForwards {
@@ -139,6 +143,8 @@ mod desktop {
     use std::collections::HashMap;
     use std::convert::TryFrom;
     use std::net::{Ipv4Addr, SocketAddr};
+    use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
+    use std::sync::Arc;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tauri::async_runtime::JoinHandle as TauriJoinHandle;
     use tauri::State;
@@ -166,9 +172,47 @@ mod desktop {
     const CONNECTION_QUEUE: usize = 64;
 
     pub struct ForwardHandle {
+        counters: Arc<ForwardCounters>,
         pub stop: Option<oneshot::Sender<()>>,
         summary: TunnelForwardSummary,
         pub task: TauriJoinHandle<()>,
+    }
+
+    #[derive(Default)]
+    struct ForwardCounters {
+        bytes_from_local: AtomicU64,
+        bytes_to_local: AtomicU64,
+        connections_closed: AtomicU64,
+        connections_opened: AtomicU64,
+        route_state: AtomicU8,
+    }
+
+    impl ForwardCounters {
+        fn add(counter: &AtomicU64, value: u64) {
+            let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                Some(current.saturating_add(value))
+            });
+        }
+
+        fn apply(&self, summary: &mut TunnelForwardSummary) {
+            summary.bytes_from_local = self.bytes_from_local.load(Ordering::Relaxed);
+            summary.bytes_to_local = self.bytes_to_local.load(Ordering::Relaxed);
+            summary.connections_closed = self.connections_closed.load(Ordering::Relaxed);
+            summary.connections_opened = self.connections_opened.load(Ordering::Relaxed);
+            summary.route_state = match self.route_state.load(Ordering::Relaxed) {
+                1 => "local-direct",
+                2 => "relayed",
+                _ => summary.route_state,
+            };
+        }
+    }
+
+    struct OpenConnection(Arc<ForwardCounters>);
+
+    impl Drop for OpenConnection {
+        fn drop(&mut self) {
+            ForwardCounters::add(&self.0.connections_closed, 1);
+        }
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -338,6 +382,7 @@ mod desktop {
             request.tunnel_id.clone(),
         );
         let tunnel_id = request.tunnel_id.clone();
+        let counters = Arc::new(ForwardCounters::default());
         let (stop_sender, stop_receiver) = oneshot::channel();
         let (ready_sender, ready_receiver) = oneshot::channel();
         let task = tauri::async_runtime::spawn(run_forward(
@@ -345,6 +390,7 @@ mod desktop {
             local_port,
             request,
             web_socket_url,
+            counters.clone(),
             stop_receiver,
             ready_sender,
         ));
@@ -372,6 +418,10 @@ mod desktop {
             direct_capability_id: startup.direct_capability_id,
             direct_fallback_reason: startup.direct_fallback_reason,
             tunnel_id: summary_identity.2,
+            bytes_from_local: 0,
+            bytes_to_local: 0,
+            connections_closed: 0,
+            connections_opened: 0,
         };
         let mut forwards = state
             .forwards
@@ -380,6 +430,7 @@ mod desktop {
         forwards.insert(
             tunnel_id,
             ForwardHandle {
+                counters,
                 stop: Some(stop_sender),
                 summary: summary.clone(),
                 task,
@@ -411,7 +462,11 @@ mod desktop {
         forwards.retain(|_, forward| !forward.task.inner().is_finished());
         let mut summaries = forwards
             .values()
-            .map(|forward| forward.summary.clone())
+            .map(|forward| {
+                let mut summary = forward.summary.clone();
+                forward.counters.apply(&mut summary);
+                summary
+            })
             .collect::<Vec<_>>();
         summaries.sort_by(|left, right| left.tunnel_id.cmp(&right.tunnel_id));
         Ok(summaries)
@@ -508,6 +563,7 @@ mod desktop {
         local_port: u16,
         mut request: StartTunnelForwardRequest,
         web_socket_url: Option<Url>,
+        counters: Arc<ForwardCounters>,
         mut stop: oneshot::Receiver<()>,
         ready: oneshot::Sender<Result<StartupRoute, String>>,
     ) {
@@ -606,11 +662,19 @@ mod desktop {
                     continue;
                 }
             };
+            counters.route_state.store(
+                if startup.state == "local-direct" {
+                    1
+                } else {
+                    2
+                },
+                Ordering::Relaxed,
+            );
             if let Some(ready) = ready.take() {
                 let _ = ready.send(Ok(startup));
             }
             retry_delay = Duration::from_millis(250);
-            match run_session(&listener, web_socket, identity, &mut stop).await {
+            match run_session(&listener, web_socket, identity, counters.clone(), &mut stop).await {
                 Ok(true) => return,
                 Ok(false) | Err(_) => {}
             }
@@ -709,6 +773,7 @@ mod desktop {
             tokio_tungstenite::MaybeTlsStream<TcpStream>,
         >,
         identity: RouteIdentity,
+        counters: Arc<ForwardCounters>,
         stop: &mut oneshot::Receiver<()>,
     ) -> Result<bool, String> {
         let (outbound_sender, mut outbound_receiver) =
@@ -722,6 +787,8 @@ mod desktop {
                 _ = &mut *stop => break Ok(true),
                 accepted = listener.accept() => {
                     let (stream, _) = accepted.map_err(|error| format!("The local tunnel listener failed: {error}"))?;
+                    ForwardCounters::add(&counters.connections_opened, 1);
+                    let open_connection = OpenConnection(counters.clone());
                     let connection_id = Uuid::new_v4().to_string();
                     let (sender, receiver) = mpsc::channel(CONNECTION_QUEUE);
                     let task = tokio::spawn(run_connection(
@@ -731,6 +798,7 @@ mod desktop {
                         outbound_sender.clone(),
                         receiver,
                         completed_sender.clone(),
+                        open_connection,
                     ));
                     connections.insert(connection_id, (sender, task));
                 }
@@ -786,7 +854,9 @@ mod desktop {
         outbound: mpsc::Sender<OutboundFrame>,
         mut inbound: mpsc::Receiver<InboundFrame>,
         completed: mpsc::Sender<String>,
+        open_connection: OpenConnection,
     ) {
+        let counters = &open_connection.0;
         let (mut reader, mut writer) = stream.into_split();
         let mut source_sequence = 1_u64;
         let mut destination_sequence = 0_u64;
@@ -837,6 +907,7 @@ mod desktop {
                     source_sequence += 1;
                 }
                 ConnectionEvent::Local(Ok(size)) => {
+                    ForwardCounters::add(&counters.bytes_from_local, size as u64);
                     source_credit = source_credit.saturating_sub(size as u64);
                     if send_source(
                         &outbound,
@@ -879,6 +950,7 @@ mod desktop {
                             if writer.write_all(&payload).await.is_err() {
                                 break;
                             }
+                            ForwardCounters::add(&counters.bytes_to_local, payload.len() as u64);
                             if send_source(
                                 &outbound,
                                 FrameHeader::Credit {
@@ -1169,8 +1241,17 @@ mod desktop {
                 .await
                 .unwrap();
             let (stop_sender, mut stop_receiver) = oneshot::channel();
+            let counters = Arc::new(ForwardCounters::default());
+            let session_counters = counters.clone();
             let session = tokio::spawn(async move {
-                run_session(&listener, web_socket, identity, &mut stop_receiver).await
+                run_session(
+                    &listener,
+                    web_socket,
+                    identity,
+                    session_counters,
+                    &mut stop_receiver,
+                )
+                .await
             });
 
             let mut local = TcpStream::connect((Ipv4Addr::LOCALHOST, local_port))
@@ -1190,6 +1271,16 @@ mod desktop {
             let _ = stop_sender.send(());
             let _ = session.await.unwrap();
             server.await.unwrap();
+            assert_eq!(counters.connections_opened.load(Ordering::Relaxed), 1);
+            assert_eq!(counters.connections_closed.load(Ordering::Relaxed), 1);
+            assert_eq!(
+                counters.bytes_from_local.load(Ordering::Relaxed),
+                request_bytes.len() as u64,
+            );
+            assert_eq!(
+                counters.bytes_to_local.load(Ordering::Relaxed),
+                request_bytes.len() as u64,
+            );
         }
     }
 }

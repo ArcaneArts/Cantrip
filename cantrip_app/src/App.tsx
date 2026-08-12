@@ -278,6 +278,7 @@ import {
 } from "@/lib/desktop-project-share";
 import { browserUpdateForPageState } from "@/lib/browser-page-state";
 import { scopedClientStorageKey } from "@/lib/client-session";
+import { useDesktopDirectTransportTelemetry } from "@/lib/direct-transport-telemetry";
 import {
   buildProjectSurfaceIndex,
   type ProjectSurface,
@@ -2353,6 +2354,7 @@ function ChatTranscript({
 }
 
 export function App() {
+  useDesktopDirectTransportTelemetry();
   const queryClient = useQueryClient();
   const activeProjectWorkspaceStorageKey = useMemo(
     () => scopedClientStorageKey("cantrip:active-project-workspace"),

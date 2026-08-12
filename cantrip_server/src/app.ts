@@ -274,6 +274,7 @@ import {
   queuedPromptUpdateSchema,
   remoteDesktopCreateSchema,
   directAttachmentTicketSchema,
+  directTransportTelemetrySchema,
   directTunnelTicketSchema,
   remoteDesktopFleetSchema,
   remoteDesktopProbeResultSchema,
@@ -5540,6 +5541,28 @@ export async function buildApp({
       ))
         ? reply.code(204).send()
         : reply.code(404).send({ error: "Direct attachment not found." });
+    },
+  );
+
+  app.post<{ Params: { capabilityId: string } }>(
+    "/api/direct-attachments/:capabilityId/telemetry",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const principal = authenticatedPrincipal(request);
+      const telemetry = directTransportTelemetrySchema.parse(request.body);
+      const delta = directAttachments.recordTelemetry(
+        request.params.capabilityId,
+        {
+          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          ownerId: principal.user.id,
+        },
+        telemetry,
+      );
+      if (!delta) {
+        return reply.code(404).send({ error: "Direct attachment not found." });
+      }
+      operationalMetrics.recordDirectTransport(delta.resourceKind, delta);
+      return reply.code(204).send();
     },
   );
 

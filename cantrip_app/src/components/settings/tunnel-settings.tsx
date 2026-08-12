@@ -146,6 +146,29 @@ export function tunnelMatchesSearch(
   return values.some((value) => value?.toLowerCase().includes(search));
 }
 
+export function summarizeDesktopTransports(
+  forwards: DesktopTunnelForwardSummary[],
+) {
+  return forwards.reduce(
+    (summary, forward) => {
+      summary[forward.routeState === "local-direct" ? "direct" : "relayed"] +=
+        1;
+      summary.bytes +=
+        (forward.bytesFromLocal ?? 0) + (forward.bytesToLocal ?? 0);
+      summary.connections += forward.connectionsOpened ?? 0;
+      return summary;
+    },
+    { bytes: 0, connections: 0, direct: 0, relayed: 0 },
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1_024) return `${bytes} B`;
+  if (bytes < 1_048_576) return `${(bytes / 1_024).toFixed(1)} KiB`;
+  if (bytes < 1_073_741_824) return `${(bytes / 1_048_576).toFixed(1)} MiB`;
+  return `${(bytes / 1_073_741_824).toFixed(1)} GiB`;
+}
+
 function statusTone(status: TunnelSummary["status"]): string {
   if (status === "active") return "bg-emerald-500";
   if (status === "failed" || status === "degraded") return "bg-destructive";
@@ -264,7 +287,7 @@ function TunnelRows({
                 </span>
                 <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
                   {local
-                    ? `${local.localHost}:${local.localPort}`
+                    ? `${local.routeState === "local-direct" ? "Local direct" : "Server relayed"} · ${local.localHost}:${local.localPort}`
                     : tunnel.attachments.length
                       ? `${tunnel.attachments.length} remote ${tunnel.attachments.length === 1 ? "attachment" : "attachments"}`
                       : "Not attached on this device"}
@@ -425,6 +448,8 @@ export function TunnelSettings({
       .catch(() => setLocalTunnels([]));
   useEffect(() => {
     void refreshLocalTunnels();
+    const timer = window.setInterval(() => void refreshLocalTunnels(), 5_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const refreshQueries = async () => {
@@ -530,6 +555,10 @@ export function TunnelSettings({
     () => new Map(localTunnels.map((item) => [item.tunnelId, item])),
     [localTunnels],
   );
+  const transportSummary = useMemo(
+    () => summarizeDesktopTransports(localTunnels),
+    [localTunnels],
+  );
   const filteredAll = (allTunnels.data ?? []).filter((tunnel) =>
     tunnelMatchesSearch(tunnel, searchQuery, projectNames, workerNames),
   );
@@ -624,6 +653,24 @@ export function TunnelSettings({
         value={searchQuery}
         onValueChange={setSearchQuery}
       />
+
+      {desktopTunnelAvailable() ? (
+        <section className="flex flex-wrap items-center gap-x-5 gap-y-1 border-y px-3 py-2 text-xs">
+          <span className="font-medium">Desktop data plane</span>
+          <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            {transportSummary.direct} local direct
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+            <span className="size-1.5 rounded-full bg-amber-500" />
+            {transportSummary.relayed} server relayed
+          </span>
+          <span className="text-muted-foreground">
+            {transportSummary.connections} connections ·{" "}
+            {formatBytes(transportSummary.bytes)}
+          </span>
+        </section>
+      ) : null}
 
       {liveStatus !== "live" ? (
         <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
