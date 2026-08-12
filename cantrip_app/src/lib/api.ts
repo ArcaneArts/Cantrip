@@ -8,6 +8,7 @@ import {
   agentInteractionRequestSchema,
   agentInteractionResolutionCreateSchema,
   browserListSchema,
+  browserServiceFleetDiscoverySchema,
   browserServiceListSchema,
   browserSummarySchema,
   browserTunnelRequestSchema,
@@ -2054,6 +2055,14 @@ export async function getBrowserServices(browserId: string) {
   );
 }
 
+export async function getProjectBrowserServices(projectId: string) {
+  return browserServiceFleetDiscoverySchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/browser-services`,
+    ),
+  );
+}
+
 export async function ensureBrowserTunnel(
   browserId: string,
   input: BrowserTunnelRequest,
@@ -2071,10 +2080,12 @@ export async function createBrowser(
   title: string,
   tabGroupId?: string,
   target?: ExecutionTarget,
+  url?: string,
 ) {
   return browserSummarySchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/browsers`, {
       title,
+      ...(url ? { url } : {}),
       ...(tabGroupId ? { tabGroupId } : {}),
       ...(target ? { target } : {}),
     }),

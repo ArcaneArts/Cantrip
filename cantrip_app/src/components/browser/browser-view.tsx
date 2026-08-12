@@ -5,6 +5,8 @@ import {
   remoteBrowserServerMessageSchema,
   type BrowserSummary,
   type BrowserService,
+  type BrowserFleetService,
+  type BrowserServiceFleetDiscovery,
   type RemoteBrowserClientMessage,
 } from "@cantrip/protocol";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
@@ -13,6 +15,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ChevronDown,
+  CircleAlert,
   ClipboardCopy,
   ClipboardPaste,
   CopyPlus,
@@ -44,6 +47,7 @@ import {
   createTunnel,
   ensureBrowserTunnel,
   getBrowserServices,
+  getProjectBrowserServices,
   remoteSurfaceWebSocketUrl,
 } from "@/lib/api";
 import {
@@ -73,14 +77,20 @@ const browserTransportMessages = {
   invalidFrame: "The server sent an invalid browser frame.",
 };
 
+function isBrowserServiceFleetDiscovery(
+  value: BrowserService[] | BrowserServiceFleetDiscovery | undefined,
+): value is BrowserServiceFleetDiscovery {
+  return Boolean(value && !Array.isArray(value));
+}
+
 export function browserServiceDisplayName(service: BrowserService): string {
   return service.title ?? service.processName ?? `Port ${service.port}`;
 }
 
-export function filterBrowserServices(
-  services: BrowserService[],
+export function filterBrowserServices<T extends BrowserService>(
+  services: T[],
   query: string,
-): BrowserService[] {
+): T[] {
   const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   if (terms.length === 0) return services;
   return services.filter((service) => {
@@ -93,6 +103,7 @@ export function filterBrowserServices(
       service.port,
       service.statusCode,
       service.url,
+      "workerName" in service ? service.workerName : null,
     ]
       .filter((value) => value !== null && value !== undefined)
       .join(" ")
@@ -124,6 +135,17 @@ export function browserAddressRequiresTunnel(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function browserServiceRequiresNewSurface(
+  browser: Pick<BrowserSummary, "workerId">,
+  service: BrowserService | BrowserFleetService,
+): service is BrowserFleetService {
+  return (
+    "placement" in service &&
+    Boolean(browser.workerId) &&
+    service.workerId !== browser.workerId
+  );
 }
 
 export function browserTunnelLocalUrl(
@@ -169,9 +191,13 @@ export function browserTouchPoints(
 
 export function BrowserView({
   browser,
+  fleetDiscovery,
+  onOpenService,
   onPageState,
 }: {
   browser: BrowserSummary;
+  fleetDiscovery: boolean;
+  onOpenService(service: BrowserFleetService): void;
   onPageState(state: {
     previousTitle: string | null;
     title: string;
@@ -211,14 +237,33 @@ export function BrowserView({
     null,
   );
   const surfaceReady = renderedSurfaceId === browser.id;
-  const servicesQuery = useQuery({
-    queryKey: ["browser-services", browser.id],
-    queryFn: () => getBrowserServices(browser.id),
+  const servicesQuery = useQuery<
+    BrowserService[] | BrowserServiceFleetDiscovery
+  >({
+    queryKey: [
+      "browser-services",
+      fleetDiscovery ? browser.projectId : browser.id,
+      fleetDiscovery ? "fleet" : "legacy",
+    ],
+    queryFn: () =>
+      fleetDiscovery
+        ? getProjectBrowserServices(browser.projectId)
+        : getBrowserServices(browser.id),
     enabled: serviceMenuOpen,
     retry: false,
     staleTime: 5_000,
   });
-  const services = servicesQuery.data ?? [];
+  const discovery = servicesQuery.data;
+  const fleetResult = isBrowserServiceFleetDiscovery(discovery)
+    ? discovery
+    : null;
+  const services: Array<BrowserService | BrowserFleetService> = Array.isArray(
+    discovery,
+  )
+    ? discovery
+    : (fleetResult?.workers.flatMap((worker) => worker.services) ?? []);
+  const workerFailures =
+    fleetResult?.workers.filter((worker) => worker.status !== "ok") ?? [];
   const filteredServices = filterBrowserServices(services, serviceSearch);
   onPageStateRef.current = onPageState;
 
@@ -367,6 +412,16 @@ export function BrowserView({
     setLoading(true);
     send({ type: "navigate", url: normalized });
     return true;
+  };
+
+  const openDiscoveredService = (
+    service: BrowserService | BrowserFleetService,
+  ) => {
+    if (!browserServiceRequiresNewSurface(browser, service)) {
+      navigateTo(service.url, service.workerId);
+      return;
+    }
+    onOpenService(service);
   };
 
   const submit = (event: FormEvent) => {
@@ -527,7 +582,7 @@ export function BrowserView({
               size="sm"
               variant="outline"
               className="h-8 shrink-0 gap-1.5 px-2.5"
-              title="Open a web service running on this worker"
+              title="Open a web service running on a connected worker"
             >
               <Network className="size-3.5" />
               <span className="hidden sm:inline">Services</span>
@@ -535,6 +590,9 @@ export function BrowserView({
                 <span className="text-[10px] tabular-nums text-muted-foreground">
                   {services.length}
                 </span>
+              ) : null}
+              {fleetResult?.partial ? (
+                <CircleAlert className="size-3 text-amber-500" />
               ) : null}
               <ChevronDown className="size-3 text-muted-foreground" />
             </Button>
@@ -546,7 +604,7 @@ export function BrowserView({
               className="z-50 flex max-h-[var(--radix-dropdown-menu-content-available-height)] w-80 flex-col overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
             >
               <DropdownMenuPrimitive.Label className="shrink-0 px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                Worker web services
+                {fleetDiscovery ? "Fleet web services" : "Worker web services"}
               </DropdownMenuPrimitive.Label>
               <div className="relative shrink-0 px-1 pb-1.5">
                 <Search className="pointer-events-none absolute left-3 top-4 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -577,7 +635,7 @@ export function BrowserView({
                     disabled
                     className="rounded-sm px-2 py-2 text-xs text-destructive outline-none"
                   >
-                    Could not scan this worker.
+                    Could not scan worker services.
                   </DropdownMenuPrimitive.Item>
                 ) : services.length === 0 ? (
                   <DropdownMenuPrimitive.Item
@@ -598,7 +656,7 @@ export function BrowserView({
                     <DropdownMenuPrimitive.Item
                       key={`${service.url}-${index}`}
                       className="flex cursor-default items-center gap-2 rounded-sm px-2 py-2 outline-none focus:bg-accent focus:text-accent-foreground"
-                      onSelect={() => navigateTo(service.url, service.workerId)}
+                      onSelect={() => openDiscoveredService(service)}
                     >
                       <Network className="size-3.5 shrink-0 text-muted-foreground" />
                       <span className="min-w-0 flex-1">
@@ -611,6 +669,9 @@ export function BrowserView({
                             ? `${service.processName} · `
                             : ""}
                           {service.protocol}://{service.host}:{service.port}
+                          {"workerName" in service
+                            ? ` · ${service.workerName}`
+                            : ""}
                         </span>
                       </span>
                       <span className="text-[10px] tabular-nums text-muted-foreground">
@@ -619,6 +680,40 @@ export function BrowserView({
                     </DropdownMenuPrimitive.Item>
                   ))
                 )}
+                {workerFailures.length > 0 ? (
+                  <>
+                    <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+                    {workerFailures.map((worker) => (
+                      <DropdownMenuPrimitive.Item
+                        key={worker.workerId}
+                        disabled
+                        title={worker.error?.message ?? undefined}
+                        className="flex items-center gap-2 rounded-sm px-2 py-2 text-xs text-muted-foreground outline-none"
+                      >
+                        <CircleAlert className="size-3.5 shrink-0 text-amber-500" />
+                        <span className="min-w-0 flex-1 truncate">
+                          {worker.workerName}
+                        </span>
+                        <span className="text-[10px]">
+                          {worker.status === "timed-out"
+                            ? "Timed out"
+                            : worker.status === "offline"
+                              ? "Offline"
+                              : "Scan failed"}
+                        </span>
+                      </DropdownMenuPrimitive.Item>
+                    ))}
+                  </>
+                ) : null}
+                {fleetResult?.truncated ? (
+                  <DropdownMenuPrimitive.Item
+                    disabled
+                    className="flex items-center gap-2 rounded-sm px-2 py-2 text-xs text-amber-500 outline-none"
+                  >
+                    <CircleAlert className="size-3.5" />
+                    Fleet result limit reached
+                  </DropdownMenuPrimitive.Item>
+                ) : null}
               </div>
               <DropdownMenuPrimitive.Separator className="my-1 h-px shrink-0 bg-border" />
               <DropdownMenuPrimitive.Item

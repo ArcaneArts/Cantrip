@@ -21,8 +21,9 @@ another.
 This document defines the contracts later multi-worker changes must preserve.
 Replica persistence, reads, exact-revision provisioning, guarded
 synchronization, safe removal, placement-policy settings, and canonical
-placement resolution and selection for new surfaces are implemented. Chat
-relocation remains disabled until its complete lifecycle is implemented.
+placement resolution and selection for new surfaces, and fleet-wide Browser
+service discovery are implemented. Chat relocation remains disabled until its
+complete lifecycle is implemented.
 
 ## Current replica read contract
 
@@ -100,6 +101,31 @@ worktrees and machine-level Browser tabs in the project sidebar; non-Primary
 worktrees retain their existing detailed worktree indicator. A terminal
 service inherits the owning terminal's placement and does not select a second
 worker.
+
+## Current fleet Browser discovery
+
+`GET /api/projects/:projectId/browser-services` fans one bounded discovery
+request out concurrently to every linked worker that advertises Browser
+support. Each worker result carries its canonical worker ID and display name,
+status, structured error when present, and discovered services. Every service
+also carries a server-resolved machine placement; worker-provided placement
+claims are overwritten.
+
+The response remains useful when only part of the fleet is healthy: successful
+services stay available while offline, timed-out, and failed worker scans are
+reported alongside them. A fleet scan is capped at 64 eligible workers and
+1,024 services, runs each worker request with a 20-second timeout, and reports
+whether either workers or services were truncated. Workers without Browser
+capability are not queried. The earlier Browser-owned discovery endpoint
+remains available for rolling clients.
+
+The Browser Services menu uses the fleet endpoint only when the server
+advertises `browserFleetDiscovery`; otherwise it retains the prior
+owning-worker query. Selecting a service on the current Browser's worker
+navigates the existing Browser, preserving local single-worker behavior.
+Selecting a service on another worker creates a new Browser in the current tab
+group with the service URL and an explicit worker placement, so worker-local
+loopback never gets sent to the wrong Browser runtime.
 
 ## Terms
 

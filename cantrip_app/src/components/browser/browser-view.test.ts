@@ -4,6 +4,7 @@ import {
   browserAddressRequiresTunnel,
   browserPointerCoordinates,
   browserServiceDisplayName,
+  browserServiceRequiresNewSurface,
   browserTouchPoints,
   browserTunnelLocalUrl,
   filterBrowserServices,
@@ -69,6 +70,54 @@ describe("filterBrowserServices", () => {
   it("returns every service for blank input and none for an unknown term", () => {
     expect(filterBrowserServices(services, "  ")).toBe(services);
     expect(filterBrowserServices(services, "postgres")).toEqual([]);
+  });
+
+  it("matches fleet worker identity", () => {
+    const fleetService = {
+      ...services[0]!,
+      workerName: "Build host",
+      placement: {
+        projectId: "project-1",
+        workerId: "worker-2",
+        projectReplicaId: null,
+        worktreeId: null,
+        surface: null,
+      },
+      workerId: "worker-2",
+    };
+    expect(filterBrowserServices([fleetService], "build host")).toEqual([
+      fleetService,
+    ]);
+  });
+});
+
+describe("browser service placement", () => {
+  const service = {
+    workerId: "worker-2",
+    workerName: "Build host",
+    host: "127.0.0.1",
+    port: 5173,
+    protocol: "http" as const,
+    url: "http://127.0.0.1:5173/",
+    processName: "Vite",
+    statusCode: 200,
+    title: "Cantrip Dev",
+    placement: {
+      projectId: "project-1",
+      workerId: "worker-2",
+      projectReplicaId: null,
+      worktreeId: null,
+      surface: null,
+    },
+  };
+
+  it("reuses the current Browser locally and creates a surface across workers", () => {
+    expect(
+      browserServiceRequiresNewSurface({ workerId: "worker-2" }, service),
+    ).toBe(false);
+    expect(
+      browserServiceRequiresNewSurface({ workerId: "worker-1" }, service),
+    ).toBe(true);
   });
 });
 
