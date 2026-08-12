@@ -1,0 +1,26 @@
+[Unit]
+Description=Cantrip database migration for release %i
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=cantrip
+Group=cantrip
+WorkingDirectory=/opt/cantrip/releases/%i
+EnvironmentFile=/etc/cantrip/production.env
+ExecStart=/opt/cantrip/releases/%i/migrate.sh
+UMask=0077
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/cantrip
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictRealtime=true

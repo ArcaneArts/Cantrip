@@ -1,0 +1,9 @@
+{
+  "apiDomain": "winterhold.cantrip.art",
+  "codeDomain": "code.winterhold.cantrip.art",
+  "infisicalEnvironment": "prod",
+  "platform": "linux/amd64",
+  "sshHost": "134.209.161.233",
+  "sshPrivateKeySecret": "CANTRIP_DROPLET_SSH_PRIVATE_KEY",
+  "sshUser": "root"
+}

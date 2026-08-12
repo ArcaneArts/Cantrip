@@ -21,6 +21,13 @@ RUN case "$TARGETARCH" in \
     && mkdir /out \
     && cp -a "artifacts/cantrip-server-$cantrip_target/." /out/
 
+# `pnpm deploy:server` exports this target as a native Linux deployment tree.
+# Keeping it separate from the runtime image lets systemd run the exact same
+# self-contained artifact without requiring Docker on the production host.
+FROM scratch AS distribution
+
+COPY --from=build /out/ /
+
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update \

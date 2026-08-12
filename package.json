@@ -39,6 +39,7 @@
     "package:app": "node scripts/package-app.mjs",
     "package:all": "pnpm bundle",
     "bundle": "node scripts/bundle.mjs",
+    "deploy:server": "node scripts/deploy-production.mjs",
     "release": "node scripts/release.mjs",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",

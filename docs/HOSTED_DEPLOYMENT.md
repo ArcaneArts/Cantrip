@@ -18,6 +18,60 @@ service operation. It assumes two public HTTPS names:
 The application origin is separate and must appear exactly in
 `CANTRIP_APP_ORIGINS`. Do not place the API and Code surface on the same origin.
 
+## Production Droplet release
+
+The committed `deploy/production/` lane deploys Cantrip's control plane to the
+current DigitalOcean Droplet as a native, self-contained Linux x64 Server behind
+host Caddy. It does not install Docker, Node.js, pnpm, Git, or Infisical on the
+Droplet. The release workstation needs:
+
+- a clean `main` checkout equal to `origin/main`;
+- Docker Engine with Buildx and Linux AMD64 build support;
+- authenticated Infisical CLI access to the project in `.infisical.json`;
+- OpenSSH, SCP, and tar; and
+- both production DNS names resolving to the `sshHost` in
+  `deploy/production/deploy.json`.
+
+The Infisical environment named by that file must define the administrator,
+allowed app origins, API and Code origins, database URL, encryption keyring and
+active key ID, metrics token, and SSH private deployment key. The deployer reads
+them locally and sends only an explicit server-variable allowlist to the host.
+The SSH key is never included in the service environment. Secret values are not
+printed by the deployment script.
+
+Run a full release from synchronized `main`:
+
+```bash
+pnpm release
+```
+
+This fast-forwards the `release` branch, cross-builds the Server bundle, writes
+the root-only environment, uploads the immutable release, runs the matching
+forward migration, switches the active symlink, and restarts Caddy and Cantrip.
+It waits for both public HTTPS health endpoints before succeeding. If branch
+promotion already succeeded but deployment failed, retry only the host phase:
+
+```bash
+pnpm deploy:server
+```
+
+The host layout is:
+
+- `/opt/cantrip/releases/<commit>`: immutable Server packages;
+- `/opt/cantrip/current`: active-release symlink;
+- `/var/lib/cantrip`: Cantrip-owned durable local state;
+- `/etc/cantrip/production.env`: root-owned mode `0600` service environment;
+- `cantrip-server.service`: long-running systemd service; and
+- `cantrip-migrate@<commit>.service`: one-shot migration unit.
+
+The installer bootstraps Ubuntu's Caddy package and the `cantrip` system user,
+opens HTTP/HTTPS in UFW, validates the Caddy configuration, and enables both
+services at boot. Application listeners remain bound to loopback on ports 4310
+and 4311. The DigitalOcean cloud firewall remains the outer network boundary.
+If the newly restarted Server fails local readiness, the installer restores the
+previous application symlink and process. Database migrations are forward-only,
+so a database backup is still required before releases that alter schema.
+
 ## Container quick start
 
 Requirements:
