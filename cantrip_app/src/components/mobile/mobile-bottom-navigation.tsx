@@ -72,7 +72,10 @@ export function MobileBottomNavigation({
         onClick={onOverview}
         type="button"
       >
-        <LayoutDashboard className="size-4" />
+        <LayoutDashboard
+          className="size-4"
+          fill={overviewSelected ? "currentColor" : "none"}
+        />
         <span>Overview</span>
       </button>
       <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -112,10 +115,14 @@ export function MobileBottomNavigation({
               type="button"
             >
               {showSwitcher || !item.surface ? (
-                <LayoutGrid className="size-4" />
+                <LayoutGrid
+                  className="size-4"
+                  fill={active ? "currentColor" : "none"}
+                />
               ) : (
                 <ProjectSurfaceIcon
                   className="size-4"
+                  filled={active}
                   kind={item.surface.kind}
                 />
               )}

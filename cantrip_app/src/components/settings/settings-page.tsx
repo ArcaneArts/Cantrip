@@ -521,16 +521,16 @@ export function SettingsPage({
   }, [initialSection]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden">
       <SettingsTabBar<SettingsSection>
         activeTab={section}
         ariaLabel="Account settings sections"
         tabs={settingsTabs}
         onTabChange={setSection}
       />
-      <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+      <div className="min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6">
         <div
-          className={`${section === "general" ? "grid" : "hidden"} mx-auto max-w-6xl gap-4`}
+          className={`${section === "general" ? "grid" : "hidden"} mx-auto w-full min-w-0 max-w-6xl gap-4`}
         >
           <SettingsSearchField
             ariaLabel="Search settings"
@@ -546,7 +546,7 @@ export function SettingsPage({
           ) : null}
 
           {hasSearchResults ? (
-            <div className="divide-y border-y">
+            <div className="min-w-0 divide-y overflow-hidden border-y">
               {appearanceMatches ? (
                 <section>
                   <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-3">
@@ -925,14 +925,14 @@ export function SettingsPage({
           </p>
         </div>
         {section === "workspaces" ? (
-          <div className="mx-auto max-w-6xl">
+          <div className="mx-auto w-full min-w-0 max-w-6xl">
             <WorkspaceSettings />
           </div>
         ) : null}
         {section === "workers" ? <WorkerSettings /> : null}
         {section === "skills" ? <SkillsSettings /> : null}
         {section === "mcp" ? (
-          <div className="mx-auto max-w-6xl">
+          <div className="mx-auto w-full min-w-0 max-w-6xl">
             <McpServerSettings scope={{ kind: "global" }} />
           </div>
         ) : null}

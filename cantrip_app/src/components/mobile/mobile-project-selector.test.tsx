@@ -83,5 +83,8 @@ describe("mobile project selector", () => {
 
     expect(markup).toContain('aria-label="Project settings"');
     expect(markup).toContain('aria-label="Close project"');
+    expect(markup.indexOf('aria-label="Close project"')).toBeLessThan(
+      markup.indexOf("Cantrip"),
+    );
   });
 });

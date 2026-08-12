@@ -23,7 +23,7 @@ export function SettingsTabBar<TabId extends string>({
   return (
     <div
       aria-label={ariaLabel}
-      className="flex h-10 shrink-0 items-center gap-1 border-b px-4 sm:px-6"
+      className="flex h-10 w-full min-w-0 shrink-0 items-center gap-1 overflow-x-auto overscroll-x-contain border-b px-4 [scrollbar-width:none] sm:px-6 [&::-webkit-scrollbar]:hidden"
       role="tablist"
     >
       {tabs.map(({ icon: Icon, id, label }) => (
@@ -35,7 +35,7 @@ export function SettingsTabBar<TabId extends string>({
           size="sm"
           variant="ghost"
           className={cn(
-            "h-10 rounded-none border-b-2 px-2.5 text-xs",
+            "h-10 shrink-0 rounded-none border-b-2 px-2.5 text-xs",
             activeTab === id
               ? "border-foreground text-foreground"
               : "border-transparent text-muted-foreground",

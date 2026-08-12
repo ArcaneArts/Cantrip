@@ -165,6 +165,8 @@ describe("mobile project shell", () => {
     expect(markup).toContain("Terminal One");
     expect(markup).toContain('aria-label="Add bottom tab"');
     expect(markup).toContain('aria-current="page"');
+    expect(markup).toContain('fill="currentColor"');
+    expect(markup).toContain('fill="none"');
     expect(markup).toContain("overflow-x-auto");
     expect(markup).toContain("flex-[1_0_3.75rem]");
     expect(markup).toContain("Hold to choose another project tab group");

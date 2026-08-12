@@ -28,6 +28,17 @@ export function MobileProjectHeader({
           <ArrowLeft className="size-4" />
         </Button>
       ) : null}
+      {onCloseProject ? (
+        <Button
+          aria-label="Close project"
+          className="size-9"
+          onClick={onCloseProject}
+          size="icon"
+          variant="ghost"
+        >
+          <X className="size-4" />
+        </Button>
+      ) : null}
       <div className="min-w-0 flex-1 px-1">
         <h1 className="truncate text-sm font-medium">{title}</h1>
         {context ? (
@@ -43,17 +54,6 @@ export function MobileProjectHeader({
           variant="ghost"
         >
           <Settings className="size-4" />
-        </Button>
-      ) : null}
-      {onCloseProject ? (
-        <Button
-          aria-label="Close project"
-          className="size-9"
-          onClick={onCloseProject}
-          size="icon"
-          variant="ghost"
-        >
-          <X className="size-4" />
         </Button>
       ) : null}
     </header>
