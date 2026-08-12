@@ -120,6 +120,10 @@ an absent or invalid trusted-proxy list. Password and account modes use
 revocable server-side sessions, tenant authorization, and per-worker
 enrollment. Public hosting still requires the later account/worker quotas,
 audit/metrics, multi-instance coordination, and production operations assets.
+The encryption keyring protects provider API keys plus MCP environment and
+static-header values. MCP configuration responses contain fixed masks rather
+than plaintext; preserve old keyring entries until startup has rewrapped every
+stored envelope with the selected active key.
 The Code surface exposes only a health endpoint and capability-scoped bearer
 attachments; it does not expose application APIs or accept Cantrip cookies.
 

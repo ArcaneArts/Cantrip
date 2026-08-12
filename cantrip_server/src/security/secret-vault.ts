@@ -37,7 +37,7 @@ function parseEnvelope(value: string): SecretEnvelope {
     parsed.tag.length > 100 ||
     typeof parsed.ciphertext !== "string" ||
     parsed.ciphertext.length < 1 ||
-    parsed.ciphertext.length > 100_000
+    parsed.ciphertext.length > 1_000_000
   ) {
     throw new Error("Encrypted secret envelope is malformed.");
   }
@@ -202,4 +202,12 @@ export function modelProviderSecretContext(
   providerId: string,
 ): string {
   return `cantrip:model-provider-api-key:${ownerId}:${providerId}`;
+}
+
+export function mcpServerSecretContext(
+  ownerId: string,
+  serverId: string,
+  field: "environment" | "headers",
+): string {
+  return `cantrip:mcp-server-${field}:${ownerId}:${serverId}`;
 }

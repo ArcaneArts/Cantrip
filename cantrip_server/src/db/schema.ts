@@ -597,10 +597,12 @@ export const mcpServers = pgTable(
       .$type<Record<string, string>>()
       .notNull()
       .default({}),
+    environmentEnvelope: text("environment_envelope"),
     headers: jsonb("headers")
       .$type<Record<string, string>>()
       .notNull()
       .default({}),
+    headersEnvelope: text("headers_envelope"),
     environmentHeaders: jsonb("environment_headers")
       .$type<Record<string, string>>()
       .notNull()

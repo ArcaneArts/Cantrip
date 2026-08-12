@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  MCP_SECRET_MASK,
   agentInteractionRequestSchema,
   normalizeResponsesBaseUrl,
   unavailableCodeCapabilities,
@@ -128,6 +129,7 @@ import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
 import {
+  mcpServerSecretContext,
   modelProviderSecretContext,
   type SecretVault,
 } from "../security/secret-vault.js";
@@ -615,7 +617,57 @@ function toProjectReplicaSummary(
   };
 }
 
-function toMcpServerSummary(server: McpServerRow): McpServerSummary {
+function parseMcpSecretMap(
+  secretVault: SecretVault,
+  server: McpServerRow,
+  field: "environment" | "headers",
+): Record<string, string> {
+  const envelope =
+    field === "environment"
+      ? server.environmentEnvelope
+      : server.headersEnvelope;
+  const legacy = field === "environment" ? server.environment : server.headers;
+  const encrypted = envelope
+    ? JSON.parse(
+        secretVault.decrypt(
+          envelope,
+          mcpServerSecretContext(server.ownerId, server.id, field),
+        ),
+      )
+    : {};
+  if (
+    !encrypted ||
+    typeof encrypted !== "object" ||
+    Array.isArray(encrypted) ||
+    Object.keys(encrypted).length > 100 ||
+    Object.entries(encrypted).some(
+      ([key, value]) =>
+        !key ||
+        key.length > 256 ||
+        typeof value !== "string" ||
+        value.length > 65_536,
+    )
+  ) {
+    throw new Error("Encrypted MCP server configuration is malformed.");
+  }
+  return {
+    ...(encrypted as Record<string, string>),
+    ...legacy,
+  };
+}
+
+function maskMcpSecretMap(
+  values: Record<string, string>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.keys(values).map((key) => [key, MCP_SECRET_MASK]),
+  );
+}
+
+function toMcpServerSummary(
+  server: McpServerRow,
+  secretVault: SecretVault,
+): McpServerSummary {
   const metadata = {
     id: server.id,
     scope: server.projectId ? ("project" as const) : ("global" as const),
@@ -630,7 +682,9 @@ function toMcpServerSummary(server: McpServerRow): McpServerSummary {
       transport: "stdio",
       command: server.command!,
       args: server.args,
-      environment: server.environment,
+      environment: maskMcpSecretMap(
+        parseMcpSecretMap(secretVault, server, "environment"),
+      ),
       enabled: server.enabled,
     };
   }
@@ -640,27 +694,111 @@ function toMcpServerSummary(server: McpServerRow): McpServerSummary {
     transport: "http",
     url: server.url!,
     bearerTokenEnvironmentVariable: server.bearerTokenEnvironmentVariable,
-    headers: server.headers,
+    headers: maskMcpSecretMap(
+      parseMcpSecretMap(secretVault, server, "headers"),
+    ),
     environmentHeaders: server.environmentHeaders,
     enabled: server.enabled,
   };
 }
 
-function mcpServerValues(input: McpServerConfiguration) {
+function toMcpServerRuntimeConfiguration(
+  server: McpServerRow,
+  secretVault: SecretVault,
+): McpServerConfiguration {
+  if (server.transport === "stdio") {
+    return {
+      name: server.name,
+      transport: "stdio",
+      command: server.command!,
+      args: server.args,
+      environment: parseMcpSecretMap(secretVault, server, "environment"),
+      enabled: server.enabled,
+    };
+  }
+  return {
+    name: server.name,
+    transport: "http",
+    url: server.url!,
+    bearerTokenEnvironmentVariable: server.bearerTokenEnvironmentVariable,
+    headers: parseMcpSecretMap(secretVault, server, "headers"),
+    environmentHeaders: server.environmentHeaders,
+    enabled: server.enabled,
+  };
+}
+
+function resolveMcpSecretInput(
+  input: Record<string, string>,
+  existing: Record<string, string>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(input).map(([key, value]) => {
+      if (value !== MCP_SECRET_MASK) return [key, value];
+      if (!(key in existing)) {
+        throw new Error(
+          `MCP secret placeholder for ${key} does not reference an existing value.`,
+        );
+      }
+      return [key, existing[key]!];
+    }),
+  );
+}
+
+function encryptMcpSecretMap(
+  secretVault: SecretVault,
+  ownerId: string,
+  serverId: string,
+  field: "environment" | "headers",
+  values: Record<string, string>,
+): string | null {
+  return Object.keys(values).length === 0
+    ? null
+    : secretVault.encrypt(
+        JSON.stringify(values),
+        mcpServerSecretContext(ownerId, serverId, field),
+      );
+}
+
+function mcpServerValues(
+  input: McpServerConfiguration,
+  ownerId: string,
+  serverId: string,
+  secretVault: SecretVault,
+  existing: McpServerRow | null = null,
+) {
+  const existingEnvironment = existing
+    ? parseMcpSecretMap(secretVault, existing, "environment")
+    : {};
+  const existingHeaders = existing
+    ? parseMcpSecretMap(secretVault, existing, "headers")
+    : {};
   if (input.transport === "stdio") {
+    const environment = resolveMcpSecretInput(
+      input.environment,
+      existingEnvironment,
+    );
     return {
       name: input.name,
       transport: input.transport,
       command: input.command,
       args: input.args,
       url: null,
-      environment: input.environment,
+      environment: {},
+      environmentEnvelope: encryptMcpSecretMap(
+        secretVault,
+        ownerId,
+        serverId,
+        "environment",
+        environment,
+      ),
       headers: {},
+      headersEnvelope: null,
       environmentHeaders: {},
       bearerTokenEnvironmentVariable: null,
       enabled: input.enabled,
     };
   }
+  const headers = resolveMcpSecretInput(input.headers, existingHeaders);
   return {
     name: input.name,
     transport: input.transport,
@@ -668,7 +806,15 @@ function mcpServerValues(input: McpServerConfiguration) {
     args: [],
     url: input.url,
     environment: {},
-    headers: input.headers,
+    environmentEnvelope: null,
+    headers: {},
+    headersEnvelope: encryptMcpSecretMap(
+      secretVault,
+      ownerId,
+      serverId,
+      "headers",
+      headers,
+    ),
     environmentHeaders: input.environmentHeaders,
     bearerTokenEnvironmentVariable: input.bearerTokenEnvironmentVariable,
     enabled: input.enabled,
@@ -1289,6 +1435,56 @@ export class ServerRepository {
           })
           .where(eq(schema.modelProviders.id, provider.id));
       }
+    }
+  }
+
+  async migrateMcpServerSecrets(): Promise<void> {
+    const servers = await this.database.select().from(schema.mcpServers);
+    for (const server of servers) {
+      const environment = parseMcpSecretMap(
+        this.secretVault,
+        server,
+        "environment",
+      );
+      const headers = parseMcpSecretMap(this.secretVault, server, "headers");
+      const environmentNeedsRotation = Boolean(
+        server.environmentEnvelope &&
+        this.secretVault.needsRotation(server.environmentEnvelope),
+      );
+      const headersNeedRotation = Boolean(
+        server.headersEnvelope &&
+        this.secretVault.needsRotation(server.headersEnvelope),
+      );
+      if (
+        Object.keys(server.environment).length === 0 &&
+        Object.keys(server.headers).length === 0 &&
+        !environmentNeedsRotation &&
+        !headersNeedRotation
+      ) {
+        continue;
+      }
+      await this.database
+        .update(schema.mcpServers)
+        .set({
+          environment: {},
+          environmentEnvelope: encryptMcpSecretMap(
+            this.secretVault,
+            server.ownerId,
+            server.id,
+            "environment",
+            environment,
+          ),
+          headers: {},
+          headersEnvelope: encryptMcpSecretMap(
+            this.secretVault,
+            server.ownerId,
+            server.id,
+            "headers",
+            headers,
+          ),
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.mcpServers.id, server.id));
     }
   }
 
@@ -3744,7 +3940,7 @@ export class ServerRepository {
         ),
       )
       .orderBy(asc(schema.mcpServers.name), asc(schema.mcpServers.createdAt));
-    return rows.map(toMcpServerSummary);
+    return rows.map((row) => toMcpServerSummary(row, this.secretVault));
   }
 
   async listEffectiveMcpServers(
@@ -3771,17 +3967,9 @@ export class ServerRepository {
         effective.set(row.name, row);
       }
     }
-    return [...effective.values()].map((row) => {
-      const {
-        id: _id,
-        scope: _scope,
-        projectId: _projectId,
-        createdAt: _createdAt,
-        updatedAt: _updatedAt,
-        ...configuration
-      } = toMcpServerSummary(row);
-      return configuration;
-    });
+    return [...effective.values()].map((row) =>
+      toMcpServerRuntimeConfiguration(row, this.secretVault),
+    );
   }
 
   async createMcpServer(
@@ -3802,16 +3990,20 @@ export class ServerRepository {
         .limit(1);
       if (!project[0]) return null;
     }
+    const id = randomUUID();
     const rows = await this.database
       .insert(schema.mcpServers)
       .values({
-        id: randomUUID(),
+        id,
         ownerId,
         projectId,
-        ...mcpServerValues(input),
+        ...mcpServerValues(input, ownerId, id, this.secretVault),
       })
       .returning();
-    return toMcpServerSummary(firstOrThrow(rows, "creating an MCP server"));
+    return toMcpServerSummary(
+      firstOrThrow(rows, "creating an MCP server"),
+      this.secretVault,
+    );
   }
 
   async updateMcpServer(
@@ -3820,9 +4012,33 @@ export class ServerRepository {
     serverId: string,
     input: McpServerConfiguration,
   ): Promise<McpServerSummary | null> {
+    const existingRows = await this.database
+      .select()
+      .from(schema.mcpServers)
+      .where(
+        and(
+          eq(schema.mcpServers.id, serverId),
+          eq(schema.mcpServers.ownerId, ownerId),
+          projectId
+            ? eq(schema.mcpServers.projectId, projectId)
+            : isNull(schema.mcpServers.projectId),
+        ),
+      )
+      .limit(1);
+    const existing = existingRows[0];
+    if (!existing) return null;
     const rows = await this.database
       .update(schema.mcpServers)
-      .set({ ...mcpServerValues(input), updatedAt: new Date() })
+      .set({
+        ...mcpServerValues(
+          input,
+          ownerId,
+          serverId,
+          this.secretVault,
+          existing,
+        ),
+        updatedAt: new Date(),
+      })
       .where(
         and(
           eq(schema.mcpServers.id, serverId),
@@ -3833,7 +4049,7 @@ export class ServerRepository {
         ),
       )
       .returning();
-    return rows[0] ? toMcpServerSummary(rows[0]) : null;
+    return rows[0] ? toMcpServerSummary(rows[0], this.secretVault) : null;
   }
 
   async deleteMcpServer(
@@ -3891,15 +4107,10 @@ export class ServerRepository {
         .limit(1),
     ]);
     if (!target[0] || !source[0]) return null;
-    const sourceSummary = toMcpServerSummary(source[0].server);
-    const {
-      id: _id,
-      scope: _scope,
-      projectId: _projectId,
-      createdAt: _createdAt,
-      updatedAt: _updatedAt,
-      ...configuration
-    } = sourceSummary;
+    const configuration = toMcpServerRuntimeConfiguration(
+      source[0].server,
+      this.secretVault,
+    );
     return this.createMcpServer(ownerId, targetProjectId, configuration);
   }
 

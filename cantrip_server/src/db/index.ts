@@ -91,6 +91,7 @@ async function openPglite(
     const repository = new ServerRepository(database, secretVault);
     await repository.ensureLocalIdentity();
     await repository.migrateProviderSecrets();
+    await repository.migrateMcpServerSecrets();
 
     return {
       engine: "pglite",
@@ -128,6 +129,7 @@ async function connectPostgres(
       const repository = new ServerRepository(database, secretVault);
       await repository.ensureLocalIdentity();
       await repository.migrateProviderSecrets();
+      await repository.migrateMcpServerSecrets();
 
       return {
         engine: "postgres",
