@@ -77,7 +77,7 @@ loopback TCP targets. The broker is placement-agnostic: desktop, server-adapter,
 and worker placements are metadata on endpoints rather than branches in stream
 routing.
 
-All remote routing follows the established server-only trust boundary:
+All remote routing follows the established server relay trust boundary:
 
 ```text
 desktop app or worker A -> authenticated server relay -> worker B
@@ -88,6 +88,11 @@ origins or worker credentials. A later worker-A-to-worker-B implementation will
 activate the reserved worker-listener endpoint, authorize both workers against
 the tunnel owner, and reuse the same control records, attachments, stream
 protocol, and server relay. This ADR does not enable that feature.
+
+A same-machine Tauri client may use the separately authorized local-direct
+attachment defined by [ADR 0008](0008-server-authorized-local-direct-data-plane.md).
+That path preserves server authorization and capability revocation; it does not
+expose a general worker address or enable worker-to-worker dialing.
 
 ## Consequences
 
@@ -122,9 +127,10 @@ protocol, and server relay. This ADR does not enable that feature.
   logic and cannot provide coherent settings or future cross-worker routing.
 - **Infer workers from the selected project:** breaks as soon as a project has
   more than one replica and confuses organization with placement.
-- **Direct desktop-to-worker or worker-to-worker sockets:** exposes deployment
-  topology, bypasses server authorization, and fails behind common NAT/firewall
-  layouts.
+- **Unscoped desktop-to-worker or worker-to-worker sockets:** exposing service
+  ports or choosing routes from network topology bypasses server authorization
+  and fails behind common NAT/firewall layouts. ADR 0008 permits only a
+  server-bound, verified loopback capability with relay fallback.
 - **Send tunnel bytes through the application live WebSocket:** couples
   high-volume binary backpressure to state invalidation and risks starving the
   control plane.

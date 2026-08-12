@@ -23,8 +23,9 @@ input, lifecycle, and reconnect requirements as a remote browser.
 ## Decision
 
 Cantrip models Browser and managed desktop sessions as versioned **Remote Surfaces** owned by a
-worker. The app remains a presentation and input surface and connects only to
-the Cantrip server.
+worker. The app remains a presentation and input surface; its control and
+signaling connect to the Cantrip server, while an authorized WebRTC attachment
+may carry data directly.
 
 ### Control plane
 

@@ -141,7 +141,16 @@ exports:
   `cantrip_tunnel_connections_rejected_total`;
 - `cantrip_tunnel_bytes_total`, including directional series; and
 - `cantrip_tunnel_terminations_total{reason=...}` for bounded broker failures
-  and lifecycle termination.
+  and lifecycle termination; and
+- `cantrip_data_plane_bytes_total` and
+  `cantrip_data_plane_connections_total`, split by `local-direct` versus
+  `server-relay` and bounded resource/direction/event labels.
+
+Global or Project **Settings → Tunnels** also shows a zero-configuration
+desktop data-plane summary. It counts every active native forwarder—including
+PTY, Code, and project-share managed routes—not only user-created tunnel rows.
+The summary refreshes while open and identifies each attached tunnel as
+**Local direct** or **Server relayed**.
 
 Metrics contain no user, project, destination, credential, cookie, or payload
 labels. See [the hosted deployment guide](HOSTED_DEPLOYMENT.md) for protecting
@@ -176,3 +185,5 @@ part of a tunnel. Those belong to the separate multi-worker project model.
 
 The architectural decision and rejected alternatives are recorded in
 [ADR 0007](adr/0007-unified-tunnel-framework.md).
+The locality proof and fallback decision are recorded in
+[ADR 0008](adr/0008-server-authorized-local-direct-data-plane.md).

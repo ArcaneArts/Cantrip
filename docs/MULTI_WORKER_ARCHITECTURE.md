@@ -27,6 +27,14 @@ worker is actually reachable on this host; network names and addresses alone
 never select the direct route. Direct failure preserves the existing
 server-relayed data plane.
 
+Current data-plane support is intentionally client-specific. Tauri can create a
+verified same-machine forward for generic tunnels, PTYs, project shares, and
+Cantrip Code. Web and Capacitor clients use the server relay for those resources.
+Browser and Remote Desktop instead use server-signaled WebRTC, which can select
+a direct ICE path on any supported client and falls back to the Remote Surface
+WebSocket relay. In every case, resource creation, placement, capabilities,
+revocation, and recovery remain server-owned.
+
 This document defines the contracts later multi-worker changes must preserve.
 Replica persistence, reads, exact-revision provisioning, guarded
 synchronization, safe removal, placement-policy settings, and canonical

@@ -102,6 +102,17 @@ export const directAttachmentTicketSchema = z.object({
   secret: directCapabilitySecretSchema,
 });
 
+const directTransportCounterSchema = z.number().int().nonnegative().safe();
+
+export const directTransportTelemetrySchema = z
+  .object({
+    bytesFromLocal: directTransportCounterSchema,
+    bytesToLocal: directTransportCounterSchema,
+    connectionsClosed: directTransportCounterSchema,
+    connectionsOpened: directTransportCounterSchema,
+  })
+  .strict();
+
 export const directTunnelTicketSchema = directAttachmentTicketSchema.extend({
   route: z
     .object({
@@ -159,3 +170,6 @@ export type DirectProbeResult = z.infer<typeof directProbeResultSchema>;
 export type DirectResourceKind = z.infer<typeof directResourceKindSchema>;
 export type DirectRouteState = z.infer<typeof directRouteStateSchema>;
 export type DirectTunnelTicket = z.infer<typeof directTunnelTicketSchema>;
+export type DirectTransportTelemetry = z.infer<
+  typeof directTransportTelemetrySchema
+>;
