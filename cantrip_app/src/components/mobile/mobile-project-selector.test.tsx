@@ -64,7 +64,8 @@ describe("mobile project selector", () => {
 
     expect(markup).toContain("Local Worker online");
     expect(markup).toContain('aria-label="Search projects"');
-    expect(markup).toContain("New Project");
+    expect(markup).toContain("Add project to Default");
+    expect(markup).not.toContain("New Project");
     expect(markup).toContain('aria-label="Open settings"');
     expect(markup).toContain("ArcaneArts/Cantrip");
     expect(markup).not.toContain("ArcaneArts/CareMap");

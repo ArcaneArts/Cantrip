@@ -31,6 +31,17 @@ const layout = {
           createdAt: now,
           updatedAt: now,
         },
+        {
+          tabKey: "chat:two",
+          groupId: "group-1",
+          projectId: "project-1",
+          tabKind: "chat",
+          tabId: "two",
+          title: "Chat Two",
+          position: 1,
+          createdAt: now,
+          updatedAt: now,
+        },
       ],
     },
     {
@@ -58,6 +69,16 @@ const layout = {
 } satisfies ProjectTabLayoutSummary;
 const surfaces = [
   {
+    tabKey: "chat:two",
+    tabId: "two",
+    projectId: "project-1",
+    groupId: "group-1",
+    kind: "chat",
+    title: "Chat Two",
+    entity: { status: "idle" },
+    member: layout.groups[0]!.members[1]!,
+  },
+  {
     tabKey: "chat:one",
     tabId: "one",
     projectId: "project-1",
@@ -80,17 +101,16 @@ const surfaces = [
 ] as ProjectSurface[];
 
 describe("mobile project shell", () => {
-  it("renders project surfaces in authoritative group order", () => {
+  it("renders flat group choices without expanding their individual tabs", () => {
     const markup = renderToStaticMarkup(
       <MobileProjectTabGrid
+        activeGroupId="group-1"
+        activeTabByGroup={{ "group-1": "chat:one" }}
         creatingKinds={new Set()}
         layout={layout}
         surfaces={surfaces}
         onCreate={vi.fn()}
-        onDelete={vi.fn()}
-        onDuplicate={vi.fn()}
-        onRename={vi.fn()}
-        onSelect={vi.fn()}
+        onSelectGroup={vi.fn()}
       />,
     );
 
@@ -99,39 +119,76 @@ describe("mobile project shell", () => {
     expect(markup.indexOf("Chat One")).toBeLessThan(
       markup.indexOf("Terminal One"),
     );
-    expect(markup).toContain('aria-label="Open Chat One"');
-    expect(markup).toContain('aria-label="Actions for Terminal One"');
+    expect(markup).toContain('aria-label="Open Group 1: Chat One"');
+    expect(markup).not.toContain("Chat Two");
+    expect(markup).not.toContain("Actions for");
+    expect(markup).not.toContain("Remove bottom tab");
   });
 
-  it("keeps exactly two bottom destinations and adopts surface identity", () => {
+  it("offers removal while switching an added bottom tab", () => {
     const markup = renderToStaticMarkup(
-      <MobileBottomNavigation
-        gridOpen={false}
-        onOverview={vi.fn()}
-        onSecondDestination={vi.fn()}
-        overviewSelected
-        surface={surfaces[0]}
+      <MobileProjectTabGrid
+        activeGroupId="group-2"
+        activeTabByGroup={{ "group-2": "terminal:one" }}
+        creatingKinds={new Set()}
+        layout={layout}
+        surfaces={surfaces}
+        onCreate={vi.fn()}
+        onRemoveBottomTab={vi.fn()}
+        onSelectGroup={vi.fn()}
       />,
     );
 
-    expect(markup.match(/<button/g)).toHaveLength(2);
-    expect(markup).toContain("Overview");
-    expect(markup).toContain("Chat One");
-    expect(markup).toContain('aria-current="page"');
+    expect(markup).toContain("Remove bottom tab");
   });
 
-  it("shows Tabs while the grid is active", () => {
+  it("renders scrollable project slots with a pinned add action", () => {
     const markup = renderToStaticMarkup(
       <MobileBottomNavigation
-        gridOpen
+        activeItemId="primary"
+        gridOpen={false}
+        items={[
+          { id: "primary", surface: surfaces[1] },
+          { id: "mobile-1", surface: surfaces[2] },
+        ]}
+        onAdd={vi.fn()}
         onOverview={vi.fn()}
-        onSecondDestination={vi.fn()}
+        onReset={vi.fn()}
+        onSelect={vi.fn()}
         overviewSelected={false}
-        surface={surfaces[0]}
+      />,
+    );
+
+    expect(markup.match(/<button/g)).toHaveLength(4);
+    expect(markup).toContain("Overview");
+    expect(markup).toContain("Chat One");
+    expect(markup).toContain("Terminal One");
+    expect(markup).toContain('aria-label="Add bottom tab"');
+    expect(markup).toContain('aria-current="page"');
+    expect(markup).toContain("overflow-x-auto");
+    expect(markup).toContain("flex-[1_0_3.75rem]");
+    expect(markup).toContain("Hold to choose another project tab group");
+  });
+
+  it("shows Tabs only for the slot whose switcher is active", () => {
+    const markup = renderToStaticMarkup(
+      <MobileBottomNavigation
+        activeItemId="primary"
+        gridOpen
+        items={[
+          { id: "primary", surface: surfaces[1] },
+          { id: "mobile-1", surface: surfaces[2] },
+        ]}
+        onAdd={vi.fn()}
+        onOverview={vi.fn()}
+        onReset={vi.fn()}
+        onSelect={vi.fn()}
+        overviewSelected={false}
       />,
     );
 
     expect(markup).toContain("Tabs");
     expect(markup).not.toContain("Chat One");
+    expect(markup).toContain("Terminal One");
   });
 });

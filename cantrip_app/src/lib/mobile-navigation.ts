@@ -5,40 +5,55 @@ export interface ProjectSelectionAction {
   showImporter?: boolean;
 }
 
-export type MobileSecondNavigationTarget =
-  { kind: "grid" } | { kind: "surface"; tabKey: string };
+export const PRIMARY_MOBILE_BOTTOM_TAB_ID = "primary";
 
-export function validMobileSurfaceTabKey(
-  tabKey: string | null,
-  validTabKeys: ReadonlySet<string>,
-): string | null {
-  return tabKey && validTabKeys.has(tabKey) ? tabKey : null;
+export interface MobileBottomTab {
+  groupId: string | null;
+  id: string;
 }
 
-export function mobileSecondNavigationTarget({
-  gridOpen,
-  overviewSelected,
-  rememberedTabKey,
-  selectedTabKey,
-  validTabKeys,
-}: {
-  gridOpen: boolean;
-  overviewSelected: boolean;
-  rememberedTabKey: string | null;
-  selectedTabKey: string | null;
-  validTabKeys: ReadonlySet<string>;
-}): MobileSecondNavigationTarget {
-  if (gridOpen) return { kind: "grid" };
-  if (
-    !overviewSelected &&
-    validMobileSurfaceTabKey(selectedTabKey, validTabKeys)
-  ) {
-    return { kind: "grid" };
-  }
-  const remembered = validMobileSurfaceTabKey(rememberedTabKey, validTabKeys);
-  return remembered
-    ? { kind: "surface", tabKey: remembered }
-    : { kind: "grid" };
+export function initialMobileBottomTabs(): MobileBottomTab[] {
+  return [{ groupId: null, id: PRIMARY_MOBILE_BOTTOM_TAB_ID }];
+}
+
+export function assignMobileBottomTab(
+  tabs: MobileBottomTab[],
+  tabId: string,
+  groupId: string,
+): MobileBottomTab[] {
+  let changed = false;
+  const next = tabs.map((tab) => {
+    if (tab.id !== tabId || tab.groupId === groupId) return tab;
+    changed = true;
+    return { ...tab, groupId };
+  });
+  return changed ? next : tabs;
+}
+
+export function reconcileMobileBottomTabs(
+  tabs: MobileBottomTab[],
+  validGroupIds: ReadonlySet<string>,
+): MobileBottomTab[] {
+  let changed = false;
+  const next = tabs.map((tab) => {
+    if (tab.groupId === null || validGroupIds.has(tab.groupId)) return tab;
+    changed = true;
+    return { ...tab, groupId: null };
+  });
+  return changed ? next : tabs;
+}
+
+export function removeMobileBottomTab(
+  tabs: readonly MobileBottomTab[],
+  tabId: string,
+): { activeTabId: string; tabs: MobileBottomTab[] } | null {
+  const index = tabs.findIndex((tab) => tab.id === tabId);
+  if (index <= 0) return null;
+  const next = tabs.filter((tab) => tab.id !== tabId);
+  return {
+    activeTabId: next[Math.min(index - 1, next.length - 1)]!.id,
+    tabs: next,
+  };
 }
 
 export function projectSelectionAction({
