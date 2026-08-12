@@ -56,6 +56,7 @@ if [[ ! -x $release_directory/start.sh || ! -x $release_directory/migrate.sh || 
   rm -rf -- "$incoming_directory"
   install -d -o root -g root -m 0755 "$incoming_directory"
   tar -xzf "$artifact_path" -C "$incoming_directory"
+  chmod 0755 "$incoming_directory"
   test -x "$incoming_directory/start.sh"
   test -x "$incoming_directory/migrate.sh"
   test -x "$incoming_directory/runtime/node"
