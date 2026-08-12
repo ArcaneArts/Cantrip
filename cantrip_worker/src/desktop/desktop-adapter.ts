@@ -4,6 +4,7 @@ import {
   remoteDesktopClientMessageSchema,
   remoteDesktopProbeResultSchema,
   remoteDesktopServerMessageSchema,
+  remoteDesktopTargetInventorySchema,
   type RemoteDesktopApplicationIcon,
   type RemoteDesktopClientMessage,
   type RemoteDesktopProbeResult,
@@ -879,6 +880,15 @@ export class ManagedDesktopRemoteSurfaceAdapter implements RemoteSurfaceAdapter 
         : (this.#initializationError ??
           "Managed desktop capture is unavailable."),
     });
+  }
+
+  async targets(): Promise<RemoteDesktopTargetInventory> {
+    if (!this.#available) {
+      throw new Error(
+        this.#initializationError ?? "Managed desktop capture is unavailable.",
+      );
+    }
+    return remoteDesktopTargetInventorySchema.parse(await this.listTargets());
   }
 
   async open(

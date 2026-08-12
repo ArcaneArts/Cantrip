@@ -205,6 +205,12 @@ target remains unavailable, the stream safely returns to the primary or first
 available monitor without discarding the saved preference, so a later refresh
 or reconnect can restore it.
 
+Desktop-capable workers are also available through a bounded fleet panel. It
+shows each worker's identity, platform, monitor/window inventory, open stream
+states, and independent offline/timeout errors. Choosing another worker opens
+a separate worker-pinned Remote Desktop at that target; streams are never
+stitched together and continue to reconnect independently.
+
 The desktop data plane uses pipelined native capture and JPEG encoding with a
 30 FPS default and a best-effort 60 FPS ceiling. Server-owned user settings
 select the target frame rate and adaptive quality profile. Payload size,

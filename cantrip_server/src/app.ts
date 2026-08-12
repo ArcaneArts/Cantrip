@@ -267,9 +267,11 @@ import {
   queuedPromptSchema,
   queuedPromptUpdateSchema,
   remoteDesktopCreateSchema,
+  remoteDesktopFleetSchema,
   remoteDesktopProbeResultSchema,
   remoteDesktopListSchema,
   remoteDesktopSummarySchema,
+  remoteDesktopTargetInventorySchema,
   remoteDesktopUpdateSchema,
   remoteSurfaceAttachResultSchema,
   remoteSurfaceConnectionMessageSchema,
@@ -592,6 +594,10 @@ const TUNNEL_ATTACHMENT_EXPIRY_SWEEP_MS = 60_000;
 const BROWSER_FLEET_DISCOVERY_TIMEOUT_MS = 20_000;
 const BROWSER_FLEET_DISCOVERY_WORKER_LIMIT = 64;
 const BROWSER_FLEET_DISCOVERY_SERVICE_LIMIT = 1_024;
+const REMOTE_DESKTOP_FLEET_TIMEOUT_MS = 20_000;
+const REMOTE_DESKTOP_FLEET_WORKER_LIMIT = 64;
+const REMOTE_DESKTOP_FLEET_TARGET_LIMIT = 4_096;
+const REMOTE_DESKTOP_FLEET_SURFACE_LIMIT = 64;
 const AGENT_EXECUTION_MUTATION_TOOLS = new Set([
   "cantrip_explorer_write",
   "cantrip_terminal_input",
@@ -5084,6 +5090,7 @@ export async function buildApp({
           replicaProvisioning: true,
           browserFleetDiscovery: true,
           crossWorkerExecutionTargets: true,
+          remoteDesktopFleet: true,
           workerSwitching: true,
           gitSync: true,
           worktrees: true,
@@ -13243,6 +13250,135 @@ export async function buildApp({
       ),
   );
 
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/remote-desktop-fleet",
+    async (request, reply) => {
+      const ownerId = applicationOwnerId();
+      if (
+        !(await repository.listProjectReplicas(
+          ownerId,
+          request.params.projectId,
+        ))
+      ) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
+      const [workers, desktops] = await Promise.all([
+        repository.listWorkers(ownerId),
+        repository.listRemoteDesktops(ownerId, request.params.projectId),
+      ]);
+      const capableWorkers = workers
+        .filter((worker) => worker.remoteSurfaces.desktop)
+        .sort(
+          (left, right) =>
+            left.name.localeCompare(right.name) ||
+            left.workerId.localeCompare(right.workerId),
+        );
+      const fleetTruncated =
+        capableWorkers.length > REMOTE_DESKTOP_FLEET_WORKER_LIMIT;
+      const results = await Promise.all(
+        capableWorkers
+          .slice(0, REMOTE_DESKTOP_FLEET_WORKER_LIMIT)
+          .map(async (worker) => {
+            const workerName = worker.name.slice(0, 200);
+            const workerDesktops = desktops.filter(
+              (desktop) => desktop.workerId === worker.workerId,
+            );
+            const base = {
+              workerId: worker.workerId,
+              workerName,
+              platform: worker.platform.slice(0, 100),
+              architecture: worker.architecture.slice(0, 100),
+              desktops: workerDesktops,
+            };
+            if (!worker.online || !bridge.isConnected(worker.workerId)) {
+              return {
+                ...base,
+                status: "offline" as const,
+                inventory: { monitors: [], windows: [] },
+                error: {
+                  code: "worker-offline" as const,
+                  message: `${workerName} is offline.`,
+                },
+              };
+            }
+            try {
+              return {
+                ...base,
+                status: "ok" as const,
+                inventory: remoteDesktopTargetInventorySchema.parse(
+                  await bridge.request(
+                    worker.workerId,
+                    { type: "surface.desktop.targets" },
+                    { timeoutMs: REMOTE_DESKTOP_FLEET_TIMEOUT_MS },
+                  ),
+                ),
+                error: null,
+              };
+            } catch (error) {
+              const message = errorMessage(error).slice(0, 1_000);
+              const unavailable = error instanceof WorkerUnavailableError;
+              const timedOut = /timed out/iu.test(message);
+              return {
+                ...base,
+                status: unavailable
+                  ? ("offline" as const)
+                  : timedOut
+                    ? ("timed-out" as const)
+                    : ("error" as const),
+                inventory: { monitors: [], windows: [] },
+                error: {
+                  code: unavailable
+                    ? ("worker-offline" as const)
+                    : timedOut
+                      ? ("worker-timeout" as const)
+                      : ("worker-error" as const),
+                  message: message || `Could not inspect ${workerName}.`,
+                },
+              };
+            }
+          }),
+      );
+      let remainingTargets = REMOTE_DESKTOP_FLEET_TARGET_LIMIT;
+      let targetTruncated = false;
+      let surfaceTruncated = false;
+      const boundedWorkers = results.map((result) => {
+        const monitors = result.inventory.monitors.slice(0, remainingTargets);
+        remainingTargets -= monitors.length;
+        const windows = result.inventory.windows.slice(0, remainingTargets);
+        remainingTargets -= windows.length;
+        const targetWasTruncated =
+          monitors.length < result.inventory.monitors.length ||
+          windows.length < result.inventory.windows.length;
+        const boundedDesktops = result.desktops.slice(
+          0,
+          REMOTE_DESKTOP_FLEET_SURFACE_LIMIT,
+        );
+        const surfaceWasTruncated =
+          boundedDesktops.length < result.desktops.length;
+        targetTruncated ||= targetWasTruncated;
+        surfaceTruncated ||= surfaceWasTruncated;
+        return {
+          ...result,
+          inventory: { monitors, windows },
+          desktops: boundedDesktops,
+          truncated: targetWasTruncated || surfaceWasTruncated,
+        };
+      });
+      const truncated = fleetTruncated || targetTruncated || surfaceTruncated;
+      return reply.send(
+        remoteDesktopFleetSchema.parse({
+          projectId: request.params.projectId,
+          observedAt: new Date().toISOString(),
+          partial:
+            truncated ||
+            boundedWorkers.some((worker) => worker.status !== "ok"),
+          truncated,
+          workers: boundedWorkers,
+        }),
+      );
+    },
+  );
+
   app.get<{ Params: { desktopId: string } }>(
     "/api/remote-desktops/:desktopId",
     async (request, reply) => {
@@ -13372,6 +13508,7 @@ export async function buildApp({
           desktopId,
           workerId,
           input.data.tabGroupId,
+          input.data.desktopTarget,
         );
         if (!desktop) {
           return reply

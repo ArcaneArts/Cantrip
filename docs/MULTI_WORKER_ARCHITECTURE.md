@@ -135,6 +135,28 @@ Selecting a service on another worker creates a new Browser in the current tab
 group with the service URL and an explicit worker placement, so worker-local
 loopback never gets sent to the wrong Browser runtime.
 
+## Current Remote Desktop fleet view
+
+Each Remote Desktop remains one durable, worker-specific Remote Surface. The
+fleet panel does not combine displays or relay frames between workers. Instead,
+`GET /api/projects/:projectId/remote-desktop-fleet` asks up to 64 eligible
+desktop-capable workers for their bounded monitor/window inventory in parallel
+with independent 20-second command timeouts. The response includes canonical
+worker identity, platform, architecture, existing Remote Desktop connection
+states, and a structured `ok`, `offline`, `timed-out`, or `error` result for
+each worker. A global limit of 4,096 targets and 64 surfaces per worker prevents
+a large fleet or window inventory from producing an unbounded response.
+
+The app exposes that inventory from a Remote Desktop's Fleet panel. Selecting
+a target on the current worker reconfigures the current stream; selecting a
+monitor or window on another worker creates a normal Remote Desktop in the
+current tab group with explicit worker placement and the selected capture
+target. Every resulting tab attaches and reconnects independently through the
+existing Remote Surface transport, so a slow or disconnected worker cannot
+stall a healthy worker's stream. Servers advertise the feature through
+`capabilities.remoteDesktopFleet`; rolling clients treat a missing flag as
+false and retain the single-worker target menu.
+
 ## Terms
 
 | Term                 | Contract                                                                                                                                                                                                              |

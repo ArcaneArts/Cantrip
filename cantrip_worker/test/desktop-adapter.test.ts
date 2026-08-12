@@ -109,6 +109,7 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
       available: true,
       message: null,
     });
+    await expect(adapter.targets()).resolves.toEqual(desktopTargets);
     expect(capture).not.toHaveBeenCalled();
 
     const emissions: Array<{ channel: string; payload: Uint8Array }> = [];
