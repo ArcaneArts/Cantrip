@@ -1,6 +1,6 @@
 # Cantrip Project Plan
 
-- Status: local-only foundation, Codex-native customization, and durable workflow control plane implemented; hosted hardening remains
+- Status: local and hosted account foundations, independently enrolled workers, multi-worker replicas, Redis relay coordination, fenced scheduling, production deployment assets, and durable chat relocation runtime implemented; the client relocation workflow remains to land
 - Canonical domain: `cantrip.art`
 - Desktop/mobile application identifier: `art.cantrip`
 - Package manager: pnpm workspaces
@@ -455,7 +455,7 @@ Workers pair using a high-entropy, short-lived, single-use code generated for a 
 
 The account-scoped Workers settings page is the management boundary for this lifecycle. It reports presence, last-seen time, platform/runtime capabilities, project-source associations, and redacted credential metadata. Pairing displays the raw link code only while onboarding is active. Rename uses a durable display alias that heartbeat updates cannot overwrite. Rotation transfers the replacement credential over the already-authenticated worker channel when online and otherwise displays it once for manual secret-manager installation. Unlinking revokes credentials and hides the worker without deleting server-owned projects or conversations; re-enrolling the same immutable identity restores its associations. Embedded and `pnpm dev` workers are visibly internal and cannot be renamed or removed.
 
-Bootstrap advertises `linkCodes` and `multipleWorkers` now that enrollment and the complete management lifecycle are available. `gitSync` is advertised only with the guarded exact-revision replica job lifecycle; `workerSwitching` remains false until new-surface placement and recovery paths ship. The Workers settings page also owns the account Default worker and automatic replica provisioning/synchronization policies, while Project Settings owns the per-project preferred worker and explicit replica controls.
+Bootstrap advertises `linkCodes` and `multipleWorkers` now that enrollment and the complete management lifecycle are available. `gitSync` is advertised only with the guarded exact-revision replica job lifecycle, and `workerSwitching` is advertised with the durable context-handoff, target-hydration, placement-commit, and recovery runtime. The Workers settings page also owns the account Default worker and automatic replica provisioning/synchronization policies, while Project Settings owns the per-project preferred worker and explicit replica controls.
 
 For `pnpm dev` and the embedded Tauri runtime, server and worker may share a development-only token through explicit loopback bootstrap configuration. The server refuses that path in standalone, password, account, non-loopback, and hosted modes. It is bootstrap plumbing, not remote enrollment, and the app never receives it.
 
@@ -575,7 +575,7 @@ Suggested local defaults:
 
 Use pnpm's recursive/parallel scripts before adding a monorepo task orchestrator. Add caching/orchestration only when build timings justify the extra layer.
 
-Configuration uses validated environment variables and config files with documented precedence. The current server refuses hosted or account/password modes because they are not implemented. Before remote access ships, production must also refuse insecure combinations such as a non-loopback listener without authentication or TLS termination awareness.
+Configuration uses validated environment variables and config files with documented precedence. Anonymous mode remains loopback-only by default. Password and account modes use revocable sessions, while hosted startup fails closed without PostgreSQL, explicit HTTPS public and Code origins, approved application origins, a bounded trusted-proxy list, and an operator-owned envelope-encryption keyring. Multi-instance hosted deployments additionally require Redis coordination and a configured hard replica ceiling.
 
 ## 13. Testing strategy
 

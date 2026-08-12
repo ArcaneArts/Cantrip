@@ -91,10 +91,10 @@ and live-event scopes must never select an owner.
 The local server installs its anonymous principal through the same Fastify
 request hook used by protected modes. Bootstrap, worker listing, health worker
 counts, and the application live WebSocket consume the request principal. The
-generated audit intentionally records remaining direct
-`LOCAL_USER_ID` routes as migration debt for the ownership-enforcement
-milestone; account mode must not be treated as production-ready while that debt
-exists.
+generated audit records direct `LOCAL_USER_ID` application routes as migration
+debt and currently reports zero. Remaining uses of the local owner are limited
+to anonymous bootstrap/default-state lifecycle paths and explicit local
+fallbacks outside request-owned account operations.
 
 ## 3.1 Credential and session controls
 
@@ -126,12 +126,12 @@ every application live resource, and every public asynchronous repository
 entry point. CI-visible verification fails when a route is added or moved
 without refreshing the inventory.
 
-At this foundation revision the inventory contains:
+At this revision the inventory contains:
 
-- 299 HTTP/WebSocket routes;
-- 166 worker command variants;
-- 29 application live resource variants;
-- 267 database repository entry points; and
+- 304 HTTP and 5 WebSocket routes;
+- 170 worker command variants;
+- 30 application live resource variants;
+- 273 database repository entry points; and
 - the five non-route data planes listed below.
 
 The inventory's `ownerEvidence` field is not an authorization guarantee. It is
@@ -141,13 +141,15 @@ a review ledger:
 - `explicit-owner` means a repository method requires an owner argument;
 - `worker-scoped` means the caller must first bind the worker credential to its
   owner;
-- `legacy-local-owner` and `legacy-worker-token` are known blockers for hosted
-  modes; and
+- `legacy-local-owner` is a blocker for hosted application routes;
+- `worker-credential` identifies the independently authenticated machine
+  boundary used by internal worker routes; and
 - `delegated-or-missing-review` must be proven through its caller or changed to
   take an explicit owner.
 
-The ownership milestone must drive legacy application routes to zero and
-review every delegated repository method before protected modes are enabled.
+The checked-in inventory drives legacy application routes to zero. Delegated
+repository methods remain an explicit review ledger and are covered through
+their authenticated caller or lifecycle-only contract.
 
 ## 5. HTTP and WebSocket boundaries
 
@@ -173,10 +175,11 @@ principal. Native clients and raw HTTP clients are not constrained by CORS.
 
 ### Worker control
 
-The five `/api/internal/*` routes are a distinct machine-credential boundary:
+The six `/api/internal/*` routes are a distinct machine-credential boundary:
 
 - worker heartbeat;
 - worker command WebSocket attachment;
+- one-time worker enrollment;
 - automation schedule synchronization;
 - automation dispatch reporting; and
 - agent worktree tool results.

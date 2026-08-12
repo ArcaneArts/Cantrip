@@ -833,7 +833,7 @@ export class WorkflowExecutor {
         event.activity.type === "usage"
       ) {
         const runtime = await this.repository.getModelRuntimeByRoute(
-          LOCAL_USER_ID,
+          this.#ownerId(),
           lease.assignment.modelRouteId,
         );
         if (runtime) {
@@ -884,7 +884,7 @@ export class WorkflowExecutor {
     },
   ): Promise<void> {
     try {
-      await this.repository.recordTokenUsage(LOCAL_USER_ID, {
+      await this.repository.recordTokenUsage(this.#ownerId(), {
         sourceKey: `workflow:${lease.attemptId}`,
         projectId: lease.candidate.projectId,
         chatId: null,
