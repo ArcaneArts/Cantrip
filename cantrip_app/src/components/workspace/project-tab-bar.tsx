@@ -7,12 +7,14 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { CopyPlus, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import type { ExecutionTarget } from "@cantrip/protocol";
 import { useState, type ReactNode } from "react";
 
 import { ProjectSurfaceIcon } from "./project-surface-icon";
 import {
   ProjectSurfaceCreateMenu,
   type ProjectSurfaceCreateKind,
+  type ProjectSurfacePlacementContext,
 } from "./project-surface-create-menu";
 import { InlineRenameLabel, SurfaceActionsMenu } from "./surface-tab-controls";
 import { Button } from "@/components/ui/button";
@@ -41,11 +43,12 @@ import {
 export interface ProjectTabBarProps {
   activeTabKey: string;
   creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
-  onCreate(kind: ProjectSurfaceCreateKind): void;
+  onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onDelete(surface: ProjectSurface): void;
   onDuplicate?(surface: ProjectSurface): void;
   onRename(surface: ProjectSurface, title: string): void;
   onSelect(tabKey: string): void;
+  placement?: ProjectSurfacePlacementContext;
   surfaces: readonly ProjectSurface[];
 }
 
@@ -57,6 +60,7 @@ export function ProjectTabBar({
   onDuplicate,
   onRename,
   onSelect,
+  placement,
   surfaces,
 }: ProjectTabBarProps) {
   const [editingTabKey, setEditingTabKey] = useState<string | null>(null);
@@ -213,6 +217,7 @@ export function ProjectTabBar({
           <ProjectSurfaceCreateMenu
             creatingKinds={creatingKinds}
             onCreate={onCreate}
+            placement={placement}
             trigger={
               <Button
                 size="icon"

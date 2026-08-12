@@ -1,4 +1,7 @@
-import type { ProjectTabLayoutSummary } from "@cantrip/protocol";
+import type {
+  ExecutionTarget,
+  ProjectTabLayoutSummary,
+} from "@cantrip/protocol";
 import { ChevronRight, Loader2, Plus, Trash2 } from "lucide-react";
 import { useMemo } from "react";
 
@@ -6,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import {
   ProjectSurfaceCreateMenu,
   type ProjectSurfaceCreateKind,
+  type ProjectSurfacePlacementContext,
 } from "@/components/workspace/project-surface-create-menu";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
 import type { ProjectSurface } from "@/lib/project-surface";
@@ -19,15 +23,17 @@ export function MobileProjectTabGrid({
   onCreate,
   onRemoveBottomTab,
   onSelectGroup,
+  placement,
   surfaces,
 }: {
   activeGroupId?: string | null;
   activeTabByGroup: Readonly<Record<string, string>>;
   creatingKinds: ReadonlySet<ProjectSurfaceCreateKind>;
   layout: ProjectTabLayoutSummary | null | undefined;
-  onCreate(kind: ProjectSurfaceCreateKind): void;
+  onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onRemoveBottomTab?: () => void;
   onSelectGroup(groupId: string): void;
+  placement?: ProjectSurfacePlacementContext;
   surfaces: readonly ProjectSurface[];
 }) {
   const surfacesByTabKey = useMemo(
@@ -79,6 +85,7 @@ export function MobileProjectTabGrid({
               align="end"
               creatingKinds={creatingKinds}
               onCreate={onCreate}
+              placement={placement}
               trigger={
                 <Button aria-label="Create project tab" size="sm">
                   <Plus className="size-4" />

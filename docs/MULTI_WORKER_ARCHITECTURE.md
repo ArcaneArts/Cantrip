@@ -21,9 +21,8 @@ another.
 This document defines the contracts later multi-worker changes must preserve.
 Replica persistence, reads, exact-revision provisioning, guarded
 synchronization, safe removal, placement-policy settings, and canonical
-placement resolution for new surfaces are implemented. The app's explicit
-placement chooser and chat relocation remain disabled until their complete
-lifecycles are implemented.
+placement resolution and selection for new surfaces are implemented. Chat
+relocation remains disabled until its complete lifecycle is implemented.
 
 ## Current replica read contract
 
@@ -86,6 +85,21 @@ cannot send both selectors. `POST /api/projects/:projectId/placement/resolve`
 lets a client preview the canonical placement and reports whether it came from
 an explicit target, project preference, Default worker, or fallback. Browser
 summaries now include their owning worker during rolling compatibility.
+
+When more than one worker is linked, each placeable entry in the New surface
+menu expands to offer Automatic policy selection or an explicit worker. A
+replica-local surface can further choose the worker default, replica default,
+or an exact ready worktree. Machine-level Browser and Remote Desktop surfaces
+choose a worker directly. Offline, replica-missing, and capability-incompatible
+workers remain visible with their reason but cannot be selected. With one
+worker, the menu stays one-click and contains no fleet controls.
+
+The selected surface's worker remains visible in the content header. In a
+multi-worker account, compact placement indicators also distinguish Primary
+worktrees and machine-level Browser tabs in the project sidebar; non-Primary
+worktrees retain their existing detailed worktree indicator. A terminal
+service inherits the owning terminal's placement and does not select a second
+worker.
 
 ## Terms
 
