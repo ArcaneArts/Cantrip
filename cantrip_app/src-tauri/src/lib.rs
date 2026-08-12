@@ -263,6 +263,7 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
         &[
             ("CANTRIP_SERVER_URL", server_url.clone()),
             ("CANTRIP_WORKER_TOKEN", worker_token),
+            ("CANTRIP_WORKER_DEVELOPMENT_BOOTSTRAP", "true".into()),
             ("CANTRIP_WORKER_ID", "desktop-local".into()),
             ("CANTRIP_WORKER_NAME", "Local Worker".into()),
             (

@@ -163,6 +163,11 @@ import {
   terminalListSchema,
   terminalSummarySchema,
   worktreeStatusResultSchema,
+  workerCredentialListSchema,
+  workerCredentialRotateResultSchema,
+  workerCredentialRotateSchema,
+  workerEnrollmentCodeCreateSchema,
+  workerEnrollmentCodeResultSchema,
   workerListSchema,
 } from "@cantrip/protocol";
 import type {
@@ -230,6 +235,8 @@ import type {
   UserSettingsUpdate,
   ExplorerFileWrite,
   WorktreePolicy,
+  WorkerCredentialRotate,
+  WorkerEnrollmentCodeCreate,
 } from "@cantrip/protocol";
 import {
   CantripApiError,
@@ -296,6 +303,45 @@ export async function logoutAll() {
 
 export async function getWorkers() {
   return workerListSchema.parse(await request("/api/workers"));
+}
+
+export async function createWorkerEnrollmentCode(
+  input: WorkerEnrollmentCodeCreate,
+) {
+  return workerEnrollmentCodeResultSchema.parse(
+    await post(
+      "/api/workers/enrollment-codes",
+      workerEnrollmentCodeCreateSchema.parse(input),
+    ),
+  );
+}
+
+export async function getWorkerCredentials(workerId: string) {
+  return workerCredentialListSchema.parse(
+    await request(`/api/workers/${encodeURIComponent(workerId)}/credentials`),
+  );
+}
+
+export async function rotateWorkerCredential(
+  workerId: string,
+  input: WorkerCredentialRotate,
+) {
+  return workerCredentialRotateResultSchema.parse(
+    await post(
+      `/api/workers/${encodeURIComponent(workerId)}/credentials/rotate`,
+      workerCredentialRotateSchema.parse(input),
+    ),
+  );
+}
+
+export async function revokeWorkerCredential(
+  workerId: string,
+  credentialId: string,
+) {
+  await request(
+    `/api/workers/${encodeURIComponent(workerId)}/credentials/${encodeURIComponent(credentialId)}`,
+    { method: "DELETE" },
+  );
 }
 
 export async function getCodexAuthStatus(workerId: string, providerId: string) {

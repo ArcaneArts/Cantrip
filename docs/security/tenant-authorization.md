@@ -16,8 +16,10 @@ enter an owner context. Examples include a validated webhook delivery and each
 candidate selected by the workflow schedule scanner.
 
 Worker enrollment and service credentials are a separate machine-identity
-boundary. Until an internal route has resolved a worker credential to its
-owner, accounts mode does not fall back to the local user.
+boundary. Every hosted internal route resolves a hashed worker credential to
+its owner, immutable worker ID, and required scope. Accounts mode never falls
+back to the local user; the development token is accepted only for explicit
+anonymous loopback pnpm-dev/Tauri bootstraps.
 
 ## HTTP enumeration resistance
 

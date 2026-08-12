@@ -111,7 +111,7 @@ let chatId: string;
 
 beforeAll(async () => {
   database = await connectDatabase(config);
-  await database.repository.recordWorker(liveTestHeartbeat);
+  await database.repository.recordWorker(LOCAL_USER_ID, liveTestHeartbeat);
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "live-test-worker",
     repositoryId: "live-test-repository",

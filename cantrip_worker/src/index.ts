@@ -84,6 +84,7 @@ import {
   startGitManagedOperation,
 } from "./git.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
+import { enrollWorker } from "./enrollment.js";
 import { ProjectShareManager } from "./project-share-manager.js";
 import { ProjectShareTunnelProxy } from "./project-share-tunnel-proxy.js";
 import { readProjectRepositoryStats } from "./project-repository-stats.js";
@@ -147,6 +148,7 @@ async function start(): Promise<void> {
     },
     codeDiscovery.capabilities,
   );
+  await enrollWorker(config, heartbeat);
   let connected = false;
   let commandChannelStarted = false;
   let lastConnectionError: string | null = null;

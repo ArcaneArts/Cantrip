@@ -87,6 +87,8 @@ import type {
   UserSettings,
   UserSettingsUpdate,
   UserSummary,
+  WorkerCredentialScope,
+  WorkerCredentialSummary,
   WorkerHeartbeat,
   WorkerSummary,
   WorkerWorktreeSummary,
@@ -143,6 +145,7 @@ type GitOperationRow = typeof schema.gitOperations.$inferSelect;
 type ProjectWorkspaceRow = typeof schema.projectWorkspaces.$inferSelect;
 type UserRow = typeof schema.users.$inferSelect;
 type UserSessionRow = typeof schema.userSessions.$inferSelect;
+type WorkerCredentialRow = typeof schema.workerCredentials.$inferSelect;
 
 export interface AccountCredentialRecord {
   passwordHash: string;
@@ -155,6 +158,18 @@ export interface ActiveUserSession {
   expiresAt: Date;
   id: string;
   user: UserSummary;
+}
+
+export interface ActiveWorkerCredential {
+  id: string;
+  ownerId: string;
+  scopes: WorkerCredentialScope[];
+  workerId: string;
+}
+
+export interface WorkerEnrollmentProvision {
+  credential: WorkerCredentialSummary;
+  worker: WorkerSummary;
 }
 
 export interface ChatExecutionContext {
@@ -186,6 +201,7 @@ export class ExecutionLaneConflictError extends Error {}
 export class AgentInteractionConflictError extends Error {}
 export class CodeCapabilityUnavailableError extends Error {}
 export class ProjectWorkspaceInvariantError extends Error {}
+export class WorkerEnrollmentError extends Error {}
 
 export interface TerminalExecutionContext {
   cwd: string;
@@ -346,6 +362,26 @@ function tokenUsageTotals(
 
 function toISOString(value: Date): string {
   return value.toISOString();
+}
+
+function toWorkerCredentialSummary(
+  credential: WorkerCredentialRow,
+  now = new Date(),
+): WorkerCredentialSummary {
+  return {
+    id: credential.id,
+    workerId: credential.workerId,
+    label: credential.label,
+    scopes: credential.scopes as WorkerCredentialScope[],
+    createdAt: toISOString(credential.createdAt),
+    expiresAt: credential.expiresAt?.toISOString() ?? null,
+    lastUsedAt: credential.lastUsedAt?.toISOString() ?? null,
+    revokedAt: credential.revokedAt?.toISOString() ?? null,
+    revokedReason: credential.revokedReason,
+    active:
+      credential.revokedAt === null &&
+      (credential.expiresAt === null || credential.expiresAt > now),
+  };
 }
 
 function chatIsExecuting(status: ChatSummary["status"]): boolean {
@@ -2079,40 +2115,361 @@ export class ServerRepository {
     return id;
   }
 
-  async recordWorker(heartbeat: WorkerHeartbeat): Promise<WorkerSummary> {
+  async createWorkerEnrollmentCode(input: {
+    codeHash: string;
+    createdBySessionId: string | null;
+    expiresAt: Date;
+    label: string | null;
+    ownerId: string;
+  }): Promise<void> {
+    await this.database.insert(schema.workerEnrollmentCodes).values({
+      id: randomUUID(),
+      ownerId: input.ownerId,
+      createdBySessionId: input.createdBySessionId,
+      codeHash: input.codeHash,
+      label: input.label,
+      expiresAt: input.expiresAt,
+    });
+  }
+
+  async exchangeWorkerEnrollmentCode(input: {
+    codeHash: string;
+    credentialHash: string;
+    credentialId: string;
+    heartbeat: WorkerHeartbeat;
+    scopes: WorkerCredentialScope[];
+  }): Promise<WorkerEnrollmentProvision> {
     const now = new Date();
-    const result = await this.database
-      .insert(schema.workers)
-      .values({
-        id: heartbeat.workerId,
-        ownerId: LOCAL_USER_ID,
-        name: heartbeat.name,
-        platform: heartbeat.platform,
-        architecture: heartbeat.architecture,
-        codexVersion: heartbeat.codexVersion,
-        codexRuntime: heartbeat.codexRuntime,
-        remoteSurfaceCapabilities: heartbeat.remoteSurfaces,
-        codeCapabilities: heartbeat.code ?? unavailableCodeCapabilities,
-        startedAt: new Date(heartbeat.startedAt),
+    return this.database.transaction(async (transaction) => {
+      const codes = await transaction
+        .select()
+        .from(schema.workerEnrollmentCodes)
+        .where(
+          and(
+            eq(schema.workerEnrollmentCodes.codeHash, input.codeHash),
+            isNull(schema.workerEnrollmentCodes.consumedAt),
+            gt(schema.workerEnrollmentCodes.expiresAt, now),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const code = codes[0];
+      if (!code) {
+        throw new WorkerEnrollmentError(
+          "This worker link code is invalid, expired, or already used.",
+        );
+      }
+
+      const existingWorkers = await transaction
+        .select()
+        .from(schema.workers)
+        .where(eq(schema.workers.id, input.heartbeat.workerId))
+        .for("update")
+        .limit(1);
+      const existingWorker = existingWorkers[0];
+      if (existingWorker && existingWorker.ownerId !== code.ownerId) {
+        throw new WorkerEnrollmentError(
+          "This worker identity is already owned by another account.",
+        );
+      }
+      if (existingWorker) {
+        const activeCredentials = await transaction
+          .select({ id: schema.workerCredentials.id })
+          .from(schema.workerCredentials)
+          .where(
+            and(
+              eq(schema.workerCredentials.workerId, input.heartbeat.workerId),
+              isNull(schema.workerCredentials.revokedAt),
+              or(
+                isNull(schema.workerCredentials.expiresAt),
+                gt(schema.workerCredentials.expiresAt, now),
+              ),
+            ),
+          )
+          .limit(1);
+        if (activeCredentials[0]) {
+          throw new WorkerEnrollmentError(
+            "This worker identity is already enrolled. Rotate its credential instead.",
+          );
+        }
+      }
+
+      const consumed = await transaction
+        .update(schema.workerEnrollmentCodes)
+        .set({ consumedAt: now })
+        .where(
+          and(
+            eq(schema.workerEnrollmentCodes.id, code.id),
+            isNull(schema.workerEnrollmentCodes.consumedAt),
+          ),
+        )
+        .returning({ id: schema.workerEnrollmentCodes.id });
+      if (!consumed[0]) {
+        throw new WorkerEnrollmentError(
+          "This worker link code was already used.",
+        );
+      }
+
+      const workerValues = {
+        name: input.heartbeat.name,
+        platform: input.heartbeat.platform,
+        architecture: input.heartbeat.architecture,
+        codexVersion: input.heartbeat.codexVersion,
+        codexRuntime: input.heartbeat.codexRuntime,
+        remoteSurfaceCapabilities: input.heartbeat.remoteSurfaces,
+        codeCapabilities: input.heartbeat.code ?? unavailableCodeCapabilities,
+        startedAt: new Date(input.heartbeat.startedAt),
         lastSeenAt: now,
         updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: schema.workers.id,
-        set: {
-          name: heartbeat.name,
-          platform: heartbeat.platform,
-          architecture: heartbeat.architecture,
-          codexVersion: heartbeat.codexVersion,
-          codexRuntime: heartbeat.codexRuntime,
-          remoteSurfaceCapabilities: heartbeat.remoteSurfaces,
-          codeCapabilities: heartbeat.code ?? unavailableCodeCapabilities,
-          startedAt: new Date(heartbeat.startedAt),
-          lastSeenAt: now,
+      };
+      const workerRows = existingWorker
+        ? await transaction
+            .update(schema.workers)
+            .set(workerValues)
+            .where(
+              and(
+                eq(schema.workers.id, input.heartbeat.workerId),
+                eq(schema.workers.ownerId, code.ownerId),
+              ),
+            )
+            .returning()
+        : await transaction
+            .insert(schema.workers)
+            .values({
+              id: input.heartbeat.workerId,
+              ownerId: code.ownerId,
+              ...workerValues,
+            })
+            .returning();
+      const credentialRows = await transaction
+        .insert(schema.workerCredentials)
+        .values({
+          id: input.credentialId,
+          ownerId: code.ownerId,
+          workerId: input.heartbeat.workerId,
+          secretHash: input.credentialHash,
+          label: code.label,
+          scopes: input.scopes,
+          lastUsedAt: now,
+        })
+        .returning();
+      return {
+        worker: toWorkerSummary(firstOrThrow(workerRows, "enrolling a worker")),
+        credential: toWorkerCredentialSummary(
+          firstOrThrow(credentialRows, "creating a worker credential"),
+          now,
+        ),
+      };
+    });
+  }
+
+  async authenticateWorkerCredential(
+    secretHash: string,
+    workerId: string,
+    requiredScope: WorkerCredentialScope,
+  ): Promise<ActiveWorkerCredential | null> {
+    const now = new Date();
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select()
+        .from(schema.workerCredentials)
+        .where(
+          and(
+            eq(schema.workerCredentials.secretHash, secretHash),
+            eq(schema.workerCredentials.workerId, workerId),
+            isNull(schema.workerCredentials.revokedAt),
+            or(
+              isNull(schema.workerCredentials.expiresAt),
+              gt(schema.workerCredentials.expiresAt, now),
+            ),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const credential = rows[0];
+      if (!credential) return null;
+      const scopes = credential.scopes as WorkerCredentialScope[];
+      if (!scopes.includes(requiredScope)) return null;
+      await transaction
+        .update(schema.workerCredentials)
+        .set({ lastUsedAt: now, updatedAt: now })
+        .where(eq(schema.workerCredentials.id, credential.id));
+      return {
+        id: credential.id,
+        ownerId: credential.ownerId,
+        scopes,
+        workerId: credential.workerId,
+      };
+    });
+  }
+
+  async listWorkerCredentials(
+    ownerId: string,
+    workerId: string,
+  ): Promise<WorkerCredentialSummary[] | null> {
+    if (!(await this.getWorker(ownerId, workerId))) return null;
+    const rows = await this.database
+      .select()
+      .from(schema.workerCredentials)
+      .where(
+        and(
+          eq(schema.workerCredentials.ownerId, ownerId),
+          eq(schema.workerCredentials.workerId, workerId),
+        ),
+      )
+      .orderBy(desc(schema.workerCredentials.createdAt));
+    return rows.map((row) => toWorkerCredentialSummary(row));
+  }
+
+  async rotateWorkerCredential(input: {
+    credentialHash: string;
+    credentialId: string;
+    label: string | null;
+    ownerId: string;
+    scopes: WorkerCredentialScope[];
+    workerId: string;
+  }): Promise<WorkerCredentialSummary | null> {
+    const now = new Date();
+    return this.database.transaction(async (transaction) => {
+      const workers = await transaction
+        .select({ id: schema.workers.id })
+        .from(schema.workers)
+        .where(
+          and(
+            eq(schema.workers.id, input.workerId),
+            eq(schema.workers.ownerId, input.ownerId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!workers[0]) return null;
+      const active = await transaction
+        .select({ id: schema.workerCredentials.id })
+        .from(schema.workerCredentials)
+        .where(
+          and(
+            eq(schema.workerCredentials.ownerId, input.ownerId),
+            eq(schema.workerCredentials.workerId, input.workerId),
+            isNull(schema.workerCredentials.revokedAt),
+          ),
+        )
+        .orderBy(desc(schema.workerCredentials.createdAt));
+      if (!active[0]) {
+        throw new WorkerEnrollmentError(
+          "Development bootstrap workers do not have rotatable credentials.",
+        );
+      }
+      await transaction
+        .update(schema.workerCredentials)
+        .set({
+          revokedAt: now,
+          revokedReason: "rotated",
           updatedAt: now,
-        },
-      })
+        })
+        .where(
+          and(
+            eq(schema.workerCredentials.ownerId, input.ownerId),
+            eq(schema.workerCredentials.workerId, input.workerId),
+            isNull(schema.workerCredentials.revokedAt),
+          ),
+        );
+      const created = await transaction
+        .insert(schema.workerCredentials)
+        .values({
+          id: input.credentialId,
+          ownerId: input.ownerId,
+          workerId: input.workerId,
+          secretHash: input.credentialHash,
+          label: input.label,
+          scopes: input.scopes,
+          replacesCredentialId: active[0]?.id ?? null,
+        })
+        .returning();
+      return toWorkerCredentialSummary(
+        firstOrThrow(created, "rotating a worker credential"),
+        now,
+      );
+    });
+  }
+
+  async revokeWorkerCredential(
+    ownerId: string,
+    workerId: string,
+    credentialId: string,
+    reason = "revoked by owner",
+  ): Promise<WorkerCredentialSummary | null> {
+    const now = new Date();
+    const rows = await this.database
+      .update(schema.workerCredentials)
+      .set({ revokedAt: now, revokedReason: reason, updatedAt: now })
+      .where(
+        and(
+          eq(schema.workerCredentials.id, credentialId),
+          eq(schema.workerCredentials.workerId, workerId),
+          eq(schema.workerCredentials.ownerId, ownerId),
+          isNull(schema.workerCredentials.revokedAt),
+        ),
+      )
       .returning();
+    return rows[0] ? toWorkerCredentialSummary(rows[0], now) : null;
+  }
+
+  async recordWorker(
+    ownerId: string,
+    heartbeat: WorkerHeartbeat,
+  ): Promise<WorkerSummary> {
+    const now = new Date();
+    const values = {
+      name: heartbeat.name,
+      platform: heartbeat.platform,
+      architecture: heartbeat.architecture,
+      codexVersion: heartbeat.codexVersion,
+      codexRuntime: heartbeat.codexRuntime,
+      remoteSurfaceCapabilities: heartbeat.remoteSurfaces,
+      codeCapabilities: heartbeat.code ?? unavailableCodeCapabilities,
+      startedAt: new Date(heartbeat.startedAt),
+      lastSeenAt: now,
+      updatedAt: now,
+    };
+    let result = await this.database
+      .update(schema.workers)
+      .set(values)
+      .where(
+        and(
+          eq(schema.workers.id, heartbeat.workerId),
+          eq(schema.workers.ownerId, ownerId),
+        ),
+      )
+      .returning();
+    if (!result[0]) {
+      try {
+        result = await this.database
+          .insert(schema.workers)
+          .values({ id: heartbeat.workerId, ownerId, ...values })
+          .returning();
+      } catch (error) {
+        const currentOwnerId = await this.getWorkerOwnerId(heartbeat.workerId);
+        if (currentOwnerId && currentOwnerId !== ownerId) {
+          throw new WorkerEnrollmentError(
+            "This worker identity belongs to another account.",
+          );
+        }
+        if (currentOwnerId === ownerId) {
+          result = await this.database
+            .update(schema.workers)
+            .set(values)
+            .where(
+              and(
+                eq(schema.workers.id, heartbeat.workerId),
+                eq(schema.workers.ownerId, ownerId),
+              ),
+            )
+            .returning();
+        } else {
+          throw error;
+        }
+      }
+    }
     return toWorkerSummary(
       firstOrThrow(result, "recording a worker heartbeat"),
     );
