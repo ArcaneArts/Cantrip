@@ -324,6 +324,18 @@ describe("Cantrip Code isolated editor surface", () => {
 
     expect(first.sessionId).toBe(second.sessionId);
     expect(first.attachmentId).not.toBe(second.attachmentId);
+    expect(
+      broker.prepareDirectAttachment(first.attachmentId, "user-1"),
+    ).toMatchObject({
+      codeTabId: "code-1",
+      ownerId: "user-1",
+      projectId: "project-1",
+      sessionId: runtime.sessionId,
+      workerId: "worker-1",
+    });
+    expect(
+      broker.prepareDirectAttachment(first.attachmentId, "user-2"),
+    ).toBeNull();
     expect(broker.hasAttachment(firstToken)).toBe(true);
     expect(broker.hasAttachment(secondToken)).toBe(true);
     expect(await broker.revokeAttachment(first.attachmentId, "user-2")).toBe(
