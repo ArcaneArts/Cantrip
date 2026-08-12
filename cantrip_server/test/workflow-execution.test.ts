@@ -20,6 +20,7 @@ import type { WebSocket } from "ws";
 
 import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
+import { WORKFLOW_ATTEMPT_STALE_MS } from "../src/workflows/executor.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { DEFAULT_MODEL_ROUTE_ID, LOCAL_USER_ID } from "../src/db/repository.js";
 import type {
@@ -81,6 +82,7 @@ let releaseLateSibling: (() => void) | null = null;
 const executionCommands: Array<
   Extract<WorkerCommand, { type: "workflow.node.execute" }>
 > = [];
+const executionRequestTimeouts: Array<number | null | undefined> = [];
 const interruptCommands: Array<
   Extract<WorkerCommand, { type: "workflow.node.interrupt" }>
 > = [];
@@ -328,6 +330,7 @@ const workerBridge: WorkerCommandBus = {
     }
     if (command.type === "workflow.node.execute") {
       executionCommands.push(command);
+      executionRequestTimeouts.push(options?.timeoutMs);
       if (command.mutationMode === "write") {
         dirtyWorkflowWorktrees.add(command.worktreeId);
       }
@@ -916,6 +919,9 @@ describe.sequential("single-agent workflow execution", () => {
       mutationMode: "read-only",
       prompt: expect.stringContaining('"target":"src"'),
     });
+    expect(executionRequestTimeouts.at(-1)).toBe(
+      executionCommands.at(-1)!.timeoutMs + 30_000,
+    );
     expect(detail).toMatchObject({
       run: {
         status: "completed",
@@ -5252,6 +5258,12 @@ describe.sequential("single-agent workflow execution", () => {
     );
     expect(lease).not.toBeNull();
     expect((await runDetail(runId)).run.status).toBe("running");
+    expect(
+      await database.repository.workflowRuns.recoverInterruptedAttempts(
+        LOCAL_USER_ID,
+        new Date(Date.now() - WORKFLOW_ATTEMPT_STALE_MS),
+      ),
+    ).toHaveLength(0);
 
     await app.close();
     database = await connectDatabase(config);
@@ -5263,6 +5275,76 @@ describe.sequential("single-agent workflow execution", () => {
         errorCode: "server-restarted",
       },
       nodes: [{ status: "recovering" }],
+      attempts: [{ status: "orphaned" }],
+    });
+    connected = true;
+  });
+
+  it("renews workflow attempt heartbeats and fences stale recovery", async () => {
+    connected = false;
+    mode = "success";
+    const response = await createRun("execute-heartbeat-fence");
+    const runId = workflowRunDetailSchema.parse(response.json()).run.id;
+    await vi.waitFor(async () => {
+      expect((await runDetail(runId)).run.status).toBe("queued");
+    });
+    const candidates =
+      await database.repository.workflowRuns.getReadyAgentCandidates(
+        LOCAL_USER_ID,
+        runId,
+      );
+    const source = await database.repository.getProjectSource(
+      LOCAL_USER_ID,
+      projectId,
+    );
+    const lease = await database.repository.workflowRuns.claimAgentAttempt(
+      LOCAL_USER_ID,
+      candidates![0]!,
+      {
+        cwd: source!.cwd,
+        modelRouteId: DEFAULT_MODEL_ROUTE_ID,
+        permissionProfileId: null,
+        workerId: source!.workerId,
+        worktreeId: source!.worktreeId,
+      },
+    );
+    const before = await runDetail(runId);
+    const oldHeartbeat = before.attempts[0]!.heartbeatAt;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(
+      await database.repository.workflowRuns.renewAttemptHeartbeat(
+        LOCAL_USER_ID,
+        lease!.attemptId,
+      ),
+    ).toBe(true);
+
+    const staleResult = await database.repository.workflowRuns.failAgentAttempt(
+      LOCAL_USER_ID,
+      {
+        ...lease!,
+        recoveryHeartbeatAt: new Date(oldHeartbeat!),
+      },
+      {
+        code: "server-restarted",
+        message: "A stale server tried to recover this attempt.",
+        status: "orphaned",
+      },
+    );
+    expect(staleResult.updated).toBe(false);
+    expect(await runDetail(runId)).toMatchObject({
+      run: { status: "running", recoveryState: "stable" },
+      attempts: [{ status: "running" }],
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(
+      await database.repository.workflowRuns.recoverInterruptedAttempts(
+        LOCAL_USER_ID,
+        1,
+      ),
+    ).toHaveLength(1);
+    expect(await runDetail(runId)).toMatchObject({
+      run: { status: "recovering", recoveryState: "blocked" },
       attempts: [{ status: "orphaned" }],
     });
     connected = true;

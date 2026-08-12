@@ -255,6 +255,15 @@ server-side attempt fencing make the retry safe, while relocation still refuses
 dirty worktrees, revision drift, unavailable attachments, and incompatible
 worker capabilities.
 
+Workflow node attempts use a parallel heartbeat-lease contract. A live server
+renews every active attempt even when the worker emits no progress, and clustered
+recovery considers only heartbeats stale for two minutes. Recovery is fenced by
+the exact heartbeat value it observed, retains the run's account owner for live
+invalidations and redispatch, and keeps the worker request within the persisted
+node timeout budget. Recoverable worktree leases are scanned across all owners
+but still execute only through their explicitly assigned worker and branch
+fences.
+
 ## Authority boundaries
 
 | Concern                                      | App                            | Server                         | Worker                        |

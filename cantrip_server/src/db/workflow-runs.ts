@@ -68,6 +68,7 @@ import {
   isNull,
   lte,
   ne,
+  or,
   sql,
 } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
@@ -251,6 +252,7 @@ export interface WorkflowAttemptAssignment {
 
 export interface WorkflowWorktreeRecoveryCandidate {
   leaseId: string;
+  ownerId: string;
   pendingOutcomeRequest: WorkflowWorktreeOutcomeRequest | null;
   projectId: string;
   runId: string;
@@ -285,6 +287,7 @@ export interface WorkflowAttemptLease {
   budget: WorkflowBudget;
   candidate: WorkflowAgentCandidate;
   idempotencyKey: string;
+  recoveryHeartbeatAt?: Date;
   timeoutMs: number;
   unitAttempt: number;
   worktreeLeaseId: string | null;
@@ -307,6 +310,14 @@ export interface WorkflowInteractionExecutionContext {
 export interface WorkflowAttemptFailureResult {
   interruptions: WorkflowCancellationExecutionContext[];
   retryScheduled: boolean;
+  updated: boolean;
+}
+
+export interface WorkflowAttemptRecovery {
+  interruptions: WorkflowCancellationExecutionContext[];
+  ownerId: string;
+  projectId: string | null;
+  runId: string;
 }
 
 export interface WorkflowCancellationExecutionContext {
@@ -1796,33 +1807,35 @@ export class WorkflowRunRepository {
     });
   }
 
-  async listDispatchableRunIds(
-    ownerId: string,
-    limit = 100,
-  ): Promise<string[]> {
+  async listDispatchableRuns(
+    limit = 500,
+  ): Promise<Array<{ ownerId: string; runId: string }>> {
     const rows = await this.database
-      .select({ id: schema.workflowRuns.id })
+      .select({
+        ownerId: schema.workflowRuns.ownerId,
+        runId: schema.workflowRuns.id,
+      })
       .from(schema.workflowRuns)
       .where(
         and(
-          eq(schema.workflowRuns.ownerId, ownerId),
           eq(schema.workflowRuns.status, "queued"),
           eq(schema.workflowRuns.recoveryState, "stable"),
         ),
       )
-      .orderBy(asc(schema.workflowRuns.queuedAt))
+      .orderBy(asc(schema.workflowRuns.queuedAt), asc(schema.workflowRuns.id))
       .limit(Math.max(1, Math.min(limit, 500)));
-    return rows.map(({ id }) => id);
+    return rows;
   }
 
   async listRecoverableWorktreeLeases(
-    ownerId: string,
+    ownerId: string | null,
     workerId: string | null = null,
     limit = 500,
   ): Promise<WorkflowWorktreeRecoveryCandidate[]> {
     const rows = await this.database
       .select({
         leaseId: schema.workflowWorktreeLeases.id,
+        ownerId: schema.workflowRuns.ownerId,
         pendingOutcome: schema.workflowWorktreeLeases.pendingOutcome,
         pendingOutcomeRequest:
           schema.workflowWorktreeLeases.pendingOutcomeRequest,
@@ -1837,7 +1850,7 @@ export class WorkflowRunRepository {
         schema.workflowRuns,
         and(
           eq(schema.workflowRuns.id, schema.workflowWorktreeLeases.runId),
-          eq(schema.workflowRuns.ownerId, ownerId),
+          ownerId ? eq(schema.workflowRuns.ownerId, ownerId) : sql`TRUE`,
         ),
       )
       .where(
@@ -1874,6 +1887,7 @@ export class WorkflowRunRepository {
       return [
         {
           leaseId: row.leaseId,
+          ownerId: row.ownerId,
           pendingOutcomeRequest,
           projectId: row.projectId,
           runId: row.runId,
@@ -4326,6 +4340,12 @@ export class WorkflowRunRepository {
         .where(
           and(
             eq(schema.workflowNodeAttempts.id, lease.attemptId),
+            lease.recoveryHeartbeatAt
+              ? eq(
+                  schema.workflowNodeAttempts.heartbeatAt,
+                  lease.recoveryHeartbeatAt,
+                )
+              : sql`TRUE`,
             inArray(schema.workflowNodeAttempts.status, [
               "queued",
               "running",
@@ -4489,6 +4509,7 @@ export class WorkflowRunRepository {
     return {
       interruptions: [],
       retryScheduled: outcome.updated && outcome.retryScheduled,
+      updated: outcome.updated,
     };
   }
 
@@ -4532,6 +4553,12 @@ export class WorkflowRunRepository {
             eq(schema.workflowNodeAttempts.id, lease.attemptId),
             eq(schema.workflowNodeAttempts.runNodeItemId, item.id),
             eq(schema.workflowNodeAttempts.executionUnitKey, pipeline.step.key),
+            lease.recoveryHeartbeatAt
+              ? eq(
+                  schema.workflowNodeAttempts.heartbeatAt,
+                  lease.recoveryHeartbeatAt,
+                )
+              : sql`TRUE`,
             inArray(schema.workflowNodeAttempts.status, [
               "queued",
               "running",
@@ -4891,6 +4918,7 @@ export class WorkflowRunRepository {
     return {
       interruptions,
       retryScheduled: outcome.updated && outcome.retryScheduled,
+      updated: outcome.updated,
     };
   }
 
@@ -4935,6 +4963,12 @@ export class WorkflowRunRepository {
           and(
             eq(schema.workflowNodeAttempts.id, lease.attemptId),
             eq(schema.workflowNodeAttempts.runNodeItemId, item.id),
+            lease.recoveryHeartbeatAt
+              ? eq(
+                  schema.workflowNodeAttempts.heartbeatAt,
+                  lease.recoveryHeartbeatAt,
+                )
+              : sql`TRUE`,
             inArray(schema.workflowNodeAttempts.status, [
               "queued",
               "running",
@@ -5249,10 +5283,51 @@ export class WorkflowRunRepository {
     return {
       interruptions,
       retryScheduled: outcome.updated && outcome.retryScheduled,
+      updated: outcome.updated,
     };
   }
 
-  async recoverInterruptedAttempts(ownerId: string): Promise<number> {
+  async renewAttemptHeartbeat(
+    ownerId: string,
+    attemptId: string,
+  ): Promise<boolean> {
+    const now = new Date();
+    const rows = await this.database
+      .update(schema.workflowNodeAttempts)
+      .set({ heartbeatAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(schema.workflowNodeAttempts.id, attemptId),
+          inArray(schema.workflowNodeAttempts.status, [
+            "queued",
+            "running",
+            "waiting-for-approval",
+          ]),
+          sql`EXISTS (
+            SELECT 1
+            FROM ${schema.workflowRunNodes}
+            INNER JOIN ${schema.workflowRuns}
+              ON ${schema.workflowRuns.id} = ${schema.workflowRunNodes.runId}
+            WHERE ${schema.workflowRunNodes.id} = ${schema.workflowNodeAttempts.runNodeId}
+              AND ${schema.workflowRuns.ownerId} = ${ownerId}
+          )`,
+        ),
+      )
+      .returning({ id: schema.workflowNodeAttempts.id });
+    return rows.length === 1;
+  }
+
+  async recoverInterruptedAttempts(
+    ownerId: string | null,
+    staleBefore: Date | number | null = null,
+    limit = 500,
+  ): Promise<WorkflowAttemptRecovery[]> {
+    if (
+      typeof staleBefore === "number" &&
+      (!Number.isFinite(staleBefore) || staleBefore < 1)
+    ) {
+      throw new Error("Workflow attempt stale duration must be positive.");
+    }
     const rows = await this.database
       .select({
         attempt: schema.workflowNodeAttempts,
@@ -5266,20 +5341,37 @@ export class WorkflowRunRepository {
       )
       .innerJoin(
         schema.workflowRuns,
-        and(
-          eq(schema.workflowRuns.id, schema.workflowRunNodes.runId),
-          eq(schema.workflowRuns.ownerId, ownerId),
-        ),
+        eq(schema.workflowRuns.id, schema.workflowRunNodes.runId),
       )
       .where(
-        inArray(schema.workflowNodeAttempts.status, [
-          "queued",
-          "running",
-          "waiting-for-approval",
-        ]),
-      );
+        and(
+          ownerId ? eq(schema.workflowRuns.ownerId, ownerId) : sql`TRUE`,
+          inArray(schema.workflowNodeAttempts.status, [
+            "queued",
+            "running",
+            "waiting-for-approval",
+          ]),
+          typeof staleBefore === "number"
+            ? or(
+                isNull(schema.workflowNodeAttempts.heartbeatAt),
+                sql`${schema.workflowNodeAttempts.heartbeatAt} <= CURRENT_TIMESTAMP - (${staleBefore} * INTERVAL '1 millisecond')`,
+              )
+            : staleBefore
+              ? or(
+                  isNull(schema.workflowNodeAttempts.heartbeatAt),
+                  lte(schema.workflowNodeAttempts.heartbeatAt, staleBefore),
+                )
+              : sql`TRUE`,
+        ),
+      )
+      .orderBy(
+        asc(schema.workflowNodeAttempts.heartbeatAt),
+        asc(schema.workflowNodeAttempts.createdAt),
+      )
+      .limit(Math.max(1, Math.min(limit, 500)));
+    const recovered = new Map<string, WorkflowAttemptRecovery>();
     for (const row of rows) {
-      const detail = await this.getRun(ownerId, row.run.id);
+      const detail = await this.getRun(row.run.ownerId, row.run.id);
       const node = detail?.nodes.find(({ id }) => id === row.node.id);
       if (!detail || !node) continue;
       const item = row.attempt.runNodeItemId
@@ -5354,8 +5446,8 @@ export class WorkflowRunRepository {
         unsupportedReason: null,
         verification: null,
       };
-      await this.failAgentAttempt(
-        ownerId,
+      const result = await this.failAgentAttempt(
+        row.run.ownerId,
         {
           assignment: {
             cwd: "",
@@ -5369,6 +5461,7 @@ export class WorkflowRunRepository {
           budget: node.budget,
           candidate,
           idempotencyKey: row.attempt.idempotencyKey,
+          recoveryHeartbeatAt: row.attempt.heartbeatAt ?? undefined,
           timeoutMs: node.budget.maxNodeDurationMs,
           unitAttempt:
             itemState?.kind === "pipeline"
@@ -5392,8 +5485,43 @@ export class WorkflowRunRepository {
           status: "orphaned",
         },
       );
+      if (result.updated) {
+        const key = `${row.run.ownerId}\0${row.run.id}`;
+        const existing = recovered.get(key);
+        const currentInterruption =
+          row.attempt.workerId &&
+          row.attempt.modelRouteId &&
+          row.attempt.codexThreadId
+            ? [
+                {
+                  attemptId: row.attempt.id,
+                  modelRouteId: row.attempt.modelRouteId,
+                  runId: row.run.id,
+                  runNodeId: row.node.id,
+                  threadId: row.attempt.codexThreadId,
+                  workerId: row.attempt.workerId,
+                },
+              ]
+            : [];
+        const interruptions = [
+          ...(existing?.interruptions ?? []),
+          ...result.interruptions,
+          ...currentInterruption,
+        ].filter(
+          (interruption, index, all) =>
+            all.findIndex(
+              (candidate) => candidate.attemptId === interruption.attemptId,
+            ) === index,
+        );
+        recovered.set(key, {
+          interruptions,
+          ownerId: row.run.ownerId,
+          projectId: row.run.projectId,
+          runId: row.run.id,
+        });
+      }
     }
-    return rows.length;
+    return [...recovered.values()];
   }
 
   async pauseRun(
