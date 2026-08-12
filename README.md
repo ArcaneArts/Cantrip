@@ -248,6 +248,7 @@ development stacks and artifacts in more detail.
 | `pnpm dev`          | Run the protocol watcher, server, worker, and browser app.                       |
 | `pnpm devtop`       | Run the same local stack with the Tauri desktop app.                             |
 | `pnpm site`         | Run only the public marketing site at <http://127.0.0.1:5174>.                   |
+| `pnpm dev:server`   | Run a separate account-mode server with disposable PostgreSQL.                   |
 | `pnpm dev:postgres` | Run the browser stack against disposable PostgreSQL in Docker instead of PGlite. |
 
 ### Build and verify
@@ -288,6 +289,15 @@ This starts the shared protocol watcher, Cantrip server, local worker, and Vite 
 Vite hot module replacement updates the app as frontend files change. The Node server and worker also restart automatically when their source changes. Press `Ctrl+C` once in the root terminal to stop every process started by the command.
 
 Local database files and worker-owned repository clones are stored under `.cantrip/dev/` and are ignored by Git.
+
+To test multiple accounts without replacing the anonymous local server, run
+`pnpm dev:server` in another terminal. It starts an isolated, disposable
+PostgreSQL database on `127.0.0.1:54330` and an account-mode server on
+<http://127.0.0.1:4320>, with its Code surface on port `4321`. Public test
+registration is enabled. Add `http://127.0.0.1:4320` through Cantrip's server
+switcher, then create as many test accounts as needed. The command can run
+beside `pnpm dev` or `pnpm devtop`; pressing `Ctrl+C` stops both its server and
+database, and the database is discarded.
 
 Browser tabs launch headless Chromium on the selected worker and render CDP
 screencast frames inside the normal React layout. Navigation and input travel

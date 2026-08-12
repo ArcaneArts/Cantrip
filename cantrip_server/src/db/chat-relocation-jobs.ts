@@ -982,7 +982,7 @@ export class ChatRelocationJobRepository {
             eq(schema.chatRelocationJobs.state, "queued"),
             eq(schema.chatRelocationJobs.state, "waiting-for-idle"),
           ),
-          sql`${schema.chatRelocationJobs.availableAt} <= ${now}`,
+          lte(schema.chatRelocationJobs.availableAt, now),
         ),
       )
       .orderBy(
