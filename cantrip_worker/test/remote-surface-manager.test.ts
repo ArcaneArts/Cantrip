@@ -4,7 +4,9 @@ import {
   RemoteSurfaceManager,
   type RemoteSurfaceAdapter,
   type RemoteSurfaceSession,
+  type WorkerWebRtcAttachmentFactory,
 } from "../src/remote-surface-manager.js";
+import type { WorkerWebRtcAttachment } from "../src/remote-surfaces/webrtc.js";
 
 const attachCommand = {
   type: "surface.attach" as const,
@@ -22,6 +24,66 @@ const attachCommand = {
 };
 
 describe("RemoteSurfaceManager", () => {
+  it("isolates rejected WebRTC control input from the worker process", async () => {
+    const warning = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
+    const handleFrame = vi.fn(async () => {
+      throw new Error("Pointer target is outside display bounds.");
+    });
+    const session = {
+      configuration: attachCommand.configuration,
+      transport: "webrtc" as const,
+      attach: vi.fn(),
+      close: vi.fn(),
+      detach: vi.fn(),
+      handleFrame,
+      resume: vi.fn(),
+      suspend: vi.fn(),
+    } satisfies RemoteSurfaceSession;
+    let receiveFrame:
+      Parameters<WorkerWebRtcAttachmentFactory>[0]["onFrame"] | undefined;
+    const createWebRtcAttachment: WorkerWebRtcAttachmentFactory = (options) => {
+      receiveFrame = options.onFrame;
+      return {
+        close: vi.fn(async () => undefined),
+        handleSignal: vi.fn(async () => undefined),
+        send: vi.fn(() => "unavailable" as const),
+      } as unknown as WorkerWebRtcAttachment;
+    };
+    const manager = new RemoteSurfaceManager(
+      { browser: { open: async () => session } },
+      4,
+      createWebRtcAttachment,
+    );
+    await manager.attach({
+      ...attachCommand,
+      preferredTransport: "webrtc",
+      webrtc: {
+        iceServers: [],
+        iceTransportPolicy: "all",
+        negotiationTimeoutMs: 1_000,
+      },
+    });
+
+    receiveFrame?.(
+      {
+        protocolVersion: 1,
+        surfaceId: "surface-1",
+        attachmentId: "attachment-1",
+        sequence: 1,
+        channel: "control",
+      },
+      new Uint8Array([1]),
+    );
+
+    await vi.waitFor(() => expect(warning).toHaveBeenCalledOnce());
+    expect(warning).toHaveBeenCalledWith(
+      expect.stringContaining("Pointer target is outside display bounds"),
+    );
+    warning.mockRestore();
+  });
+
   it("routes ordered frames through a reusable worker-owned session", async () => {
     const handleFrame = vi.fn();
     const attach = vi.fn();

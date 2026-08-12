@@ -35,7 +35,9 @@ type TunnelDataPlaneFrameHandler = (
 
 const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
 const MAX_BUFFERED_NOTIFICATION_BYTES = 1 * 1_024 * 1_024;
+const MAX_BUFFERED_COMMAND_BYTES = 8 * 1_024 * 1_024;
 const TUNNEL_DATA_PLANE_LOW_WATER_BYTES = 256 * 1_024;
+const DEFAULT_KEEPALIVE_INTERVAL_MS = 20_000;
 
 function rawDataBytes(data: RawData): Uint8Array {
   if (Array.isArray(data)) return Buffer.concat(data);
@@ -47,6 +49,9 @@ export class WorkerConnection {
   #closed = false;
   #authenticationRejected = false;
   #lastConnectionError: string | null = null;
+  #keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+  #pendingCommandBytes = 0;
+  readonly #pendingCommandEnvelopes: string[] = [];
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   #socket: WebSocket | null = null;
 
@@ -57,6 +62,7 @@ export class WorkerConnection {
     private readonly handleTunnelDataPlaneFrame: TunnelDataPlaneFrameHandler = () =>
       undefined,
     private readonly handleTransportDisconnect: () => void = () => undefined,
+    private readonly keepaliveIntervalMs = DEFAULT_KEEPALIVE_INTERVAL_MS,
   ) {}
 
   start(): void {
@@ -70,6 +76,9 @@ export class WorkerConnection {
       clearTimeout(this.#reconnectTimer);
       this.#reconnectTimer = null;
     }
+    this.clearKeepalive();
+    this.#pendingCommandEnvelopes.length = 0;
+    this.#pendingCommandBytes = 0;
     this.#socket?.close(1000, "Worker stopping");
     this.#socket = null;
   }
@@ -89,6 +98,8 @@ export class WorkerConnection {
     this.#socket = socket;
     socket.once("open", () => {
       this.#lastConnectionError = null;
+      this.startKeepalive(socket);
+      this.flushCommandEnvelopes(socket);
       console.log("[cantrip_worker] Command channel connected.");
     });
     socket.on("message", (data, isBinary) => {
@@ -105,6 +116,7 @@ export class WorkerConnection {
     socket.once("close", (code, reason) => {
       const wasCurrent = this.#socket === socket;
       if (wasCurrent) {
+        this.clearKeepalive();
         this.#socket = null;
         this.handleTransportDisconnect();
       }
@@ -118,10 +130,73 @@ export class WorkerConnection {
           );
         }
       }
-      if (!this.#closed && !this.#authenticationRejected) {
+      if (wasCurrent && !this.#closed && !this.#authenticationRejected) {
         this.#reconnectTimer = setTimeout(() => this.connect(), 1_000);
       }
     });
+  }
+
+  private startKeepalive(socket: WebSocket): void {
+    this.clearKeepalive();
+    if (this.keepaliveIntervalMs <= 0) return;
+    this.#keepaliveTimer = setInterval(() => {
+      if (this.#socket !== socket || socket.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      try {
+        socket.ping();
+      } catch {
+        socket.terminate();
+      }
+    }, this.keepaliveIntervalMs);
+    this.#keepaliveTimer.unref();
+  }
+
+  private clearKeepalive(): void {
+    if (!this.#keepaliveTimer) return;
+    clearInterval(this.#keepaliveTimer);
+    this.#keepaliveTimer = null;
+  }
+
+  private sendCommandEnvelope(envelope: string): void {
+    const socket = this.#socket;
+    if (socket?.readyState === WebSocket.OPEN) {
+      try {
+        socket.send(envelope);
+        return;
+      } catch {
+        // Preserve the command result for the reconnecting channel below.
+      }
+    }
+    if (this.#closed || this.#authenticationRejected) return;
+    const bytes = Buffer.byteLength(envelope);
+    while (
+      this.#pendingCommandEnvelopes.length > 0 &&
+      this.#pendingCommandBytes + bytes > MAX_BUFFERED_COMMAND_BYTES
+    ) {
+      const removed = this.#pendingCommandEnvelopes.shift()!;
+      this.#pendingCommandBytes -= Buffer.byteLength(removed);
+    }
+    if (bytes > MAX_BUFFERED_COMMAND_BYTES) return;
+    this.#pendingCommandEnvelopes.push(envelope);
+    this.#pendingCommandBytes += bytes;
+  }
+
+  private flushCommandEnvelopes(socket: WebSocket): void {
+    while (
+      this.#socket === socket &&
+      socket.readyState === WebSocket.OPEN &&
+      this.#pendingCommandEnvelopes.length > 0
+    ) {
+      const envelope = this.#pendingCommandEnvelopes[0]!;
+      try {
+        socket.send(envelope);
+      } catch {
+        return;
+      }
+      this.#pendingCommandEnvelopes.shift();
+      this.#pendingCommandBytes -= Buffer.byteLength(envelope);
+    }
   }
 
   sendSurfaceFrame(
@@ -233,10 +308,7 @@ export class WorkerConnection {
 
     try {
       const emit = (event: WorkerEvent) => {
-        if (socket.readyState !== WebSocket.OPEN) {
-          return;
-        }
-        socket.send(
+        this.sendCommandEnvelope(
           JSON.stringify(
             workerEventEnvelopeSchema.parse({
               kind: "event",
@@ -247,33 +319,29 @@ export class WorkerConnection {
         );
       };
       const result = await this.handleCommand(request.data.command, emit);
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(
-          JSON.stringify(
-            workerResponseEnvelopeSchema.parse({
-              kind: "response",
-              requestId: request.data.requestId,
-              ok: true,
-              result,
-            }),
-          ),
-        );
-      }
+      this.sendCommandEnvelope(
+        JSON.stringify(
+          workerResponseEnvelopeSchema.parse({
+            kind: "response",
+            requestId: request.data.requestId,
+            ok: true,
+            result,
+          }),
+        ),
+      );
     } catch (error) {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(
-          JSON.stringify(
-            workerResponseEnvelopeSchema.parse({
-              kind: "response",
-              requestId: request.data.requestId,
-              ok: false,
-              error: {
-                message: error instanceof Error ? error.message : String(error),
-              },
-            }),
-          ),
-        );
-      }
+      this.sendCommandEnvelope(
+        JSON.stringify(
+          workerResponseEnvelopeSchema.parse({
+            kind: "response",
+            requestId: request.data.requestId,
+            ok: false,
+            error: {
+              message: error instanceof Error ? error.message : String(error),
+            },
+          }),
+        ),
+      );
     }
   }
 }

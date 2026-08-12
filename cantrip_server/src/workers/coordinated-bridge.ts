@@ -125,7 +125,9 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       socket.close(1008, "Worker owner is unavailable");
       return;
     }
-    this.#local.disconnect(workerId, "Worker reconnected", 1012);
+    if (this.#local.isConnected(workerId)) {
+      this.#local.disconnect(workerId, "Worker reconnected", 1012);
+    }
     const connectionId = randomUUID();
     const previous = await this.#coordinator.claimWorker({
       connectionId,

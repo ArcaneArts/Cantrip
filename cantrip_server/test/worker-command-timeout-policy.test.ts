@@ -23,8 +23,9 @@ describe("worker command timeout policy", () => {
 
   it("reserves the streaming timeout policy for turns and terminal sessions", () => {
     const contexts = usageContexts("STREAMING_WORKER_COMMAND_TIMEOUT_MS");
-    expect(contexts).toHaveLength(2);
+    expect(contexts).toHaveLength(3);
     expect(contexts[0]).toContain('type: "chat.turn"');
     expect(contexts[1]).toContain('type: "terminal.open"');
+    expect(contexts[2]).toContain('type: "terminal.open"');
   });
 });

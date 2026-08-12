@@ -27,8 +27,9 @@ const dataDirectories: string[] = [];
 
 function sessionCookie(response: { headers: Record<string, unknown> }): string {
   const header = response.headers["set-cookie"];
-  if (typeof header !== "string") throw new Error("Expected session cookie.");
-  return header.split(";", 1)[0]!;
+  const cookie = Array.isArray(header) ? header[0] : header;
+  if (typeof cookie !== "string") throw new Error("Expected session cookie.");
+  return cookie.split(";", 1)[0]!;
 }
 
 function heartbeat(workerId: string): WorkerHeartbeat {
