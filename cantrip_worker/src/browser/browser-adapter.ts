@@ -149,7 +149,7 @@ function launchChromium(
 }
 
 class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
-  readonly configuration: RemoteSurfaceConfiguration;
+  configuration: Extract<RemoteSurfaceConfiguration, { kind: "browser" }>;
   readonly transport = "websocket" as const;
   readonly #attachments = new Map<string, RemoteSurfaceAttachment>();
   readonly #client: CdpClient;
@@ -168,7 +168,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   private constructor(options: {
     client: CdpClient;
     cdp: BrowserCdpSession;
-    configuration: RemoteSurfaceConfiguration;
+    configuration: Extract<RemoteSurfaceConfiguration, { kind: "browser" }>;
     emit: Parameters<RemoteSurfaceAdapter["open"]>[1];
     onCrash(error: Error): void;
     process: ChildProcess | null;
@@ -177,10 +177,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     this.#client = options.client;
     this.#cdp = options.cdp;
     this.configuration = options.configuration;
-    this.#currentUrl =
-      options.configuration.kind === "browser"
-        ? options.configuration.initialUrl
-        : "about:blank";
+    this.#currentUrl = options.configuration.initialUrl;
     this.#emit = options.emit;
     this.#onCrash = options.onCrash;
     this.#process = options.process;
@@ -270,6 +267,19 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
 
   async detach(attachmentId: string): Promise<void> {
     this.#attachments.delete(attachmentId);
+  }
+
+  async updateConfiguration(
+    configuration: RemoteSurfaceConfiguration,
+  ): Promise<void> {
+    if (configuration.kind !== "browser") {
+      throw new Error("Browser configuration kind cannot change.");
+    }
+    this.configuration = configuration;
+    if (this.#currentUrl === configuration.initialUrl) return;
+    this.#loading = true;
+    await this.publishState();
+    await this.command("Page.navigate", { url: configuration.initialUrl });
   }
 
   async handleFrame(
@@ -604,10 +614,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
 }
 
 class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
-  readonly configuration: Extract<
-    RemoteSurfaceConfiguration,
-    { kind: "browser" }
-  >;
+  configuration: Extract<RemoteSurfaceConfiguration, { kind: "browser" }>;
   readonly transport = "websocket" as const;
   readonly #attachments = new Map<string, RemoteSurfaceAttachment>();
   readonly #command: Parameters<RemoteSurfaceAdapter["open"]>[0];
@@ -663,6 +670,21 @@ class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   async detach(attachmentId: string): Promise<void> {
     this.#attachments.delete(attachmentId);
     await this.#session?.detach(attachmentId);
+  }
+
+  async updateConfiguration(
+    configuration: RemoteSurfaceConfiguration,
+  ): Promise<void> {
+    if (configuration.kind !== "browser") {
+      throw new Error("Browser configuration kind cannot change.");
+    }
+    this.configuration = configuration;
+    if (this.#session) {
+      await this.#session.updateConfiguration(configuration);
+      this.#currentUrl = this.#session.currentUrl;
+    } else {
+      this.#currentUrl = configuration.initialUrl;
+    }
   }
 
   async handleFrame(

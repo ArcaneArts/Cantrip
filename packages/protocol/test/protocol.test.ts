@@ -18,6 +18,7 @@ import {
   codexMcpOauthStatusSchema,
   codexMcpResourceReadRequestSchema,
   browserCreateSchema,
+  browserUpdateSchema,
   browserServiceFleetDiscoverySchema,
   chatAttachmentSummarySchema,
   chatCreateSchema,
@@ -2619,9 +2620,20 @@ describe("Cantrip protocol", () => {
       agentExecutionToolResultSchema.parse({
         summary: "Terminal is running.",
         target,
+        mutated: true,
         data: { status: "running" },
-      }).target,
-    ).toEqual(target);
+      }),
+    ).toMatchObject({ target, mutated: true });
+    expect(
+      agentExecutionToolCallSchema.parse({
+        callId: "call-3",
+        chatId: "chat-1",
+        executionLaneId: "lane-1",
+        workerId: "worker-1",
+        tool: "cantrip_terminal_input",
+        arguments: { target, data: "status\r" },
+      }).tool,
+    ).toBe("cantrip_terminal_input");
     expect(
       terminalSnapshotResultSchema.parse({
         terminalId: "terminal-2",
@@ -2637,6 +2649,9 @@ describe("Cantrip protocol", () => {
         terminalId: "terminal-2",
       }),
     ).toMatchObject({ type: "terminal.snapshot", maxChars: 20_000 });
+    expect(
+      browserUpdateSchema.safeParse({ url: "file:///etc/passwd" }).success,
+    ).toBe(false);
   });
 
   it("accepts non-secret Codex account and device login state", () => {

@@ -443,6 +443,10 @@ describe("Cantrip dynamic execution tools", () => {
       "cantrip_explorer_read",
       "cantrip_terminal_read",
       "cantrip_browser_services",
+      "cantrip_explorer_write",
+      "cantrip_terminal_input",
+      "cantrip_terminal_service_restart",
+      "cantrip_browser_navigate",
     ]);
     expect(
       CANTRIP_DYNAMIC_TOOLS.every(

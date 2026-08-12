@@ -85,6 +85,18 @@ const workerBridge: WorkerCommandBus = {
           markdown: true,
           version: "a".repeat(64),
         };
+      case "explorer.file.write":
+        return {
+          path: command.path,
+          content: command.content,
+          size: Buffer.byteLength(command.content),
+          markdown: command.path.endsWith(".md"),
+          version: "b".repeat(64),
+        };
+      case "terminal.input":
+      case "terminal.service.restart":
+      case "surface.configure":
+        return { accepted: true };
       case "terminal.snapshot":
         return {
           terminalId: command.terminalId,
@@ -646,6 +658,10 @@ describe.sequential("project execution placement API", () => {
         | "cantrip_explorer_read"
         | "cantrip_terminal_read"
         | "cantrip_browser_services"
+        | "cantrip_explorer_write"
+        | "cantrip_terminal_input"
+        | "cantrip_terminal_service_restart"
+        | "cantrip_browser_navigate"
         | "cantrip_worktree_status",
       arguments_: Record<string, unknown>,
       callId: string,
@@ -793,6 +809,148 @@ describe.sequential("project execution placement API", () => {
       ]),
     );
 
+    await database.repository.updateTerminalService(
+      LOCAL_USER_ID,
+      terminal.id,
+      { enabled: true, command: "pnpm dev" },
+    );
+    const write = await call(
+      "cantrip_explorer_write",
+      {
+        target: explorerTarget,
+        path: "README.md",
+        content: "updated cross-worker content",
+        version: "a".repeat(64),
+      },
+      "explorer-write",
+    );
+    expect(write.statusCode).toBe(200);
+    expect(agentExecutionToolResultSchema.parse(write.json())).toMatchObject({
+      target: explorerTarget,
+      mutated: true,
+      data: {
+        path: "README.md",
+        size: 28,
+        version: "b".repeat(64),
+      },
+    });
+    expect(JSON.stringify(write.json())).not.toContain(
+      "updated cross-worker content",
+    );
+
+    const input = await call(
+      "cantrip_terminal_input",
+      { target: terminalTarget, data: "status\r" },
+      "terminal-input",
+    );
+    expect(input.statusCode).toBe(200);
+    expect(agentExecutionToolResultSchema.parse(input.json()).mutated).toBe(
+      true,
+    );
+
+    const restarted = await call(
+      "cantrip_terminal_service_restart",
+      { target: terminalTarget },
+      "terminal-restart",
+    );
+    expect(restarted.statusCode).toBe(200);
+    expect(agentExecutionToolResultSchema.parse(restarted.json()).mutated).toBe(
+      true,
+    );
+
+    const patchedBrowser = await app.inject({
+      method: "PATCH",
+      url: `/api/browsers/${browser.id}`,
+      payload: { url: "https://example.com/from-app" },
+    });
+    expect(patchedBrowser.statusCode).toBe(200);
+    expect(browserSummarySchema.parse(patchedBrowser.json()).url).toBe(
+      "https://example.com/from-app",
+    );
+
+    const navigated = await call(
+      "cantrip_browser_navigate",
+      { target: browserTarget, url: "https://example.com/from-agent" },
+      "browser-navigate",
+    );
+    expect(navigated.statusCode).toBe(200);
+    expect(
+      agentExecutionToolResultSchema.parse(navigated.json()),
+    ).toMatchObject({
+      target: browserTarget,
+      mutated: true,
+      data: { url: "https://example.com/from-agent" },
+    });
+    expect(
+      (await database.repository.listBrowsers(LOCAL_USER_ID, projectId)).find(
+        ({ id }) => id === browser.id,
+      )?.url,
+    ).toBe("https://example.com/from-agent");
+    expect(routedCommands).toEqual(
+      expect.arrayContaining([
+        {
+          workerId: "worker-beta",
+          command: expect.objectContaining({
+            type: "explorer.file.write",
+            path: "README.md",
+            version: "a".repeat(64),
+          }),
+        },
+        {
+          workerId: "worker-beta",
+          command: expect.objectContaining({
+            type: "terminal.input",
+            terminalId: terminal.id,
+            data: "status\r",
+          }),
+        },
+        {
+          workerId: "worker-beta",
+          command: expect.objectContaining({
+            type: "terminal.service.restart",
+            terminalId: terminal.id,
+          }),
+        },
+        {
+          workerId: "worker-beta",
+          command: expect.objectContaining({
+            type: "surface.configure",
+            surfaceId: browser.id,
+            configuration: expect.objectContaining({
+              initialUrl: "https://example.com/from-agent",
+            }),
+          }),
+        },
+      ]),
+    );
+    const mutationAudits = await database.repository.listAuditEvents(
+      { limit: 100 },
+      LOCAL_USER_ID,
+    );
+    expect(
+      mutationAudits.items.filter(
+        ({ action, result }) =>
+          action === "agent.execution-target-mutated" && result === "succeeded",
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actor: { sessionId: null, userId: null },
+          resource: { id: explorer.id, type: "execution-target" },
+          metadata: expect.objectContaining({
+            tool: "cantrip_explorer_write",
+          }),
+        }),
+        expect.objectContaining({
+          actor: { sessionId: null, userId: null },
+          resource: { id: browser.id, type: "execution-target" },
+          metadata: expect.objectContaining({
+            tool: "cantrip_browser_navigate",
+          }),
+        }),
+      ]),
+    );
+
     const spoofed = await app.inject({
       method: "POST",
       url: "/api/internal/agent-tools/execution",
@@ -855,6 +1013,13 @@ describe.sequential("project execution placement API", () => {
     );
     expect(offline.statusCode).toBe(409);
     expect(offline.json()).toMatchObject({ code: "worker-offline" });
+    const offlineMutation = await call(
+      "cantrip_terminal_input",
+      { target: terminalTarget, data: "date\r" },
+      "offline-mutation",
+    );
+    expect(offlineMutation.statusCode).toBe(409);
+    expect(offlineMutation.json()).toMatchObject({ code: "worker-offline" });
     connectedWorkers.add("worker-beta");
 
     await database.repository.finishChatExecutionLane(
@@ -863,11 +1028,33 @@ describe.sequential("project execution placement API", () => {
       "idle",
     );
     const stale = await call(
-      "cantrip_terminal_read",
-      { target: terminalTarget },
+      "cantrip_terminal_input",
+      { target: terminalTarget, data: "pwd\r" },
       "stale-lane",
     );
     expect(stale.statusCode).toBe(409);
     expect(stale.json().error).toContain("active chat lane");
+    const finalMutationAudits = await database.repository.listAuditEvents(
+      { limit: 100 },
+      LOCAL_USER_ID,
+    );
+    expect(finalMutationAudits.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "agent.execution-target-mutated",
+          result: "failed",
+          metadata: expect.objectContaining({
+            tool: "cantrip_terminal_input",
+          }),
+        }),
+        expect.objectContaining({
+          action: "agent.execution-target-mutated",
+          result: "denied",
+          metadata: expect.objectContaining({
+            tool: "cantrip_terminal_input",
+          }),
+        }),
+      ]),
+    );
   });
 });

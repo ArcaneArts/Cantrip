@@ -336,6 +336,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import type {
   AppLiveResource,
   AppLiveScope,
+  BrowserUpdate,
   ChatMessage,
   ChatTurnCreate,
   CodeRuntimeStatus,
@@ -591,6 +592,12 @@ const TUNNEL_ATTACHMENT_EXPIRY_SWEEP_MS = 60_000;
 const BROWSER_FLEET_DISCOVERY_TIMEOUT_MS = 20_000;
 const BROWSER_FLEET_DISCOVERY_WORKER_LIMIT = 64;
 const BROWSER_FLEET_DISCOVERY_SERVICE_LIMIT = 1_024;
+const AGENT_EXECUTION_MUTATION_TOOLS = new Set([
+  "cantrip_explorer_write",
+  "cantrip_terminal_input",
+  "cantrip_terminal_service_restart",
+  "cantrip_browser_navigate",
+]);
 
 function workerRequestFailureStatus(error: unknown): 429 | 502 | 503 {
   if (error instanceof RelayLimitError) return 429;
@@ -2068,9 +2075,17 @@ export async function buildApp({
       await repository.appendAuditEvent({
         action: input.action,
         actorSessionId:
-          input.actorSessionId ?? (authenticated ? principal.sessionId : null),
+          input.actorSessionId === undefined
+            ? authenticated
+              ? principal.sessionId
+              : null
+            : input.actorSessionId,
         actorUserId:
-          input.actorUserId ?? (authenticated ? principal.user.id : null),
+          input.actorUserId === undefined
+            ? authenticated
+              ? principal.user.id
+              : null
+            : input.actorUserId,
         ipAddressHash: request.ip ? hashSecret(request.ip) : null,
         metadata: input.metadata,
         ownerId:
@@ -2460,6 +2475,68 @@ export async function buildApp({
     publishLiveInvalidation("remote-desktop", { entityId: surfaceId });
     publishLiveInvalidation("project-view", { entityId: surfaceId });
     return result;
+  };
+  const applyBrowserUpdate = async (
+    ownerId: string,
+    browserId: string,
+    input: BrowserUpdate,
+    options: { expectedWorkerId?: string; requireOnline?: boolean } = {},
+  ) => {
+    const context = await repository.getRemoteSurfaceExecutionContext(
+      ownerId,
+      browserId,
+    );
+    if (
+      !context ||
+      context.surface.kind !== "browser" ||
+      (options.expectedWorkerId &&
+        context.workerId !== options.expectedWorkerId)
+    ) {
+      return null;
+    }
+    const browser = await repository.updateBrowser(ownerId, browserId, input);
+    if (!browser || input.url === undefined) return browser;
+    publishLiveInvalidation("browser", {
+      entityId: browserId,
+      projectId: browser.projectId,
+    });
+    const updatedContext = await repository.getRemoteSurfaceExecutionContext(
+      ownerId,
+      browserId,
+    );
+    if (
+      !updatedContext ||
+      updatedContext.workerId !== context.workerId ||
+      updatedContext.surface.configuration.kind !== "browser"
+    ) {
+      throw new Error("Browser placement changed before configuration.");
+    }
+    if (!bridge.isConnected(context.workerId)) {
+      await updateRemoteSurfaceStatus(
+        browserId,
+        "offline",
+        "Worker is offline. The saved URL will be restored when it reconnects.",
+      );
+      if (options.requireOnline) {
+        throw new WorkerUnavailableError("Browser worker is offline.");
+      }
+      return browser;
+    }
+    try {
+      await bridge.request(
+        context.workerId,
+        {
+          type: "surface.configure",
+          surfaceId: browserId,
+          configuration: updatedContext.surface.configuration,
+        },
+        { timeoutMs: 20_000 },
+      );
+    } catch (error) {
+      await updateRemoteSurfaceStatus(browserId, "error", errorMessage(error));
+      if (options.requireOnline) throw error;
+    }
+    return browser;
   };
   const updateTerminalStatus = async (
     terminalId: string,
@@ -3006,6 +3083,37 @@ export async function buildApp({
     }
     return Number(value);
   };
+  const boundedToolString = (
+    input: Record<string, unknown>,
+    key: string,
+    maximum: number,
+    allowEmpty = false,
+  ) => {
+    const value = input[key];
+    if (
+      typeof value !== "string" ||
+      (!allowEmpty && value.length === 0) ||
+      value.length > maximum
+    ) {
+      throw new Error(
+        `${key} must be ${allowEmpty ? "at most" : "from 1 to"} ${maximum} characters.`,
+      );
+    }
+    return value;
+  };
+  const browserToolUrl = (input: Record<string, unknown>) => {
+    const value = boundedToolString(input, "url", 4_096);
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      throw new Error("url must be a valid HTTP or HTTPS URL.");
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error("url must use HTTP or HTTPS.");
+    }
+    return url.toString();
+  };
 
   const executeAgentExecutionTool = async (
     call: AgentExecutionToolCall,
@@ -3237,6 +3345,142 @@ export async function buildApp({
           summary: `Found ${services.length} browser service${services.length === 1 ? "" : "s"} on ${resolution.worker.name}.`,
           target,
           data: services,
+        });
+      }
+      case "cantrip_explorer_write": {
+        const target = surfaceTargetArgument(call.arguments, "explorer");
+        const resolution = await resolveTarget(target);
+        const explorer = await repository.getExplorerExecutionContext(
+          applicationOwnerId(),
+          target.surfaceId,
+        );
+        if (
+          !explorer ||
+          explorer.workerId !== resolution.placement.workerId ||
+          explorer.worktreeId !== resolution.placement.worktreeId
+        ) {
+          throw new Error("Explorer placement changed before the write.");
+        }
+        const requestedPath = boundedToolPath(call.arguments, false);
+        const version = boundedToolString(call.arguments, "version", 64);
+        if (!/^[a-f0-9]{64}$/u.test(version)) {
+          throw new Error("version must be a 64-character lowercase hash.");
+        }
+        const file = explorerFileSchema.parse(
+          await bridge.request(resolution.placement.workerId, {
+            type: "explorer.file.write",
+            root: explorer.root,
+            path: requestedPath,
+            content: boundedToolString(
+              call.arguments,
+              "content",
+              500_000,
+              true,
+            ),
+            version,
+          }),
+        );
+        if (file.path !== requestedPath) {
+          throw new Error("Explorer returned a stale write response.");
+        }
+        publishLiveInvalidation("explorer", {
+          entityId: target.surfaceId,
+          projectId: context.projectId,
+        });
+        return agentExecutionToolResultSchema.parse({
+          summary: `Saved ${file.path}.`,
+          target,
+          worktreeId: resolution.placement.worktreeId,
+          mutated: true,
+          data: {
+            path: file.path,
+            size: file.size,
+            markdown: file.markdown,
+            version: file.version,
+          },
+        });
+      }
+      case "cantrip_terminal_input": {
+        const target = surfaceTargetArgument(call.arguments, "terminal");
+        const resolution = await resolveTarget(target);
+        const terminal = await repository.getTerminalExecutionContext(
+          applicationOwnerId(),
+          target.surfaceId,
+        );
+        if (
+          !terminal ||
+          terminal.workerId !== resolution.placement.workerId ||
+          terminal.worktreeId !== resolution.placement.worktreeId
+        ) {
+          throw new Error("Terminal placement changed before input.");
+        }
+        await bridge.request(
+          resolution.placement.workerId,
+          {
+            type: "terminal.input",
+            terminalId: target.surfaceId,
+            data: boundedToolString(call.arguments, "data", 100_000),
+          },
+          { timeoutMs: 30_000 },
+        );
+        return agentExecutionToolResultSchema.parse({
+          summary: `Sent input to the terminal on ${resolution.worker.name}.`,
+          target,
+          worktreeId: resolution.placement.worktreeId,
+          mutated: true,
+        });
+      }
+      case "cantrip_terminal_service_restart": {
+        const target = surfaceTargetArgument(call.arguments, "terminal");
+        const resolution = await resolveTarget(target);
+        const terminal = await repository.getTerminalExecutionContext(
+          applicationOwnerId(),
+          target.surfaceId,
+        );
+        if (
+          !terminal ||
+          terminal.workerId !== resolution.placement.workerId ||
+          terminal.worktreeId !== resolution.placement.worktreeId
+        ) {
+          throw new Error("Terminal placement changed before restart.");
+        }
+        if (!terminal.service.enabled) {
+          throw new Error("Terminal service is disabled.");
+        }
+        await bridge.request(
+          resolution.placement.workerId,
+          {
+            type: "terminal.service.restart",
+            terminalId: target.surfaceId,
+          },
+          { timeoutMs: 30_000 },
+        );
+        await updateTerminalStatus(target.surfaceId, "running");
+        return agentExecutionToolResultSchema.parse({
+          summary: `Restarted the terminal service on ${resolution.worker.name}.`,
+          target,
+          worktreeId: resolution.placement.worktreeId,
+          mutated: true,
+        });
+      }
+      case "cantrip_browser_navigate": {
+        const target = surfaceTargetArgument(call.arguments, "browser");
+        const resolution = await resolveTarget(target);
+        const browser = await applyBrowserUpdate(
+          applicationOwnerId(),
+          target.surfaceId,
+          { url: browserToolUrl(call.arguments) },
+          {
+            expectedWorkerId: resolution.placement.workerId,
+            requireOnline: true,
+          },
+        );
+        if (!browser) throw new Error("Browser not found.");
+        return agentExecutionToolResultSchema.parse({
+          summary: `Navigated ${browser.title} on ${resolution.worker.name}.`,
+          target,
+          mutated: true,
+          data: browser,
         });
       }
       case "cantrip_worktrees_list": {
@@ -4839,6 +5083,7 @@ export async function buildApp({
           projectReplicas: true,
           replicaProvisioning: true,
           browserFleetDiscovery: true,
+          crossWorkerExecutionTargets: true,
           workerSwitching: true,
           gitSync: true,
           worktrees: true,
@@ -12934,7 +13179,7 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const browser = await repository.updateBrowser(
+      const browser = await applyBrowserUpdate(
         applicationOwnerId(),
         request.params.browserId,
         input.data,
@@ -16475,10 +16720,60 @@ export async function buildApp({
         return reply.code(404).send({ error: "Worker not found." });
       }
       return runAsOwner(workerAuth.ownerId, async () => {
+        const mutation = AGENT_EXECUTION_MUTATION_TOOLS.has(input.data.tool);
+        const parsedTarget = executionTargetSchema.safeParse(
+          input.data.arguments.target,
+        );
+        const targetResourceId = parsedTarget.success
+          ? parsedTarget.data.kind === "surface"
+            ? parsedTarget.data.surfaceId
+            : parsedTarget.data.kind === "worktree"
+              ? parsedTarget.data.worktreeId
+              : parsedTarget.data.kind === "worker"
+                ? parsedTarget.data.workerId
+                : parsedTarget.data.kind === "replica"
+                  ? parsedTarget.data.projectReplicaId
+                  : parsedTarget.data.projectId
+          : null;
         try {
           const result = await executeAgentExecutionTool(input.data);
+          if (mutation) {
+            await appendAudit(request, {
+              action: "agent.execution-target-mutated",
+              actorSessionId: null,
+              actorUserId: null,
+              metadata: {
+                sourceWorkerId: input.data.workerId,
+                tool: input.data.tool,
+              },
+              ownerId: workerAuth.ownerId,
+              resourceId: targetResourceId,
+              resourceType: "execution-target",
+              result: "succeeded",
+            });
+          }
           return reply.send(agentExecutionToolResultSchema.parse(result));
         } catch (error) {
+          if (mutation) {
+            await appendAudit(request, {
+              action: "agent.execution-target-mutated",
+              actorSessionId: null,
+              actorUserId: null,
+              metadata: {
+                sourceWorkerId: input.data.workerId,
+                tool: input.data.tool,
+              },
+              ownerId: workerAuth.ownerId,
+              resourceId: targetResourceId,
+              resourceType: "execution-target",
+              result:
+                error instanceof ExecutionLaneConflictError ||
+                (error instanceof ExecutionPlacementUnavailableError &&
+                  error.code === "target-mismatch")
+                  ? "denied"
+                  : "failed",
+            });
+          }
           const status =
             error instanceof WorkerUnavailableError
               ? 503

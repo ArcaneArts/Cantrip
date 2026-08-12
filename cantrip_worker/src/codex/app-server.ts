@@ -1038,6 +1038,10 @@ const EXECUTION_TOOL_NAMES = new Set<AgentExecutionToolName>([
   "cantrip_explorer_read",
   "cantrip_terminal_read",
   "cantrip_browser_services",
+  "cantrip_explorer_write",
+  "cantrip_terminal_input",
+  "cantrip_terminal_service_restart",
+  "cantrip_browser_navigate",
 ]);
 
 const worktreeIdProperty = {
@@ -1395,6 +1399,78 @@ export const CANTRIP_EXECUTION_TARGET_DYNAMIC_TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    type: "function",
+    name: "cantrip_explorer_write",
+    description:
+      "Write a bounded text file through an exact Explorer target using its current version token. Concurrent changes are rejected.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: surfaceTargetProperty("explorer"),
+        path: { type: "string", description: "Explorer-relative file path." },
+        content: {
+          type: "string",
+          maxLength: 500000,
+          description: "Complete replacement UTF-8 text content.",
+        },
+        version: {
+          type: "string",
+          pattern: "^[a-f0-9]{64}$",
+          description: "Version returned by the most recent Explorer read.",
+        },
+      },
+      required: ["target", "path", "content", "version"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "cantrip_terminal_input",
+    description:
+      "Send bounded input to an exact running Terminal target. Include a carriage return when submitting a shell command.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: surfaceTargetProperty("terminal"),
+        data: { type: "string", minLength: 1, maxLength: 100000 },
+      },
+      required: ["target", "data"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "cantrip_terminal_service_restart",
+    description:
+      "Restart the enabled service owned by an exact Terminal target.",
+    inputSchema: {
+      type: "object",
+      properties: { target: surfaceTargetProperty("terminal") },
+      required: ["target"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "cantrip_browser_navigate",
+    description:
+      "Persist a new HTTP(S) URL for an exact Browser target and navigate its live worker session when one exists.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: surfaceTargetProperty("browser"),
+        url: {
+          type: "string",
+          format: "uri",
+          pattern: "^https?://",
+          maxLength: 4096,
+        },
+      },
+      required: ["target", "url"],
+      additionalProperties: false,
+    },
+  },
 ] as const;
 
 export const CANTRIP_DYNAMIC_TOOLS = [
@@ -1403,7 +1479,7 @@ export const CANTRIP_DYNAMIC_TOOLS = [
 ] as const;
 
 const CANTRIP_WORKTREE_DEVELOPER_INSTRUCTIONS =
-  "Cantrip owns Git worktree paths, execution lanes, and cross-worker routing. Use the cantrip_worktree_* tools instead of invoking git worktree directly. Use cantrip_targets_list and exact returned targets before addressing Cantrip surfaces; unavailable targets are never silently substituted. A successful acquire, switch, or release schedules a safe runtime transition; immediately finish the current turn after that tool returns so Cantrip can checkpoint and continue in the selected worktree. Never claim that CWD changed inside the current turn.";
+  "Cantrip owns Git worktree paths, execution lanes, and cross-worker routing. Use the cantrip_worktree_* tools instead of invoking git worktree directly. Use cantrip_targets_list and exact returned targets before reading or mutating Cantrip surfaces; unavailable targets are never silently substituted. Explorer writes require the version from cantrip_explorer_read. A successful acquire, switch, or release schedules a safe runtime transition; immediately finish the current turn after that tool returns so Cantrip can checkpoint and continue in the selected worktree. Never claim that CWD changed inside the current turn.";
 
 export function codexWorktreeTurnPolicy(
   options: Pick<
