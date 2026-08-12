@@ -1,0 +1,196 @@
+# Hosted deployment and recovery
+
+Cantrip's hosted server is the authenticated rendezvous point for applications
+and worker-initiated outbound connections. PostgreSQL owns durable account,
+conversation, configuration, and routing state. Workers own repositories,
+terminals, Codex runtimes, Code profiles, browser processes, and desktop state.
+The server never becomes a shared filesystem.
+
+This guide describes the supported container boundary and equivalent native
+service operation. It assumes two public HTTPS names:
+
+- `api.cantrip.example` for the API and control/data WebSockets;
+- `code.cantrip.example` for the isolated Cantrip Code surface.
+
+The application origin is separate and must appear exactly in
+`CANTRIP_APP_ORIGINS`. Do not place the API and Code surface on the same origin.
+
+## Container quick start
+
+Requirements:
+
+- Docker Engine 27 or newer with Compose v2;
+- public DNS for the API and Code names;
+- ports 80 and 443 reaching the proxy host;
+- a separately hosted Cantrip web app or a native Cantrip client;
+- enough build capacity for the pinned Codex and Cantrip Code toolchains.
+
+Create the operator environment without committing it:
+
+```bash
+cp deploy/hosted.env.example deploy/hosted.env
+openssl rand -base64 32
+openssl rand -hex 32
+```
+
+Use the first value as the encryption keyring entry and the second as the
+one-time first-owner bootstrap token. Set a random URL-safe PostgreSQL password
+in both `POSTGRES_PASSWORD` and `DATABASE_URL`. Then validate and start the
+control plane:
+
+```bash
+docker compose --env-file deploy/hosted.env \
+  -f deploy/compose.hosted.yml config --quiet
+docker compose --env-file deploy/hosted.env \
+  -f deploy/compose.hosted.yml --profile proxy up -d --build
+```
+
+The server's published 4310/4311 ports bind only to host loopback for
+diagnostics. The fixed internal proxy address is the only trusted forwarding
+peer. The Caddy profile obtains certificates and serves the two public names.
+Use the supplied Nginx example when TLS is managed elsewhere.
+
+After the first owner is created, remove
+`CANTRIP_ADMIN_BOOTSTRAP_TOKEN` from the environment and recreate the server.
+Keep public registration disabled unless the operator intentionally accepts new
+accounts.
+
+The optional worker image is Linux-only and intended for headless repositories,
+Codex, terminals, and Code. It cannot expose the Docker host's desktop or normal
+GUI browser sessions. Generate a one-time worker link code in Settings, place it
+in `CANTRIP_WORKER_ENROLLMENT_CODE`, and run:
+
+```bash
+docker compose --env-file deploy/hosted.env \
+  -f deploy/compose.hosted.yml --profile worker up -d --build worker
+```
+
+Remove the link code and recreate the worker after enrollment. The `worker-data`
+volume retains its unique credential, identity, repositories, Code profile, and
+extensions. Never clone this volume to create a second worker.
+
+## Native server and worker packages
+
+`pnpm bundle` creates platform-native server, worker, and desktop archives. The
+server and worker archives contain their own Node runtime. Copy `.env.example`
+to `.env` and use `start.sh` or `start.cmd`; no system Node installation is
+required. The server archive also includes `migrate.sh` and `migrate.cmd` for an
+explicit migration-only run.
+
+For a native worker, keep `CANTRIP_WORKER_DATA_DIR` on a persistent local disk.
+Upgrade by stopping the service, replacing the read-only application directory,
+and restarting with the same data directory. Re-enroll only after deliberate
+credential revocation or loss; an ordinary upgrade keeps the worker identity.
+
+## Migrations and rolling upgrades
+
+Cantrip migrations are forward-only. Take a verified PostgreSQL backup and keep
+the active secret-encryption keyring before applying an upgrade. Run exactly one
+migration job against the target release:
+
+```bash
+docker compose --env-file deploy/hosted.env \
+  -f deploy/compose.hosted.yml run --rm --no-deps server \
+  /opt/cantrip/migrate.sh
+```
+
+Normal server startup also applies pending migrations, which is convenient for
+one-instance installations. Multi-instance operators should use the explicit
+job, then replace server replicas gradually. Do not run an older server against
+a schema after its documented compatibility window. Rollback means restoring
+the pre-upgrade database and matching keyring, not running down migrations.
+
+Workers may be upgraded independently after the server. Drain or finish active
+Codex, terminal, Code, browser, and desktop work first. A reconnect reports the
+new worker/runtime versions and preserves server-owned history.
+
+## PostgreSQL backup and restore
+
+Create a compressed logical backup without placing credentials on the command
+line:
+
+```bash
+mkdir -p backups
+docker compose --env-file deploy/hosted.env \
+  -f deploy/compose.hosted.yml exec -T postgres \
+  sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom' \
+  > "backups/cantrip-$(date -u +%Y%m%dT%H%M%SZ).dump"
+```
+
+Also back up, through the operator's secret manager:
+
+- every key still present in `CANTRIP_SECRET_ENCRYPTION_KEYS`;
+- the Compose configuration and exact Cantrip release identifier;
+- Caddy data when preserving the current ACME account is important.
+
+Do not put secrets in the database backup directory. Losing the keyring makes
+encrypted provider and MCP credentials unrecoverable even when PostgreSQL is
+intact. Redis is coordination/cache state and is not authoritative backup data.
+
+Test restoration on an isolated database regularly:
+
+```bash
+cat backups/cantrip-YYYYMMDDTHHMMSSZ.dump | \
+  docker compose --env-file deploy/hosted.env \
+    -f deploy/compose.hosted.yml exec -T postgres \
+    sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+      --clean --if-exists --no-owner'
+```
+
+Stop Cantrip server replicas before an in-place restore. Restore into an empty or
+isolated PostgreSQL instance, supply the matching historical keyring, run the
+target release's migration command, and verify account sign-in, worker presence,
+project history, and a secret-backed provider before changing production DNS.
+
+Worker volumes require their own filesystem backup policy if repository clones,
+dirty worktrees, Code profiles, or local artifacts must survive loss. Git remotes
+are the supported cross-worker source boundary; a server backup cannot recreate
+unpushed worker-local state.
+
+## Reverse proxy and transport requirements
+
+Only HTTPS/WSS is supported for hosted traffic. The proxy must preserve `Host`,
+set `X-Forwarded-Proto: https`, append a syntactically valid
+`X-Forwarded-For`, pass WebSocket upgrades, and disable response buffering for
+long-lived streams. Configure `CANTRIP_TRUSTED_PROXIES` as the smallest possible
+address or subnet containing only the proxy. Direct clients must not be able to
+reach the Node ports.
+
+The Code origin is intentionally isolated. Do not rewrite it below the API path
+or relax frame ancestors beyond exact application origins. The server refuses
+wildcard credentialed origins and ambiguous forwarding headers.
+
+For remote desktop and browser WebRTC, configure relay-only TURN with
+`CANTRIP_TURN_URLS` and `CANTRIP_TURN_SHARED_SECRET`. Use TLS (`turns:`) outside
+trusted networks, monitor TURN egress, and plan capacity for the full encoded
+desktop/browser bandwidth. WebSocket relay remains the compatibility fallback
+and also consumes server bandwidth.
+
+## Persistence, permissions, and operations
+
+The images run as UID/GID `10001` and use read-only root filesystems. Named
+volumes are initialized with correct ownership. For bind mounts, create the
+directories first and assign them to `10001:10001`. Never mount the Docker
+socket into a worker.
+
+Monitor container restarts, PostgreSQL capacity/latency, Redis availability,
+server health/readiness, worker presence, command failures, active WebSockets,
+relay bandwidth, scheduler lag, and TURN usage. Health and readiness semantics
+are documented by the server version; a live process does not imply that
+PostgreSQL, shared coordination, or a required worker is ready.
+
+When a worker is offline, server-owned conversations and configuration remain
+available while worker-backed tabs become unavailable/read-only. Do not move a
+dirty worktree, running process, or active agent to another worker implicitly.
+
+## Incident recovery checklist
+
+1. Block new public traffic and preserve logs without copying secrets, prompts,
+   source, or terminal contents into the incident system.
+2. Revoke affected sessions and worker credentials from a trusted account.
+3. Rotate provider credentials and add a new envelope key. Keep old envelope
+   keys until all rows rewrap and a verified backup completes.
+4. Restore PostgreSQL plus the matching keyring when durable state is damaged.
+5. Re-enroll workers only when their credential or identity store is lost.
+6. Validate cross-account isolation, worker routing, Code isolation, and TURN
+   fallback before reopening traffic.

@@ -19,3 +19,8 @@ Cantrip Code editor processes stay warm after their last tunnel closes and are
 reclaimed after `CANTRIP_CODE_IDLE_TIMEOUT_MS` (30 minutes by default). Durable
 session identity, profiles, extensions, and workspace state remain available
 for the next authorized attachment.
+
+The supported Linux container is headless: repository, Codex, terminal, and
+Code capabilities work, but host GUI browser/desktop capture does not. Persist
+the entire worker data directory and never clone it to manufacture another
+worker identity.

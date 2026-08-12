@@ -1,0 +1,15 @@
+{
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+{$CANTRIP_API_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy server:4310
+}
+
+{$CANTRIP_CODE_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy server:4311
+}

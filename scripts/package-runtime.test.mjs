@@ -23,7 +23,7 @@ test("bundles a self-contained Node runtime and relative launchers", async () =>
       nodeVersion: "v24.0.0-test",
       platform: "darwin",
     });
-    await writeServiceLaunchers(distribution);
+    await writeServiceLaunchers(distribution, { migrations: true });
 
     assert.equal(await readFile(bundledNode, "utf8"), "node-binary");
     assert.equal(
@@ -39,6 +39,14 @@ test("bundles a self-contained Node runtime and relative launchers", async () =>
     assert.match(
       await readFile(path.join(distribution, "start.cmd"), "utf8"),
       /%~dp0runtime\\node\.exe/u,
+    );
+    assert.match(
+      await readFile(path.join(distribution, "migrate.sh"), "utf8"),
+      /dist\/migrate\.js/u,
+    );
+    assert.match(
+      await readFile(path.join(distribution, "migrate.cmd"), "utf8"),
+      /dist\\migrate\.js/u,
     );
   } finally {
     await rm(root, { force: true, recursive: true });

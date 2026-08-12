@@ -1,5 +1,9 @@
 # Distribution and server connections
 
+Production container, Compose, reverse-proxy, PostgreSQL migration,
+backup/restore, TURN, and rolling-upgrade operations are documented in
+[Hosted deployment and recovery](HOSTED_DEPLOYMENT.md).
+
 Cantrip produces three independent artifacts: Server, Worker, and Desktop. The
 Server and Worker are Node.js deployment trees. Desktop is a native Tauri
 bundle containing the frontend plus those same service trees and the Node.js

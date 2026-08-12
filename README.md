@@ -104,7 +104,12 @@ The current local mode has one anonymous Cantrip user and no Cantrip sign-in scr
 
 The account area in the main sidebar is also the server switcher. Its **Add server** action saves a named server origin in client bootstrap storage, tests `/api/bootstrap`, and switches every HTTP and WebSocket request after a reload. The built-in **Local** profile always selects the desktop-bundled stack in a release build and the normal development stack in `devtop`. Server profiles contain no credentials; hosted sessions remain in server-owned HttpOnly cookies.
 
-Standalone server and worker packages establish the deployable boundary for the hosted control plane. The server supports anonymous loopback mode, protected single-user password sessions, email/password account sessions, tenant ownership, independently revocable worker enrollment, versioned encryption of provider API keys and MCP secret values at rest, fail-closed hosted HTTP/origin/proxy configuration, and bounded API, pairing, upload, WebSocket, and worker-command traffic. The remaining hosted-relay milestones add shared-instance coordination, durable quotas, audit visibility, and supported production operations, so this intermediate build is not yet a complete public service deployment.
+Standalone server and worker packages establish the deployable boundary for the hosted control plane. The server supports anonymous loopback mode, protected single-user password sessions, email/password account sessions, tenant ownership, independently revocable worker enrollment, versioned encryption of provider API keys and MCP secret values at rest, fail-closed hosted HTTP/origin/proxy configuration, and bounded API, pairing, upload, WebSocket, and worker-command traffic. The remaining hosted-relay milestones add shared-instance coordination, durable quotas, and audit visibility, so this intermediate build is not yet a complete public service deployment.
+
+Production Linux server/worker images, PostgreSQL/Redis Compose services,
+Caddy and Nginx proxy examples, explicit migrations, and backup/restore guidance
+live in the [hosted deployment guide](docs/HOSTED_DEPLOYMENT.md). Native server
+and worker archives remain self-contained and require no external Node runtime.
 
 Conversation history and configuration live on the server, so they remain readable when a worker is unavailable. Project files and live runtime state remain on the worker. Moving a conversation to another worker will therefore require a compatible checkout and an explicit handoff rather than pretending that uncommitted files moved automatically.
 
