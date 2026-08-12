@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export * from "./tunnel-data-plane.js";
+
 export * from "./live.js";
 
 import { projectAutomationConditionSchema } from "./automations.js";

@@ -2,13 +2,16 @@ import {
   decodeCodeTunnelFrame,
   decodeProjectShareTunnelFrame,
   decodeRemoteSurfaceFrame,
+  decodeTunnelDataPlaneFrame,
   encodeCodeTunnelFrame,
   encodeProjectShareTunnelFrame,
   encodeRemoteSurfaceFrame,
+  encodeTunnelDataPlaneFrame,
   workerNotificationEnvelopeSchema,
   type CodeTunnelFrameHeader,
   type ProjectShareTunnelFrameHeader,
   type RemoteSurfaceFrameHeader,
+  type TunnelDataPlaneFrameHeader,
 } from "@cantrip/protocol";
 import { describe, expect, it, vi } from "vitest";
 
@@ -148,6 +151,56 @@ describe("WorkerBridge Remote Surface transport", () => {
       decodeProjectShareTunnelFrame(socket.sent.at(-1) as Uint8Array).header
         .kind,
     ).toBe("http-request-end");
+    bridge.close();
+  });
+
+  it("multiplexes generic tunnel frames without leaking them to legacy listeners", () => {
+    const bridge = new WorkerBridge();
+    const socket = new TestWorkerSocket();
+    bridge.attach("worker-1", socket);
+    const tunnelListener = vi.fn();
+    const codeListener = vi.fn();
+    const shareListener = vi.fn();
+    bridge.subscribeTunnelDataPlaneFrames("worker-1", tunnelListener);
+    bridge.subscribeCodeTunnelFrames("worker-1", codeListener);
+    bridge.subscribeProjectShareTunnelFrames("worker-1", shareListener);
+    const tunnelHeader: TunnelDataPlaneFrameHeader = {
+      protocolVersion: 1,
+      tunnelId: "tunnel-1",
+      attachmentId: "attachment-1",
+      sourceEndpointId: "desktop-1",
+      destinationEndpointId: "worker-1",
+      connectionId: "connection-1",
+      sequence: 0,
+      kind: "data",
+      direction: "destination-to-source",
+    };
+
+    socket.emit(
+      "message",
+      encodeTunnelDataPlaneFrame(tunnelHeader, new Uint8Array([11, 12])),
+      true,
+    );
+    expect(tunnelListener).toHaveBeenCalledWith(
+      tunnelHeader,
+      new Uint8Array([11, 12]),
+    );
+    expect(codeListener).not.toHaveBeenCalled();
+    expect(shareListener).not.toHaveBeenCalled();
+
+    expect(
+      bridge.sendTunnelDataPlaneFrame(
+        "worker-1",
+        { ...tunnelHeader, sequence: 1 },
+        new Uint8Array([13]),
+      ),
+    ).toBe(true);
+    expect(
+      decodeTunnelDataPlaneFrame(socket.sent.at(-1) as Uint8Array),
+    ).toMatchObject({
+      header: { tunnelId: "tunnel-1", sequence: 1 },
+      payload: new Uint8Array([13]),
+    });
     bridge.close();
   });
 
