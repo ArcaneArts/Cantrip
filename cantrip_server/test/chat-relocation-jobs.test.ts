@@ -439,6 +439,16 @@ describe.sequential("durable chat relocation jobs", () => {
       "preparing-replica",
       { stage: "preparing-replica", percent: 20, message: "Preparing." },
     );
+    expect(
+      await database.repository.chatRelocationJobs.recoverInterrupted(false),
+    ).toBe(0);
+    expect(
+      await database.repository.chatRelocationJobs.renewLease(
+        job.id,
+        firstAttempt!.commandId,
+        firstAttempt!.job.attempt,
+      ),
+    ).toBe(true);
 
     await database.close();
     database = await connectDatabase(config);

@@ -255,6 +255,15 @@ dispatchers to be fenced during temporary database or worker latency. Monitor
 `cantrip_scheduler_lease_contentions_total`,
 `cantrip_scheduler_lease_recoveries_total`, dispatch failures, and maximum lag.
 
+Project replica jobs and chat relocations follow the same PostgreSQL-authority
+principle without binding ownership to a particular server instance. Executors
+renew short durable leases while commands run. Coordinated replicas leave fresh
+claims alone at startup and sweep expired claims every 30 seconds, while command
+and attempt fencing rejects late progress or completion from the crashed holder.
+Long replica operations and final Codex hydration have 30-minute request
+deadlines. Repeated recovery or timeout failures remain visible on the durable
+job rather than triggering an implicit project, chat, or dirty-worktree move.
+
 Security audit events are durable PostgreSQL records and are included in normal
 database backups. Account users can review their own audit stream and current
 active sessions; server owners/admins can review the global stream. Establish a
@@ -301,6 +310,10 @@ dirty worktree, running process, or active agent to another worker implicitly.
   contention, and recovery metrics with
   `CANTRIP_SCHEDULER_LEASE_TTL_MS`. A stale process cannot finalize after a
   higher fencing token has recovered the occurrence.
+- **Replica or relocation work is replayed:** inspect the durable job attempt,
+  command ID, error, target worker health, and server logs. A coordinated peer
+  waits for lease expiry before replay; repeated 30-minute timeouts usually
+  indicate a stuck worker operation or an undersized deployment boundary.
 
 Keep request IDs and bounded server/worker logs when escalating a failure. Do
 not attach cookies, worker credentials, provider keys, prompts, terminal

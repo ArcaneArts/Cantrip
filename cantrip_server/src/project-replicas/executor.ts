@@ -27,10 +27,14 @@ export interface ProjectReplicaJobLiveChange {
 }
 
 const MAX_CONCURRENT_REPLICA_JOBS = 4;
+const JOB_LEASE_RENEWAL_INTERVAL_MS = 30_000;
+const JOB_RECOVERY_SWEEP_INTERVAL_MS = 30_000;
+export const PROJECT_REPLICA_COMMAND_TIMEOUT_MS = 30 * 60_000;
 
 export class ProjectReplicaJobExecutor {
   readonly #active = new Set<Promise<void>>();
   #drainPromise: Promise<void> | null = null;
+  #recoveryTimer: ReturnType<typeof setInterval> | null = null;
   #rerunRequested = false;
   #stopping = false;
 
@@ -43,8 +47,26 @@ export class ProjectReplicaJobExecutor {
     ) => void = () => undefined,
   ) {}
 
-  async recoverAfterRestart(): Promise<number> {
-    return this.repository.projectReplicaJobs.recoverInterrupted();
+  async recoverAfterRestart(force = true): Promise<number> {
+    return this.repository.projectReplicaJobs.recoverInterrupted(force);
+  }
+
+  startRecoverySweep(): void {
+    if (this.#recoveryTimer || this.#stopping) return;
+    this.#recoveryTimer = setInterval(() => {
+      void this.repository.projectReplicaJobs
+        .recoverInterrupted(false)
+        .then((recovered) => {
+          if (recovered > 0) this.queueAvailable();
+        })
+        .catch((error: unknown) => {
+          this.logger.error(
+            { err: error },
+            "Could not recover expired project replica job leases",
+          );
+        });
+    }, JOB_RECOVERY_SWEEP_INTERVAL_MS);
+    this.#recoveryTimer.unref();
   }
 
   queueAvailable(): void {
@@ -78,6 +100,10 @@ export class ProjectReplicaJobExecutor {
 
   stop(): void {
     this.#stopping = true;
+    if (this.#recoveryTimer) {
+      clearInterval(this.#recoveryTimer);
+      this.#recoveryTimer = null;
+    }
   }
 
   async drain(): Promise<void> {
@@ -110,6 +136,31 @@ export class ProjectReplicaJobExecutor {
 
   async #execute(claimed: ClaimedProjectReplicaJob): Promise<void> {
     const { job } = claimed;
+    let renewalInFlight = false;
+    const renewalTimer = setInterval(() => {
+      if (renewalInFlight) return;
+      renewalInFlight = true;
+      void this.repository.projectReplicaJobs
+        .renewLease(job.id, claimed.commandId, job.attempt)
+        .then((renewed) => {
+          if (!renewed) {
+            this.logger.warn(
+              { projectReplicaJobId: job.id, attempt: job.attempt },
+              "Project replica job no longer owns its durable lease",
+            );
+          }
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            { err: error, projectReplicaJobId: job.id, attempt: job.attempt },
+            "Could not renew project replica job lease",
+          );
+        })
+        .finally(() => {
+          renewalInFlight = false;
+        });
+    }, JOB_LEASE_RENEWAL_INTERVAL_MS);
+    renewalTimer.unref();
     try {
       const worker = await this.repository.getWorker(
         claimed.ownerId,
@@ -173,7 +224,10 @@ export class ProjectReplicaJobExecutor {
           this.onChanged({ ownerId: claimed.ownerId, job: updated });
         }
       };
-      const options = { timeoutMs: null, onEvent };
+      const options = {
+        timeoutMs: PROJECT_REPLICA_COMMAND_TIMEOUT_MS,
+        onEvent,
+      };
       let settled: ProjectReplicaJobSummary;
       if (job.kind === "provision") {
         const result = projectReplicaProvisionResultSchema.parse(
@@ -358,6 +412,8 @@ export class ProjectReplicaJobExecutor {
           throw settleError;
         }
       }
+    } finally {
+      clearInterval(renewalTimer);
     }
   }
 

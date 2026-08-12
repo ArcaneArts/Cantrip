@@ -234,6 +234,27 @@ secondary suspended lanes and live workflow leases, ignores idle Primary lanes,
 and creates at most one active owner for each existing project branch. Losing
 legacy contenders must reacquire and will receive the normal branch conflict.
 
+## Durable job ownership and failover
+
+Project replica operations and chat relocations are PostgreSQL-backed jobs. A
+server claim carries a command ID, attempt number, and two-minute lease. The
+active executor renews that lease every 30 seconds, including while a worker is
+cloning, synchronizing, transferring context, or hydrating Codex. Progress and
+state transitions also extend the lease.
+
+A coordinated server replica never requeues an unexpired claim during startup.
+Every replica instead scans for expired claims every 30 seconds and may replay
+only those jobs. Command ID and attempt checks fence progress and completion
+from the former holder after recovery. Single-instance local mode retains eager
+startup recovery because no peer process can still own the command.
+
+Replica worker commands and final runtime hydration have explicit 30-minute
+deadlines. A timeout becomes a visible retryable job failure; it cannot leave a
+server request waiting forever. Worker-side job and snapshot idempotency plus
+server-side attempt fencing make the retry safe, while relocation still refuses
+dirty worktrees, revision drift, unavailable attachments, and incompatible
+worker capabilities.
+
 ## Authority boundaries
 
 | Concern                                      | App                            | Server                         | Worker                        |

@@ -24,7 +24,7 @@ type ProjectReplicaJobDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type ProjectReplicaJobRow = typeof schema.projectReplicaJobs.$inferSelect;
 
 const ACTIVE_STATES = ["queued", "running", "blocked"] as const;
-const JOB_LEASE_MS = 15 * 60_000;
+export const PROJECT_REPLICA_JOB_LEASE_MS = 2 * 60_000;
 
 export class ProjectReplicaJobConflictError extends Error {}
 export class ProjectReplicaJobNotFoundError extends Error {}
@@ -678,8 +678,7 @@ export class ProjectReplicaJobRepository {
       );
   }
 
-  async recoverInterrupted(): Promise<number> {
-    const now = new Date();
+  async recoverInterrupted(force = true, now = new Date()): Promise<number> {
     const rows = await this.database
       .update(schema.projectReplicaJobs)
       .set({
@@ -699,9 +698,43 @@ export class ProjectReplicaJobRepository {
         errorRetryable: null,
         updatedAt: now,
       })
-      .where(eq(schema.projectReplicaJobs.state, "running"))
+      .where(
+        force
+          ? eq(schema.projectReplicaJobs.state, "running")
+          : and(
+              eq(schema.projectReplicaJobs.state, "running"),
+              or(
+                isNull(schema.projectReplicaJobs.leaseExpiresAt),
+                lte(schema.projectReplicaJobs.leaseExpiresAt, now),
+              ),
+            ),
+      )
       .returning({ id: schema.projectReplicaJobs.id });
     return rows.length;
+  }
+
+  async renewLease(
+    jobId: string,
+    commandId: string,
+    attempt: number,
+  ): Promise<boolean> {
+    const now = new Date();
+    const rows = await this.database
+      .update(schema.projectReplicaJobs)
+      .set({
+        leaseExpiresAt: new Date(now.getTime() + PROJECT_REPLICA_JOB_LEASE_MS),
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.projectReplicaJobs.id, jobId),
+          eq(schema.projectReplicaJobs.state, "running"),
+          eq(schema.projectReplicaJobs.commandId, commandId),
+          eq(schema.projectReplicaJobs.attempt, attempt),
+        ),
+      )
+      .returning({ id: schema.projectReplicaJobs.id });
+    return rows.length === 1;
   }
 
   async claimNext(): Promise<ClaimedProjectReplicaJob | null> {
@@ -732,7 +765,9 @@ export class ProjectReplicaJobRepository {
           stateRevision: candidate.stateRevision + 1,
           attempt: candidate.attempt + 1,
           commandId,
-          leaseExpiresAt: new Date(now.getTime() + JOB_LEASE_MS),
+          leaseExpiresAt: new Date(
+            now.getTime() + PROJECT_REPLICA_JOB_LEASE_MS,
+          ),
           startedAt: candidate.startedAt ?? now,
           cancellationUnsafeAt: now,
           progress: progress(
@@ -781,6 +816,7 @@ export class ProjectReplicaJobRepository {
       .update(schema.projectReplicaJobs)
       .set({
         stateRevision: sql`${schema.projectReplicaJobs.stateRevision} + 1`,
+        leaseExpiresAt: new Date(now.getTime() + PROJECT_REPLICA_JOB_LEASE_MS),
         progress: { ...update, updatedAt: toISOString(now) },
         updatedAt: now,
       })

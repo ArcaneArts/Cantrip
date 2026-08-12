@@ -53,6 +53,9 @@ const MAX_CONCURRENT_CHAT_RELOCATIONS = 2;
 const ATTACHMENT_CHUNK_BYTES = 256 * 1_024;
 const HYDRATION_CHUNK_BYTES = 256 * 1_024;
 const REPLICA_JOB_WAIT_MS = 5 * 60_000;
+const JOB_LEASE_RENEWAL_INTERVAL_MS = 30_000;
+const JOB_RECOVERY_SWEEP_INTERVAL_MS = 30_000;
+export const CHAT_RELOCATION_HYDRATION_TIMEOUT_MS = 30 * 60_000;
 const REQUIRED_TARGET_METHODS = [
   "thread/start",
   "thread/inject_items",
@@ -149,6 +152,7 @@ function mapReplicaError(job: ProjectReplicaJobSummary): ChatRelocationError {
 export class ChatRelocationJobExecutor {
   readonly #active = new Set<Promise<void>>();
   #drainPromise: Promise<void> | null = null;
+  #recoveryTimer: ReturnType<typeof setInterval> | null = null;
   #rerunRequested = false;
   #stopping = false;
 
@@ -162,8 +166,26 @@ export class ChatRelocationJobExecutor {
     ) => void = () => undefined,
   ) {}
 
-  async recoverAfterRestart(): Promise<number> {
-    return this.repository.chatRelocationJobs.recoverInterrupted();
+  async recoverAfterRestart(force = true): Promise<number> {
+    return this.repository.chatRelocationJobs.recoverInterrupted(force);
+  }
+
+  startRecoverySweep(): void {
+    if (this.#recoveryTimer || this.#stopping) return;
+    this.#recoveryTimer = setInterval(() => {
+      void this.repository.chatRelocationJobs
+        .recoverInterrupted(false)
+        .then((recovered) => {
+          if (recovered > 0) this.queueAvailable();
+        })
+        .catch((error: unknown) => {
+          this.logger.error(
+            { err: error },
+            "Could not recover expired chat relocation job leases",
+          );
+        });
+    }, JOB_RECOVERY_SWEEP_INTERVAL_MS);
+    this.#recoveryTimer.unref();
   }
 
   queueAvailable(): void {
@@ -194,6 +216,10 @@ export class ChatRelocationJobExecutor {
 
   stop(): void {
     this.#stopping = true;
+    if (this.#recoveryTimer) {
+      clearInterval(this.#recoveryTimer);
+      this.#recoveryTimer = null;
+    }
   }
 
   async drain(): Promise<void> {
@@ -231,6 +257,38 @@ export class ChatRelocationJobExecutor {
       workerId: string;
     } | null = null;
     let placementCommitted = false;
+    let renewalInFlight = false;
+    const renewalTimer = setInterval(() => {
+      if (renewalInFlight) return;
+      renewalInFlight = true;
+      void this.repository.chatRelocationJobs
+        .renewLease(claimed.job.id, claimed.commandId, claimed.job.attempt)
+        .then((renewed) => {
+          if (!renewed) {
+            this.logger.warn(
+              {
+                chatRelocationJobId: claimed.job.id,
+                attempt: claimed.job.attempt,
+              },
+              "Chat relocation job no longer owns its durable lease",
+            );
+          }
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            {
+              err: error,
+              chatRelocationJobId: claimed.job.id,
+              attempt: claimed.job.attempt,
+            },
+            "Could not renew chat relocation job lease",
+          );
+        })
+        .finally(() => {
+          renewalInFlight = false;
+        });
+    }, JOB_LEASE_RENEWAL_INTERVAL_MS);
+    renewalTimer.unref();
     try {
       const prepared = await this.#validate(claimed);
       let job = await this.repository.chatRelocationJobs.advance(
@@ -387,6 +445,8 @@ export class ChatRelocationJobExecutor {
           throw settleError;
         }
       }
+    } finally {
+      clearInterval(renewalTimer);
     }
   }
 
@@ -898,7 +958,7 @@ export class ChatRelocationJobExecutor {
           type: "chat.relocation.hydration.complete",
           snapshotId: claimed.snapshot.summary.id,
         },
-        { timeoutMs: null },
+        { timeoutMs: CHAT_RELOCATION_HYDRATION_TIMEOUT_MS },
       ),
     );
     if (
