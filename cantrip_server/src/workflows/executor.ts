@@ -105,11 +105,14 @@ export class WorkflowExecutor {
     });
   }
 
-  async recoverAfterRestart(): Promise<number> {
-    const interruptedAttempts =
-      await this.repository.workflowRuns.recoverInterruptedAttempts(
-        this.#ownerId(),
-      );
+  async recoverAfterRestart(
+    recoverInterruptedAttempts = true,
+  ): Promise<number> {
+    const interruptedAttempts = recoverInterruptedAttempts
+      ? await this.repository.workflowRuns.recoverInterruptedAttempts(
+          this.#ownerId(),
+        )
+      : 0;
     try {
       await this.recoverWorktreeLeases();
     } catch (error) {

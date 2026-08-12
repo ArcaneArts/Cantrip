@@ -1820,16 +1820,25 @@ export async function buildApp({
     );
     await repository.ensureBrowserRemoteSurfaces(LOCAL_USER_ID);
   }
-  await repository.resetTransientRemoteSurfaceStatuses();
-  await repository.resetTransientTunnelAttachments();
-  await repository.resetInterruptedChatExecutions();
+  const recoverGlobalStartupState =
+    !coordinator || coordinator.stats().instanceCount <= 1;
+  if (recoverGlobalStartupState) {
+    await repository.resetTransientRemoteSurfaceStatuses();
+    await repository.resetTransientTunnelAttachments();
+    await repository.resetInterruptedChatExecutions();
+  } else {
+    app.log.info(
+      { coordinationInstances: coordinator.stats().instanceCount },
+      "Preserving peer-owned transient state during rolling server startup",
+    );
+  }
   await projectReplicaJobExecutor.recoverAfterRestart(!coordinator);
   projectReplicaJobExecutor.queueAvailable();
   projectReplicaJobExecutor.startRecoverySweep();
   await chatRelocationJobExecutor.recoverAfterRestart(!coordinator);
   chatRelocationJobExecutor.queueAvailable();
   chatRelocationJobExecutor.startRecoverySweep();
-  await workflowExecutor.recoverAfterRestart();
+  await workflowExecutor.recoverAfterRestart(recoverGlobalStartupState);
   await workflowExecutor.expireGates();
   void workflowExecutor.queueAvailableRuns().catch((error) => {
     app.log.error({ err: error }, "Could not resume queued workflow runs");
