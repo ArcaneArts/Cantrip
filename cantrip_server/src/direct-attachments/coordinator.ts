@@ -15,6 +15,8 @@ interface DirectGrant {
   attachmentId: string;
   authSessionId: string;
   ownerId: string;
+  resourceId: string;
+  resourceKind: DirectResourceKind;
   timer: ReturnType<typeof setTimeout>;
   unsubscribeDisconnect: () => void;
   workerId: string;
@@ -124,6 +126,8 @@ export class DirectAttachmentCoordinator {
       attachmentId: binding.attachmentId,
       authSessionId: input.authSessionId,
       ownerId: input.ownerId,
+      resourceId: input.resourceId,
+      resourceKind: input.resourceKind,
       timer,
       unsubscribeDisconnect,
       workerId: input.worker.workerId,
@@ -193,6 +197,25 @@ export class DirectAttachmentCoordinator {
         .filter(([, grant]) => grant.attachmentId === attachmentId)
         .map(([capabilityId]) =>
           this.revoke(capabilityId, "Owning attachment was revoked"),
+        ),
+    );
+  }
+
+  async revokeResource(
+    ownerId: string,
+    resourceKind: DirectResourceKind,
+    resourceId: string,
+  ): Promise<void> {
+    await Promise.all(
+      [...this.#grants]
+        .filter(
+          ([, grant]) =>
+            grant.ownerId === ownerId &&
+            grant.resourceKind === resourceKind &&
+            grant.resourceId === resourceId,
+        )
+        .map(([capabilityId]) =>
+          this.revoke(capabilityId, "Owning resource was revoked"),
         ),
     );
   }

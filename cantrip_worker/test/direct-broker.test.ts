@@ -53,7 +53,7 @@ describe("DirectBroker", () => {
     if (!advertisement.available) throw new Error("broker unavailable");
     const grant = binding();
     const secret = randomBytes(32).toString("base64url");
-    broker.prepare({
+    await broker.prepare({
       type: "direct.capability.prepare",
       binding: grant,
       secret,
@@ -98,7 +98,7 @@ describe("DirectBroker", () => {
     if (!advertisement.available) throw new Error("broker unavailable");
     const grant = binding();
     const secret = randomBytes(32).toString("base64url");
-    broker.prepare({
+    await broker.prepare({
       type: "direct.capability.prepare",
       binding: grant,
       secret,
@@ -141,7 +141,7 @@ describe("DirectBroker", () => {
       target: { kind: "tcp" as const, host: "127.0.0.1", port: 4173 },
     };
     const secret = randomBytes(32).toString("base64url");
-    broker.prepare({
+    await broker.prepare({
       type: "direct.capability.prepare",
       binding: grant,
       secret,

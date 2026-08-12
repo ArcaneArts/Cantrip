@@ -93,6 +93,7 @@ import { ProjectShareTunnelDestinationAdapter } from "./project-share-tunnel-ada
 import { readProjectRepositoryStats } from "./project-repository-stats.js";
 import { discoverScriptCommands } from "./script-command-discovery.js";
 import { TerminalManager } from "./terminal-manager.js";
+import { TerminalDirectEndpointManager } from "./terminal-direct-endpoint.js";
 import { TunnelTcpDestinationAdapter } from "./tunnel-tcp-adapter.js";
 import { TunnelDestinationRouter } from "./tunnel-destination-router.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
@@ -141,7 +142,27 @@ async function start(): Promise<void> {
   });
   await code.start();
   const codeTunnel = new CodeTunnelProxy(code);
+  const terminals = new TerminalManager();
+  const terminalDirectEndpoints = new TerminalDirectEndpointManager(terminals);
   const directBroker = new DirectBroker();
+  directBroker.setTunnelTargetResolver(async (binding, target) => {
+    if (target.kind !== "adapter" || target.adapter !== "terminal") {
+      return target;
+    }
+    if (
+      binding.resourceKind !== "terminal" ||
+      binding.resourceId !== target.resourceId
+    ) {
+      throw new Error("Direct terminal target escaped its capability binding.");
+    }
+    return terminalDirectEndpoints.prepare(
+      binding.capabilityId,
+      target.resourceId,
+    );
+  });
+  directBroker.setCapabilityRevoker((capabilityId, reason) =>
+    terminalDirectEndpoints.revoke(capabilityId, reason),
+  );
   await directBroker.start();
   const heartbeat = createHeartbeat(
     config,
@@ -181,7 +202,6 @@ async function start(): Promise<void> {
     codeTunnel,
   );
   const skillManager = new SkillManager(config.dataDirectory);
-  const terminals = new TerminalManager();
   const remoteSurfaces = new RemoteSurfaceManager({
     browser: browserAdapter,
     desktop: desktopAdapter,
@@ -1384,6 +1404,7 @@ async function start(): Promise<void> {
       worktrees.close();
       commandConnection.close();
       await directBroker.close();
+      terminalDirectEndpoints.close();
       for (const client of codexAuthClients.values()) client.close();
       terminals.closeAll();
       tunnelDestinations.close();

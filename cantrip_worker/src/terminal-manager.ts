@@ -287,6 +287,21 @@ export class TerminalManager {
     return result;
   }
 
+  attachExisting(
+    terminalId: string,
+    attachmentId: string,
+    cols: number,
+    rows: number,
+    emit: (event: WorkerEvent) => void,
+  ): Promise<TerminalOpenResult> {
+    const session = this.#sessions.get(terminalId);
+    if (!session) {
+      throw new Error(`Terminal ${terminalId} is not running.`);
+    }
+    if (session.exited) return Promise.resolve(session.exited);
+    return this.#attach(session, attachmentId, cols, rows, emit);
+  }
+
   input(terminalId: string, data: string): void {
     const session = this.liveSession(terminalId);
     session.process!.write(data);
