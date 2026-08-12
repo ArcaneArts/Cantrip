@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   accountSessionListSchema,
   agentActivitySchema,
+  agentExecutionToolCallSchema,
+  agentExecutionToolResultSchema,
   agentInteractionRequestSchema,
   agentInteractionRuntimeRequestSchema,
   agentInteractionResolutionCreateSchema,
@@ -125,6 +127,7 @@ import {
   terminalClientMessageSchema,
   terminalCreateSchema,
   terminalServiceConfigurationSchema,
+  terminalSnapshotResultSchema,
   terminalSummarySchema,
   terminalServerMessageSchema,
   tabGroupMemberMoveSchema,
@@ -2593,6 +2596,47 @@ describe("Cantrip protocol", () => {
         worktreeId: "worktree-2",
       }).type,
     ).toBe("worktree");
+  });
+
+  it("validates lane-scoped execution-target tools and bounded terminal snapshots", () => {
+    const target = {
+      kind: "surface" as const,
+      projectId: "project-1",
+      surfaceKind: "terminal" as const,
+      surfaceId: "terminal-2",
+    };
+    expect(
+      agentExecutionToolCallSchema.parse({
+        callId: "call-2",
+        chatId: "chat-1",
+        executionLaneId: "lane-1",
+        workerId: "worker-1",
+        tool: "cantrip_terminal_read",
+        arguments: { target, maxChars: 20_000 },
+      }).tool,
+    ).toBe("cantrip_terminal_read");
+    expect(
+      agentExecutionToolResultSchema.parse({
+        summary: "Terminal is running.",
+        target,
+        data: { status: "running" },
+      }).target,
+    ).toEqual(target);
+    expect(
+      terminalSnapshotResultSchema.parse({
+        terminalId: "terminal-2",
+        status: "running",
+        data: "recent output",
+        truncated: false,
+        exitCode: null,
+      }).status,
+    ).toBe("running");
+    expect(
+      workerCommandSchema.parse({
+        type: "terminal.snapshot",
+        terminalId: "terminal-2",
+      }),
+    ).toMatchObject({ type: "terminal.snapshot", maxChars: 20_000 });
   });
 
   it("accepts non-secret Codex account and device login state", () => {

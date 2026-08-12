@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
 
 import {
+  CANTRIP_DYNAMIC_TOOLS,
   CANTRIP_WORKTREE_DYNAMIC_TOOLS,
   agentInteractionRequestFromServerRequest,
   changedFiles,
@@ -15,7 +16,7 @@ import {
   codexWorkflowTurnPolicy,
   codexWorktreeTurnPolicy,
   codexWorkspaceContext,
-  executeDynamicWorktreeTool,
+  executeDynamicExecutionTool,
   failClosedAgentInteractionReply,
   GOAL_CONTINUATION_PROMPT,
   goalShouldContinue,
@@ -418,7 +419,7 @@ describe("Codex agent interaction bridge", () => {
   });
 });
 
-describe("Cantrip dynamic worktree tools", () => {
+describe("Cantrip dynamic execution tools", () => {
   it("advertises all lifecycle operations with strict object schemas", () => {
     expect(CANTRIP_WORKTREE_DYNAMIC_TOOLS.map(({ name }) => name)).toEqual([
       "cantrip_worktrees_list",
@@ -434,6 +435,20 @@ describe("Cantrip dynamic worktree tools", () => {
         ({ inputSchema }) => inputSchema.additionalProperties === false,
       ),
     ).toBe(true);
+    expect(CANTRIP_DYNAMIC_TOOLS.map(({ name }) => name)).toEqual([
+      ...CANTRIP_WORKTREE_DYNAMIC_TOOLS.map(({ name }) => name),
+      "cantrip_targets_list",
+      "cantrip_target_inspect",
+      "cantrip_explorer_list",
+      "cantrip_explorer_read",
+      "cantrip_terminal_read",
+      "cantrip_browser_services",
+    ]);
+    expect(
+      CANTRIP_DYNAMIC_TOOLS.every(
+        ({ inputSchema }) => inputSchema.additionalProperties === false,
+      ),
+    ).toBe(true);
   });
 
   it("returns structured dynamic-tool results and isolates handler errors", async () => {
@@ -445,9 +460,10 @@ describe("Cantrip dynamic worktree tools", () => {
       turnId: "turn-1",
     };
     await expect(
-      executeDynamicWorktreeTool(
+      executeDynamicExecutionTool(
         async (input) => ({
           summary: `Scheduled ${String(input.arguments.worktreeId)}`,
+          target: null,
           worktreeId: "worktree-2",
           continuationScheduled: true,
         }),
@@ -463,7 +479,7 @@ describe("Cantrip dynamic worktree tools", () => {
       ],
     });
     await expect(
-      executeDynamicWorktreeTool(async () => {
+      executeDynamicExecutionTool(async () => {
         throw new Error("unsafe transition");
       }, params),
     ).resolves.toEqual({

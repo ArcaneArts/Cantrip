@@ -7,6 +7,8 @@ import websocket from "@fastify/websocket";
 import {
   accountRegistrationSchema,
   accountSessionListSchema,
+  agentExecutionToolResultSchema,
+  agentExecutionTargetToolCallSchema,
   agentWorktreeToolCallSchema,
   agentWorktreeToolResultSchema,
   agentThreadSyncSchema,
@@ -108,6 +110,7 @@ import {
   executionTargetCatalogSchema,
   executionTargetResolutionSchema,
   executionTargetResolveRequestSchema,
+  executionTargetSchema,
   githubAuthStatusSchema,
   githubIssueCloseSchema,
   githubIssueCommentCreateSchema,
@@ -294,6 +297,7 @@ import {
   terminalCreateSchema,
   terminalListSchema,
   terminalOpenResultSchema,
+  terminalSnapshotResultSchema,
   terminalServiceConfigurationSchema,
   terminalServerMessageSchema,
   terminalSummarySchema,
@@ -347,8 +351,8 @@ import type {
   WorktreeStatusResult,
 } from "@cantrip/protocol";
 import type {
-  AgentWorktreeToolCall,
-  AgentWorktreeToolResult,
+  AgentExecutionToolCall,
+  AgentExecutionToolResult,
 } from "@cantrip/protocol";
 import {
   projectAutomationConditionResultSchema,
@@ -2945,9 +2949,67 @@ export async function buildApp({
     return created;
   };
 
-  const executeAgentWorktreeTool = async (
-    call: AgentWorktreeToolCall,
-  ): Promise<AgentWorktreeToolResult> => {
+  const executionTargetArgument = (input: Record<string, unknown>) => {
+    const target = executionTargetSchema.safeParse(input.target);
+    if (!target.success)
+      throw new Error("A valid execution target is required.");
+    return target.data;
+  };
+  const surfaceTargetArgument = (
+    input: Record<string, unknown>,
+    surfaceKind: "browser" | "explorer" | "terminal",
+  ) => {
+    const target = executionTargetArgument(input);
+    if (target.kind !== "surface" || target.surfaceKind !== surfaceKind) {
+      throw new Error(`An exact ${surfaceKind} surface target is required.`);
+    }
+    return target;
+  };
+  const boundedToolPath = (
+    input: Record<string, unknown>,
+    allowEmpty: boolean,
+  ) => {
+    const value = input.path;
+    if (typeof value !== "string" || (!allowEmpty && !value.trim())) {
+      throw new Error("path is required.");
+    }
+    if (value.length > 8_192) throw new Error("path is too long.");
+    return value;
+  };
+  const boundedToolInteger = (
+    input: Record<string, unknown>,
+    key: string,
+    defaultValue: number,
+    maximum: number,
+  ) => {
+    const value = input[key] ?? defaultValue;
+    if (
+      !Number.isInteger(value) ||
+      Number(value) < 1 ||
+      Number(value) > maximum
+    ) {
+      throw new Error(`${key} must be an integer from 1 to ${maximum}.`);
+    }
+    return Number(value);
+  };
+  const boundedToolCursor = (
+    input: Record<string, unknown>,
+    maximum: number,
+  ) => {
+    const value = input.cursor ?? 0;
+    if (
+      !Number.isInteger(value) ||
+      Number(value) < 0 ||
+      Number(value) > maximum
+    ) {
+      throw new Error(`cursor must be an integer from 0 to ${maximum}.`);
+    }
+    return Number(value);
+  };
+
+  const executeAgentExecutionTool = async (
+    call: AgentExecutionToolCall,
+  ): Promise<AgentExecutionToolResult> => {
     const context = await repository.getChatExecutionContext(
       applicationOwnerId(),
       call.chatId,
@@ -2959,7 +3021,7 @@ export async function buildApp({
       !chatIsExecuting(context.status)
     ) {
       throw new ExecutionLaneConflictError(
-        "The worktree tool call did not originate from the active chat lane.",
+        "The execution tool call did not originate from the active chat lane.",
       );
     }
     const worktrees = () =>
@@ -2973,6 +3035,17 @@ export async function buildApp({
       if (!target) throw new Error("Worktree not found.");
       return target;
     };
+    const resolveTarget = (
+      target: Parameters<typeof repository.resolveExecutionTarget>[2],
+      allowUnavailable = false,
+    ) =>
+      repository.resolveExecutionTarget(
+        applicationOwnerId(),
+        context.projectId,
+        target,
+        (workerId) => bridge.isConnected(workerId),
+        allowUnavailable,
+      );
     const schedule = async (
       worktreeId: string,
       transitionKind: "switch" | "release",
@@ -2991,6 +3064,181 @@ export async function buildApp({
     };
 
     switch (call.tool) {
+      case "cantrip_targets_list": {
+        const catalog = await repository.listProjectExecutionTargets(
+          applicationOwnerId(),
+          context.projectId,
+          (workerId) => bridge.isConnected(workerId),
+        );
+        if (!catalog) throw new Error("Project not found.");
+        const cursor = boundedToolCursor(call.arguments, 1_999);
+        const limit = boundedToolInteger(call.arguments, "limit", 100, 200);
+        const targets = catalog.targets.slice(cursor, cursor + limit);
+        const nextCursor =
+          cursor + targets.length < catalog.targets.length
+            ? cursor + targets.length
+            : null;
+        return agentExecutionToolResultSchema.parse({
+          summary: `Found ${targets.length} authorized execution target${targets.length === 1 ? "" : "s"}${nextCursor !== null || catalog.truncated ? "; more targets are available" : ""}.`,
+          data: {
+            projectId: catalog.projectId,
+            targets,
+            cursor,
+            nextCursor,
+            total: catalog.targets.length,
+            truncated: catalog.truncated || nextCursor !== null,
+          },
+        });
+      }
+      case "cantrip_target_inspect": {
+        const target = executionTargetArgument(call.arguments);
+        const resolution = await resolveTarget(target, true);
+        return agentExecutionToolResultSchema.parse({
+          summary:
+            resolution.availability === "available"
+              ? `${resolution.worker.name} can serve this target.`
+              : (resolution.unavailableReason ?? "The target is unavailable."),
+          target,
+          worktreeId: resolution.placement.worktreeId,
+          data: resolution,
+        });
+      }
+      case "cantrip_explorer_list": {
+        const target = surfaceTargetArgument(call.arguments, "explorer");
+        const resolution = await resolveTarget(target);
+        const explorer = await repository.getExplorerExecutionContext(
+          applicationOwnerId(),
+          target.surfaceId,
+        );
+        if (
+          !explorer ||
+          explorer.workerId !== resolution.placement.workerId ||
+          explorer.worktreeId !== resolution.placement.worktreeId
+        ) {
+          throw new Error("Explorer placement changed before the read.");
+        }
+        const requestedPath = boundedToolPath(call.arguments, true);
+        const directory = explorerDirectorySchema.parse(
+          await bridge.request(resolution.placement.workerId, {
+            type: "explorer.directory.list",
+            root: explorer.root,
+            path: requestedPath,
+          }),
+        );
+        if (directory.path !== requestedPath) {
+          throw new Error("Explorer returned a stale directory response.");
+        }
+        const cursor = boundedToolCursor(call.arguments, 999);
+        const limit = boundedToolInteger(call.arguments, "limit", 100, 200);
+        const entries = directory.entries.slice(cursor, cursor + limit);
+        const nextCursor =
+          cursor + entries.length < directory.entries.length
+            ? cursor + entries.length
+            : null;
+        return agentExecutionToolResultSchema.parse({
+          summary: `Found ${entries.length} entr${entries.length === 1 ? "y" : "ies"}${directory.truncated || nextCursor !== null ? "; more entries are available" : ""}.`,
+          target,
+          worktreeId: resolution.placement.worktreeId,
+          data: {
+            path: directory.path,
+            entries,
+            cursor,
+            nextCursor,
+            total: directory.entries.length,
+            truncated: directory.truncated || nextCursor !== null,
+          },
+        });
+      }
+      case "cantrip_explorer_read": {
+        const target = surfaceTargetArgument(call.arguments, "explorer");
+        const resolution = await resolveTarget(target);
+        const explorer = await repository.getExplorerExecutionContext(
+          applicationOwnerId(),
+          target.surfaceId,
+        );
+        if (
+          !explorer ||
+          explorer.workerId !== resolution.placement.workerId ||
+          explorer.worktreeId !== resolution.placement.worktreeId
+        ) {
+          throw new Error("Explorer placement changed before the read.");
+        }
+        const requestedPath = boundedToolPath(call.arguments, false);
+        const file = explorerFileSchema.parse(
+          await bridge.request(resolution.placement.workerId, {
+            type: "explorer.file.read",
+            root: explorer.root,
+            path: requestedPath,
+          }),
+        );
+        if (file.path !== requestedPath) {
+          throw new Error("Explorer returned a stale file response.");
+        }
+        const maxChars = boundedToolInteger(
+          call.arguments,
+          "maxChars",
+          100_000,
+          200_000,
+        );
+        const truncated = file.content.length > maxChars;
+        return agentExecutionToolResultSchema.parse({
+          summary: `Read ${file.path}${truncated ? " (content truncated)" : ""}.`,
+          target,
+          worktreeId: resolution.placement.worktreeId,
+          data: {
+            ...file,
+            content: file.content.slice(0, maxChars),
+            truncated,
+          },
+        });
+      }
+      case "cantrip_terminal_read": {
+        const target = surfaceTargetArgument(call.arguments, "terminal");
+        const resolution = await resolveTarget(target);
+        const snapshot = terminalSnapshotResultSchema.parse(
+          await bridge.request(resolution.placement.workerId, {
+            type: "terminal.snapshot",
+            terminalId: target.surfaceId,
+            maxChars: boundedToolInteger(
+              call.arguments,
+              "maxChars",
+              20_000,
+              100_000,
+            ),
+          }),
+        );
+        if (snapshot.terminalId !== target.surfaceId) {
+          throw new Error("Terminal returned a stale snapshot response.");
+        }
+        return agentExecutionToolResultSchema.parse({
+          summary: `Terminal is ${snapshot.status}${snapshot.truncated ? "; scrollback was truncated" : ""}.`,
+          target,
+          worktreeId: resolution.placement.worktreeId,
+          data: snapshot,
+        });
+      }
+      case "cantrip_browser_services": {
+        const target = surfaceTargetArgument(call.arguments, "browser");
+        const resolution = await resolveTarget(target);
+        const discovered = browserServiceListSchema.parse(
+          await bridge.request(
+            resolution.placement.workerId,
+            { type: "browser.services.discover" },
+            { timeoutMs: 20_000 },
+          ),
+        );
+        const services = browserServiceListSchema.parse(
+          discovered.map((service) => ({
+            ...service,
+            workerId: resolution.placement.workerId,
+          })),
+        );
+        return agentExecutionToolResultSchema.parse({
+          summary: `Found ${services.length} browser service${services.length === 1 ? "" : "s"} on ${resolution.worker.name}.`,
+          target,
+          data: services,
+        });
+      }
       case "cantrip_worktrees_list": {
         const [items, leases] = await Promise.all([
           worktrees(),
@@ -2999,7 +3247,7 @@ export async function buildApp({
             context.projectId,
           ),
         ]);
-        return agentWorktreeToolResultSchema.parse({
+        return agentExecutionToolResultSchema.parse({
           summary: `Found ${items.length} validated worktree${items.length === 1 ? "" : "s"}.`,
           worktreeId: context.worktreeId,
           data: {
@@ -3010,19 +3258,38 @@ export async function buildApp({
         });
       }
       case "cantrip_worktree_status": {
-        const worktreeId =
-          optionalToolString(call.arguments, "worktreeId") ??
-          context.worktreeId;
-        const target = await worktreeContext(worktreeId);
+        const requestedTarget = call.arguments.target
+          ? executionTargetArgument(call.arguments)
+          : {
+              kind: "worktree" as const,
+              projectId: context.projectId,
+              worktreeId:
+                optionalToolString(call.arguments, "worktreeId") ??
+                context.worktreeId,
+            };
+        if (requestedTarget.kind !== "worktree") {
+          throw new Error("Worktree status requires a worktree target.");
+        }
+        const resolution = await resolveTarget(requestedTarget);
+        const worktreeId = resolution.placement.worktreeId!;
+        const targetContext = await worktreeContext(worktreeId);
         const status = worktreeStatusResultSchema.parse(
-          await bridge.request(target.workerId, {
+          await bridge.request(targetContext.workerId, {
             type: "worktree.status",
-            sourcePath: target.sourcePath,
-            worktreePath: target.worktree.path,
+            sourcePath: targetContext.sourcePath,
+            worktreePath: targetContext.worktree.path,
           }),
         );
-        return agentWorktreeToolResultSchema.parse({
-          summary: `${target.worktree.name} is ${status.status.files.length ? "dirty" : "clean"} on ${status.status.branch || "detached HEAD"}.`,
+        if (status.worktree.path !== targetContext.worktree.path) {
+          throw new Error("Worker returned status for a different worktree.");
+        }
+        return agentExecutionToolResultSchema.parse({
+          summary: `${targetContext.worktree.name} is ${status.status.files.length ? "dirty" : "clean"} on ${status.status.branch || "detached HEAD"}.`,
+          target: {
+            kind: "worktree",
+            projectId: context.projectId,
+            worktreeId,
+          },
           worktreeId,
           data: status,
         });
@@ -3032,7 +3299,7 @@ export async function buildApp({
           context.projectId,
           call.arguments,
         );
-        return agentWorktreeToolResultSchema.parse({
+        return agentExecutionToolResultSchema.parse({
           summary: `Created ${created.name} on ${created.branch ?? "detached HEAD"}.`,
           worktreeId: created.id,
           data: created,
@@ -3053,7 +3320,7 @@ export async function buildApp({
           "switch",
           requiredToolString(call.arguments, "purpose"),
         );
-        return agentWorktreeToolResultSchema.parse({
+        return agentExecutionToolResultSchema.parse({
           summary: `Created ${created.name}; continuation is scheduled in that worktree. Finish this turn now.`,
           worktreeId: created.id,
           continuationScheduled: true,
@@ -3067,7 +3334,7 @@ export async function buildApp({
           "switch",
           requiredToolString(call.arguments, "purpose"),
         );
-        return agentWorktreeToolResultSchema.parse({
+        return agentExecutionToolResultSchema.parse({
           summary: `Continuation is scheduled in ${pending.worktree.name}. Finish this turn now.`,
           worktreeId,
           continuationScheduled: true,
@@ -3100,7 +3367,7 @@ export async function buildApp({
           "release",
           requiredToolString(call.arguments, "purpose"),
         );
-        return agentWorktreeToolResultSchema.parse({
+        return agentExecutionToolResultSchema.parse({
           summary: `Release is scheduled; continuation will return to ${primary.name}. Finish this turn now.`,
           worktreeId: primary.id,
           continuationScheduled: true,
@@ -3169,7 +3436,7 @@ export async function buildApp({
             return result;
           },
         );
-        return agentWorktreeToolResultSchema.parse({
+        return agentExecutionToolResultSchema.parse({
           summary: `Removed ${target.worktree.name}; its Git branch was retained.`,
           worktreeId,
           data: removed,
@@ -16113,7 +16380,7 @@ export async function buildApp({
             throw new Error("Chat execution context not found.");
           }
           attribution.worktreeId = context.worktreeId;
-          const result = await executeAgentWorktreeTool(input.data);
+          const result = await executeAgentExecutionTool(input.data);
           await upsertLiveChatMessage(
             workerAuth.ownerId,
             input.data.chatId,
@@ -16165,10 +16432,70 @@ export async function buildApp({
           const status =
             error instanceof WorkerUnavailableError
               ? 503
-              : error instanceof ExecutionLaneConflictError
-                ? 409
-                : 400;
-          return reply.code(status).send({ error: errorMessage(error) });
+              : error instanceof ExecutionPlacementUnavailableError
+                ? error.code === "project-not-found" ||
+                  error.code === "target-not-found"
+                  ? 404
+                  : 409
+                : error instanceof ExecutionLaneConflictError
+                  ? 409
+                  : 400;
+          return reply.code(status).send({
+            ...(error instanceof ExecutionPlacementUnavailableError
+              ? { code: error.code }
+              : {}),
+            error: errorMessage(error),
+          });
+        }
+      });
+    },
+  );
+
+  app.post(
+    "/api/internal/agent-tools/execution",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = agentExecutionTargetToolCallSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const workerAuth = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        input.data.workerId,
+        "worker:agent-tools",
+      );
+      if (!workerAuth) {
+        return reply.code(401).send({ error: "Unauthorized" });
+      }
+      if (
+        !(await repository.getWorker(workerAuth.ownerId, input.data.workerId))
+      ) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
+      return runAsOwner(workerAuth.ownerId, async () => {
+        try {
+          const result = await executeAgentExecutionTool(input.data);
+          return reply.send(agentExecutionToolResultSchema.parse(result));
+        } catch (error) {
+          const status =
+            error instanceof WorkerUnavailableError
+              ? 503
+              : error instanceof ExecutionPlacementUnavailableError
+                ? error.code === "project-not-found" ||
+                  error.code === "target-not-found"
+                  ? 404
+                  : 409
+                : error instanceof ExecutionLaneConflictError
+                  ? 409
+                  : 400;
+          return reply.code(status).send({
+            ...(error instanceof ExecutionPlacementUnavailableError
+              ? { code: error.code }
+              : {}),
+            error: errorMessage(error),
+          });
         }
       });
     },

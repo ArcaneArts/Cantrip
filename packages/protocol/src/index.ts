@@ -3652,6 +3652,14 @@ export const terminalOpenResultSchema = z.discriminatedUnion("status", [
   }),
 ]);
 
+export const terminalSnapshotResultSchema = z.object({
+  terminalId: z.string().min(1).max(200),
+  status: z.enum(["running", "restarting", "exited", "not-running"]),
+  data: z.string().max(100_000),
+  truncated: z.boolean(),
+  exitCode: z.number().int().nullable(),
+});
+
 export const chatMessageRoleSchema = z.enum(["user", "assistant", "system"]);
 export const agentMessagePhaseSchema = z.enum(["commentary", "final_answer"]);
 export const chatAttachmentKindSchema = z.enum([
@@ -4357,17 +4365,59 @@ export const agentWorktreeToolNameSchema = z.enum([
   "cantrip_worktree_remove",
 ]);
 
+export const agentExecutionTargetToolNameSchema = z.enum([
+  "cantrip_targets_list",
+  "cantrip_target_inspect",
+  "cantrip_explorer_list",
+  "cantrip_explorer_read",
+  "cantrip_terminal_read",
+  "cantrip_browser_services",
+]);
+
+export const agentExecutionToolNameSchema = z.union([
+  agentWorktreeToolNameSchema,
+  agentExecutionTargetToolNameSchema,
+]);
+
+const agentExecutionToolArgumentsSchema = z
+  .record(z.string().min(1).max(100), z.unknown())
+  .refine((arguments_) => Object.keys(arguments_).length <= 20, {
+    message: "Agent execution tools accept at most 20 arguments.",
+  });
+
 export const agentWorktreeToolCallSchema = z.object({
   callId: z.string().min(1).max(200),
   chatId: z.string().min(1),
   executionLaneId: z.string().min(1),
   workerId: z.string().min(1),
   tool: agentWorktreeToolNameSchema,
-  arguments: z.record(z.string(), z.unknown()),
+  arguments: agentExecutionToolArgumentsSchema,
 });
+
+export const agentExecutionToolCallSchema = z.object({
+  callId: z.string().min(1).max(200),
+  chatId: z.string().min(1).max(200),
+  executionLaneId: z.string().min(1).max(200),
+  workerId: z.string().min(1).max(200),
+  tool: agentExecutionToolNameSchema,
+  arguments: agentExecutionToolArgumentsSchema,
+});
+
+export const agentExecutionTargetToolCallSchema =
+  agentExecutionToolCallSchema.extend({
+    tool: agentExecutionTargetToolNameSchema,
+  });
 
 export const agentWorktreeToolResultSchema = z.object({
   summary: z.string().min(1),
+  worktreeId: z.string().min(1).nullable().default(null),
+  continuationScheduled: z.boolean().default(false),
+  data: z.unknown().optional(),
+});
+
+export const agentExecutionToolResultSchema = z.object({
+  summary: z.string().min(1).max(2_000),
+  target: executionTargetSchema.nullable().default(null),
   worktreeId: z.string().min(1).nullable().default(null),
   continuationScheduled: z.boolean().default(false),
   data: z.unknown().optional(),
@@ -7083,6 +7133,11 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     terminalId: z.string().min(1),
   }),
   z.object({
+    type: z.literal("terminal.snapshot"),
+    terminalId: z.string().min(1).max(200),
+    maxChars: z.number().int().min(1).max(100_000).default(20_000),
+  }),
+  z.object({
     type: z.literal("terminal.services.reconcile"),
     services: z.array(terminalServiceRuntimeConfigurationSchema).max(1_000),
   }),
@@ -8204,6 +8259,9 @@ export type ExplorerFileWrite = z.infer<typeof explorerFileWriteSchema>;
 export type TerminalClientMessage = z.infer<typeof terminalClientMessageSchema>;
 export type TerminalServerMessage = z.infer<typeof terminalServerMessageSchema>;
 export type TerminalOpenResult = z.infer<typeof terminalOpenResultSchema>;
+export type TerminalSnapshotResult = z.infer<
+  typeof terminalSnapshotResultSchema
+>;
 export type AgentMessagePhase = z.infer<typeof agentMessagePhaseSchema>;
 export type CodexEventCorrelation = z.infer<typeof codexEventCorrelationSchema>;
 export type ChatMessageContent = z.infer<typeof chatMessageContentSchema>;
@@ -8261,6 +8319,21 @@ export type AgentWorktreeToolName = z.infer<typeof agentWorktreeToolNameSchema>;
 export type AgentWorktreeToolCall = z.infer<typeof agentWorktreeToolCallSchema>;
 export type AgentWorktreeToolResult = z.infer<
   typeof agentWorktreeToolResultSchema
+>;
+export type AgentExecutionTargetToolName = z.infer<
+  typeof agentExecutionTargetToolNameSchema
+>;
+export type AgentExecutionToolName = z.infer<
+  typeof agentExecutionToolNameSchema
+>;
+export type AgentExecutionToolCall = z.infer<
+  typeof agentExecutionToolCallSchema
+>;
+export type AgentExecutionTargetToolCall = z.infer<
+  typeof agentExecutionTargetToolCallSchema
+>;
+export type AgentExecutionToolResult = z.infer<
+  typeof agentExecutionToolResultSchema
 >;
 export type ChatTurnCreate = z.infer<typeof chatTurnCreateSchema>;
 export type ChatTurnMode = z.infer<typeof chatTurnModeSchema>;

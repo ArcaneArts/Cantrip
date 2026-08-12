@@ -5,8 +5,10 @@ import path from "node:path";
 import {
   normalizeResponsesBaseUrl,
   terminalOpenResultSchema,
+  terminalSnapshotResultSchema,
   type TerminalServiceRuntimeConfiguration,
   type TerminalOpenResult,
+  type TerminalSnapshotResult,
   type WorkerCommand,
   type WorkerEvent,
 } from "@cantrip/protocol";
@@ -296,6 +298,31 @@ export class TerminalManager {
     session.cols = cols;
     session.rows = rows;
     if (session.process) session.process.resize(cols, rows);
+  }
+
+  snapshot(terminalId: string, maxChars: number): TerminalSnapshotResult {
+    const session = this.#sessions.get(terminalId);
+    if (!session) {
+      return terminalSnapshotResultSchema.parse({
+        terminalId,
+        status: "not-running",
+        data: "",
+        truncated: false,
+        exitCode: null,
+      });
+    }
+    const boundedMaxChars = Math.max(1, Math.min(100_000, maxChars));
+    return terminalSnapshotResultSchema.parse({
+      terminalId,
+      status: session.process
+        ? "running"
+        : session.restartTimer
+          ? "restarting"
+          : "exited",
+      data: session.buffer.slice(-boundedMaxChars),
+      truncated: session.buffer.length > boundedMaxChars,
+      exitCode: session.exited?.exitCode ?? null,
+    });
   }
 
   close(terminalId: string): void {

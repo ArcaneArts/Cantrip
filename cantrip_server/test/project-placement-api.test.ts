@@ -3,12 +3,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  agentExecutionToolResultSchema,
   browserSummarySchema,
+  explorerSummarySchema,
   executionPlacementResolutionSchema,
   executionTargetCatalogSchema,
   executionTargetResolutionSchema,
   terminalSummarySchema,
   unprobedCodexRuntimeReport,
+  type WorkerCommand,
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -39,6 +42,7 @@ const config: ServerConfig = {
 };
 
 const connectedWorkers = new Set(["worker-alpha", "worker-beta"]);
+const routedCommands: Array<{ workerId: string; command: WorkerCommand }> = [];
 const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
@@ -54,8 +58,82 @@ const workerBridge: WorkerCommandBus = {
   subscribeSurfaceFrames() {
     return () => undefined;
   },
-  async request() {
-    throw new Error("Placement tests do not send worker commands.");
+  async request(workerId, command) {
+    routedCommands.push({ workerId, command });
+    switch (command.type) {
+      case "explorer.directory.list":
+        return {
+          path: command.path,
+          entries: [
+            {
+              name: "README.md",
+              path: "README.md",
+              kind: "file",
+              size: 12,
+              modifiedAt: "2026-08-12T00:00:00.000Z",
+              viewable: true,
+              markdown: true,
+            },
+          ],
+          truncated: false,
+        };
+      case "explorer.file.read":
+        return {
+          path: command.path,
+          content: "cross-worker file content",
+          size: 25,
+          markdown: true,
+          version: "a".repeat(64),
+        };
+      case "terminal.snapshot":
+        return {
+          terminalId: command.terminalId,
+          status: "running",
+          data: "cross-worker terminal output",
+          truncated: false,
+          exitCode: null,
+        };
+      case "worktree.status":
+        return {
+          worktree: {
+            path: command.worktreePath,
+            head: "1".repeat(40),
+            branch: "main",
+            detached: false,
+            isPrimary: true,
+            managed: true,
+            locked: false,
+            lockReason: null,
+            prunable: false,
+            pruneReason: null,
+            missing: false,
+          },
+          status: {
+            branch: "main",
+            head: "1".repeat(40),
+            upstream: "origin/main",
+            ahead: 0,
+            behind: 0,
+            files: [],
+            branches: [],
+          },
+        };
+      case "browser.services.discover":
+        return [
+          {
+            workerId,
+            host: "127.0.0.1",
+            port: 4_173,
+            protocol: "http",
+            url: "http://127.0.0.1:4173",
+            title: "Preview",
+            processName: "vite",
+            statusCode: 200,
+          },
+        ];
+      default:
+        throw new Error(`Unexpected placement command ${command.type}.`);
+    }
   },
 };
 
@@ -141,6 +219,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  routedCommands.length = 0;
   connectedWorkers.clear();
   connectedWorkers.add("worker-alpha");
   connectedWorkers.add("worker-beta");
@@ -480,5 +559,315 @@ describe.sequential("project execution placement API", () => {
         true,
       ),
     ).toMatchObject({ availability: "capability-unavailable" });
+  });
+
+  it("routes lane-authorized read tools to exact cross-worker targets", async () => {
+    await database.repository.recordWorker(LOCAL_USER_ID, {
+      workerId: "worker-beta",
+      name: "Beta",
+      platform: "linux",
+      architecture: "x64",
+      codexVersion: "0.146.1",
+      codexRuntime: unprobedCodexRuntimeReport,
+      remoteSurfaces: {
+        browser: true,
+        desktop: false,
+        transports: ["websocket"],
+        maxSessions: 4,
+      },
+      startedAt: new Date().toISOString(),
+    });
+    const explorer = explorerSummarySchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/explorers`,
+          payload: {
+            title: "Beta Explorer",
+            target: {
+              kind: "worktree",
+              projectId,
+              worktreeId: betaWorktreeId,
+            },
+          },
+        })
+      ).json(),
+    );
+    const terminal = terminalSummarySchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/terminals`,
+          payload: {
+            title: "Beta Terminal",
+            target: {
+              kind: "worktree",
+              projectId,
+              worktreeId: betaWorktreeId,
+            },
+          },
+        })
+      ).json(),
+    );
+    const browser = browserSummarySchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/browsers`,
+          payload: {
+            title: "Beta Browser",
+            target: { kind: "worker", projectId, workerId: "worker-beta" },
+          },
+        })
+      ).json(),
+    );
+    const chat = await database.repository.createChat(
+      LOCAL_USER_ID,
+      projectId,
+      {
+        title: "Alpha source chat",
+        worktreeId: alphaWorktreeId,
+        worktreeMode: "pinned",
+      },
+    );
+    expect(chat).not.toBeNull();
+    const lane = await database.repository.startChatExecutionLane(
+      LOCAL_USER_ID,
+      chat!.id,
+      "agent",
+      "Read cross-worker targets",
+    );
+    expect(lane).not.toBeNull();
+    const call = async (
+      tool:
+        | "cantrip_targets_list"
+        | "cantrip_target_inspect"
+        | "cantrip_explorer_list"
+        | "cantrip_explorer_read"
+        | "cantrip_terminal_read"
+        | "cantrip_browser_services"
+        | "cantrip_worktree_status",
+      arguments_: Record<string, unknown>,
+      callId: string,
+    ) =>
+      app.inject({
+        method: "POST",
+        url: tool.startsWith("cantrip_worktree")
+          ? "/api/internal/agent-tools/worktree"
+          : "/api/internal/agent-tools/execution",
+        headers: { authorization: `Bearer ${config.workerToken}` },
+        payload: {
+          arguments: arguments_,
+          callId,
+          chatId: chat!.id,
+          executionLaneId: lane!.executionLaneId,
+          tool,
+          workerId: "worker-alpha",
+        },
+      });
+    const explorerTarget = {
+      kind: "surface" as const,
+      projectId,
+      surfaceKind: "explorer" as const,
+      surfaceId: explorer.id,
+    };
+    const terminalTarget = {
+      kind: "surface" as const,
+      projectId,
+      surfaceKind: "terminal" as const,
+      surfaceId: terminal.id,
+    };
+    const browserTarget = {
+      kind: "surface" as const,
+      projectId,
+      surfaceKind: "browser" as const,
+      surfaceId: browser.id,
+    };
+
+    const listed = await call(
+      "cantrip_targets_list",
+      { limit: 1 },
+      "targets-list",
+    );
+    expect(listed.statusCode).toBe(200);
+    expect(
+      agentExecutionToolResultSchema.parse(listed.json()).data,
+    ).toMatchObject({
+      projectId,
+      targets: [expect.any(Object)],
+      nextCursor: 1,
+      truncated: true,
+    });
+
+    const inspected = await call(
+      "cantrip_target_inspect",
+      { target: terminalTarget },
+      "target-inspect",
+    );
+    expect(inspected.statusCode).toBe(200);
+    expect(
+      agentExecutionToolResultSchema.parse(inspected.json()),
+    ).toMatchObject({
+      target: terminalTarget,
+      worktreeId: betaWorktreeId,
+      data: { placement: { workerId: "worker-beta" } },
+    });
+
+    const directory = await call(
+      "cantrip_explorer_list",
+      { target: explorerTarget, path: "" },
+      "explorer-list",
+    );
+    expect(directory.statusCode).toBe(200);
+    expect(
+      agentExecutionToolResultSchema.parse(directory.json()).data,
+    ).toMatchObject({ entries: [{ name: "README.md" }] });
+
+    const file = await call(
+      "cantrip_explorer_read",
+      { target: explorerTarget, path: "README.md", maxChars: 12 },
+      "explorer-read",
+    );
+    expect(file.statusCode).toBe(200);
+    expect(
+      agentExecutionToolResultSchema.parse(file.json()).data,
+    ).toMatchObject({
+      content: "cross-worker",
+      truncated: true,
+    });
+
+    const terminalRead = await call(
+      "cantrip_terminal_read",
+      { target: terminalTarget, maxChars: 2_000 },
+      "terminal-read",
+    );
+    expect(terminalRead.statusCode).toBe(200);
+    expect(
+      agentExecutionToolResultSchema.parse(terminalRead.json()).data,
+    ).toMatchObject({
+      terminalId: terminal.id,
+      data: "cross-worker terminal output",
+    });
+
+    const services = await call(
+      "cantrip_browser_services",
+      { target: browserTarget },
+      "browser-services",
+    );
+    expect(services.statusCode).toBe(200);
+    expect(agentExecutionToolResultSchema.parse(services.json()).data).toEqual([
+      expect.objectContaining({ workerId: "worker-beta", port: 4_173 }),
+    ]);
+
+    const worktreeStatus = await call(
+      "cantrip_worktree_status",
+      {
+        target: {
+          kind: "worktree",
+          projectId,
+          worktreeId: betaWorktreeId,
+        },
+      },
+      "worktree-status",
+    );
+    expect(worktreeStatus.statusCode).toBe(200);
+    expect(
+      agentExecutionToolResultSchema.parse(worktreeStatus.json()),
+    ).toMatchObject({ worktreeId: betaWorktreeId });
+    expect(routedCommands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          workerId: "worker-beta",
+          command: expect.objectContaining({ type: "explorer.directory.list" }),
+        }),
+        expect.objectContaining({
+          workerId: "worker-beta",
+          command: expect.objectContaining({ type: "terminal.snapshot" }),
+        }),
+        expect.objectContaining({
+          workerId: "worker-beta",
+          command: expect.objectContaining({
+            type: "browser.services.discover",
+          }),
+        }),
+      ]),
+    );
+
+    const spoofed = await app.inject({
+      method: "POST",
+      url: "/api/internal/agent-tools/execution",
+      headers: { authorization: `Bearer ${config.workerToken}` },
+      payload: {
+        arguments: { target: terminalTarget },
+        callId: "spoofed-source",
+        chatId: chat!.id,
+        executionLaneId: lane!.executionLaneId,
+        tool: "cantrip_terminal_read",
+        workerId: "worker-beta",
+      },
+    });
+    expect(spoofed.statusCode).toBe(409);
+    expect(spoofed.json().error).toContain("active chat lane");
+
+    const wrongProject = await call(
+      "cantrip_terminal_read",
+      { target: { ...terminalTarget, projectId: "another-project" } },
+      "wrong-project",
+    );
+    expect(wrongProject.statusCode).toBe(409);
+    expect(wrongProject.json()).toMatchObject({ code: "target-mismatch" });
+
+    const incorrectPlacement = await call(
+      "cantrip_explorer_read",
+      {
+        target: {
+          ...terminalTarget,
+          surfaceKind: "explorer",
+        },
+        path: "README.md",
+      },
+      "incorrect-placement",
+    );
+    expect(incorrectPlacement.statusCode).toBe(404);
+    expect(incorrectPlacement.json()).toMatchObject({
+      code: "target-not-found",
+    });
+
+    const unauthorized = await app.inject({
+      method: "POST",
+      url: "/api/internal/agent-tools/execution",
+      payload: {
+        arguments: { target: terminalTarget },
+        callId: "unauthorized",
+        chatId: chat!.id,
+        executionLaneId: lane!.executionLaneId,
+        tool: "cantrip_terminal_read",
+        workerId: "worker-alpha",
+      },
+    });
+    expect(unauthorized.statusCode).toBe(401);
+
+    connectedWorkers.delete("worker-beta");
+    const offline = await call(
+      "cantrip_terminal_read",
+      { target: terminalTarget },
+      "offline-target",
+    );
+    expect(offline.statusCode).toBe(409);
+    expect(offline.json()).toMatchObject({ code: "worker-offline" });
+    connectedWorkers.add("worker-beta");
+
+    await database.repository.finishChatExecutionLane(
+      chat!.id,
+      lane!.executionLaneId,
+      "idle",
+    );
+    const stale = await call(
+      "cantrip_terminal_read",
+      { target: terminalTarget },
+      "stale-lane",
+    );
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json().error).toContain("active chat lane");
   });
 });

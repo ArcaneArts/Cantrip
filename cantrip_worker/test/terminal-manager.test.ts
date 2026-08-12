@@ -21,6 +21,13 @@ describe("TerminalManager", () => {
     const directory = await mkdtemp(path.join(tmpdir(), "cantrip-terminal-"));
     directories.push(directory);
     const manager = new TerminalManager();
+    expect(manager.snapshot("missing-terminal", 100)).toEqual({
+      terminalId: "missing-terminal",
+      status: "not-running",
+      data: "",
+      truncated: false,
+      exitCode: null,
+    });
     let output = "";
     const events: string[] = [];
     const exited = manager.open(
@@ -46,9 +53,21 @@ describe("TerminalManager", () => {
     await expect
       .poll(() => output, { timeout: 5_000 })
       .toContain("CANTRIP_PTY_OK");
+    expect(manager.snapshot("terminal-1", 8)).toMatchObject({
+      terminalId: "terminal-1",
+      status: "running",
+      truncated: true,
+    });
+    expect(manager.snapshot("terminal-1", 100_000).data).toContain(
+      "CANTRIP_PTY_OK",
+    );
     manager.input("terminal-1", "exit\r");
 
     await expect(exited).resolves.toMatchObject({
+      status: "exited",
+      exitCode: 0,
+    });
+    expect(manager.snapshot("terminal-1", 100)).toMatchObject({
       status: "exited",
       exitCode: 0,
     });

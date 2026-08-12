@@ -147,6 +147,14 @@ Codex app-server receives these dynamic tools from the worker:
 - `cantrip_worktree_release`
 - `cantrip_worktree_remove`
 
+The status tool also accepts a canonical worktree `ExecutionTarget`, allowing
+a chat to inspect a worktree on another worker through the server. The broader
+read-only target tools (`cantrip_targets_list`, `cantrip_target_inspect`,
+`cantrip_explorer_list`, `cantrip_explorer_read`, `cantrip_terminal_read`, and
+`cantrip_browser_services`) use the same lane authentication and canonical
+target resolver. They never let the source worker contact the target worker
+directly.
+
 The server validates the current chat lane, actor, policy, ownership, and
 removal authority before routing an operation. Runtime identity includes chat,
 worker, and worktree. See

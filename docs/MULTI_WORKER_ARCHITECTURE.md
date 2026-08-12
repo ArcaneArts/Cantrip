@@ -297,6 +297,40 @@ Operational callers fail closed by default. The catalog never accepts a
 client-supplied worker claim for a surface and does not expose worker-local
 paths.
 
+### Agent read operations use the same targets
+
+Interactive Codex turns receive the existing worktree lifecycle tools plus a
+small read-only target toolset:
+
+- `cantrip_targets_list` and `cantrip_target_inspect` discover canonical
+  targets and their availability; target lists are cursor-paginated and return
+  at most 200 entries per call;
+- `cantrip_explorer_list` and `cantrip_explorer_read` address an exact Explorer
+  target, with paginated directory entries and bounded file content before they
+  enter context;
+- `cantrip_terminal_read` returns bounded recent scrollback without attaching
+  to the PTY or sending input;
+- `cantrip_browser_services` discovers services only on the worker hosting the
+  selected Browser target;
+- `cantrip_worktree_status` accepts an exact worktree target while retaining
+  its legacy worktree-id input for older runtimes.
+
+The source worker sends the dynamic-tool call to
+`POST /api/internal/agent-tools/execution` using its worker credential. The
+server proves that the call came from the chat's current executing lane, loads
+the source chat's project under its owner, resolves the supplied target with
+the same canonical resolver used by the app, and only then sends a bounded
+command over the existing server-to-target-worker bridge. The source and
+target workers never exchange addresses, credentials, or commands. Project
+mismatches, stale lanes, incorrect surface kinds, missing capabilities, and
+offline targets fail closed without fallback placement.
+
+Worktree lifecycle tools continue using their compatibility endpoint so older
+workers and existing activity/invalidation behavior remain valid. New
+read-only tools are advertised to newly created Codex threads when the runtime
+supports dynamic tools; resumed threads retain the tool declarations stored by
+their Codex runtime.
+
 ## Default placement selection
 
 Creation uses this deterministic order:

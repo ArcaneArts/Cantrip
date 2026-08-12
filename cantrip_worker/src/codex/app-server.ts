@@ -27,11 +27,11 @@ import {
   normalizedAgentMessageSchema,
   threadGoalSchema,
   type AgentActivity,
+  type AgentExecutionToolName,
+  type AgentExecutionToolResult,
   type AgentInteractionRequestKind,
   type AgentInteractionResponse,
   type AgentInteractionRuntimeRequest,
-  type AgentWorktreeToolName,
-  type AgentWorktreeToolResult,
   type AgentThreadSync,
   type AgentThreadSyncItem,
   type AgentTurnResult,
@@ -107,11 +107,11 @@ interface PendingRpcRequest {
   timeout: ReturnType<typeof setTimeout>;
 }
 
-export type WorktreeToolHandler = (input: {
+export type ExecutionToolHandler = (input: {
   arguments: Record<string, unknown>;
   callId: string;
-  tool: AgentWorktreeToolName;
-}) => Promise<AgentWorktreeToolResult>;
+  tool: AgentExecutionToolName;
+}) => Promise<AgentExecutionToolResult>;
 
 interface ActiveTurn {
   baseline: WorkspaceSnapshot;
@@ -139,7 +139,7 @@ interface ActiveTurn {
   }) => void;
   onPlanQuestion?: (question: PendingPlanQuestion) => void;
   onPlanQuestionResolved?: (questionId: string) => void;
-  onWorktreeToolCall?: WorktreeToolHandler;
+  onExecutionToolCall?: ExecutionToolHandler;
   reasoningSummaries: Map<string, string[]>;
   reject(error: Error): void;
   resolve(result: AgentTurnResult | WorkflowNodeExecutionResult): void;
@@ -907,7 +907,7 @@ export interface RunAgentTurnOptions {
   onPlan?: ActiveTurn["onPlan"];
   onPlanQuestion?: ActiveTurn["onPlanQuestion"];
   onPlanQuestionResolved?: ActiveTurn["onPlanQuestionResolved"];
-  onWorktreeToolCall?: ActiveTurn["onWorktreeToolCall"];
+  onExecutionToolCall?: ActiveTurn["onExecutionToolCall"];
 }
 
 type WorkflowNodeExecuteCommand = Extract<
@@ -1024,7 +1024,7 @@ export function goalShouldContinue(
   return !automationPaused && goal?.status === "active";
 }
 
-const WORKTREE_TOOL_NAMES = new Set<AgentWorktreeToolName>([
+const EXECUTION_TOOL_NAMES = new Set<AgentExecutionToolName>([
   "cantrip_worktrees_list",
   "cantrip_worktree_acquire",
   "cantrip_worktree_create",
@@ -1032,12 +1032,103 @@ const WORKTREE_TOOL_NAMES = new Set<AgentWorktreeToolName>([
   "cantrip_worktree_status",
   "cantrip_worktree_release",
   "cantrip_worktree_remove",
+  "cantrip_targets_list",
+  "cantrip_target_inspect",
+  "cantrip_explorer_list",
+  "cantrip_explorer_read",
+  "cantrip_terminal_read",
+  "cantrip_browser_services",
 ]);
 
 const worktreeIdProperty = {
   type: "string",
   description: "The opaque Cantrip worktree id returned by a Cantrip tool.",
 };
+
+const executionTargetProperty = {
+  oneOf: [
+    {
+      type: "object",
+      properties: {
+        kind: { const: "project" },
+        projectId: { type: "string" },
+      },
+      required: ["kind", "projectId"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        kind: { const: "worker" },
+        projectId: { type: "string" },
+        workerId: { type: "string" },
+      },
+      required: ["kind", "projectId", "workerId"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        kind: { const: "replica" },
+        projectId: { type: "string" },
+        projectReplicaId: { type: "string" },
+      },
+      required: ["kind", "projectId", "projectReplicaId"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        kind: { const: "worktree" },
+        projectId: { type: "string" },
+        worktreeId: { type: "string" },
+      },
+      required: ["kind", "projectId", "worktreeId"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        kind: { const: "surface" },
+        projectId: { type: "string" },
+        surfaceKind: {
+          type: "string",
+          enum: [
+            "chat",
+            "terminal",
+            "explorer",
+            "code",
+            "browser",
+            "remote-desktop",
+            "remote-surface",
+          ],
+        },
+        surfaceId: { type: "string" },
+      },
+      required: ["kind", "projectId", "surfaceKind", "surfaceId"],
+      additionalProperties: false,
+    },
+  ],
+  description:
+    "A canonical Cantrip execution target returned by cantrip_targets_list.",
+};
+
+function surfaceTargetProperty(
+  surfaceKind: "browser" | "explorer" | "terminal",
+) {
+  return {
+    type: "object",
+    properties: {
+      kind: { const: "surface" },
+      projectId: { type: "string" },
+      surfaceKind: { const: surfaceKind },
+      surfaceId: { type: "string" },
+    },
+    required: ["kind", "projectId", "surfaceKind", "surfaceId"],
+    additionalProperties: false,
+    description: `An exact Cantrip ${surfaceKind} target.`,
+  };
+}
 
 export const CANTRIP_WORKTREE_DYNAMIC_TOOLS = [
   {
@@ -1138,6 +1229,17 @@ export const CANTRIP_WORKTREE_DYNAMIC_TOOLS = [
       type: "object",
       properties: {
         worktreeId: { ...worktreeIdProperty, type: ["string", "null"] },
+        target: {
+          ...surfaceTargetProperty("terminal"),
+          properties: {
+            kind: { const: "worktree" },
+            projectId: { type: "string" },
+            worktreeId: { type: "string" },
+          },
+          required: ["kind", "projectId", "worktreeId"],
+          description:
+            "Optional exact worktree target. Prefer this for cross-worker reads.",
+        },
       },
       additionalProperties: false,
     },
@@ -1170,8 +1272,138 @@ export const CANTRIP_WORKTREE_DYNAMIC_TOOLS = [
   },
 ] as const;
 
+export const CANTRIP_EXECUTION_TARGET_DYNAMIC_TOOLS = [
+  {
+    type: "function",
+    name: "cantrip_targets_list",
+    description:
+      "List the bounded, server-authorized execution targets for this project, including placements and availability.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        cursor: {
+          type: "integer",
+          minimum: 0,
+          maximum: 1999,
+          description: "Zero-based target cursor; defaults to 0.",
+        },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 200,
+          description: "Maximum targets to return; defaults to 100.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "cantrip_target_inspect",
+    description:
+      "Resolve and inspect one exact execution target without performing an operation. Unavailable targets are reported rather than substituted.",
+    inputSchema: {
+      type: "object",
+      properties: { target: executionTargetProperty },
+      required: ["target"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "cantrip_explorer_list",
+    description:
+      "List a directory through an exact Explorer surface, including when that Explorer is placed on another worker.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: surfaceTargetProperty("explorer"),
+        path: {
+          type: "string",
+          description:
+            "Explorer-relative directory path; use an empty string for its root.",
+        },
+        cursor: {
+          type: "integer",
+          minimum: 0,
+          maximum: 999,
+          description: "Zero-based entry cursor; defaults to 0.",
+        },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 200,
+          description: "Maximum entries to return; defaults to 100.",
+        },
+      },
+      required: ["target", "path"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "cantrip_explorer_read",
+    description:
+      "Read a bounded text file through an exact Explorer surface, including when that Explorer is placed on another worker.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: surfaceTargetProperty("explorer"),
+        path: { type: "string", description: "Explorer-relative file path." },
+        maxChars: {
+          type: "integer",
+          minimum: 1,
+          maximum: 200000,
+          description:
+            "Maximum leading characters to return; defaults to 100000.",
+        },
+      },
+      required: ["target", "path"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "cantrip_terminal_read",
+    description:
+      "Read the bounded recent scrollback of an exact Terminal surface without attaching or sending input.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: surfaceTargetProperty("terminal"),
+        maxChars: {
+          type: "integer",
+          minimum: 1,
+          maximum: 100000,
+          description:
+            "Maximum trailing characters to return; defaults to 20000.",
+        },
+      },
+      required: ["target"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "cantrip_browser_services",
+    description:
+      "Discover browser services on the worker hosting an exact Browser surface.",
+    inputSchema: {
+      type: "object",
+      properties: { target: surfaceTargetProperty("browser") },
+      required: ["target"],
+      additionalProperties: false,
+    },
+  },
+] as const;
+
+export const CANTRIP_DYNAMIC_TOOLS = [
+  ...CANTRIP_WORKTREE_DYNAMIC_TOOLS,
+  ...CANTRIP_EXECUTION_TARGET_DYNAMIC_TOOLS,
+] as const;
+
 const CANTRIP_WORKTREE_DEVELOPER_INSTRUCTIONS =
-  "Cantrip owns Git worktree paths and execution lanes. Use the cantrip_worktree_* tools instead of invoking git worktree directly. A successful acquire, switch, or release schedules a safe runtime transition; immediately finish the current turn after that tool returns so Cantrip can checkpoint and continue in the selected worktree. Never claim that CWD changed inside the current turn.";
+  "Cantrip owns Git worktree paths, execution lanes, and cross-worker routing. Use the cantrip_worktree_* tools instead of invoking git worktree directly. Use cantrip_targets_list and exact returned targets before addressing Cantrip surfaces; unavailable targets are never silently substituted. A successful acquire, switch, or release schedules a safe runtime transition; immediately finish the current turn after that tool returns so Cantrip can checkpoint and continue in the selected worktree. Never claim that CWD changed inside the current turn.";
 
 export function codexWorktreeTurnPolicy(
   options: Pick<
@@ -1280,15 +1512,15 @@ export function codexThreadPermissionParams(
     : { sandbox: "workspace-write" as const };
 }
 
-export async function executeDynamicWorktreeTool(
-  handler: WorktreeToolHandler | undefined,
+export async function executeDynamicExecutionTool(
+  handler: ExecutionToolHandler | undefined,
   params: DynamicToolCallParams,
 ): Promise<{
   contentItems: Array<{ type: "inputText"; text: string }>;
   success: boolean;
 }> {
-  const tool = params.tool as AgentWorktreeToolName;
-  if (!handler || !WORKTREE_TOOL_NAMES.has(tool)) {
+  const tool = params.tool as AgentExecutionToolName;
+  if (!handler || !EXECUTION_TOOL_NAMES.has(tool)) {
     return {
       success: false,
       contentItems: [
@@ -2028,7 +2260,7 @@ export class CodexAppServer implements CodexRuntime {
         onPlan: options.onPlan,
         onPlanQuestion: options.onPlanQuestion,
         onPlanQuestionResolved: options.onPlanQuestionResolved,
-        onWorktreeToolCall: options.onWorktreeToolCall,
+        onExecutionToolCall: options.onExecutionToolCall,
         reasoningSummaries: new Map(),
         reject,
         resolve,
@@ -3138,7 +3370,7 @@ export class CodexAppServer implements CodexRuntime {
         ...this.threadPermissionParams(options.permissionProfileId),
         developerInstructions: CANTRIP_WORKTREE_DEVELOPER_INSTRUCTIONS,
         ...(this.compatibility.initialize?.experimentalApi
-          ? { dynamicTools: CANTRIP_WORKTREE_DYNAMIC_TOOLS }
+          ? { dynamicTools: CANTRIP_DYNAMIC_TOOLS }
           : {}),
         ...(mcpConfig ? { config: mcpConfig } : {}),
       })) as ThreadResponse;
@@ -4301,8 +4533,8 @@ export class CodexAppServer implements CodexRuntime {
       const active = this.#activeTurns.get(params.turnId);
       this.send({
         id: message.id,
-        result: await executeDynamicWorktreeTool(
-          active?.onWorktreeToolCall,
+        result: await executeDynamicExecutionTool(
+          active?.onExecutionToolCall,
           params,
         ),
       });
