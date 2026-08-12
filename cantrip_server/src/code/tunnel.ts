@@ -44,6 +44,7 @@ export interface CreateCodeAttachmentInput {
 
 export interface CodeTunnelBrokerOptions {
   allowedFrameAncestors: string[];
+  consumeRelayBytes?(ownerId: string, workerId: string, bytes: number): boolean;
   idleTtlMs?: number;
   maxAttachments?: number;
   maxLifetimeMs?: number;
@@ -113,6 +114,9 @@ export class CodeTunnelBroker {
   readonly #activeStreams = new Map<string, Set<() => void>>();
   readonly #allowedFrameAncestors: string;
   readonly #attachments = new Map<string, CodeAttachmentBinding>();
+  readonly #consumeRelayBytes: NonNullable<
+    CodeTunnelBrokerOptions["consumeRelayBytes"]
+  >;
   readonly #idleTtlMs: number;
   readonly #maxAttachments: number;
   readonly #maxLifetimeMs: number;
@@ -124,6 +128,7 @@ export class CodeTunnelBroker {
     options: CodeTunnelBrokerOptions,
   ) {
     this.#surfaceOrigin = new URL(options.surfaceOrigin);
+    this.#consumeRelayBytes = options.consumeRelayBytes ?? (() => true);
     this.#allowedFrameAncestors = [
       "'self'",
       ...options.allowedFrameAncestors,
@@ -331,6 +336,21 @@ export class CodeTunnelBroker {
           case "http-response-data":
             if (!started || response.destroyed) return;
             if (
+              !this.#consumeRelayBytes(
+                binding.ownerId,
+                binding.workerId,
+                payload.byteLength,
+              )
+            ) {
+              this.#sendCancel(
+                binding,
+                streamId,
+                "Relay bandwidth quota reached.",
+              );
+              fail(429, "Cantrip Code relay bandwidth quota reached.");
+              return;
+            }
+            if (
               response.writableLength + payload.byteLength >
               MAX_BUFFERED_BYTES
             ) {
@@ -407,6 +427,17 @@ export class CodeTunnelBroker {
       if (completed) return;
       this.#touch(binding);
       for (const part of splitPayload(chunk)) {
+        if (
+          !this.#consumeRelayBytes(
+            binding.ownerId,
+            binding.workerId,
+            part.byteLength,
+          )
+        ) {
+          this.#sendCancel(binding, streamId, "Relay bandwidth quota reached.");
+          fail(429, "Cantrip Code relay bandwidth quota reached.");
+          return;
+        }
         if (
           !sendFrame.call(
             this.bridge,
@@ -488,6 +519,17 @@ export class CodeTunnelBroker {
         return false;
       }
       if (
+        !this.#consumeRelayBytes(
+          binding.ownerId,
+          binding.workerId,
+          payload.byteLength,
+        )
+      ) {
+        socket.close(1013, "Cantrip Code relay bandwidth quota reached");
+        finish();
+        return false;
+      }
+      if (
         !sendFrame.call(
           this.bridge,
           binding.workerId,
@@ -525,6 +567,17 @@ export class CodeTunnelBroker {
             return;
           case "websocket-data":
             if (!opened || socket.readyState !== WebSocket.OPEN) return;
+            if (
+              !this.#consumeRelayBytes(
+                binding.ownerId,
+                binding.workerId,
+                payload.byteLength,
+              )
+            ) {
+              socket.close(1013, "Cantrip Code relay bandwidth quota reached");
+              finish();
+              return;
+            }
             if (
               socket.bufferedAmount + payload.byteLength >
               MAX_BUFFERED_BYTES

@@ -818,6 +818,63 @@ export function mentionedSkillNames(text: string): string[] {
   return [...names];
 }
 
+export const operationalProbeSchema = z.object({
+  status: z.enum(["alive", "ready", "not-ready"]),
+  service: z.literal("cantrip_server"),
+  database: z
+    .object({
+      engine: databaseEngineSchema,
+      status: z.enum(["ready", "unavailable"]),
+      latencyMs: z.number().nonnegative(),
+    })
+    .optional(),
+  timestamp: z.string().datetime(),
+});
+
+const operationalCounterSchema = z.number().int().nonnegative();
+
+export const serverOperationalStatsSchema = z.object({
+  uptimeSeconds: z.number().nonnegative(),
+  http: z.object({
+    activeRequests: operationalCounterSchema,
+    requestCount: operationalCounterSchema,
+  }),
+  workerCommands: z.object({
+    activeRequests: operationalCounterSchema,
+    connectedWorkers: operationalCounterSchema,
+    failedRequests: operationalCounterSchema,
+    routedRequests: operationalCounterSchema,
+    succeededRequests: operationalCounterSchema,
+  }),
+  tunnels: z.object({
+    activeConnections: operationalCounterSchema,
+    activeRoutes: operationalCounterSchema,
+    bytesFromSource: operationalCounterSchema,
+    bytesToSource: operationalCounterSchema,
+    closedConnections: operationalCounterSchema,
+    openedConnections: operationalCounterSchema,
+    rejectedConnections: operationalCounterSchema,
+  }),
+  quotas: z.object({
+    activeRemoteSurfaces: operationalCounterSchema,
+    rejectedRelayBandwidth: operationalCounterSchema,
+    rejectedRemoteSurfaces: operationalCounterSchema,
+    rejectedUploads: operationalCounterSchema,
+    relayBytes: operationalCounterSchema,
+    uploadBytes: operationalCounterSchema,
+  }),
+  scheduler: z.object({
+    dispatchFailures: operationalCounterSchema,
+    dispatches: operationalCounterSchema,
+    dueOccurrences: operationalCounterSchema,
+    lastScanAt: z.string().datetime().nullable(),
+    lastScanDurationSeconds: z.number().nonnegative(),
+    maximumLagSeconds: z.number().nonnegative(),
+    scanFailures: operationalCounterSchema,
+    scans: operationalCounterSchema,
+  }),
+});
+
 export const systemHealthSchema = z.object({
   status: z.literal("ok"),
   service: z.literal("cantrip_server"),
@@ -847,6 +904,9 @@ export const systemHealthSchema = z.object({
     serverEpoch: z.string().uuid(),
     slowConsumerClosureCount: z.number().int().nonnegative(),
   }),
+  // Optional while clients and independently deployed servers roll across the
+  // release that introduced operational counters.
+  operations: serverOperationalStatsSchema.optional(),
   timestamp: z.string().datetime(),
 });
 
@@ -7271,6 +7331,7 @@ export type WorkerCredentialRotateResult = z.infer<
 >;
 export type SkillSummary = z.infer<typeof skillSummarySchema>;
 export type SystemHealth = z.infer<typeof systemHealthSchema>;
+export type OperationalProbe = z.infer<typeof operationalProbeSchema>;
 export type ThemePreference = z.infer<typeof themePreferenceSchema>;
 export type ModelProviderKind = z.infer<typeof modelProviderKindSchema>;
 export type CodexAuthStatus = z.infer<typeof codexAuthStatusSchema>;

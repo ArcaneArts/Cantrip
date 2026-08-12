@@ -152,6 +152,83 @@ describe("public HTTP hardening", () => {
     }
   });
 
+  it("separates process liveness from database readiness", async () => {
+    const config = await testConfig();
+    const database = await connectDatabase(config);
+    let databaseReady = true;
+    const app = await buildApp({
+      config,
+      database: {
+        ...database,
+        async ping() {
+          if (!databaseReady) throw new Error("database unavailable");
+          await database.ping();
+        },
+      },
+      logger: false,
+    });
+    try {
+      const live = await app.inject({ method: "GET", url: "/healthz" });
+      expect(live.statusCode).toBe(200);
+      expect(live.json()).toMatchObject({ status: "alive" });
+
+      const ready = await app.inject({ method: "GET", url: "/readyz" });
+      expect(ready.statusCode).toBe(200);
+      expect(ready.json()).toMatchObject({
+        status: "ready",
+        database: { status: "ready" },
+      });
+
+      databaseReady = false;
+      const unavailable = await app.inject({ method: "GET", url: "/readyz" });
+      expect(unavailable.statusCode).toBe(503);
+      expect(unavailable.json()).toMatchObject({
+        status: "not-ready",
+        database: { status: "unavailable" },
+      });
+      expect(
+        (await app.inject({ method: "GET", url: "/healthz" })).statusCode,
+      ).toBe(200);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("protects aggregate Prometheus metrics with an operator token", async () => {
+    const config = await testConfig({
+      authMode: "accounts",
+      metricsToken: "operator-metrics-token-with-32-characters",
+      publicRegistration: true,
+      secretEncryption: {
+        activeKeyId: "test",
+        keys: [{ id: "test", key: Buffer.alloc(32, 7) }],
+      },
+    });
+    const database = await connectDatabase(config);
+    const app = await buildApp({ config, database, logger: false });
+    try {
+      expect(
+        (await app.inject({ method: "GET", url: "/metrics" })).statusCode,
+      ).toBe(401);
+      const metrics = await app.inject({
+        method: "GET",
+        url: "/metrics",
+        headers: {
+          authorization: "Bearer operator-metrics-token-with-32-characters",
+        },
+      });
+      expect(metrics.statusCode).toBe(200);
+      expect(metrics.headers["content-type"]).toContain("text/plain");
+      expect(metrics.body).toContain("cantrip_http_requests_total");
+      expect(metrics.body).toContain("cantrip_database_ready");
+      expect(metrics.body).toContain("cantrip_workers_connected");
+      expect(metrics.body).toContain("cantrip_scheduler_scans_total");
+      expect(metrics.body).not.toContain("operator-metrics-token");
+    } finally {
+      await app.close();
+    }
+  });
+
   it("requires a one-time first-owner token only while a closed hosted server is empty", async () => {
     const config = await testConfig({
       authMode: "accounts",

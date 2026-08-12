@@ -123,18 +123,29 @@ Copy the packaged `.env.example` to `.env`. The startup scripts use Node's
   buckets. A shared limiter is added by the multi-instance deployment layer.
 - `CANTRIP_ACCOUNT_UPLOAD_CONCURRENCY`,
   `CANTRIP_ACCOUNT_WEBSOCKET_LIMIT`,
+  `CANTRIP_ACCOUNT_REMOTE_SURFACE_LIMIT`,
+  `CANTRIP_WORKER_REMOTE_SURFACE_LIMIT`,
   `CANTRIP_ACCOUNT_COMMAND_CONCURRENCY`, and
   `CANTRIP_WORKER_COMMAND_CONCURRENCY`: active relay ceilings. Account and
   worker command rate variables provide a second backpressure boundary without
   adding a short timeout to long-running agent work.
+- `CANTRIP_ACCOUNT_UPLOAD_BYTES_PER_MINUTE`,
+  `CANTRIP_WORKER_UPLOAD_BYTES_PER_MINUTE`,
+  `CANTRIP_ACCOUNT_RELAY_BYTES_PER_MINUTE`, and
+  `CANTRIP_WORKER_RELAY_BYTES_PER_MINUTE`: process-local byte budgets for
+  attachments and worker relay traffic. Use a single server replica until the
+  shared coordination layer is enabled.
+- `CANTRIP_METRICS_TOKEN`: optional 32+ character operator bearer token for
+  aggregate Prometheus metrics. Owner/admin sessions can also read metrics.
 
 Hosted mode never permits anonymous authentication, including when
 `CANTRIP_ALLOW_INSECURE_REMOTE=true`. It also refuses missing encryption keys,
 PGlite, implicit or wildcard client origins, insecure public/Code origins, and
 an absent or invalid trusted-proxy list. Password and account modes use
 revocable server-side sessions, tenant authorization, and per-worker
-enrollment. Public hosting still requires the later account/worker quotas,
-audit/metrics, multi-instance coordination, and production operations assets.
+enrollment. Account/worker quotas, audit visibility, operational probes,
+Prometheus metrics, and production deployment assets are implemented. Public
+horizontal hosting still requires the shared multi-instance coordination layer.
 The encryption keyring protects provider API keys plus MCP environment and
 static-header values. MCP configuration responses contain fixed masks rather
 than plaintext; preserve old keyring entries until startup has rewrapped every

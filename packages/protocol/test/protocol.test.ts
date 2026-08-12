@@ -111,6 +111,7 @@ import {
   remoteDesktopSummarySchema,
   remoteDesktopTargetInventorySchema,
   remoteDesktopUpdateSchema,
+  operationalProbeSchema,
   scriptCommandListSchema,
   serverBootstrapSchema,
   systemHealthSchema,
@@ -3293,6 +3294,31 @@ describe("Cantrip protocol", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("describes liveness and database readiness without account data", () => {
+    expect(
+      operationalProbeSchema.parse({
+        status: "alive",
+        service: "cantrip_server",
+        timestamp: "2026-08-07T12:00:00.000Z",
+      }),
+    ).toMatchObject({ status: "alive" });
+    expect(
+      operationalProbeSchema.parse({
+        status: "not-ready",
+        service: "cantrip_server",
+        database: {
+          engine: "postgres",
+          status: "unavailable",
+          latencyMs: 12,
+        },
+        timestamp: "2026-08-07T12:00:00.000Z",
+      }),
+    ).toMatchObject({
+      status: "not-ready",
+      database: { status: "unavailable" },
+    });
   });
 
   it("describes the local server boundary explicitly", () => {

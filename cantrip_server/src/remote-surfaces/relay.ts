@@ -22,6 +22,7 @@ export interface RemoteSurfaceClientSocket {
 
 export interface RemoteSurfaceRelayBinding {
   attachmentId: string;
+  ownerId: string;
   surfaceId: string;
   workerId: string;
 }
@@ -44,7 +45,14 @@ function frameBytes(data: unknown): Uint8Array {
 }
 
 export class RemoteSurfaceRelay {
-  constructor(private readonly bridge: WorkerCommandBus) {}
+  constructor(
+    private readonly bridge: WorkerCommandBus,
+    private readonly consumeRelayBytes: (
+      ownerId: string,
+      workerId: string,
+      bytes: number,
+    ) => boolean = () => true,
+  ) {}
 
   bind(
     socket: RemoteSurfaceClientSocket,
@@ -65,6 +73,17 @@ export class RemoteSurfaceRelay {
           header.sequence <= lastWorkerSequence ||
           socket.readyState !== 1
         ) {
+          return;
+        }
+        if (
+          !this.consumeRelayBytes(
+            binding.ownerId,
+            binding.workerId,
+            payload.byteLength,
+          )
+        ) {
+          socket.close(1013, "Remote Surface relay bandwidth quota reached");
+          cleanup();
           return;
         }
         if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) {
@@ -119,6 +138,17 @@ export class RemoteSurfaceRelay {
         return;
       }
       if (frame.header.sequence <= lastClientSequence) return;
+      if (
+        !this.consumeRelayBytes(
+          binding.ownerId,
+          binding.workerId,
+          frame.payload.byteLength,
+        )
+      ) {
+        socket.close(1013, "Remote Surface relay bandwidth quota reached");
+        cleanup();
+        return;
+      }
       if (
         !this.bridge.sendSurfaceFrame(
           binding.workerId,

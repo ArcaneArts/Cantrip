@@ -36,6 +36,9 @@ export interface ServerConfig {
   apiRateLimitPerMinute?: number;
   accountCommandConcurrency?: number;
   accountCommandRatePerMinute?: number;
+  accountRelayBytesPerMinute?: number;
+  accountRemoteSurfaceLimit?: number;
+  accountUploadBytesPerMinute?: number;
   accountUploadConcurrency?: number;
   accountWebsocketLimit?: number;
   appOrigins: string[];
@@ -49,6 +52,7 @@ export interface ServerConfig {
   agentModelProvider: string;
   ollamaBaseUrl: string;
   host: string;
+  metricsToken?: string;
   cookieSameSite?: "lax" | "none" | "strict";
   cookieSecure?: boolean;
   passwordHash?: string;
@@ -71,6 +75,9 @@ export interface ServerConfig {
   websocketMaxPayloadBytes?: number;
   workerCommandConcurrency?: number;
   workerCommandRatePerMinute?: number;
+  workerRelayBytesPerMinute?: number;
+  workerRemoteSurfaceLimit?: number;
+  workerUploadBytesPerMinute?: number;
 }
 
 export interface SecretEncryptionKeyConfig {
@@ -378,6 +385,12 @@ export function readServerConfig(): ServerConfig {
       "CANTRIP_ADMIN_BOOTSTRAP_TOKEN must contain at least 32 characters.",
     );
   }
+  const metricsToken = process.env.CANTRIP_METRICS_TOKEN?.trim();
+  if (metricsToken && metricsToken.length < 32) {
+    throw new Error(
+      "CANTRIP_METRICS_TOKEN must contain at least 32 characters.",
+    );
+  }
   const cookieSameSiteInput = process.env.CANTRIP_COOKIE_SAME_SITE;
   if (
     cookieSameSiteInput !== undefined &&
@@ -501,6 +514,27 @@ export function readServerConfig(): ServerConfig {
       60,
       100_000,
     ),
+    accountRelayBytesPerMinute: readBoundedInteger(
+      "CANTRIP_ACCOUNT_RELAY_BYTES_PER_MINUTE",
+      process.env.CANTRIP_ACCOUNT_RELAY_BYTES_PER_MINUTE,
+      512 * 1_024 * 1_024,
+      1 * 1_024 * 1_024,
+      64 * 1_024 * 1_024 * 1_024,
+    ),
+    accountRemoteSurfaceLimit: readBoundedInteger(
+      "CANTRIP_ACCOUNT_REMOTE_SURFACE_LIMIT",
+      process.env.CANTRIP_ACCOUNT_REMOTE_SURFACE_LIMIT,
+      16,
+      1,
+      10_000,
+    ),
+    accountUploadBytesPerMinute: readBoundedInteger(
+      "CANTRIP_ACCOUNT_UPLOAD_BYTES_PER_MINUTE",
+      process.env.CANTRIP_ACCOUNT_UPLOAD_BYTES_PER_MINUTE,
+      256 * 1_024 * 1_024,
+      1 * 1_024 * 1_024,
+      64 * 1_024 * 1_024 * 1_024,
+    ),
     accountUploadConcurrency: readBoundedInteger(
       "CANTRIP_ACCOUNT_UPLOAD_CONCURRENCY",
       process.env.CANTRIP_ACCOUNT_UPLOAD_CONCURRENCY,
@@ -536,6 +570,7 @@ export function readServerConfig(): ServerConfig {
     ollamaBaseUrl:
       process.env.CANTRIP_OLLAMA_BASE_URL ?? "http://127.0.0.1:11434/v1",
     host,
+    metricsToken,
     cookieSameSite:
       cookieSameSiteInput === "strict"
         ? "strict"
@@ -621,6 +656,27 @@ export function readServerConfig(): ServerConfig {
       1_200,
       60,
       100_000,
+    ),
+    workerRelayBytesPerMinute: readBoundedInteger(
+      "CANTRIP_WORKER_RELAY_BYTES_PER_MINUTE",
+      process.env.CANTRIP_WORKER_RELAY_BYTES_PER_MINUTE,
+      256 * 1_024 * 1_024,
+      1 * 1_024 * 1_024,
+      64 * 1_024 * 1_024 * 1_024,
+    ),
+    workerRemoteSurfaceLimit: readBoundedInteger(
+      "CANTRIP_WORKER_REMOTE_SURFACE_LIMIT",
+      process.env.CANTRIP_WORKER_REMOTE_SURFACE_LIMIT,
+      8,
+      1,
+      10_000,
+    ),
+    workerUploadBytesPerMinute: readBoundedInteger(
+      "CANTRIP_WORKER_UPLOAD_BYTES_PER_MINUTE",
+      process.env.CANTRIP_WORKER_UPLOAD_BYTES_PER_MINUTE,
+      128 * 1_024 * 1_024,
+      1 * 1_024 * 1_024,
+      64 * 1_024 * 1_024 * 1_024,
     ),
   };
   if (config.cookieSameSite === "none" && !config.cookieSecure) {

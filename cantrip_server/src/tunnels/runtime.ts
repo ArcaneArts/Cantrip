@@ -76,6 +76,8 @@ export class TunnelRuntimeManager {
       },
       source,
       tunnelId: authorization.tunnelId,
+      ownerId: authorization.ownerId,
+      workerId: authorization.destination.workerId,
     });
     const expiresIn = Math.max(
       1,

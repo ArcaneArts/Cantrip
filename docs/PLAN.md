@@ -619,9 +619,9 @@ Configuration uses validated environment variables and config files with documen
 
 ## 14. Observability and operations
 
-Use structured logs with request, command, worker, project, chat, turn, and item correlation IDs. Logs must be redacted at the boundary rather than relying on callers. Add metrics for connected workers, active turns, queue latency, event lag, Codex process restarts, approval wait time, provider errors, and WebSocket reconnects.
+Use structured logs with request, command, worker, project, chat, turn, and item correlation IDs. Logs must be redacted at the boundary rather than relying on callers. The server now exposes protected aggregate Prometheus metrics for HTTP/database health, connected workers, command activity, live connections, tunnel/relay traffic, quota rejection, and scheduler throughput/lag. Extend them with active turns, queue latency, event lag, Codex process restarts, approval wait time, provider errors, and WebSocket reconnects as those runtime counters become available.
 
-Health endpoints should distinguish process liveness, database readiness, migration status, and whether any worker is connected. Worker health reports should distinguish server connectivity, Codex availability, provider auth, runtime crash loops, disk pressure, and source availability.
+`/healthz` now distinguishes process liveness from database-backed `/readyz` readiness. Future probes should add migration status and explicit required-worker readiness. Worker health reports should distinguish server connectivity, Codex availability, provider auth, runtime crash loops, disk pressure, and source availability.
 
 For PostgreSQL deployments, document migrations, backups, point-in-time recovery expectations, and restore tests. PGlite deployments should expose a safe export/backup command and warn that they are not multi-server databases.
 
