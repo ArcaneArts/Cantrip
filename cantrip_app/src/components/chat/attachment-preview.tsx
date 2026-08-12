@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { requestResponse } from "@/lib/api-client";
 
 export interface AttachmentPresentation {
   fileName: string;
@@ -147,10 +148,7 @@ export function AttachmentViewerDialog({
       return;
     }
     const controller = new AbortController();
-    void fetch(contentUrl, {
-      credentials: "include",
-      signal: controller.signal,
-    })
+    void requestResponse(contentUrl, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.text();

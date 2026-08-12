@@ -57,6 +57,8 @@ describe("server configuration safety", () => {
     vi.stubEnv("CANTRIP_WORKER_TOKEN", "a-unique-remote-worker-token");
     expect(readServerConfig()).toMatchObject({
       allowInsecureRemote: true,
+      cookieSameSite: "none",
+      cookieSecure: true,
       deploymentMode: "hosted",
       host: "0.0.0.0",
     });

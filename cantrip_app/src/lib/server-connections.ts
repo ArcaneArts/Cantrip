@@ -8,6 +8,18 @@ export type ServerConnection = {
   url: string;
 };
 
+export type ServerConnectionFailureKind =
+  "authentication" | "compatibility" | "network" | "tls" | "version";
+
+export class ServerConnectionError extends Error {
+  constructor(
+    message: string,
+    readonly kind: ServerConnectionFailureKind,
+  ) {
+    super(message);
+  }
+}
+
 type StoredServerConnections = {
   activeId: string;
   connections: ServerConnection[];
@@ -49,13 +61,28 @@ function readStoredConnections(
     ) as Partial<StoredServerConnections> | null;
     if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.connections))
       return null;
-    const remotes = parsed.connections.filter(
-      (item): item is ServerConnection =>
-        item?.kind === "remote" &&
-        typeof item.id === "string" &&
-        typeof item.name === "string" &&
-        typeof item.url === "string",
-    );
+    const remotes = parsed.connections.flatMap((item) => {
+      if (
+        item?.kind !== "remote" ||
+        typeof item.id !== "string" ||
+        typeof item.name !== "string" ||
+        typeof item.url !== "string"
+      ) {
+        return [];
+      }
+      try {
+        return [
+          {
+            id: item.id,
+            kind: "remote" as const,
+            name: item.name.trim() || "Cantrip Server",
+            url: normalizeServerUrl(item.url),
+          },
+        ];
+      } catch {
+        return [];
+      }
+    });
     return {
       activeId:
         parsed.activeId === localId ||
@@ -87,7 +114,14 @@ export async function initializeServerConnections(): Promise<void> {
     "",
   );
   if (isTauri()) {
-    localUrl = await invoke<string>("local_server_url");
+    try {
+      localUrl = await invoke<string>("local_server_url");
+    } catch (error) {
+      if (!stored?.activeId || stored.activeId === localId) throw error;
+      // A previously selected remote server must remain usable even when the
+      // optional embedded service is unavailable during desktop startup.
+      localUrl = "";
+    }
   }
   const connections: ServerConnection[] = [
     { id: localId, kind: "local", name: "Local", url: localUrl },
@@ -168,11 +202,64 @@ export async function testServerConnection(
   timeoutMs = 8_000,
 ): Promise<ServerBootstrap> {
   const url = normalizeServerUrl(input);
-  const response = await fetch(`${url}/api/bootstrap`, {
-    credentials: "include",
-    headers: { accept: "application/json" },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok) throw new Error(`Server returned HTTP ${response.status}.`);
-  return serverBootstrapSchema.parse(await response.json());
+  if (
+    typeof window !== "undefined" &&
+    window.location?.protocol === "https:" &&
+    new URL(url).protocol !== "https:"
+  ) {
+    throw new ServerConnectionError(
+      "This secure app cannot connect to an unencrypted HTTP server. Use HTTPS.",
+      "tls",
+    );
+  }
+  let response: Response;
+  try {
+    response = await fetch(`${url}/api/bootstrap`, {
+      credentials: "include",
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (
+      new URL(url).protocol === "https:" &&
+      /certificate|ssl|tls|secure connection/i.test(message)
+    ) {
+      throw new ServerConnectionError(
+        "The server's TLS certificate could not be verified.",
+        "tls",
+      );
+    }
+    throw new ServerConnectionError(
+      error instanceof DOMException &&
+        ["AbortError", "TimeoutError"].includes(error.name)
+        ? "The server connection timed out."
+        : "The server could not be reached. Check its address and network access.",
+      "network",
+    );
+  }
+  if (!response.ok) {
+    const kind: ServerConnectionFailureKind =
+      response.status === 401 || response.status === 403
+        ? "authentication"
+        : response.status === 404 || response.status === 426
+          ? "version"
+          : "network";
+    const message =
+      kind === "authentication"
+        ? "The server requires authentication before it can be tested."
+        : kind === "version"
+          ? "This server does not expose a compatible Cantrip bootstrap endpoint."
+          : `The server returned HTTP ${response.status}.`;
+    throw new ServerConnectionError(message, kind);
+  }
+  const payload = await response.json().catch(() => null);
+  const parsed = serverBootstrapSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new ServerConnectionError(
+      "The server responded, but its Cantrip protocol is incompatible with this app.",
+      "compatibility",
+    );
+  }
+  return parsed.data;
 }

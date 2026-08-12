@@ -1,5 +1,13 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { Check, Loader2, Plus, Server, Trash2 } from "lucide-react";
+import {
+  Check,
+  Loader2,
+  LogOut,
+  Plus,
+  Server,
+  ShieldOff,
+  Trash2,
+} from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -12,6 +20,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { logout, logoutAll } from "@/lib/api";
+import { clearClientSession, getClientSession } from "@/lib/client-session";
 import {
   getActiveServerConnection,
   getServerConnections,
@@ -41,9 +51,12 @@ export function ServerSwitcher({
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+  const clientSession = getClientSession();
 
   const switchTo = (id: string) => {
     if (id === active.id) return;
+    clearClientSession();
     selectServerConnection(id);
     window.location.reload();
   };
@@ -55,7 +68,13 @@ export function ServerSwitcher({
     try {
       const bootstrap = await testServerConnection(url);
       setTestResult(
-        `Connected to ${bootstrap.server.id} · ${bootstrap.server.deploymentMode}`,
+        `Connected to ${bootstrap.server.id} · ${
+          bootstrap.auth.state === "authenticated"
+            ? "ready"
+            : bootstrap.auth.mode === "password"
+              ? "password required"
+              : "sign-in required"
+        }`,
       );
     } catch (connectionError) {
       setError(
@@ -68,11 +87,31 @@ export function ServerSwitcher({
     }
   };
 
+  const signOut = async (everywhere: boolean) => {
+    if (signingOut) return;
+    setSigningOut(true);
+    setError(null);
+    try {
+      if (everywhere) await logoutAll();
+      else await logout();
+      clearClientSession();
+      window.location.reload();
+    } catch (signOutError) {
+      setError(
+        signOutError instanceof Error
+          ? signOutError.message
+          : "Could not sign out.",
+      );
+      setSigningOut(false);
+    }
+  };
+
   const save = (event: FormEvent) => {
     event.preventDefault();
     setError(null);
     try {
       const connection = saveServerConnection({ name, url });
+      clearClientSession();
       selectServerConnection(connection.id);
       window.location.reload();
     } catch (saveError) {
@@ -134,6 +173,7 @@ export function ServerSwitcher({
                     className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
                     onClick={(event) => {
                       event.stopPropagation();
+                      clearClientSession();
                       removeServerConnection(connection.id);
                       window.location.reload();
                     }}
@@ -155,6 +195,30 @@ export function ServerSwitcher({
             >
               <Plus className="size-4" /> Add server
             </DropdownMenuPrimitive.Item>
+            {clientSession?.authMode !== "none" ? (
+              <>
+                <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+                <DropdownMenuPrimitive.Item
+                  className={itemClass}
+                  disabled={signingOut}
+                  onSelect={() => void signOut(false)}
+                >
+                  <LogOut className="size-4" /> Sign out
+                </DropdownMenuPrimitive.Item>
+                <DropdownMenuPrimitive.Item
+                  className={`${itemClass} text-destructive`}
+                  disabled={signingOut}
+                  onSelect={() => void signOut(true)}
+                >
+                  <ShieldOff className="size-4" /> Sign out everywhere
+                </DropdownMenuPrimitive.Item>
+              </>
+            ) : null}
+            {error && !dialogOpen ? (
+              <p className="max-w-64 px-2 py-1.5 text-xs text-destructive">
+                {error}
+              </p>
+            ) : null}
           </DropdownMenuPrimitive.Content>
         </DropdownMenuPrimitive.Portal>
       </DropdownMenuPrimitive.Root>
@@ -165,8 +229,9 @@ export function ServerSwitcher({
             <DialogHeader>
               <DialogTitle>Add server</DialogTitle>
               <DialogDescription>
-                Save another Cantrip Server for this app installation. Account
-                sign-in is a later milestone.
+                Save another Cantrip Server for this app installation. Only its
+                name and origin are stored; sign-in remains in the server's
+                secure session cookie.
               </DialogDescription>
             </DialogHeader>
             <label className="grid gap-2 text-sm">

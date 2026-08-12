@@ -52,6 +52,7 @@ export interface AppLiveClientStorage {
 
 export interface AppLiveClientOptions {
   client: { id: string; name: string; version: string };
+  onAuthenticationRequired?(reason: string): void;
   onEvent(event: AppLiveEvent): void;
   onProtocolError?(error: {
     code: AppLiveErrorCode;
@@ -318,6 +319,16 @@ export class AppLiveClient {
       this.#resyncGeneration += 1;
       this.#resyncRunning = false;
       if (!this.#running) return;
+      if (
+        event.code === 1008 &&
+        /auth|session|sign[ -]?in/i.test(event.reason)
+      ) {
+        this.#options.onAuthenticationRequired?.(
+          event.reason || "Your Cantrip session has expired.",
+        );
+        this.stop();
+        return;
+      }
       if (event.code !== 1000) {
         this.#lastError =
           event.reason || `Application live connection closed (${event.code}).`;

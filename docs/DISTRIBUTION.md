@@ -103,12 +103,14 @@ Copy the packaged `.env.example` to `.env`. The startup scripts use Node's
 - `CANTRIP_PUBLIC_REGISTRATION`, `CANTRIP_SESSION_TTL_SECONDS`, and
   `CANTRIP_AUTH_RATE_LIMIT`: account/session policy.
 - `CANTRIP_COOKIE_SECURE` and `CANTRIP_COOKIE_SAME_SITE`: hosted cookie policy;
-  `SameSite=None` is accepted only with Secure cookies.
+  hosted mode defaults to `Secure` plus `SameSite=None` so approved web,
+  Tauri, and Capacitor origins can share the server-owned session. Same-origin
+  deployments may explicitly choose `lax` or `strict`.
 
 Anonymous hosted mode still requires `CANTRIP_ALLOW_INSECURE_REMOTE=true`, which
 only disables a safety check. Password and account modes use revocable
-server-side sessions, but public hosting remains gated on the subsequent
-tenant-ownership and worker-enrollment milestones.
+server-side sessions and tenant authorization. Public hosting remains gated on
+the subsequent per-worker enrollment and production-hardening milestones.
 The Code surface exposes only a health endpoint and capability-scoped bearer
 attachments; it does not expose application APIs or accept Cantrip cookies.
 
