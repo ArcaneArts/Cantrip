@@ -58,7 +58,7 @@ async function start(): Promise<void> {
 
   if (config.allowInsecureRemote) {
     app.log.warn(
-      "CANTRIP_ALLOW_INSECURE_REMOTE is enabled: application APIs do not authenticate users yet.",
+      "CANTRIP_ALLOW_INSECURE_REMOTE is enabled for a non-hosted server; restrict network access explicitly.",
     );
   }
 

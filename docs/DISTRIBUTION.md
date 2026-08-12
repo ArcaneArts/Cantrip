@@ -90,8 +90,13 @@ Copy the packaged `.env.example` to `.env`. The startup scripts use Node's
   short-lived Code attachments. Hosted reverse proxies should route this
   separate origin to the Code surface listener without exposing worker ports.
 - `CANTRIP_DATA_DIR`: PGlite data and durable server state.
-- `DATABASE_URL`: optional PostgreSQL connection replacing PGlite.
+- `DATABASE_URL`: PostgreSQL connection replacing PGlite; required in hosted
+  mode.
+- `CANTRIP_PUBLIC_ORIGIN`: canonical HTTPS application API origin; required in
+  hosted mode.
 - `CANTRIP_APP_ORIGINS`: comma-separated browser/Tauri origins allowed by CORS.
+- `CANTRIP_TRUSTED_PROXIES`: bounded IP/CIDR or named private-range list whose
+  peers may supply validated `X-Forwarded-*` headers. Hosted mode requires it.
 - `CANTRIP_DEPLOYMENT_MODE` and `CANTRIP_BOOTSTRAP_MODE`: values announced by
   `/api/bootstrap`.
 - `CANTRIP_AUTH_MODE`: `none` for loopback, `password` for one protected owner,
@@ -105,12 +110,16 @@ Copy the packaged `.env.example` to `.env`. The startup scripts use Node's
   hosted mode defaults to `Secure` plus `SameSite=None` so approved web,
   Tauri, and Capacitor origins can share the server-owned session. Same-origin
   deployments may explicitly choose `lax` or `strict`.
+- `CANTRIP_API_BODY_LIMIT_BYTES`, `CANTRIP_UPLOAD_LIMIT_BYTES`, and
+  `CANTRIP_WEBSOCKET_MAX_PAYLOAD_BYTES`: independent public transport ceilings.
 
-Anonymous hosted mode still requires `CANTRIP_ALLOW_INSECURE_REMOTE=true`, which
-only disables a safety check. Password and account modes use revocable
-server-side sessions, tenant authorization, and per-worker enrollment. Public
-hosting remains gated on the subsequent secrets, limits, and operational
-hardening milestones.
+Hosted mode never permits anonymous authentication, including when
+`CANTRIP_ALLOW_INSECURE_REMOTE=true`. It also refuses missing encryption keys,
+PGlite, implicit or wildcard client origins, insecure public/Code origins, and
+an absent or invalid trusted-proxy list. Password and account modes use
+revocable server-side sessions, tenant authorization, and per-worker
+enrollment. Public hosting still requires the later account/worker quotas,
+audit/metrics, multi-instance coordination, and production operations assets.
 The Code surface exposes only a health endpoint and capability-scoped bearer
 attachments; it does not expose application APIs or accept Cantrip cookies.
 

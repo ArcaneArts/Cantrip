@@ -1,7 +1,8 @@
 # Hosted relay security architecture
 
-- Status: protected authentication, owner enforcement, worker enrollment, and
-  provider-secret encryption implemented; public-server abuse hardening remains
+- Status: protected authentication, owner enforcement, worker enrollment,
+  provider-secret encryption, and initial HTTP/proxy hardening implemented;
+  comprehensive quotas, audit visibility, and multi-instance control remain
 - Route inventory: [`security/server-route-inventory.json`](security/server-route-inventory.json)
 - Regenerate: `pnpm audit:server-boundaries:write`
 - Verify: `pnpm audit:server-boundaries`
@@ -45,11 +46,25 @@ enrollment credential.
 | `password` | Authenticated owner session   | Protected personal server                 | Argon2id credential creates a revocable server-side owner session.      |
 | `accounts` | Authenticated account session | Public multi-user service                 | Email/password credentials create isolated, revocable account sessions. |
 
-`CANTRIP_ALLOW_INSECURE_REMOTE` applies only to anonymous mode and remains an
-acknowledgement for a trusted network or authenticating proxy. It is not
-authentication. Multi-user public exposure remains blocked operationally until
-the owner-enforcement and worker-enrollment milestones remove the remaining
-legacy local-owner paths.
+`CANTRIP_ALLOW_INSECURE_REMOTE` applies only to a non-hosted anonymous server
+and remains an acknowledgement for a separately protected trusted network. It
+is not authentication and can never enable anonymous hosted mode.
+
+Hosted configuration requires password or account authentication, PostgreSQL,
+explicit approved application origins, distinct HTTPS public API and Code
+surface origins, a provider-secret encryption keyring, and a bounded trusted
+proxy list containing only IP addresses, CIDRs, or named private ranges. The
+server passes that list to Fastify rather than trusting all proxies. Requests
+reject unconfigured, malformed, oversized, or ambiguous forwarding headers,
+require the configured HTTPS scheme and public host, and reject unapproved
+browser origins before application handlers run.
+
+Every API response carries a server-generated request ID, no-store policy,
+strict content/type/frame/referrer/permissions headers, and HSTS in hosted mode.
+JSON, binary upload, and WebSocket payload ceilings are independently bounded
+and configurable. The global request timeout remains disabled so legitimate
+agent and worker operations are not terminated by an arbitrary short deadline;
+individual bounded control operations retain their own explicit timeouts.
 
 The bootstrap contract now distinguishes `authenticated` from
 `authentication-required`, permits no current user before sign-in, and reports
