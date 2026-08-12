@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   normalizeResponsesBaseUrl,
   terminalOpenResultSchema,
+  type TerminalServiceRuntimeConfiguration,
   type TerminalOpenResult,
   type WorkerCommand,
   type WorkerEvent,
@@ -40,9 +41,15 @@ function ensureSpawnHelperExecutable(): void {
 
 interface TerminalSession {
   buffer: string;
+  cols: number;
   cwd: string;
   exited: Extract<TerminalOpenResult, { status: "exited" }> | null;
-  process: pty.IPty;
+  launch: TerminalLaunch;
+  process: pty.IPty | null;
+  removeAfterExit: boolean;
+  restartDelayOverride: number | null;
+  restartTimer: ReturnType<typeof setTimeout> | null;
+  rows: number;
   subscribers: Map<string, (event: WorkerEvent) => void>;
   waiters: Map<string, (result: TerminalOpenResult) => void>;
 }
@@ -57,6 +64,7 @@ type CodexLaunchCommand = Extract<
 
 export type TerminalLaunch =
   | { type: "shell" }
+  | { type: "command"; command: string }
   | (Extract<CodexLaunchCommand, { type: "codex" }> & {
       binary: string;
       codexHome: string;
@@ -137,12 +145,78 @@ function codexLaunch(
   };
 }
 
+function commandLaunch(command: string): {
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+} {
+  if (process.platform === "win32") {
+    const shell = shellCommand();
+    const isCommandPrompt = /(?:^|[\\/])cmd(?:\.exe)?$/iu.test(shell);
+    return {
+      command: shell,
+      args: isCommandPrompt
+        ? ["/d", "/s", "/c", command]
+        : ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
+      env: terminalEnvironment(),
+    };
+  }
+  return {
+    command: shellCommand(),
+    args: ["-lc", command],
+    env: terminalEnvironment(),
+  };
+}
+
+export interface TerminalManagerOptions {
+  serviceRestartDelayMs?: number;
+}
+
 export class TerminalManager {
   readonly #sessions = new Map<string, TerminalSession>();
+  readonly #services = new Map<string, TerminalServiceRuntimeConfiguration>();
+  readonly #serviceRestartDelayMs: number;
+  #closing = false;
+
+  constructor(options: TerminalManagerOptions = {}) {
+    this.#serviceRestartDelayMs = options.serviceRestartDelayMs ?? 5_000;
+  }
 
   hasLiveSession(terminalId: string): boolean {
     const session = this.#sessions.get(terminalId);
-    return Boolean(session && !session.exited);
+    return Boolean(session?.process && !session.exited);
+  }
+
+  reconcileServices(services: TerminalServiceRuntimeConfiguration[]): void {
+    const desired = new Map(
+      services.map((service) => [service.terminalId, service]),
+    );
+    for (const terminalId of this.#services.keys()) {
+      if (!desired.has(terminalId)) this.#disableService(terminalId);
+    }
+    for (const service of desired.values()) this.#configureService(service);
+  }
+
+  restartService(terminalId: string): void {
+    const service = this.#services.get(terminalId);
+    if (!service)
+      throw new Error(`Terminal service ${terminalId} is disabled.`);
+    const session = this.#sessions.get(terminalId);
+    if (!session) {
+      this.#startService(service);
+      return;
+    }
+    if (session.restartTimer) {
+      clearTimeout(session.restartTimer);
+      session.restartTimer = null;
+    }
+    this.#appendOutput(session, "\r\n\x1b[90m[Restarting service]\x1b[0m\r\n");
+    if (session.process) {
+      session.restartDelayOverride = 0;
+      session.process.kill();
+    } else {
+      this.#startService(service, session);
+    }
   }
 
   open(
@@ -154,6 +228,22 @@ export class TerminalManager {
     launch: TerminalLaunch,
     emit: (event: WorkerEvent) => void,
   ): Promise<TerminalOpenResult> {
+    const service = this.#services.get(terminalId);
+    if (service) {
+      if (service.cwd !== cwd) {
+        throw new Error(
+          "Terminal service belongs to a different source folder.",
+        );
+      }
+      let serviceSession = this.#sessions.get(terminalId);
+      if (!serviceSession) {
+        serviceSession = this.#startService(service);
+      } else if (!serviceSession.process && !serviceSession.restartTimer) {
+        this.#startService(service, serviceSession);
+      }
+      return this.#attach(serviceSession, attachmentId, cols, rows, emit);
+    }
+
     let session = this.#sessions.get(terminalId);
     if (session?.exited) {
       this.#sessions.delete(terminalId);
@@ -161,61 +251,28 @@ export class TerminalManager {
     }
     if (!session) {
       ensureSpawnHelperExecutable();
-      const processLaunch =
-        launch.type === "codex"
-          ? codexLaunch(launch, cwd)
-          : {
-              command: shellCommand(),
-              args: [],
-              env: terminalEnvironment(),
-            };
-      const process = pty.spawn(processLaunch.command, processLaunch.args, {
-        cols,
-        rows,
-        cwd,
-        env: processLaunch.env,
-        name: "xterm-256color",
-      });
       session = {
         buffer: "",
+        cols,
         cwd,
         exited: null,
-        process,
+        launch,
+        process: null,
+        removeAfterExit: false,
+        restartDelayOverride: null,
+        restartTimer: null,
+        rows,
         subscribers: new Map(),
         waiters: new Map(),
       };
       this.#sessions.set(terminalId, session);
-      process.onData((data) => {
-        session!.buffer = `${session!.buffer}${data}`.slice(
-          -MAX_SCROLLBACK_CHARS,
-        );
-        for (const subscriber of session!.subscribers.values()) {
-          subscriber({ type: "terminal.output", data });
-        }
-      });
-      process.onExit(({ exitCode, signal }) => {
-        const result = terminalOpenResultSchema.parse({
-          status: "exited",
-          exitCode,
-          signal: signal || null,
-        }) as Extract<TerminalOpenResult, { status: "exited" }>;
-        session!.exited = result;
-        for (const resolve of session!.waiters.values()) resolve(result);
-        session!.subscribers.clear();
-        session!.waiters.clear();
-      });
+      this.#spawn(terminalId, session);
     } else if (session.cwd !== cwd) {
       throw new Error("Terminal session belongs to a different source folder.");
     }
 
     if (session.exited) return Promise.resolve(session.exited);
-    session.process.resize(cols, rows);
-    session.subscribers.set(attachmentId, emit);
-    emit({ type: "terminal.ready" });
-    if (session.buffer) emit({ type: "terminal.output", data: session.buffer });
-    return new Promise((resolve) =>
-      session!.waiters.set(attachmentId, resolve),
-    );
+    return this.#attach(session, attachmentId, cols, rows, emit);
   }
 
   detach(terminalId: string, attachmentId: string): TerminalOpenResult {
@@ -230,29 +287,246 @@ export class TerminalManager {
 
   input(terminalId: string, data: string): void {
     const session = this.liveSession(terminalId);
-    session.process.write(data);
+    session.process!.write(data);
   }
 
   resize(terminalId: string, cols: number, rows: number): void {
-    const session = this.liveSession(terminalId);
-    session.process.resize(cols, rows);
+    const session = this.#sessions.get(terminalId);
+    if (!session) throw new Error(`Terminal ${terminalId} is not running.`);
+    session.cols = cols;
+    session.rows = rows;
+    if (session.process) session.process.resize(cols, rows);
   }
 
   close(terminalId: string): void {
+    this.#services.delete(terminalId);
     const session = this.#sessions.get(terminalId);
-    if (!session || session.exited) return;
-    session.process.kill();
+    if (!session) return;
+    if (session.restartTimer) {
+      clearTimeout(session.restartTimer);
+      session.restartTimer = null;
+    }
+    session.removeAfterExit = true;
+    if (session.process) {
+      session.process.kill();
+      return;
+    }
+    this.#finalizeSession(
+      terminalId,
+      session,
+      session.exited ?? this.#stoppedResult(),
+    );
   }
 
   closeAll(): void {
-    for (const terminalId of this.#sessions.keys()) this.close(terminalId);
+    this.#closing = true;
+    this.#services.clear();
+    for (const terminalId of [...this.#sessions.keys()]) this.close(terminalId);
   }
 
   private liveSession(terminalId: string): TerminalSession {
     const session = this.#sessions.get(terminalId);
-    if (!session || session.exited) {
+    if (!session?.process || session.exited) {
       throw new Error(`Terminal ${terminalId} is not running.`);
     }
     return session;
+  }
+
+  #attach(
+    session: TerminalSession,
+    attachmentId: string,
+    cols: number,
+    rows: number,
+    emit: (event: WorkerEvent) => void,
+  ): Promise<TerminalOpenResult> {
+    session.cols = cols;
+    session.rows = rows;
+    if (session.process) session.process.resize(cols, rows);
+    session.subscribers.set(attachmentId, emit);
+    emit({ type: "terminal.ready" });
+    if (session.buffer) emit({ type: "terminal.output", data: session.buffer });
+    return new Promise((resolve) => session.waiters.set(attachmentId, resolve));
+  }
+
+  #appendOutput(session: TerminalSession, data: string): void {
+    session.buffer = `${session.buffer}${data}`.slice(-MAX_SCROLLBACK_CHARS);
+    for (const subscriber of session.subscribers.values()) {
+      subscriber({ type: "terminal.output", data });
+    }
+  }
+
+  #configureService(service: TerminalServiceRuntimeConfiguration): void {
+    const previous = this.#services.get(service.terminalId);
+    this.#services.set(service.terminalId, service);
+    const session = this.#sessions.get(service.terminalId);
+    if (
+      previous?.cwd === service.cwd &&
+      previous.command === service.command &&
+      session &&
+      (session.process || session.restartTimer)
+    ) {
+      return;
+    }
+    if (!session) {
+      this.#startService(service);
+      return;
+    }
+    if (session.restartTimer) {
+      clearTimeout(session.restartTimer);
+      session.restartTimer = null;
+    }
+    if (session.process) {
+      session.restartDelayOverride = 0;
+      session.process.kill();
+    } else {
+      this.#startService(service, session);
+    }
+  }
+
+  #disableService(terminalId: string): void {
+    this.#services.delete(terminalId);
+    const session = this.#sessions.get(terminalId);
+    if (!session) return;
+    if (session.restartTimer) {
+      clearTimeout(session.restartTimer);
+      session.restartTimer = null;
+    }
+    if (session.process) {
+      session.process.kill();
+    } else {
+      this.#finalizeSession(
+        terminalId,
+        session,
+        session.exited ?? this.#stoppedResult(),
+      );
+    }
+  }
+
+  #startService(
+    service: TerminalServiceRuntimeConfiguration,
+    existing?: TerminalSession,
+  ): TerminalSession {
+    const session = existing ?? {
+      buffer: "",
+      cols: 80,
+      cwd: service.cwd,
+      exited: null,
+      launch: { type: "command" as const, command: service.command },
+      process: null,
+      removeAfterExit: false,
+      restartDelayOverride: null,
+      restartTimer: null,
+      rows: 24,
+      subscribers: new Map(),
+      waiters: new Map(),
+    };
+    session.cwd = service.cwd;
+    session.exited = null;
+    session.launch = { type: "command", command: service.command };
+    session.restartTimer = null;
+    this.#sessions.set(service.terminalId, session);
+    this.#appendOutput(
+      session,
+      "\r\n\x1b[90m[Starting terminal service]\x1b[0m\r\n",
+    );
+    try {
+      this.#spawn(service.terminalId, session);
+    } catch (error) {
+      this.#appendOutput(
+        session,
+        `\r\n\x1b[31m[Service failed to start: ${error instanceof Error ? error.message : String(error)}]\x1b[0m\r\n`,
+      );
+      this.#scheduleServiceRestart(
+        service.terminalId,
+        session,
+        this.#serviceRestartDelayMs,
+      );
+    }
+    return session;
+  }
+
+  #spawn(terminalId: string, session: TerminalSession): void {
+    ensureSpawnHelperExecutable();
+    const processLaunch =
+      session.launch.type === "codex"
+        ? codexLaunch(session.launch, session.cwd)
+        : session.launch.type === "command"
+          ? commandLaunch(session.launch.command)
+          : {
+              command: shellCommand(),
+              args: [],
+              env: terminalEnvironment(),
+            };
+    const child = pty.spawn(processLaunch.command, processLaunch.args, {
+      cols: session.cols,
+      rows: session.rows,
+      cwd: session.cwd,
+      env: processLaunch.env,
+      name: "xterm-256color",
+    });
+    session.process = child;
+    session.exited = null;
+    child.onData((data) => {
+      if (session.process !== child) return;
+      this.#appendOutput(session, data);
+    });
+    child.onExit(({ exitCode, signal }) => {
+      if (session.process !== child) return;
+      session.process = null;
+      const result = terminalOpenResultSchema.parse({
+        status: "exited",
+        exitCode,
+        signal: signal || null,
+      }) as Extract<TerminalOpenResult, { status: "exited" }>;
+      session.exited = result;
+      const service = this.#services.get(terminalId);
+      if (service && !this.#closing) {
+        const delay =
+          session.restartDelayOverride ?? this.#serviceRestartDelayMs;
+        session.restartDelayOverride = null;
+        this.#appendOutput(
+          session,
+          `\r\n\x1b[90m[Service exited ${exitCode}; restarting ${delay === 0 ? "now" : `in ${Math.ceil(delay / 1_000)} seconds`}]\x1b[0m\r\n`,
+        );
+        this.#scheduleServiceRestart(terminalId, session, delay);
+        return;
+      }
+      this.#finalizeSession(terminalId, session, result);
+    });
+  }
+
+  #scheduleServiceRestart(
+    terminalId: string,
+    session: TerminalSession,
+    delay: number,
+  ): void {
+    if (session.restartTimer) clearTimeout(session.restartTimer);
+    session.restartTimer = setTimeout(() => {
+      session.restartTimer = null;
+      const service = this.#services.get(terminalId);
+      if (!service || this.#closing) return;
+      this.#startService(service, session);
+    }, delay);
+    session.restartTimer.unref();
+  }
+
+  #finalizeSession(
+    terminalId: string,
+    session: TerminalSession,
+    result: Extract<TerminalOpenResult, { status: "exited" }>,
+  ): void {
+    session.exited = result;
+    for (const resolve of session.waiters.values()) resolve(result);
+    session.subscribers.clear();
+    session.waiters.clear();
+    if (session.removeAfterExit) this.#sessions.delete(terminalId);
+  }
+
+  #stoppedResult(): Extract<TerminalOpenResult, { status: "exited" }> {
+    return terminalOpenResultSchema.parse({
+      status: "exited",
+      exitCode: 0,
+      signal: null,
+    }) as Extract<TerminalOpenResult, { status: "exited" }>;
   }
 }

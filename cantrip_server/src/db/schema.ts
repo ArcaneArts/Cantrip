@@ -733,6 +733,8 @@ export const terminals = pgTable("terminals", {
   linkedChatId: text("linked_chat_id")
     .unique()
     .references(() => chats.id, { onDelete: "cascade" }),
+  serviceEnabled: boolean("service_enabled").notNull().default(false),
+  serviceCommand: text("service_command").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

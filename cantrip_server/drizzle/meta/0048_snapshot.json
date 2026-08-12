@@ -1,6 +1,6 @@
 {
-  "id": "e6d18dba-2483-408d-ba88-49d6a790db4d",
-  "prevId": "c9b1e347-67dd-4b1b-84ca-80dd6f4a049e",
+  "id": "e4064535-cb25-414b-87eb-63e233e99e2f",
+  "prevId": "e6d18dba-2483-408d-ba88-49d6a790db4d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3853,6 +3853,20 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "service_enabled": {
+          "name": "service_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "service_command": {
+          "name": "service_command",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
         },
         "created_at": {
           "name": "created_at",

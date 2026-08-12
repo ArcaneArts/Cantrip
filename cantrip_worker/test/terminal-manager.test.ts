@@ -80,6 +80,93 @@ describe("TerminalManager", () => {
   });
 
   it.skipIf(process.platform === "win32")(
+    "keeps a configured service running without an attached viewer",
+    async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "cantrip-service-"));
+      directories.push(directory);
+      const manager = new TerminalManager({ serviceRestartDelayMs: 50 });
+      manager.reconcileServices([
+        {
+          terminalId: "terminal-service",
+          cwd: directory,
+          command: "printf 'SERVICE_TICK\\n'; exit 7",
+        },
+      ]);
+
+      let output = "";
+      const exited = manager.open(
+        "terminal-service",
+        "attachment-service",
+        directory,
+        80,
+        24,
+        { type: "shell" },
+        (event) => {
+          if (event.type === "terminal.output") output += event.data;
+        },
+      );
+
+      await expect
+        .poll(() => output.match(/SERVICE_TICK/gu)?.length ?? 0, {
+          timeout: 5_000,
+        })
+        .toBeGreaterThanOrEqual(2);
+      manager.close("terminal-service");
+      await expect(exited).resolves.toMatchObject({ status: "exited" });
+      const stoppedOutput = output;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(output).toBe(stoppedOutput);
+      manager.closeAll();
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "restarts an active service immediately on request",
+    async () => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "cantrip-service-restart-"),
+      );
+      directories.push(directory);
+      const manager = new TerminalManager({ serviceRestartDelayMs: 5_000 });
+      manager.reconcileServices([
+        {
+          terminalId: "terminal-service",
+          cwd: directory,
+          command: "printf 'SERVICE_RUNNING\\n'; while :; do sleep 1; done",
+        },
+      ]);
+
+      let output = "";
+      const exited = manager.open(
+        "terminal-service",
+        "attachment-service",
+        directory,
+        80,
+        24,
+        { type: "shell" },
+        (event) => {
+          if (event.type === "terminal.output") output += event.data;
+        },
+      );
+      await expect
+        .poll(() => output.match(/SERVICE_RUNNING/gu)?.length ?? 0, {
+          timeout: 5_000,
+        })
+        .toBe(1);
+
+      manager.restartService("terminal-service");
+      await expect
+        .poll(() => output.match(/SERVICE_RUNNING/gu)?.length ?? 0, {
+          timeout: 5_000,
+        })
+        .toBeGreaterThanOrEqual(2);
+      manager.reconcileServices([]);
+      await expect(exited).resolves.toMatchObject({ status: "exited" });
+      manager.closeAll();
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
     "launches a linked Codex terminal with the chat runtime and thread",
     async () => {
       const directory = await mkdtemp(path.join(tmpdir(), "cantrip-codex-"));

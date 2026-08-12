@@ -10,6 +10,7 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
+  ServerCog,
   SquareTerminal,
   WandSparkles,
 } from "lucide-react";
@@ -21,6 +22,11 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface TerminalCommandPaletteAction {
+  active: boolean;
+  open(): void;
+}
+
+interface TerminalServiceAction {
   active: boolean;
   open(): void;
 }
@@ -46,6 +52,7 @@ export interface ContentHeaderActionsProps {
   git?: GitHistoryHeaderState | null;
   popout?: PopoutAction | null;
   terminalCommandPalette?: TerminalCommandPaletteAction | null;
+  terminalService?: TerminalServiceAction | null;
 }
 
 function CodeHeaderActions({ header }: { header: CodeHeaderState | null }) {
@@ -132,6 +139,7 @@ export function ContentHeaderActions({
   git,
   popout,
   terminalCommandPalette,
+  terminalService,
 }: ContentHeaderActionsProps) {
   return (
     <>
@@ -188,6 +196,18 @@ export function ContentHeaderActions({
         </Button>
       ) : null}
       {code ? <CodeHeaderActions header={code.header} /> : null}
+      {terminalService ? (
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-pressed={terminalService.active}
+          onClick={terminalService.open}
+          title="Configure terminal service"
+        >
+          <ServerCog className="size-4" />
+          <span className="sr-only">Configure terminal service</span>
+        </Button>
+      ) : null}
       {terminalCommandPalette ? (
         <Button
           size="icon"

@@ -811,6 +811,12 @@ async function start(): Promise<void> {
       case "terminal.close":
         terminals.close(command.terminalId);
         return { accepted: true };
+      case "terminal.services.reconcile":
+        terminals.reconcileServices(command.services);
+        return { accepted: true };
+      case "terminal.service.restart":
+        terminals.restartService(command.terminalId);
+        return { accepted: true };
       case "surface.attach":
         return remoteSurfaces.attach(command);
       case "surface.detach":

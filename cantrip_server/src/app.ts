@@ -261,6 +261,7 @@ import {
   terminalCreateSchema,
   terminalListSchema,
   terminalOpenResultSchema,
+  terminalServiceConfigurationSchema,
   terminalServerMessageSchema,
   terminalSummarySchema,
   terminalUpdateSchema,
@@ -1460,6 +1461,22 @@ export async function buildApp({
     const result = await repository.setTerminalStatus(terminalId, status);
     publishLiveInvalidation("terminal", { entityId: terminalId });
     return result;
+  };
+  const synchronizeTerminalServicesForWorker = async (
+    workerId: string,
+  ): Promise<void> => {
+    if (!bridge.isConnected(workerId)) return;
+    const services = await repository.listTerminalServicesForWorker(workerId);
+    await bridge.request(
+      workerId,
+      { type: "terminal.services.reconcile", services },
+      { timeoutMs: 30_000 },
+    );
+    await Promise.all(
+      services.map(({ terminalId }) =>
+        updateTerminalStatus(terminalId, "running"),
+      ),
+    );
   };
   const updateCodeSessionRuntime = async (
     ...input: Parameters<typeof repository.updateCodeSessionRuntime>
@@ -9082,6 +9099,91 @@ export async function buildApp({
     },
   );
 
+  app.put<{ Params: { terminalId: string } }>(
+    "/api/terminals/:terminalId/service",
+    async (request, reply) => {
+      const input = terminalServiceConfigurationSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const context = await repository.getTerminalExecutionContext(
+          LOCAL_USER_ID,
+          request.params.terminalId,
+        );
+        if (!context) {
+          return reply.code(404).send({ error: "Terminal not found." });
+        }
+        const terminal = await repository.updateTerminalService(
+          LOCAL_USER_ID,
+          request.params.terminalId,
+          input.data,
+        );
+        if (!terminal) {
+          return reply.code(404).send({ error: "Terminal not found." });
+        }
+        let status: "idle" | "offline" | "running" = input.data.enabled
+          ? "offline"
+          : "idle";
+        if (bridge.isConnected(context.workerId)) {
+          try {
+            await synchronizeTerminalServicesForWorker(context.workerId);
+            status = input.data.enabled ? "running" : "idle";
+          } catch (error) {
+            app.log.warn(
+              { err: error, terminalId: terminal.id },
+              "Terminal service will reconcile when the worker reconnects",
+            );
+          }
+        }
+        await updateTerminalStatus(terminal.id, status);
+        return reply.send(
+          terminalSummarySchema.parse({
+            ...terminal,
+            status,
+          }),
+        );
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { terminalId: string } }>(
+    "/api/terminals/:terminalId/service/restart",
+    async (request, reply) => {
+      const context = await repository.getTerminalExecutionContext(
+        LOCAL_USER_ID,
+        request.params.terminalId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Terminal not found." });
+      }
+      if (!context.service.enabled) {
+        return reply.code(409).send({ error: "Terminal service is disabled." });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        await updateTerminalStatus(context.terminalId, "offline");
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      try {
+        await bridge.request(
+          context.workerId,
+          {
+            type: "terminal.service.restart",
+            terminalId: context.terminalId,
+          },
+          { timeoutMs: 30_000 },
+        );
+        await updateTerminalStatus(context.terminalId, "running");
+        return reply.code(202).send({ accepted: true });
+      } catch (error) {
+        const status = error instanceof WorkerUnavailableError ? 503 : 502;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
   app.patch<{ Params: { terminalId: string } }>(
     "/api/terminals/:terminalId/worktree",
     async (request, reply) => {
@@ -12966,6 +13068,14 @@ export async function buildApp({
         return;
       }
       bridge.attach(request.query.workerId, socket);
+      void synchronizeTerminalServicesForWorker(request.query.workerId).catch(
+        (error) => {
+          app.log.error(
+            { err: error, workerId: request.query.workerId },
+            "Could not reconcile terminal services",
+          );
+        },
+      );
       ensureWorkerNotificationSubscription(request.query.workerId);
       scheduleWorkerWorktreeObservation(request.query.workerId);
       void resumePendingWorktreeTransitionsForWorker(request.query.workerId);

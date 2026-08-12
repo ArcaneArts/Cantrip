@@ -77,6 +77,8 @@ import type {
   ProjectViewUpdate,
   SettingsBundle,
   TerminalCreate,
+  TerminalServiceConfiguration,
+  TerminalServiceRuntimeConfiguration,
   TerminalSummary,
   TerminalUpdate,
   ThemePreference,
@@ -169,6 +171,7 @@ export interface TerminalExecutionContext {
   cwd: string;
   linkedChatId: string | null;
   projectId: string;
+  service: TerminalServiceConfiguration;
   status: TerminalSummary["status"];
   terminalId: string;
   workerId: string;
@@ -533,6 +536,10 @@ function toTerminalSummary(
     activeWorkerId: terminal.activeWorkerId,
     worktreeId: terminal.worktreeId,
     linkedChatId: terminal.linkedChatId,
+    service: {
+      enabled: terminal.serviceEnabled,
+      command: terminal.serviceCommand,
+    },
     createdAt: toISOString(terminal.createdAt),
     updatedAt: toISOString(terminal.updatedAt),
   };
@@ -4058,6 +4065,54 @@ export class ServerRepository {
     return result[0] ? toTerminalSummary(result[0]) : null;
   }
 
+  async updateTerminalService(
+    ownerId: string,
+    terminalId: string,
+    input: TerminalServiceConfiguration,
+  ): Promise<TerminalSummary | null> {
+    const owned = await this.getTerminalExecutionContext(ownerId, terminalId);
+    if (!owned) return null;
+    if (owned.linkedChatId) {
+      throw new Error("Linked Codex consoles cannot run terminal services.");
+    }
+    const result = await this.database
+      .update(schema.terminals)
+      .set({
+        serviceEnabled: input.enabled,
+        serviceCommand: input.command,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.terminals.id, terminalId))
+      .returning();
+    return result[0] ? toTerminalSummary(result[0]) : null;
+  }
+
+  async listTerminalServicesForWorker(
+    workerId: string,
+  ): Promise<TerminalServiceRuntimeConfiguration[]> {
+    const rows = await this.database
+      .select({
+        terminal: schema.terminals,
+        worktree: schema.projectWorktrees,
+      })
+      .from(schema.terminals)
+      .innerJoin(
+        schema.projectWorktrees,
+        eq(schema.projectWorktrees.id, schema.terminals.worktreeId),
+      )
+      .where(
+        and(
+          eq(schema.projectWorktrees.workerId, workerId),
+          eq(schema.terminals.serviceEnabled, true),
+        ),
+      );
+    return rows.map(({ terminal, worktree }) => ({
+      terminalId: terminal.id,
+      cwd: worktree.absolutePath,
+      command: terminal.serviceCommand,
+    }));
+  }
+
   async updateTerminalWorktree(
     ownerId: string,
     terminalId: string,
@@ -5311,6 +5366,10 @@ export class ServerRepository {
           worktreeId: row.worktree.id,
           cwd: row.worktree.absolutePath,
           linkedChatId: row.terminal.linkedChatId,
+          service: {
+            enabled: row.terminal.serviceEnabled,
+            command: row.terminal.serviceCommand,
+          },
           status: row.terminal.status as TerminalSummary["status"],
         }
       : null;
