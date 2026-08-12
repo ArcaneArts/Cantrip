@@ -5,6 +5,9 @@ import path from "node:path";
 import {
   browserSummarySchema,
   executionPlacementResolutionSchema,
+  executionTargetCatalogSchema,
+  executionTargetResolutionSchema,
+  terminalSummarySchema,
   unprobedCodexRuntimeReport,
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -298,5 +301,184 @@ describe.sequential("project execution placement API", () => {
     expect(browserSummarySchema.parse(created.json())).toMatchObject({
       workerId: "worker-alpha",
     });
+
+    const terminalCreated = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/terminals`,
+      payload: {
+        title: "Alpha shell",
+        target: {
+          kind: "worktree",
+          projectId,
+          worktreeId: alphaWorktreeId,
+        },
+      },
+    });
+    expect(terminalCreated.statusCode).toBe(201);
+    const terminal = terminalSummarySchema.parse(terminalCreated.json());
+
+    const resolvedTarget = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/execution-targets/resolve`,
+      payload: {
+        target: {
+          kind: "surface",
+          projectId,
+          surfaceKind: "terminal",
+          surfaceId: terminal.id,
+        },
+      },
+    });
+    expect(resolvedTarget.statusCode).toBe(200);
+    expect(
+      executionTargetResolutionSchema.parse(resolvedTarget.json()),
+    ).toMatchObject({
+      availability: "available",
+      placement: {
+        workerId: "worker-alpha",
+        worktreeId: alphaWorktreeId,
+        surface: { kind: "terminal", id: terminal.id },
+      },
+    });
+
+    const catalogResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/execution-targets`,
+    });
+    expect(catalogResponse.statusCode).toBe(200);
+    const catalog = executionTargetCatalogSchema.parse(catalogResponse.json());
+    expect(catalog.targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          resourceKind: "terminal",
+          title: "Alpha shell",
+          placement: expect.objectContaining({ workerId: "worker-alpha" }),
+        }),
+        expect.objectContaining({
+          resourceKind: "browser",
+          title: "Placed browser",
+          placement: expect.objectContaining({ workerId: "worker-alpha" }),
+        }),
+        expect.objectContaining({
+          resourceKind: "worker",
+          title: "Alpha",
+        }),
+        expect.objectContaining({
+          resourceKind: "worker",
+          title: "Beta",
+        }),
+      ]),
+    );
+
+    connectedWorkers.delete("worker-alpha");
+    const offline = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/execution-targets/resolve`,
+      payload: {
+        target: {
+          kind: "surface",
+          projectId,
+          surfaceKind: "terminal",
+          surfaceId: terminal.id,
+        },
+      },
+    });
+    expect(offline.statusCode).toBe(409);
+    expect(offline.json()).toMatchObject({ code: "worker-offline" });
+    const offlineVisible = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/execution-targets/resolve`,
+      payload: {
+        allowUnavailable: true,
+        target: {
+          kind: "surface",
+          projectId,
+          surfaceKind: "terminal",
+          surfaceId: terminal.id,
+        },
+      },
+    });
+    expect(offlineVisible.statusCode).toBe(200);
+    expect(
+      executionTargetResolutionSchema.parse(offlineVisible.json()),
+    ).toMatchObject({
+      availability: "worker-offline",
+      worker: { workerId: "worker-alpha", online: false },
+    });
+    connectedWorkers.add("worker-alpha");
+
+    const wrongProject = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/execution-targets/resolve`,
+      payload: {
+        target: {
+          kind: "surface",
+          projectId: "another-project",
+          surfaceKind: "terminal",
+          surfaceId: terminal.id,
+        },
+      },
+    });
+    expect(wrongProject.statusCode).toBe(409);
+    expect(wrongProject.json()).toMatchObject({ code: "target-mismatch" });
+
+    const wrongSurfaceKind = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/execution-targets/resolve`,
+      payload: {
+        target: {
+          kind: "surface",
+          projectId,
+          surfaceKind: "explorer",
+          surfaceId: terminal.id,
+        },
+      },
+    });
+    expect(wrongSurfaceKind.statusCode).toBe(409);
+    expect(wrongSurfaceKind.json()).toMatchObject({ code: "target-not-found" });
+
+    const unsupportedBrowser = await database.repository.createRemoteSurface(
+      LOCAL_USER_ID,
+      projectId,
+      {
+        workerId: "worker-beta",
+        title: "Unsupported browser",
+        configuration: {
+          kind: "browser",
+          initialUrl: "https://example.com",
+          profileId: null,
+        },
+      },
+    );
+    expect(unsupportedBrowser).not.toBeNull();
+    await expect(
+      database.repository.resolveExecutionTarget(
+        LOCAL_USER_ID,
+        projectId,
+        {
+          kind: "surface",
+          projectId,
+          surfaceKind: "remote-surface",
+          surfaceId: unsupportedBrowser!.id,
+        },
+        workerBridge.isConnected.bind(workerBridge),
+      ),
+    ).rejects.toMatchObject<Partial<ExecutionPlacementUnavailableError>>({
+      code: "capability-unavailable",
+    });
+    expect(
+      await database.repository.resolveExecutionTarget(
+        LOCAL_USER_ID,
+        projectId,
+        {
+          kind: "surface",
+          projectId,
+          surfaceKind: "remote-surface",
+          surfaceId: unsupportedBrowser!.id,
+        },
+        workerBridge.isConnected.bind(workerBridge),
+        true,
+      ),
+    ).toMatchObject({ availability: "capability-unavailable" });
   });
 });

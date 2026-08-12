@@ -1887,6 +1887,66 @@ export const executionPlacementResolutionSchema = z.object({
   selection: executionPlacementSelectionSchema,
 });
 
+export const executionTargetResourceKindSchema = z.enum([
+  "project",
+  "worker",
+  "replica",
+  "worktree",
+  "chat",
+  "terminal",
+  "explorer",
+  "code",
+  "browser",
+  "remote-desktop",
+  "remote-surface",
+]);
+
+export const executionTargetAvailabilitySchema = z.enum([
+  "available",
+  "worker-offline",
+  "capability-unavailable",
+  "resource-unavailable",
+]);
+
+const executionTargetWorkerSchema = z.object({
+  workerId: executionResourceIdSchema,
+  name: z.string().min(1).max(200),
+  online: z.boolean(),
+});
+
+export const executionTargetResolutionSchema = z
+  .object({
+    target: executionTargetSchema,
+    placement: executionPlacementSchema,
+    worker: executionTargetWorkerSchema,
+    availability: executionTargetAvailabilitySchema,
+    unavailableReason: z.string().min(1).max(4_000).nullable(),
+  })
+  .strict();
+
+export const executionTargetResolveRequestSchema = z
+  .object({
+    target: executionTargetSchema,
+    allowUnavailable: z.boolean().default(false),
+  })
+  .strict();
+
+export const executionTargetDescriptorSchema = executionTargetResolutionSchema
+  .extend({
+    resourceKind: executionTargetResourceKindSchema,
+    title: z.string().min(1).max(500),
+    status: z.string().min(1).max(200).nullable(),
+  })
+  .strict();
+
+export const executionTargetCatalogSchema = z
+  .object({
+    projectId: executionResourceIdSchema,
+    targets: z.array(executionTargetDescriptorSchema).max(2_000),
+    truncated: z.boolean(),
+  })
+  .strict();
+
 export const worktreePolicySchema = z.enum([
   "direct",
   "agent-managed",
@@ -7591,6 +7651,24 @@ export type ExecutionPlacementResolveRequest = z.infer<
 >;
 export type ExecutionPlacementResolution = z.infer<
   typeof executionPlacementResolutionSchema
+>;
+export type ExecutionTargetResourceKind = z.infer<
+  typeof executionTargetResourceKindSchema
+>;
+export type ExecutionTargetAvailability = z.infer<
+  typeof executionTargetAvailabilitySchema
+>;
+export type ExecutionTargetResolution = z.infer<
+  typeof executionTargetResolutionSchema
+>;
+export type ExecutionTargetResolveRequest = z.infer<
+  typeof executionTargetResolveRequestSchema
+>;
+export type ExecutionTargetDescriptor = z.infer<
+  typeof executionTargetDescriptorSchema
+>;
+export type ExecutionTargetCatalog = z.infer<
+  typeof executionTargetCatalogSchema
 >;
 export type TunnelOrigin = z.infer<typeof tunnelOriginSchema>;
 export type TunnelManagement = z.infer<typeof tunnelManagementSchema>;
