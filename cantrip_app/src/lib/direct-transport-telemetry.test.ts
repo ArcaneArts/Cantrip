@@ -1,13 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  fallbackDirectDesktopProjectShare: vi.fn(),
   listDesktopTunnels: vi.fn(),
+  listDirectDesktopProjectShares: vi.fn(),
   recordDirectAttachmentTelemetry: vi.fn(),
   refreshDesktopTunnelRelay: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
   recordDirectAttachmentTelemetry: mocks.recordDirectAttachmentTelemetry,
+}));
+vi.mock("@/lib/desktop-project-share", () => ({
+  fallbackDirectDesktopProjectShare: mocks.fallbackDirectDesktopProjectShare,
+  listDirectDesktopProjectShares: mocks.listDirectDesktopProjectShares,
 }));
 vi.mock("@/lib/desktop-tunnel", () => ({
   desktopTunnelAvailable: () => true,
@@ -21,6 +27,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.recordDirectAttachmentTelemetry.mockResolvedValue(undefined);
   mocks.refreshDesktopTunnelRelay.mockResolvedValue(true);
+  mocks.listDirectDesktopProjectShares.mockResolvedValue([]);
+  mocks.fallbackDirectDesktopProjectShare.mockResolvedValue(true);
 });
 
 describe("reportDesktopDirectTransportTelemetry", () => {
@@ -49,5 +57,16 @@ describe("reportDesktopDirectTransportTelemetry", () => {
       expect.objectContaining({ bytesFromLocal: 10, bytesToLocal: 20 }),
     );
     expect(mocks.refreshDesktopTunnelRelay).toHaveBeenCalledWith(forward);
+  });
+
+  it("remounts a direct project share when its local forward disappears", async () => {
+    mocks.listDesktopTunnels.mockResolvedValue([]);
+    mocks.listDirectDesktopProjectShares.mockResolvedValue(["share-tunnel-1"]);
+
+    await reportDesktopDirectTransportTelemetry();
+
+    expect(mocks.fallbackDirectDesktopProjectShare).toHaveBeenCalledWith(
+      "share-tunnel-1",
+    );
   });
 });
