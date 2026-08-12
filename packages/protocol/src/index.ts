@@ -192,6 +192,7 @@ export const serverBootstrapSchema = z.object({
     passwordProtection: z.boolean(),
     linkCodes: z.boolean(),
     multipleWorkers: z.boolean(),
+    projectReplicas: z.boolean().default(false),
     workerSwitching: z.boolean(),
     gitSync: z.boolean(),
     worktrees: z.boolean(),
@@ -286,6 +287,7 @@ export const workerSummarySchema = workerHeartbeatSchema.extend({
 export const workerListSchema = z.array(workerSummarySchema);
 
 export const workerManagementSourceSchema = z.object({
+  projectReplicaId: z.string().min(1).nullable().default(null),
   projectId: z.string().uuid(),
   nameWithOwner: z.string().min(1),
   displayPath: z.string().min(1),
@@ -1469,6 +1471,30 @@ export const projectSourceSummarySchema = z.object({
   displayPath: z.string().min(1),
 });
 
+export const projectReplicaSummarySchema = z.object({
+  id: z.string().min(1),
+  projectId: z.string().min(1),
+  workerId: z.string().min(1),
+  workerName: z.string().min(1),
+  workerOnline: z.boolean(),
+  path: z.string().min(1),
+  displayPath: z.string().min(1),
+  repositoryFingerprint: z.string().min(1).nullable(),
+  primaryWorktreeId: z.string().min(1).nullable(),
+  branch: z.string().min(1).nullable(),
+  head: z.string().min(1).nullable(),
+  dirty: z.boolean().nullable(),
+  ready: z.boolean(),
+  worktreeCount: z.number().int().nonnegative(),
+  lastObservedAt: z.string().datetime().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const projectReplicaListSchema = z
+  .array(projectReplicaSummarySchema)
+  .max(1_000);
+
 const executionResourceIdSchema = z.string().min(1).max(200);
 
 export const executionSurfaceKindSchema = z.enum([
@@ -1610,6 +1636,7 @@ export const projectSummarySchema = z.object({
     })
     .nullable(),
   source: projectSourceSummarySchema.nullable(),
+  replicas: projectReplicaListSchema.default([]),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -6957,6 +6984,7 @@ export type UserSettings = z.infer<typeof userSettingsSchema>;
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
 export type SettingsBundle = z.infer<typeof settingsBundleSchema>;
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
+export type ProjectReplicaSummary = z.infer<typeof projectReplicaSummarySchema>;
 export type ProjectRepositoryStats = z.infer<
   typeof projectRepositoryStatsSchema
 >;

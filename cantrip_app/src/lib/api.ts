@@ -128,6 +128,8 @@ import {
   mcpServerSummarySchema,
   orderedIdsSchema,
   projectListSchema,
+  projectReplicaListSchema,
+  projectReplicaSummarySchema,
   projectRepositoryStatsSchema,
   projectTokenUsageSchema,
   projectShareAttachmentSchema,
@@ -1608,6 +1610,23 @@ export async function removeProject(
     method: "DELETE",
     body: JSON.stringify({ deleteLocalFiles }),
   });
+}
+
+export async function getProjectReplicas(projectId: string) {
+  return projectReplicaListSchema.parse(
+    await request(`/api/projects/${encodeURIComponent(projectId)}/replicas`),
+  );
+}
+
+export async function getProjectReplica(
+  projectId: string,
+  projectReplicaId: string,
+) {
+  return projectReplicaSummarySchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/replicas/${encodeURIComponent(projectReplicaId)}`,
+    ),
+  );
 }
 
 export async function createGithubProject(input: GithubProjectCreate) {

@@ -90,6 +90,8 @@ import {
   normalizeResponsesBaseUrl,
   chatPermissionProfileStateSchema,
   queuedPromptSchema,
+  projectReplicaListSchema,
+  projectSummarySchema,
   projectWorkspaceCreateSchema,
   projectWorkspaceSummarySchema,
   projectWorkspaceUpdateSchema,
@@ -129,6 +131,52 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("keeps project replica contracts compatible across rolling clients", () => {
+    const legacy = {
+      id: "project-one",
+      name: "Cantrip",
+      position: 0,
+      setupStatus: "ready",
+      setupError: null,
+      worktreePolicy: "agent-managed",
+      github: null,
+      source: {
+        id: "source-one",
+        workerId: "worker-one",
+        path: "/srv/cantrip",
+        displayPath: "Cantrip",
+      },
+      createdAt: "2026-08-11T12:00:00.000Z",
+      updatedAt: "2026-08-11T12:00:00.000Z",
+    };
+    expect(projectSummarySchema.parse(legacy).replicas).toEqual([]);
+
+    const replicas = projectReplicaListSchema.parse([
+      {
+        id: "source-one",
+        projectId: "project-one",
+        workerId: "worker-one",
+        workerName: "Desk Mac",
+        workerOnline: true,
+        path: "/srv/cantrip",
+        displayPath: "Cantrip",
+        repositoryFingerprint: null,
+        primaryWorktreeId: "primary:source-one",
+        branch: "main",
+        head: "abc123",
+        dirty: false,
+        ready: true,
+        worktreeCount: 1,
+        lastObservedAt: null,
+        createdAt: "2026-08-11T12:00:00.000Z",
+        updatedAt: "2026-08-11T12:00:00.000Z",
+      },
+    ]);
+    expect(projectSummarySchema.parse({ ...legacy, replicas }).source).toEqual(
+      legacy.source,
+    );
+  });
+
   it("validates resolved execution placements and untrusted target selectors", () => {
     expect(
       executionPlacementSchema.parse({
@@ -3148,6 +3196,7 @@ describe("Cantrip protocol", () => {
       files: "worker",
     });
     expect(bootstrap.capabilities.worktrees).toBe(true);
+    expect(bootstrap.capabilities.projectReplicas).toBe(false);
   });
 
   it("round-trips versioned binary Remote Surface frames", () => {

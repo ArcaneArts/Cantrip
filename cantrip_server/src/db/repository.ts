@@ -66,6 +66,7 @@ import type {
   RemoteSurfaceSummary,
   RemoteSurfaceUpdate,
   ProjectCloneResult,
+  ProjectReplicaSummary,
   ProjectSummary,
   ProjectTokenUsage,
   ProjectWorkspaceCreate,
@@ -149,6 +150,7 @@ type RepositoryDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type ProjectRow = typeof schema.projects.$inferSelect;
 type ProjectSourceRow = typeof schema.projectSources.$inferSelect;
 type ProjectWorktreeRow = typeof schema.projectWorktrees.$inferSelect;
+type WorkerRow = typeof schema.workers.$inferSelect;
 type McpServerRow = typeof schema.mcpServers.$inferSelect;
 type GitOperationRow = typeof schema.gitOperations.$inferSelect;
 type ProjectWorkspaceRow = typeof schema.projectWorkspaces.$inferSelect;
@@ -235,11 +237,17 @@ export interface TerminalExecutionContext {
 }
 
 export interface ProjectRemovalContext {
-  cwd: string | null;
+  replicas: Array<{
+    cwd: string;
+    id: string;
+    workerId: string;
+  }>;
   remoteSurfaces: RemoteSurfaceSummary[];
   setupStatus: ProjectSummary["setupStatus"];
-  terminalIds: string[];
-  workerId: string | null;
+  terminals: Array<{
+    id: string;
+    workerId: string;
+  }>;
 }
 
 export interface GithubProjectExecutionContext {
@@ -428,7 +436,7 @@ function toUserSummary(user: UserRow): UserSummary {
 
 function toProjectSummary(
   project: ProjectRow,
-  source: ProjectSourceRow | null = null,
+  replicas: ProjectReplicaSummary[] = [],
 ): ProjectSummary {
   const github =
     project.githubRepositoryId &&
@@ -449,14 +457,15 @@ function toProjectSummary(
     setupError: project.setupError,
     worktreePolicy: project.worktreePolicy as ProjectSummary["worktreePolicy"],
     github,
-    source: source
+    source: replicas[0]
       ? {
-          id: source.id,
-          workerId: source.workerId,
-          path: source.absolutePath,
-          displayPath: source.displayPath,
+          id: replicas[0].id,
+          workerId: replicas[0].workerId,
+          path: replicas[0].path,
+          displayPath: replicas[0].displayPath,
         }
       : null,
+    replicas,
     createdAt: toISOString(project.createdAt),
     updatedAt: toISOString(project.updatedAt),
   };
@@ -557,6 +566,37 @@ function sourceWorkerId(source: TunnelSourceEndpoint): string | null {
 
 function destinationWorkerId(destination: TunnelDestinationEndpoint): string {
   return destination.workerId;
+}
+
+function toProjectReplicaSummary(
+  source: ProjectSourceRow,
+  worker: WorkerRow,
+  worktrees: ProjectWorktreeRow[],
+): ProjectReplicaSummary {
+  const primary = worktrees.find((worktree) => worktree.isPrimary) ?? null;
+  const observedStatus = primary?.statusSnapshot?.status ?? null;
+  const workerSummary = toWorkerSummary(worker);
+  return {
+    id: source.id,
+    projectId: source.projectId,
+    workerId: source.workerId,
+    workerName: workerSummary.name,
+    workerOnline: workerSummary.online,
+    path: source.absolutePath,
+    displayPath: source.displayPath,
+    repositoryFingerprint: source.repositoryFingerprint,
+    primaryWorktreeId: primary?.id ?? null,
+    branch: observedStatus?.branch ?? primary?.branch ?? null,
+    head: observedStatus?.head ?? primary?.head ?? null,
+    dirty: observedStatus ? observedStatus.files.length > 0 : null,
+    ready: primary?.lifecycleState === "ready",
+    worktreeCount: worktrees.length,
+    lastObservedAt: primary?.statusObservedAt
+      ? toISOString(primary.statusObservedAt)
+      : null,
+    createdAt: toISOString(source.createdAt),
+    updatedAt: toISOString(source.updatedAt),
+  };
 }
 
 function toMcpServerSummary(server: McpServerRow): McpServerSummary {
@@ -2683,6 +2723,7 @@ export class ServerRepository {
             ),
           this.database
             .select({
+              projectReplicaId: schema.projectSources.id,
               projectId: schema.projects.id,
               nameWithOwner: sql<string>`coalesce(${schema.projects.githubRepositoryFullName}, ${schema.projects.name})`,
               displayPath: schema.projectSources.displayPath,
@@ -3121,17 +3162,87 @@ export class ServerRepository {
     return rows.length === 1;
   }
 
-  async listProjects(ownerId: string): Promise<ProjectSummary[]> {
-    const rows = await this.database
-      .select({ project: schema.projects, source: schema.projectSources })
-      .from(schema.projects)
-      .leftJoin(
-        schema.projectSources,
-        eq(schema.projectSources.projectId, schema.projects.id),
+  private async projectReplicasByProject(
+    ownerId: string,
+    projectIds: string[],
+  ): Promise<Map<string, ProjectReplicaSummary[]>> {
+    const replicasByProject = new Map<string, ProjectReplicaSummary[]>();
+    for (const projectId of projectIds) replicasByProject.set(projectId, []);
+    if (projectIds.length === 0) return replicasByProject;
+
+    const sourceRows = await this.database
+      .select({ source: schema.projectSources, worker: schema.workers })
+      .from(schema.projectSources)
+      .innerJoin(
+        schema.projects,
+        eq(schema.projects.id, schema.projectSources.projectId),
       )
+      .innerJoin(
+        schema.workers,
+        eq(schema.workers.id, schema.projectSources.workerId),
+      )
+      .where(
+        and(
+          eq(schema.projects.ownerId, ownerId),
+          inArray(schema.projectSources.projectId, projectIds),
+        ),
+      )
+      .orderBy(
+        asc(schema.projectSources.createdAt),
+        asc(schema.projectSources.id),
+      );
+    if (sourceRows.length === 0) return replicasByProject;
+
+    const sourceIds = sourceRows.map(({ source }) => source.id);
+    const worktrees = await this.database
+      .select()
+      .from(schema.projectWorktrees)
+      .where(inArray(schema.projectWorktrees.projectSourceId, sourceIds))
+      .orderBy(
+        desc(schema.projectWorktrees.isPrimary),
+        asc(schema.projectWorktrees.createdAt),
+      );
+    const worktreesBySource = new Map<string, ProjectWorktreeRow[]>();
+    for (const worktree of worktrees) {
+      const entries = worktreesBySource.get(worktree.projectSourceId) ?? [];
+      entries.push(worktree);
+      worktreesBySource.set(worktree.projectSourceId, entries);
+    }
+    for (const { source, worker } of sourceRows) {
+      const replicas = replicasByProject.get(source.projectId);
+      if (!replicas) continue;
+      replicas.push(
+        toProjectReplicaSummary(
+          source,
+          worker,
+          worktreesBySource.get(source.id) ?? [],
+        ),
+      );
+    }
+    for (const replicas of replicasByProject.values()) {
+      replicas.sort(
+        (left, right) =>
+          Number(right.ready) - Number(left.ready) ||
+          left.createdAt.localeCompare(right.createdAt) ||
+          left.id.localeCompare(right.id),
+      );
+    }
+    return replicasByProject;
+  }
+
+  async listProjects(ownerId: string): Promise<ProjectSummary[]> {
+    const projects = await this.database
+      .select()
+      .from(schema.projects)
       .where(eq(schema.projects.ownerId, ownerId))
       .orderBy(asc(schema.projects.position), asc(schema.projects.createdAt));
-    return rows.map(({ project, source }) => toProjectSummary(project, source));
+    const replicasByProject = await this.projectReplicasByProject(
+      ownerId,
+      projects.map(({ id }) => id),
+    );
+    return projects.map((project) =>
+      toProjectSummary(project, replicasByProject.get(project.id) ?? []),
+    );
   }
 
   async listMcpServers(
@@ -3536,17 +3647,47 @@ export class ServerRepository {
       )
       .returning();
     if (!rows[0]) return null;
-    const sources = await this.database
-      .select()
-      .from(schema.projectSources)
-      .where(eq(schema.projectSources.projectId, projectId))
+    return toProjectSummary(
+      rows[0],
+      (await this.listProjectReplicas(ownerId, projectId)) ?? [],
+    );
+  }
+
+  async listProjectReplicas(
+    ownerId: string,
+    projectId: string,
+  ): Promise<ProjectReplicaSummary[] | null> {
+    const ownedProjects = await this.database
+      .select({ id: schema.projects.id })
+      .from(schema.projects)
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
       .limit(1);
-    return toProjectSummary(rows[0], sources[0] ?? null);
+    if (!ownedProjects[0]) return null;
+    return (
+      (await this.projectReplicasByProject(ownerId, [projectId])).get(
+        projectId,
+      ) ?? []
+    );
+  }
+
+  async getProjectReplica(
+    ownerId: string,
+    projectId: string,
+    projectReplicaId: string,
+  ): Promise<ProjectReplicaSummary | null> {
+    const replicas = await this.listProjectReplicas(ownerId, projectId);
+    return replicas?.find((replica) => replica.id === projectReplicaId) ?? null;
   }
 
   async getProjectSource(ownerId: string, projectId: string) {
     const rows = await this.database
       .select({
+        projectReplicaId: schema.projectSources.id,
         workerId: schema.projectWorktrees.workerId,
         cwd: schema.projectWorktrees.absolutePath,
         worktreeId: schema.projectWorktrees.id,
@@ -3568,6 +3709,11 @@ export class ServerRepository {
           eq(schema.projects.id, projectId),
           eq(schema.projects.ownerId, ownerId),
         ),
+      )
+      .orderBy(
+        desc(sql<boolean>`${schema.projectWorktrees.lifecycleState} = 'ready'`),
+        asc(schema.projectSources.createdAt),
+        asc(schema.projectSources.id),
       )
       .limit(1);
     return rows[0] ?? null;
@@ -4043,6 +4189,7 @@ export class ServerRepository {
   async reconcileProjectWorktrees(
     ownerId: string,
     projectId: string,
+    workerId: string,
     inventory: WorktreeInventory,
     created?: {
       id: string;
@@ -4061,10 +4208,18 @@ export class ServerRepository {
           eq(schema.projects.ownerId, ownerId),
         ),
       )
-      .where(eq(schema.projects.id, projectId))
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projectSources.workerId, workerId),
+        ),
+      )
       .limit(1);
     const source = ownedRows[0]?.source;
     if (!source) return null;
+    if (source.absolutePath !== inventory.sourcePath) {
+      throw new Error("Worker inventory referred to a different replica path.");
+    }
     const observedPrimaries = inventory.worktrees.filter(
       ({ isPrimary }) => isPrimary,
     );
@@ -5117,13 +5272,8 @@ export class ServerRepository {
       .select({
         nameWithOwner: schema.projects.githubRepositoryFullName,
         url: schema.projects.githubRepositoryUrl,
-        workerId: schema.projectSources.workerId,
       })
       .from(schema.projects)
-      .innerJoin(
-        schema.projectSources,
-        eq(schema.projectSources.projectId, schema.projects.id),
-      )
       .where(
         and(
           eq(schema.projects.id, projectId),
@@ -5132,11 +5282,12 @@ export class ServerRepository {
       )
       .limit(1);
     const row = rows[0];
-    return row?.nameWithOwner && row.url
+    const source = row ? await this.getProjectSource(ownerId, projectId) : null;
+    return row?.nameWithOwner && row.url && source
       ? {
           nameWithOwner: row.nameWithOwner,
           url: row.url,
-          workerId: row.workerId,
+          workerId: source.workerId,
         }
       : null;
   }
@@ -5228,7 +5379,7 @@ export class ServerRepository {
     workerId: string,
     clone: ProjectCloneResult,
   ): Promise<ProjectSummary | null> {
-    return this.database.transaction(async (transaction) => {
+    const completed = await this.database.transaction(async (transaction) => {
       const projectRows = await transaction
         .select()
         .from(schema.projects)
@@ -5273,11 +5424,14 @@ export class ServerRepository {
         })
         .where(eq(schema.projects.id, projectId))
         .returning();
-      return toProjectSummary(
-        firstOrThrow(projectResult, "completing project setup"),
-        source,
-      );
+      return firstOrThrow(projectResult, "completing project setup");
     });
+    return completed
+      ? toProjectSummary(
+          completed,
+          (await this.listProjectReplicas(ownerId, projectId)) ?? [],
+        )
+      : null;
   }
 
   async failGithubProjectSetup(
@@ -5310,14 +5464,8 @@ export class ServerRepository {
       .select({
         projectId: schema.projects.id,
         setupStatus: schema.projects.setupStatus,
-        workerId: schema.projectSources.workerId,
-        cwd: schema.projectSources.absolutePath,
       })
       .from(schema.projects)
-      .leftJoin(
-        schema.projectSources,
-        eq(schema.projectSources.projectId, schema.projects.id),
-      )
       .where(
         and(
           eq(schema.projects.id, projectId),
@@ -5327,8 +5475,23 @@ export class ServerRepository {
       .limit(1);
     const project = rows[0];
     if (!project) return null;
+    const replicas = await this.database
+      .select({
+        cwd: schema.projectSources.absolutePath,
+        id: schema.projectSources.id,
+        workerId: schema.projectSources.workerId,
+      })
+      .from(schema.projectSources)
+      .where(eq(schema.projectSources.projectId, projectId))
+      .orderBy(
+        asc(schema.projectSources.createdAt),
+        asc(schema.projectSources.id),
+      );
     const terminals = await this.database
-      .select({ id: schema.terminals.id })
+      .select({
+        id: schema.terminals.id,
+        workerId: schema.terminals.activeWorkerId,
+      })
       .from(schema.terminals)
       .where(eq(schema.terminals.projectId, projectId));
     const remoteSurfaces = await this.database
@@ -5336,13 +5499,12 @@ export class ServerRepository {
       .from(schema.remoteSurfaces)
       .where(eq(schema.remoteSurfaces.projectId, projectId));
     return {
-      cwd: project.cwd,
+      replicas,
       remoteSurfaces: remoteSurfaces.map(({ surface }) =>
         toRemoteSurfaceSummary(surface),
       ),
       setupStatus: project.setupStatus as ProjectSummary["setupStatus"],
-      terminalIds: terminals.map(({ id }) => id),
-      workerId: project.workerId,
+      terminals,
     };
   }
 
@@ -6333,7 +6495,6 @@ export class ServerRepository {
     const rows = await this.database
       .select({
         browser: schema.browsers,
-        workerId: schema.projectWorktrees.workerId,
         surfaceId: schema.remoteSurfaces.id,
       })
       .from(schema.browsers)
@@ -6344,38 +6505,41 @@ export class ServerRepository {
           eq(schema.projects.ownerId, ownerId),
         ),
       )
-      .innerJoin(
-        schema.projectSources,
-        eq(schema.projectSources.projectId, schema.projects.id),
-      )
-      .innerJoin(
-        schema.projectWorktrees,
-        and(
-          eq(schema.projectWorktrees.projectSourceId, schema.projectSources.id),
-          eq(schema.projectWorktrees.isDefault, true),
-        ),
-      )
       .leftJoin(
         schema.remoteSurfaces,
         eq(schema.remoteSurfaces.id, schema.browsers.id),
       )
       .where(isNull(schema.remoteSurfaces.id));
     if (rows.length === 0) return;
-    await this.database.insert(schema.remoteSurfaces).values(
-      rows.map(({ browser, workerId }) => ({
-        id: browser.id,
-        projectId: browser.projectId,
-        workerId,
-        kind: "browser",
-        title: browser.title,
-        preferredTransport: "webrtc",
-        configuration: {
-          kind: "browser" as const,
-          initialUrl: browser.url,
-          profileId: null,
-        },
-      })),
+    const values = (
+      await Promise.all(
+        rows.map(async ({ browser }) => ({
+          browser,
+          source: await this.getProjectSource(ownerId, browser.projectId),
+        })),
+      )
+    ).flatMap(({ browser, source }) =>
+      source ? [{ browser, workerId: source.workerId }] : [],
     );
+    if (values.length === 0) return;
+    await this.database
+      .insert(schema.remoteSurfaces)
+      .values(
+        values.map(({ browser, workerId }) => ({
+          id: browser.id,
+          projectId: browser.projectId,
+          workerId,
+          kind: "browser",
+          title: browser.title,
+          preferredTransport: "webrtc",
+          configuration: {
+            kind: "browser" as const,
+            initialUrl: browser.url,
+            profileId: null,
+          },
+        })),
+      )
+      .onConflictDoNothing();
   }
 
   async listRemoteSurfaces(

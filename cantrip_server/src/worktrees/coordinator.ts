@@ -462,6 +462,7 @@ export class ProjectWorktreeCoordinator {
         await this.repository.reconcileProjectWorktrees(
           ownerId,
           projectId,
+          context.workerId,
           inventory,
         );
         if (
@@ -554,6 +555,7 @@ export class ProjectWorktreeCoordinator {
         await this.repository.reconcileProjectWorktrees(
           ownerId,
           projectId,
+          context.workerId,
           result.inventory,
         );
         worktreeRemoved = true;
@@ -585,6 +587,7 @@ export class ProjectWorktreeCoordinator {
       return this.repository.reconcileProjectWorktrees(
         ownerId,
         projectId,
+        source.workerId,
         inventory,
       );
     });
@@ -610,6 +613,7 @@ export class ProjectWorktreeCoordinator {
     const reconciled = await this.repository.reconcileProjectWorktrees(
       ownerId,
       projectId,
+      source.workerId,
       result.inventory,
       {
         id: worktreeId,

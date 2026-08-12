@@ -139,6 +139,7 @@ describe("project worktree coordinator", () => {
       async reconcileProjectWorktrees(
         _ownerId: string,
         _projectId: string,
+        _workerId: string,
         _inventory: unknown,
         hint?: {
           id: string;
@@ -375,6 +376,7 @@ describe("project worktree coordinator", () => {
       async reconcileProjectWorktrees(
         _ownerId: string,
         _projectId: string,
+        _workerId: string,
         _inventory: unknown,
         hint?: { id: string },
       ) {

@@ -180,6 +180,20 @@ describe("hosted tenant authorization", () => {
           .json()
           .some((candidate: { id: string }) => candidate.id === project.id),
       ).toBe(false);
+      expect(
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/replicas`,
+          headers: headers(first),
+        }),
+      ).toMatchObject({ statusCode: 200, body: "[]" });
+      expect(
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/replicas`,
+          headers: headers(second),
+        }),
+      ).toMatchObject({ statusCode: 404 });
 
       const unknownProjectId = "00000000-0000-0000-0000-00000000fffe";
       for (const projectId of [project.id, unknownProjectId]) {
