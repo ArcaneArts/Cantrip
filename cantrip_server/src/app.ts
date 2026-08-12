@@ -939,6 +939,11 @@ export async function buildApp({
     tunnelStreamBroker,
     publishTunnelRuntimeChange,
   );
+  codeTunnel.configureControlPlane(
+    repository,
+    tunnelStreamBroker,
+    publishTunnelRuntimeChange,
+  );
   const tunnelAttachmentExpiryTimer = setInterval(() => {
     void repository
       .expireDesktopTunnelAttachments()
@@ -4237,7 +4242,7 @@ export async function buildApp({
     const principal = authenticatedPrincipal(request);
     await repository.revokeUserSession(principal.sessionId!, "signed-out");
     liveHub.revokeSession(principal.sessionId!);
-    codeTunnel.revokeAuthSession(principal.sessionId!);
+    await codeTunnel.revokeAuthSession(principal.sessionId!);
     closeSessionSockets(
       (sessionId) => sessionId === principal.sessionId,
       "Session was revoked",
@@ -4259,7 +4264,7 @@ export async function buildApp({
       "signed-out-all",
     );
     liveHub.revokeOwner(principal.user.id);
-    codeTunnel.revokeOwner(principal.user.id);
+    await codeTunnel.revokeOwner(principal.user.id);
     closeSessionSockets(
       (_sessionId, ownerId) => ownerId === principal.user.id,
       "Account sessions were revoked",
@@ -11768,10 +11773,11 @@ export async function buildApp({
       try {
         return reply.code(201).send(
           codeAttachmentSchema.parse(
-            codeTunnel.createAttachment({
+            await codeTunnel.createAttachment({
               authSessionId: authenticatedPrincipal(request).sessionId,
               codeTabId: context.codeTab.id,
               ownerId: applicationOwnerId(),
+              projectId: context.codeTab.projectId,
               runtime,
               sessionId: session.id,
               workerId: context.workerId,
@@ -11787,7 +11793,7 @@ export async function buildApp({
   app.delete<{ Params: { attachmentId: string } }>(
     "/api/code-attachments/:attachmentId",
     async (request, reply) => {
-      codeTunnel.revokeAttachment(
+      await codeTunnel.revokeAttachment(
         request.params.attachmentId,
         applicationOwnerId(),
       );
@@ -11863,7 +11869,7 @@ export async function buildApp({
             sessionId: session.id,
           }),
         );
-        codeTunnel.revokeSession(session.id);
+        await codeTunnel.revokeSession(session.id);
         await updateCodeSessionRuntime(
           applicationOwnerId(),
           context.codeTab.id,
@@ -11942,7 +11948,9 @@ export async function buildApp({
       if (!context || !sessions) {
         return reply.code(404).send({ error: "Code tab not found." });
       }
-      for (const session of sessions) codeTunnel.revokeSession(session.id);
+      await Promise.all(
+        sessions.map((session) => codeTunnel.revokeSession(session.id)),
+      );
       if (bridge.isConnected(context.workerId)) {
         await Promise.allSettled(
           sessions
@@ -15842,9 +15850,9 @@ export async function buildApp({
       "Application live transport stopped",
     );
     liveHub.close();
+    await codeTunnel.close();
     await projectShareTunnel.close();
     tunnelRuntime.close();
-    codeTunnel.close();
     bridge.close();
     await activeScheduleTick;
     await projectReplicaJobExecutor.drain();

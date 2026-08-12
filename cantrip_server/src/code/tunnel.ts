@@ -7,29 +7,47 @@ import {
 } from "node:http";
 
 import {
-  CODE_TUNNEL_MAX_PAYLOAD_BYTES,
+  CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES,
   type CodeAttachment,
   type CodeRuntimeStatus,
-  type CodeTunnelFrameHeader,
 } from "@cantrip/protocol";
-import WebSocket, { WebSocketServer, type RawData } from "ws";
+import WebSocket, { WebSocketServer } from "ws";
 
+import type { ServerRepository } from "../db/repository.js";
+import {
+  TunnelStreamBroker,
+  type TunnelRouteHandle,
+} from "../tunnels/broker.js";
+import { WorkerTunnelEndpoint } from "../tunnels/worker-endpoint.js";
 import type { WorkerCommandBus } from "../workers/bridge.js";
 import {
   type ProjectShareTunnelBroker,
   projectShareTokenFromRequest,
 } from "../project-shares/tunnel.js";
+import { CodeHttpEndpoint } from "./http-endpoint.js";
+
+interface CodeAttachmentMetrics {
+  bytesFromSource: number;
+  bytesToSource: number;
+  connectionDelta: number;
+  timer: ReturnType<typeof setTimeout> | null;
+}
 
 export interface CodeAttachmentBinding {
   attachmentId: string;
   authSessionId: string | null;
   codeTabId: string;
   createdAt: number;
+  endpoint: CodeHttpEndpoint;
   expiresAt: number;
   lastSeenAt: number;
+  metrics: CodeAttachmentMetrics;
   ownerId: string;
+  projectId: string;
+  route: TunnelRouteHandle;
   sessionId: string;
   token: string;
+  tunnelId: string;
   workerId: string;
 }
 
@@ -37,6 +55,7 @@ export interface CreateCodeAttachmentInput {
   authSessionId?: string | null;
   codeTabId: string;
   ownerId: string;
+  projectId: string;
   runtime: CodeRuntimeStatus;
   sessionId: string;
   workerId: string;
@@ -51,84 +70,37 @@ export interface CodeTunnelBrokerOptions {
   surfaceOrigin: string;
 }
 
-const EMPTY_PAYLOAD = new Uint8Array();
-const MAX_BUFFERED_BYTES = 8 * 1_024 * 1_024;
-const RESPONSE_START_TIMEOUT_MS = 30_000;
-const BLOCKED_CLIENT_HEADERS = new Set([
-  "authorization",
-  "connection",
-  "cookie",
-  "host",
-  "proxy-authorization",
-  "proxy-connection",
-  "transfer-encoding",
-  "upgrade",
-  "x-forwarded-for",
-  "x-forwarded-host",
-  "x-forwarded-port",
-  "x-forwarded-prefix",
-  "x-forwarded-proto",
-]);
-const BLOCKED_EDITOR_HEADERS = new Set([
-  "connection",
-  "set-cookie",
-  "transfer-encoding",
-  "upgrade",
-  "x-frame-options",
-]);
+type CodeTunnelChange = (input: {
+  attachmentId: string;
+  ownerId: string;
+  projectId: string | null;
+  tunnelId: string;
+}) => void;
+
 const surfaceWebSockets = new WeakMap<Server, WebSocketServer>();
 
-function bytes(data: RawData): Uint8Array {
-  if (Array.isArray(data)) return Buffer.concat(data);
-  if (data instanceof ArrayBuffer) return new Uint8Array(data);
-  return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-}
-
-function streamMatches(
-  header: CodeTunnelFrameHeader,
-  binding: CodeAttachmentBinding,
-  streamId: string,
-): boolean {
-  return (
-    header.attachmentId === binding.attachmentId &&
-    header.sessionId === binding.sessionId &&
-    header.streamId === streamId
-  );
-}
-
-function splitPayload(payload: Uint8Array): Uint8Array[] {
-  const parts: Uint8Array[] = [];
-  for (
-    let offset = 0;
-    offset < payload.byteLength;
-    offset += CODE_TUNNEL_MAX_PAYLOAD_BYTES
-  ) {
-    parts.push(
-      payload.subarray(offset, offset + CODE_TUNNEL_MAX_PAYLOAD_BYTES),
-    );
-  }
-  return parts.length > 0 ? parts : [EMPTY_PAYLOAD];
-}
-
 export class CodeTunnelBroker {
-  readonly #activeStreams = new Map<string, Set<() => void>>();
   readonly #allowedFrameAncestors: string;
   readonly #attachments = new Map<string, CodeAttachmentBinding>();
-  readonly #consumeRelayBytes: NonNullable<
-    CodeTunnelBrokerOptions["consumeRelayBytes"]
-  >;
   readonly #idleTtlMs: number;
   readonly #maxAttachments: number;
   readonly #maxLifetimeMs: number;
   readonly #surfaceOrigin: URL;
   readonly #sweepTimer: ReturnType<typeof setInterval>;
+  readonly #workerDisconnectSubscriptions = new Map<string, () => void>();
+  #changed: CodeTunnelChange | null = null;
+  #ownsStreamBroker = true;
+  #repository: ServerRepository | null = null;
+  #streamBroker: TunnelStreamBroker;
 
   constructor(
     private readonly bridge: WorkerCommandBus,
     options: CodeTunnelBrokerOptions,
   ) {
+    this.#streamBroker = new TunnelStreamBroker({
+      consumeRelayBytes: options.consumeRelayBytes,
+    });
     this.#surfaceOrigin = new URL(options.surfaceOrigin);
-    this.#consumeRelayBytes = options.consumeRelayBytes ?? (() => true);
     this.#allowedFrameAncestors = [
       "'self'",
       ...options.allowedFrameAncestors,
@@ -143,7 +115,24 @@ export class CodeTunnelBroker {
     this.#sweepTimer.unref();
   }
 
-  createAttachment(input: CreateCodeAttachmentInput): CodeAttachment {
+  configureControlPlane(
+    repository: ServerRepository,
+    streamBroker: TunnelStreamBroker,
+    changed: CodeTunnelChange,
+  ): void {
+    if (this.#attachments.size > 0) {
+      throw new Error("Code control plane must be configured before use.");
+    }
+    if (this.#ownsStreamBroker) this.#streamBroker.close();
+    this.#repository = repository;
+    this.#streamBroker = streamBroker;
+    this.#ownsStreamBroker = false;
+    this.#changed = changed;
+  }
+
+  async createAttachment(
+    input: CreateCodeAttachmentInput,
+  ): Promise<CodeAttachment> {
     this.#prune();
     let workspacePath: string | null = null;
     if (input.runtime.workspaceUri) {
@@ -163,32 +152,130 @@ export class CodeTunnelBroker {
         "This server has reached its Cantrip Code attachment limit.",
       );
     }
+    if (!this.bridge.isConnected(input.workerId)) {
+      throw new Error("Cantrip Code worker is offline.");
+    }
     const now = Date.now();
     const token = randomBytes(32).toString("base64url");
-    const binding: CodeAttachmentBinding = {
-      attachmentId: randomUUID(),
-      authSessionId: input.authSessionId ?? null,
-      codeTabId: input.codeTabId,
-      createdAt: now,
-      expiresAt: now + this.#idleTtlMs,
-      lastSeenAt: now,
+    const attachmentId = randomUUID();
+    const expiresAt = now + this.#idleTtlMs;
+    let tunnelId = `code:${input.codeTabId}`;
+    let registeredRelay = false;
+    if (this.#repository) {
+      const tunnel = await this.#repository.registerManagedTunnel(
+        input.ownerId,
+        {
+          name: "Cantrip Code",
+          description: "Isolated editor access for the owning Code tab.",
+          projectId: input.projectId,
+          origin: "code",
+          management: "managed-ephemeral",
+          protocolHint: "http-websocket",
+          source: { kind: "server-http", adapter: "code" },
+          destination: {
+            kind: "worker-adapter",
+            workerId: input.workerId,
+            adapter: "code",
+            resourceId: input.codeTabId,
+          },
+          managedBy: { kind: "code", id: input.codeTabId },
+          desiredState: "started",
+          status: "starting",
+        },
+      );
+      if (!tunnel) throw new Error("Could not register the Code tunnel.");
+      tunnelId = tunnel.id;
+      if (
+        !(await this.#repository.createManagedServerRelayAttachment(
+          input.ownerId,
+          tunnel.id,
+          attachmentId,
+          new Date(expiresAt),
+        ))
+      ) {
+        throw new Error("Could not activate the Code tunnel.");
+      }
+      registeredRelay = true;
+    }
+    let binding!: CodeAttachmentBinding;
+    try {
+      const destination = new WorkerTunnelEndpoint(
+        this.bridge,
+        input.workerId,
+        `worker:code:${attachmentId}`,
+      );
+      const endpoint = new CodeHttpEndpoint(
+        tunnelId,
+        attachmentId,
+        destination.endpointId,
+        input.sessionId,
+        this.basePath(token),
+        this.#surfaceOrigin,
+        this.#allowedFrameAncestors,
+        (metrics) => this.#recordMetrics(binding, metrics),
+      );
+      const route = this.#streamBroker.registerRoute({
+        attachmentId,
+        destination,
+        destinationTarget: {
+          kind: "adapter",
+          adapter: "code",
+          resourceId: input.codeTabId,
+        },
+        source: endpoint,
+        tunnelId,
+        ownerId: input.ownerId,
+        workerId: input.workerId,
+      });
+      binding = {
+        attachmentId,
+        authSessionId: input.authSessionId ?? null,
+        codeTabId: input.codeTabId,
+        createdAt: now,
+        endpoint,
+        expiresAt,
+        lastSeenAt: now,
+        metrics: {
+          bytesFromSource: 0,
+          bytesToSource: 0,
+          connectionDelta: 0,
+          timer: null,
+        },
+        ownerId: input.ownerId,
+        projectId: input.projectId,
+        route,
+        sessionId: input.sessionId,
+        token,
+        tunnelId,
+        workerId: input.workerId,
+      };
+    } catch (error) {
+      if (registeredRelay && this.#repository) {
+        await this.#repository
+          .removeManagedServerRelayAttachment(input.ownerId, attachmentId)
+          .catch(() => null);
+      }
+      throw error;
+    }
+    this.#attachments.set(token, binding);
+    this.#trackWorkerDisconnect(input.workerId);
+    this.#changed?.({
+      attachmentId,
       ownerId: input.ownerId,
-      sessionId: input.sessionId,
-      token,
-      workerId: input.workerId,
-    };
+      projectId: input.projectId,
+      tunnelId,
+    });
     const attachmentUrl = new URL(
       `${this.basePath(token)}/`,
       this.#surfaceOrigin,
     );
     if (workspacePath)
       attachmentUrl.searchParams.set("workspace", workspacePath);
-    this.#attachments.set(token, binding);
     return {
-      attachmentId: binding.attachmentId,
-      sessionId: binding.sessionId,
+      attachmentId,
+      sessionId: input.sessionId,
       url: attachmentUrl.toString(),
-      expiresAt: new Date(binding.expiresAt).toISOString(),
+      expiresAt: new Date(expiresAt).toISOString(),
       runtime: input.runtime,
     };
   }
@@ -201,46 +288,44 @@ export class CodeTunnelBroker {
     return this.#resolve(token) !== null;
   }
 
-  revokeAttachment(attachmentId: string, ownerId: string): boolean {
+  async revokeAttachment(
+    attachmentId: string,
+    ownerId: string,
+  ): Promise<boolean> {
     for (const [token, binding] of this.#attachments) {
       if (
         binding.attachmentId === attachmentId &&
         binding.ownerId === ownerId
       ) {
-        this.#removeAttachment(token, binding);
+        await this.#removeAttachment(token, binding);
         return true;
       }
     }
     return false;
   }
 
-  revokeSession(sessionId: string): void {
-    for (const [token, binding] of this.#attachments) {
-      if (binding.sessionId === sessionId) {
-        this.#removeAttachment(token, binding);
-      }
-    }
+  async revokeSession(sessionId: string): Promise<void> {
+    await this.#revokeWhere((binding) => binding.sessionId === sessionId);
   }
 
-  revokeAuthSession(authSessionId: string): void {
-    for (const [token, binding] of this.#attachments) {
-      if (binding.authSessionId === authSessionId) {
-        this.#removeAttachment(token, binding);
-      }
-    }
+  async revokeAuthSession(authSessionId: string): Promise<void> {
+    await this.#revokeWhere(
+      (binding) => binding.authSessionId === authSessionId,
+    );
   }
 
-  revokeOwner(ownerId: string): void {
-    for (const [token, binding] of this.#attachments) {
-      if (binding.ownerId === ownerId) this.#removeAttachment(token, binding);
-    }
+  async revokeOwner(ownerId: string): Promise<void> {
+    await this.#revokeWhere((binding) => binding.ownerId === ownerId);
   }
 
-  close(): void {
+  async close(): Promise<void> {
     clearInterval(this.#sweepTimer);
-    for (const [token, binding] of this.#attachments) {
-      this.#removeAttachment(token, binding);
+    await this.#revokeWhere(() => true);
+    for (const unsubscribe of this.#workerDisconnectSubscriptions.values()) {
+      unsubscribe();
     }
+    this.#workerDisconnectSubscriptions.clear();
+    if (this.#ownsStreamBroker) this.#streamBroker.close();
   }
 
   proxyHttp(
@@ -253,231 +338,13 @@ export class CodeTunnelBroker {
       this.#writeUnavailable(response);
       return;
     }
-    const sendFrame = this.bridge.sendCodeTunnelFrame;
-    const subscribe = this.bridge.subscribeCodeTunnelFrames;
-    if (
-      !sendFrame ||
-      !subscribe ||
-      !this.bridge.isConnected(binding.workerId)
-    ) {
+    if (!this.bridge.isConnected(binding.workerId)) {
       response
         .writeHead(503, { "cache-control": "no-store" })
         .end("Worker offline");
       return;
     }
-    const streamId = randomUUID();
-    const basePath = this.basePath(token);
-    let started = false;
-    let completed = false;
-    let workerPaused = false;
-    let unregisterActive: () => void = () => undefined;
-    const sendResponseFlow = (
-      kind: "http-response-pause" | "http-response-resume",
-    ) =>
-      sendFrame.call(
-        this.bridge,
-        binding.workerId,
-        {
-          protocolVersion: 1,
-          attachmentId: binding.attachmentId,
-          sessionId: binding.sessionId,
-          streamId,
-          kind,
-        },
-        EMPTY_PAYLOAD,
-      );
-    const resumeWorker = () => {
-      if (completed || !workerPaused) return;
-      workerPaused = false;
-      if (!sendResponseFlow("http-response-resume")) {
-        this.#sendCancel(binding, streamId, "Client response resume failed.");
-        fail(503, "Cantrip Code worker is unavailable or congested.");
-      }
-    };
-    const finish = () => {
-      if (completed) return;
-      completed = true;
-      clearTimeout(startTimer);
-      response.off("drain", resumeWorker);
-      unsubscribe();
-      unsubscribeDisconnect();
-      unregisterActive();
-    };
-    const fail = (status: number, message: string) => {
-      if (completed) return;
-      if (!response.headersSent) {
-        response.writeHead(status, {
-          "cache-control": "no-store",
-          "content-type": "text/plain; charset=utf-8",
-        });
-        response.end(message);
-      } else {
-        response.destroy(new Error(message));
-      }
-      finish();
-    };
-    const unsubscribe = subscribe.call(
-      this.bridge,
-      binding.workerId,
-      (header, payload) => {
-        if (completed || !streamMatches(header, binding, streamId)) return;
-        this.#touch(binding);
-        switch (header.kind) {
-          case "http-response-start":
-            if (started) return;
-            started = true;
-            clearTimeout(startTimer);
-            this.#writeResponseHeaders(
-              response,
-              header.statusCode,
-              header.headers,
-            );
-            return;
-          case "http-response-data":
-            if (!started || response.destroyed) return;
-            if (
-              !this.#consumeRelayBytes(
-                binding.ownerId,
-                binding.workerId,
-                payload.byteLength,
-              )
-            ) {
-              this.#sendCancel(
-                binding,
-                streamId,
-                "Relay bandwidth quota reached.",
-              );
-              fail(429, "Cantrip Code relay bandwidth quota reached.");
-              return;
-            }
-            if (
-              response.writableLength + payload.byteLength >
-              MAX_BUFFERED_BYTES
-            ) {
-              this.#sendCancel(
-                binding,
-                streamId,
-                "Client response buffer exceeded.",
-              );
-              fail(502, "Cantrip Code client is too slow.");
-              return;
-            }
-            if (!response.write(payload) && !workerPaused) {
-              workerPaused = true;
-              if (!sendResponseFlow("http-response-pause")) {
-                this.#sendCancel(
-                  binding,
-                  streamId,
-                  "Client response pause failed.",
-                );
-                fail(503, "Cantrip Code worker is unavailable or congested.");
-              }
-            }
-            return;
-          case "http-response-end":
-            if (!started) this.#writeResponseHeaders(response, 200, []);
-            response.end();
-            finish();
-            return;
-          case "error":
-            fail(502, header.message);
-            return;
-          default:
-            return;
-        }
-      },
-    );
-    const unsubscribeDisconnect = this.bridge.subscribeWorkerDisconnect(
-      binding.workerId,
-      () => fail(503, "Cantrip Code worker disconnected."),
-    );
-    const startTimer = setTimeout(() => {
-      this.#sendCancel(binding, streamId, "Editor response timed out.");
-      fail(504, "Cantrip Code editor response timed out.");
-    }, RESPONSE_START_TIMEOUT_MS);
-    unregisterActive = this.#registerActive(binding, () => {
-      this.#sendCancel(binding, streamId, "Attachment was revoked.");
-      fail(401, "Cantrip Code attachment expired or was revoked.");
-    });
-    response.on("drain", resumeWorker);
-
-    const requestHeader: CodeTunnelFrameHeader = {
-      protocolVersion: 1,
-      attachmentId: binding.attachmentId,
-      sessionId: binding.sessionId,
-      streamId,
-      kind: "http-request-start",
-      method: (request.method ?? "GET").toUpperCase(),
-      path: request.url ?? `${basePath}/`,
-      basePath,
-      headers: this.#requestHeaders(request),
-    };
-    if (
-      !sendFrame.call(
-        this.bridge,
-        binding.workerId,
-        requestHeader,
-        EMPTY_PAYLOAD,
-      )
-    ) {
-      fail(503, "Cantrip Code worker is unavailable or congested.");
-      return;
-    }
-    request.on("data", (chunk: Buffer) => {
-      if (completed) return;
-      this.#touch(binding);
-      for (const part of splitPayload(chunk)) {
-        if (
-          !this.#consumeRelayBytes(
-            binding.ownerId,
-            binding.workerId,
-            part.byteLength,
-          )
-        ) {
-          this.#sendCancel(binding, streamId, "Relay bandwidth quota reached.");
-          fail(429, "Cantrip Code relay bandwidth quota reached.");
-          return;
-        }
-        if (
-          !sendFrame.call(
-            this.bridge,
-            binding.workerId,
-            { ...requestHeader, kind: "http-request-data" },
-            part,
-          )
-        ) {
-          this.#sendCancel(
-            binding,
-            streamId,
-            "Worker request buffer exceeded.",
-          );
-          fail(503, "Cantrip Code worker is unavailable or congested.");
-          return;
-        }
-      }
-    });
-    request.once("end", () => {
-      if (completed) return;
-      if (
-        !sendFrame.call(
-          this.bridge,
-          binding.workerId,
-          { ...requestHeader, kind: "http-request-end" },
-          EMPTY_PAYLOAD,
-        )
-      ) {
-        fail(503, "Cantrip Code worker is unavailable or congested.");
-      }
-    });
-    request.once("aborted", () => {
-      this.#sendCancel(binding, streamId, "Client aborted request.");
-      finish();
-    });
-    response.once("close", () => {
-      if (completed) return;
-      this.#sendCancel(binding, streamId, "Client closed response.");
-      finish();
-    });
+    binding.endpoint.proxyHttp(request, response);
   }
 
   proxyWebSocket(
@@ -486,196 +353,11 @@ export class CodeTunnelBroker {
     request: IncomingMessage,
   ): void {
     const binding = this.#resolve(token);
-    const sendFrame = this.bridge.sendCodeTunnelFrame;
-    const subscribe = this.bridge.subscribeCodeTunnelFrames;
-    if (
-      !binding ||
-      !sendFrame ||
-      !subscribe ||
-      !this.bridge.isConnected(binding.workerId)
-    ) {
+    if (!binding || !this.bridge.isConnected(binding.workerId)) {
       socket.close(1013, "Cantrip Code worker is unavailable");
       return;
     }
-    const streamId = randomUUID();
-    const basePath = this.basePath(token);
-    let opened = false;
-    let completed = false;
-    let unregisterActive: () => void = () => undefined;
-    const queued: Array<{ binary: boolean; payload: Uint8Array }> = [];
-    let queuedBytes = 0;
-    const finish = () => {
-      if (completed) return;
-      completed = true;
-      clearTimeout(openTimer);
-      unsubscribe();
-      unsubscribeDisconnect();
-      unregisterActive();
-    };
-    const sendData = (payload: Uint8Array, binary: boolean) => {
-      if (payload.byteLength > CODE_TUNNEL_MAX_PAYLOAD_BYTES) {
-        socket.close(1009, "Cantrip Code message exceeds the tunnel limit");
-        finish();
-        return false;
-      }
-      if (
-        !this.#consumeRelayBytes(
-          binding.ownerId,
-          binding.workerId,
-          payload.byteLength,
-        )
-      ) {
-        socket.close(1013, "Cantrip Code relay bandwidth quota reached");
-        finish();
-        return false;
-      }
-      if (
-        !sendFrame.call(
-          this.bridge,
-          binding.workerId,
-          {
-            protocolVersion: 1,
-            attachmentId: binding.attachmentId,
-            sessionId: binding.sessionId,
-            streamId,
-            kind: "websocket-data",
-            binary,
-          },
-          payload,
-        )
-      ) {
-        socket.close(1013, "Cantrip Code tunnel is congested");
-        finish();
-        return false;
-      }
-      return true;
-    };
-    const unsubscribe = subscribe.call(
-      this.bridge,
-      binding.workerId,
-      (header, payload) => {
-        if (completed || !streamMatches(header, binding, streamId)) return;
-        this.#touch(binding);
-        switch (header.kind) {
-          case "websocket-opened":
-            opened = true;
-            clearTimeout(openTimer);
-            for (const message of queued.splice(0)) {
-              if (!sendData(message.payload, message.binary)) break;
-            }
-            queuedBytes = 0;
-            return;
-          case "websocket-data":
-            if (!opened || socket.readyState !== WebSocket.OPEN) return;
-            if (
-              !this.#consumeRelayBytes(
-                binding.ownerId,
-                binding.workerId,
-                payload.byteLength,
-              )
-            ) {
-              socket.close(1013, "Cantrip Code relay bandwidth quota reached");
-              finish();
-              return;
-            }
-            if (
-              socket.bufferedAmount + payload.byteLength >
-              MAX_BUFFERED_BYTES
-            ) {
-              socket.close(1013, "Cantrip Code client is too slow");
-              finish();
-              return;
-            }
-            socket.send(payload, { binary: header.binary });
-            return;
-          case "websocket-close":
-            socket.close(header.code, header.reason);
-            finish();
-            return;
-          case "error":
-            socket.close(1011, header.message.slice(0, 123));
-            finish();
-            return;
-          default:
-            return;
-        }
-      },
-    );
-    const unsubscribeDisconnect = this.bridge.subscribeWorkerDisconnect(
-      binding.workerId,
-      () => {
-        socket.close(1013, "Cantrip Code worker disconnected");
-        finish();
-      },
-    );
-    const openTimer = setTimeout(() => {
-      this.#sendCancel(binding, streamId, "Editor WebSocket timed out.");
-      socket.close(1013, "Cantrip Code editor connection timed out");
-      finish();
-    }, RESPONSE_START_TIMEOUT_MS);
-    unregisterActive = this.#registerActive(binding, () => {
-      this.#sendCancel(binding, streamId, "Attachment was revoked.");
-      socket.close(1008, "Cantrip Code attachment expired or was revoked");
-      finish();
-    });
-
-    if (
-      !sendFrame.call(
-        this.bridge,
-        binding.workerId,
-        {
-          protocolVersion: 1,
-          attachmentId: binding.attachmentId,
-          sessionId: binding.sessionId,
-          streamId,
-          kind: "websocket-open",
-          path: request.url ?? `${basePath}/`,
-          basePath,
-          headers: this.#requestHeaders(request),
-        },
-        EMPTY_PAYLOAD,
-      )
-    ) {
-      socket.close(1013, "Cantrip Code worker is unavailable or congested");
-      finish();
-      return;
-    }
-    socket.on("message", (data, binary) => {
-      this.#touch(binding);
-      const payload = bytes(data);
-      if (!opened) {
-        queuedBytes += payload.byteLength;
-        if (queuedBytes > MAX_BUFFERED_BYTES) {
-          socket.close(1009, "Cantrip Code startup buffer exceeded");
-          finish();
-          return;
-        }
-        queued.push({ payload, binary });
-        return;
-      }
-      sendData(payload, binary);
-    });
-    socket.once("close", (code, reason) => {
-      if (!completed && opened) {
-        sendFrame.call(
-          this.bridge,
-          binding.workerId,
-          {
-            protocolVersion: 1,
-            attachmentId: binding.attachmentId,
-            sessionId: binding.sessionId,
-            streamId,
-            kind: "websocket-close",
-            code: code >= 1_000 && code <= 4_999 ? code : 1_000,
-            reason: reason.toString().slice(0, 1_024),
-          },
-          EMPTY_PAYLOAD,
-        );
-      } else if (!completed) {
-        this.#sendCancel(binding, streamId, "Client closed WebSocket.");
-      }
-      finish();
-    });
+    binding.endpoint.proxyWebSocket(socket, request);
   }
 
   #resolve(token: string): CodeAttachmentBinding | null {
@@ -686,7 +368,7 @@ export class CodeTunnelBroker {
       binding.expiresAt <= now ||
       binding.createdAt + this.#maxLifetimeMs <= now
     ) {
-      this.#removeAttachment(token, binding);
+      void this.#removeAttachment(token, binding);
       return null;
     }
     this.#touch(binding, now);
@@ -700,7 +382,7 @@ export class CodeTunnelBroker {
         binding.expiresAt <= now ||
         binding.createdAt + this.#maxLifetimeMs <= now
       ) {
-        this.#removeAttachment(token, binding);
+        void this.#removeAttachment(token, binding);
       }
     }
   }
@@ -711,94 +393,121 @@ export class CodeTunnelBroker {
       binding.createdAt + this.#maxLifetimeMs,
       now + this.#idleTtlMs,
     );
+    if (this.#repository) {
+      void this.#repository
+        .touchManagedServerRelay(binding.ownerId, binding.attachmentId, {
+          expiresAt: new Date(binding.expiresAt),
+        })
+        .catch(() => undefined);
+    }
   }
 
-  #registerActive(
+  async #removeAttachment(
+    token: string,
     binding: CodeAttachmentBinding,
-    close: () => void,
-  ): () => void {
-    let streams = this.#activeStreams.get(binding.attachmentId);
-    if (!streams) {
-      streams = new Set();
-      this.#activeStreams.set(binding.attachmentId, streams);
-    }
-    streams.add(close);
-    return () => {
-      streams?.delete(close);
-      if (streams?.size === 0) {
-        this.#activeStreams.delete(binding.attachmentId);
-      }
-    };
-  }
-
-  #removeAttachment(token: string, binding: CodeAttachmentBinding): void {
+  ): Promise<void> {
+    if (this.#attachments.get(token) !== binding) return;
     this.#attachments.delete(token);
-    const streams = this.#activeStreams.get(binding.attachmentId);
-    this.#activeStreams.delete(binding.attachmentId);
-    for (const close of [...(streams ?? [])]) close();
+    if (binding.metrics.timer) clearTimeout(binding.metrics.timer);
+    binding.endpoint.close();
+    binding.route.close();
+    if (this.#repository) {
+      const removed = await this.#repository
+        .removeManagedServerRelayAttachment(
+          binding.ownerId,
+          binding.attachmentId,
+        )
+        .catch(() => null);
+      this.#changed?.({
+        attachmentId: binding.attachmentId,
+        ownerId: binding.ownerId,
+        projectId: binding.projectId,
+        tunnelId: removed?.tunnelId ?? binding.tunnelId,
+      });
+    }
+    this.#stopTrackingWorkerIfUnused(binding.workerId);
   }
 
-  #requestHeaders(request: IncomingMessage): Array<[string, string]> {
-    const headers: Array<[string, string]> = [];
-    for (let index = 0; index < request.rawHeaders.length; index += 2) {
-      const name = request.rawHeaders[index];
-      const value = request.rawHeaders[index + 1];
-      if (
-        !name ||
-        value === undefined ||
-        BLOCKED_CLIENT_HEADERS.has(name.toLowerCase())
-      ) {
-        continue;
-      }
-      headers.push([name, value]);
-    }
-    headers.push(["x-forwarded-host", this.#surfaceOrigin.host]);
-    headers.push([
-      "x-forwarded-proto",
-      this.#surfaceOrigin.protocol.slice(0, -1),
-    ]);
-    if (this.#surfaceOrigin.port) {
-      headers.push(["x-forwarded-port", this.#surfaceOrigin.port]);
-    }
-    return headers;
+  async #revokeWhere(
+    predicate: (binding: CodeAttachmentBinding) => boolean,
+  ): Promise<void> {
+    await Promise.all(
+      [...this.#attachments.entries()]
+        .filter(([, binding]) => predicate(binding))
+        .map(([token, binding]) => this.#removeAttachment(token, binding)),
+    );
   }
 
-  #writeResponseHeaders(
-    response: ServerResponse,
-    statusCode: number,
-    headers: Array<[string, string]>,
+  #recordMetrics(
+    binding: CodeAttachmentBinding,
+    input: {
+      bytesFromSource: number;
+      bytesToSource: number;
+      connectionDelta: number;
+    },
   ): void {
-    const values = new Map<string, { name: string; values: string[] }>();
-    let contentSecurityPolicy: string | null = null;
-    for (const [name, value] of headers) {
-      const lower = name.toLowerCase();
-      if (BLOCKED_EDITOR_HEADERS.has(lower)) continue;
-      if (lower === "content-security-policy") {
-        contentSecurityPolicy = value;
-        continue;
+    if (!binding || !this.#repository) return;
+    const now = Date.now();
+    binding.lastSeenAt = now;
+    binding.expiresAt = Math.min(
+      binding.createdAt + this.#maxLifetimeMs,
+      now + this.#idleTtlMs,
+    );
+    binding.metrics.bytesFromSource += input.bytesFromSource;
+    binding.metrics.bytesToSource += input.bytesToSource;
+    binding.metrics.connectionDelta += input.connectionDelta;
+    if (binding.metrics.timer) return;
+    binding.metrics.timer = setTimeout(() => {
+      binding.metrics.timer = null;
+      const metrics = {
+        activeConnectionDelta: binding.metrics.connectionDelta,
+        bytesFromSource: binding.metrics.bytesFromSource,
+        bytesToSource: binding.metrics.bytesToSource,
+        expiresAt: new Date(binding.expiresAt),
+      };
+      binding.metrics.connectionDelta = 0;
+      binding.metrics.bytesFromSource = 0;
+      binding.metrics.bytesToSource = 0;
+      void this.#repository
+        ?.touchManagedServerRelay(
+          binding.ownerId,
+          binding.attachmentId,
+          metrics,
+        )
+        .then(() =>
+          this.#changed?.({
+            attachmentId: binding.attachmentId,
+            ownerId: binding.ownerId,
+            projectId: binding.projectId,
+            tunnelId: binding.tunnelId,
+          }),
+        )
+        .catch(() => undefined);
+    }, 250);
+    binding.metrics.timer.unref();
+  }
+
+  #trackWorkerDisconnect(workerId: string): void {
+    if (this.#workerDisconnectSubscriptions.has(workerId)) return;
+    const unsubscribe = this.bridge.subscribeWorkerDisconnect(workerId, () => {
+      for (const [token, binding] of [...this.#attachments]) {
+        if (binding.workerId !== workerId) continue;
+        void this.#removeAttachment(token, binding);
       }
-      const current = values.get(lower) ?? { name, values: [] };
-      current.values.push(value);
-      values.set(lower, current);
-    }
-    for (const { name, values: headerValues } of values.values()) {
-      response.setHeader(
-        name,
-        headerValues.length === 1 ? headerValues[0]! : headerValues,
-      );
-    }
-    const policy = (contentSecurityPolicy ?? "")
-      .split(";")
-      .map((directive) => directive.trim())
-      .filter(
-        (directive) =>
-          directive && !directive.toLowerCase().startsWith("frame-ancestors"),
-      );
-    policy.push(`frame-ancestors ${this.#allowedFrameAncestors}`);
-    response.setHeader("Content-Security-Policy", policy.join("; "));
-    response.setHeader("Referrer-Policy", "no-referrer");
-    response.setHeader("X-Content-Type-Options", "nosniff");
-    response.writeHead(statusCode);
+      this.#stopTrackingWorkerIfUnused(workerId);
+    });
+    this.#workerDisconnectSubscriptions.set(workerId, unsubscribe);
+  }
+
+  #stopTrackingWorkerIfUnused(workerId: string): void {
+    if (
+      [...this.#attachments.values()].some(
+        (binding) => binding.workerId === workerId,
+      )
+    )
+      return;
+    this.#workerDisconnectSubscriptions.get(workerId)?.();
+    this.#workerDisconnectSubscriptions.delete(workerId);
   }
 
   #writeUnavailable(response: ServerResponse): void {
@@ -819,25 +528,6 @@ export class CodeTunnelBroker {
 <p>Reconnecting to Cantrip Code…</p>
 <script>window.parent.postMessage(${message}, "*");</script>`);
   }
-
-  #sendCancel(
-    binding: CodeAttachmentBinding,
-    streamId: string,
-    reason: string,
-  ): void {
-    this.bridge.sendCodeTunnelFrame?.(
-      binding.workerId,
-      {
-        protocolVersion: 1,
-        attachmentId: binding.attachmentId,
-        sessionId: binding.sessionId,
-        streamId,
-        kind: "cancel",
-        reason: reason.slice(0, 1_024),
-      },
-      EMPTY_PAYLOAD,
-    );
-  }
 }
 
 function tokenFromRequest(request: IncomingMessage): string | null {
@@ -855,7 +545,7 @@ export function createCodeSurfaceServer(
   const expectedOrigin = new URL(surfaceOrigin).origin;
   const webSockets = new WebSocketServer({
     noServer: true,
-    maxPayload: CODE_TUNNEL_MAX_PAYLOAD_BYTES,
+    maxPayload: CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES,
   });
   const server = createServer((request, response) => {
     if (request.url === "/health") {

@@ -1,7 +1,6 @@
 import type { AddressInfo } from "node:net";
 
 import type {
-  CodeTunnelFrameHeader,
   ProjectShareAdapterRequestHead,
   RemoteSurfaceFrameHeader,
   TunnelDataPlaneFrameHeader,
@@ -16,7 +15,6 @@ import {
 } from "../src/code/tunnel.js";
 import { ProjectShareTunnelBroker } from "../src/project-shares/tunnel.js";
 import type {
-  WorkerCodeTunnelFrameListener,
   WorkerCommandBus,
   WorkerRequestOptions,
   WorkerSurfaceFrameListener,
@@ -69,19 +67,6 @@ class LoopbackProjectShareWorker implements WorkerCommandBus {
     _listener: WorkerSurfaceFrameListener,
   ): () => void {
     return () => undefined;
-  }
-  subscribeCodeTunnelFrames(
-    _workerId: string,
-    _listener: WorkerCodeTunnelFrameListener,
-  ): () => void {
-    return () => undefined;
-  }
-  sendCodeTunnelFrame(
-    _workerId: string,
-    _header: CodeTunnelFrameHeader,
-    _payload: Uint8Array,
-  ): boolean {
-    return false;
   }
   subscribeWorkerDisconnect(
     _workerId: string,

@@ -1,12 +1,15 @@
 import type { AddressInfo } from "node:net";
 
-import type {
-  CodeRuntimeStatus,
-  CodeTunnelFrameHeader,
-  RemoteSurfaceFrameHeader,
-  WorkerCommand,
+import {
+  CODE_ADAPTER_WEBSOCKET_RECORD_HEADER_BYTES,
+  type CodeAdapterRequestHead,
+  type CodeRuntimeStatus,
+  type RemoteSurfaceFrameHeader,
+  type TunnelDataPlaneFrameHeader,
+  type WorkerCommand,
 } from "@cantrip/protocol";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import WebSocket from "ws";
 
 import {
   closeCodeSurfaceServer,
@@ -14,20 +17,68 @@ import {
   createCodeSurfaceServer,
 } from "../src/code/tunnel.js";
 import type {
-  WorkerCodeTunnelFrameListener,
   WorkerCommandBus,
   WorkerRequestOptions,
   WorkerSurfaceFrameListener,
+  WorkerTunnelDataPlaneFrameListener,
 } from "../src/workers/bridge.js";
 
 const closers: Array<() => Promise<void>> = [];
+const EMPTY_PAYLOAD = new Uint8Array();
 
 afterEach(async () => {
   await Promise.all(closers.splice(0).map((close) => close()));
 });
 
+interface FakeStream {
+  chunks: Buffer[];
+  connect: Extract<TunnelDataPlaneFrameHeader, { kind: "connect" }>;
+  consumedBytes: number;
+  head: CodeAdapterRequestHead | null;
+  outputSequence: number;
+}
+
+function encodedResponse(): Buffer {
+  const head = Buffer.from(
+    JSON.stringify({
+      protocolVersion: 1,
+      kind: "http",
+      statusCode: 200,
+      headers: [
+        ["Content-Type", "text/html"],
+        [
+          "Content-Security-Policy",
+          "default-src 'self'; frame-ancestors 'none'",
+        ],
+        ["Set-Cookie", "vscode-tkn=worker-secret"],
+        ["X-Frame-Options", "DENY"],
+      ],
+    }),
+  );
+  const encoded = Buffer.allocUnsafe(4 + head.length);
+  encoded.writeUInt32BE(head.length, 0);
+  head.copy(encoded, 4);
+  return Buffer.concat([encoded, Buffer.from("<main>Cantrip Code</main>")]);
+}
+
+function encodedWebSocketResponse(): Buffer {
+  const head = Buffer.from(
+    JSON.stringify({
+      protocolVersion: 1,
+      kind: "websocket",
+      headers: [],
+    }),
+  );
+  const encoded = Buffer.allocUnsafe(4 + head.length);
+  encoded.writeUInt32BE(head.length, 0);
+  head.copy(encoded, 4);
+  return encoded;
+}
+
 class LoopbackWorker implements WorkerCommandBus {
-  readonly #listeners = new Set<WorkerCodeTunnelFrameListener>();
+  readonly observedHeads: CodeAdapterRequestHead[] = [];
+  readonly #listeners = new Set<WorkerTunnelDataPlaneFrameListener>();
+  readonly #streams = new Map<string, FakeStream>();
 
   attach(): void {}
   close(): void {}
@@ -50,49 +101,101 @@ class LoopbackWorker implements WorkerCommandBus {
   subscribeWorkerDisconnect(): () => void {
     return () => undefined;
   }
-  subscribeCodeTunnelFrames(
+  subscribeTunnelDataPlaneFrames(
     _workerId: string,
-    listener: WorkerCodeTunnelFrameListener,
+    listener: WorkerTunnelDataPlaneFrameListener,
   ): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
   }
-  sendCodeTunnelFrame(
+  sendTunnelDataPlaneFrame(
     _workerId: string,
-    header: CodeTunnelFrameHeader,
-    _payload: Uint8Array,
+    header: TunnelDataPlaneFrameHeader,
+    payload: Uint8Array,
   ): boolean {
-    if (header.kind !== "http-request-start") return true;
-    queueMicrotask(() => {
-      const base = {
-        protocolVersion: 1 as const,
-        attachmentId: header.attachmentId,
-        sessionId: header.sessionId,
-        streamId: header.streamId,
+    const streamKey = `${header.attachmentId}\0${header.connectionId}`;
+    if (header.kind === "connect") {
+      const stream = {
+        chunks: [],
+        connect: header,
+        consumedBytes: 0,
+        head: null,
+        outputSequence: 0,
       };
+      this.#streams.set(streamKey, stream);
+      this.#emit(stream, { kind: "accepted", initialCreditBytes: 1024 * 1024 });
+      return true;
+    }
+    const stream = this.#streams.get(streamKey);
+    if (!stream) return false;
+    if (
+      header.kind === "data" &&
+      header.direction === "source-to-destination"
+    ) {
+      stream.chunks.push(Buffer.from(payload));
+      this.#emit(stream, {
+        kind: "credit",
+        direction: "source-to-destination",
+        bytes: payload.byteLength,
+      });
+      const input = Buffer.concat(stream.chunks);
+      if (!stream.head && input.byteLength >= 4) {
+        const headLength = input.readUInt32BE(0);
+        if (input.byteLength >= 4 + headLength) {
+          stream.head = JSON.parse(
+            input.subarray(4, 4 + headLength).toString("utf8"),
+          ) as CodeAdapterRequestHead;
+          stream.consumedBytes = 4 + headLength;
+          this.observedHeads.push(stream.head);
+          if (stream.head.kind === "websocket") {
+            this.#emit(
+              stream,
+              { kind: "data", direction: "destination-to-source" },
+              encodedWebSocketResponse(),
+            );
+          }
+        }
+      }
+      if (stream.head?.kind === "websocket") {
+        while (
+          input.byteLength >=
+          stream.consumedBytes + CODE_ADAPTER_WEBSOCKET_RECORD_HEADER_BYTES
+        ) {
+          const length = input.readUInt32BE(stream.consumedBytes + 1);
+          const recordLength =
+            CODE_ADAPTER_WEBSOCKET_RECORD_HEADER_BYTES + length;
+          if (input.byteLength < stream.consumedBytes + recordLength) break;
+          this.#emit(
+            stream,
+            { kind: "data", direction: "destination-to-source" },
+            input.subarray(
+              stream.consumedBytes,
+              stream.consumedBytes + recordLength,
+            ),
+          );
+          stream.consumedBytes += recordLength;
+        }
+      }
+      return true;
+    }
+    if (
+      header.kind === "half-close" &&
+      header.direction === "source-to-destination"
+    ) {
+      const input = Buffer.concat(stream.chunks);
+      if (!stream.head)
+        throw new Error("Expected a complete Code request head.");
       this.#emit(
-        {
-          ...base,
-          kind: "http-response-start",
-          statusCode: 200,
-          headers: [
-            ["Content-Type", "text/html"],
-            [
-              "Content-Security-Policy",
-              "default-src 'self'; frame-ancestors 'none'",
-            ],
-            ["Set-Cookie", "vscode-tkn=worker-secret"],
-            ["X-Frame-Options", "DENY"],
-          ],
-        },
-        new Uint8Array(),
+        stream,
+        { kind: "data", direction: "destination-to-source" },
+        encodedResponse(),
       );
-      this.#emit(
-        { ...base, kind: "http-response-data" },
-        new TextEncoder().encode("<main>Cantrip Code</main>"),
-      );
-      this.#emit({ ...base, kind: "http-response-end" }, new Uint8Array());
-    });
+      this.#emit(stream, {
+        kind: "half-close",
+        direction: "destination-to-source",
+      });
+      return true;
+    }
     return true;
   }
   request(
@@ -103,8 +206,28 @@ class LoopbackWorker implements WorkerCommandBus {
     return Promise.reject(new Error("Not used by the tunnel test."));
   }
 
-  #emit(header: CodeTunnelFrameHeader, payload: Uint8Array): void {
-    for (const listener of this.#listeners) listener(header, payload);
+  #emit(
+    stream: FakeStream,
+    frame:
+      | { kind: "accepted"; initialCreditBytes: number }
+      | { kind: "credit"; direction: "source-to-destination"; bytes: number }
+      | { kind: "data"; direction: "destination-to-source" }
+      | { kind: "half-close"; direction: "destination-to-source" },
+    payload: Uint8Array = EMPTY_PAYLOAD,
+  ): void {
+    const header = {
+      protocolVersion: 1 as const,
+      tunnelId: stream.connect.tunnelId,
+      attachmentId: stream.connect.attachmentId,
+      sourceEndpointId: stream.connect.sourceEndpointId,
+      destinationEndpointId: stream.connect.destinationEndpointId,
+      connectionId: stream.connect.connectionId,
+      sequence: stream.outputSequence++,
+      ...frame,
+    } as TunnelDataPlaneFrameHeader;
+    queueMicrotask(() => {
+      for (const listener of this.#listeners) listener(header, payload);
+    });
   }
 }
 
@@ -134,24 +257,64 @@ const runtime: CodeRuntimeStatus = {
 };
 
 describe("Cantrip Code isolated editor surface", () => {
+  it("charges generic Code streams to hosted relay quotas", async () => {
+    const worker = new LoopbackWorker();
+    const consumeRelayBytes = vi.fn(() => false);
+    const broker = new CodeTunnelBroker(worker, {
+      surfaceOrigin: "http://127.0.0.1:4311",
+      allowedFrameAncestors: ["tauri://localhost"],
+      consumeRelayBytes,
+    });
+    const attachment = await broker.createAttachment({
+      codeTabId: "code-1",
+      ownerId: "user-1",
+      projectId: "project-1",
+      runtime,
+      sessionId: runtime.sessionId,
+      workerId: "worker-1",
+    });
+    const surface = createCodeSurfaceServer(broker, "http://127.0.0.1:4311");
+    await new Promise<void>((resolve) =>
+      surface.listen(0, "127.0.0.1", resolve),
+    );
+    closers.push(async () => {
+      await closeCodeSurfaceServer(surface);
+      await broker.close();
+    });
+    const { port } = surface.address() as AddressInfo;
+
+    const response = await fetch(
+      `http://127.0.0.1:${port}${new URL(attachment.url).pathname}`,
+    );
+    expect(response.status).toBe(429);
+    expect(await response.text()).toContain("relay bandwidth quota");
+    expect(consumeRelayBytes).toHaveBeenCalledWith(
+      "user-1",
+      "worker-1",
+      expect.any(Number),
+    );
+  });
+
   it("keeps concurrent view attachments independent", async () => {
     const worker = new LoopbackWorker();
     const broker = new CodeTunnelBroker(worker, {
       surfaceOrigin: "http://127.0.0.1:4311",
       allowedFrameAncestors: ["tauri://localhost"],
     });
-    const first = broker.createAttachment({
+    const first = await broker.createAttachment({
       authSessionId: "auth-session-1",
       codeTabId: "code-1",
       ownerId: "user-1",
+      projectId: "project-1",
       runtime,
       sessionId: runtime.sessionId,
       workerId: "worker-1",
     });
-    const second = broker.createAttachment({
+    const second = await broker.createAttachment({
       authSessionId: "auth-session-2",
       codeTabId: "code-1",
       ownerId: "user-1",
+      projectId: "project-1",
       runtime,
       sessionId: runtime.sessionId,
       workerId: "worker-1",
@@ -163,24 +326,29 @@ describe("Cantrip Code isolated editor surface", () => {
     expect(first.attachmentId).not.toBe(second.attachmentId);
     expect(broker.hasAttachment(firstToken)).toBe(true);
     expect(broker.hasAttachment(secondToken)).toBe(true);
-    expect(broker.revokeAttachment(first.attachmentId, "user-2")).toBe(false);
-    expect(broker.revokeAttachment(first.attachmentId, "user-1")).toBe(true);
+    expect(await broker.revokeAttachment(first.attachmentId, "user-2")).toBe(
+      false,
+    );
+    expect(await broker.revokeAttachment(first.attachmentId, "user-1")).toBe(
+      true,
+    );
     expect(broker.hasAttachment(firstToken)).toBe(false);
     expect(broker.hasAttachment(secondToken)).toBe(true);
-    broker.revokeAuthSession("auth-session-2");
+    await broker.revokeAuthSession("auth-session-2");
     expect(broker.hasAttachment(secondToken)).toBe(false);
-    broker.close();
+    await broker.close();
   });
 
-  it("requires an attachment token and sanitizes worker responses", async () => {
+  it("uses generic streams while sanitizing worker responses", async () => {
     const worker = new LoopbackWorker();
     const broker = new CodeTunnelBroker(worker, {
       surfaceOrigin: "http://127.0.0.1:4311",
       allowedFrameAncestors: ["http://127.0.0.1:5173", "tauri://localhost"],
     });
-    const attachment = broker.createAttachment({
+    const attachment = await broker.createAttachment({
       codeTabId: "code-1",
       ownerId: "user-1",
+      projectId: "project-1",
       runtime,
       sessionId: runtime.sessionId,
       workerId: "worker-1",
@@ -190,17 +358,23 @@ describe("Cantrip Code isolated editor surface", () => {
     await new Promise<void>((resolve) =>
       surface.listen(0, "127.0.0.1", resolve),
     );
-    closers.push(() => closeCodeSurfaceServer(surface));
+    closers.push(async () => {
+      await closeCodeSurfaceServer(surface);
+      await broker.close();
+    });
     const { port } = surface.address() as AddressInfo;
     const attachmentPath = new URL(attachment.url).pathname;
     expect(new URL(attachment.url).searchParams.get("workspace")).toBe(
       "/worker/state/project.code-workspace",
     );
 
-    const response = await fetch(
-      `http://127.0.0.1:${port}${attachmentPath}?workspace=${encodeURIComponent("/worker/state/project.code-workspace")}`,
-    );
+    const response = await fetch(`http://127.0.0.1:${port}${attachmentPath}`);
     expect(await response.text()).toBe("<main>Cantrip Code</main>");
+    expect(worker.observedHeads[0]).toMatchObject({
+      kind: "http",
+      sessionId: "session-1",
+      basePath: attachmentPath.replace(/\/$/u, ""),
+    });
     expect(response.headers.get("set-cookie")).toBeNull();
     expect(response.headers.get("x-frame-options")).toBeNull();
     expect(response.headers.get("content-security-policy")).toBe(
@@ -215,10 +389,52 @@ describe("Cantrip Code isolated editor surface", () => {
     expect(await missing.text()).toContain(
       "cantrip-code-attachment-unavailable-v1",
     );
-    expect(
-      await fetch(`http://127.0.0.1:${port}/api/bootstrap`).then(
-        (result) => result.status,
-      ),
-    ).toBe(404);
+  });
+
+  it("carries WebSocket messages through the generic stream adapter", async () => {
+    const worker = new LoopbackWorker();
+    const broker = new CodeTunnelBroker(worker, {
+      surfaceOrigin: "http://127.0.0.1:4311",
+      allowedFrameAncestors: ["tauri://localhost"],
+    });
+    const attachment = await broker.createAttachment({
+      codeTabId: "code-1",
+      ownerId: "user-1",
+      projectId: "project-1",
+      runtime,
+      sessionId: runtime.sessionId,
+      workerId: "worker-1",
+    });
+    const surface = createCodeSurfaceServer(broker, "http://127.0.0.1:4311");
+    await new Promise<void>((resolve) =>
+      surface.listen(0, "127.0.0.1", resolve),
+    );
+    closers.push(async () => {
+      await closeCodeSurfaceServer(surface);
+      await broker.close();
+    });
+    const { port } = surface.address() as AddressInfo;
+    const socket = new WebSocket(
+      `ws://127.0.0.1:${port}${new URL(attachment.url).pathname}socket`,
+      { headers: { origin: "http://127.0.0.1:4311" } },
+    );
+    await new Promise<void>((resolve, reject) => {
+      socket.once("open", resolve);
+      socket.once("error", reject);
+    });
+    socket.send("ping");
+    const echoed = await new Promise<{ binary: boolean; text: string }>(
+      (resolve, reject) => {
+        socket.once("message", (data, binary) =>
+          resolve({ binary, text: data.toString() }),
+        );
+        socket.once("error", reject);
+      },
+    );
+    expect(echoed).toEqual({ binary: false, text: "ping" });
+    expect(worker.observedHeads).toContainEqual(
+      expect.objectContaining({ kind: "websocket", sessionId: "session-1" }),
+    );
+    socket.close();
   });
 });

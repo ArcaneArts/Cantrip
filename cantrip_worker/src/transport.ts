@@ -1,13 +1,9 @@
 import {
-  decodeCodeTunnelFrame,
   decodeRemoteSurfaceFrame,
   decodeTunnelDataPlaneFrame,
-  encodeCodeTunnelFrame,
   encodeRemoteSurfaceFrame,
   encodeTunnelDataPlaneFrame,
-  isCodeTunnelFrame,
   isTunnelDataPlaneFrame,
-  type CodeTunnelFrameHeader,
   type RemoteSurfaceFrameHeader,
   type TunnelDataPlaneFrameHeader,
   type WorkerCommand,
@@ -32,11 +28,6 @@ type SurfaceFrameHandler = (
   payload: Uint8Array,
 ) => Promise<void> | void;
 
-type CodeTunnelFrameHandler = (
-  header: CodeTunnelFrameHeader,
-  payload: Uint8Array,
-) => Promise<void> | void;
-
 type TunnelDataPlaneFrameHandler = (
   header: TunnelDataPlaneFrameHeader,
   payload: Uint8Array,
@@ -44,7 +35,7 @@ type TunnelDataPlaneFrameHandler = (
 
 const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
 const MAX_BUFFERED_NOTIFICATION_BYTES = 1 * 1_024 * 1_024;
-const CODE_TUNNEL_LOW_WATER_BYTES = 256 * 1_024;
+const TUNNEL_DATA_PLANE_LOW_WATER_BYTES = 256 * 1_024;
 
 function rawDataBytes(data: RawData): Uint8Array {
   if (Array.isArray(data)) return Buffer.concat(data);
@@ -63,8 +54,6 @@ export class WorkerConnection {
     private readonly config: WorkerConfig,
     private readonly handleCommand: CommandHandler,
     private readonly handleSurfaceFrame: SurfaceFrameHandler = () => undefined,
-    private readonly handleCodeTunnelFrame: CodeTunnelFrameHandler = () =>
-      undefined,
     private readonly handleTunnelDataPlaneFrame: TunnelDataPlaneFrameHandler = () =>
       undefined,
     private readonly handleTransportDisconnect: () => void = () => undefined,
@@ -157,21 +146,6 @@ export class WorkerConnection {
     }
   }
 
-  sendCodeTunnelFrame(
-    header: CodeTunnelFrameHeader,
-    payload: Uint8Array,
-  ): boolean {
-    const socket = this.#socket;
-    if (!socket || socket.readyState !== WebSocket.OPEN) return false;
-    if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) return false;
-    try {
-      socket.send(encodeCodeTunnelFrame(header, payload), { binary: true });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   sendTunnelDataPlaneFrame(
     header: TunnelDataPlaneFrameHeader,
     payload: Uint8Array,
@@ -213,18 +187,15 @@ export class WorkerConnection {
     }
   }
 
-  async waitForCodeTunnelCapacity(): Promise<boolean> {
+  async waitForTunnelDataPlaneCapacity(): Promise<boolean> {
     while (!this.#closed) {
       const socket = this.#socket;
       if (!socket || socket.readyState !== WebSocket.OPEN) return false;
-      if (socket.bufferedAmount <= CODE_TUNNEL_LOW_WATER_BYTES) return true;
+      if (socket.bufferedAmount <= TUNNEL_DATA_PLANE_LOW_WATER_BYTES)
+        return true;
       await new Promise<void>((resolve) => setTimeout(resolve, 5));
     }
     return false;
-  }
-
-  waitForTunnelDataPlaneCapacity(): Promise<boolean> {
-    return this.waitForCodeTunnelCapacity();
   }
 
   private async onMessage(
@@ -238,9 +209,6 @@ export class WorkerConnection {
         if (isTunnelDataPlaneFrame(bytes)) {
           const frame = decodeTunnelDataPlaneFrame(bytes);
           await this.handleTunnelDataPlaneFrame(frame.header, frame.payload);
-        } else if (isCodeTunnelFrame(bytes)) {
-          const frame = decodeCodeTunnelFrame(bytes);
-          await this.handleCodeTunnelFrame(frame.header, frame.payload);
         } else {
           const frame = decodeRemoteSurfaceFrame(bytes);
           await this.handleSurfaceFrame(frame.header, frame.payload);

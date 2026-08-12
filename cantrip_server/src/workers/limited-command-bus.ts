@@ -1,5 +1,4 @@
 import type {
-  CodeTunnelFrameHeader,
   RemoteSurfaceFrameHeader,
   TunnelDataPlaneFrameHeader,
   WorkerCommand,
@@ -11,7 +10,6 @@ import {
   SlidingWindowRateLimiter,
 } from "../security/abuse-limits.js";
 import type {
-  WorkerCodeTunnelFrameListener,
   WorkerCommandBus,
   WorkerNotificationListener,
   WorkerRequestOptions,
@@ -97,16 +95,6 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
     return this.delegate.sendSurfaceFrame(workerId, header, payload);
   }
 
-  sendCodeTunnelFrame(
-    workerId: string,
-    header: CodeTunnelFrameHeader,
-    payload: Uint8Array,
-  ): boolean {
-    return (
-      this.delegate.sendCodeTunnelFrame?.(workerId, header, payload) ?? false
-    );
-  }
-
   sendTunnelDataPlaneFrame(
     workerId: string,
     header: TunnelDataPlaneFrameHeader,
@@ -127,16 +115,6 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
     listener: WorkerSurfaceFrameListener,
   ) {
     return this.delegate.subscribeSurfaceFrames(workerId, listener);
-  }
-
-  subscribeCodeTunnelFrames(
-    workerId: string,
-    listener: WorkerCodeTunnelFrameListener,
-  ) {
-    return (
-      this.delegate.subscribeCodeTunnelFrames?.(workerId, listener) ??
-      (() => undefined)
-    );
   }
 
   subscribeTunnelDataPlaneFrames(

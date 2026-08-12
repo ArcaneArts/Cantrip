@@ -29,10 +29,9 @@ import {
   chatTurnCreateSchema,
   codeRuntimeStatusSchema,
   codeTabSummarySchema,
-  decodeCodeTunnelFrame,
+  codeAdapterRequestHeadSchema,
   decodeRemoteSurfaceFrame,
   desktopStreamSettingsSchema,
-  encodeCodeTunnelFrame,
   encodeRemoteSurfaceFrame,
   executionPlacementSchema,
   executionPlacementResolveRequestSchema,
@@ -3083,37 +3082,24 @@ describe("Cantrip protocol", () => {
     ).toBe(false);
   });
 
-  it("encodes bounded, independently identifiable Code tunnel frames", () => {
-    const header = {
+  it("validates Code adapter request metadata carried by generic streams", () => {
+    const head = {
       protocolVersion: 1 as const,
-      attachmentId: "attachment-1",
+      kind: "websocket" as const,
       sessionId: "session-1",
-      streamId: "stream-1",
-      kind: "websocket-data" as const,
-      binary: false,
+      path: "/code/token/socket",
+      basePath: "/code/token",
+      headers: [] as Array<[string, string]>,
     };
-    const encoded = encodeCodeTunnelFrame(
-      header,
-      new TextEncoder().encode("hello"),
-    );
-    expect(new TextDecoder().decode(encoded.subarray(0, 4))).toBe("CTCD");
-    expect(decodeCodeTunnelFrame(encoded)).toMatchObject({
-      header,
-      payload: new TextEncoder().encode("hello"),
-    });
-    expect(() =>
-      encodeCodeTunnelFrame(
-        {
-          ...header,
-          kind: "http-request-start",
-          method: "GET",
-          path: "//not-a-path",
-          basePath: "/code/token",
-          headers: [],
-        },
-        new Uint8Array(),
-      ),
-    ).toThrow();
+    expect(codeAdapterRequestHeadSchema.parse(head)).toEqual(head);
+    expect(
+      codeAdapterRequestHeadSchema.safeParse({
+        ...head,
+        kind: "http",
+        method: "GET",
+        path: "//not-a-path",
+      }).success,
+    ).toBe(false);
   });
 
   it("validates one-click managed desktops without client configuration", () => {

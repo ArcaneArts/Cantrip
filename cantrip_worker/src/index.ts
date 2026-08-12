@@ -169,6 +169,7 @@ async function start(): Promise<void> {
   const tunnelDestinations = new TunnelDestinationRouter(
     tunnelTcpDestination,
     projectShareTunnel,
+    codeTunnel,
   );
   const skillManager = new SkillManager(config.dataDirectory);
   const terminals = new TerminalManager();
@@ -692,6 +693,7 @@ async function start(): Promise<void> {
       case "code.status":
         return code.status(command.sessionId);
       case "code.stop":
+        codeTunnel.closeSession(command.sessionId);
         return code.stop(command.sessionId);
       case "code.saveAll":
         return code.saveAll(command.sessionId);
@@ -1221,7 +1223,6 @@ async function start(): Promise<void> {
     config,
     handleCommand,
     (header, payload) => remoteSurfaces.handleFrame(header, payload),
-    (header, payload) => codeTunnel.handleFrame(header, payload),
     (header, payload) => tunnelDestinations.handleFrame(header, payload),
     () => tunnelDestinations.disconnect(),
   );
@@ -1230,10 +1231,6 @@ async function start(): Promise<void> {
   );
   remoteSurfaces.setFrameEmitter((header, payload) =>
     commandConnection.sendSurfaceFrame(header, payload),
-  );
-  codeTunnel.setFrameEmitter(
-    (header, payload) => commandConnection.sendCodeTunnelFrame(header, payload),
-    () => commandConnection.waitForCodeTunnelCapacity(),
   );
   tunnelDestinations.setFrameEmitter(
     (header, payload) =>
@@ -1289,7 +1286,6 @@ async function start(): Promise<void> {
       terminals.closeAll();
       tunnelDestinations.close();
       await projectShares.closeAll();
-      codeTunnel.close();
       await code.close();
       await remoteSurfaces.closeAll();
       await desktopAdapter.shutdown();

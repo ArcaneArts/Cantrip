@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   decodeTunnelDataPlaneFrame,
   encodeTunnelDataPlaneFrame,
-  isCodeTunnelFrame,
   isTunnelDataPlaneFrame,
   TUNNEL_DATA_PLANE_MAX_CREDIT_BYTES,
   TUNNEL_DATA_PLANE_MAX_PAYLOAD_BYTES,
@@ -21,7 +20,7 @@ const base = {
 };
 
 describe("generic tunnel data plane protocol", () => {
-  it("round-trips bounded binary data without colliding with legacy frames", () => {
+  it("round-trips bounded binary data", () => {
     const header: TunnelDataPlaneFrameHeader = {
       ...base,
       kind: "data",
@@ -31,7 +30,6 @@ describe("generic tunnel data plane protocol", () => {
     const encoded = encodeTunnelDataPlaneFrame(header, payload);
 
     expect(isTunnelDataPlaneFrame(encoded)).toBe(true);
-    expect(isCodeTunnelFrame(encoded)).toBe(false);
     const decoded = decodeTunnelDataPlaneFrame(encoded);
     expect(decoded.header).toEqual(header);
     expect(decoded.payload).toEqual(payload);

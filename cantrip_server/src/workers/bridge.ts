@@ -1,15 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  decodeCodeTunnelFrame,
   decodeRemoteSurfaceFrame,
   decodeTunnelDataPlaneFrame,
-  encodeCodeTunnelFrame,
   encodeRemoteSurfaceFrame,
   encodeTunnelDataPlaneFrame,
-  isCodeTunnelFrame,
   isTunnelDataPlaneFrame,
-  type CodeTunnelFrameHeader,
   type RemoteSurfaceFrameHeader,
   type TunnelDataPlaneFrameHeader,
   type WorkerCommand,
@@ -39,11 +35,6 @@ export type WorkerSurfaceFrameListener = (
   payload: Uint8Array,
 ) => void;
 
-export type WorkerCodeTunnelFrameListener = (
-  header: CodeTunnelFrameHeader,
-  payload: Uint8Array,
-) => void;
-
 export type WorkerTunnelDataPlaneFrameListener = (
   header: TunnelDataPlaneFrameHeader,
   payload: Uint8Array,
@@ -63,11 +54,6 @@ export interface WorkerCommandBus {
     header: RemoteSurfaceFrameHeader,
     payload: Uint8Array,
   ): boolean;
-  sendCodeTunnelFrame?(
-    workerId: string,
-    header: CodeTunnelFrameHeader,
-    payload: Uint8Array,
-  ): boolean;
   sendTunnelDataPlaneFrame?(
     workerId: string,
     header: TunnelDataPlaneFrameHeader,
@@ -77,10 +63,6 @@ export interface WorkerCommandBus {
   subscribeSurfaceFrames(
     workerId: string,
     listener: WorkerSurfaceFrameListener,
-  ): () => void;
-  subscribeCodeTunnelFrames?(
-    workerId: string,
-    listener: WorkerCodeTunnelFrameListener,
   ): () => void;
   subscribeTunnelDataPlaneFrames?(
     workerId: string,
@@ -143,10 +125,6 @@ function workerFrameBytes(data: unknown): Uint8Array {
 
 export class WorkerBridge implements WorkerCommandBus {
   readonly #pending = new Map<string, PendingRequest>();
-  readonly #codeTunnelListeners = new Map<
-    string,
-    Set<WorkerCodeTunnelFrameListener>
-  >();
   readonly #sockets = new Map<string, WorkerSocket>();
   readonly #surfaceListeners = new Map<
     string,
@@ -178,12 +156,6 @@ export class WorkerBridge implements WorkerCommandBus {
             for (const listener of this.#tunnelDataPlaneListeners.get(
               workerId,
             ) ?? []) {
-              listener(frame.header, frame.payload);
-            }
-          } else if (isCodeTunnelFrame(bytes)) {
-            const frame = decodeCodeTunnelFrame(bytes);
-            for (const listener of this.#codeTunnelListeners.get(workerId) ??
-              []) {
               listener(frame.header, frame.payload);
             }
           } else {
@@ -330,22 +302,6 @@ export class WorkerBridge implements WorkerCommandBus {
     }
   }
 
-  sendCodeTunnelFrame(
-    workerId: string,
-    header: CodeTunnelFrameHeader,
-    payload: Uint8Array,
-  ): boolean {
-    const socket = this.#sockets.get(workerId);
-    if (!socket || socket.readyState !== 1) return false;
-    if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) return false;
-    try {
-      socket.send(encodeCodeTunnelFrame(header, payload), { binary: true });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   sendTunnelDataPlaneFrame(
     workerId: string,
     header: TunnelDataPlaneFrameHeader,
@@ -377,22 +333,6 @@ export class WorkerBridge implements WorkerCommandBus {
     return () => {
       listeners?.delete(listener);
       if (listeners?.size === 0) this.#surfaceListeners.delete(workerId);
-    };
-  }
-
-  subscribeCodeTunnelFrames(
-    workerId: string,
-    listener: WorkerCodeTunnelFrameListener,
-  ): () => void {
-    let listeners = this.#codeTunnelListeners.get(workerId);
-    if (!listeners) {
-      listeners = new Set();
-      this.#codeTunnelListeners.set(workerId, listeners);
-    }
-    listeners.add(listener);
-    return () => {
-      listeners?.delete(listener);
-      if (listeners?.size === 0) this.#codeTunnelListeners.delete(workerId);
     };
   }
 
@@ -486,7 +426,6 @@ export class WorkerBridge implements WorkerCommandBus {
       socket.close(1001, "Server shutting down");
     }
     this.#sockets.clear();
-    this.#codeTunnelListeners.clear();
     this.#surfaceListeners.clear();
     this.#tunnelDataPlaneListeners.clear();
     this.#notificationListeners.clear();

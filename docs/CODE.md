@@ -283,9 +283,14 @@ editor authentication message is translated to the raw process token only at
 the authorized worker-local tunnel boundary.
 
 The editor port is never exposed directly and the server never assumes it can
-open an inbound connection to a worker. The HTTP and WebSocket tunnel is a
-dedicated multiplexed streaming data plane rather than a sequence of ordinary
-worker command messages.
+open an inbound connection to a worker. Each Code tab owns one logical,
+project-associated managed tunnel in the unified tunnel control plane. Each
+renderer view is an independently revocable server-relay attachment on that
+tunnel. HTTP bodies and length-delimited WebSocket messages travel through the
+same bounded generic stream identities, credit flow control, routing,
+disconnect cleanup, counters, and worker transport used by other tunnel
+adapters; Code-specific translation remains only at the two HTTP/WebSocket
+edges.
 
 This extends the worker-owned surface principles in
 [`adr/0002-worker-owned-remote-surfaces.md`](adr/0002-worker-owned-remote-surfaces.md),
@@ -302,8 +307,9 @@ Required controls include:
 
 - bind the editor server to loopback on a random port;
 - use short-lived, session-specific attachment credentials;
-- map every proxy token to one known worker process and reject arbitrary proxy
-  destinations;
+- map every proxy token to one known tunnel attachment, worker, Code tab, and
+  editor session, and reject arbitrary proxy destinations or mismatched tab and
+  session identities;
 - keep raw editor and extension-host credentials worker-local;
 - translate the browser's initial editor authentication frame only inside the
   authorized worker tunnel, so attachment clients never receive the raw editor
@@ -488,6 +494,8 @@ status, last attachment, and last error without storing editor credentials.
 - Main and pop-out windows may attach concurrently to the same worker-owned
   editor session. Each renderer receives its own short-lived surface attachment
   and releases it when the view closes or switches tabs.
+- The shared logical Code tunnel remains visible while at least one attachment
+  exists; revoking the last attachment removes the managed-ephemeral tunnel.
 
 Concurrent views share the editor process, persistent profile, generated
 workspace, and filesystem state without transferring control between windows.
