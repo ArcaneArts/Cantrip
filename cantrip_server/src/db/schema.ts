@@ -15,6 +15,8 @@ import type {
   PlanStep,
   RemoteSurfaceCapabilities,
   RemoteSurfaceConfiguration,
+  TunnelDestinationEndpoint,
+  TunnelSourceEndpoint,
   WorktreeStatusResult,
 } from "@cantrip/protocol";
 import type {
@@ -383,6 +385,176 @@ export const projects = pgTable(
     uniqueIndex("projects_owner_github_repository_unique").on(
       table.ownerId,
       table.githubRepositoryId,
+    ),
+  ],
+);
+
+export const tunnels = pgTable(
+  "tunnels",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    name: text("name").notNull(),
+    description: text("description"),
+    position: integer("position").notNull().default(0),
+    origin: text("origin").notNull(),
+    management: text("management").notNull(),
+    protocolHint: text("protocol_hint").notNull(),
+    sourceEndpoint: jsonb("source_endpoint")
+      .$type<TunnelSourceEndpoint>()
+      .notNull(),
+    sourceWorkerId: text("source_worker_id").references(() => workers.id, {
+      onDelete: "cascade",
+    }),
+    destinationEndpoint: jsonb("destination_endpoint")
+      .$type<TunnelDestinationEndpoint>()
+      .notNull(),
+    destinationWorkerId: text("destination_worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    managedByKind: text("managed_by_kind"),
+    managedById: text("managed_by_id"),
+    desiredState: text("desired_state").notNull().default("stopped"),
+    status: text("status").notNull().default("stopped"),
+    lastError: text("last_error"),
+    activeConnectionCount: integer("active_connection_count")
+      .notNull()
+      .default(0),
+    bytesFromSource: bigint("bytes_from_source", { mode: "number" })
+      .notNull()
+      .default(0),
+    bytesToSource: bigint("bytes_to_source", { mode: "number" })
+      .notNull()
+      .default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("tunnels_owner_position_index").on(table.ownerId, table.position),
+    index("tunnels_owner_project_index").on(
+      table.ownerId,
+      table.projectId,
+      table.position,
+    ),
+    index("tunnels_destination_worker_index").on(table.destinationWorkerId),
+    uniqueIndex("tunnels_managed_resource_unique")
+      .on(table.ownerId, table.managedByKind, table.managedById)
+      .where(sql`${table.managedByKind} IS NOT NULL`),
+    check(
+      "tunnels_origin_check",
+      sql`${table.origin} IN ('user', 'browser', 'project-share', 'code', 'workflow', 'system')`,
+    ),
+    check(
+      "tunnels_management_check",
+      sql`${table.management} IN ('user-managed', 'managed-durable', 'managed-ephemeral')`,
+    ),
+    check(
+      "tunnels_protocol_hint_check",
+      sql`${table.protocolHint} IN ('tcp', 'http', 'https', 'http-websocket', 'https-websocket', 'webdav')`,
+    ),
+    check(
+      "tunnels_desired_state_check",
+      sql`${table.desiredState} IN ('stopped', 'started')`,
+    ),
+    check(
+      "tunnels_status_check",
+      sql`${table.status} IN ('stopped', 'starting', 'active', 'offline', 'degraded', 'stopping', 'failed')`,
+    ),
+    check(
+      "tunnels_managed_resource_check",
+      sql`(${table.management} = 'user-managed' AND ${table.origin} = 'user' AND ${table.managedByKind} IS NULL AND ${table.managedById} IS NULL) OR (${table.management} <> 'user-managed' AND ${table.origin} <> 'user' AND ${table.origin} = ${table.managedByKind} AND ${table.managedById} IS NOT NULL)`,
+    ),
+    check(
+      "tunnels_source_worker_check",
+      sql`(${table.sourceEndpoint}->>'kind' = 'worker-listener' AND ${table.sourceWorkerId} IS NOT NULL) OR (${table.sourceEndpoint}->>'kind' <> 'worker-listener' AND ${table.sourceWorkerId} IS NULL)`,
+    ),
+    check(
+      "tunnels_active_connections_check",
+      sql`${table.activeConnectionCount} >= 0`,
+    ),
+    check(
+      "tunnels_bytes_from_source_check",
+      sql`${table.bytesFromSource} >= 0`,
+    ),
+    check("tunnels_bytes_to_source_check", sql`${table.bytesToSource} >= 0`),
+  ],
+);
+
+export const tunnelAttachments = pgTable(
+  "tunnel_attachments",
+  {
+    id: text("id").primaryKey(),
+    tunnelId: text("tunnel_id")
+      .notNull()
+      .references(() => tunnels.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    clientId: text("client_id"),
+    localHost: text("local_host"),
+    localPort: integer("local_port"),
+    secretHash: text("secret_hash"),
+    status: text("status").notNull().default("starting"),
+    activeConnectionCount: integer("active_connection_count")
+      .notNull()
+      .default(0),
+    bytesFromSource: bigint("bytes_from_source", { mode: "number" })
+      .notNull()
+      .default(0),
+    bytesToSource: bigint("bytes_to_source", { mode: "number" })
+      .notNull()
+      .default(0),
+    lastError: text("last_error"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("tunnel_attachments_tunnel_status_index").on(
+      table.tunnelId,
+      table.status,
+    ),
+    uniqueIndex("tunnel_attachments_tunnel_client_unique")
+      .on(table.tunnelId, table.clientId)
+      .where(sql`${table.clientId} IS NOT NULL`),
+    uniqueIndex("tunnel_attachments_secret_hash_unique")
+      .on(table.secretHash)
+      .where(sql`${table.secretHash} IS NOT NULL`),
+    check(
+      "tunnel_attachments_kind_check",
+      sql`${table.kind} IN ('desktop-loopback', 'server-relay')`,
+    ),
+    check(
+      "tunnel_attachments_status_check",
+      sql`${table.status} IN ('stopped', 'starting', 'active', 'offline', 'degraded', 'stopping', 'failed')`,
+    ),
+    check(
+      "tunnel_attachments_local_endpoint_check",
+      sql`(${table.kind} = 'desktop-loopback' AND ${table.clientId} IS NOT NULL AND ${table.localHost} IN ('127.0.0.1', 'localhost', '::1') AND ${table.localPort} BETWEEN 1 AND 65535) OR (${table.kind} = 'server-relay' AND ${table.clientId} IS NULL AND ${table.localHost} IS NULL AND ${table.localPort} IS NULL)`,
+    ),
+    check(
+      "tunnel_attachments_active_connections_check",
+      sql`${table.activeConnectionCount} >= 0`,
+    ),
+    check(
+      "tunnel_attachments_bytes_from_source_check",
+      sql`${table.bytesFromSource} >= 0`,
+    ),
+    check(
+      "tunnel_attachments_bytes_to_source_check",
+      sql`${table.bytesToSource} >= 0`,
     ),
   ],
 );

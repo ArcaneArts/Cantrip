@@ -365,6 +365,13 @@
       "when": 1786499055670,
       "tag": "0051_sharp_newton_destine",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1786501833268,
+      "tag": "0052_slippery_champions",
+      "breakpoints": true
     }
   ]
 }

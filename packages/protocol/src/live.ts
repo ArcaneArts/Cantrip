@@ -86,6 +86,7 @@ export const appLiveResourceSchema = z.enum([
   "code-tab",
   "project-view",
   "remote-desktop",
+  "tunnel",
   "workflow-definition",
   "workflow-run",
   "workflow-node",

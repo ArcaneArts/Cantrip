@@ -145,6 +145,11 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
             ? [["remote-desktop"]]
             : []),
       ];
+    case "tunnel":
+      return [
+        ["tunnels"],
+        ...(projectId ? [["project-tunnels", projectId]] : []),
+      ];
     case "workflow-definition":
       return projectId
         ? [["workflow-repository", projectId]]
@@ -183,6 +188,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["workers"],
         ["worker-management"],
         ["projects"],
+        ["tunnels"],
         ["workflows"],
       ];
     case "project":
@@ -198,6 +204,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["browsers", scope.projectId],
         ["code-tabs", scope.projectId],
         ["project-views", scope.projectId],
+        ["project-tunnels", scope.projectId],
         ["workflow-repository", scope.projectId],
         ["workflow-runs", scope.projectId],
         ["workflow-triggers", scope.projectId],
