@@ -14,7 +14,7 @@ import {
   type ProjectReplicaSynchronizeCreate,
   type ProjectReplicaSynchronizeResult,
 } from "@cantrip/protocol";
-import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -25,6 +25,7 @@ type ProjectReplicaJobRow = typeof schema.projectReplicaJobs.$inferSelect;
 
 const ACTIVE_STATES = ["queued", "running", "blocked"] as const;
 export const PROJECT_REPLICA_JOB_LEASE_MS = 2 * 60_000;
+export const PROJECT_REPLICA_JOB_HISTORY_LIMIT = 1_000;
 
 export class ProjectReplicaJobConflictError extends Error {}
 export class ProjectReplicaJobNotFoundError extends Error {}
@@ -521,8 +522,12 @@ export class ProjectReplicaJobRepository {
       .select()
       .from(schema.projectReplicaJobs)
       .where(eq(schema.projectReplicaJobs.projectId, projectId))
-      .orderBy(asc(schema.projectReplicaJobs.createdAt));
-    return projectReplicaJobListSchema.parse(rows.map(toJob));
+      .orderBy(
+        desc(schema.projectReplicaJobs.createdAt),
+        desc(schema.projectReplicaJobs.id),
+      )
+      .limit(PROJECT_REPLICA_JOB_HISTORY_LIMIT);
+    return projectReplicaJobListSchema.parse(rows.reverse().map(toJob));
   }
 
   async operationContext(

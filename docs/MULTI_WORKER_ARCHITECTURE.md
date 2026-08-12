@@ -724,6 +724,11 @@ commit a job after its attempt was superseded. Project-wide logical-branch
 leases prevent separate replicas from granting concurrent write ownership to
 the same branch.
 
+Replica-job and relocation-history reads return the most recent 1,000 records,
+then restore chronological order for existing clients. Durable records remain
+in PostgreSQL; the bounded application response cannot grow with the lifetime
+of a project or chat.
+
 Worker requests distinguish finite control operations from event streams.
 Replica commands, relocation hydration, and user-triggered Git or GitHub
 controls have explicit deadlines; the Git and GitHub ceiling is 30 minutes.
