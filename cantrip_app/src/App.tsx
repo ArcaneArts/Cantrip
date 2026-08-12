@@ -142,6 +142,7 @@ import {
   SettingsPage,
   type SettingsSection,
 } from "@/components/settings/settings-page";
+import { ServerAdminPage } from "@/components/servers/server-admin-page";
 import { ServerSwitcher } from "@/components/servers/server-switcher";
 import {
   WorktreeControl,
@@ -2423,6 +2424,7 @@ export function App() {
   );
   const [showImporter, setShowImporter] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showServerAdmin, setShowServerAdmin] = useState(false);
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>("general");
   const [showProjectSettings, setShowProjectSettings] = useState(false);
@@ -2430,6 +2432,7 @@ export function App() {
     !isPopout &&
     !showImporter &&
     !showSettings &&
+    !showServerAdmin &&
     !showProjectSettings &&
     workspaceSelection.destination === "overview";
   const [activeProjectWorkspaceId, setActiveProjectWorkspaceId] = useState<
@@ -2521,6 +2524,7 @@ export function App() {
     });
     setShowImporter(false);
     setShowSettings(false);
+    setShowServerAdmin(false);
     setShowProjectSettings(false);
     setSelectedWorkflowIntentId(null);
   };
@@ -2533,6 +2537,7 @@ export function App() {
     setChatConsoleChatId(null);
     setShowImporter(false);
     setShowSettings(false);
+    setShowServerAdmin(false);
     setShowProjectSettings(true);
     setSelectedWorkflowIntentId(workflowId);
     setMobileTabGridOpen(false);
@@ -2622,6 +2627,7 @@ export function App() {
       resetMobileBottomTabs();
       setShowImporter(!compactShell);
       setShowSettings(false);
+      setShowServerAdmin(false);
       setShowProjectSettings(false);
     },
   });
@@ -3396,12 +3402,14 @@ export function App() {
     selectedProjectId === null &&
     !showImporter &&
     !showSettings &&
+    !showServerAdmin &&
     !showProjectSettings;
   const compactManagedHeader =
     compactShell &&
     (mobileProjectSelectorOpen ||
       showImporter ||
       showSettings ||
+      showServerAdmin ||
       showProjectSettings ||
       mobileTabGridOpen ||
       (projectOverviewSelected && Boolean(selectedProject)));
@@ -3602,7 +3610,14 @@ export function App() {
     tabKey: string;
     title: string;
   } | null>(() => {
-    if (showImporter || showSettings || showProjectSettings) return null;
+    if (
+      showImporter ||
+      showSettings ||
+      showServerAdmin ||
+      showProjectSettings
+    ) {
+      return null;
+    }
     if (!selectedSurface) return null;
     return {
       tabKey: selectedSurface.tabKey,
@@ -3616,6 +3631,7 @@ export function App() {
     selectedSurface,
     showImporter,
     showProjectSettings,
+    showServerAdmin,
     showSettings,
   ]);
   const activePopout =
@@ -3641,11 +3657,13 @@ export function App() {
     ? "importer"
     : showSettings
       ? "settings"
-      : showProjectSettings
-        ? `project-settings:${selectedProjectId ?? "none"}`
-        : currentSurface
-          ? `${currentSurface.tabKey}:${gitHistoryHeader?.section ?? "content"}`
-          : `project:${selectedProjectId ?? "none"}`;
+      : showServerAdmin
+        ? "server-admin"
+        : showProjectSettings
+          ? `project-settings:${selectedProjectId ?? "none"}`
+          : currentSurface
+            ? `${currentSurface.tabKey}:${gitHistoryHeader?.section ?? "content"}`
+            : `project:${selectedProjectId ?? "none"}`;
   const popOutActiveView = () => {
     if (!activePopout || popoutPending) return;
     setPopoutPending(true);
@@ -3912,6 +3930,7 @@ export function App() {
 
   useEffect(() => {
     if (!projects.data) return;
+    if (showServerAdmin) return;
     const action = projectSelectionAction({
       compact: compactShell,
       projects: projects.data,
@@ -3933,7 +3952,13 @@ export function App() {
     setWorkspaceSelection(emptyWorkspaceSelection(action.projectId));
     setPendingSurfaceSelection(null);
     setChatConsoleChatId(null);
-  }, [compactShell, projects.data, selectedProjectId, visibleProjects]);
+  }, [
+    compactShell,
+    projects.data,
+    selectedProjectId,
+    showServerAdmin,
+    visibleProjects,
+  ]);
 
   useEffect(() => {
     if (!createdRepositoryOnboarding) return;
@@ -4105,6 +4130,7 @@ export function App() {
   const revealWorkspace = () => {
     setShowImporter(false);
     setShowSettings(false);
+    setShowServerAdmin(false);
     setShowProjectSettings(false);
   };
   const selectProjectWorkspace = (workspaceId: string) => {
@@ -4122,6 +4148,7 @@ export function App() {
       setChatConsoleChatId(null);
       setShowImporter(false);
       setShowSettings(false);
+      setShowServerAdmin(false);
       setShowProjectSettings(false);
       return;
     }
@@ -4135,6 +4162,7 @@ export function App() {
     setChatConsoleChatId(null);
     setShowImporter(!nextProjectId);
     setShowSettings(false);
+    setShowServerAdmin(false);
     setShowProjectSettings(false);
   };
   const selectProjectFromSidebar = (projectId: string) => {
@@ -4155,6 +4183,7 @@ export function App() {
     setDetachedGroupId(null);
     setShowImporter(false);
     setShowSettings(false);
+    setShowServerAdmin(false);
     setShowProjectSettings(false);
     setSelectedWorkflowIntentId(null);
   };
@@ -4165,8 +4194,16 @@ export function App() {
     setPendingSurfaceSelection(null);
     setSettingsSection(section);
     setShowSettings(true);
+    setShowServerAdmin(false);
     setShowImporter(false);
     setShowProjectSettings(false);
+  };
+  const openServerAdmin = () => {
+    setShowServerAdmin(true);
+    setShowImporter(false);
+    setShowSettings(false);
+    setShowProjectSettings(false);
+    setMobileTabGridOpen(false);
   };
   const returnToCompactProjectOverview = () => {
     setShowProjectSettings(false);
@@ -4404,6 +4441,7 @@ export function App() {
     terminalService:
       !showImporter &&
       !showSettings &&
+      !showServerAdmin &&
       !showProjectSettings &&
       selectedStandaloneTerminal
         ? {
@@ -4419,6 +4457,7 @@ export function App() {
     terminalCommandPalette:
       !showImporter &&
       !showSettings &&
+      !showServerAdmin &&
       !showProjectSettings &&
       selectedStandaloneTerminal
         ? {
@@ -4439,7 +4478,11 @@ export function App() {
         }
       : null,
     chat:
-      activeChat && !showImporter && !showSettings
+      activeChat &&
+      !showImporter &&
+      !showSettings &&
+      !showServerAdmin &&
+      !showProjectSettings
         ? {
             consoleActive: Boolean(linkedConsoleChat),
             consolePending: openChatConsole.isPending,
@@ -4564,11 +4607,13 @@ export function App() {
                 onAddProject={() => {
                   setShowImporter(true);
                   setShowSettings(false);
+                  setShowServerAdmin(false);
                   setShowProjectSettings(false);
                 }}
                 onManage={() => {
                   setSettingsSection("workspaces");
                   setShowSettings(true);
+                  setShowServerAdmin(false);
                   setShowImporter(false);
                   setShowProjectSettings(false);
                 }}
@@ -4668,6 +4713,7 @@ export function App() {
                     bootstrap.data?.auth.currentUser?.displayName ??
                     "Cantrip User"
                   }
+                  onOpenAdmin={openServerAdmin}
                   workerName={onlineWorker?.name ?? "Worker offline"}
                 />
                 <Button
@@ -4677,6 +4723,7 @@ export function App() {
                   onClick={() => {
                     setSettingsSection("general");
                     setShowSettings(true);
+                    setShowServerAdmin(false);
                     setShowImporter(false);
                     setShowProjectSettings(false);
                   }}
@@ -4739,6 +4786,12 @@ export function App() {
             context="Account preferences"
             onBack={closeCompactProject}
             title="Settings"
+          />
+        ) : compactShell && showServerAdmin ? (
+          <MobileProjectHeader
+            context="Account access and server policy"
+            onBack={closeCompactProject}
+            title="Server administration"
           />
         ) : compactShell && showProjectSettings && selectedProject ? (
           <MobileProjectHeader
@@ -4829,31 +4882,35 @@ export function App() {
                     ? "GitHub repositories"
                     : showSettings
                       ? "Settings"
-                      : showProjectSettings
-                        ? "Project settings"
-                        : projectOverviewSelected && selectedProject
-                          ? selectedProject.name
-                          : gitHistoryProject
-                            ? (selectedProjectView?.title ?? "Git")
-                            : selectedProjectView?.kind === "remote-desktop"
-                              ? selectedProjectView.title
-                              : selectedCodeTab
-                                ? selectedCodeTab.title
-                                : selectedBrowser
-                                  ? selectedBrowser.title
-                                  : selectedExplorer
-                                    ? selectedExplorer.title
-                                    : selectedTerminal
-                                      ? selectedTerminal.linkedChatId
-                                        ? (linkedConsoleChat?.title ?? "Agent")
-                                        : selectedTerminal.title
-                                      : selectedChat
-                                        ? selectedChat.title
-                                        : (selectedProject?.github
-                                            ?.nameWithOwner ?? "Cantrip")}
+                      : showServerAdmin
+                        ? "Server administration"
+                        : showProjectSettings
+                          ? "Project settings"
+                          : projectOverviewSelected && selectedProject
+                            ? selectedProject.name
+                            : gitHistoryProject
+                              ? (selectedProjectView?.title ?? "Git")
+                              : selectedProjectView?.kind === "remote-desktop"
+                                ? selectedProjectView.title
+                                : selectedCodeTab
+                                  ? selectedCodeTab.title
+                                  : selectedBrowser
+                                    ? selectedBrowser.title
+                                    : selectedExplorer
+                                      ? selectedExplorer.title
+                                      : selectedTerminal
+                                        ? selectedTerminal.linkedChatId
+                                          ? (linkedConsoleChat?.title ??
+                                            "Agent")
+                                          : selectedTerminal.title
+                                        : selectedChat
+                                          ? selectedChat.title
+                                          : (selectedProject?.github
+                                              ?.nameWithOwner ?? "Cantrip")}
                 </span>
                 {!showImporter &&
                 !showSettings &&
+                !showServerAdmin &&
                 activeWorktreeTarget &&
                 activeWorktreeId &&
                 (!gitHistoryProject ||
@@ -4932,6 +4989,8 @@ export function App() {
                   "Add a worker-owned source"
                 ) : showSettings ? (
                   "Account preferences"
+                ) : showServerAdmin ? (
+                  "Account access and server policy"
                 ) : showProjectSettings ? (
                   (selectedProject?.github?.nameWithOwner ??
                   selectedProject?.name ??
@@ -4999,6 +5058,7 @@ export function App() {
                     onClick={() => {
                       setSettingsSection("general");
                       setShowSettings(true);
+                      setShowServerAdmin(false);
                       setShowImporter(false);
                       setShowProjectSettings(false);
                     }}
@@ -5012,6 +5072,7 @@ export function App() {
                     onClick={() => {
                       setShowImporter(true);
                       setShowSettings(false);
+                      setShowServerAdmin(false);
                       setShowProjectSettings(false);
                     }}
                   >
@@ -5032,6 +5093,7 @@ export function App() {
               {!isPopout &&
               !showImporter &&
               !showSettings &&
+              !showServerAdmin &&
               selectedProject ? (
                 <span
                   className={cn(
@@ -5061,6 +5123,7 @@ export function App() {
         {(!compactShell || !mobileTabGridOpen) &&
         !showImporter &&
         !showSettings &&
+        !showServerAdmin &&
         !showProjectSettings &&
         !groupOwnedElsewhere &&
         selectedTabKey &&
@@ -5105,8 +5168,10 @@ export function App() {
               setPendingSurfaceSelection(null);
               setShowImporter(true);
               setShowSettings(false);
+              setShowServerAdmin(false);
               setShowProjectSettings(false);
             }}
+            onOpenAdmin={openServerAdmin}
             onOpenSettings={() => openCompactRootSettings()}
             onSelectProject={selectProjectFromSidebar}
             onSelectWorkspace={selectProjectWorkspace}
@@ -5116,6 +5181,8 @@ export function App() {
             initialSection={settingsSection}
             onOpenTunnelOwner={openTunnelOwner}
           />
+        ) : showServerAdmin ? (
+          <ServerAdminPage />
         ) : showProjectSettings && selectedProject ? (
           <ProjectSettingsPage
             initialWorkflowId={selectedWorkflowIntentId}
@@ -5173,6 +5240,7 @@ export function App() {
               setChatConsoleChatId(null);
               setShowImporter(false);
               setShowSettings(false);
+              setShowServerAdmin(false);
               setShowProjectSettings(false);
               setCreatedRepositoryOnboarding({
                 openInitialChat: !compactShell,
@@ -5641,6 +5709,7 @@ export function App() {
                 onClick={() => {
                   setShowImporter(true);
                   setShowSettings(false);
+                  setShowServerAdmin(false);
                   setShowProjectSettings(false);
                 }}
               >
@@ -5654,6 +5723,7 @@ export function App() {
         selectedProject &&
         !showImporter &&
         !showSettings &&
+        !showServerAdmin &&
         !showProjectSettings ? (
           <MobileBottomNavigation
             activeItemId={activeMobileBottomTabId}

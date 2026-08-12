@@ -13,7 +13,6 @@ import {
 import { useMemo, useState, type FormEvent } from "react";
 
 import { MobileSignInQrDialog } from "@/components/auth/mobile-sign-in-qr-dialog";
-import { ServerAdminDialog } from "@/components/servers/server-admin-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -37,6 +36,7 @@ import {
 
 type ServerSwitcherProps = {
   currentUserName: string;
+  onOpenAdmin?(): void;
   workerName: string;
 };
 
@@ -45,12 +45,12 @@ const itemClass =
 
 export function ServerSwitcher({
   currentUserName,
+  onOpenAdmin,
   workerName,
 }: ServerSwitcherProps) {
   const connections = useMemo(() => [...getServerConnections()], []);
   const active = getActiveServerConnection();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [adminDialogOpen, setAdminDialogOpen] = useState(false);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [testing, setTesting] = useState(false);
@@ -201,11 +201,12 @@ export function ServerSwitcher({
             >
               <Plus className="size-4" /> Add server
             </DropdownMenuPrimitive.Item>
-            {clientSession?.authMode === "accounts" &&
+            {onOpenAdmin &&
+            clientSession?.authMode === "accounts" &&
             ["owner", "admin"].includes(clientSession.user.role) ? (
               <DropdownMenuPrimitive.Item
                 className={itemClass}
-                onSelect={() => setAdminDialogOpen(true)}
+                onSelect={onOpenAdmin}
               >
                 <ShieldCheck className="size-4" /> Admin
               </DropdownMenuPrimitive.Item>
@@ -299,10 +300,6 @@ export function ServerSwitcher({
       <MobileSignInQrDialog
         onOpenChange={setMobileQrOpen}
         open={mobileQrOpen}
-      />
-      <ServerAdminDialog
-        open={adminDialogOpen}
-        onOpenChange={setAdminDialogOpen}
       />
     </>
   );

@@ -56,6 +56,7 @@ describe("mobile project selector", () => {
         onCreateWorkspace={vi.fn()}
         onManageWorkspaces={vi.fn()}
         onNewProject={vi.fn()}
+        onOpenAdmin={vi.fn()}
         onOpenSettings={vi.fn()}
         onSelectProject={vi.fn()}
         onSelectWorkspace={vi.fn()}
