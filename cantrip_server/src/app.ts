@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 
 import cors from "@fastify/cors";
@@ -649,6 +650,19 @@ export async function buildApp({
     });
   const surfaceRelay = new RemoteSurfaceRelay(bridge);
   const repository = database.repository;
+  const ownerContext = new AsyncLocalStorage<string>();
+  const applicationOwnerId = (): string => {
+    const ownerId = ownerContext.getStore();
+    if (ownerId) return ownerId;
+    if (config.authMode !== "accounts") return LOCAL_USER_ID;
+    throw new AuthenticationRequiredError(
+      "An explicit account owner is required outside a request context.",
+    );
+  };
+  const runAsOwner = <T>(ownerId: string, operation: () => T): T =>
+    ownerContext.run(ownerId, operation);
+  const workerOwnerId = (workerId: string): Promise<string | null> =>
+    repository.getWorkerOwnerId(workerId);
   const liveHub = new AppLiveHub();
   let livePublishingEnabled = true;
   const customizationStatusObservers = new Map<
@@ -668,6 +682,7 @@ export async function buildApp({
     if (!livePublishingEnabled) return;
     try {
       liveHub.publish({
+        ownerId: applicationOwnerId(),
         scope: input.projectId
           ? { kind: "project", projectId: input.projectId }
           : { kind: "current-user" },
@@ -698,6 +713,7 @@ export async function buildApp({
     if (!livePublishingEnabled) return;
     try {
       liveHub.publish({
+        ownerId: applicationOwnerId(),
         scope: { kind: "project", projectId },
         resource: "worktree-status",
         action: "updated",
@@ -718,7 +734,7 @@ export async function buildApp({
     status: WorktreeStatusResult,
   ): Promise<void> => {
     const recorded = await repository.recordProjectWorktreeStatus(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       projectId,
       worktreeId,
       status,
@@ -756,7 +772,7 @@ export async function buildApp({
   ): Promise<void> => {
     if (!bridge.subscribeNotifications || !bridge.isConnected(workerId)) return;
     const targets = await repository.listWorkerWorktreeObservationTargets(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       workerId,
     );
     await bridge.request(workerId, {
@@ -788,7 +804,10 @@ export async function buildApp({
   const scheduleProjectWorktreeObservation = async (
     projectId: string,
   ): Promise<void> => {
-    const source = await repository.getProjectSource(LOCAL_USER_ID, projectId);
+    const source = await repository.getProjectSource(
+      applicationOwnerId(),
+      projectId,
+    );
     if (source) scheduleWorkerWorktreeObservation(source.workerId);
   };
   const handleWorkerNotification = async (
@@ -803,14 +822,14 @@ export async function buildApp({
         return;
       }
       const context = await repository.getProjectWorktreeObservationContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         workerId,
         notification.sourcePath,
         notification.inventory.primaryPath,
       );
       if (!context) return;
       const worktrees = await repository.reconcileProjectWorktrees(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         context.projectId,
         notification.inventory,
       );
@@ -820,7 +839,7 @@ export async function buildApp({
       return;
     }
     const context = await repository.getProjectWorktreeObservationContext(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       workerId,
       notification.sourcePath,
       notification.worktreePath,
@@ -876,6 +895,7 @@ export async function buildApp({
     if (!livePublishingEnabled) return;
     try {
       liveHub.publish({
+        ownerId: applicationOwnerId(),
         scope: { kind: "chat", chatId },
         resource,
         action: "invalidated",
@@ -898,6 +918,7 @@ export async function buildApp({
     if (!livePublishingEnabled) return;
     try {
       liveHub.publish({
+        ownerId: applicationOwnerId(),
         scope: { kind: "chat", chatId },
         resource: "customization",
         action: "updated",
@@ -1097,6 +1118,7 @@ export async function buildApp({
     if (!livePublishingEnabled) return;
     try {
       liveHub.publish({
+        ownerId: applicationOwnerId(),
         scope: { kind: "chat", chatId: message.chatId },
         resource: "chat-message",
         action: "updated",
@@ -1304,10 +1326,14 @@ export async function buildApp({
       void scheduleProjectWorktreeObservation(projectId);
     },
   );
-  const publishWorkflowRunChange = (change: WorkflowRunLiveChange): void => {
+  const publishWorkflowRunChange = (
+    change: Omit<WorkflowRunLiveChange, "ownerId"> & { ownerId?: string },
+  ): void => {
     if (!livePublishingEnabled) return;
     try {
+      const ownerId = change.ownerId ?? applicationOwnerId();
       liveHub.publish({
+        ownerId,
         scope: { kind: "workflow-run", runId: change.runId },
         resource: change.resource,
         action: "invalidated",
@@ -1317,6 +1343,7 @@ export async function buildApp({
       });
       if (change.projectId) {
         liveHub.publish({
+          ownerId,
           scope: { kind: "project", projectId: change.projectId },
           resource: change.resource,
           action: "invalidated",
@@ -1370,6 +1397,13 @@ export async function buildApp({
 
   const sessionService = new UserSessionService(repository, config);
   const authRateLimiter = new AuthRateLimiter(config.authRateLimit ?? 10);
+  const sessionSockets = new Map<
+    string,
+    {
+      ownerId: string;
+      sockets: Set<{ close(code?: number, reason?: string): void }>;
+    }
+  >();
   if (config.authMode === "none") {
     installRequestPrincipal(app, { authMode: "none", localUser: localUser! });
   } else {
@@ -1378,6 +1412,14 @@ export async function buildApp({
       resolve: (request) => sessionService.resolvePrincipal(request),
     });
   }
+
+  app.addHook("onRequest", (request, _reply, done) => {
+    if (request.principal.state !== "authenticated") {
+      done();
+      return;
+    }
+    ownerContext.run(request.principal.user.id, done);
+  });
 
   const publicRoute = (route: string): boolean =>
     route === "/api" ||
@@ -1421,6 +1463,53 @@ export async function buildApp({
     return reply.send(error);
   });
 
+  const registerSessionSocket = (
+    socket: {
+      close(code?: number, reason?: string): void;
+      on(event: "close", listener: () => void): void;
+    },
+    request: FastifyRequest,
+  ): void => {
+    const principal = authenticatedPrincipal(request);
+    if (!principal.sessionId) return;
+    const entry = sessionSockets.get(principal.sessionId) ?? {
+      ownerId: principal.user.id,
+      sockets: new Set(),
+    };
+    entry.sockets.add(socket);
+    sessionSockets.set(principal.sessionId, entry);
+    socket.on("close", () => {
+      entry.sockets.delete(socket);
+      if (entry.sockets.size === 0) sessionSockets.delete(principal.sessionId!);
+    });
+  };
+  const closeSessionSockets = (
+    matches: (sessionId: string, ownerId: string) => boolean,
+    reason: string,
+  ): void => {
+    for (const [sessionId, entry] of [...sessionSockets]) {
+      if (!matches(sessionId, entry.ownerId)) continue;
+      sessionSockets.delete(sessionId);
+      for (const socket of [...entry.sockets]) socket.close(1008, reason);
+    }
+  };
+  const sessionSocketValidationTimer = setInterval(() => {
+    for (const [sessionId, entry] of [...sessionSockets]) {
+      void repository
+        .isUserSessionActive(sessionId, entry.ownerId)
+        .then((active) => {
+          if (!active) {
+            closeSessionSockets(
+              (candidate) => candidate === sessionId,
+              "Session is no longer active",
+            );
+          }
+        })
+        .catch(() => undefined);
+    }
+  }, 30_000);
+  sessionSocketValidationTimer.unref();
+
   const authorizeLiveScope = async (
     ownerId: string,
     scope: AppLiveScope,
@@ -1456,7 +1545,15 @@ export async function buildApp({
     const principal = authenticatedPrincipal(request);
     liveHub.attach(socket, {
       ownerId: principal.user.id,
+      sessionId: principal.sessionId,
       authorizeScope: (scope) => authorizeLiveScope(principal.user.id, scope),
+      isActive: () =>
+        principal.sessionId
+          ? repository.isUserSessionActive(
+              principal.sessionId,
+              principal.user.id,
+            )
+          : true,
     });
   });
 
@@ -1577,6 +1674,7 @@ export async function buildApp({
     lastError: string | null = null,
   ): Promise<boolean> => {
     const advanced = await repository.workflowTriggers.advanceSchedule(
+      applicationOwnerId(),
       triggerId,
       expected,
       next,
@@ -1606,7 +1704,7 @@ export async function buildApp({
     triggerId: string;
   }) => {
     const context = await repository.workflowTriggers.getDeliveryContext(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       triggerId,
     );
     if (!context || context.trigger.type !== allowedType) {
@@ -1615,7 +1713,7 @@ export async function buildApp({
       );
     }
     const source = await repository.getProjectSource(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       context.trigger.projectId,
     );
     if (!source) {
@@ -1650,7 +1748,7 @@ export async function buildApp({
       },
     });
     const claim = await repository.workflowTriggers.claimDelivery(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       triggerId,
       idempotencyKey,
       provenance,
@@ -1667,7 +1765,7 @@ export async function buildApp({
     }
     if (claim.kind === "replay" && claim.delivery.runId) {
       const existingRun = await repository.workflowRuns.getRun(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         claim.delivery.runId,
       );
       if (existingRun) {
@@ -1679,27 +1777,31 @@ export async function buildApp({
       }
     }
     try {
-      const runResult = await repository.workflowRuns.createRun(LOCAL_USER_ID, {
-        workflowRevisionId: context.trigger.workflowRevisionId,
-        projectId: context.trigger.projectId,
-        structuredInput: mergedInput,
-        budget: context.trigger.budget,
-        permissionManifest: context.trigger.permissionManifest,
-        selectedModelRouteId: context.trigger.selectedModelRouteId,
-        selectedPermissionProfileId:
-          context.trigger.selectedPermissionProfileId,
-        trigger: provenance,
-        idempotencyKey: triggerDeliveryIdempotencyKey(
-          triggerId,
-          idempotencyKey,
-        ),
-      });
+      const runResult = await repository.workflowRuns.createRun(
+        applicationOwnerId(),
+        {
+          workflowRevisionId: context.trigger.workflowRevisionId,
+          projectId: context.trigger.projectId,
+          structuredInput: mergedInput,
+          budget: context.trigger.budget,
+          permissionManifest: context.trigger.permissionManifest,
+          selectedModelRouteId: context.trigger.selectedModelRouteId,
+          selectedPermissionProfileId:
+            context.trigger.selectedPermissionProfileId,
+          trigger: provenance,
+          idempotencyKey: triggerDeliveryIdempotencyKey(
+            triggerId,
+            idempotencyKey,
+          ),
+        },
+      );
       if (!runResult) {
         throw new WorkflowTriggerConflictError(
           "Workflow trigger revision or project is unavailable.",
         );
       }
       const delivery = await repository.workflowTriggers.acceptDelivery(
+        applicationOwnerId(),
         claim.delivery.id,
         triggerId,
         runResult.run.run.id,
@@ -1711,7 +1813,7 @@ export async function buildApp({
         revision: null,
         runId: runResult.run.run.id,
       });
-      workflowExecutor.queueRun(runResult.run.run.id);
+      workflowExecutor.queueRun(runResult.run.run.id, applicationOwnerId());
       return workflowTriggerDeliveryResultSchema.parse({
         delivery,
         run: runResult.run,
@@ -1719,6 +1821,7 @@ export async function buildApp({
       });
     } catch (error) {
       await repository.workflowTriggers.failDelivery(
+        applicationOwnerId(),
         claim.delivery.id,
         triggerId,
         "workflow-trigger-delivery-failed",
@@ -1741,70 +1844,72 @@ export async function buildApp({
         if (candidate.trigger.type !== "schedule" || !candidate.row.nextRunAt) {
           continue;
         }
+        const trigger = candidate.trigger;
         const expected = candidate.row.nextRunAt;
-        const intervalMs =
-          candidate.trigger.configuration.intervalSeconds * 1_000;
-        if (
-          candidate.trigger.configuration.catchUpPolicy === "skip" &&
-          now.getTime() - expected.getTime() > intervalMs
-        ) {
-          await advanceLiveWorkflowSchedule(
-            candidate.trigger.id,
-            candidate.trigger.projectId,
-            expected,
-            new Date(now.getTime() + intervalMs),
-            "Skipped an overdue scheduled delivery by policy.",
+        await runAsOwner(trigger.ownerId, async () => {
+          const intervalMs = trigger.configuration.intervalSeconds * 1_000;
+          if (
+            trigger.configuration.catchUpPolicy === "skip" &&
+            now.getTime() - expected.getTime() > intervalMs
+          ) {
+            await advanceLiveWorkflowSchedule(
+              trigger.id,
+              trigger.projectId,
+              expected,
+              new Date(now.getTime() + intervalMs),
+              "Skipped an overdue scheduled delivery by policy.",
+            );
+            return;
+          }
+          const source = await repository.getProjectSource(
+            applicationOwnerId(),
+            trigger.projectId,
           );
-          continue;
-        }
-        const source = await repository.getProjectSource(
-          LOCAL_USER_ID,
-          candidate.trigger.projectId,
-        );
-        if (
-          candidate.trigger.configuration.offlinePolicy === "pause" &&
-          (!source || !bridge.isConnected(source.workerId))
-        ) {
-          await advanceLiveWorkflowSchedule(
-            candidate.trigger.id,
-            candidate.trigger.projectId,
-            expected,
-            new Date(now.getTime() + Math.min(intervalMs, 30_000)),
-            "Project worker is offline; scheduled delivery is paused.",
-          );
-          continue;
-        }
-        try {
-          await deliverWorkflowTrigger({
-            actorId: null,
-            actorType: "schedule",
-            allowOfflineQueue:
-              candidate.trigger.configuration.offlinePolicy === "queue",
-            allowedType: "schedule",
-            idempotencyKey: expected.toISOString(),
-            metadata: {},
-            structuredInput: {},
-            triggerId: candidate.trigger.id,
-          });
-          await advanceLiveWorkflowSchedule(
-            candidate.trigger.id,
-            candidate.trigger.projectId,
-            expected,
-            new Date(Date.now() + intervalMs),
-          );
-        } catch (error) {
-          app.log.warn(
-            { err: error, workflowTriggerId: candidate.trigger.id },
-            "Scheduled workflow delivery failed",
-          );
-          await advanceLiveWorkflowSchedule(
-            candidate.trigger.id,
-            candidate.trigger.projectId,
-            expected,
-            new Date(Date.now() + Math.min(intervalMs, 30_000)),
-            errorMessage(error),
-          );
-        }
+          if (
+            trigger.configuration.offlinePolicy === "pause" &&
+            (!source || !bridge.isConnected(source.workerId))
+          ) {
+            await advanceLiveWorkflowSchedule(
+              trigger.id,
+              trigger.projectId,
+              expected,
+              new Date(now.getTime() + Math.min(intervalMs, 30_000)),
+              "Project worker is offline; scheduled delivery is paused.",
+            );
+            return;
+          }
+          try {
+            await deliverWorkflowTrigger({
+              actorId: null,
+              actorType: "schedule",
+              allowOfflineQueue:
+                trigger.configuration.offlinePolicy === "queue",
+              allowedType: "schedule",
+              idempotencyKey: expected.toISOString(),
+              metadata: {},
+              structuredInput: {},
+              triggerId: trigger.id,
+            });
+            await advanceLiveWorkflowSchedule(
+              trigger.id,
+              trigger.projectId,
+              expected,
+              new Date(Date.now() + intervalMs),
+            );
+          } catch (error) {
+            app.log.warn(
+              { err: error, workflowTriggerId: trigger.id },
+              "Scheduled workflow delivery failed",
+            );
+            await advanceLiveWorkflowSchedule(
+              trigger.id,
+              trigger.projectId,
+              expected,
+              new Date(Date.now() + Math.min(intervalMs, 30_000)),
+              errorMessage(error),
+            );
+          }
+        });
       }
     } finally {
       scheduleTickRunning = false;
@@ -1875,11 +1980,15 @@ export async function buildApp({
                   "intent must be newBranch, existingBranch, or detached.",
                 );
               })();
-    const created = await worktreeCoordinator.create(LOCAL_USER_ID, projectId, {
-      mode,
-      name,
-      origin: "agent",
-    });
+    const created = await worktreeCoordinator.create(
+      applicationOwnerId(),
+      projectId,
+      {
+        mode,
+        name,
+        origin: "agent",
+      },
+    );
     if (!created) throw new Error("Project source not found.");
     return created;
   };
@@ -1888,7 +1997,7 @@ export async function buildApp({
     call: AgentWorktreeToolCall,
   ): Promise<AgentWorktreeToolResult> => {
     const context = await repository.getChatExecutionContext(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       call.chatId,
     );
     if (!context) throw new Error("Chat execution context not found.");
@@ -1902,10 +2011,10 @@ export async function buildApp({
       );
     }
     const worktrees = () =>
-      repository.listProjectWorktrees(LOCAL_USER_ID, context.projectId);
+      repository.listProjectWorktrees(applicationOwnerId(), context.projectId);
     const worktreeContext = async (worktreeId: string) => {
       const target = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         context.projectId,
         worktreeId,
       );
@@ -1918,7 +2027,7 @@ export async function buildApp({
       purpose: string,
     ) => {
       const pending = await repository.scheduleChatWorktreeTransition(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         context.chatId,
         call.executionLaneId,
         worktreeId,
@@ -1934,7 +2043,7 @@ export async function buildApp({
         const [items, leases] = await Promise.all([
           worktrees(),
           repository.listProjectExecutionLanes(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             context.projectId,
           ),
         ]);
@@ -2061,7 +2170,7 @@ export async function buildApp({
           throw new Error("Release or switch away from this worktree first.");
         }
         const blockers = await repository.getWorktreeRemovalBlockers(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           context.projectId,
           worktreeId,
         );
@@ -2100,7 +2209,7 @@ export async function buildApp({
               }),
             );
             await repository.reconcileProjectWorktrees(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               context.projectId,
               result.inventory,
             );
@@ -2136,7 +2245,7 @@ export async function buildApp({
           ),
         );
         await repository.completeGithubProjectSetup(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           projectId,
           input.workerId,
           clone,
@@ -2150,7 +2259,7 @@ export async function buildApp({
           "Repository setup failed.";
         try {
           await repository.failGithubProjectSetup(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             projectId,
             message,
           );
@@ -2173,7 +2282,7 @@ export async function buildApp({
   ): Promise<string> => {
     const defaultModelId = context.modelId
       ? null
-      : (await repository.getSettings(LOCAL_USER_ID)).preferences
+      : (await repository.getSettings(applicationOwnerId())).preferences
           .defaultModelId;
     const modelId = requestedModelId ?? context.modelId ?? defaultModelId;
     if (!modelId) {
@@ -2188,7 +2297,10 @@ export async function buildApp({
     context: { workerId: string },
     modelId: string,
   ): Promise<ModelRuntime[]> => {
-    const runtimes = await repository.getModelRuntimes(LOCAL_USER_ID, modelId);
+    const runtimes = await repository.getModelRuntimes(
+      applicationOwnerId(),
+      modelId,
+    );
     if (!runtimes.length) {
       throw new Error("The selected model has no enabled provider routes.");
     }
@@ -2241,13 +2353,13 @@ export async function buildApp({
   ): Promise<ModelRuntime | null> => {
     if (context.modelRouteId) {
       const active = await repository.getModelRuntimeByRoute(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         context.modelRouteId,
       );
       if (active) return active;
     }
     const modelId = await resolveModelId(context);
-    return repository.getModelRuntime(LOCAL_USER_ID, modelId);
+    return repository.getModelRuntime(applicationOwnerId(), modelId);
   };
 
   const recordRuntimeTokenUsage = async (
@@ -2288,14 +2400,14 @@ export async function buildApp({
     workerId: string;
   }) => {
     const provider = await repository.getModelProvider(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       input.providerId,
     );
     if (!provider) {
       throw new SkillSettingsRequestError(404, "Model provider not found.");
     }
     const source = input.projectId
-      ? await repository.getProjectSource(LOCAL_USER_ID, input.projectId)
+      ? await repository.getProjectSource(applicationOwnerId(), input.projectId)
       : null;
     if (input.projectId && !source) {
       throw new SkillSettingsRequestError(404, "Project source not found.");
@@ -2307,6 +2419,12 @@ export async function buildApp({
       );
     }
     const workerId = source?.workerId ?? input.workerId;
+    if (
+      !source &&
+      !(await repository.getWorker(applicationOwnerId(), workerId))
+    ) {
+      throw new SkillSettingsRequestError(404, "Worker not found.");
+    }
     if (!bridge.isConnected(workerId)) {
       throw new SkillSettingsRequestError(503, "Selected worker is offline.");
     }
@@ -2363,12 +2481,12 @@ export async function buildApp({
     progressingWorktreeTransitions.add(chatId);
     try {
       const pending = await repository.getPendingChatWorktreeTransition(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         chatId,
       );
       if (!pending) return false;
       const current = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         chatId,
       );
       if (!current || chatIsExecuting(current.status)) return true;
@@ -2388,7 +2506,7 @@ export async function buildApp({
 
       if (pending.lane.transitionKind === "release") {
         const source = await repository.getProjectWorktreeContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           current.projectId,
           current.worktreeId,
         );
@@ -2403,11 +2521,11 @@ export async function buildApp({
           );
           if (status.status.files.length > 0) {
             await repository.cancelChatWorktreeTransition(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               chatId,
               pending.lane.id,
             );
-            await appendLiveChatMessage(LOCAL_USER_ID, chatId, {
+            await appendLiveChatMessage(applicationOwnerId(), chatId, {
               role: "system",
               content: [
                 {
@@ -2428,13 +2546,13 @@ export async function buildApp({
         }
       }
       const applied = await repository.applyChatWorktreeTransition(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         chatId,
         pending.lane.id,
       );
       if (!applied) return true;
       const next = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         chatId,
       );
       if (!next) return true;
@@ -2461,7 +2579,7 @@ export async function buildApp({
           "Could not start a worktree continuation",
         );
         await appendLiveChatMessage(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           chatId,
           {
             role: "system",
@@ -2490,7 +2608,7 @@ export async function buildApp({
   ): Promise<void> => {
     if (!bridge.isConnected(workerId)) return;
     const chatIds = await repository.listPendingWorktreeTransitionChatIds(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       workerId,
     );
     await Promise.allSettled(
@@ -2512,7 +2630,7 @@ export async function buildApp({
     attachmentIds: string[],
   ) => {
     const attachments = await repository.getChatAttachments(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       context.chatId,
       attachmentIds,
     );
@@ -2583,7 +2701,7 @@ export async function buildApp({
     dispatchingChats.add(chatId);
     try {
       let context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         chatId,
       );
       if (
@@ -2593,16 +2711,16 @@ export async function buildApp({
       )
         return;
       const prompt = (
-        await repository.listQueuedPrompts(LOCAL_USER_ID, chatId)
+        await repository.listQueuedPrompts(applicationOwnerId(), chatId)
       ).find((candidate) => !candidate.frozen);
       if (!prompt) return;
       if (prompt.worktreeId && prompt.worktreeId !== context.worktreeId) {
-        await repository.updateChatWorktree(LOCAL_USER_ID, chatId, {
+        await repository.updateChatWorktree(applicationOwnerId(), chatId, {
           worktreeId: prompt.worktreeId,
           mode: context.worktreeMode,
         });
         context = await repository.getChatExecutionContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           chatId,
         );
         if (!context) return;
@@ -2614,7 +2732,7 @@ export async function buildApp({
         modelId: prompt.modelId,
         idempotencyKey: `queue:${prompt.id}`,
       });
-      await deleteLiveQueuedPrompt(LOCAL_USER_ID, prompt.id);
+      await deleteLiveQueuedPrompt(applicationOwnerId(), prompt.id);
     } catch (error) {
       app.log.error({ chatId, err: error }, "Queued prompt dispatch failed");
     } finally {
@@ -2653,11 +2771,11 @@ export async function buildApp({
     const turnPlanMode = turnMode === "plan" ? "plan" : "default";
     await prepareCodeEditorsForTurn(context);
     const mcpServers = await repository.listEffectiveMcpServers(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       context.projectId,
     );
     const execution = await repository.startChatExecutionLane(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       context.chatId,
       options.acquiringActor ?? "user",
       options.purpose ?? "Chat turn",
@@ -2675,16 +2793,16 @@ export async function buildApp({
     let userMessage: ChatMessage;
     try {
       await updateLiveChatPlanMode(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         execution.chatId,
         turnPlanMode,
       );
       priorMessages = await repository.listMessages(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         execution.chatId,
       );
       const appended = await repository.appendMessage(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         execution.chatId,
         {
           role: options.messageRole ?? "user",
@@ -2704,8 +2822,13 @@ export async function buildApp({
       );
       if (!appended) throw new Error("Chat not found.");
       userMessage = appended;
-      await setLiveChatMessageModelRoute(userMessage.id, modelId, runtimes[0]!);
-      await repository.setChatModel(LOCAL_USER_ID, execution.chatId, {
+      await setLiveChatMessageModelRoute(
+        applicationOwnerId(),
+        userMessage.id,
+        modelId,
+        runtimes[0]!,
+      );
+      await repository.setChatModel(applicationOwnerId(), execution.chatId, {
         modelId,
       });
     } catch (error) {
@@ -2737,6 +2860,7 @@ export async function buildApp({
             : continuationPrompt(priorMessages, requestedPrompt);
           if (index > 0) {
             await setLiveChatMessageModelRoute(
+              applicationOwnerId(),
               userMessage.id,
               modelId,
               runtime,
@@ -2838,7 +2962,7 @@ export async function buildApp({
                   if (event.type === "agent.message") {
                     const turnId = event.message.correlation?.turnId;
                     await upsertLiveChatMessage(
-                      LOCAL_USER_ID,
+                      applicationOwnerId(),
                       execution.chatId,
                       {
                         role: "assistant",
@@ -2863,7 +2987,7 @@ export async function buildApp({
                     if (!event.text.trim()) return;
                     if (finalAgentTurns.has(event.turnId)) return;
                     await upsertLiveChatMessage(
-                      LOCAL_USER_ID,
+                      applicationOwnerId(),
                       execution.chatId,
                       {
                         role: "assistant",
@@ -2897,7 +3021,7 @@ export async function buildApp({
                   }
                   if (event.type === "agent.plan.question-resolved") {
                     const state = await repository.getChatPlanState(
-                      LOCAL_USER_ID,
+                      applicationOwnerId(),
                       execution.chatId,
                     );
                     if (state?.question?.id === event.questionId) {
@@ -2923,7 +3047,7 @@ export async function buildApp({
                     }
                   }
                   await upsertLiveChatMessage(
-                    LOCAL_USER_ID,
+                    applicationOwnerId(),
                     execution.chatId,
                     {
                       role: "assistant",
@@ -2950,7 +3074,7 @@ export async function buildApp({
             );
             if (!result.turnId || !finalAgentTurns.has(result.turnId)) {
               await appendLiveChatMessage(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 execution.chatId,
                 {
                   role: "assistant",
@@ -3016,7 +3140,7 @@ export async function buildApp({
           "Agent turn failed",
         );
         await appendLiveChatMessage(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           execution.chatId,
           {
             role: "system",
@@ -3090,7 +3214,7 @@ export async function buildApp({
       runtime.routeId,
     );
     const updatedContext = await repository.getChatExecutionContext(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       context.chatId,
     );
     if (!updatedContext) throw new Error("Chat source not found.");
@@ -3112,7 +3236,7 @@ export async function buildApp({
 
   const resumeChatAutomation = async (chatId: string): Promise<void> => {
     let context = await repository.getChatExecutionContext(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       chatId,
     );
     if (
@@ -3124,7 +3248,10 @@ export async function buildApp({
       return;
     }
     if (await continuePendingWorktreeTransition(chatId)) return;
-    context = await repository.getChatExecutionContext(LOCAL_USER_ID, chatId);
+    context = await repository.getChatExecutionContext(
+      applicationOwnerId(),
+      chatId,
+    );
     if (
       !context ||
       context.automationPaused ||
@@ -3355,6 +3482,12 @@ export async function buildApp({
   app.post("/api/auth/logout", async (request, reply) => {
     const principal = authenticatedPrincipal(request);
     await repository.revokeUserSession(principal.sessionId!, "signed-out");
+    liveHub.revokeSession(principal.sessionId!);
+    codeTunnel.revokeAuthSession(principal.sessionId!);
+    closeSessionSockets(
+      (sessionId) => sessionId === principal.sessionId,
+      "Session was revoked",
+    );
     sessionService.clear(reply);
     return reply.code(204).send();
   });
@@ -3364,6 +3497,12 @@ export async function buildApp({
     const revokedSessions = await repository.revokeAllUserSessions(
       principal.user.id,
       "signed-out-all",
+    );
+    liveHub.revokeOwner(principal.user.id);
+    codeTunnel.revokeOwner(principal.user.id);
+    closeSessionSockets(
+      (_sessionId, ownerId) => ownerId === principal.user.id,
+      "Account sessions were revoked",
     );
     sessionService.clear(reply);
     return reply.send(authLogoutAllResultSchema.parse({ revokedSessions }));
@@ -3461,7 +3600,7 @@ export async function buildApp({
       return reply.code(400).send(invalidBody(query.error.issues));
     }
     const requests = await repository.listAgentInteractionRequests(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       query.data,
     );
     return reply.send(agentInteractionRequestListSchema.parse(requests));
@@ -3471,7 +3610,7 @@ export async function buildApp({
     "/api/agent-requests/:requestId",
     async (request, reply) => {
       const interaction = await repository.getAgentInteractionRequest(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.requestId,
       );
       if (!interaction) {
@@ -3492,7 +3631,7 @@ export async function buildApp({
       }
       try {
         const existing = await repository.validateAgentInteractionResolution(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.requestId,
           input.data,
         );
@@ -3501,7 +3640,7 @@ export async function buildApp({
         }
         if (existing.status !== "pending") {
           const replay = await resolveLiveAgentInteractionRequest(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             request.params.requestId,
             input.data,
           );
@@ -3518,6 +3657,7 @@ export async function buildApp({
           }
           try {
             await workflowExecutor.respondToInteraction(
+              applicationOwnerId(),
               existing,
               input.data.response,
             );
@@ -3529,7 +3669,7 @@ export async function buildApp({
           }
           try {
             const interaction = await resolveLiveAgentInteractionRequest(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.requestId,
               input.data,
             );
@@ -3539,7 +3679,7 @@ export async function buildApp({
           }
         }
         const context = await repository.getChatExecutionContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           existing.provenance.chatId,
         );
         if (
@@ -3581,7 +3721,7 @@ export async function buildApp({
           });
         }
         const interaction = await resolveLiveAgentInteractionRequest(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.requestId,
           input.data,
         );
@@ -3608,13 +3748,16 @@ export async function buildApp({
           .send({ error: "workerId and providerId are required" });
       }
       const provider = await repository.getModelProvider(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         providerId,
       );
       if (provider?.kind !== "chatgpt") {
         return reply
           .code(404)
           .send({ error: "ChatGPT account provider not found." });
+      }
+      if (!(await repository.getWorker(applicationOwnerId(), workerId))) {
+        return reply.code(404).send({ error: "Worker not found." });
       }
       try {
         const status = codexAuthStatusSchema.parse(
@@ -3642,13 +3785,16 @@ export async function buildApp({
           .send({ error: "workerId and providerId are required" });
       }
       const provider = await repository.getModelProvider(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         providerId,
       );
       if (provider?.kind !== "chatgpt") {
         return reply
           .code(404)
           .send({ error: "ChatGPT account provider not found." });
+      }
+      if (!(await repository.getWorker(applicationOwnerId(), workerId))) {
+        return reply.code(404).send({ error: "Worker not found." });
       }
       try {
         return reply.send(
@@ -3677,13 +3823,16 @@ export async function buildApp({
           .send({ error: "workerId and providerId are required" });
       }
       const provider = await repository.getModelProvider(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         providerId,
       );
       if (provider?.kind !== "chatgpt") {
         return reply
           .code(404)
           .send({ error: "ChatGPT account provider not found." });
+      }
+      if (!(await repository.getWorker(applicationOwnerId(), workerId))) {
+        return reply.code(404).send({ error: "Worker not found." });
       }
       try {
         await bridge.request(workerId, {
@@ -3701,7 +3850,9 @@ export async function buildApp({
 
   app.get("/api/settings", async (_request, reply) => {
     return reply.send(
-      settingsBundleSchema.parse(await repository.getSettings(LOCAL_USER_ID)),
+      settingsBundleSchema.parse(
+        await repository.getSettings(applicationOwnerId()),
+      ),
     );
   });
 
@@ -3828,7 +3979,7 @@ export async function buildApp({
   });
 
   app.get("/api/settings/mcp-servers", async (_request, reply) => {
-    const servers = await repository.listMcpServers(LOCAL_USER_ID, null);
+    const servers = await repository.listMcpServers(applicationOwnerId(), null);
     return reply.send(mcpServerListSchema.parse(servers ?? []));
   });
 
@@ -3839,7 +3990,7 @@ export async function buildApp({
     }
     try {
       const server = await repository.createMcpServer(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         null,
         input.data,
       );
@@ -3858,7 +4009,7 @@ export async function buildApp({
       }
       try {
         const server = await repository.updateMcpServer(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           null,
           request.params.serverId,
           input.data,
@@ -3876,7 +4027,7 @@ export async function buildApp({
     "/api/settings/mcp-servers/:serverId",
     async (request, reply) =>
       (await repository.deleteMcpServer(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         null,
         request.params.serverId,
       ))
@@ -3889,7 +4040,10 @@ export async function buildApp({
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
     }
-    const settings = await repository.updateSettings(LOCAL_USER_ID, input.data);
+    const settings = await repository.updateSettings(
+      applicationOwnerId(),
+      input.data,
+    );
     if (!settings) {
       return reply.code(400).send({ error: "Default model was not found." });
     }
@@ -3903,7 +4057,7 @@ export async function buildApp({
     }
     try {
       const provider = await repository.createModelProvider(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         input.data,
       );
       return reply.code(201).send(modelProviderSummarySchema.parse(provider));
@@ -3917,7 +4071,7 @@ export async function buildApp({
     async (request, reply) => {
       try {
         const deleted = await repository.deleteModelProvider(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.providerId,
         );
         return deleted
@@ -3940,7 +4094,7 @@ export async function buildApp({
       }
       try {
         const provider = await repository.updateModelProvider(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.providerId,
           input.data,
         );
@@ -3960,7 +4114,7 @@ export async function buildApp({
     }
     try {
       const model = await repository.createModelProfile(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         input.data,
       );
       if (!model) {
@@ -3977,7 +4131,7 @@ export async function buildApp({
     async (request, reply) => {
       try {
         const deleted = await repository.deleteModelProfile(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.modelId,
         );
         return deleted
@@ -4000,7 +4154,7 @@ export async function buildApp({
       }
       try {
         const model = await repository.updateModelProfile(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.modelId,
           input.data,
         );
@@ -4019,6 +4173,9 @@ export async function buildApp({
       const workerId = request.query.workerId;
       if (!workerId) {
         return reply.code(400).send({ error: "workerId is required" });
+      }
+      if (!(await repository.getWorker(applicationOwnerId(), workerId))) {
+        return reply.code(404).send({ error: "Worker not found." });
       }
       try {
         const result = await bridge.request(workerId, {
@@ -4042,6 +4199,9 @@ export async function buildApp({
           .code(400)
           .send({ error: "workerId and login are required" });
       }
+      if (!(await repository.getWorker(applicationOwnerId(), workerId))) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
       try {
         const workerRepositories = githubWorkerRepositoryListSchema.parse(
           await bridge.request(workerId, {
@@ -4050,7 +4210,7 @@ export async function buildApp({
           }),
         );
         const imported =
-          await repository.listGithubRepositoryIds(LOCAL_USER_ID);
+          await repository.listGithubRepositoryIds(applicationOwnerId());
         return reply.send(
           githubRepositoryListSchema.parse(
             workerRepositories.map((item) => ({
@@ -4072,6 +4232,9 @@ export async function buildApp({
       const workerId = request.query.workerId;
       if (!workerId) {
         return reply.code(400).send({ error: "workerId is required" });
+      }
+      if (!(await repository.getWorker(applicationOwnerId(), workerId))) {
+        return reply.code(404).send({ error: "Worker not found." });
       }
       try {
         return reply.send(
@@ -4095,6 +4258,9 @@ export async function buildApp({
       if (!workerId) {
         return reply.code(400).send({ error: "workerId is required" });
       }
+      if (!(await repository.getWorker(applicationOwnerId(), workerId))) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
       try {
         const workerRepositories = githubWorkerRepositoryListSchema.parse(
           await bridge.request(workerId, {
@@ -4102,7 +4268,7 @@ export async function buildApp({
           }),
         );
         const imported =
-          await repository.listGithubRepositoryIds(LOCAL_USER_ID);
+          await repository.listGithubRepositoryIds(applicationOwnerId());
         return reply.send(
           githubRepositoryListSchema.parse(
             workerRepositories.map((item) => ({
@@ -4124,6 +4290,9 @@ export async function buildApp({
       const workerId = request.query.workerId;
       if (!workerId) {
         return reply.code(400).send({ error: "workerId is required" });
+      }
+      if (!(await repository.getWorker(applicationOwnerId(), workerId))) {
+        return reply.code(404).send({ error: "Worker not found." });
       }
       const input = githubRepositoryCreateSchema.safeParse(request.body);
       if (!input.success) {
@@ -4151,7 +4320,7 @@ export async function buildApp({
   );
 
   app.get("/api/projects", async (_request, reply) => {
-    const projects = await repository.listProjects(LOCAL_USER_ID);
+    const projects = await repository.listProjects(applicationOwnerId());
     return reply.send(projectListSchema.parse(projects));
   });
 
@@ -4161,7 +4330,7 @@ export async function buildApp({
       reply.send(
         projectAutomationListSchema.parse(
           await repository.projectAutomations.list(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             request.params.projectId,
           ),
         ),
@@ -4177,7 +4346,7 @@ export async function buildApp({
       }
       try {
         const automation = await repository.projectAutomations.create(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           input.data,
         );
@@ -4204,7 +4373,7 @@ export async function buildApp({
       }
       try {
         const automation = await repository.projectAutomations.update(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.automationId,
           input.data,
         );
@@ -4224,7 +4393,7 @@ export async function buildApp({
     "/api/automations/:automationId",
     async (request, reply) =>
       (await repository.projectAutomations.delete(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.automationId,
       ))
         ? reply.code(204).send()
@@ -4235,7 +4404,7 @@ export async function buildApp({
     "/api/projects/:projectId/mcp-servers",
     async (request, reply) => {
       const servers = await repository.listMcpServers(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       );
       return servers
@@ -4253,7 +4422,7 @@ export async function buildApp({
       }
       try {
         const server = await repository.createMcpServer(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           input.data,
         );
@@ -4275,7 +4444,7 @@ export async function buildApp({
       }
       try {
         const server = await repository.updateMcpServer(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           request.params.serverId,
           input.data,
@@ -4293,7 +4462,7 @@ export async function buildApp({
     "/api/projects/:projectId/mcp-servers/:serverId",
     async (request, reply) =>
       (await repository.deleteMcpServer(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.serverId,
       ))
@@ -4315,7 +4484,7 @@ export async function buildApp({
       }
       try {
         const server = await repository.copyProjectMcpServer(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           input.data.sourceProjectId,
           input.data.sourceServerId,
@@ -4334,7 +4503,7 @@ export async function buildApp({
   app.get("/api/workspaces", async (_request, reply) => {
     return reply.send(
       projectWorkspaceListSchema.parse(
-        await repository.listProjectWorkspaces(LOCAL_USER_ID),
+        await repository.listProjectWorkspaces(applicationOwnerId()),
       ),
     );
   });
@@ -4349,7 +4518,10 @@ export async function buildApp({
         .code(201)
         .send(
           projectWorkspaceSummarySchema.parse(
-            await repository.createProjectWorkspace(LOCAL_USER_ID, input.data),
+            await repository.createProjectWorkspace(
+              applicationOwnerId(),
+              input.data,
+            ),
           ),
         );
     } catch (error) {
@@ -4366,7 +4538,7 @@ export async function buildApp({
       }
       try {
         const workspace = await repository.updateProjectWorkspace(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.workspaceId,
           input.data,
         );
@@ -4384,7 +4556,7 @@ export async function buildApp({
     async (request, reply) => {
       try {
         return (await repository.deleteProjectWorkspace(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.workspaceId,
         ))
           ? reply.code(204).send()
@@ -4409,7 +4581,10 @@ export async function buildApp({
     }
     return reply.send(
       workflowAutomationTriggerListSchema.parse(
-        await repository.workflowTriggers.list(LOCAL_USER_ID, query.data),
+        await repository.workflowTriggers.list(
+          applicationOwnerId(),
+          query.data,
+        ),
       ),
     );
   });
@@ -4427,7 +4602,7 @@ export async function buildApp({
     }
     try {
       const trigger = await repository.workflowTriggers.create(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         input.data,
       );
       if (trigger) {
@@ -4457,7 +4632,7 @@ export async function buildApp({
       }
       try {
         const trigger = await repository.workflowTriggers.update(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.triggerId,
           input.data,
         );
@@ -4485,7 +4660,7 @@ export async function buildApp({
       }
       try {
         const result = await deliverWorkflowTrigger({
-          actorId: LOCAL_USER_ID,
+          actorId: applicationOwnerId(),
           actorType: "api",
           allowOfflineQueue: false,
           allowedType: "api",
@@ -4520,8 +4695,7 @@ export async function buildApp({
     Headers: { "x-cantrip-webhook-token"?: string };
     Params: { triggerId: string };
   }>("/api/workflow-hooks/:triggerId", async (request, reply) => {
-    const context = await repository.workflowTriggers.getDeliveryContext(
-      LOCAL_USER_ID,
+    const context = await repository.workflowTriggers.getWebhookDeliveryContext(
       request.params.triggerId,
     );
     const token = request.headers["x-cantrip-webhook-token"];
@@ -4539,16 +4713,18 @@ export async function buildApp({
       return reply.code(400).send(invalidBody(input.error.issues));
     }
     try {
-      const result = await deliverWorkflowTrigger({
-        actorId: null,
-        actorType: "webhook",
-        allowOfflineQueue: false,
-        allowedType: "webhook",
-        idempotencyKey: input.data.idempotencyKey,
-        metadata: {},
-        structuredInput: input.data.structuredInput,
-        triggerId: request.params.triggerId,
-      });
+      const result = await runAsOwner(context.trigger.ownerId, () =>
+        deliverWorkflowTrigger({
+          actorId: null,
+          actorType: "webhook",
+          allowOfflineQueue: false,
+          allowedType: "webhook",
+          idempotencyKey: input.data.idempotencyKey,
+          metadata: {},
+          structuredInput: input.data.structuredInput,
+          triggerId: request.params.triggerId,
+        }),
+      );
       return reply
         .code(result.replayed ? 200 : 201)
         .send(workflowTriggerDeliveryResultSchema.parse(result));
@@ -4580,7 +4756,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.workflowTriggers.getDeliveryContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.triggerId,
       );
       if (
@@ -4641,7 +4817,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.workflowTriggers.getDeliveryContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.triggerId,
       );
       if (!context || context.trigger.type !== "saved-command") {
@@ -4649,7 +4825,7 @@ export async function buildApp({
       }
       try {
         const result = await deliverWorkflowTrigger({
-          actorId: LOCAL_USER_ID,
+          actorId: applicationOwnerId(),
           actorType: "user",
           allowOfflineQueue: false,
           allowedType: "saved-command",
@@ -4690,7 +4866,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) {
@@ -4709,7 +4885,10 @@ export async function buildApp({
         }
         const messages =
           input.data.sourceType === "chat"
-            ? await repository.listMessages(LOCAL_USER_ID, context.chatId)
+            ? await repository.listMessages(
+                applicationOwnerId(),
+                context.chatId,
+              )
             : [];
         const transcript = workflowGenerationTranscript(messages);
         const prompt = [
@@ -4721,7 +4900,7 @@ export async function buildApp({
           .join("\n\n");
         const generationId = randomUUID();
         const mcpServers = await repository.listEffectiveMcpServers(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           context.projectId,
         );
         const result = workflowNodeExecutionResultSchema.parse(
@@ -4824,7 +5003,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -4837,7 +5016,7 @@ export async function buildApp({
       const githubContext =
         input.data.task === "summarize-failed-checks"
           ? await repository.getGithubProjectExecutionContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
             )
           : null;
@@ -4853,7 +5032,7 @@ export async function buildApp({
       try {
         const modelId =
           input.data.modelId ??
-          (await repository.getSettings(LOCAL_USER_ID)).preferences
+          (await repository.getSettings(applicationOwnerId())).preferences
             .defaultModelId;
         if (!modelId) {
           return reply.code(409).send({
@@ -4863,7 +5042,7 @@ export async function buildApp({
         }
         const runtimes = await availableModelRuntimes(context, modelId);
         const mcpServers = await repository.listEffectiveMcpServers(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
         );
         const generationId = randomUUID();
@@ -4940,7 +5119,7 @@ export async function buildApp({
     "/api/projects/:projectId/worktrees/:worktreeId/git/conflicts",
     async (request, reply) => {
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -4981,12 +5160,12 @@ export async function buildApp({
       }
       const [worktree, github] = await Promise.all([
         repository.getProjectWorktreeContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           request.params.worktreeId,
         ),
         repository.getGithubProjectExecutionContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
         ),
       ]);
@@ -5003,7 +5182,7 @@ export async function buildApp({
       }
       try {
         const result = await worktreeCoordinator.checkoutPullRequest(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           request.params.worktreeId,
           github.nameWithOwner,
@@ -5044,12 +5223,12 @@ export async function buildApp({
       }
       const [worktree, github] = await Promise.all([
         repository.getProjectWorktreeContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           request.params.worktreeId,
         ),
         repository.getGithubProjectExecutionContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
         ),
       ]);
@@ -5118,12 +5297,12 @@ export async function buildApp({
           async () => {
             const [worktree, github] = await Promise.all([
               repository.getProjectWorktreeContext(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
                 request.params.worktreeId,
               ),
               repository.getGithubProjectExecutionContext(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
               ),
             ]);
@@ -5176,12 +5355,12 @@ export async function buildApp({
       }
       const [worktree, github] = await Promise.all([
         repository.getProjectWorktreeContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           request.params.worktreeId,
         ),
         repository.getGithubProjectExecutionContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
         ),
       ]);
@@ -5243,12 +5422,12 @@ export async function buildApp({
           async () => {
             const [worktree, github] = await Promise.all([
               repository.getProjectWorktreeContext(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
                 request.params.worktreeId,
               ),
               repository.getGithubProjectExecutionContext(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
               ),
             ]);
@@ -5330,7 +5509,7 @@ export async function buildApp({
           .send({ error: "A safe conflict path is required." });
       }
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -5371,7 +5550,7 @@ export async function buildApp({
         return reply.code(400).send({ error: "Invalid file history query." });
       }
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -5423,7 +5602,7 @@ export async function buildApp({
         return reply.code(400).send({ error: "Invalid file blame query." });
       }
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -5491,7 +5670,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(query.error.issues));
       }
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -5536,7 +5715,7 @@ export async function buildApp({
         return reply.code(400).send({ error: "Recovery kind is required." });
       }
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -5578,7 +5757,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -5614,7 +5793,7 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -5660,7 +5839,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -5696,7 +5875,7 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -5715,7 +5894,7 @@ export async function buildApp({
               worktreeStatusFromGitStatus(context.worktree, resolved.status),
             );
             const active = await repository.getActiveGitOperation(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -5728,7 +5907,7 @@ export async function buildApp({
                 }),
               );
               await repository.updateGitOperation(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
                 request.params.worktreeId,
                 active.id,
@@ -5775,7 +5954,10 @@ export async function buildApp({
     }
     return reply.send(
       workflowDefinitionListSchema.parse(
-        await repository.workflows.listDefinitions(LOCAL_USER_ID, query.data),
+        await repository.workflows.listDefinitions(
+          applicationOwnerId(),
+          query.data,
+        ),
       ),
     );
   });
@@ -5784,7 +5966,7 @@ export async function buildApp({
     "/api/projects/:projectId/workflow-repository",
     async (request, reply) => {
       const source = await repository.getProjectSource(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       );
       if (!source) {
@@ -5817,7 +5999,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const source = await repository.getProjectSource(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       );
       if (!source) {
@@ -5879,7 +6061,7 @@ export async function buildApp({
           },
         });
         const created = await repository.workflows.createDefinition(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           definition,
         );
         if (created) {
@@ -5905,7 +6087,7 @@ export async function buildApp({
     }
     try {
       const workflow = await repository.workflows.createDefinition(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         input.data,
       );
       if (workflow) {
@@ -5926,7 +6108,7 @@ export async function buildApp({
     "/api/workflows/:workflowId",
     async (request, reply) => {
       const workflow = await repository.workflows.getDefinition(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.workflowId,
       );
       return workflow
@@ -5943,7 +6125,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const workflow = await repository.workflows.getDefinition(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.workflowId,
       );
       if (!workflow) {
@@ -5960,7 +6142,7 @@ export async function buildApp({
         });
       }
       const source = await repository.getProjectSource(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         workflow.workflow.projectId,
       );
       if (!source) {
@@ -6023,7 +6205,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const workflow = await repository.workflows.updateDefinition(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.workflowId,
         input.data,
       );
@@ -6040,7 +6222,7 @@ export async function buildApp({
     "/api/workflows/:workflowId/revisions",
     async (request, reply) => {
       const revisions = await repository.workflows.listRevisions(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.workflowId,
       );
       return revisions
@@ -6058,7 +6240,7 @@ export async function buildApp({
       }
       try {
         const revision = await repository.workflows.appendRevision(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.workflowId,
           input.data,
         );
@@ -6085,7 +6267,7 @@ export async function buildApp({
         return reply.code(400).send({ error: "Invalid workflow revision." });
       }
       const revision = await repository.workflows.getRevision(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.workflowId,
         revisionNumber,
       );
@@ -6110,7 +6292,10 @@ export async function buildApp({
     }
     return reply.send(
       workflowRunListSchema.parse(
-        await repository.workflowRuns.listRuns(LOCAL_USER_ID, query.data),
+        await repository.workflowRuns.listRuns(
+          applicationOwnerId(),
+          query.data,
+        ),
       ),
     );
   });
@@ -6128,7 +6313,7 @@ export async function buildApp({
     }
     try {
       const result = await repository.workflowRuns.createRun(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         input.data,
       );
       if (result) {
@@ -6138,7 +6323,7 @@ export async function buildApp({
           revision: null,
           runId: result.run.run.id,
         });
-        workflowExecutor.queueRun(result.run.run.id);
+        workflowExecutor.queueRun(result.run.run.id, applicationOwnerId());
       }
       return result
         ? reply
@@ -6159,7 +6344,7 @@ export async function buildApp({
     "/api/workflow-runs/:runId",
     async (request, reply) => {
       const run = await repository.workflowRuns.getRun(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.runId,
       );
       return run
@@ -6176,7 +6361,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const run = await repository.workflowRuns.getRun(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.runId,
       );
       if (!run) {
@@ -6188,9 +6373,12 @@ export async function buildApp({
           .send({ error: "Only a completed workflow run can be saved." });
       }
       const [definition, executedRevision] = await Promise.all([
-        repository.workflows.getDefinition(LOCAL_USER_ID, run.run.workflowId),
+        repository.workflows.getDefinition(
+          applicationOwnerId(),
+          run.run.workflowId,
+        ),
         repository.workflows.getRevisionById(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           run.run.workflowId,
           run.run.workflowRevisionId,
         ),
@@ -6213,7 +6401,7 @@ export async function buildApp({
           ? structuredInput
           : executedRevision.defaults;
       const savedRevision = await repository.workflows.appendRevision(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         run.run.workflowId,
         {
           graph: executedRevision.graph,
@@ -6239,7 +6427,7 @@ export async function buildApp({
         },
       );
       const savedWorkflow = await repository.workflows.updateDefinition(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         run.run.workflowId,
         { trustState: input.data.trustState },
       );
@@ -6268,7 +6456,7 @@ export async function buildApp({
       }
       try {
         const run = await worktreeCoordinator.resolveWorkflowLane(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.runId,
           request.params.leaseId,
           input.data,
@@ -6302,6 +6490,7 @@ export async function buildApp({
       }
       try {
         const run = await workflowExecutor.pauseRun(
+          applicationOwnerId(),
           request.params.runId,
           input.data,
         );
@@ -6326,6 +6515,7 @@ export async function buildApp({
       }
       try {
         const run = await workflowExecutor.resumeRun(
+          applicationOwnerId(),
           request.params.runId,
           input.data,
         );
@@ -6350,6 +6540,7 @@ export async function buildApp({
       }
       try {
         const run = await workflowExecutor.cancelRun(
+          applicationOwnerId(),
           request.params.runId,
           input.data,
         );
@@ -6374,6 +6565,7 @@ export async function buildApp({
       }
       try {
         const run = await workflowExecutor.decideGate(
+          applicationOwnerId(),
           request.params.runId,
           request.params.gateId,
           input.data,
@@ -6399,6 +6591,7 @@ export async function buildApp({
       }
       try {
         const run = await workflowExecutor.retryNode(
+          applicationOwnerId(),
           request.params.runId,
           request.params.runNodeId,
           input.data,
@@ -6424,7 +6617,7 @@ export async function buildApp({
       return reply.code(400).send(invalidBody(query.error.issues));
     }
     const events = await repository.workflowRuns.listEvents(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       request.params.runId,
       query.data,
     );
@@ -6437,7 +6630,7 @@ export async function buildApp({
     "/api/projects/:projectId/network-shares",
     async (request, reply) => {
       const source = await repository.getProjectSource(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       );
       if (!source) {
@@ -6445,7 +6638,7 @@ export async function buildApp({
       }
       try {
         const attachment = await projectShareTunnel.open({
-          ownerId: LOCAL_USER_ID,
+          ownerId: applicationOwnerId(),
           projectId: request.params.projectId,
           root: source.cwd,
           workerId: source.workerId,
@@ -6472,7 +6665,7 @@ export async function buildApp({
     async (request, reply) =>
       (await projectShareTunnel.revokeAttachment(
         request.params.attachmentId,
-        LOCAL_USER_ID,
+        applicationOwnerId(),
       ))
         ? reply.code(204).send()
         : reply.code(404).send({ error: "Project share not found." }),
@@ -6486,7 +6679,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const project = await repository.updateProjectWorktreePolicy(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         input.data,
       );
@@ -6500,12 +6693,12 @@ export async function buildApp({
     "/api/projects/:projectId/worktrees",
     async (request, reply) => {
       const worktrees = await repository.listProjectWorktrees(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       );
       if (worktrees.length === 0) {
         const source = await repository.getProjectSource(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
         );
         if (!source) {
@@ -6521,7 +6714,7 @@ export async function buildApp({
     async (request, reply) => {
       try {
         const worktrees = await worktreeCoordinator.reconcile(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
         );
         return worktrees
@@ -6543,7 +6736,7 @@ export async function buildApp({
       }
       try {
         const created = await worktreeCoordinator.create(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           {
             mode: input.data.mode,
@@ -6573,7 +6766,7 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -6587,7 +6780,7 @@ export async function buildApp({
               }),
             );
             const reconciled = await repository.reconcileProjectWorktrees(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               result.inventory,
             );
@@ -6616,7 +6809,7 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -6629,7 +6822,7 @@ export async function buildApp({
               }),
             );
             const reconciled = await repository.reconcileProjectWorktrees(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               result.inventory,
             );
@@ -6662,7 +6855,7 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -6679,7 +6872,7 @@ export async function buildApp({
               );
             }
             const blockers = await repository.getWorktreeRemovalBlockers(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -6697,7 +6890,7 @@ export async function buildApp({
             }
             const previousState = context.worktree.lifecycleState;
             await repository.setProjectWorktreeLifecycle(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
               "removing",
@@ -6713,7 +6906,7 @@ export async function buildApp({
                 }),
               );
               const reconciled = await repository.reconcileProjectWorktrees(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
                 result.inventory,
               );
@@ -6724,7 +6917,7 @@ export async function buildApp({
               );
             } catch (error) {
               await repository.setProjectWorktreeLifecycle(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
                 request.params.worktreeId,
                 previousState,
@@ -6755,7 +6948,7 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const source = await repository.getProjectSource(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
             );
             if (!source) return null;
@@ -6767,7 +6960,7 @@ export async function buildApp({
               }),
             );
             return repository.reconcileProjectWorktrees(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               result.inventory,
             );
@@ -6787,7 +6980,7 @@ export async function buildApp({
     "/api/projects/:projectId/worktrees/:worktreeId/status",
     async (request, reply) => {
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -6811,7 +7004,7 @@ export async function buildApp({
       } catch (error) {
         if (error instanceof WorkerUnavailableError) {
           const snapshot = await repository.getProjectWorktreeStatusSnapshot(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             request.params.projectId,
             request.params.worktreeId,
           );
@@ -6838,7 +7031,7 @@ export async function buildApp({
         });
       }
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -6867,7 +7060,7 @@ export async function buildApp({
     "/api/projects/:projectId/worktrees/:worktreeId/history",
     async (request, reply) => {
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -6885,7 +7078,7 @@ export async function buildApp({
       try {
         const revisions = (
           await repository.listProjectWorktrees(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             request.params.projectId,
           )
         )
@@ -6921,13 +7114,13 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
             if (!context) throw new Error("Worktree not found.");
             const activeOperation = await repository.getActiveGitOperation(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -6965,13 +7158,13 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
             if (!context) throw new Error("Worktree not found.");
             const activeOperation = await repository.getActiveGitOperation(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -7008,7 +7201,7 @@ export async function buildApp({
                 checkpointRef: applied.checkpointRef,
               };
               const durable = await repository.createGitOperation(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
                 request.params.worktreeId,
                 context.workerId,
@@ -7016,7 +7209,7 @@ export async function buildApp({
               );
               await repository.markGitOperationRunning(durable.id);
               await repository.updateGitOperation(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
                 request.params.worktreeId,
                 durable.id,
@@ -7070,13 +7263,13 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
             if (!context) throw new Error("Worktree not found.");
             const active = await repository.getActiveGitOperation(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -7120,7 +7313,7 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -7142,7 +7335,7 @@ export async function buildApp({
               );
             }
             const durable = await repository.createGitOperation(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
               context.workerId,
@@ -7173,7 +7366,7 @@ export async function buildApp({
               runningGitOperationRequests.delete(durable.id);
             }
             const updated = await repository.updateGitOperation(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
               durable.id,
@@ -7201,7 +7394,7 @@ export async function buildApp({
       } catch (error) {
         if (durableId && !(error instanceof WorkerUnavailableError)) {
           await repository.failGitOperation(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             request.params.projectId,
             request.params.worktreeId,
             durableId,
@@ -7224,20 +7417,20 @@ export async function buildApp({
     async (request, reply) => {
       try {
         const context = await repository.getProjectWorktreeContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           request.params.worktreeId,
         );
         if (!context) throw new Error("Worktree not found.");
         const active = await repository.getActiveGitOperation(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           request.params.worktreeId,
         );
         let operation: GitManagedOperationRecord | null;
         if (!active) {
           operation = await repository.getLatestGitOperation(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             request.params.projectId,
             request.params.worktreeId,
           );
@@ -7259,7 +7452,7 @@ export async function buildApp({
             );
             operation =
               (await repository.updateGitOperation(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
                 request.params.worktreeId,
                 active.id,
@@ -7320,12 +7513,12 @@ export async function buildApp({
           async () => {
             const [context, durable] = await Promise.all([
               repository.getProjectWorktreeContext(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
                 request.params.worktreeId,
               ),
               repository.getGitOperation(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
                 request.params.worktreeId,
                 request.params.operationId,
@@ -7362,7 +7555,7 @@ export async function buildApp({
               runningGitOperationRequests.delete(durable.id);
             }
             const updated = await repository.updateGitOperation(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
               durable.id,
@@ -7414,12 +7607,12 @@ export async function buildApp({
           async () => {
             const [context, durable] = await Promise.all([
               repository.getProjectWorktreeContext(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
                 request.params.worktreeId,
               ),
               repository.getGitOperation(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
                 request.params.worktreeId,
                 request.params.operationId,
@@ -7457,7 +7650,7 @@ export async function buildApp({
               runningGitOperationRequests.delete(durable.id);
             }
             const updated = await repository.updateGitOperation(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
               durable.id,
@@ -7513,7 +7706,7 @@ export async function buildApp({
           .send({ error: "Parent index must be nonnegative." });
       }
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -7523,7 +7716,7 @@ export async function buildApp({
       try {
         const revisions = (
           await repository.listProjectWorktrees(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             request.params.projectId,
           )
         )
@@ -7551,7 +7744,7 @@ export async function buildApp({
     "/api/projects/:projectId/worktrees/:worktreeId/git/refs",
     async (request, reply) => {
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -7565,7 +7758,7 @@ export async function buildApp({
             cwd: context.worktree.path,
           }),
           repository.listProjectWorktrees(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             request.params.projectId,
           ),
         ]);
@@ -7619,7 +7812,7 @@ export async function buildApp({
         });
       }
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -7660,7 +7853,7 @@ export async function buildApp({
         });
       }
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -7691,7 +7884,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -7719,7 +7912,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const existing = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -7731,7 +7924,7 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -7764,7 +7957,7 @@ export async function buildApp({
     "/api/projects/:projectId/worktrees/:worktreeId/git/stashes",
     async (request, reply) => {
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -7793,7 +7986,7 @@ export async function buildApp({
       if (!input.success)
         return reply.code(400).send(invalidBody(input.error.issues));
       const existing = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -7804,13 +7997,13 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
             if (!context) throw new Error("Worktree not found.");
             const active = await repository.getActiveGitOperation(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -7858,7 +8051,7 @@ export async function buildApp({
           .send({ error: "A valid stash hash and path are required." });
       }
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -7889,7 +8082,7 @@ export async function buildApp({
       if (!action.success)
         return reply.code(400).send(invalidBody(action.error.issues));
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -7897,7 +8090,7 @@ export async function buildApp({
         return reply.code(404).send({ error: "Worktree not found." });
       try {
         const active = await repository.getActiveGitOperation(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           request.params.worktreeId,
         );
@@ -7929,7 +8122,7 @@ export async function buildApp({
       if (!input.success)
         return reply.code(400).send(invalidBody(input.error.issues));
       const existing = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -7940,13 +8133,13 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
             if (!context) throw new Error("Worktree not found.");
             const active = await repository.getActiveGitOperation(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -7981,7 +8174,7 @@ export async function buildApp({
                 checkpointRef: applied.operation.checkpointRef,
               };
               const durable = await repository.createGitOperation(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
                 request.params.worktreeId,
                 context.workerId,
@@ -7989,7 +8182,7 @@ export async function buildApp({
               );
               await repository.markGitOperationRunning(durable.id);
               await repository.updateGitOperation(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
                 request.params.worktreeId,
                 durable.id,
@@ -8042,7 +8235,7 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -8085,7 +8278,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -8112,7 +8305,7 @@ export async function buildApp({
     "/api/projects/:projectId/worktrees/:worktreeId/git/branches",
     async (request, reply) => {
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -8145,7 +8338,7 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -8184,7 +8377,7 @@ export async function buildApp({
       if (!input.success)
         return reply.code(400).send(invalidBody(input.error.issues));
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -8211,7 +8404,7 @@ export async function buildApp({
     "/api/projects/:projectId/worktrees/:worktreeId/git/remotes",
     async (request, reply) => {
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -8244,7 +8437,7 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -8283,7 +8476,7 @@ export async function buildApp({
       if (!input.success)
         return reply.code(400).send(invalidBody(input.error.issues));
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -8310,7 +8503,7 @@ export async function buildApp({
     "/api/projects/:projectId/worktrees/:worktreeId/git/submodules",
     async (request, reply) => {
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -8343,7 +8536,7 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -8382,7 +8575,7 @@ export async function buildApp({
       if (!input.success)
         return reply.code(400).send(invalidBody(input.error.issues));
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -8409,7 +8602,7 @@ export async function buildApp({
     "/api/projects/:projectId/worktrees/:worktreeId/git/lfs",
     async (request, reply) => {
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -8443,7 +8636,7 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -8482,7 +8675,7 @@ export async function buildApp({
       if (!input.success)
         return reply.code(400).send(invalidBody(input.error.issues));
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -8509,7 +8702,7 @@ export async function buildApp({
     "/api/projects/:projectId/worktrees/:worktreeId/git/tags/:name",
     async (request, reply) => {
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -8536,7 +8729,7 @@ export async function buildApp({
     "/api/projects/:projectId/worktrees/:worktreeId/git/tags",
     async (request, reply) => {
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -8563,12 +8756,12 @@ export async function buildApp({
     async (request, reply) => {
       const [worktree, github] = await Promise.all([
         repository.getProjectWorktreeContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           request.params.worktreeId,
         ),
         repository.getGithubProjectExecutionContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
         ),
       ]);
@@ -8605,12 +8798,12 @@ export async function buildApp({
       }
       const [worktree, github] = await Promise.all([
         repository.getProjectWorktreeContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           request.params.worktreeId,
         ),
         repository.getGithubProjectExecutionContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
         ),
       ]);
@@ -8649,12 +8842,12 @@ export async function buildApp({
           async () => {
             const [worktree, github] = await Promise.all([
               repository.getProjectWorktreeContext(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
                 request.params.worktreeId,
               ),
               repository.getGithubProjectExecutionContext(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
               ),
             ]);
@@ -8687,7 +8880,7 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -8724,7 +8917,7 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const context = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -8771,7 +8964,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getProjectWorktreeContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         request.params.worktreeId,
       );
@@ -8783,7 +8976,7 @@ export async function buildApp({
           request.params.projectId,
           async () => {
             const freshContext = await repository.getProjectWorktreeContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               request.params.projectId,
               request.params.worktreeId,
             );
@@ -8819,7 +9012,7 @@ export async function buildApp({
     Querystring: { cursor?: string; limit?: string };
   }>("/api/projects/:projectId/git/history", async (request, reply) => {
     const source = await repository.getProjectSource(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       request.params.projectId,
     );
     if (!source) {
@@ -8852,7 +9045,7 @@ export async function buildApp({
     "/api/projects/:projectId/repository-stats",
     async (request, reply) => {
       const source = await repository.getProjectSource(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       );
       if (!source) {
@@ -8900,12 +9093,12 @@ export async function buildApp({
           async () => {
             const [worktree, github] = await Promise.all([
               repository.getProjectWorktreeContext(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
                 request.params.worktreeId,
               ),
               repository.getGithubProjectExecutionContext(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 request.params.projectId,
               ),
             ]);
@@ -8974,7 +9167,7 @@ export async function buildApp({
       });
     }
     const context = await repository.getGithubProjectExecutionContext(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       request.params.projectId,
     );
     if (!context) {
@@ -9004,7 +9197,7 @@ export async function buildApp({
         return reply.code(400).send({ error: "Invalid issue number." });
       }
       const context = await repository.getGithubProjectExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       );
       if (!context) {
@@ -9036,7 +9229,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getGithubProjectExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       );
       if (!context) {
@@ -9069,7 +9262,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getGithubProjectExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       );
       if (!context) {
@@ -9094,7 +9287,7 @@ export async function buildApp({
     "/api/projects/:projectId/git/status",
     async (request, reply) => {
       const source = await repository.getProjectSource(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       );
       if (!source) {
@@ -9121,7 +9314,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const source = await repository.getProjectSource(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       );
       if (!source) {
@@ -9136,7 +9329,7 @@ export async function buildApp({
           }),
         );
         const context = await repository.getProjectWorktreeContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           source.worktreeId,
         );
@@ -9160,7 +9353,7 @@ export async function buildApp({
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
     }
-    return (await repository.reorderProjects(LOCAL_USER_ID, input.data))
+    return (await repository.reorderProjects(applicationOwnerId(), input.data))
       ? reply.code(204).send()
       : reply.code(400).send({ error: "Project order did not match." });
   });
@@ -9173,7 +9366,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getProjectRemovalContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       );
       if (!context) {
@@ -9186,7 +9379,7 @@ export async function buildApp({
       }
       await projectShareTunnel.revokeProject(
         request.params.projectId,
-        LOCAL_USER_ID,
+        applicationOwnerId(),
       );
       const { cwd, workerId } = context;
 
@@ -9229,7 +9422,7 @@ export async function buildApp({
       }
 
       return (await repository.deleteProject(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       ))
         ? reply.code(204).send()
@@ -9243,7 +9436,10 @@ export async function buildApp({
       return reply.code(400).send(invalidBody(input.error.issues));
     }
     if (
-      await repository.hasGithubProject(LOCAL_USER_ID, input.data.repositoryId)
+      await repository.hasGithubProject(
+        applicationOwnerId(),
+        input.data.repositoryId,
+      )
     ) {
       return reply.code(409).send({
         error: "This GitHub repository already has a Cantrip project.",
@@ -9252,7 +9448,7 @@ export async function buildApp({
 
     try {
       const project = await repository.createGithubProject(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         input.data,
       );
       queueProjectSetup(project.id, input.data);
@@ -9263,7 +9459,7 @@ export async function buildApp({
       }
       if (
         await repository.hasGithubProject(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           input.data.repositoryId,
         )
       ) {
@@ -9280,7 +9476,7 @@ export async function buildApp({
     "/api/projects/:projectId/chats",
     async (request, reply) => {
       const chats = await repository.listChats(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       );
       return reply.send(chatListSchema.parse(chats));
@@ -9296,7 +9492,7 @@ export async function buildApp({
       }
       try {
         const chat = await repository.createChat(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           input.data,
         );
@@ -9322,7 +9518,7 @@ export async function buildApp({
     "/api/chats/:chatId/console",
     async (request, reply) => {
       let context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) {
@@ -9336,7 +9532,7 @@ export async function buildApp({
           const modelId = await resolveModelId(context);
           const runtime = (await availableModelRuntimes(context, modelId))[0]!;
           const mcpServers = await repository.listEffectiveMcpServers(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             context.projectId,
           );
           const result = (await bridge.request(context.workerId, {
@@ -9353,7 +9549,7 @@ export async function buildApp({
           if (typeof result.threadId !== "string" || !result.threadId) {
             throw new Error("Codex did not return a console thread.");
           }
-          await repository.setChatModel(LOCAL_USER_ID, context.chatId, {
+          await repository.setChatModel(applicationOwnerId(), context.chatId, {
             modelId,
           });
           await repository.updateChatRuntime(
@@ -9364,7 +9560,7 @@ export async function buildApp({
             runtime.routeId,
           );
           const updated = await repository.getChatExecutionContext(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             context.chatId,
           );
           if (!updated) throw new Error("Chat source not found.");
@@ -9375,7 +9571,7 @@ export async function buildApp({
         }
       }
       const terminal = await repository.getOrCreateChatConsole(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         context.chatId,
       );
       return terminal
@@ -9388,7 +9584,7 @@ export async function buildApp({
     "/api/projects/:projectId/terminals",
     async (request, reply) => {
       const terminals = await repository.listTerminals(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       );
       return reply.send(terminalListSchema.parse(terminals));
@@ -9403,7 +9599,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const terminal = await repository.createTerminal(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         input.data,
       );
@@ -9417,7 +9613,7 @@ export async function buildApp({
     "/api/terminals/:terminalId/script-commands",
     async (request, reply) => {
       const context = await repository.getTerminalExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.terminalId,
       );
       if (!context) {
@@ -9448,7 +9644,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const terminal = await repository.updateTerminal(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.terminalId,
         input.data,
       );
@@ -9467,14 +9663,14 @@ export async function buildApp({
       }
       try {
         const context = await repository.getTerminalExecutionContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.terminalId,
         );
         if (!context) {
           return reply.code(404).send({ error: "Terminal not found." });
         }
         const terminal = await repository.updateTerminalService(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.terminalId,
           input.data,
         );
@@ -9512,7 +9708,7 @@ export async function buildApp({
     "/api/terminals/:terminalId/service/restart",
     async (request, reply) => {
       const context = await repository.getTerminalExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.terminalId,
       );
       if (!context) {
@@ -9552,7 +9748,7 @@ export async function buildApp({
       }
       try {
         const terminal = await repository.updateTerminalWorktree(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.terminalId,
           input.data,
         );
@@ -9569,7 +9765,7 @@ export async function buildApp({
     "/api/terminals/:terminalId",
     async (request, reply) => {
       const context = await repository.deleteTerminal(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.terminalId,
       );
       if (!context) {
@@ -9596,7 +9792,7 @@ export async function buildApp({
     "/api/projects/:projectId/explorers",
     async (request, reply) => {
       const explorers = await repository.listExplorers(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       );
       return reply.send(explorerListSchema.parse(explorers));
@@ -9609,7 +9805,7 @@ export async function buildApp({
       reply.send(
         codeTabListSchema.parse(
           await repository.listCodeTabs(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             request.params.projectId,
           ),
         ),
@@ -9625,7 +9821,7 @@ export async function buildApp({
       }
       try {
         const codeTab = await repository.createCodeTab(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           { ...input.data, themeMode: "follow-cantrip" },
         );
@@ -9651,7 +9847,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const codeTab = await repository.updateCodeTab(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.codeTabId,
         { ...input.data, themeMode: "follow-cantrip" },
       );
@@ -9670,7 +9866,7 @@ export async function buildApp({
       }
       try {
         const codeTab = await repository.updateCodeTabWorktree(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.codeTabId,
           input.data,
         );
@@ -9687,7 +9883,7 @@ export async function buildApp({
     "/api/code-tabs/:codeTabId/sessions",
     async (request, reply) => {
       const sessions = await repository.listCodeSessions(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.codeTabId,
       );
       return sessions
@@ -9700,7 +9896,7 @@ export async function buildApp({
     "/api/code-tabs/:codeTabId/sessions/:sessionId/runtime",
     async (request, reply) => {
       const context = await repository.getCodeTabExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.codeTabId,
       );
       if (!context) {
@@ -9708,7 +9904,7 @@ export async function buildApp({
       }
       const sessions =
         (await repository.listCodeSessions(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.codeTabId,
         )) ?? [];
       const session = sessions.find(
@@ -9728,7 +9924,7 @@ export async function buildApp({
           }),
         );
         await updateCodeSessionRuntime(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           context.codeTab.id,
           session.id,
           runtime,
@@ -9748,7 +9944,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getCodeTabExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.codeTabId,
       );
       if (!context) {
@@ -9782,7 +9978,7 @@ export async function buildApp({
       }
 
       const session = await repository.getOrCreateCodeSession(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.codeTabId,
         probe.editorBuild,
         randomUUID(),
@@ -9806,7 +10002,7 @@ export async function buildApp({
             worktreeName: context.worktreeName,
             cwd: context.cwd,
             profileId: scopedCodeProfileId(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               context.codeTab.profileId,
             ),
             themeMode: "follow-cantrip",
@@ -9815,7 +10011,7 @@ export async function buildApp({
         );
         if (
           !(await updateCodeSessionRuntime(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             context.codeTab.id,
             session.id,
             runtime,
@@ -9856,7 +10052,7 @@ export async function buildApp({
           lastError: message,
         });
         await updateCodeSessionRuntime(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           context.codeTab.id,
           session.id,
           failedRuntime,
@@ -9872,8 +10068,9 @@ export async function buildApp({
         return reply.code(201).send(
           codeAttachmentSchema.parse(
             codeTunnel.createAttachment({
+              authSessionId: authenticatedPrincipal(request).sessionId,
               codeTabId: context.codeTab.id,
-              ownerId: LOCAL_USER_ID,
+              ownerId: applicationOwnerId(),
               runtime,
               sessionId: session.id,
               workerId: context.workerId,
@@ -9889,7 +10086,10 @@ export async function buildApp({
   app.delete<{ Params: { attachmentId: string } }>(
     "/api/code-attachments/:attachmentId",
     async (request, reply) => {
-      codeTunnel.revokeAttachment(request.params.attachmentId, LOCAL_USER_ID);
+      codeTunnel.revokeAttachment(
+        request.params.attachmentId,
+        applicationOwnerId(),
+      );
       return reply.code(204).send();
     },
   );
@@ -9898,7 +10098,7 @@ export async function buildApp({
     "/api/code-tabs/:codeTabId/save-all",
     async (request, reply) => {
       const context = await repository.getCodeTabExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.codeTabId,
       );
       if (!context) {
@@ -9906,7 +10106,7 @@ export async function buildApp({
       }
       const sessions =
         (await repository.listCodeSessions(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.codeTabId,
         )) ?? [];
       const session = sessions.find((candidate) =>
@@ -9937,7 +10137,7 @@ export async function buildApp({
     "/api/code-tabs/:codeTabId/stop",
     async (request, reply) => {
       const context = await repository.getCodeTabExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.codeTabId,
       );
       if (!context) {
@@ -9945,7 +10145,7 @@ export async function buildApp({
       }
       const sessions =
         (await repository.listCodeSessions(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.codeTabId,
         )) ?? [];
       const session = sessions.find(
@@ -9964,7 +10164,7 @@ export async function buildApp({
         );
         codeTunnel.revokeSession(session.id);
         await updateCodeSessionRuntime(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           context.codeTab.id,
           session.id,
           runtime,
@@ -9984,20 +10184,20 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getCodeTabExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.codeTabId,
       );
       if (!context) {
         return reply.code(404).send({ error: "Code tab not found." });
       }
       const codeTab = await repository.updateCodeTab(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.codeTabId,
         { themeMode: "follow-cantrip" },
       );
       const sessions =
         (await repository.listCodeSessions(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.codeTabId,
         )) ?? [];
       const session = sessions.find((candidate) =>
@@ -10014,7 +10214,7 @@ export async function buildApp({
             }),
           );
           await updateCodeSessionRuntime(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             context.codeTab.id,
             session.id,
             runtime,
@@ -10031,11 +10231,11 @@ export async function buildApp({
     "/api/code-tabs/:codeTabId",
     async (request, reply) => {
       const sessions = await repository.listCodeSessions(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.codeTabId,
       );
       const context = await repository.deleteCodeTab(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.codeTabId,
       );
       if (!context || !sessions) {
@@ -10064,7 +10264,7 @@ export async function buildApp({
       reply.send(
         browserListSchema.parse(
           await repository.listBrowsers(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             request.params.projectId,
           ),
         ),
@@ -10075,7 +10275,7 @@ export async function buildApp({
     "/api/browsers/:browserId/services",
     async (request, reply) => {
       const context = await repository.getRemoteSurfaceExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.browserId,
       );
       if (!context || context.surface.kind !== "browser") {
@@ -10106,13 +10306,13 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const source = await repository.getProjectSource(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       );
       if (!source) {
         return reply.code(404).send({ error: "Project source not found." });
       }
-      const worker = (await repository.listWorkers(LOCAL_USER_ID)).find(
+      const worker = (await repository.listWorkers(applicationOwnerId())).find(
         ({ workerId }) => workerId === source.workerId,
       );
       if (!worker?.remoteSurfaces.browser) {
@@ -10122,7 +10322,7 @@ export async function buildApp({
         });
       }
       const browser = await repository.createBrowser(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         input.data,
       );
@@ -10140,7 +10340,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const browser = await repository.updateBrowser(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.browserId,
         input.data,
       );
@@ -10154,12 +10354,12 @@ export async function buildApp({
     "/api/browsers/:browserId",
     async (request, reply) => {
       const context = await repository.getRemoteSurfaceExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.browserId,
       );
       if (
         !(await repository.deleteBrowser(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.browserId,
         ))
       ) {
@@ -10183,7 +10383,7 @@ export async function buildApp({
       reply.send(
         remoteDesktopListSchema.parse(
           await repository.listRemoteDesktops(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             request.params.projectId,
           ),
         ),
@@ -10194,7 +10394,7 @@ export async function buildApp({
     "/api/remote-desktops/:desktopId",
     async (request, reply) => {
       const desktop = await repository.getRemoteDesktop(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.desktopId,
       );
       return desktop
@@ -10211,7 +10411,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getRemoteSurfaceExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.desktopId,
       );
       if (!context || context.surface.kind !== "desktop") {
@@ -10222,7 +10422,7 @@ export async function buildApp({
         target: input.data.target,
       };
       const updated = await repository.updateRemoteSurface(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         context.surface.id,
         { configuration },
       );
@@ -10255,7 +10455,7 @@ export async function buildApp({
         );
       }
       const desktop = await repository.getRemoteDesktop(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         context.surface.id,
       );
       return desktop
@@ -10272,11 +10472,11 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const source = await repository.getProjectSource(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       );
       if (!source) return reply.code(404).send({ error: "Project not found." });
-      const worker = (await repository.listWorkers(LOCAL_USER_ID)).find(
+      const worker = (await repository.listWorkers(applicationOwnerId())).find(
         ({ workerId }) => workerId === source.workerId,
       );
       if (!worker) return reply.code(404).send({ error: "Worker not found." });
@@ -10306,7 +10506,7 @@ export async function buildApp({
           });
         }
         const desktop = await repository.createRemoteDesktop(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           desktopId,
           worker.workerId,
@@ -10330,7 +10530,7 @@ export async function buildApp({
       reply.send(
         remoteSurfaceListSchema.parse(
           await repository.listRemoteSurfaces(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             request.params.projectId,
           ),
         ),
@@ -10350,7 +10550,7 @@ export async function buildApp({
             "Create desktop surfaces through the managed Remote Desktop endpoint.",
         });
       }
-      const worker = (await repository.listWorkers(LOCAL_USER_ID)).find(
+      const worker = (await repository.listWorkers(applicationOwnerId())).find(
         ({ workerId }) => workerId === input.data.workerId,
       );
       if (!worker) return reply.code(404).send({ error: "Worker not found." });
@@ -10360,7 +10560,7 @@ export async function buildApp({
         });
       }
       const surface = await repository.createRemoteSurface(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         input.data,
       );
@@ -10384,7 +10584,7 @@ export async function buildApp({
         });
       }
       const surface = await repository.updateRemoteSurface(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.surfaceId,
         input.data,
       );
@@ -10399,7 +10599,7 @@ export async function buildApp({
       `/api/remote-surfaces/:surfaceId/${action}`,
       async (request, reply) => {
         const context = await repository.getRemoteSurfaceExecutionContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.surfaceId,
         );
         if (!context) {
@@ -10423,7 +10623,7 @@ export async function buildApp({
             action === "suspend" ? "suspended" : "active",
           );
           const updated = await repository.getRemoteSurfaceExecutionContext(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             context.surface.id,
           );
           return updated
@@ -10442,7 +10642,7 @@ export async function buildApp({
     "/api/remote-surfaces/:surfaceId",
     async (request, reply) => {
       const context = await repository.deleteRemoteSurface(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.surfaceId,
       );
       if (!context) {
@@ -10479,6 +10679,7 @@ export async function buildApp({
         socket.close(1008, "Origin not allowed");
         return;
       }
+      registerSessionSocket(socket, request);
       const viewport = remoteSurfaceViewportSchema.safeParse({
         width: Number(request.query.width ?? 1_280),
         height: Number(request.query.height ?? 720),
@@ -10533,7 +10734,7 @@ export async function buildApp({
 
       void (async () => {
         const context = await repository.getRemoteSurfaceExecutionContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.surfaceId,
         );
         if (!context) {
@@ -10550,7 +10751,7 @@ export async function buildApp({
         const desktopStream =
           context.surface.kind === "desktop"
             ? await repository
-                .getUserSettings(LOCAL_USER_ID)
+                .getUserSettings(applicationOwnerId())
                 .then((preferences) => ({
                   targetFps: preferences.desktopFrameRate,
                   quality: preferences.desktopStreamQuality,
@@ -10578,7 +10779,7 @@ export async function buildApp({
           config.remoteSurfaceWebRtc
             ? createRemoteSurfaceWebRtcConfiguration(
                 config.remoteSurfaceWebRtc,
-                LOCAL_USER_ID,
+                applicationOwnerId(),
               )
             : null;
         const cleanupRelay = surfaceRelay.bind(socket, {
@@ -10649,7 +10850,7 @@ export async function buildApp({
       reply.send(
         projectViewListSchema.parse(
           await repository.listProjectViews(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             request.params.projectId,
           ),
         ),
@@ -10670,7 +10871,7 @@ export async function buildApp({
         });
       }
       const view = await repository.createProjectView(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         input.data,
       );
@@ -10688,7 +10889,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const view = await repository.updateProjectView(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.viewId,
         input.data,
       );
@@ -10707,7 +10908,7 @@ export async function buildApp({
       }
       try {
         const view = await repository.updateProjectViewWorktree(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.viewId,
           input.data,
         );
@@ -10726,12 +10927,12 @@ export async function buildApp({
     "/api/project-views/:viewId",
     async (request, reply) => {
       const context = await repository.getRemoteSurfaceExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.viewId,
       );
       if (
         !(await repository.deleteProjectView(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.viewId,
         ))
       ) {
@@ -10757,7 +10958,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const explorer = await repository.createExplorer(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
         input.data,
       );
@@ -10775,7 +10976,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const explorer = await repository.updateExplorer(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.explorerId,
         input.data,
       );
@@ -10793,7 +10994,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const explorer = await repository.updateExplorerWorktree(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.explorerId,
         input.data,
       );
@@ -10807,7 +11008,7 @@ export async function buildApp({
     "/api/explorers/:explorerId",
     async (request, reply) =>
       (await repository.deleteExplorer(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.explorerId,
       ))
         ? reply.code(204).send()
@@ -10819,7 +11020,7 @@ export async function buildApp({
     Querystring: { path?: string };
   }>("/api/explorers/:explorerId/directory", async (request, reply) => {
     const context = await repository.getExplorerExecutionContext(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       request.params.explorerId,
     );
     if (!context) return reply.code(404).send({ error: "Explorer not found." });
@@ -10844,7 +11045,7 @@ export async function buildApp({
       return reply.code(400).send({ error: "A file path is required." });
     }
     const context = await repository.getExplorerExecutionContext(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       request.params.explorerId,
     );
     if (!context) return reply.code(404).send({ error: "Explorer not found." });
@@ -10869,7 +11070,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getExplorerExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.explorerId,
       );
       if (!context) {
@@ -10900,6 +11101,7 @@ export async function buildApp({
         socket.close(1008, "Origin not allowed");
         return;
       }
+      registerSessionSocket(socket, request);
       const attachmentId = randomUUID();
       let terminalId: string | null = null;
       let workerId: string | null = null;
@@ -10960,7 +11162,7 @@ export async function buildApp({
 
       void (async () => {
         const context = await repository.getTerminalExecutionContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.terminalId,
         );
         if (!context) {
@@ -10992,7 +11194,7 @@ export async function buildApp({
               } = { type: "shell" };
           if (context.linkedChatId) {
             const chat = await repository.getChatExecutionContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               context.linkedChatId,
             );
             const runtime = chat ? await runtimeForContext(chat) : null;
@@ -11061,7 +11263,7 @@ export async function buildApp({
     async (request, reply) => {
       try {
         const layout = await repository.tabLayouts.get(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
         );
         return layout
@@ -11085,7 +11287,7 @@ export async function buildApp({
       }
       try {
         const layout = await repository.tabLayouts.reorderGroups(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           input.data,
         );
@@ -11115,7 +11317,7 @@ export async function buildApp({
       }
       try {
         const layout = await repository.tabLayouts.reorderMembers(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           request.params.groupId,
           input.data,
@@ -11146,7 +11348,7 @@ export async function buildApp({
       }
       try {
         const layout = await repository.tabLayouts.moveMember(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.projectId,
           input.data,
         );
@@ -11175,7 +11377,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const chat = await repository.updateChat(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
         input.data,
       );
@@ -11194,7 +11396,7 @@ export async function buildApp({
       }
       try {
         const chat = await repository.updateChatWorktree(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.chatId,
           input.data,
         );
@@ -11211,7 +11413,7 @@ export async function buildApp({
     "/api/chats/:chatId/execution-lanes",
     async (request, reply) => {
       const lanes = await repository.listChatExecutionLanes(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       return reply.send(chatExecutionLaneListSchema.parse(lanes));
@@ -11228,7 +11430,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getChatExecutionLaneContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
         request.params.laneId,
       );
@@ -11260,7 +11462,7 @@ export async function buildApp({
           });
         }
         const released = await repository.releaseChatExecutionLane(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.chatId,
           request.params.laneId,
           input.data.returnToPrimary,
@@ -11269,7 +11471,7 @@ export async function buildApp({
           return reply.code(404).send({ error: "Execution lane not found." });
         }
         await appendLiveChatMessage(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.chatId,
           {
             role: "system",
@@ -11300,7 +11502,7 @@ export async function buildApp({
     "/api/chats/:chatId",
     async (request, reply) => {
       const result = await repository.deleteChat(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (result === "running") {
@@ -11321,7 +11523,7 @@ export async function buildApp({
       }
       try {
         const chat = await repository.forkChat(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           request.params.chatId,
           input.data,
         );
@@ -11343,7 +11545,7 @@ export async function buildApp({
     "/api/chats/:chatId/compact",
     async (request, reply) => {
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) {
@@ -11383,7 +11585,7 @@ export async function buildApp({
     "/api/chats/:chatId/interrupt",
     async (request, reply) => {
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) {
@@ -11427,7 +11629,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) {
@@ -11438,8 +11640,12 @@ export async function buildApp({
         !input.data.paused &&
         !bridge.isConnected(context.workerId) &&
         (context.threadId ||
-          (await repository.listQueuedPrompts(LOCAL_USER_ID, context.chatId))
-            .length > 0)
+          (
+            await repository.listQueuedPrompts(
+              applicationOwnerId(),
+              context.chatId,
+            )
+          ).length > 0)
       ) {
         return reply.code(503).send({
           error:
@@ -11462,7 +11668,7 @@ export async function buildApp({
       }
 
       const updated = await repository.setChatAutomationPaused(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         context.chatId,
         input.data.paused,
       );
@@ -11489,7 +11695,7 @@ export async function buildApp({
           await resumeChatAutomation(context.chatId);
         } catch (error) {
           await repository.setChatAutomationPaused(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             context.chatId,
             true,
           );
@@ -11518,7 +11724,7 @@ export async function buildApp({
     "/api/chats/:chatId/plan",
     async (request, reply) => {
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) {
@@ -11541,7 +11747,7 @@ export async function buildApp({
             const mode = chatPlanUpdateSchema.safeParse({ mode: result.mode });
             if (mode.success && mode.data.mode !== context.planMode) {
               await updateLiveChatPlanMode(
-                LOCAL_USER_ID,
+                applicationOwnerId(),
                 context.chatId,
                 mode.data.mode,
               );
@@ -11555,7 +11761,7 @@ export async function buildApp({
         }
       }
       const state = await repository.getChatPlanState(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         context.chatId,
       );
       return reply.send(chatPlanStateSchema.parse(state));
@@ -11570,7 +11776,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) {
@@ -11610,7 +11816,7 @@ export async function buildApp({
           runtime.routeId,
         );
         const state = await updateLiveChatPlanMode(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           context.chatId,
           nativeMode.mode,
         );
@@ -11629,14 +11835,14 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
       }
       const state = await repository.getChatPlanState(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         context.chatId,
       );
       if (!state?.question) {
@@ -11672,12 +11878,12 @@ export async function buildApp({
         const accepted = chatPlanAcceptedSchema.parse(result);
         if (accepted.requestKey) {
           const interaction = await repository.getAgentInteractionRequestByKey(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             accepted.requestKey,
           );
           if (interaction?.status === "pending") {
             await resolveLiveAgentInteractionRequest(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               interaction.id,
               {
                 idempotencyKey: `plan-answer:${accepted.requestKey}`,
@@ -11695,7 +11901,7 @@ export async function buildApp({
           }
         }
         const latest = await repository.getChatPlanState(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           context.chatId,
         );
         if (latest?.question?.id === state.question.id) {
@@ -11712,7 +11918,7 @@ export async function buildApp({
     "/api/chats/:chatId/goal",
     async (request, reply) => {
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) {
@@ -11755,7 +11961,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) {
@@ -11802,7 +12008,7 @@ export async function buildApp({
           runtime.routeId,
         );
         const updatedContext = await repository.getChatExecutionContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           context.chatId,
         );
         if (!updatedContext) throw new Error("Chat source not found.");
@@ -11831,7 +12037,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) {
@@ -11892,7 +12098,7 @@ export async function buildApp({
     "/api/chats/:chatId/goal",
     async (request, reply) => {
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) {
@@ -11927,7 +12133,7 @@ export async function buildApp({
     "/api/chats/:chatId/sync",
     async (request, reply) => {
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) {
@@ -11962,7 +12168,7 @@ export async function buildApp({
       let syncExecution = context;
       if (sync.status === "running" && !context.executionLaneId) {
         const acquired = await repository.startChatExecutionLane(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           context.chatId,
           "agent",
           "Linked Codex console turn",
@@ -11982,7 +12188,7 @@ export async function buildApp({
         for (const item of turn.items) {
           if (item.type === "userMessage") {
             await upsertLiveChatMessage(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               context.chatId,
               {
                 role: "user",
@@ -11993,7 +12199,7 @@ export async function buildApp({
             );
           } else if (item.type === "agentMessage") {
             await upsertLiveChatMessage(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               context.chatId,
               {
                 role: "assistant",
@@ -12021,7 +12227,7 @@ export async function buildApp({
               );
             }
             await upsertLiveChatMessage(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               context.chatId,
               {
                 role: "assistant",
@@ -12034,7 +12240,7 @@ export async function buildApp({
         }
         if (turn.status === "failed" || turn.status === "interrupted") {
           await upsertLiveChatMessage(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             context.chatId,
             {
               role: "system",
@@ -12078,7 +12284,7 @@ export async function buildApp({
     "/api/chats/:chatId/messages",
     async (request, reply) => {
       const messages = await repository.listMessages(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       return reply.send(chatMessageListSchema.parse(messages));
@@ -12089,7 +12295,7 @@ export async function buildApp({
     "/api/chats/:chatId/skills",
     async (request, reply) => {
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) return reply.code(404).send({ error: "Chat not found." });
@@ -12122,7 +12328,7 @@ export async function buildApp({
     Querystring: { refresh?: string };
   }>("/api/chats/:chatId/customizations", async (request, reply) => {
     const context = await repository.getChatExecutionContext(
-      LOCAL_USER_ID,
+      applicationOwnerId(),
       request.params.chatId,
     );
     if (!context) return reply.code(404).send({ error: "Chat not found." });
@@ -12154,7 +12360,7 @@ export async function buildApp({
     "/api/chats/:chatId/customizations/external-preview",
     async (request, reply) => {
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) return reply.code(404).send({ error: "Chat not found." });
@@ -12190,7 +12396,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) return reply.code(404).send({ error: "Chat not found." });
@@ -12227,7 +12433,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) return reply.code(404).send({ error: "Chat not found." });
@@ -12266,7 +12472,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) return reply.code(404).send({ error: "Chat not found." });
@@ -12305,7 +12511,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) return reply.code(404).send({ error: "Chat not found." });
@@ -12353,7 +12559,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) return reply.code(404).send({ error: "Chat not found." });
@@ -12385,7 +12591,7 @@ export async function buildApp({
     "/api/chats/:chatId/customizations/mcp-reload",
     async (request, reply) => {
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) return reply.code(404).send({ error: "Chat not found." });
@@ -12423,7 +12629,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) return reply.code(404).send({ error: "Chat not found." });
@@ -12468,7 +12674,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(importId.error.issues));
       }
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) return reply.code(404).send({ error: "Chat not found." });
@@ -12504,7 +12710,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const message = await appendLiveChatMessage(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
         input.data,
       );
@@ -12519,7 +12725,7 @@ export async function buildApp({
     "/api/chats/:chatId/attachments",
     async (request, reply) => {
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) return reply.code(404).send({ error: "Chat not found." });
@@ -12594,7 +12800,7 @@ export async function buildApp({
             ? request.body.toString("utf8", 0, 16_000).slice(0, 8_000)
             : null;
         const attachment = await repository.createChatAttachment(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           context.chatId,
           {
             id: attachmentId,
@@ -12632,7 +12838,7 @@ export async function buildApp({
     "/api/attachments/:attachmentId/content",
     async (request, reply) => {
       const attachment = await repository.getChatAttachment(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.attachmentId,
       );
       if (!attachment) {
@@ -12688,7 +12894,7 @@ export async function buildApp({
     "/api/attachments/:attachmentId",
     async (request, reply) => {
       const attachment = await repository.getChatAttachment(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.attachmentId,
       );
       if (!attachment) {
@@ -12701,7 +12907,10 @@ export async function buildApp({
           attachmentId: attachment.id,
         });
       }
-      await repository.deleteChatAttachment(LOCAL_USER_ID, attachment.id);
+      await repository.deleteChatAttachment(
+        applicationOwnerId(),
+        attachment.id,
+      );
       return reply.code(204).send();
     },
   );
@@ -12714,7 +12923,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const result = await repository.setChatModel(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
         input.data,
       );
@@ -12729,7 +12938,7 @@ export async function buildApp({
     "/api/chats/:chatId/permission-profiles",
     async (request, reply) => {
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) {
@@ -12747,7 +12956,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) {
@@ -12778,7 +12987,7 @@ export async function buildApp({
           .send({ error: "That permission profile is not allowed here." });
       }
       const latest = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         context.chatId,
       );
       if (!latest) {
@@ -12790,13 +12999,13 @@ export async function buildApp({
           .send({ error: "Wait for the active turn or approval to finish." });
       }
       const updated = await repository.setChatPermissionProfile(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         context.chatId,
         profile.id,
       );
       if (!updated) {
         const current = await repository.getChatExecutionContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           context.chatId,
         );
         return current
@@ -12806,7 +13015,7 @@ export async function buildApp({
           : reply.code(404).send({ error: "Chat source not found." });
       }
       const refreshed = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         context.chatId,
       );
       if (!refreshed) {
@@ -12829,7 +13038,7 @@ export async function buildApp({
       return reply.send(
         queuedPromptListSchema.parse(
           await repository.listQueuedPrompts(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             request.params.chatId,
           ),
         ),
@@ -12845,7 +13054,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) return reply.code(404).send({ error: "Chat not found." });
@@ -12861,7 +13070,7 @@ export async function buildApp({
         return reply.code(409).send({ error: errorMessage(error) });
       }
       const prompt = await createLiveQueuedPrompt(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         context.chatId,
         input.data,
         modelId,
@@ -12883,7 +13092,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const reordered = await reorderLiveQueuedPrompts(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
         input.data,
       );
@@ -12901,7 +13110,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const current = await repository.getQueuedPrompt(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.promptId,
       );
       if (!current) {
@@ -12911,7 +13120,7 @@ export async function buildApp({
         Awaited<ReturnType<typeof resolvePromptAttachments>> | undefined;
       if (input.data.attachmentIds !== undefined) {
         const context = await repository.getChatExecutionContext(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           current.chatId,
         );
         if (!context) return reply.code(404).send({ error: "Chat not found." });
@@ -12933,7 +13142,7 @@ export async function buildApp({
           .send({ error: "A prompt needs text or at least one attachment." });
       }
       const prompt = await updateLiveQueuedPrompt(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.promptId,
         input.data,
         attachments?.map((attachment) =>
@@ -12952,7 +13161,7 @@ export async function buildApp({
     "/api/queued-prompts/:promptId",
     async (request, reply) => {
       const prompt = await deleteLiveQueuedPrompt(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.promptId,
       );
       return prompt
@@ -12965,14 +13174,14 @@ export async function buildApp({
     "/api/queued-prompts/:promptId/steer",
     async (request, reply) => {
       const queued = await repository.getQueuedPrompt(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.promptId,
       );
       if (!queued) {
         return reply.code(404).send({ error: "Queued prompt not found." });
       }
       let context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         queued.chatId,
       );
       if (!context) return reply.code(404).send({ error: "Chat not found." });
@@ -13017,7 +13226,7 @@ export async function buildApp({
             provider: runtime.provider,
           });
           const appended = await appendLiveChatMessage(
-            LOCAL_USER_ID,
+            applicationOwnerId(),
             context.chatId,
             {
               role: "user",
@@ -13044,12 +13253,16 @@ export async function buildApp({
           message = appended;
         } else {
           if (queued.worktreeId && queued.worktreeId !== context.worktreeId) {
-            await repository.updateChatWorktree(LOCAL_USER_ID, context.chatId, {
-              worktreeId: queued.worktreeId,
-              mode: context.worktreeMode,
-            });
+            await repository.updateChatWorktree(
+              applicationOwnerId(),
+              context.chatId,
+              {
+                worktreeId: queued.worktreeId,
+                mode: context.worktreeMode,
+              },
+            );
             const selected = await repository.getChatExecutionContext(
-              LOCAL_USER_ID,
+              applicationOwnerId(),
               context.chatId,
             );
             if (!selected) throw new Error("Worktree could not be selected.");
@@ -13063,7 +13276,7 @@ export async function buildApp({
             idempotencyKey: `queue:${queued.id}`,
           });
         }
-        await deleteLiveQueuedPrompt(LOCAL_USER_ID, queued.id);
+        await deleteLiveQueuedPrompt(applicationOwnerId(), queued.id);
         return reply.send(
           chatPromptSteerResultSchema.parse({ steered: true, message }),
         );
@@ -13081,14 +13294,14 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const context = await repository.getChatExecutionContext(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.chatId,
       );
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found" });
       }
       const existing = await repository.getMessageByIdempotencyKey(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         context.chatId,
         input.data.idempotencyKey,
       );
@@ -13113,7 +13326,7 @@ export async function buildApp({
           return reply.code(409).send({ error: errorMessage(error) });
         }
         const prompt = await createLiveQueuedPrompt(
-          LOCAL_USER_ID,
+          applicationOwnerId(),
           context.chatId,
           { ...input.data, modelId, frozen: false, worktreeId: null },
           modelId,
@@ -13164,9 +13377,14 @@ export async function buildApp({
       if (!request.query.workerId) {
         return reply.code(400).send({ error: "workerId is required." });
       }
+      const ownerId = await workerOwnerId(request.query.workerId);
+      if (!ownerId) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
       return reply.send(
         projectAutomationListSchema.parse(
           await repository.projectAutomations.listForWorker(
+            ownerId,
             request.query.workerId,
           ),
         ),
@@ -13188,125 +13406,132 @@ export async function buildApp({
       if (!request.query.workerId) {
         return reply.code(400).send({ error: "workerId is required." });
       }
+      const ownerId = await workerOwnerId(request.query.workerId);
+      if (!ownerId) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
       const input = projectAutomationDispatchRequestSchema.safeParse(
         request.body,
       );
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const claim = await repository.projectAutomations.claimDue(
-        request.query.workerId,
-        request.params.automationId,
-        input.data,
-      );
-      if (!claim) {
-        const current = await repository.projectAutomations.get(
-          LOCAL_USER_ID,
+      return runAsOwner(ownerId, async () => {
+        const claim = await repository.projectAutomations.claimDue(
+          ownerId,
+          request.query.workerId!,
           request.params.automationId,
+          input.data,
         );
-        return reply.send(
-          projectAutomationDispatchResultSchema.parse({
-            accepted: false,
-            status: "skipped",
-            nextRunAt: current?.nextRunAt ?? null,
-          }),
-        );
-      }
-
-      const automation = claim.automation;
-      const idempotencyKey = `automation:${automation.id}:${input.data.scheduledFor}`;
-      try {
-        const context = await repository.getChatExecutionContext(
-          LOCAL_USER_ID,
-          automation.chatId,
-        );
-        if (!context || context.workerId !== request.query.workerId) {
-          throw new Error("The automation target moved to another worker.");
-        }
-        if (automation.condition) {
-          const githubContext =
-            automation.condition.type === "open-issues"
-              ? await repository.getGithubProjectExecutionContext(
-                  LOCAL_USER_ID,
-                  automation.projectId,
-                )
-              : null;
-          const condition = projectAutomationConditionResultSchema.parse(
-            await bridge.request(
-              context.workerId,
-              {
-                type: "automation.condition.evaluate",
-                condition: automation.condition,
-                cwd: context.cwd,
-                repository: githubContext?.nameWithOwner ?? null,
-              },
-              { timeoutMs: 45_000 },
-            ),
+        if (!claim) {
+          const current = await repository.projectAutomations.get(
+            ownerId,
+            request.params.automationId,
           );
-          if (!condition.allowed) {
-            await repository.projectAutomations.finishDispatch(
-              automation.id,
-              "skipped",
-            );
-            return reply.code(202).send(
-              projectAutomationDispatchResultSchema.parse({
-                accepted: true,
-                status: "skipped",
-                nextRunAt: claim.nextRunAt?.toISOString() ?? null,
-              }),
-            );
-          }
+          return reply.send(
+            projectAutomationDispatchResultSchema.parse({
+              accepted: false,
+              status: "skipped",
+              nextRunAt: current?.nextRunAt ?? null,
+            }),
+          );
         }
-        let status: "started" | "queued";
-        if (context.automationPaused || chatIsExecuting(context.status)) {
-          const modelId = await resolveModelId(context, undefined);
-          const prompt = await createLiveQueuedPrompt(
-            LOCAL_USER_ID,
-            context.chatId,
-            {
+
+        const automation = claim.automation;
+        const idempotencyKey = `automation:${automation.id}:${input.data.scheduledFor}`;
+        try {
+          const context = await repository.getChatExecutionContext(
+            ownerId,
+            automation.chatId,
+          );
+          if (!context || context.workerId !== request.query.workerId) {
+            throw new Error("The automation target moved to another worker.");
+          }
+          if (automation.condition) {
+            const githubContext =
+              automation.condition.type === "open-issues"
+                ? await repository.getGithubProjectExecutionContext(
+                    ownerId,
+                    automation.projectId,
+                  )
+                : null;
+            const condition = projectAutomationConditionResultSchema.parse(
+              await bridge.request(
+                context.workerId,
+                {
+                  type: "automation.condition.evaluate",
+                  condition: automation.condition,
+                  cwd: context.cwd,
+                  repository: githubContext?.nameWithOwner ?? null,
+                },
+                { timeoutMs: 45_000 },
+              ),
+            );
+            if (!condition.allowed) {
+              await repository.projectAutomations.finishDispatch(
+                automation.id,
+                "skipped",
+              );
+              return reply.code(202).send(
+                projectAutomationDispatchResultSchema.parse({
+                  accepted: true,
+                  status: "skipped",
+                  nextRunAt: claim.nextRunAt?.toISOString() ?? null,
+                }),
+              );
+            }
+          }
+          let status: "started" | "queued";
+          if (context.automationPaused || chatIsExecuting(context.status)) {
+            const modelId = await resolveModelId(context, undefined);
+            const prompt = await createLiveQueuedPrompt(
+              ownerId,
+              context.chatId,
+              {
+                text: automation.prompt,
+                attachmentIds: [],
+                mode: "default",
+                idempotencyKey,
+                modelId,
+                frozen: false,
+                worktreeId: null,
+              },
+              modelId,
+            );
+            if (!prompt) throw new Error("The target chat is unavailable.");
+            if (!context.automationPaused) {
+              void dispatchNextQueuedPrompt(context.chatId);
+            }
+            status = "queued";
+          } else {
+            await beginPromptTurn(context, {
               text: automation.prompt,
               attachmentIds: [],
               mode: "default",
               idempotencyKey,
-              modelId,
-              frozen: false,
-              worktreeId: null,
-            },
-            modelId,
-          );
-          if (!prompt) throw new Error("The target chat is unavailable.");
-          if (!context.automationPaused) {
-            void dispatchNextQueuedPrompt(context.chatId);
+            });
+            status = "started";
           }
-          status = "queued";
-        } else {
-          await beginPromptTurn(context, {
-            text: automation.prompt,
-            attachmentIds: [],
-            mode: "default",
-            idempotencyKey,
-          });
-          status = "started";
-        }
-        await repository.projectAutomations.finishDispatch(
-          automation.id,
-          status,
-        );
-        return reply.code(202).send(
-          projectAutomationDispatchResultSchema.parse({
-            accepted: true,
+          await repository.projectAutomations.finishDispatch(
+            automation.id,
             status,
-            nextRunAt: claim.nextRunAt?.toISOString() ?? null,
-          }),
-        );
-      } catch (error) {
-        await repository.projectAutomations.finishDispatch(
-          automation.id,
-          "failed",
-          errorMessage(error),
-        );
-        return reply.code(409).send({ error: errorMessage(error) });
-      }
+          );
+          return reply.code(202).send(
+            projectAutomationDispatchResultSchema.parse({
+              accepted: true,
+              status,
+              nextRunAt: claim.nextRunAt?.toISOString() ?? null,
+            }),
+          );
+        } catch (error) {
+          await repository.projectAutomations.finishDispatch(
+            automation.id,
+            "failed",
+            errorMessage(error),
+          );
+          return reply.code(409).send({ error: errorMessage(error) });
+        }
+      });
     },
   );
 
@@ -13321,45 +13546,27 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const attribution = {
-        executionLaneId: input.data.executionLaneId,
-        worktreeId: "",
-      };
-      try {
-        const context = await repository.getChatExecutionContext(
-          LOCAL_USER_ID,
-          input.data.chatId,
-        );
-        if (!context) throw new Error("Chat execution context not found.");
-        attribution.worktreeId = context.worktreeId;
-        const result = await executeAgentWorktreeTool(input.data);
-        await upsertLiveChatMessage(
-          LOCAL_USER_ID,
-          input.data.chatId,
-          {
-            role: "assistant",
-            content: [
-              {
-                type: "activity",
-                activity: {
-                  type: "worktree",
-                  id: `worktree-tool:${input.data.callId}`,
-                  operation: input.data.tool,
-                  status: "completed",
-                  summary: result.summary,
-                  worktreeId: result.worktreeId,
-                },
-              },
-            ],
-            idempotencyKey: `worktree-tool:${input.data.callId}`,
-          },
-          attribution,
-        );
-        return reply.send(agentWorktreeToolResultSchema.parse(result));
-      } catch (error) {
-        if (attribution.worktreeId) {
+      const ownerId = await workerOwnerId(input.data.workerId);
+      if (!ownerId) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
+      return runAsOwner(ownerId, async () => {
+        const attribution = {
+          executionLaneId: input.data.executionLaneId,
+          worktreeId: "",
+        };
+        try {
+          const context = await repository.getChatExecutionContext(
+            ownerId,
+            input.data.chatId,
+          );
+          if (!context || context.workerId !== input.data.workerId) {
+            throw new Error("Chat execution context not found.");
+          }
+          attribution.worktreeId = context.worktreeId;
+          const result = await executeAgentWorktreeTool(input.data);
           await upsertLiveChatMessage(
-            LOCAL_USER_ID,
+            ownerId,
             input.data.chatId,
             {
               role: "assistant",
@@ -13370,9 +13577,9 @@ export async function buildApp({
                     type: "worktree",
                     id: `worktree-tool:${input.data.callId}`,
                     operation: input.data.tool,
-                    status: "failed",
-                    summary: errorMessage(error),
-                    worktreeId: null,
+                    status: "completed",
+                    summary: result.summary,
+                    worktreeId: result.worktreeId,
                   },
                 },
               ],
@@ -13380,15 +13587,41 @@ export async function buildApp({
             },
             attribution,
           );
+          return reply.send(agentWorktreeToolResultSchema.parse(result));
+        } catch (error) {
+          if (attribution.worktreeId) {
+            await upsertLiveChatMessage(
+              ownerId,
+              input.data.chatId,
+              {
+                role: "assistant",
+                content: [
+                  {
+                    type: "activity",
+                    activity: {
+                      type: "worktree",
+                      id: `worktree-tool:${input.data.callId}`,
+                      operation: input.data.tool,
+                      status: "failed",
+                      summary: errorMessage(error),
+                      worktreeId: null,
+                    },
+                  },
+                ],
+                idempotencyKey: `worktree-tool:${input.data.callId}`,
+              },
+              attribution,
+            );
+          }
+          const status =
+            error instanceof WorkerUnavailableError
+              ? 503
+              : error instanceof ExecutionLaneConflictError
+                ? 409
+                : 400;
+          return reply.code(status).send({ error: errorMessage(error) });
         }
-        const status =
-          error instanceof WorkerUnavailableError
-            ? 503
-            : error instanceof ExecutionLaneConflictError
-              ? 409
-              : 400;
-        return reply.code(status).send({ error: errorMessage(error) });
-      }
+      });
     },
   );
 
@@ -13464,6 +13697,8 @@ export async function buildApp({
 
   app.addHook("onClose", async () => {
     livePublishingEnabled = false;
+    clearInterval(sessionSocketValidationTimer);
+    closeSessionSockets(() => true, "Server is shutting down");
     clearInterval(agentInteractionExpiryTimer);
     clearInterval(workflowGateExpiryTimer);
     clearInterval(workflowScheduleTimer);

@@ -171,9 +171,8 @@ describe.sequential("project automation API", () => {
       url: "/api/internal/workers/automations?workerId=other-worker",
       headers: { authorization: "Bearer test-worker-token" },
     });
-    expect(
-      projectAutomationListSchema.parse(otherWorkerResponse.json()),
-    ).toEqual([]);
+    expect(otherWorkerResponse.statusCode).toBe(404);
+    expect(otherWorkerResponse.json()).toEqual({ error: "Worker not found." });
   });
 
   it("claims a due occurrence once and queues its prompt durably", async () => {

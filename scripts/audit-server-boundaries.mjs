@@ -43,6 +43,7 @@ function ownerEvidence(path, text) {
   if (path.startsWith("/api/workflow-hooks/")) return "webhook-credential";
   if (path.startsWith("/api/internal/")) return "legacy-worker-token";
   if (
+    text.includes("applicationOwnerId(") ||
     text.includes("principalOwnerId(") ||
     text.includes("request.principal")
   ) {
@@ -198,8 +199,13 @@ async function repositoryMethodInventory() {
       const start = match.index + match[0].lastIndexOf("(");
       const end = matchingDelimiter(sourceText, start, "(", ")");
       const parameters = sourceText.slice(start + 1, end);
+      const bodyStart = sourceText.indexOf("{", end);
+      const bodyEnd = matchingDelimiter(sourceText, bodyStart, "{", "}");
+      const body = sourceText.slice(bodyStart + 1, bodyEnd);
       const ownerEvidence = /\bownerId\b/u.test(parameters)
-        ? "explicit-owner"
+        ? /\bownerId\b/u.test(body)
+          ? "explicit-owner"
+          : "owner-parameter-unused"
         : /\bworkerId\b/u.test(parameters)
           ? "worker-scoped"
           : /^(ensureLocalIdentity|getOrCreateServerId|reset|expire)/u.test(
@@ -261,6 +267,7 @@ async function buildInventory() {
   const repositoryOwnerEvidence = Object.fromEntries(
     [
       "explicit-owner",
+      "owner-parameter-unused",
       "worker-scoped",
       "system-lifecycle",
       "delegated-or-missing-review",
@@ -313,7 +320,8 @@ async function buildInventory() {
         boundary: "capability-token",
         implementation: "cantrip_server/src/code/tunnel.ts",
         name: "Cantrip Code HTTP/WebSocket surface",
-        ownerBinding: "attachment owner, worker, Code tab, and editor session",
+        ownerBinding:
+          "attachment owner, authenticated user session, worker, Code tab, and editor session",
       },
       {
         boundary: "capability-token",
@@ -337,7 +345,8 @@ async function buildInventory() {
         boundary: "application-principal",
         implementation: "cantrip_server/src/live/hub.ts",
         name: "Application invalidation and replay stream",
-        ownerBinding: "request principal and authorized subscription scope",
+        ownerBinding:
+          "request principal, active session, owner-private cursor, and authorized subscription scope",
       },
     ],
   };

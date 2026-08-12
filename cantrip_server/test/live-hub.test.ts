@@ -149,6 +149,7 @@ describe("AppLiveHub", () => {
     ).toHaveLength(2);
 
     hub.publish({
+      ownerId: "owner-one",
       scope: { kind: "project", projectId: "owned-project" },
       resource: "project",
       action: "updated",
@@ -157,6 +158,7 @@ describe("AppLiveHub", () => {
       payload: null,
     });
     hub.publish({
+      ownerId: "owner-one",
       scope: { kind: "project", projectId: "other-project" },
       resource: "project",
       action: "updated",
@@ -204,6 +206,7 @@ describe("AppLiveHub", () => {
   it("replays matching retained events after a same-epoch cursor", async () => {
     const hub = new AppLiveHub({ epoch: "epoch-replay" });
     hub.publish({
+      ownerId: "owner-one",
       scope: currentUserScope,
       resource: "settings",
       action: "updated",
@@ -212,6 +215,7 @@ describe("AppLiveHub", () => {
       payload: { theme: "dark" },
     });
     hub.publish({
+      ownerId: "owner-one",
       scope: { kind: "project", projectId: "project-two" },
       resource: "project",
       action: "updated",
@@ -220,6 +224,7 @@ describe("AppLiveHub", () => {
       payload: null,
     });
     hub.publish({
+      ownerId: "owner-one",
       scope: currentUserScope,
       resource: "worker",
       action: "status",
@@ -271,6 +276,7 @@ describe("AppLiveHub", () => {
     });
     for (let index = 1; index <= 3; index += 1) {
       hub.publish({
+        ownerId: "owner-one",
         scope: currentUserScope,
         resource: "settings",
         action: "updated",
@@ -316,6 +322,7 @@ describe("AppLiveHub", () => {
       replayedCount: 0,
     });
     hub.publish({
+      ownerId: "owner-one",
       scope: currentUserScope,
       resource: "settings",
       action: "updated",
@@ -420,6 +427,7 @@ describe("AppLiveHub", () => {
 
     socket.bufferedAmount = 500;
     hub.publish({
+      ownerId: "owner-one",
       scope: currentUserScope,
       resource: "settings",
       action: "invalidated",
@@ -448,23 +456,34 @@ describe("AppLiveHub", () => {
       hub.attach(socket, {
         ownerId: projectId,
         authorizeScope: (scope) =>
-          scope.kind === "project" && scope.projectId === projectId,
+          scope.kind === "current-user" ||
+          (scope.kind === "project" && scope.projectId === projectId),
       });
       socket.receive(initialize());
       socket.receive({
         type: "subscribe",
         requestId: `subscribe-${projectId}`,
-        scopes: [{ kind: "project", projectId }],
+        scopes: [currentUserScope, { kind: "project", projectId }],
       });
     }
     await settle();
 
     for (const projectId of ["project-one", "project-two"]) {
       hub.publish({
+        ownerId: projectId,
         scope: { kind: "project", projectId },
         resource: "project",
         action: "updated",
         entityId: projectId,
+        revision: null,
+        payload: null,
+      });
+      hub.publish({
+        ownerId: projectId,
+        scope: currentUserScope,
+        resource: "settings",
+        action: "updated",
+        entityId: null,
         revision: null,
         payload: null,
       });
@@ -474,17 +493,59 @@ describe("AppLiveHub", () => {
       expect.objectContaining({
         scope: { kind: "project", projectId: "project-one" },
       }),
+      expect.objectContaining({ scope: currentUserScope }),
     ]);
     expect(second.sent.filter(({ type }) => type === "event")).toEqual([
       expect.objectContaining({
         scope: { kind: "project", projectId: "project-two" },
       }),
+      expect.objectContaining({ scope: currentUserScope }),
     ]);
     expect(hub.stats()).toMatchObject({
       acceptedConnectionCount: 2,
       connectionCount: 2,
-      deliveredEventCount: 2,
+      deliveredEventCount: 4,
     });
+    hub.close();
+  });
+
+  it("closes revoked sessions and revalidates them before accepting frames", async () => {
+    const hub = new AppLiveHub({ epoch: "session-validation" });
+    let active = true;
+    const first = new FakeSocket();
+    hub.attach(first, {
+      ownerId: "owner-one",
+      sessionId: "session-one",
+      authorizeScope: () => true,
+      isActive: () => active,
+    });
+    first.receive(initialize());
+    await settle();
+    expect(first.closeCode).toBeUndefined();
+
+    active = false;
+    first.receive({ type: "ping", nonce: "after-revocation" });
+    await settle();
+    expect(first.closeCode).toBe(1008);
+    expect(first.closeReason).toContain("no longer active");
+
+    const second = new FakeSocket();
+    const third = new FakeSocket();
+    for (const [socket, sessionId, ownerId] of [
+      [second, "session-two", "owner-one"],
+      [third, "session-three", "owner-two"],
+    ] as const) {
+      hub.attach(socket, {
+        ownerId,
+        sessionId,
+        authorizeScope: () => true,
+      });
+    }
+    expect(hub.revokeSession("session-two")).toBe(1);
+    expect(second.closeCode).toBe(1008);
+    expect(third.closeCode).toBeUndefined();
+    expect(hub.revokeOwner("owner-two")).toBe(1);
+    expect(third.closeCode).toBe(1008);
     hub.close();
   });
 

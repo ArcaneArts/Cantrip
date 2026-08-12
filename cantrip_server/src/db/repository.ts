@@ -100,6 +100,7 @@ import {
   asc,
   desc,
   eq,
+  exists,
   gt,
   gte,
   inArray,
@@ -1165,6 +1166,27 @@ export class ServerRepository {
     };
   }
 
+  async isUserSessionActive(
+    sessionId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const rows = await this.database
+      .select({ id: schema.userSessions.id })
+      .from(schema.userSessions)
+      .innerJoin(schema.users, eq(schema.users.id, schema.userSessions.userId))
+      .where(
+        and(
+          eq(schema.userSessions.id, sessionId),
+          eq(schema.userSessions.userId, userId),
+          isNull(schema.userSessions.revokedAt),
+          gt(schema.userSessions.expiresAt, new Date()),
+          eq(schema.users.status, "active"),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
   async rotateSessionCsrfToken(
     sessionId: string,
     csrfTokenHash: string,
@@ -2103,6 +2125,32 @@ export class ServerRepository {
       .where(eq(schema.workers.ownerId, ownerId))
       .orderBy(asc(schema.workers.name));
     return rows.map(toWorkerSummary);
+  }
+
+  async getWorker(
+    ownerId: string,
+    workerId: string,
+  ): Promise<WorkerSummary | null> {
+    const rows = await this.database
+      .select()
+      .from(schema.workers)
+      .where(
+        and(
+          eq(schema.workers.id, workerId),
+          eq(schema.workers.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? toWorkerSummary(rows[0]) : null;
+  }
+
+  async getWorkerOwnerId(workerId: string): Promise<string | null> {
+    const rows = await this.database
+      .select({ ownerId: schema.workers.ownerId })
+      .from(schema.workers)
+      .where(eq(schema.workers.id, workerId))
+      .limit(1);
+    return rows[0]?.ownerId ?? null;
   }
 
   async onlineWorkerCount(ownerId: string): Promise<number> {
@@ -7364,6 +7412,7 @@ export class ServerRepository {
   }
 
   async setMessageModelRoute(
+    ownerId: string,
     messageId: string,
     modelId: string,
     runtime: ModelRuntime,
@@ -7377,7 +7426,24 @@ export class ServerRepository {
         providerName: runtime.provider.name,
         providerModelName: runtime.model.name,
       })
-      .where(eq(schema.chatMessages.id, messageId))
+      .where(
+        and(
+          eq(schema.chatMessages.id, messageId),
+          exists(
+            this.database
+              .select({ id: schema.chats.id })
+              .from(schema.chats)
+              .innerJoin(
+                schema.projects,
+                and(
+                  eq(schema.projects.id, schema.chats.projectId),
+                  eq(schema.projects.ownerId, ownerId),
+                ),
+              )
+              .where(eq(schema.chats.id, schema.chatMessages.chatId)),
+          ),
+        ),
+      )
       .returning();
     return rows[0] ? toChatMessage(rows[0]) : null;
   }

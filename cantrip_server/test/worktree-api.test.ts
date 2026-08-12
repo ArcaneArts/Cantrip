@@ -1875,8 +1875,8 @@ describe.sequential("server worktree control plane", () => {
       headers: { authorization: `Bearer ${config.workerToken}` },
       payload: { ...payload, callId: "spoofed-call", workerId: "other-worker" },
     });
-    expect(spoofed.statusCode).toBe(409);
-    expect(spoofed.json().error).toContain("active chat lane");
+    expect(spoofed.statusCode).toBe(404);
+    expect(spoofed.json().error).toBe("Worker not found.");
     await database.repository.finishChatExecutionLane(
       chat.id,
       execution!.executionLaneId,
