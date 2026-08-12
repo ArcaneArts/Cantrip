@@ -39,7 +39,7 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
     case "settings":
       return [["settings"]];
     case "worker":
-      return [["workers"], ["chat-sync"]];
+      return [["workers"], ["worker-management"], ["chat-sync"]];
     case "project":
       return projectId
         ? [["projects"], ["project-tab-layout", projectId]]
@@ -181,6 +181,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["server-bootstrap"],
         ["settings"],
         ["workers"],
+        ["worker-management"],
         ["projects"],
         ["workflows"],
       ];

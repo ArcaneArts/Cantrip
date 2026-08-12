@@ -117,7 +117,8 @@ attachments; it does not expose application APIs or accept Cantrip cookies.
 ## Standalone worker
 
 The worker makes an outbound connection to `CANTRIP_SERVER_URL`. Generate a
-short-lived link code as a signed-in user, set it once as
+short-lived link code from Settings → Workers as a signed-in user, copy the
+generated POSIX or PowerShell pairing command, and set the code once as
 `CANTRIP_WORKER_ENROLLMENT_CODE`, and configure a display name plus durable
 `CANTRIP_WORKER_DATA_DIR`. The worker creates a stable local identity, exchanges
 the single-use code, and stores its unique credential in
@@ -131,6 +132,14 @@ its operating system and architecture. GitHub CLI, repository files,
 credentials, terminals, browsers, and worktrees remain on the worker machine.
 The legacy shared worker token is accepted only by anonymous loopback
 `pnpm-dev` and embedded Tauri bootstraps.
+
+Remote workers are managed from the same settings page. Renaming is stored as
+a server-side display alias, credential rotation updates an online packaged
+worker before reconnecting, and an offline rotation shows the replacement only
+once for manual installation. Unlinking revokes all active credentials while
+retaining server-owned project and conversation metadata. Pairing the same
+worker identity again restores those associations. Internal desktop/dev
+workers are labeled and cannot be renamed or unlinked.
 
 `CANTRIP_CODE_IDLE_TIMEOUT_MS` controls how long an unattached Code session
 keeps its editor process warm (30 minutes by default). Active tunnel streams,

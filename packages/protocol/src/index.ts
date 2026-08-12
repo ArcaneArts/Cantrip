@@ -285,6 +285,30 @@ export const workerSummarySchema = workerHeartbeatSchema.extend({
 
 export const workerListSchema = z.array(workerSummarySchema);
 
+export const workerManagementSourceSchema = z.object({
+  projectId: z.string().uuid(),
+  nameWithOwner: z.string().min(1),
+  displayPath: z.string().min(1),
+});
+
+export const workerManagementSummarySchema = workerSummarySchema.extend({
+  runtimeName: z.string().min(1),
+  internal: z.boolean(),
+  editable: z.boolean(),
+  removable: z.boolean(),
+  credentialCount: z.number().int().nonnegative(),
+  activeCredentialCount: z.number().int().nonnegative(),
+  sources: z.array(workerManagementSourceSchema),
+});
+
+export const workerManagementListSchema = z.array(
+  workerManagementSummarySchema,
+);
+
+export const workerUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+});
+
 export const workerCredentialScopeSchema = z.enum([
   "worker:connect",
   "worker:heartbeat",
@@ -307,9 +331,17 @@ export const workerEnrollmentCodeCreateSchema = z.object({
 });
 
 export const workerEnrollmentCodeResultSchema = z.object({
+  id: z.string().uuid(),
   code: workerEnrollmentCodeSchema,
   label: z.string().min(1).max(120).nullable(),
   expiresAt: z.string().datetime({ offset: true }),
+});
+
+export const workerEnrollmentCodeStatusSchema = z.object({
+  id: z.string().uuid(),
+  label: z.string().min(1).max(120).nullable(),
+  expiresAt: z.string().datetime({ offset: true }),
+  status: z.enum(["pending", "paired", "expired"]),
 });
 
 export const workerCredentialSummarySchema = z.object({
@@ -347,6 +379,7 @@ export const workerCredentialRotateSchema = z.object({
 export const workerCredentialRotateResultSchema = z.object({
   credential: workerCredentialSecretSchema,
   credentialSummary: workerCredentialSummarySchema,
+  delivered: z.boolean().default(false),
 });
 
 export const skillSummarySchema = z.object({
@@ -5361,6 +5394,10 @@ export const workerProjectShareOpenResultSchema = z.object({
 
 export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
+    type: z.literal("worker.credential.rotate"),
+    credential: workerCredentialSecretSchema,
+  }),
+  z.object({
     type: z.literal("codex.auth.status"),
     providerId: z.string().min(1),
   }),
@@ -6515,12 +6552,22 @@ export type CodexRuntimeFeature = z.infer<typeof codexRuntimeFeatureSchema>;
 export type CodexRuntimeReport = z.infer<typeof codexRuntimeReportSchema>;
 export type WorkerHeartbeat = z.infer<typeof workerHeartbeatSchema>;
 export type WorkerSummary = z.infer<typeof workerSummarySchema>;
+export type WorkerManagementSource = z.infer<
+  typeof workerManagementSourceSchema
+>;
+export type WorkerManagementSummary = z.infer<
+  typeof workerManagementSummarySchema
+>;
+export type WorkerUpdate = z.infer<typeof workerUpdateSchema>;
 export type WorkerCredentialScope = z.infer<typeof workerCredentialScopeSchema>;
 export type WorkerEnrollmentCodeCreate = z.infer<
   typeof workerEnrollmentCodeCreateSchema
 >;
 export type WorkerEnrollmentCodeResult = z.infer<
   typeof workerEnrollmentCodeResultSchema
+>;
+export type WorkerEnrollmentCodeStatus = z.infer<
+  typeof workerEnrollmentCodeStatusSchema
 >;
 export type WorkerCredentialSummary = z.infer<
   typeof workerCredentialSummarySchema

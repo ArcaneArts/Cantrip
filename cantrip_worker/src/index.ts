@@ -19,6 +19,7 @@ import { discoverCantripCode } from "./code/installation.js";
 import { CodeSupervisor } from "./code/supervisor.js";
 import { CodeTunnelProxy } from "./code/tunnel-proxy.js";
 import { readWorkerConfig } from "./config.js";
+import { saveWorkerCredential } from "./credential-store.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
 import { DesktopApplicationIconStore } from "./desktop/desktop-icons.js";
 import {
@@ -216,6 +217,16 @@ async function start(): Promise<void> {
     emit: (event: WorkerEvent) => void,
   ): Promise<unknown> => {
     switch (command.type) {
+      case "worker.credential.rotate":
+        saveWorkerCredential({
+          credential: command.credential,
+          dataDirectory: config.dataDirectory,
+          serverUrl: config.serverUrl,
+          workerId: config.workerId,
+        });
+        config.token = command.credential;
+        config.tokenSource = "persisted";
+        return { accepted: true };
       case "codex.auth.status":
         return authFor(command.providerId).status();
       case "codex.auth.login.start":

@@ -409,6 +409,8 @@ pnpm package:all             # alias for pnpm bundle
 
 Standalone service directories include a platform-matched Node.js runtime, compiled JavaScript, production dependencies, startup scripts, and a focused `.env.example`. They do not require Node.js to be installed on the host. Copy `.env.example` to `.env`, create a short-lived worker link code while signed into the server, put it in the worker environment for its first start, then remove it after enrollment. The worker persists its unique credential in its data directory and initiates every connection through `CANTRIP_SERVER_URL`; no inbound worker port is exposed. The shared `CANTRIP_WORKER_TOKEN` path is limited to explicit loopback `pnpm dev` and embedded Tauri bootstraps.
 
+Settings → Workers provides the supported onboarding and management surface. It shows internal and remote machines, presence, runtime capabilities, project-source associations, and credential activity. Remote workers can be renamed, rotated, revoked, unlinked, or relinked without deleting server-owned projects and conversations. Internal embedded/development workers are marked and protected from rename or removal.
+
 Run `pnpm release` from a clean `main` branch to pull `origin/main` and
 fast-forward `origin/release`. That branch update starts the native release
 workflow, which builds separate Server, Worker, and Desktop artifacts for

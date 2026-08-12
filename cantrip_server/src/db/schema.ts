@@ -286,6 +286,7 @@ export const workers = pgTable("workers", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  displayName: text("display_name"),
   platform: text("platform").notNull(),
   architecture: text("architecture").notNull(),
   codexVersion: text("codex_version"),
@@ -308,6 +309,7 @@ export const workers = pgTable("workers", {
     .default(unavailableCodeCapabilities),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
+  unlinkedAt: timestamp("unlinked_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

@@ -198,13 +198,19 @@ loaded through a query that joins or filters their owner instead of loading by
 globally supplied ID and checking later. System state and lifecycle recovery
 are the only intentionally global query families.
 
-Migrations `0047_next_madripoor` and `0049_flippant_meggan` establish the
+Migrations `0047_next_madripoor`, `0049_flippant_meggan`, and
+`0051_sharp_newton_destine` establish the
 protected-mode foundation:
 
 - user role, status, normalized email, and password-change metadata;
 - hashed, expiring, revocable user sessions;
 - hashed, expiring, single-use worker enrollment codes; and
 - independently hashed, scoped, rotatable, revocable worker credentials.
+
+The worker-management migration also separates the runtime-reported machine
+name from the owner's durable display alias and records non-destructive unlink
+state. Unlinking revokes credentials and disconnects the socket but does not
+cascade-delete project sources, worktrees, chats, or other server history.
 
 The CSRF upgrade revokes any session created by an older server revision rather
 than manufacturing a usable CSRF credential for it.

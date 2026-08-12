@@ -89,7 +89,9 @@ import type {
   UserSummary,
   WorkerCredentialScope,
   WorkerCredentialSummary,
+  WorkerEnrollmentCodeStatus,
   WorkerHeartbeat,
+  WorkerManagementSource,
   WorkerSummary,
   WorkerWorktreeSummary,
   WorktreeInventory,
@@ -169,6 +171,14 @@ export interface ActiveWorkerCredential {
 
 export interface WorkerEnrollmentProvision {
   credential: WorkerCredentialSummary;
+  worker: WorkerSummary;
+}
+
+export interface WorkerManagementRecord {
+  activeCredentialCount: number;
+  credentialCount: number;
+  runtimeName: string;
+  sources: WorkerManagementSource[];
   worker: WorkerSummary;
 }
 
@@ -745,7 +755,7 @@ function toWorkerSummary(
 ): WorkerSummary {
   return {
     workerId: worker.id,
-    name: worker.name,
+    name: worker.displayName ?? worker.name,
     platform: worker.platform,
     architecture: worker.architecture,
     codexVersion: worker.codexVersion,
@@ -2121,15 +2131,45 @@ export class ServerRepository {
     expiresAt: Date;
     label: string | null;
     ownerId: string;
-  }): Promise<void> {
+  }): Promise<string> {
+    const id = randomUUID();
     await this.database.insert(schema.workerEnrollmentCodes).values({
-      id: randomUUID(),
+      id,
       ownerId: input.ownerId,
       createdBySessionId: input.createdBySessionId,
       codeHash: input.codeHash,
       label: input.label,
       expiresAt: input.expiresAt,
     });
+    return id;
+  }
+
+  async getWorkerEnrollmentCodeStatus(
+    ownerId: string,
+    enrollmentCodeId: string,
+  ): Promise<WorkerEnrollmentCodeStatus | null> {
+    const rows = await this.database
+      .select()
+      .from(schema.workerEnrollmentCodes)
+      .where(
+        and(
+          eq(schema.workerEnrollmentCodes.id, enrollmentCodeId),
+          eq(schema.workerEnrollmentCodes.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    const code = rows[0];
+    if (!code) return null;
+    return {
+      id: code.id,
+      label: code.label,
+      expiresAt: toISOString(code.expiresAt),
+      status: code.consumedAt
+        ? "paired"
+        : code.expiresAt.getTime() <= Date.now()
+          ? "expired"
+          : "pending",
+    };
   }
 
   async exchangeWorkerEnrollmentCode(input: {
@@ -2220,6 +2260,7 @@ export class ServerRepository {
         codeCapabilities: input.heartbeat.code ?? unavailableCodeCapabilities,
         startedAt: new Date(input.heartbeat.startedAt),
         lastSeenAt: now,
+        unlinkedAt: null,
         updatedAt: now,
       };
       const workerRows = existingWorker
@@ -2429,6 +2470,7 @@ export class ServerRepository {
       codeCapabilities: heartbeat.code ?? unavailableCodeCapabilities,
       startedAt: new Date(heartbeat.startedAt),
       lastSeenAt: now,
+      unlinkedAt: null,
       updatedAt: now,
     };
     let result = await this.database
@@ -2479,7 +2521,12 @@ export class ServerRepository {
     const rows = await this.database
       .select()
       .from(schema.workers)
-      .where(eq(schema.workers.ownerId, ownerId))
+      .where(
+        and(
+          eq(schema.workers.ownerId, ownerId),
+          isNull(schema.workers.unlinkedAt),
+        ),
+      )
       .orderBy(asc(schema.workers.name));
     return rows.map(toWorkerSummary);
   }
@@ -2495,10 +2542,132 @@ export class ServerRepository {
         and(
           eq(schema.workers.id, workerId),
           eq(schema.workers.ownerId, ownerId),
+          isNull(schema.workers.unlinkedAt),
         ),
       )
       .limit(1);
     return rows[0] ? toWorkerSummary(rows[0]) : null;
+  }
+
+  async listWorkerManagement(
+    ownerId: string,
+  ): Promise<WorkerManagementRecord[]> {
+    const rows = await this.database
+      .select()
+      .from(schema.workers)
+      .where(
+        and(
+          eq(schema.workers.ownerId, ownerId),
+          isNull(schema.workers.unlinkedAt),
+        ),
+      )
+      .orderBy(asc(schema.workers.name));
+    return Promise.all(
+      rows.map(async (worker) => {
+        const [credentials, sources] = await Promise.all([
+          this.database
+            .select({ revokedAt: schema.workerCredentials.revokedAt })
+            .from(schema.workerCredentials)
+            .where(
+              and(
+                eq(schema.workerCredentials.ownerId, ownerId),
+                eq(schema.workerCredentials.workerId, worker.id),
+              ),
+            ),
+          this.database
+            .select({
+              projectId: schema.projects.id,
+              nameWithOwner: sql<string>`coalesce(${schema.projects.githubRepositoryFullName}, ${schema.projects.name})`,
+              displayPath: schema.projectSources.displayPath,
+            })
+            .from(schema.projectSources)
+            .innerJoin(
+              schema.projects,
+              eq(schema.projects.id, schema.projectSources.projectId),
+            )
+            .where(
+              and(
+                eq(schema.projectSources.workerId, worker.id),
+                eq(schema.projects.ownerId, ownerId),
+              ),
+            )
+            .orderBy(asc(schema.projects.githubRepositoryFullName)),
+        ]);
+        return {
+          activeCredentialCount: credentials.filter(
+            ({ revokedAt }) => !revokedAt,
+          ).length,
+          credentialCount: credentials.length,
+          runtimeName: worker.name,
+          sources,
+          worker: toWorkerSummary(worker),
+        };
+      }),
+    );
+  }
+
+  async updateWorkerDisplayName(
+    ownerId: string,
+    workerId: string,
+    name: string,
+  ): Promise<WorkerSummary | null> {
+    const rows = await this.database
+      .update(schema.workers)
+      .set({ displayName: name, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.workers.id, workerId),
+          eq(schema.workers.ownerId, ownerId),
+          isNull(schema.workers.unlinkedAt),
+        ),
+      )
+      .returning();
+    return rows[0] ? toWorkerSummary(rows[0]) : null;
+  }
+
+  async unlinkWorker(ownerId: string, workerId: string): Promise<boolean> {
+    const now = new Date();
+    return this.database.transaction(async (transaction) => {
+      const workers = await transaction
+        .select({ id: schema.workers.id })
+        .from(schema.workers)
+        .where(
+          and(
+            eq(schema.workers.id, workerId),
+            eq(schema.workers.ownerId, ownerId),
+            isNull(schema.workers.unlinkedAt),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!workers[0]) return false;
+      await transaction
+        .update(schema.workerCredentials)
+        .set({
+          revokedAt: now,
+          revokedReason: "worker unlinked by owner",
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.workerCredentials.ownerId, ownerId),
+            eq(schema.workerCredentials.workerId, workerId),
+            isNull(schema.workerCredentials.revokedAt),
+          ),
+        );
+      const unlinked = await transaction
+        .update(schema.workers)
+        .set({ unlinkedAt: now, updatedAt: now })
+        .where(
+          and(
+            eq(schema.workers.id, workerId),
+            eq(schema.workers.ownerId, ownerId),
+            isNull(schema.workers.unlinkedAt),
+          ),
+        )
+        .returning({ id: schema.workers.id });
+      return Boolean(unlinked[0]);
+    });
   }
 
   async getWorkerOwnerId(workerId: string): Promise<string | null> {
