@@ -394,6 +394,7 @@ describe.sequential("chat relocation executor", () => {
     ).toMatchObject({
       state: "blocked",
       error: { code: "worker-offline", retryable: true },
+      progress: { stage: "blocked", percent: 5 },
     });
     expect(
       await database.repository.getChatExecutionContext(

@@ -5,6 +5,7 @@ import type {
   ChatAttachmentSummary,
   ChatMessage,
   ChatPlanAnswer,
+  ChatRelocationJobSummary,
   ChatSummary,
   ChatTurnMode,
   CodeAppearance,
@@ -86,6 +87,13 @@ import {
 import { AgentInteractionPanel } from "@/components/chat/agent-interaction-panel";
 import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
+import {
+  activeChatRelocationJob,
+  ChatRelocationDialog,
+  ChatRelocationStatus,
+  isChatRelocationActive,
+  latestChatRelocationJob,
+} from "@/components/chat/chat-relocation-dialog";
 import { PlanPanel } from "@/components/chat/plan-panel";
 import { Markdown } from "@/components/chat/markdown";
 import {
@@ -187,6 +195,7 @@ import {
   getChatGoal,
   getChatPlan,
   getChatPermissionProfiles,
+  getChatRelocations,
   getBrowsers,
   getCodeTabs,
   getCachedGithubRepositories,
@@ -865,6 +874,8 @@ function ChatTranscript({
   onForked,
   onOpenWorkflow,
   onRename,
+  onOpenRelocation,
+  relocationJob,
   settings,
   syncEnabled,
 }: {
@@ -874,6 +885,8 @@ function ChatTranscript({
   onForked(chat: ChatSummary): void;
   onOpenWorkflow(workflowId: string): void;
   onRename(title: string): void;
+  onOpenRelocation(): void;
+  relocationJob: ChatRelocationJobSummary | null;
   settings: SettingsBundle | undefined;
   syncEnabled: boolean;
 }) {
@@ -882,6 +895,9 @@ function ChatTranscript({
   const chatResourcesLive = liveStatus === "live";
   const chatExecuting =
     chat.status === "running" || chat.status === "waiting-for-approval";
+  const relocationActive = isChatRelocationActive(relocationJob);
+  const relocationNeedsAttention =
+    relocationJob?.state === "blocked" || relocationJob?.state === "failed";
   const chatFallbackInterval = chatExecuting ? 3_000 : 10_000;
   const [draft, setDraft] = useState("");
   const [composerMode, setComposerMode] = useState<ChatTurnMode>("default");
@@ -1070,6 +1086,7 @@ function ChatTranscript({
     requestedFiles: File[],
     source: "file" | "paste" = "file",
   ) => {
+    if (relocationActive) return;
     setAttachmentNotice(null);
     const slots = Math.max(
       0,
@@ -1371,6 +1388,7 @@ function ChatTranscript({
       ({ error, uploading }) => !error && !uploading,
     );
     if (
+      relocationActive ||
       (!text && readyAttachments.length === 0) ||
       !selectedModelId ||
       send.isPending ||
@@ -1802,6 +1820,12 @@ function ChatTranscript({
               </span>
             </div>
           ) : null}
+          {relocationJob && (relocationActive || relocationNeedsAttention) ? (
+            <ChatRelocationStatus
+              job={relocationJob}
+              onOpen={onOpenRelocation}
+            />
+          ) : null}
           <GoalPanel
             error={
               updateGoal.isError
@@ -1845,6 +1869,7 @@ function ChatTranscript({
               chat.status === "waiting-for-approval"
             }
             disabled={
+              relocationActive ||
               updatePrompt.isPending ||
               removePrompt.isPending ||
               steerPrompt.isPending ||
@@ -1980,6 +2005,7 @@ function ChatTranscript({
                   ref={composerRef}
                   rows={1}
                   value={draft}
+                  disabled={relocationActive}
                   aria-autocomplete="list"
                   aria-controls={
                     skillMenuVisible
@@ -2102,17 +2128,19 @@ function ChatTranscript({
                     }
                   }}
                   placeholder={
-                    editingPrompt
-                      ? "Edit queued prompt…"
-                      : composerMode === "goal"
-                        ? "Describe the goal Codex should pursue…"
-                        : composerMode === "plan"
-                          ? "Describe what Codex should plan…"
-                          : chat.automationPaused
-                            ? "Queue a prompt while paused…"
-                            : chat.status === "running"
-                              ? "Queue a follow-up…"
-                              : "Ask Cantrip to work on this repository…"
+                    relocationActive
+                      ? "Chat relocation is in progress…"
+                      : editingPrompt
+                        ? "Edit queued prompt…"
+                        : composerMode === "goal"
+                          ? "Describe the goal Codex should pursue…"
+                          : composerMode === "plan"
+                            ? "Describe what Codex should plan…"
+                            : chat.automationPaused
+                              ? "Queue a prompt while paused…"
+                              : chat.status === "running"
+                                ? "Queue a follow-up…"
+                                : "Ask Cantrip to work on this repository…"
                   }
                   className={cn(
                     "relative max-h-48 min-h-10 w-full resize-none bg-transparent px-2 py-2 text-sm leading-5 outline-none placeholder:text-muted-foreground",
@@ -2125,6 +2153,7 @@ function ChatTranscript({
                   ref={fileInputRef}
                   type="file"
                   multiple
+                  disabled={relocationActive}
                   className="hidden"
                   onChange={(event) => {
                     if (event.target.files?.length) {
@@ -2138,6 +2167,7 @@ function ChatTranscript({
                   size="icon"
                   variant="ghost"
                   className="size-7 shrink-0 text-muted-foreground"
+                  disabled={relocationActive}
                   title="Attach files"
                   onClick={() => fileInputRef.current?.click()}
                 >
@@ -2148,6 +2178,7 @@ function ChatTranscript({
                   aria-label="Chat model"
                   value={selectedModelId}
                   disabled={
+                    relocationActive ||
                     chat.status === "running" ||
                     chat.status === "waiting-for-approval" ||
                     selectModel.isPending
@@ -2167,6 +2198,7 @@ function ChatTranscript({
                 <PermissionProfileControl
                   state={permissionProfiles.data}
                   disabled={
+                    relocationActive ||
                     chat.status === "running" ||
                     chat.status === "waiting-for-approval"
                   }
@@ -2176,6 +2208,7 @@ function ChatTranscript({
                 <select
                   aria-label="Message mode"
                   value={composerMode}
+                  disabled={relocationActive}
                   onChange={(event) =>
                     setComposerMode(event.target.value as ChatTurnMode)
                   }
@@ -2202,7 +2235,7 @@ function ChatTranscript({
                       ? "border-amber-500/40 text-amber-700 dark:text-amber-300"
                       : "text-muted-foreground",
                   )}
-                  disabled={setAutomationPaused.isPending}
+                  disabled={relocationActive || setAutomationPaused.isPending}
                   onClick={() =>
                     setAutomationPaused.mutate(!chat.automationPaused)
                   }
@@ -2227,6 +2260,7 @@ function ChatTranscript({
               size="icon"
               type="submit"
               disabled={
+                relocationActive ||
                 (!draft.trim() &&
                   !draftAttachments.some(
                     ({ error, uploading }) => !error && !uploading,
@@ -2400,6 +2434,7 @@ export function App() {
     string | null
   >(null);
   const [showCustomizations, setShowCustomizations] = useState(false);
+  const [chatRelocationOpen, setChatRelocationOpen] = useState(false);
   const [mobileTabGridOpen, setMobileTabGridOpen] = useState(false);
   const [mobileBottomTabs, setMobileBottomTabs] = useState(
     initialMobileBottomTabs,
@@ -3411,6 +3446,23 @@ export function App() {
   const selectedTerminal = selectedStandaloneTerminal ?? linkedConsoleTerminal;
   const linkedConsoleChat = linkedConsoleTerminal ? selectedChat : undefined;
   const activeChat = selectedChat;
+  const chatRelocations = useQuery({
+    enabled: Boolean(
+      activeChat && bootstrap.data?.capabilities.workerSwitching,
+    ),
+    queryFn: () => getChatRelocations(activeChat!.id),
+    queryKey: ["chat-relocation-jobs", activeChat?.id],
+    refetchInterval: (query) =>
+      projectResourcesLive
+        ? false
+        : query.state.data?.some((job) => isChatRelocationActive(job))
+          ? 2_000
+          : 10_000,
+    retry: false,
+  });
+  const activeRelocation = activeChatRelocationJob(chatRelocations.data ?? []);
+  const latestRelocation = latestChatRelocationJob(chatRelocations.data ?? []);
+  const currentRelocation = activeRelocation ?? latestRelocation;
   const selectedExplorer =
     selectedSurface?.kind === "explorer" ? selectedSurface.entity : undefined;
   const selectedBrowser =
@@ -3565,6 +3617,9 @@ export function App() {
       .finally(() => setPopoutPending(false));
   };
 
+  useEffect(() => {
+    setChatRelocationOpen(false);
+  }, [activeChat?.id]);
   useEffect(() => {
     if (!isPopout || !currentSurface) return;
     const projectTitle =
@@ -4305,6 +4360,22 @@ export function App() {
             consoleActive: Boolean(linkedConsoleChat),
             consolePending: openChatConsole.isPending,
             inspectCustomizations: () => setShowCustomizations(true),
+            relocation: {
+              active: Boolean(activeRelocation),
+              available: Boolean(
+                bootstrap.data?.capabilities.workerSwitching &&
+                selectedPlacementContext &&
+                (selectedPlacementContext.workers.length > 1 ||
+                  currentRelocation),
+              ),
+              open: chatRelocationOpen,
+              problem: Boolean(
+                currentRelocation &&
+                (currentRelocation.state === "blocked" ||
+                  currentRelocation.state === "failed"),
+              ),
+              show: () => setChatRelocationOpen(true),
+            },
             toggleConsole: () =>
               linkedConsoleChat
                 ? setChatConsoleChatId(null)
@@ -5290,9 +5361,11 @@ export function App() {
             onOpenWorkflow={(workflowId) =>
               openProjectSettings(selectedChat.projectId, workflowId)
             }
+            onOpenRelocation={() => setChatRelocationOpen(true)}
             onRename={(title) =>
               renameChatMutation.mutate({ chatId: selectedChat.id, title })
             }
+            relocationJob={currentRelocation}
           />
         ) : selectedProject ? (
           selectedProject.setupStatus !== "ready" ? (
@@ -5525,6 +5598,24 @@ export function App() {
           chatTitle={activeChat.title}
           open={showCustomizations}
           onOpenChange={setShowCustomizations}
+        />
+      ) : null}
+
+      {activeChat && selectedPlacementContext ? (
+        <ChatRelocationDialog
+          key={activeChat.id}
+          available={Boolean(bootstrap.data?.capabilities.workerSwitching)}
+          chat={activeChat}
+          jobs={chatRelocations.data ?? []}
+          jobsError={chatRelocations.error}
+          jobsLoading={chatRelocations.isLoading}
+          open={chatRelocationOpen}
+          onOpenChange={setChatRelocationOpen}
+          placement={selectedPlacementContext}
+          statuses={worktreeStatuses}
+          synchronizationPolicy={
+            settings.data?.preferences.automaticReplicaSynchronization ?? "off"
+          }
         />
       ) : null}
 

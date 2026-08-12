@@ -1,7 +1,7 @@
 # Multi-worker architecture and placement contracts
 
 - Status: Accepted foundation contract
-- Last updated: 2026-08-11
+- Last updated: 2026-08-12
 - Related decisions: [ADR 0001](adr/0001-agent-managed-worktree-execution.md), [ADR 0002](adr/0002-worker-owned-remote-surfaces.md), [ADR 0003](adr/0003-worker-owned-chat-attachments.md), and [ADR 0006](adr/0006-multi-worker-project-replicas.md)
 
 ## Purpose
@@ -26,7 +26,7 @@ service discovery are implemented. Durable chat relocation jobs and canonical
 context snapshots now drive server-routed runtime preparation, verified
 attachment transfer, target hydration, and atomic placement commit. The server
 advertises worker switching when these runtime contracts are available; the
-app's relocation workflow is delivered separately from this backend lifecycle.
+app exposes that lifecycle as an explicit, progress-aware chat move workflow.
 
 ## Current replica read contract
 
@@ -440,6 +440,24 @@ The owner-scoped relocation API is:
 Targets may be selected while offline so the durable job can enter a visible,
 retryable blocked state and resume on reconnect. Creating a new surface still
 requires an online target.
+
+The selected chat's content header exposes the move action when durable worker
+switching is negotiated and either another linked worker or a previous move job
+exists. Its flat target picker keeps unavailable placements visible with a
+specific reason: missing replica, incompatible worker, dirty checkout, or Git
+revision policy. Offline targets remain selectable because reconnect is a
+normal durable wait state. A mismatched clean Primary target is selectable only
+when the account explicitly enables `fast-forward-primary`; non-Primary
+mismatches never offer an automatic checkout change.
+
+Once requested, live job updates show the current stage and retained progress
+in both the composer and dialog. The current turn and interaction requests may
+reach their existing safe boundary, but new prompts, attachments, queued work,
+goals, and automatic continuations stay frozen until the move terminates.
+Retryable blocks and failures retain an actionable header/composer entry, while
+the dialog offers retry or cancellation until the server marks cancellation
+unsafe. Success changes the canonical placement; cancellation or failure leaves
+the source placement intact.
 
 ### Offline recovery
 

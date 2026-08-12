@@ -29,6 +29,11 @@ import {
   chatPlanAnswerSchema,
   chatPlanStateSchema,
   chatPlanUpdateSchema,
+  chatRelocationCreateSchema,
+  chatRelocationJobCancelSchema,
+  chatRelocationJobListSchema,
+  chatRelocationJobRetrySchema,
+  chatRelocationJobSummarySchema,
   chatPauseStateSchema,
   chatPauseUpdateSchema,
   chatPermissionProfileStateSchema,
@@ -201,6 +206,9 @@ import type {
   ChatGoalUpdate,
   ChatPlanAnswer,
   ChatPlanUpdate,
+  ChatRelocationCreate,
+  ChatRelocationJobCancel,
+  ChatRelocationJobRetry,
   ChatTurnMode,
   CodeAppearance,
   CodeThemeMode,
@@ -1832,6 +1840,54 @@ export async function updateProjectPreferredWorker(
 export async function getChats(projectId: string) {
   return chatListSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/chats`),
+  );
+}
+
+export async function createChatRelocation(
+  chatId: string,
+  input: ChatRelocationCreate,
+) {
+  return chatRelocationJobSummarySchema.parse(
+    await post(
+      `/api/chats/${encodeURIComponent(chatId)}/relocations`,
+      chatRelocationCreateSchema.parse(input),
+    ),
+  );
+}
+
+export async function getChatRelocations(chatId: string) {
+  return chatRelocationJobListSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/relocations`),
+  );
+}
+
+export async function getChatRelocation(jobId: string) {
+  return chatRelocationJobSummarySchema.parse(
+    await request(`/api/chat-relocations/${encodeURIComponent(jobId)}`),
+  );
+}
+
+export async function retryChatRelocation(
+  jobId: string,
+  input: ChatRelocationJobRetry,
+) {
+  return chatRelocationJobSummarySchema.parse(
+    await post(
+      `/api/chat-relocations/${encodeURIComponent(jobId)}/retry`,
+      chatRelocationJobRetrySchema.parse(input),
+    ),
+  );
+}
+
+export async function cancelChatRelocation(
+  jobId: string,
+  input: ChatRelocationJobCancel,
+) {
+  return chatRelocationJobSummarySchema.parse(
+    await post(
+      `/api/chat-relocations/${encodeURIComponent(jobId)}/cancel`,
+      chatRelocationJobCancelSchema.parse(input),
+    ),
   );
 }
 
