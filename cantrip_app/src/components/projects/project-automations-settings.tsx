@@ -229,7 +229,7 @@ function AutomationDialog({
           </DialogTitle>
           <DialogDescription>
             The assigned worker pulls this schedule from Cantrip Server and
-            submits the prompt to the selected chat when it is due.
+            submits the prompt to the selected agent when it is due.
           </DialogDescription>
         </DialogHeader>
 
@@ -253,7 +253,7 @@ function AutomationDialog({
                   />
                 </label>
                 <label className="grid gap-1.5 text-sm">
-                  <span className="font-medium">Target chat</span>
+                  <span className="font-medium">Target agent</span>
                   <select
                     className="h-9 rounded-md border bg-background px-3 text-sm"
                     value={chatId}
@@ -453,7 +453,7 @@ function AutomationDialog({
                     spellCheck={false}
                   />
                   <span className="text-xs text-muted-foreground">
-                    Runs in the target chat&apos;s active worktree. Exit code 0
+                    Runs in the target agent&apos;s active worktree. Exit code 0
                     allows the automation; every other exit code skips it.
                   </span>
                 </label>
@@ -566,7 +566,7 @@ export function ProjectAutomationsSettings({
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {enabledCount} active. Schedules are stored on the server and
-              pulled by the worker assigned to each target chat.
+              pulled by the worker assigned to each target agent.
             </p>
           </div>
         </div>
@@ -583,7 +583,7 @@ export function ProjectAutomationsSettings({
 
       {!chats.length ? (
         <div className="border-y px-4 py-10 text-center text-sm text-muted-foreground">
-          Create a chat in this project before adding an automation.
+          Create an agent in this project before adding an automation.
         </div>
       ) : null}
 
@@ -601,7 +601,7 @@ export function ProjectAutomationsSettings({
         <div className="border-y">
           <div className="hidden grid-cols-[minmax(12rem,1.1fr)_minmax(9rem,0.8fr)_minmax(13rem,1fr)_minmax(10rem,0.8fr)_7rem] gap-3 border-b px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground md:grid">
             <span>Automation</span>
-            <span>Target chat</span>
+            <span>Target agent</span>
             <span>Schedule</span>
             <span>Next run</span>
             <span className="text-right">Actions</span>
@@ -705,7 +705,7 @@ export function ProjectAutomationsSettings({
           <CalendarClock className="mx-auto size-7 text-muted-foreground" />
           <p className="mt-3 text-sm font-medium">No automations yet</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Schedule a prompt to run in one of this project&apos;s chats.
+            Schedule a prompt to run in one of this project&apos;s agents.
           </p>
         </div>
       ) : null}
@@ -726,8 +726,8 @@ export function ProjectAutomationsSettings({
           <DialogHeader>
             <DialogTitle>Delete {deleteTarget?.name}?</DialogTitle>
             <DialogDescription>
-              Future scheduled prompts will stop immediately. Existing chat
-              messages and already queued prompts are retained.
+              Future scheduled prompts will stop immediately. Existing agent
+              conversation messages and already queued prompts are retained.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

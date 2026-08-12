@@ -14,6 +14,7 @@ import {
   projectSurfaceWorkerPlacements,
   surfaceSupportsExplicitPlacement,
 } from "./project-surface-create-menu";
+import { ProjectSurfaceIcon } from "./project-surface-icon";
 
 const now = "2026-08-11T12:00:00.000Z";
 
@@ -108,9 +109,16 @@ function worktree(
 }
 
 describe("project surface creation menu", () => {
+  it("uses the dedicated agent icon for chat-backed surfaces", () => {
+    const markup = renderToStaticMarkup(<ProjectSurfaceIcon kind="chat" />);
+
+    expect(markup).toContain("lucide-bot");
+    expect(markup).not.toContain("lucide-message-square");
+  });
+
   it("defines every project surface once in display order", () => {
     expect(projectSurfaceCreateDefinitions).toEqual([
-      { kind: "chat", label: "Chat" },
+      { kind: "chat", label: "Agent" },
       { kind: "terminal", label: "Terminal" },
       { kind: "explorer", label: "Explorer" },
       { kind: "code", label: "Code" },

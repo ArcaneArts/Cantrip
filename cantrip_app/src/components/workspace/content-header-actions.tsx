@@ -5,7 +5,7 @@ import {
   CircleAlert,
   ExternalLink,
   Loader2,
-  MessageSquare,
+  Bot,
   Palette,
   Power,
   RefreshCw,
@@ -256,10 +256,10 @@ export function ContentHeaderActions({
               onClick={chat.relocation.show}
               title={
                 chat.relocation.problem
-                  ? "Chat move needs attention"
+                  ? "Agent move needs attention"
                   : chat.relocation.active
-                    ? "View chat move progress"
-                    : "Move chat to another worker"
+                    ? "View agent move progress"
+                    : "Move agent to another worker"
               }
             >
               {chat.relocation.problem ? (
@@ -271,8 +271,8 @@ export function ContentHeaderActions({
               )}
               <span className="sr-only">
                 {chat.relocation.active
-                  ? "View chat move progress"
-                  : "Move chat to another worker"}
+                  ? "View agent move progress"
+                  : "Move agent to another worker"}
               </span>
             </Button>
           ) : null}
@@ -291,17 +291,17 @@ export function ContentHeaderActions({
             aria-pressed={chat.consoleActive}
             disabled={!chat.consoleActive && chat.consolePending}
             onClick={chat.toggleConsole}
-            title={chat.consoleActive ? "Show chat" : "Show Codex console"}
+            title={chat.consoleActive ? "Show agent" : "Show Codex console"}
           >
             {chat.consoleActive ? (
-              <MessageSquare className="size-4" />
+              <Bot className="size-4" />
             ) : chat.consolePending ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
               <SquareTerminal className="size-4" />
             )}
             <span className="sr-only">
-              {chat.consoleActive ? "Show chat" : "Show Codex console"}
+              {chat.consoleActive ? "Show agent" : "Show Codex console"}
             </span>
           </Button>
         </>

@@ -27,7 +27,7 @@ import {
   History,
   Loader2,
   Lock,
-  MessageSquare,
+  Bot,
   MoreHorizontal,
   Plus,
   RefreshCw,
@@ -724,7 +724,7 @@ export function ProjectSettingsPage({
                               }
                               onSelect={() => onCreateChat(worktree.id)}
                             >
-                              <MessageSquare className="size-4" /> New chat
+                              <Bot className="size-4" /> New agent
                             </StyledDropdownMenuItem>
                             <StyledDropdownMenuItem
                               disabled={

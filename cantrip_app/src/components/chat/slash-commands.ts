@@ -9,28 +9,28 @@ export interface SlashCommandSuggestion {
   invocation: string;
 }
 
-// Cantrip exposes the Codex commands that are useful inside a project chat.
+// Cantrip exposes the Codex commands that are useful inside a project agent.
 // TUI configuration commands and actions already represented by Cantrip UI
 // (such as /model, /theme, and /permissions) intentionally stay out of here.
 export const SLASH_COMMANDS: readonly SlashCommand[] = [
   {
     name: "clear",
-    description: "Start a fresh chat and clear the current view",
+    description: "Start a fresh agent and clear the current view",
   },
-  { name: "rename", description: "Rename the current chat" },
+  { name: "rename", description: "Rename the current agent" },
   { name: "delete", description: "Permanently delete the current session" },
   { name: "compact", description: "Compact the conversation context" },
   { name: "copy", description: "Copy the latest completed response" },
   { name: "diff", description: "Review the current Git working-tree diff" },
   { name: "init", description: "Generate an AGENTS.md scaffold" },
-  { name: "fork", description: "Fork the current chat" },
+  { name: "fork", description: "Fork the current agent" },
   { name: "goal", description: "Use Goal mode for the next message" },
   { name: "plan", description: "Use Plan mode for the next message" },
   {
     name: "pause",
-    description: "Pause or resume queued and automatic chat work",
+    description: "Pause or resume queued and automatic agent work",
   },
-  { name: "new", description: "Start a new chat in this project" },
+  { name: "new", description: "Start a new agent in this project" },
   { name: "review", description: "Ask Codex to review the working tree" },
   { name: "status", description: "Inspect the current Codex session" },
 ] as const;

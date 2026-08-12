@@ -41,7 +41,7 @@ export interface ProjectSurfaceWorkerPlacement {
 }
 
 export const projectSurfaceCreateDefinitions = [
-  { kind: "chat", label: "Chat" },
+  { kind: "chat", label: "Agent" },
   { kind: "terminal", label: "Terminal" },
   { kind: "explorer", label: "Explorer" },
   { kind: "code", label: "Code" },

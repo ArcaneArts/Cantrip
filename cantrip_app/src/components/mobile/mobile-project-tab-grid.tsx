@@ -144,8 +144,8 @@ export function MobileProjectTabGrid({
             <div>
               <p className="text-sm font-medium">No project tabs yet</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                Use New to start a chat, terminal, explorer, Code workspace, or
-                browser.
+                Use New to start an agent, terminal, explorer, Code workspace,
+                or browser.
               </p>
             </div>
           </div>

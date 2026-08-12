@@ -31,7 +31,6 @@ import {
   GitCommitHorizontal,
   Globe2,
   Loader2,
-  MessageSquare,
   MonitorUp,
   MoreHorizontal,
   Pencil,
@@ -133,7 +132,7 @@ function SortableChat({
     <SortableSidebarSurfaceRow
       active={active}
       editing={editing}
-      icon={<MessageSquare className="size-3.5 shrink-0" />}
+      icon={<ProjectSurfaceIcon kind="chat" className="size-3.5 shrink-0" />}
       sortId={chatId(chat.id)}
       status={
         chat.hasPendingPlanQuestion ? (
@@ -144,7 +143,7 @@ function SortableChat({
         ) : chat.automationPaused ? (
           <CirclePause
             className="ml-auto size-3.5 text-amber-500"
-            aria-label="Chat automation is paused"
+            aria-label="Agent automation is paused"
           />
         ) : chat.status === "running" ? (
           <Loader2 className="ml-auto size-3 animate-spin" />
@@ -1153,7 +1152,7 @@ export function ProjectChatList({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete chat?</DialogTitle>
+            <DialogTitle>Delete agent?</DialogTitle>
             <DialogDescription>
               “{deleteTarget?.title}” and its conversation history will be
               permanently deleted.

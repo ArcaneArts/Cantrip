@@ -230,7 +230,7 @@ export function ProjectReplicaSettings({
             Project placement
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Choose the worker Cantrip should prefer when creating new chats,
+            Choose the worker Cantrip should prefer when creating new agents,
             terminals, explorers, Code sessions, browsers, and desktops for this
             project.
           </p>
