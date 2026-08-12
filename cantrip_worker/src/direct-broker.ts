@@ -139,6 +139,12 @@ export class DirectBroker {
     const tunnelRoute = command.tunnelRoute ?? null;
     const expiresAt = Date.parse(command.binding.expiresAt);
     const leaseExpiresAt = Date.parse(command.binding.leaseExpiresAt);
+    const tunnelResource = new Set([
+      "tunnel",
+      "project-share",
+      "terminal",
+      "code",
+    ]).has(command.binding.resourceKind);
     if (
       command.binding.workerId.length === 0 ||
       !Number.isFinite(expiresAt) ||
@@ -149,10 +155,9 @@ export class DirectBroker {
       throw new Error("Direct capability has already expired.");
     }
     if (
-      (command.binding.resourceKind === "tunnel") !== (tunnelRoute !== null) ||
+      tunnelResource !== (tunnelRoute !== null) ||
       (tunnelRoute !== null &&
-        (tunnelRoute.tunnelId !== command.binding.resourceId ||
-          tunnelRoute.attachmentId !== command.binding.attachmentId ||
+        (tunnelRoute.attachmentId !== command.binding.attachmentId ||
           !command.binding.channels.includes("tunnel-data")))
     ) {
       throw new Error("Direct tunnel route does not match its capability.");

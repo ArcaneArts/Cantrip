@@ -247,6 +247,7 @@ import {
   projectReplicaSynchronizeCreateSchema,
   projectReplicaSummarySchema,
   projectShareAttachmentSchema,
+  projectShareDirectCreateSchema,
   projectSummarySchema,
   projectPreferredWorkerUpdateSchema,
   projectWorkspaceCreateSchema,
@@ -9646,13 +9647,77 @@ export async function buildApp({
 
   app.delete<{ Params: { attachmentId: string } }>(
     "/api/project-shares/:attachmentId",
-    async (request, reply) =>
-      (await projectShareTunnel.revokeAttachment(
+    async (request, reply) => {
+      const revoked = await projectShareTunnel.revokeAttachment(
         request.params.attachmentId,
         applicationOwnerId(),
-      ))
-        ? reply.code(204).send()
-        : reply.code(404).send({ error: "Project share not found." }),
+      );
+      if (!revoked) {
+        return reply.code(404).send({ error: "Project share not found." });
+      }
+      await directAttachments.revokeAttachment(request.params.attachmentId);
+      return reply.code(204).send();
+    },
+  );
+
+  app.post<{ Params: { attachmentId: string } }>(
+    "/api/project-shares/:attachmentId/direct",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = projectShareDirectCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = authenticatedPrincipal(request);
+      const share = projectShareTunnel.prepareDirectAttachment(
+        request.params.attachmentId,
+        principal.user.id,
+      );
+      if (!share) {
+        return reply.code(404).send({ error: "Project share not found." });
+      }
+      const worker = await repository.getWorker(
+        principal.user.id,
+        share.workerId,
+      );
+      if (!worker) {
+        return reply.code(409).send({ error: "Project worker is offline." });
+      }
+      const route = {
+        tunnelId: share.tunnelId,
+        attachmentId: share.attachmentId,
+        sourceEndpointId: `desktop:${input.data.clientId}:${share.attachmentId}`,
+        destinationEndpointId: `worker:${share.workerId}`,
+      };
+      try {
+        const ticket = await directAttachments.prepare({
+          attachmentId: share.attachmentId,
+          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          channels: ["tunnel-data"],
+          leaseExpiresAt: share.expiresAt,
+          ownerId: principal.user.id,
+          resourceId: share.attachmentId,
+          resourceKind: "project-share",
+          tunnelRoute: {
+            ...route,
+            target: {
+              kind: "tcp",
+              host: share.loopbackHost,
+              port: share.loopbackPort,
+            },
+          },
+          worker,
+        });
+        return reply
+          .code(201)
+          .send(directTunnelTicketSchema.parse({ ...ticket, route }));
+      } catch (error) {
+        if (error instanceof DirectAttachmentUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
   );
 
   app.patch<{ Params: { projectId: string } }>(

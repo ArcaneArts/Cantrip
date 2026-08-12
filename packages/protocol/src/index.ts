@@ -2871,6 +2871,12 @@ export const projectShareAttachmentSchema = z.object({
     .max(24 * 60 * 60_000),
 });
 
+export const projectShareDirectCreateSchema = z
+  .object({
+    clientId: tunnelResourceIdSchema,
+  })
+  .strict();
+
 const projectShareAdapterHeaderListSchema = z
   .array(z.tuple([z.string().min(1).max(256), z.string().max(16 * 1_024)]))
   .max(256);

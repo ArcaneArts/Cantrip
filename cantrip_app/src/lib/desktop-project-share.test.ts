@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   coordinateDesktopProjectReveal,
+  directProjectShareUrl,
   desktopProjectRevealLabel,
   nativeProjectShareRequest,
 } from "./desktop-project-share";
@@ -55,6 +56,12 @@ describe("desktop project reveal", () => {
       projectId: project.id,
       projectName: project.name,
     });
+  });
+
+  it("preserves the capability path when mounting a local direct listener", () => {
+    expect(directProjectShareUrl(attachment, 41_234)).toBe(
+      "http://127.0.0.1:41234/project-shares/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/",
+    );
   });
 
   it("revokes the attachment while preserving a native mount failure", async () => {

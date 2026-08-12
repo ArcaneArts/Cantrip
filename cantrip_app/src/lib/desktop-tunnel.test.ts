@@ -25,7 +25,7 @@ vi.mock("@/lib/server-connections", () => ({
   getActiveServerUrl: () => "https://cantrip.example",
 }));
 
-import { startDesktopTunnel } from "./desktop-tunnel";
+import { startDesktopTunnel, startDirectDesktopTunnel } from "./desktop-tunnel";
 
 const capabilityId = "1c4066d8-5798-4330-82e2-f5634c6176b7";
 const expiresAt = "2099-01-01T00:00:00.000Z";
@@ -129,5 +129,27 @@ describe("startDesktopTunnel", () => {
     });
     expect(mocks.activateDirectTunnelAttachment).not.toHaveBeenCalled();
     expect(mocks.deleteTunnelAttachment).not.toHaveBeenCalled();
+  });
+
+  it("starts a capability-only local listener without relay credentials", async () => {
+    const direct = directTicket();
+    mocks.invoke.mockResolvedValue({
+      attachmentId: "attachment-1",
+      expiresAt,
+      localHost: "127.0.0.1",
+      localPort: 41_234,
+      routeState: "local-direct",
+      directCapabilityId: capabilityId,
+      directFallbackReason: null,
+      tunnelId: "tunnel-1",
+    });
+
+    await expect(
+      startDirectDesktopTunnel(direct, expiresAt),
+    ).resolves.toMatchObject({ routeState: "local-direct" });
+    expect(mocks.invoke).toHaveBeenCalledWith("start_tunnel_forward", {
+      request: expect.objectContaining({ relay: null }),
+    });
+    expect(direct.secret).toBe("");
   });
 });

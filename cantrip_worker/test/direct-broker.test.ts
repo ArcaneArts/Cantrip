@@ -128,8 +128,8 @@ describe("DirectBroker", () => {
     const tunnelId = randomUUID();
     const grant = {
       ...binding(),
-      resourceKind: "tunnel" as const,
-      resourceId: tunnelId,
+      resourceKind: "project-share" as const,
+      resourceId: attachmentId,
       attachmentId,
       channels: ["tunnel-data"],
     };
