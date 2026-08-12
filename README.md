@@ -515,4 +515,8 @@ Browser-only and mobile clients cannot bootstrap a Node server or worker. They u
 
 ## Further design
 
-See [docs/PLAN.md](docs/PLAN.md) for the security model, durable chat design, worker protocol, future account and pairing flows, multi-worker handoff constraints, and phased roadmap.
+See [docs/PLAN.md](docs/PLAN.md) for the security model, durable chat design,
+worker protocol, account and pairing flows, and phased roadmap. The accepted
+[multi-worker architecture contract](docs/MULTI_WORKER_ARCHITECTURE.md) defines
+project replicas, execution placement, synchronization, and safe chat
+relocation.

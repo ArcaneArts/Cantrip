@@ -1469,6 +1469,81 @@ export const projectSourceSummarySchema = z.object({
   displayPath: z.string().min(1),
 });
 
+const executionResourceIdSchema = z.string().min(1).max(200);
+
+export const executionSurfaceKindSchema = z.enum([
+  "chat",
+  "terminal",
+  "explorer",
+  "code",
+  "browser",
+  "remote-desktop",
+  "remote-surface",
+]);
+
+export const executionPlacementSchema = z
+  .object({
+    projectId: executionResourceIdSchema,
+    workerId: executionResourceIdSchema,
+    projectReplicaId: executionResourceIdSchema.nullable(),
+    worktreeId: executionResourceIdSchema.nullable(),
+    surface: z
+      .object({
+        kind: executionSurfaceKindSchema,
+        id: executionResourceIdSchema,
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict()
+  .superRefine((placement, context) => {
+    if (placement.worktreeId !== null && placement.projectReplicaId === null) {
+      context.addIssue({
+        code: "custom",
+        message: "A worktree placement requires a project replica.",
+        path: ["projectReplicaId"],
+      });
+    }
+  });
+
+export const executionTargetSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("project"),
+      projectId: executionResourceIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("worker"),
+      projectId: executionResourceIdSchema,
+      workerId: executionResourceIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("replica"),
+      projectId: executionResourceIdSchema,
+      projectReplicaId: executionResourceIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("worktree"),
+      projectId: executionResourceIdSchema,
+      worktreeId: executionResourceIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("surface"),
+      projectId: executionResourceIdSchema,
+      surfaceKind: executionSurfaceKindSchema,
+      surfaceId: executionResourceIdSchema,
+    })
+    .strict(),
+]);
+
 export const worktreePolicySchema = z.enum([
   "direct",
   "agent-managed",
@@ -6627,6 +6702,9 @@ export type ProjectWorkspaceUpdate = z.infer<
 export type ProjectWorkspaceSummary = z.infer<
   typeof projectWorkspaceSummarySchema
 >;
+export type ExecutionSurfaceKind = z.infer<typeof executionSurfaceKindSchema>;
+export type ExecutionPlacement = z.infer<typeof executionPlacementSchema>;
+export type ExecutionTarget = z.infer<typeof executionTargetSchema>;
 export type WorktreePolicy = z.infer<typeof worktreePolicySchema>;
 export type WorktreeOrigin = z.infer<typeof worktreeOriginSchema>;
 export type WorktreeLifecycleState = z.infer<
