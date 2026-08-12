@@ -50,6 +50,7 @@ export function MobileProjectSelector({
   onCreateWorkspace,
   onManageWorkspaces,
   onNewProject,
+  onOpenAdmin,
   onOpenSettings,
   onSelectProject,
   onSelectWorkspace,
@@ -64,6 +65,7 @@ export function MobileProjectSelector({
   onCreateWorkspace(name: string): Promise<void>;
   onManageWorkspaces(): void;
   onNewProject(): void;
+  onOpenAdmin(): void;
   onOpenSettings(): void;
   onSelectProject(projectId: string): void;
   onSelectWorkspace(workspaceId: string): void;
@@ -226,6 +228,7 @@ export function MobileProjectSelector({
       <footer className="mobile-safe-bottom flex shrink-0 items-center gap-1 border-t px-3 py-2">
         <ServerSwitcher
           currentUserName={currentUserName}
+          onOpenAdmin={onOpenAdmin}
           workerName={onlineWorker?.name ?? "Worker offline"}
         />
         <Button
