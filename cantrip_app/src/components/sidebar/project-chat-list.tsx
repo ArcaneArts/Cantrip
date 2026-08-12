@@ -49,7 +49,6 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   openSidebarActionsMenu,
-  SidebarDragHandle,
   SortableSidebarSurfaceRow,
 } from "@/components/sidebar/sortable-sidebar-surface-row";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
@@ -345,14 +344,16 @@ function SortableProject({
           active && "bg-muted font-medium",
         )}
       >
-        <SidebarDragHandle
-          attributes={sortable.attributes}
-          listeners={sortable.listeners}
-        />
         <button
+          ref={sortable.setActivatorNodeRef}
           type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 py-2 pr-3 text-left text-sm"
+          className={cn(
+            "flex min-w-0 flex-1 touch-none items-center gap-2 px-3 py-2 text-left text-sm",
+            cloning ? "cursor-default" : "cursor-grab active:cursor-grabbing",
+          )}
           onClick={onSelect}
+          {...sortable.attributes}
+          {...sortable.listeners}
         >
           {cloning ? (
             <Loader2 className="size-4 shrink-0 animate-spin" />

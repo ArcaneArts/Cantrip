@@ -1,6 +1,5 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
 import type {
   MouseEvent as ReactMouseEvent,
   ReactElement,
@@ -17,26 +16,6 @@ export function openSidebarActionsMenu(event: ReactMouseEvent<HTMLElement>) {
   if (!trigger) return;
   event.preventDefault();
   trigger.click();
-}
-
-export function SidebarDragHandle({
-  attributes,
-  listeners,
-}: {
-  attributes: object;
-  listeners?: object;
-}) {
-  return (
-    <button
-      type="button"
-      className="grid size-6 shrink-0 touch-none place-items-center rounded text-muted-foreground/50 opacity-0 hover:bg-muted hover:text-foreground group-hover:opacity-100 focus:opacity-100 [@media(pointer:coarse)]:opacity-100"
-      {...attributes}
-      {...listeners}
-    >
-      <GripVertical className="size-3.5" />
-      <span className="sr-only">Drag to reorder</span>
-    </button>
-  );
 }
 
 export function SortableSidebarSurfaceRow({
@@ -90,10 +69,6 @@ export function SortableSidebarSurfaceRow({
         active && "bg-muted text-foreground",
       )}
     >
-      <SidebarDragHandle
-        attributes={sortable.attributes}
-        listeners={sortable.listeners}
-      />
       {editing ? (
         <InlineRenameLabel
           ariaLabel={`Rename ${title}`}
@@ -105,13 +80,16 @@ export function SortableSidebarSurfaceRow({
         />
       ) : (
         <button
+          ref={sortable.setActivatorNodeRef}
           type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
+          className="flex min-w-0 flex-1 touch-none cursor-grab items-center gap-2 px-2 py-1.5 text-left active:cursor-grabbing"
           onClick={onSelect}
           onDoubleClick={(event) => {
             event.preventDefault();
             onCancelRename();
           }}
+          {...sortable.attributes}
+          {...sortable.listeners}
         >
           {icon}
           <span className="truncate">{title}</span>
