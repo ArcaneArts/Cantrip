@@ -2036,6 +2036,7 @@ export class ServerRepository {
         automaticReplicaProvisioning: settings.automaticReplicaProvisioning,
         automaticReplicaSynchronization:
           settings.automaticReplicaSynchronization as UserSettings["automaticReplicaSynchronization"],
+        mobileProjectTabConfigurations: settings.mobileProjectTabConfigurations,
       },
       providers: providerRows.map((provider) =>
         toProviderSummary(provider, providerUsage.get(provider.id)),
@@ -2302,6 +2303,7 @@ export class ServerRepository {
       automaticReplicaProvisioning: settings.automaticReplicaProvisioning,
       automaticReplicaSynchronization:
         settings.automaticReplicaSynchronization as UserSettings["automaticReplicaSynchronization"],
+      mobileProjectTabConfigurations: settings.mobileProjectTabConfigurations,
     };
   }
 
@@ -2321,9 +2323,18 @@ export class ServerRepository {
     ) {
       return null;
     }
+    const { mobileProjectTabConfigurations, ...scalarSettings } = input;
     await this.database
       .update(schema.userSettings)
-      .set({ ...input, updatedAt: new Date() })
+      .set({
+        ...scalarSettings,
+        ...(mobileProjectTabConfigurations
+          ? {
+              mobileProjectTabConfigurations: sql`${schema.userSettings.mobileProjectTabConfigurations} || ${JSON.stringify(mobileProjectTabConfigurations)}::jsonb`,
+            }
+          : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(schema.userSettings.userId, ownerId));
     return this.getSettings(ownerId);
   }
@@ -7451,7 +7462,15 @@ export class ServerRepository {
         ),
       )
       .returning({ id: schema.projects.id });
-    return deleted.length === 1;
+    if (deleted.length !== 1) return false;
+    await this.database
+      .update(schema.userSettings)
+      .set({
+        mobileProjectTabConfigurations: sql`${schema.userSettings.mobileProjectTabConfigurations} - ${projectId}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.userSettings.userId, ownerId));
+    return true;
   }
 
   private async nextProjectTabPosition(projectId: string): Promise<number> {

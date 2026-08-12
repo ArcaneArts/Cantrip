@@ -15,6 +15,7 @@ import type {
   GitManagedOperationState,
   GitManagedOperationType,
   GitInteractiveRebaseTodoAction,
+  MobileProjectTabConfigurations,
   PendingPlanQuestion,
   PlanStep,
   ProjectReplicaCapabilities,
@@ -328,6 +329,10 @@ export const userSettings = pgTable(
     automaticReplicaSynchronization: text("automatic_replica_synchronization")
       .notNull()
       .default("off"),
+    mobileProjectTabConfigurations: jsonb("mobile_project_tab_configurations")
+      .$type<MobileProjectTabConfigurations>()
+      .notNull()
+      .default({}),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
