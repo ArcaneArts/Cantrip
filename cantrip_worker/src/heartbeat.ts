@@ -3,6 +3,7 @@ import os from "node:os";
 import {
   type CodeCapabilities,
   type CodexRuntimeReport,
+  type DirectBrokerAdvertisement,
   type RemoteSurfaceCapabilities,
   type WorkerHeartbeat,
   unavailableCodeCapabilities,
@@ -23,6 +24,7 @@ export function createHeartbeat(
     maxSessions: 4,
   },
   code: CodeCapabilities = unavailableCodeCapabilities,
+  directBroker: DirectBrokerAdvertisement = { available: false },
 ): WorkerHeartbeat {
   return workerHeartbeatSchema.parse({
     workerId: config.workerId,
@@ -33,6 +35,7 @@ export function createHeartbeat(
     codexRuntime,
     remoteSurfaces,
     code,
+    directBroker,
     projectReplicas: {
       provision: true,
       synchronize: true,

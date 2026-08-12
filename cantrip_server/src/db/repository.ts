@@ -1169,6 +1169,7 @@ function toWorkerSummary(
     codexVersion: worker.codexVersion,
     codexRuntime: worker.codexRuntime,
     remoteSurfaces: worker.remoteSurfaceCapabilities,
+    directBroker: worker.directBrokerAdvertisement,
     code: worker.codeCapabilities,
     projectReplicas: worker.projectReplicaCapabilities,
     chatRelocation: worker.chatRelocationCapability,
@@ -3019,6 +3020,7 @@ export class ServerRepository {
         codexVersion: input.heartbeat.codexVersion,
         codexRuntime: input.heartbeat.codexRuntime,
         remoteSurfaceCapabilities: input.heartbeat.remoteSurfaces,
+        directBrokerAdvertisement: input.heartbeat.directBroker,
         codeCapabilities: input.heartbeat.code ?? unavailableCodeCapabilities,
         startedAt: new Date(input.heartbeat.startedAt),
         lastSeenAt: now,
@@ -3230,6 +3232,7 @@ export class ServerRepository {
       codexVersion: heartbeat.codexVersion,
       codexRuntime: heartbeat.codexRuntime,
       remoteSurfaceCapabilities: heartbeat.remoteSurfaces,
+      directBrokerAdvertisement: heartbeat.directBroker,
       codeCapabilities: heartbeat.code ?? unavailableCodeCapabilities,
       projectReplicaCapabilities:
         heartbeat.projectReplicas ?? unavailableProjectReplicaCapabilities,

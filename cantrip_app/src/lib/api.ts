@@ -165,6 +165,7 @@ import {
   projectViewSummarySchema,
   queuedPromptListSchema,
   queuedPromptSchema,
+  directAttachmentTicketSchema,
   remoteDesktopListSchema,
   remoteDesktopFleetSchema,
   remoteDesktopSummarySchema,
@@ -393,6 +394,20 @@ export async function logoutAll() {
 
 export async function getWorkers() {
   return workerListSchema.parse(await request("/api/workers"));
+}
+
+export async function createDirectWorkerProbe(workerId: string) {
+  return directAttachmentTicketSchema.parse(
+    await post(`/api/workers/${encodeURIComponent(workerId)}/direct-probe`, {}),
+  );
+}
+
+export async function deleteDirectAttachment(
+  capabilityId: string,
+): Promise<void> {
+  await request(`/api/direct-attachments/${encodeURIComponent(capabilityId)}`, {
+    method: "DELETE",
+  });
 }
 
 export async function getTunnels(projectId?: string) {

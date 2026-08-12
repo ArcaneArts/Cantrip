@@ -18,6 +18,15 @@ PTYs, Codex runtimes, editor processes, browsers, and desktop capture. Workers
 are replaceable execution endpoints and never communicate directly with one
 another.
 
+The server remains the canonical control plane even when a desktop app and a
+worker share one machine. An authenticated worker may advertise a loopback-only
+direct broker, but the endpoint is usable only through a short-lived,
+resource-bound capability minted by the server and installed over the worker's
+outbound control connection. A native locality challenge proves the advertised
+worker is actually reachable on this host; network names and addresses alone
+never select the direct route. Direct failure preserves the existing
+server-relayed data plane.
+
 This document defines the contracts later multi-worker changes must preserve.
 Replica persistence, reads, exact-revision provisioning, guarded
 synchronization, safe removal, placement-policy settings, and canonical

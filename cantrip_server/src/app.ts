@@ -272,6 +272,7 @@ import {
   queuedPromptSchema,
   queuedPromptUpdateSchema,
   remoteDesktopCreateSchema,
+  directAttachmentTicketSchema,
   remoteDesktopFleetSchema,
   remoteDesktopProbeResultSchema,
   remoteDesktopListSchema,
@@ -537,6 +538,10 @@ import {
   SlidingWindowRateLimiter,
 } from "./security/abuse-limits.js";
 import { LimitedWorkerCommandBus } from "./workers/limited-command-bus.js";
+import {
+  DirectAttachmentCoordinator,
+  DirectAttachmentUnavailableError,
+} from "./direct-attachments/coordinator.js";
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -912,6 +917,7 @@ export async function buildApp({
     workerConcurrency: config.workerCommandConcurrency ?? 64,
     workerRatePerMinute: config.workerCommandRatePerMinute ?? 1_200,
   });
+  const directAttachments = new DirectAttachmentCoordinator(bridge);
   const revokedWorkerCredentialIds = new Set<string>();
   const codeSurface = resolveCodeSurfaceConfig(config);
   const codeTunnel =
@@ -5150,6 +5156,7 @@ export async function buildApp({
     await repository.revokeUserSession(principal.sessionId!, "signed-out");
     liveHub.revokeSession(principal.sessionId!);
     await codeTunnel.revokeAuthSession(principal.sessionId!);
+    await directAttachments.revokeSession(principal.sessionId!);
     closeSessionSockets(
       (sessionId) => sessionId === principal.sessionId,
       "Session was revoked",
@@ -5172,6 +5179,7 @@ export async function buildApp({
     );
     liveHub.revokeOwner(principal.user.id);
     await codeTunnel.revokeOwner(principal.user.id);
+    await directAttachments.revokeOwner(principal.user.id);
     closeSessionSockets(
       (_sessionId, ownerId) => ownerId === principal.user.id,
       "Account sessions were revoked",
@@ -5478,6 +5486,59 @@ export async function buildApp({
     const workers = await repository.listWorkers(principalOwnerId(request));
     return reply.send(workerListSchema.parse(workers));
   });
+
+  app.post<{ Params: { workerId: string } }>(
+    "/api/workers/:workerId/direct-probe",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const principal = authenticatedPrincipal(request);
+      const worker = await repository.getWorker(
+        principal.user.id,
+        request.params.workerId,
+      );
+      if (!worker) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
+      try {
+        return reply.code(201).send(
+          directAttachmentTicketSchema.parse(
+            await directAttachments.prepare({
+              authSessionId:
+                principal.sessionId ?? `local:${principal.user.id}`,
+              channels: ["probe"],
+              ownerId: principal.user.id,
+              resourceId: request.params.workerId,
+              resourceKind: "probe",
+              worker,
+            }),
+          ),
+        );
+      } catch (error) {
+        if (error instanceof DirectAttachmentUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.delete<{ Params: { capabilityId: string } }>(
+    "/api/direct-attachments/:capabilityId",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const principal = authenticatedPrincipal(request);
+      return (await directAttachments.revoke(
+        request.params.capabilityId,
+        "Client released direct attachment",
+        {
+          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          ownerId: principal.user.id,
+        },
+      ))
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "Direct attachment not found." });
+    },
+  );
 
   app.get("/api/tunnels", { logLevel: "warn" }, async (request, reply) => {
     const tunnels = await repository.listTunnels(principalOwnerId(request));
@@ -17352,6 +17413,7 @@ export async function buildApp({
     await codeTunnel.close();
     await projectShareTunnel.close();
     tunnelRuntime.close();
+    await directAttachments.close();
     await bridge.close();
     await coordinator?.close();
     await activeScheduleTick;

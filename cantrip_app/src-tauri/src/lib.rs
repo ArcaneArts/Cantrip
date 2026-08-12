@@ -22,6 +22,7 @@ use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 mod desktop_worker;
+mod direct_probe;
 mod project_share;
 mod tunnel_forward;
 
@@ -470,6 +471,7 @@ pub fn run() {
             desktop_worker::list_desktop_workers,
             desktop_worker::pair_desktop_worker,
             desktop_worker::forget_desktop_worker,
+            direct_probe::probe_direct_worker,
             local_server_url,
             relay_client_log,
             set_macos_pro_mode,
