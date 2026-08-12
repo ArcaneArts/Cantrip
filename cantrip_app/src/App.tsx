@@ -43,7 +43,6 @@ import {
   Globe2,
   Loader2,
   Lock,
-  PanelLeft,
   PanelLeftClose,
   PanelLeftOpen,
   Pause,
@@ -119,6 +118,8 @@ import {
 import { WorkspaceDndProvider } from "@/components/workspace/workspace-dnd-provider";
 import { WorkspaceMembershipPicker } from "@/components/workspaces/workspace-membership-picker";
 import { WorkspaceSwitcher } from "@/components/workspaces/workspace-switcher";
+import { MobileProjectHeader } from "@/components/mobile/mobile-project-header";
+import { MobileProjectSelector } from "@/components/mobile/mobile-project-selector";
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
 import { GithubRepositoryCreateDialog } from "@/components/projects/github-repository-create-dialog";
@@ -132,6 +133,8 @@ import {
 import { hasScrolledContent } from "@/lib/scroll-divider";
 import { errorMessage as errorText } from "@/lib/error-message";
 import { githubRepositoryOnboardingAction } from "@/lib/github-repository-onboarding";
+import { projectSelectionAction } from "@/lib/mobile-navigation";
+import { useCompactLayout } from "@/lib/use-compact-layout";
 import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -142,13 +145,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   createBrowser,
   createCodeTab,
@@ -283,6 +279,7 @@ import {
   reconcileWorkspaceSelection,
   selectedWorkspaceTabKey,
   selectWorkspaceGroup,
+  selectWorkspaceOverview,
   selectWorkspaceTab,
 } from "@/lib/workspace-selection";
 
@@ -2320,13 +2317,14 @@ export function App() {
     [desktopRuntime],
   );
   const isPopout = popoutTarget !== null;
+  const compactLayout = useCompactLayout();
+  const compactShell = compactLayout && !isPopout;
   const showContentTitlebar = !isPopout || desktopRuntime;
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     popoutTarget?.projectId ?? null,
   );
-  const [createdRepositoryProjectId, setCreatedRepositoryProjectId] = useState<
-    string | null
-  >(null);
+  const [createdRepositoryOnboarding, setCreatedRepositoryOnboarding] =
+    useState<{ openInitialChat: boolean; projectId: string } | null>(null);
   const [workspaceSelection, setWorkspaceSelection] = useState(() =>
     emptyWorkspaceSelection(popoutTarget?.projectId ?? null),
   );
@@ -2383,7 +2381,6 @@ export function App() {
     string | null
   >(null);
   const [showCustomizations, setShowCustomizations] = useState(false);
-  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const [sidebarResizing, setSidebarResizing] = useState(false);
@@ -2442,7 +2439,6 @@ export function App() {
     setShowSettings(false);
     setShowProjectSettings(false);
     setSelectedWorkflowIntentId(null);
-    setMobileNavigationOpen(false);
   };
 
   const openProjectSettings = (
@@ -2455,7 +2451,6 @@ export function App() {
     setShowSettings(false);
     setShowProjectSettings(true);
     setSelectedWorkflowIntentId(workflowId);
-    setMobileNavigationOpen(false);
   };
 
   const bootstrap = useQuery({
@@ -2503,10 +2498,9 @@ export function App() {
       );
       setSelectedProjectId(null);
       setWorkspaceSelection(emptyWorkspaceSelection());
-      setShowImporter(true);
+      setShowImporter(!compactShell);
       setShowSettings(false);
       setShowProjectSettings(false);
-      setMobileNavigationOpen(false);
     },
   });
   const tabLayout = useQuery({
@@ -2617,13 +2611,14 @@ export function App() {
       worktreeId,
       worktreeMode,
     }: {
+      open?: boolean;
       projectId: string;
       tabGroupId?: string;
       worktreeId?: string;
       worktreeMode?: "agent-managed" | "pinned";
     }) =>
       createChat(projectId, "New chat", worktreeId, worktreeMode, tabGroupId),
-    onSuccess: (chat) => {
+    onSuccess: (chat, { open }) => {
       queryClient.setQueryData<ChatSummary[]>(
         ["chats", chat.projectId],
         (current = []) =>
@@ -2631,7 +2626,13 @@ export function App() {
             (left, right) => left.position - right.position,
           ),
       );
-      openCreatedTab(chat.projectId, "chat", chat.id);
+      if (open !== false) {
+        openCreatedTab(chat.projectId, "chat", chat.id);
+      } else {
+        void queryClient.invalidateQueries({
+          queryKey: ["project-tab-layout", chat.projectId],
+        });
+      }
       void queryClient.invalidateQueries({
         queryKey: ["chats", chat.projectId],
       });
@@ -3233,6 +3234,19 @@ export function App() {
   const selectedProject = projects.data?.find(
     (project) => project.id === selectedProjectId,
   );
+  const mobileProjectSelectorOpen =
+    compactShell &&
+    selectedProjectId === null &&
+    !showImporter &&
+    !showSettings &&
+    !showProjectSettings;
+  const compactManagedHeader =
+    compactShell &&
+    (mobileProjectSelectorOpen ||
+      showImporter ||
+      showSettings ||
+      showProjectSettings ||
+      (projectOverviewSelected && Boolean(selectedProject)));
   const projectSurfaceIndex = useMemo(
     () =>
       buildProjectSurfaceIndex(tabLayout.data, {
@@ -3694,35 +3708,42 @@ export function App() {
 
   useEffect(() => {
     if (!projects.data) return;
-    if (projects.data.length === 0) {
-      setShowImporter(true);
+    const action = projectSelectionAction({
+      compact: compactShell,
+      projects: projects.data,
+      selectedProjectId,
+      visibleProjects,
+    });
+    if (!action) return;
+    if (action.showImporter !== undefined) {
+      setShowImporter(action.showImporter);
+    }
+    if (!compactShell && projects.data.length === 0) {
       setShowSettings(false);
       setShowProjectSettings(false);
-      setSelectedProjectId(null);
-      return;
+    } else if (compactShell) {
+      setShowProjectSettings(false);
+      setSelectedWorkflowIntentId(null);
     }
-    if (!visibleProjects.some((project) => project.id === selectedProjectId)) {
-      const projectId = visibleProjects[0]?.id ?? null;
-      setSelectedProjectId(projectId);
-      setWorkspaceSelection(emptyWorkspaceSelection(projectId));
-      setPendingSurfaceSelection(null);
-      setChatConsoleChatId(null);
-    }
-  }, [projects.data, selectedProjectId, visibleProjects]);
+    setSelectedProjectId(action.projectId);
+    setWorkspaceSelection(emptyWorkspaceSelection(action.projectId));
+    setPendingSurfaceSelection(null);
+    setChatConsoleChatId(null);
+  }, [compactShell, projects.data, selectedProjectId, visibleProjects]);
 
   useEffect(() => {
-    if (!createdRepositoryProjectId) return;
+    if (!createdRepositoryOnboarding) return;
     const action = githubRepositoryOnboardingAction(
-      createdRepositoryProjectId,
+      createdRepositoryOnboarding.projectId,
       projects.data,
     );
     if (action === "wait") return;
-    const projectId = createdRepositoryProjectId;
-    setCreatedRepositoryProjectId(null);
+    const { openInitialChat, projectId } = createdRepositoryOnboarding;
+    setCreatedRepositoryOnboarding(null);
     if (action === "create-chat") {
-      newChat.mutate({ projectId });
+      newChat.mutate({ open: openInitialChat, projectId });
     }
-  }, [createdRepositoryProjectId, projects.data]);
+  }, [createdRepositoryOnboarding, projects.data]);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -3772,7 +3793,6 @@ export function App() {
   ]);
 
   const revealWorkspace = () => {
-    setMobileNavigationOpen(false);
     setShowImporter(false);
     setShowSettings(false);
     setShowProjectSettings(false);
@@ -3787,6 +3807,16 @@ export function App() {
       "cantrip:active-project-workspace",
       workspace.id,
     );
+    if (compactShell) {
+      setSelectedProjectId(null);
+      setWorkspaceSelection(emptyWorkspaceSelection());
+      setPendingSurfaceSelection(null);
+      setChatConsoleChatId(null);
+      setShowImporter(false);
+      setShowSettings(false);
+      setShowProjectSettings(false);
+      return;
+    }
     const projectIds = new Set(workspace.projectIds);
     const nextProjectId = projectIds.has(selectedProjectId ?? "")
       ? selectedProjectId
@@ -3798,7 +3828,6 @@ export function App() {
     setShowImporter(!nextProjectId);
     setShowSettings(false);
     setShowProjectSettings(false);
-    setMobileNavigationOpen(false);
   };
   const selectProjectFromSidebar = (projectId: string) => {
     setSelectedProjectId(projectId);
@@ -3807,6 +3836,35 @@ export function App() {
     setChatConsoleChatId(null);
     setDetachedGroupId(null);
     revealWorkspace();
+  };
+  const closeCompactProject = () => {
+    setSelectedProjectId(null);
+    setWorkspaceSelection(emptyWorkspaceSelection());
+    setPendingSurfaceSelection(null);
+    setChatConsoleChatId(null);
+    setDetachedGroupId(null);
+    setShowImporter(false);
+    setShowSettings(false);
+    setShowProjectSettings(false);
+    setSelectedWorkflowIntentId(null);
+  };
+  const openCompactRootSettings = (
+    section: "general" | "skills" | "mcp" | "workspaces" = "general",
+  ) => {
+    setSelectedProjectId(null);
+    setWorkspaceSelection(emptyWorkspaceSelection());
+    setPendingSurfaceSelection(null);
+    setSettingsSection(section);
+    setShowSettings(true);
+    setShowImporter(false);
+    setShowProjectSettings(false);
+  };
+  const returnToCompactProjectOverview = () => {
+    setShowProjectSettings(false);
+    setSelectedWorkflowIntentId(null);
+    setWorkspaceSelection((current) =>
+      selectWorkspaceOverview(current, selectedProjectId),
+    );
   };
   const selectTopTab = (tabKey: string) => {
     const layout = tabLayout.data;
@@ -4252,7 +4310,41 @@ export function App() {
             <span className="truncate">{workspaceDragError}</span>
           </button>
         ) : null}
-        {showContentTitlebar ? (
+        {compactShell && showImporter ? (
+          <MobileProjectHeader
+            context={activeProjectWorkspace?.name ?? "Choose a repository"}
+            onBack={closeCompactProject}
+            title="New project"
+          />
+        ) : compactShell && showSettings ? (
+          <MobileProjectHeader
+            context="Account preferences"
+            onBack={closeCompactProject}
+            title="Settings"
+          />
+        ) : compactShell && showProjectSettings && selectedProject ? (
+          <MobileProjectHeader
+            context={
+              selectedProject.github?.nameWithOwner ??
+              selectedProject.source?.displayPath
+            }
+            onBack={returnToCompactProjectOverview}
+            title="Project settings"
+          />
+        ) : compactShell && projectOverviewSelected && selectedProject ? (
+          <MobileProjectHeader
+            context={
+              selectedProject.github?.nameWithOwner ??
+              selectedProject.source?.displayPath
+            }
+            onCloseProject={closeCompactProject}
+            onOpenProjectSettings={() =>
+              openProjectSettings(selectedProject.id)
+            }
+            title={selectedProject.name}
+          />
+        ) : null}
+        {showContentTitlebar && !compactManagedHeader ? (
           <header
             className={cn(
               "relative z-30 flex shrink-0 items-center justify-between",
@@ -4470,18 +4562,8 @@ export function App() {
               )}
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
-              {!isPopout ? (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => setMobileNavigationOpen(true)}
-                >
-                  <PanelLeft className="size-4" />
-                  <span className="sr-only">Open projects and chats</span>
-                </Button>
-              ) : null}
               <ContentHeaderActions {...contentHeaderActions} compact />
-              {!isPopout ? (
+              {!isPopout && !compactShell ? (
                 <>
                   <Button
                     size="icon"
@@ -4571,7 +4653,34 @@ export function App() {
           />
         ) : null}
 
-        {showSettings ? (
+        {mobileProjectSelectorOpen ? (
+          <MobileProjectSelector
+            activeWorkspace={activeProjectWorkspace}
+            currentUserName={
+              bootstrap.data?.auth.currentUser?.displayName ?? "Cantrip User"
+            }
+            error={projects.isError ? errorText(projects.error) : null}
+            loading={projects.isLoading || projectWorkspaces.isLoading}
+            projects={projects.data ?? []}
+            workers={workers.data ?? []}
+            workspaces={projectWorkspaces.data ?? []}
+            onCreateWorkspace={async (name) => {
+              await createWorkspaceMutation.mutateAsync(name);
+            }}
+            onManageWorkspaces={() => openCompactRootSettings("workspaces")}
+            onNewProject={() => {
+              setSelectedProjectId(null);
+              setWorkspaceSelection(emptyWorkspaceSelection());
+              setPendingSurfaceSelection(null);
+              setShowImporter(true);
+              setShowSettings(false);
+              setShowProjectSettings(false);
+            }}
+            onOpenSettings={() => openCompactRootSettings()}
+            onSelectProject={selectProjectFromSidebar}
+            onSelectWorkspace={selectProjectWorkspace}
+          />
+        ) : showSettings ? (
           <SettingsPage initialSection={settingsSection} />
         ) : showProjectSettings && selectedProject ? (
           <ProjectSettingsPage
@@ -4629,8 +4738,10 @@ export function App() {
               setShowImporter(false);
               setShowSettings(false);
               setShowProjectSettings(false);
-              setMobileNavigationOpen(false);
-              setCreatedRepositoryProjectId(project.id);
+              setCreatedRepositoryOnboarding({
+                openInitialChat: !compactShell,
+                projectId: project.id,
+              });
             }}
             projects={projects.data ?? []}
             workerId={onlineWorker?.workerId ?? null}
@@ -5064,118 +5175,6 @@ export function App() {
           onOpenChange={setShowCustomizations}
         />
       ) : null}
-
-      <Dialog
-        open={mobileNavigationOpen}
-        onOpenChange={setMobileNavigationOpen}
-      >
-        <DialogContent className="max-h-[calc(100svh-2rem)] p-4 md:hidden">
-          <DialogHeader>
-            <DialogTitle>Projects and chats</DialogTitle>
-            <DialogDescription>
-              Tap and hold a chat for actions, or use its menu button.
-            </DialogDescription>
-          </DialogHeader>
-          <WorkspaceSwitcher
-            activeWorkspaceId={activeProjectWorkspace?.id ?? null}
-            workspaces={projectWorkspaces.data ?? []}
-            onSelect={selectProjectWorkspace}
-            onCreate={async (name) => {
-              await createWorkspaceMutation.mutateAsync(name);
-            }}
-            onAddProject={() => {
-              setShowImporter(true);
-              setShowSettings(false);
-              setShowProjectSettings(false);
-              setMobileNavigationOpen(false);
-            }}
-            onManage={() => {
-              setSettingsSection("workspaces");
-              setShowSettings(true);
-              setShowImporter(false);
-              setShowProjectSettings(false);
-              setMobileNavigationOpen(false);
-            }}
-          />
-          <div className="min-h-0 overflow-y-auto">
-            <ProjectChatList
-              browsers={browsers.data ?? []}
-              projects={visibleProjects}
-              chats={chats.data ?? []}
-              codeTabs={codeTabs.data ?? []}
-              explorers={explorers.data ?? []}
-              projectViews={projectViews.data ?? []}
-              terminals={terminals.data ?? []}
-              workers={workers.data ?? []}
-              worktrees={worktrees.data ?? []}
-              worktreeStatuses={worktreeStatuses}
-              selectedProjectId={selectedProjectId}
-              selectedTabKey={selectedTabKey}
-              tabLayout={tabLayout.data ?? null}
-              creatingKinds={creatingSurfaceKinds}
-              onCreateSurface={createProjectSurface}
-              onChangeChatWorktree={(chatId, worktreeId, mode) => {
-                const chat = chats.data?.find(({ id }) => id === chatId);
-                if (chat) bindChatWorktree(chat, worktreeId, mode);
-              }}
-              onRequestChatWorktreeCreate={(chat) => {
-                setMobileNavigationOpen(false);
-                setWorktreeCreateTarget({
-                  kind: "chat",
-                  projectId: chat.projectId,
-                  tabId: chat.id,
-                  mode: chat.worktreeMode,
-                });
-              }}
-              onOpenChatTerminal={openChatTerminalHere}
-              onOpenChatExplorer={openChatExplorerHere}
-              onOpenChatHistory={openChatHistoryHere}
-              onRenameChat={(chatId, title) =>
-                renameChatMutation.mutate({ chatId, title })
-              }
-              onDuplicateChat={(chatId) => forkChatMutation.mutate(chatId)}
-              onDeleteChat={(chatId) => deleteChatMutation.mutate(chatId)}
-              onRenameCode={(codeTabId, title) =>
-                updateCodeTabMutation.mutate({ codeTabId, title })
-              }
-              onDeleteCode={(codeTabId) =>
-                deleteCodeTabMutation.mutate(codeTabId)
-              }
-              onRenameBrowser={(browserId, title) =>
-                updateBrowserMutation.mutate({ browserId, input: { title } })
-              }
-              onDeleteBrowser={(browserId) =>
-                deleteBrowserMutation.mutate(browserId)
-              }
-              onRenameExplorer={(explorerId, title) =>
-                renameExplorerMutation.mutate({ explorerId, title })
-              }
-              onDeleteExplorer={(explorerId) =>
-                deleteExplorerMutation.mutate(explorerId)
-              }
-              onRenameProjectView={(viewId, title) =>
-                renameProjectViewMutation.mutate({ viewId, title })
-              }
-              onDeleteProjectView={(viewId) =>
-                deleteProjectViewMutation.mutate(viewId)
-              }
-              onRenameTerminal={(terminalId, title) =>
-                renameTerminalMutation.mutate({ terminalId, title })
-              }
-              onDeleteTerminal={(terminalId) =>
-                deleteTerminalMutation.mutate(terminalId)
-              }
-              onRemoveProject={(projectId, deleteLocalFiles) => {
-                removeProjectMutation.mutate({ projectId, deleteLocalFiles });
-                setMobileNavigationOpen(false);
-              }}
-              onOpenProjectSettings={openProjectSettings}
-              onSelectProject={selectProjectFromSidebar}
-              onSelectGroup={selectGroupFromSidebar}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {newRemoteDesktop.isError ? (
         <div className="fixed bottom-5 right-5 z-50 max-w-md rounded-lg bg-destructive px-4 py-3 text-sm text-destructive-foreground shadow-xl">
