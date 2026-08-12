@@ -86,6 +86,7 @@ function toJob(row: ChatRelocationJobRow): ChatRelocationJobSummary {
     targetPlacement: row.targetPlacement,
     contextSnapshotId: row.id,
     targetRuntimeThreadId: row.targetRuntimeThreadId,
+    targetModelRouteId: row.targetModelRouteId,
     attempt: row.attempt,
     progress: row.progress,
     error:
@@ -121,6 +122,7 @@ function toSnapshot(
       modelId: row.modelId,
       modelRouteId: row.modelRouteId,
       permissionProfileId: row.permissionProfileId,
+      requiredRevision: row.requiredRevision,
       createdAt: toISOString(row.createdAt),
     }),
     payload: chatRelocationContextPayloadSchema.parse(row.payload),
@@ -155,6 +157,26 @@ function payloadFingerprint(
   return createHash("sha256")
     .update(JSON.stringify({ chatId, targetPlacement }))
     .digest("hex");
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+    .join(",")}}`;
+}
+
+export function encodeChatRelocationPayload(
+  payload: ChatRelocationContextPayload,
+): Buffer {
+  return Buffer.from(canonicalJson(payload), "utf8");
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -235,6 +257,18 @@ export class ChatRelocationJobRepository {
     const now = new Date();
     try {
       return await this.database.transaction(async (transaction) => {
+        await transaction
+          .select({ id: schema.chats.id })
+          .from(schema.chats)
+          .innerJoin(
+            schema.projects,
+            and(
+              eq(schema.projects.id, schema.chats.projectId),
+              eq(schema.projects.ownerId, ownerId),
+            ),
+          )
+          .where(eq(schema.chats.id, chatId))
+          .for("update");
         const rows = await transaction
           .select({
             chat: schema.chats,
@@ -287,6 +321,11 @@ export class ChatRelocationJobRepository {
         ) {
           throw new ChatRelocationJobConflictError(
             "The chat source worker and active worktree do not match.",
+          );
+        }
+        if (!context.worktree.head) {
+          throw new ChatRelocationJobConflictError(
+            "The source worktree revision has not been observed yet.",
           );
         }
         if (
@@ -458,7 +497,7 @@ export class ChatRelocationJobRepository {
           }),
         });
         const digest = createHash("sha256")
-          .update(JSON.stringify(payload))
+          .update(encodeChatRelocationPayload(payload))
           .digest("hex");
         const jobId = randomUUID();
         const initialState = chatIsExecuting(context.chat.status)
@@ -503,6 +542,7 @@ export class ChatRelocationJobRepository {
           modelId: context.chat.modelId,
           modelRouteId: context.runtime?.modelRouteId ?? null,
           permissionProfileId: context.chat.permissionProfileId,
+          requiredRevision: context.worktree.head,
           createdAt: now,
         });
         return toJob(inserted[0]!);
@@ -586,6 +626,177 @@ export class ChatRelocationJobRepository {
     return rows[0] ? toSnapshot(rows[0].snapshot) : null;
   }
 
+  private async refreshWaitingSnapshot(jobId: string): Promise<void> {
+    await this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select({
+          job: schema.chatRelocationJobs,
+          chat: schema.chats,
+          worktree: schema.projectWorktrees,
+          runtime: schema.chatRuntimeSessions,
+        })
+        .from(schema.chatRelocationJobs)
+        .innerJoin(
+          schema.chats,
+          eq(schema.chats.id, schema.chatRelocationJobs.chatId),
+        )
+        .innerJoin(
+          schema.projectWorktrees,
+          eq(schema.projectWorktrees.id, schema.chats.activeWorktreeId),
+        )
+        .leftJoin(
+          schema.chatRuntimeSessions,
+          and(
+            eq(schema.chatRuntimeSessions.chatId, schema.chats.id),
+            eq(
+              schema.chatRuntimeSessions.workerId,
+              schema.projectWorktrees.workerId,
+            ),
+            eq(
+              schema.chatRuntimeSessions.worktreeId,
+              schema.projectWorktrees.id,
+            ),
+          ),
+        )
+        .where(eq(schema.chatRelocationJobs.id, jobId))
+        .limit(1);
+      const context = rows[0];
+      if (!context || context.job.state !== "waiting-for-idle") return;
+      if (chatIsExecuting(context.chat.status)) return;
+      if (
+        context.chat.placementRevision !==
+          context.job.sourcePlacementRevision ||
+        context.worktree.id !== context.job.sourcePlacement.worktreeId ||
+        context.worktree.workerId !== context.job.sourcePlacement.workerId
+      ) {
+        throw new ChatRelocationJobConflictError(
+          "The source placement changed before the idle snapshot could be captured.",
+        );
+      }
+      if (!context.worktree.head) {
+        throw new ChatRelocationJobConflictError(
+          "The source worktree revision has not been observed yet.",
+        );
+      }
+      const messages = await transaction
+        .select()
+        .from(schema.chatMessages)
+        .where(eq(schema.chatMessages.chatId, context.chat.id))
+        .orderBy(asc(schema.chatMessages.sequence));
+      if (messages.length > 100_000) {
+        throw new ChatRelocationJobConflictError(
+          "The canonical transcript is too large to snapshot safely.",
+        );
+      }
+      const referencedAttachmentIds = [
+        ...new Set(
+          messages.flatMap((message) => attachmentIds(message.content)),
+        ),
+      ];
+      if (referencedAttachmentIds.length > 2_000) {
+        throw new ChatRelocationJobConflictError(
+          "The chat has too many referenced attachments to relocate safely.",
+        );
+      }
+      const attachments = referencedAttachmentIds.length
+        ? await transaction
+            .select({
+              attachment: schema.chatAttachments,
+              replica: schema.chatAttachmentReplicas,
+            })
+            .from(schema.chatAttachments)
+            .leftJoin(
+              schema.chatAttachmentReplicas,
+              and(
+                eq(
+                  schema.chatAttachmentReplicas.attachmentId,
+                  schema.chatAttachments.id,
+                ),
+                eq(schema.chatAttachmentReplicas.status, "ready"),
+              ),
+            )
+            .where(
+              and(
+                eq(schema.chatAttachments.chatId, context.chat.id),
+                inArray(schema.chatAttachments.id, referencedAttachmentIds),
+              ),
+            )
+        : [];
+      const attachmentById = new Map(
+        referencedAttachmentIds.map((attachmentId) => [
+          attachmentId,
+          attachments.filter(
+            ({ attachment }) => attachment.id === attachmentId,
+          ),
+        ]),
+      );
+      if (
+        [...attachmentById.values()].some((availability) => {
+          const attachment = availability[0]?.attachment;
+          return !attachment || attachment.status !== "ready";
+        })
+      ) {
+        throw new ChatRelocationJobConflictError(
+          "A referenced attachment is missing from canonical chat state.",
+        );
+      }
+      const payload = chatRelocationContextPayloadSchema.parse({
+        version: 1,
+        messages: messages.map((message) => ({
+          sequence: message.sequence,
+          role: message.role,
+          mode: message.mode,
+          content: message.content,
+          createdAt: toISOString(message.createdAt),
+        })),
+        attachments: referencedAttachmentIds.map((attachmentId) => {
+          const availability = attachmentById.get(attachmentId)!;
+          const attachment = availability[0]!.attachment;
+          return {
+            attachment: {
+              id: attachment.id,
+              chatId: attachment.chatId,
+              fileName: attachment.fileName,
+              mimeType: attachment.mimeType,
+              sizeBytes: attachment.sizeBytes,
+              kind: attachment.kind,
+              source: attachment.source,
+              status: attachment.status,
+              previewText: attachment.previewText,
+              createdAt: toISOString(attachment.createdAt),
+            },
+            sha256: attachment.sha256,
+            sourceWorkerId: attachment.workerId,
+            availableWorkerIds: [
+              ...new Set(
+                availability.flatMap(({ replica }) =>
+                  replica ? [replica.workerId] : [],
+                ),
+              ),
+            ].sort(),
+          };
+        }),
+      });
+      const digest = createHash("sha256")
+        .update(encodeChatRelocationPayload(payload))
+        .digest("hex");
+      await transaction
+        .update(schema.chatRelocationSnapshots)
+        .set({
+          throughSequence: messages.at(-1)?.sequence ?? 0,
+          transcriptSha256: digest,
+          payload,
+          messageCount: payload.messages.length,
+          attachmentCount: payload.attachments.length,
+          modelId: context.chat.modelId,
+          modelRouteId: context.runtime?.modelRouteId ?? null,
+          permissionProfileId: context.chat.permissionProfileId,
+          requiredRevision: context.worktree.head,
+        })
+        .where(eq(schema.chatRelocationSnapshots.jobId, context.job.id));
+    });
+  }
+
   async markAttachmentAvailable(
     attachmentId: string,
     workerId: string,
@@ -606,8 +817,40 @@ export class ChatRelocationJobRepository {
       });
   }
 
+  async isAttachmentAvailable(
+    attachmentId: string,
+    workerId: string,
+  ): Promise<boolean> {
+    const rows = await this.database
+      .select({ attachmentId: schema.chatAttachmentReplicas.attachmentId })
+      .from(schema.chatAttachmentReplicas)
+      .where(
+        and(
+          eq(schema.chatAttachmentReplicas.attachmentId, attachmentId),
+          eq(schema.chatAttachmentReplicas.workerId, workerId),
+          eq(schema.chatAttachmentReplicas.status, "ready"),
+        ),
+      )
+      .limit(1);
+    return Boolean(rows[0]);
+  }
+
   async recoverInterrupted(): Promise<number> {
     const now = new Date();
+    await this.database
+      .update(schema.chats)
+      .set({ status: "idle", updatedAt: now })
+      .where(
+        and(
+          eq(schema.chats.status, "failed"),
+          sql`EXISTS (
+            SELECT 1
+            FROM ${schema.chatRelocationJobs}
+            WHERE ${schema.chatRelocationJobs.chatId} = ${schema.chats.id}
+              AND ${schema.chatRelocationJobs.state} IN ('queued', 'waiting-for-idle', 'validating', 'preparing-replica', 'transferring-attachments', 'hydrating-runtime', 'ready-to-commit', 'blocked')
+          )`,
+        ),
+      );
     const rows = await this.database
       .update(schema.chatRelocationJobs)
       .set({
@@ -626,6 +869,41 @@ export class ChatRelocationJobRepository {
         updatedAt: now,
       })
       .where(inArray(schema.chatRelocationJobs.state, [...RUNNING_STATES]))
+      .returning({ id: schema.chatRelocationJobs.id });
+    return rows.length;
+  }
+
+  async requeueRetryableForWorker(workerId: string): Promise<number> {
+    const now = new Date();
+    const rows = await this.database
+      .update(schema.chatRelocationJobs)
+      .set({
+        state: "queued",
+        stateRevision: sql`${schema.chatRelocationJobs.stateRevision} + 1`,
+        commandId: null,
+        leaseExpiresAt: null,
+        availableAt: now,
+        progress: progress(
+          "queued",
+          0,
+          "A required worker reconnected; relocation validation will resume.",
+          now,
+        ),
+        lastErrorCode: null,
+        lastErrorMessage: null,
+        errorRetryable: null,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.chatRelocationJobs.state, "blocked"),
+          eq(schema.chatRelocationJobs.errorRetryable, true),
+          or(
+            sql`${schema.chatRelocationJobs.sourcePlacement}->>'workerId' = ${workerId}`,
+            sql`${schema.chatRelocationJobs.targetPlacement}->>'workerId' = ${workerId}`,
+          ),
+        ),
+      )
       .returning({ id: schema.chatRelocationJobs.id });
     return rows.length;
   }
@@ -656,59 +934,101 @@ export class ChatRelocationJobRepository {
         asc(schema.chatRelocationJobs.createdAt),
       )
       .limit(20);
-    const candidate = candidates.find(
-      ({ job, chatStatus }) =>
-        job.state === "queued" || !chatIsExecuting(chatStatus),
-    );
-    if (!candidate) return null;
-    const commandId = randomUUID();
-    const claimed = await this.database
-      .update(schema.chatRelocationJobs)
-      .set({
-        state: "validating",
-        stateRevision: sql`${schema.chatRelocationJobs.stateRevision} + 1`,
-        attempt: sql`${schema.chatRelocationJobs.attempt} + 1`,
-        commandId,
-        startedAt: candidate.job.startedAt ?? now,
-        leaseExpiresAt: new Date(now.getTime() + JOB_LEASE_MS),
-        progress: progress(
-          "validating",
-          5,
-          "Validating source and target placement.",
-          now,
-        ),
-        lastErrorCode: null,
-        lastErrorMessage: null,
-        errorRetryable: null,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(schema.chatRelocationJobs.id, candidate.job.id),
-          eq(
-            schema.chatRelocationJobs.stateRevision,
-            candidate.job.stateRevision,
+    for (const candidate of candidates) {
+      if (
+        candidate.job.state === "waiting-for-idle" &&
+        chatIsExecuting(candidate.chatStatus)
+      ) {
+        continue;
+      }
+      if (candidate.job.state === "waiting-for-idle") {
+        try {
+          await this.refreshWaitingSnapshot(candidate.job.id);
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message.slice(0, 4_000)
+              : "The idle relocation snapshot could not be refreshed.";
+          await this.database
+            .update(schema.chatRelocationJobs)
+            .set({
+              state: "failed",
+              stateRevision: sql`${schema.chatRelocationJobs.stateRevision} + 1`,
+              commandId: null,
+              leaseExpiresAt: null,
+              progress: progress("failed", 100, message, now),
+              lastErrorCode: "stale-attempt",
+              lastErrorMessage: message,
+              errorRetryable: false,
+              completedAt: now,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(schema.chatRelocationJobs.id, candidate.job.id),
+                eq(
+                  schema.chatRelocationJobs.stateRevision,
+                  candidate.job.stateRevision,
+                ),
+                eq(schema.chatRelocationJobs.state, "waiting-for-idle"),
+              ),
+            );
+          continue;
+        }
+      }
+      const commandId = randomUUID();
+      const claimed = await this.database
+        .update(schema.chatRelocationJobs)
+        .set({
+          state: "validating",
+          stateRevision: sql`${schema.chatRelocationJobs.stateRevision} + 1`,
+          attempt: sql`${schema.chatRelocationJobs.attempt} + 1`,
+          commandId,
+          startedAt: candidate.job.startedAt ?? now,
+          leaseExpiresAt: new Date(now.getTime() + JOB_LEASE_MS),
+          progress: progress(
+            "validating",
+            5,
+            "Validating source and target placement.",
+            now,
           ),
-          inArray(schema.chatRelocationJobs.state, [
-            "queued",
-            "waiting-for-idle",
-          ]),
-        ),
-      )
-      .returning();
-    if (!claimed[0]) return null;
-    const snapshot = await this.getSnapshot(claimed[0].ownerId, claimed[0].id);
-    if (!snapshot) {
-      throw new ChatRelocationJobNotFoundError(
-        "Relocation context snapshot not found.",
+          lastErrorCode: null,
+          lastErrorMessage: null,
+          errorRetryable: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.chatRelocationJobs.id, candidate.job.id),
+            eq(
+              schema.chatRelocationJobs.stateRevision,
+              candidate.job.stateRevision,
+            ),
+            inArray(schema.chatRelocationJobs.state, [
+              "queued",
+              "waiting-for-idle",
+            ]),
+          ),
+        )
+        .returning();
+      if (!claimed[0]) continue;
+      const snapshot = await this.getSnapshot(
+        claimed[0].ownerId,
+        claimed[0].id,
       );
+      if (!snapshot) {
+        throw new ChatRelocationJobNotFoundError(
+          "Relocation context snapshot not found.",
+        );
+      }
+      return {
+        commandId,
+        job: toJob(claimed[0]),
+        ownerId: claimed[0].ownerId,
+        snapshot,
+      };
     }
-    return {
-      commandId,
-      job: toJob(claimed[0]),
-      ownerId: claimed[0].ownerId,
-      snapshot,
-    };
+    return null;
   }
 
   async advance(
@@ -720,6 +1040,7 @@ export class ChatRelocationJobRepository {
     nextProgress: Omit<ChatRelocationProgress, "updatedAt">,
     options: {
       cancellationUnsafe?: boolean;
+      targetModelRouteId?: string;
       targetRuntimeThreadId?: string;
     } = {},
   ): Promise<ChatRelocationJobSummary> {
@@ -733,6 +1054,9 @@ export class ChatRelocationJobRepository {
         ...(options.cancellationUnsafe ? { cancellationUnsafeAt: now } : {}),
         ...(options.targetRuntimeThreadId
           ? { targetRuntimeThreadId: options.targetRuntimeThreadId }
+          : {}),
+        ...(options.targetModelRouteId
+          ? { targetModelRouteId: options.targetModelRouteId }
           : {}),
         updatedAt: now,
       })
@@ -803,13 +1127,17 @@ export class ChatRelocationJobRepository {
         .limit(1);
       const job = jobs[0];
       if (!job) throw new ChatRelocationJobStaleAttemptError();
-      if (!job.targetRuntimeThreadId || !job.targetPlacement.worktreeId) {
+      if (
+        !job.targetRuntimeThreadId ||
+        !job.targetModelRouteId ||
+        !job.targetPlacement.worktreeId
+      ) {
         throw new ChatRelocationJobConflictError(
           "The target runtime is not ready to commit.",
         );
       }
       const snapshots = await transaction
-        .select({ modelRouteId: schema.chatRelocationSnapshots.modelRouteId })
+        .select({ id: schema.chatRelocationSnapshots.id })
         .from(schema.chatRelocationSnapshots)
         .where(eq(schema.chatRelocationSnapshots.jobId, job.id))
         .limit(1);
@@ -901,7 +1229,7 @@ export class ChatRelocationJobRepository {
           workerId: job.targetPlacement.workerId,
           worktreeId: job.targetPlacement.worktreeId,
           codexThreadId: job.targetRuntimeThreadId,
-          modelRouteId: snapshots[0].modelRouteId,
+          modelRouteId: job.targetModelRouteId,
           status: "ready",
         })
         .onConflictDoUpdate({
@@ -912,7 +1240,7 @@ export class ChatRelocationJobRepository {
           ],
           set: {
             codexThreadId: job.targetRuntimeThreadId,
-            modelRouteId: snapshots[0].modelRouteId,
+            modelRouteId: job.targetModelRouteId,
             status: "ready",
             updatedAt: now,
           },

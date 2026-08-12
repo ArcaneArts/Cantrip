@@ -1141,6 +1141,7 @@ function toWorkerSummary(
     remoteSurfaces: worker.remoteSurfaceCapabilities,
     code: worker.codeCapabilities,
     projectReplicas: worker.projectReplicaCapabilities,
+    chatRelocation: worker.chatRelocationCapability,
     startedAt: toISOString(worker.startedAt),
     lastSeenAt: toISOString(worker.lastSeenAt),
     online: Date.now() - worker.lastSeenAt.getTime() <= WORKER_ONLINE_WINDOW_MS,
@@ -3040,6 +3041,7 @@ export class ServerRepository {
       codeCapabilities: heartbeat.code ?? unavailableCodeCapabilities,
       projectReplicaCapabilities:
         heartbeat.projectReplicas ?? unavailableProjectReplicaCapabilities,
+      chatRelocationCapability: heartbeat.chatRelocation ?? false,
       startedAt: new Date(heartbeat.startedAt),
       lastSeenAt: now,
       unlinkedAt: null,
@@ -4859,6 +4861,7 @@ export class ServerRepository {
     surfaceKind: ExecutionSurfaceKind,
     target?: ExecutionTarget,
     isWorkerConnected?: (workerId: string) => boolean,
+    allowOfflineExplicit = false,
   ): Promise<ExecutionPlacementResolution> {
     const projectRows = await this.database
       .select({
@@ -4933,10 +4936,6 @@ export class ServerRepository {
       surfaceKind === "explorer" ||
       surfaceKind === "code";
     const workerSupportsSurface = (worker: WorkerRow): boolean => {
-      if (isWorkerConnected && !isWorkerConnected(worker.id)) return false;
-      if (Date.now() - worker.lastSeenAt.getTime() > WORKER_ONLINE_WINDOW_MS) {
-        return false;
-      }
       if (surfaceKind === "code") return worker.codeCapabilities.available;
       if (surfaceKind === "browser") {
         return worker.remoteSurfaceCapabilities.browser;
@@ -4982,14 +4981,22 @@ export class ServerRepository {
           "The selected worker is not linked to this account.",
         );
       }
-      if (Date.now() - worker.lastSeenAt.getTime() > WORKER_ONLINE_WINDOW_MS) {
+      const offlineAllowed = strict && allowOfflineExplicit;
+      if (
+        !offlineAllowed &&
+        Date.now() - worker.lastSeenAt.getTime() > WORKER_ONLINE_WINDOW_MS
+      ) {
         if (!strict) return null;
         throw new ExecutionPlacementUnavailableError(
           "worker-offline",
           `Worker ${worker.displayName ?? worker.name} is offline.`,
         );
       }
-      if (isWorkerConnected && !isWorkerConnected(worker.id)) {
+      if (
+        !offlineAllowed &&
+        isWorkerConnected &&
+        !isWorkerConnected(worker.id)
+      ) {
         if (!strict) return null;
         throw new ExecutionPlacementUnavailableError(
           "worker-offline",
@@ -5945,6 +5952,18 @@ export class ServerRepository {
   ): Promise<ChatExecutionContext | null> {
     try {
       return await this.database.transaction(async (transaction) => {
+        await transaction
+          .select({ id: schema.chats.id })
+          .from(schema.chats)
+          .innerJoin(
+            schema.projects,
+            and(
+              eq(schema.projects.id, schema.chats.projectId),
+              eq(schema.projects.ownerId, ownerId),
+            ),
+          )
+          .where(eq(schema.chats.id, chatId))
+          .for("update");
         const rows = await transaction
           .select({
             chat: schema.chats,
@@ -5990,6 +6009,30 @@ export class ServerRepository {
         if (row.chat.automationPaused) {
           throw new ExecutionLaneConflictError(
             "Chat automation is paused. Resume the chat before starting another turn.",
+          );
+        }
+        const activeRelocations = await transaction
+          .select({ id: schema.chatRelocationJobs.id })
+          .from(schema.chatRelocationJobs)
+          .where(
+            and(
+              eq(schema.chatRelocationJobs.chatId, chatId),
+              inArray(schema.chatRelocationJobs.state, [
+                "queued",
+                "waiting-for-idle",
+                "validating",
+                "preparing-replica",
+                "transferring-attachments",
+                "hydrating-runtime",
+                "ready-to-commit",
+                "blocked",
+              ]),
+            ),
+          )
+          .limit(1);
+        if (activeRelocations[0]) {
+          throw new ExecutionLaneConflictError(
+            "Chat relocation is active. Cancel it before starting another turn on the source placement.",
           );
         }
 

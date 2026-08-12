@@ -72,6 +72,11 @@ import {
   chatPlanAnswerSchema,
   chatPlanStateSchema,
   chatPlanUpdateSchema,
+  chatRelocationCreateSchema,
+  chatRelocationJobCancelSchema,
+  chatRelocationJobListSchema,
+  chatRelocationJobRetrySchema,
+  chatRelocationJobSummarySchema,
   chatPermissionProfileStateSchema,
   chatPermissionProfileUpdateSchema,
   chatPauseStateSchema,
@@ -420,6 +425,10 @@ import {
   effectivePermissionProfile,
   scopedCodeProfileId,
 } from "./chats/execution-helpers.js";
+import {
+  ChatRelocationJobExecutor,
+  type ChatRelocationLiveChange,
+} from "./chat-relocations/executor.js";
 import { CodeTunnelBroker } from "./code/tunnel.js";
 import { ProjectShareTunnelBroker } from "./project-shares/tunnel.js";
 import {
@@ -448,6 +457,10 @@ import {
   type ModelRuntime,
 } from "./db/repository.js";
 import { ProjectAutomationConflictError } from "./db/project-automations.js";
+import {
+  ChatRelocationJobConflictError,
+  ChatRelocationJobNotFoundError,
+} from "./db/chat-relocation-jobs.js";
 import {
   ProjectReplicaJobConflictError,
   ProjectReplicaJobNotFoundError,
@@ -1714,6 +1727,54 @@ export async function buildApp({
     app.log,
     publishProjectReplicaJobChange,
   );
+  const publishChatRelocationChange = (
+    change: ChatRelocationLiveChange,
+  ): void => {
+    if (!livePublishingEnabled) return;
+    try {
+      liveHub.publish({
+        ownerId: change.ownerId,
+        scope: { kind: "chat", chatId: change.job.chatId },
+        resource: "chat-relocation-job",
+        action: "invalidated",
+        entityId: change.job.id,
+        revision: change.job.stateRevision,
+        payload: null,
+      });
+      liveHub.publish({
+        ownerId: change.ownerId,
+        scope: { kind: "project", projectId: change.job.projectId },
+        resource: "chat",
+        action: "invalidated",
+        entityId: change.job.chatId,
+        revision: change.chat?.placementRevision ?? null,
+        payload: null,
+      });
+      if (change.chat) {
+        liveHub.publish({
+          ownerId: change.ownerId,
+          scope: { kind: "chat", chatId: change.job.chatId },
+          resource: "chat",
+          action: "updated",
+          entityId: change.job.chatId,
+          revision: change.chat.placementRevision,
+          payload: null,
+        });
+      }
+    } catch (error) {
+      app.log.error(
+        { err: error, chatRelocationJobId: change.job.id },
+        "Could not publish chat relocation change",
+      );
+    }
+  };
+  const chatRelocationJobExecutor = new ChatRelocationJobExecutor(
+    repository,
+    bridge,
+    app.log,
+    () => projectReplicaJobExecutor.queueAvailable(),
+    publishChatRelocationChange,
+  );
   if (
     config.deploymentMode === "hosted" &&
     config.authMode === "accounts" &&
@@ -1744,6 +1805,8 @@ export async function buildApp({
   await repository.resetInterruptedChatExecutions();
   await projectReplicaJobExecutor.recoverAfterRestart();
   projectReplicaJobExecutor.queueAvailable();
+  await chatRelocationJobExecutor.recoverAfterRestart();
+  chatRelocationJobExecutor.queueAvailable();
   await workflowExecutor.recoverAfterRestart();
   await workflowExecutor.expireGates();
   void workflowExecutor.queueAvailableRuns().catch((error) => {
@@ -4506,7 +4569,7 @@ export async function buildApp({
           projectReplicas: true,
           replicaProvisioning: true,
           browserFleetDiscovery: true,
-          workerSwitching: false,
+          workerSwitching: true,
           gitSync: true,
           worktrees: true,
           remoteSurfaces: {
@@ -6101,6 +6164,165 @@ export async function buildApp({
         job,
       });
       return reply.send(projectReplicaJobSummarySchema.parse(job));
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/relocations",
+    async (request, reply) => {
+      const input = chatRelocationCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = applicationOwnerId();
+      const context = await repository.getChatExecutionContext(
+        ownerId,
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat not found." });
+      }
+      try {
+        const resolution = await repository.resolveProjectExecutionPlacement(
+          ownerId,
+          context.projectId,
+          "chat",
+          input.data.target,
+          (workerId) => bridge.isConnected(workerId),
+          true,
+        );
+        const [sourceWorker, targetWorker] = await Promise.all([
+          repository.getWorker(ownerId, context.workerId),
+          repository.getWorker(ownerId, resolution.placement.workerId),
+        ]);
+        if (!sourceWorker?.chatRelocation || !targetWorker?.chatRelocation) {
+          return reply.code(409).send({
+            error:
+              "Both workers must be upgraded to a version that supports durable chat relocation.",
+          });
+        }
+        const job = await repository.chatRelocationJobs.create(
+          ownerId,
+          context.chatId,
+          resolution.placement,
+          input.data.idempotencyKey,
+        );
+        publishChatRelocationChange({ ownerId, job });
+        chatRelocationJobExecutor.queueAvailable();
+        return reply.code(202).send(chatRelocationJobSummarySchema.parse(job));
+      } catch (error) {
+        if (
+          error instanceof ChatRelocationJobNotFoundError ||
+          (error instanceof ExecutionPlacementUnavailableError &&
+            error.code === "project-not-found")
+        ) {
+          return reply.code(404).send({ error: error.message });
+        }
+        if (
+          error instanceof ChatRelocationJobConflictError ||
+          error instanceof ExecutionPlacementUnavailableError
+        ) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.get<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/relocations",
+    async (request, reply) => {
+      const ownerId = applicationOwnerId();
+      if (
+        !(await repository.getChatExecutionContext(
+          ownerId,
+          request.params.chatId,
+        ))
+      ) {
+        return reply.code(404).send({ error: "Chat not found." });
+      }
+      return reply.send(
+        chatRelocationJobListSchema.parse(
+          await repository.chatRelocationJobs.list(
+            ownerId,
+            request.params.chatId,
+          ),
+        ),
+      );
+    },
+  );
+
+  app.get<{ Params: { jobId: string } }>(
+    "/api/chat-relocations/:jobId",
+    async (request, reply) => {
+      const job = await repository.chatRelocationJobs.get(
+        applicationOwnerId(),
+        request.params.jobId,
+      );
+      return job
+        ? reply.send(chatRelocationJobSummarySchema.parse(job))
+        : reply.code(404).send({ error: "Chat relocation not found." });
+    },
+  );
+
+  app.post<{ Params: { jobId: string } }>(
+    "/api/chat-relocations/:jobId/retry",
+    async (request, reply) => {
+      const input = chatRelocationJobRetrySchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const job = await repository.chatRelocationJobs.retry(
+          applicationOwnerId(),
+          request.params.jobId,
+          input.data.stateRevision,
+        );
+        publishChatRelocationChange({
+          ownerId: applicationOwnerId(),
+          job,
+        });
+        chatRelocationJobExecutor.queueAvailable();
+        return reply.send(chatRelocationJobSummarySchema.parse(job));
+      } catch (error) {
+        if (error instanceof ChatRelocationJobNotFoundError) {
+          return reply.code(404).send({ error: "Chat relocation not found." });
+        }
+        if (error instanceof ChatRelocationJobConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: { jobId: string } }>(
+    "/api/chat-relocations/:jobId/cancel",
+    async (request, reply) => {
+      const input = chatRelocationJobCancelSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const job = await repository.chatRelocationJobs.cancel(
+          applicationOwnerId(),
+          request.params.jobId,
+          input.data.stateRevision,
+        );
+        publishChatRelocationChange({
+          ownerId: applicationOwnerId(),
+          job,
+        });
+        return reply.send(chatRelocationJobSummarySchema.parse(job));
+      } catch (error) {
+        if (error instanceof ChatRelocationJobNotFoundError) {
+          return reply.code(404).send({ error: "Chat relocation not found." });
+        }
+        if (error instanceof ChatRelocationJobConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
     },
   );
 
@@ -16011,6 +16233,14 @@ export async function buildApp({
             "Could not resume project replica jobs",
           );
         });
+      void chatRelocationJobExecutor
+        .workerConnected(workerId)
+        .catch((error) => {
+          app.log.error(
+            { err: error, workerId },
+            "Could not resume chat relocation jobs",
+          );
+        });
       void synchronizeTerminalServicesForWorker(workerId).catch((error) => {
         app.log.error(
           { err: error, workerId },
@@ -16058,6 +16288,7 @@ export async function buildApp({
     for (const timer of workerOfflineTimers.values()) clearTimeout(timer);
     workerOfflineTimers.clear();
     projectReplicaJobExecutor.stop();
+    chatRelocationJobExecutor.stop();
     workflowExecutor.stop();
     app.log.info(
       { live: liveHub.stats() },
@@ -16071,6 +16302,7 @@ export async function buildApp({
     await coordinator?.close();
     await activeScheduleTick;
     await projectReplicaJobExecutor.drain();
+    await chatRelocationJobExecutor.drain();
     await workflowExecutor.drain();
     await database.close();
   });

@@ -23,9 +23,10 @@ Replica persistence, reads, exact-revision provisioning, guarded
 synchronization, safe removal, placement-policy settings, and canonical
 placement resolution and selection for new surfaces, and fleet-wide Browser
 service discovery are implemented. Durable chat relocation jobs and canonical
-context snapshots are implemented as an internal foundation; worker switching
-remains disabled until runtime preparation, attachment transfer, and the user
-workflow are complete.
+context snapshots now drive server-routed runtime preparation, verified
+attachment transfer, target hydration, and atomic placement commit. The server
+advertises worker switching when these runtime contracts are available; the
+app's relocation workflow is delivered separately from this backend lifecycle.
 
 ## Current replica read contract
 
@@ -380,9 +381,10 @@ stateDiagram-v2
 ```
 
 The context handoff is a durable server artifact with a transcript cursor,
-summary/version, attachment availability, model route, permission profile, and
-source placement. A fixed last-message window is not a relocation contract.
-The original placement remains active until the compare-and-swap succeeds.
+summary/version, attachment availability, model route, permission profile,
+required Git revision, and source placement. A fixed last-message window is
+not a relocation contract. The original placement and source runtime remain
+active until the compare-and-swap succeeds.
 
 The durable foundation stores the entire canonical transcript through a fixed
 sequence cursor rather than reading a moving tail during execution. It records
@@ -390,7 +392,30 @@ attachment availability independently per worker, preserves the legacy
 attachment owner for rolling code, and binds every job to a source placement
 revision. Job creation is idempotent, only one active relocation may exist per
 chat, interrupted preparation can be replayed, and cancellation is rejected
-after the job reaches its unsafe commit boundary.
+after the job reaches its unsafe commit boundary. Once a relocation request
+exists, no new execution lane, queued prompt, or goal continuation may start on
+the source. A job created during an active turn refreshes its immutable
+snapshot at the first idle boundary so the completed turn is never omitted.
+
+The server validates both workers' negotiated Codex methods, target permission
+profile, referenced skills, model route availability, clean worktree state,
+and exact Git revision before hydrating anything. A revision mismatch may
+launch an idempotent replica synchronization job only for a clean Primary
+worktree and only under the explicit `fast-forward-primary` policy. Other
+mismatches block without changing either checkout.
+
+Workers advertise durable chat relocation support independently. The field
+defaults to unavailable when an older heartbeat omits it, and the server does
+not create or dispatch a relocation unless both source and target workers
+advertise support.
+
+Canonical payloads and attachments travel through the authenticated server
+relay in bounded, digest-verified chunks; workers never address one another.
+The target persists upload and hydration state by snapshot ID before creating
+the Codex thread. Duplicate delivery reuses a completed thread, while an
+interrupted hydration discards the abandoned thread before replay. Canonical
+system, user, and assistant messages are injected into the target thread in
+bounded batches with plan/goal context preserved.
 
 Placement commit is a single database transaction. It installs the prepared
 target runtime, updates the chat and linked console placement, and completes
@@ -399,7 +424,22 @@ placement revision still match the snapshot. A failed compare-and-swap marks
 the job stale without changing the original placement. The earlier worktree
 selection APIs now reject cross-worker chat changes so callers cannot bypass
 this lifecycle; same-worker worktree transitions continue to use their
-existing lane handoff.
+existing lane handoff. After a successful commit, source thread unsubscribe is
+best-effort cleanup; a cleanup failure cannot roll back or invalidate the new
+canonical placement. An uncommitted target thread is released when preparation
+loses its durable attempt.
+
+The owner-scoped relocation API is:
+
+- `POST /api/chats/:chatId/relocations`
+- `GET /api/chats/:chatId/relocations`
+- `GET /api/chat-relocations/:jobId`
+- `POST /api/chat-relocations/:jobId/retry`
+- `POST /api/chat-relocations/:jobId/cancel`
+
+Targets may be selected while offline so the durable job can enter a visible,
+retryable blocked state and resume on reconnect. Creating a new surface still
+requires an online target.
 
 ### Offline recovery
 
@@ -470,7 +510,8 @@ The singular-source migration must be additive and lossless:
    replica or relocation commands they did not advertise.
 7. `multipleWorkers` may remain true for enrollment and management.
    `gitSync` becomes true with the durable guarded synchronization lifecycle;
-   `workerSwitching` remains false until placement and recovery paths ship.
+   `workerSwitching` becomes true only when durable context handoff, runtime
+   hydration, placement commit, and recovery paths ship together.
 8. A rollback must not require deleting a replica or worktree. If a new server
    observes more than one replica, an older singular-source server must refuse
    ambiguous mutation rather than select one silently.
