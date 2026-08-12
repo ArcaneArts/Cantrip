@@ -159,6 +159,58 @@ export const authLogoutAllResultSchema = z.object({
   revokedSessions: z.number().int().nonnegative(),
 });
 
+export const accountSessionSummarySchema = z.object({
+  id: z.string().min(1),
+  authMethod: z.enum(["password", "account-password"]),
+  label: z.string().max(200).nullable(),
+  current: z.boolean(),
+  createdAt: z.iso.datetime(),
+  lastSeenAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+});
+
+export const accountSessionListSchema = z
+  .array(accountSessionSummarySchema)
+  .max(1_000);
+
+const auditMetadataSchema = z
+  .record(z.string().min(1).max(80), z.string().max(500))
+  .refine((metadata) => Object.keys(metadata).length <= 20, {
+    message: "Audit metadata may contain at most 20 fields.",
+  });
+
+export const auditEventSchema = z.object({
+  id: z.number().int().positive(),
+  ownerId: z.string().min(1).nullable(),
+  actor: z.object({
+    userId: z.string().min(1).nullable(),
+    sessionId: z.string().min(1).nullable(),
+  }),
+  action: z
+    .string()
+    .min(3)
+    .max(160)
+    .regex(/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/u),
+  result: z.enum(["succeeded", "failed", "denied"]),
+  resource: z.object({
+    type: z.string().min(1).max(80),
+    id: z.string().min(1).max(500).nullable(),
+  }),
+  requestId: z.string().min(1).max(200).nullable(),
+  metadata: auditMetadataSchema,
+  occurredAt: z.iso.datetime(),
+});
+
+export const auditEventListSchema = z.object({
+  items: z.array(auditEventSchema).max(200),
+  nextCursor: z.number().int().positive().nullable(),
+});
+
+export const auditEventQuerySchema = z.object({
+  before: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
 export const serverBootstrapSchema = z.object({
   protocolVersion: protocolVersionSchema,
   server: z.object({
@@ -7118,6 +7170,10 @@ export type RemoteSurfaceCapabilities = z.infer<
 export type CodeTransport = z.infer<typeof codeTransportSchema>;
 export type CodeCapabilities = z.infer<typeof codeCapabilitiesSchema>;
 export type UserSummary = z.infer<typeof userSummarySchema>;
+export type AccountSessionSummary = z.infer<typeof accountSessionSummarySchema>;
+export type AuditEvent = z.infer<typeof auditEventSchema>;
+export type AuditEventList = z.infer<typeof auditEventListSchema>;
+export type AuditEventQuery = z.infer<typeof auditEventQuerySchema>;
 export type AccountRegistration = z.infer<typeof accountRegistrationSchema>;
 export type AuthLogin = z.infer<typeof authLoginSchema>;
 export type AuthSession = z.infer<typeof authSessionSchema>;

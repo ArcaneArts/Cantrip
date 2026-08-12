@@ -159,6 +159,39 @@ export const userSessions = pgTable(
   ],
 );
 
+export const auditEvents = pgTable(
+  "audit_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    ownerId: text("owner_id"),
+    actorUserId: text("actor_user_id"),
+    actorSessionId: text("actor_session_id"),
+    action: text("action").notNull(),
+    result: text("result").notNull(),
+    resourceType: text("resource_type").notNull(),
+    resourceId: text("resource_id"),
+    requestId: text("request_id"),
+    ipAddressHash: text("ip_address_hash"),
+    userAgentHash: text("user_agent_hash"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, string>>()
+      .notNull()
+      .default({}),
+    occurredAt: timestamp("occurred_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("audit_events_owner_cursor_index").on(table.ownerId, table.id),
+    index("audit_events_action_cursor_index").on(table.action, table.id),
+    index("audit_events_occurred_at_index").on(table.occurredAt),
+    check(
+      "audit_events_result_check",
+      sql`${table.result} IN ('succeeded', 'failed', 'denied')`,
+    ),
+  ],
+);
+
 export const workerEnrollmentCodes = pgTable(
   "worker_enrollment_codes",
   {

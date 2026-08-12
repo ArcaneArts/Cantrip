@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  accountSessionListSchema,
   agentActivitySchema,
   agentInteractionRequestSchema,
   agentInteractionRuntimeRequestSchema,
   agentInteractionResolutionCreateSchema,
   agentWorktreeToolCallSchema,
   agentWorktreeToolResultSchema,
+  auditEventListSchema,
+  auditEventQuerySchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   codexExternalImportApplySchema,
@@ -3705,5 +3708,65 @@ describe("Cantrip protocol", () => {
         },
       }).attachments,
     ).toHaveLength(1);
+  });
+
+  it("bounds account session and audit-event visibility contracts", () => {
+    expect(
+      accountSessionListSchema.parse([
+        {
+          id: "session-1",
+          authMethod: "account-password",
+          label: "Safari on macOS",
+          current: true,
+          createdAt: "2026-08-11T12:00:00.000Z",
+          lastSeenAt: "2026-08-11T12:01:00.000Z",
+          expiresAt: "2026-08-12T12:00:00.000Z",
+        },
+      ]),
+    ).toHaveLength(1);
+
+    expect(auditEventQuerySchema.parse({})).toEqual({ limit: 50 });
+    expect(auditEventQuerySchema.parse({ before: "42", limit: "10" })).toEqual({
+      before: 42,
+      limit: 10,
+    });
+    expect(auditEventQuerySchema.safeParse({ limit: 201 }).success).toBe(false);
+
+    expect(
+      auditEventListSchema.parse({
+        items: [
+          {
+            id: 42,
+            ownerId: "owner-1",
+            actor: { userId: "owner-1", sessionId: "session-1" },
+            action: "auth.login-succeeded",
+            result: "succeeded",
+            resource: { type: "session", id: "session-1" },
+            requestId: "request-1",
+            metadata: { authMethod: "account-password" },
+            occurredAt: "2026-08-11T12:00:00.000Z",
+          },
+        ],
+        nextCursor: null,
+      }).items[0]?.action,
+    ).toBe("auth.login-succeeded");
+    expect(
+      auditEventListSchema.safeParse({
+        items: [
+          {
+            id: 42,
+            ownerId: "owner-1",
+            actor: { userId: "owner-1", sessionId: "session-1" },
+            action: "auth.login-succeeded",
+            result: "succeeded",
+            resource: { type: "session", id: null },
+            requestId: null,
+            metadata: { leakedSecret: "x".repeat(501) },
+            occurredAt: "2026-08-11T12:00:00.000Z",
+          },
+        ],
+        nextCursor: null,
+      }).success,
+    ).toBe(false);
   });
 });

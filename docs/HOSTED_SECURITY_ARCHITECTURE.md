@@ -1,8 +1,9 @@
 # Hosted relay security architecture
 
 - Status: protected authentication, owner enforcement, worker enrollment,
-  secret encryption, public request/relay limits, and HTTP/proxy hardening implemented;
-  comprehensive quotas, audit visibility, and multi-instance control remain
+  secret encryption, public request/relay limits, HTTP/proxy hardening, and
+  owner-scoped security audit visibility implemented; comprehensive quotas and
+  multi-instance control remain
 - Route inventory: [`security/server-route-inventory.json`](security/server-route-inventory.json)
 - Regenerate: `pnpm audit:server-boundaries:write`
 - Verify: `pnpm audit:server-boundaries`
@@ -127,12 +128,10 @@ without refreshing the inventory.
 
 At this foundation revision the inventory contains:
 
-- 266 HTTP/WebSocket routes: 2 public bootstrap routes, 3 public authentication
-  routes, 255 application-principal routes, 1 external webhook route, and 5
-  worker-control routes;
-- 162 worker command variants;
-- 27 application live resource variants;
-- 227 database repository entry points; and
+- 299 HTTP/WebSocket routes;
+- 166 worker command variants;
+- 29 application live resource variants;
+- 267 database repository entry points; and
 - the five non-route data planes listed below.
 
 The inventory's `ownerEvidence` field is not an authorization guarantee. It is
@@ -253,8 +252,19 @@ the effective runtime configuration routed to an authorized worker. Plaintext
 exists briefly in server memory when an authorized provider or MCP runtime is
 dispatched to its assigned worker. Operators must back up the keyring separately from PostgreSQL,
 retain old keys until startup has completed a rotation, and never place the
-keyring in source control, logs, or support bundles. Audit events remain a later
-hardening milestone.
+keyring in source control, logs, or support bundles.
+
+The append-only `audit_events` ledger records authentication decisions, session
+revocation, worker enrollment outcomes, project access, Git requests, and
+provider/MCP/worker/project configuration mutations. Events carry the actor and
+owner IDs, resource identity, result, request correlation ID, and hashes of the
+client address and user agent. Metadata is deliberately bounded and allowlisted
+by call sites; request bodies, credentials, email addresses, prompts, terminal
+content, and source content are never copied into the ledger. Accounts can list
+only their own events through `/api/account/audit-events`; owner/admin roles can
+inspect the global stream through `/api/admin/audit-events`. Both APIs use
+descending cursor pagination. `/api/account/sessions` similarly exposes active
+session metadata without any stored token, CSRF, address, or user-agent hash.
 
 Public API, worker-pairing, attachment-upload, and WebSocket-handshake traffic
 use independent bounded sliding windows. Active uploads and application/tunnel
