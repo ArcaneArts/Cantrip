@@ -27,6 +27,10 @@ context snapshots now drive server-routed runtime preparation, verified
 attachment transfer, target hydration, and atomic placement commit. The server
 advertises worker switching when these runtime contracts are available; the
 app exposes that lifecycle as an explicit, progress-aware chat move workflow.
+Canonical existing-target resolution and a bounded project target catalog now
+cover worker, replica, worktree, chat, terminal, Explorer, Code, Browser, and
+Remote Surface identities. Cross-worker agent operations consume this shared
+resolver in the following implementation increment.
 
 ## Current replica read contract
 
@@ -270,6 +274,28 @@ can address that terminal by ID through server routing without relocating.
 Discovered browser services are bounded worker observations carrying resolved
 worker placement; they become durable surface targets only after Cantrip
 creates a Browser or Remote Surface record.
+
+### Current existing-target resolution
+
+Creation placement and existing-resource addressing remain separate calls:
+
+- `POST /api/projects/:projectId/placement/resolve` selects placement for a new
+  surface and therefore rejects an existing surface selector.
+- `POST /api/projects/:projectId/execution-targets/resolve` resolves an
+  existing `ExecutionTarget` without substituting another worker.
+- `GET /api/projects/:projectId/execution-targets` returns a bounded catalog of
+  canonical workers, replicas, worktrees, and surfaces for application and
+  agent consumers.
+
+The existing-target resolver derives all parent relationships from owned
+server records. It rejects project mismatches, missing resources, and
+worker/worktree inconsistencies, then checks the resolved worker connection and
+Code, Browser, or Desktop capability as appropriate. Callers rendering fleet
+state may explicitly retain unavailable targets; their result carries a stable
+`worker-offline` or `capability-unavailable` availability state and reason.
+Operational callers fail closed by default. The catalog never accepts a
+client-supplied worker claim for a surface and does not expose worker-local
+paths.
 
 ## Default placement selection
 

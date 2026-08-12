@@ -39,6 +39,9 @@ import {
   executionPlacementSchema,
   executionPlacementResolveRequestSchema,
   executionPlacementResolutionSchema,
+  executionTargetCatalogSchema,
+  executionTargetResolutionSchema,
+  executionTargetResolveRequestSchema,
   executionTargetSchema,
   explorerFileWriteSchema,
   remoteBrowserClipboardMessageSchema,
@@ -285,6 +288,45 @@ describe("Cantrip protocol", () => {
         selection: "project-preference",
       }).selection,
     ).toBe("project-preference");
+
+    const resolvedTarget = executionTargetResolutionSchema.parse({
+      target: {
+        kind: "surface",
+        projectId: "project-one",
+        surfaceKind: "terminal",
+        surfaceId: "terminal-four",
+      },
+      placement: {
+        projectId: "project-one",
+        workerId: "worker-two",
+        projectReplicaId: "replica-two",
+        worktreeId: "worktree-three",
+        surface: { kind: "terminal", id: "terminal-four" },
+      },
+      worker: { workerId: "worker-two", name: "Build worker", online: true },
+      availability: "available",
+      unavailableReason: null,
+    });
+    expect(resolvedTarget.placement.surface?.id).toBe("terminal-four");
+    expect(
+      executionTargetResolveRequestSchema.parse({
+        target: resolvedTarget.target,
+      }).allowUnavailable,
+    ).toBe(false);
+    expect(
+      executionTargetCatalogSchema.parse({
+        projectId: "project-one",
+        targets: [
+          {
+            ...resolvedTarget,
+            resourceKind: "terminal",
+            title: "Build shell",
+            status: "running",
+          },
+        ],
+        truncated: false,
+      }).targets[0]?.resourceKind,
+    ).toBe("terminal");
   });
 
   it("accepts placement targets on new surfaces without accepting ambiguous worktrees", () => {

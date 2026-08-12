@@ -44,9 +44,12 @@ import type {
   ExplorerCreate,
   ExplorerSummary,
   ExplorerUpdate,
+  ExecutionPlacement,
   ExecutionPlacementResolution,
   ExecutionSurfaceKind,
   ExecutionTarget,
+  ExecutionTargetCatalog,
+  ExecutionTargetResolution,
   GithubProjectCreate,
   GitManagedOperationContext,
   GitManagedOperationRecord,
@@ -136,6 +139,11 @@ import {
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
+import {
+  buildExecutionTargetCatalog,
+  executionTargetAvailability,
+  type ExecutionTargetCapability,
+} from "../execution-targets/catalog.js";
 import {
   mcpServerSecretContext,
   modelProviderSecretContext,
@@ -377,6 +385,7 @@ export interface ExplorerExecutionContext {
   projectId: string;
   root: string;
   workerId: string;
+  worktreeId: string;
 }
 
 export interface CodeTabExecutionContext {
@@ -5157,6 +5166,365 @@ export class ServerRepository {
     );
   }
 
+  async resolveExecutionTarget(
+    ownerId: string,
+    projectId: string,
+    target: ExecutionTarget,
+    isWorkerConnected?: (workerId: string) => boolean,
+    allowUnavailable = false,
+  ): Promise<ExecutionTargetResolution> {
+    if (target.projectId !== projectId) {
+      throw new ExecutionPlacementUnavailableError(
+        "target-mismatch",
+        "The execution target belongs to a different project.",
+      );
+    }
+    const replicas = await this.listProjectReplicas(ownerId, projectId);
+    if (!replicas) {
+      throw new ExecutionPlacementUnavailableError(
+        "project-not-found",
+        "Project not found.",
+      );
+    }
+
+    let placement: ExecutionPlacement;
+    let capability: ExecutionTargetCapability = null;
+    let resourceUnavailableCode:
+      "replica-unavailable" | "worktree-unavailable" | null = null;
+    let resourceUnavailableReason: string | null = null;
+    const placementForWorktree = async (
+      worktreeId: string,
+      workerId: string,
+      surface: ExecutionPlacement["surface"],
+    ): Promise<ExecutionPlacement> => {
+      const worktree = (
+        await this.listProjectWorktrees(ownerId, projectId)
+      ).find(({ id }) => id === worktreeId);
+      if (!worktree) {
+        throw new ExecutionPlacementUnavailableError(
+          "target-not-found",
+          "The target worktree was not found in this project.",
+        );
+      }
+      if (worktree.workerId !== workerId) {
+        throw new ExecutionPlacementUnavailableError(
+          "target-mismatch",
+          "The target resource and worktree belong to different workers.",
+        );
+      }
+      if (worktree.lifecycleState !== "ready") {
+        resourceUnavailableCode = "worktree-unavailable";
+        resourceUnavailableReason = `Worktree ${worktree.name} is ${worktree.lifecycleState}.`;
+      }
+      return {
+        projectId,
+        workerId,
+        projectReplicaId: worktree.projectSourceId,
+        worktreeId,
+        surface,
+      };
+    };
+
+    if (target.kind === "project") {
+      placement = (
+        await this.resolveProjectExecutionPlacement(
+          ownerId,
+          projectId,
+          "terminal",
+          target,
+          isWorkerConnected,
+          allowUnavailable,
+        )
+      ).placement;
+    } else if (target.kind === "worker") {
+      const worker = await this.getWorker(ownerId, target.workerId);
+      if (!worker) {
+        throw new ExecutionPlacementUnavailableError(
+          "target-not-found",
+          "The selected worker is not linked to this account.",
+        );
+      }
+      const replica = replicas.find(
+        ({ workerId }) => workerId === target.workerId,
+      );
+      const primary = replica?.primaryWorktreeId
+        ? await this.getProjectWorktreeContext(
+            ownerId,
+            projectId,
+            replica.primaryWorktreeId,
+          )
+        : null;
+      placement = {
+        projectId,
+        workerId: target.workerId,
+        projectReplicaId: replica?.id ?? null,
+        worktreeId: primary?.worktree.id ?? null,
+        surface: null,
+      };
+    } else if (target.kind === "replica") {
+      const replica = replicas.find(({ id }) => id === target.projectReplicaId);
+      if (!replica) {
+        throw new ExecutionPlacementUnavailableError(
+          "target-not-found",
+          "The selected project replica was not found.",
+        );
+      }
+      const primary = replica.primaryWorktreeId
+        ? await this.getProjectWorktreeContext(
+            ownerId,
+            projectId,
+            replica.primaryWorktreeId,
+          )
+        : null;
+      if (!replica.ready || !primary) {
+        resourceUnavailableCode = "replica-unavailable";
+        resourceUnavailableReason = `The project replica on ${replica.workerName} is not ready.`;
+      }
+      placement = {
+        projectId,
+        workerId: replica.workerId,
+        projectReplicaId: replica.id,
+        worktreeId: primary?.worktree.id ?? null,
+        surface: null,
+      };
+    } else if (target.kind === "worktree") {
+      const worktree = (
+        await this.listProjectWorktrees(ownerId, projectId)
+      ).find(({ id }) => id === target.worktreeId);
+      if (!worktree) {
+        throw new ExecutionPlacementUnavailableError(
+          "target-not-found",
+          "The selected worktree was not found.",
+        );
+      }
+      if (worktree.lifecycleState !== "ready") {
+        resourceUnavailableCode = "worktree-unavailable";
+        resourceUnavailableReason = `Worktree ${worktree.name} is ${worktree.lifecycleState}.`;
+      }
+      placement = {
+        projectId,
+        workerId: worktree.workerId,
+        projectReplicaId: worktree.projectSourceId,
+        worktreeId: worktree.id,
+        surface: null,
+      };
+    } else {
+      const surface = {
+        kind: target.surfaceKind,
+        id: target.surfaceId,
+      } as const;
+      switch (target.surfaceKind) {
+        case "chat": {
+          const context = await this.getChatExecutionContext(
+            ownerId,
+            target.surfaceId,
+          );
+          if (!context || context.projectId !== projectId) {
+            throw new ExecutionPlacementUnavailableError(
+              "target-not-found",
+              "The selected chat was not found.",
+            );
+          }
+          placement = await placementForWorktree(
+            context.worktreeId,
+            context.workerId,
+            surface,
+          );
+          break;
+        }
+        case "terminal": {
+          const context = await this.getTerminalExecutionContext(
+            ownerId,
+            target.surfaceId,
+          );
+          if (!context || context.projectId !== projectId) {
+            throw new ExecutionPlacementUnavailableError(
+              "target-not-found",
+              "The selected terminal was not found.",
+            );
+          }
+          placement = await placementForWorktree(
+            context.worktreeId,
+            context.workerId,
+            surface,
+          );
+          break;
+        }
+        case "explorer": {
+          const context = await this.getExplorerExecutionContext(
+            ownerId,
+            target.surfaceId,
+          );
+          if (!context || context.projectId !== projectId) {
+            throw new ExecutionPlacementUnavailableError(
+              "target-not-found",
+              "The selected Explorer was not found.",
+            );
+          }
+          placement = await placementForWorktree(
+            context.worktreeId,
+            context.workerId,
+            surface,
+          );
+          break;
+        }
+        case "code": {
+          const context = await this.getCodeTabExecutionContext(
+            ownerId,
+            target.surfaceId,
+          );
+          if (!context || context.codeTab.projectId !== projectId) {
+            throw new ExecutionPlacementUnavailableError(
+              "target-not-found",
+              "The selected Code tab was not found.",
+            );
+          }
+          placement = await placementForWorktree(
+            context.worktreeId,
+            context.workerId,
+            surface,
+          );
+          capability = "code";
+          break;
+        }
+        case "browser":
+        case "remote-desktop":
+        case "remote-surface": {
+          const [context, concreteSurfaceExists] = await Promise.all([
+            this.getRemoteSurfaceExecutionContext(ownerId, target.surfaceId),
+            target.surfaceKind === "browser"
+              ? this.browserIsOwnedBy(ownerId, target.surfaceId)
+              : target.surfaceKind === "remote-desktop"
+                ? this.getRemoteDesktop(ownerId, target.surfaceId).then(
+                    (desktop) => desktop?.projectId === projectId,
+                  )
+                : Promise.resolve(true),
+          ]);
+          const expectedKind =
+            target.surfaceKind === "browser"
+              ? "browser"
+              : target.surfaceKind === "remote-desktop"
+                ? "desktop"
+                : null;
+          if (
+            !context ||
+            !concreteSurfaceExists ||
+            context.surface.projectId !== projectId ||
+            (expectedKind !== null && context.surface.kind !== expectedKind)
+          ) {
+            throw new ExecutionPlacementUnavailableError(
+              "target-not-found",
+              `The selected ${target.surfaceKind} was not found.`,
+            );
+          }
+          placement = {
+            projectId,
+            workerId: context.workerId,
+            projectReplicaId: null,
+            worktreeId: null,
+            surface,
+          };
+          capability =
+            context.surface.kind === "browser" ? "browser" : "desktop";
+          break;
+        }
+      }
+    }
+
+    const worker = await this.getWorker(ownerId, placement.workerId);
+    if (!worker) {
+      throw new ExecutionPlacementUnavailableError(
+        "target-not-found",
+        "The target worker is not linked to this account.",
+      );
+    }
+    if (!allowUnavailable && resourceUnavailableCode) {
+      throw new ExecutionPlacementUnavailableError(
+        resourceUnavailableCode,
+        resourceUnavailableReason!,
+      );
+    }
+    let availability = executionTargetAvailability(
+      worker,
+      capability,
+      isWorkerConnected,
+    );
+    if (!allowUnavailable && availability.availability !== "available") {
+      throw new ExecutionPlacementUnavailableError(
+        availability.availability === "worker-offline"
+          ? "worker-offline"
+          : "capability-unavailable",
+        availability.unavailableReason!,
+      );
+    }
+    if (
+      availability.availability === "available" &&
+      resourceUnavailableReason
+    ) {
+      availability = {
+        availability: "resource-unavailable",
+        online: true,
+        unavailableReason: resourceUnavailableReason,
+      };
+    }
+    return {
+      target,
+      placement,
+      worker: {
+        workerId: worker.workerId,
+        name: worker.name,
+        online: availability.online,
+      },
+      availability: availability.availability,
+      unavailableReason: availability.unavailableReason,
+    };
+  }
+
+  async listProjectExecutionTargets(
+    ownerId: string,
+    projectId: string,
+    isWorkerConnected?: (workerId: string) => boolean,
+  ): Promise<ExecutionTargetCatalog | null> {
+    const [
+      replicas,
+      workers,
+      worktrees,
+      chats,
+      terminals,
+      explorers,
+      codeTabs,
+      browsers,
+      desktops,
+      remoteSurfaces,
+    ] = await Promise.all([
+      this.listProjectReplicas(ownerId, projectId),
+      this.listWorkers(ownerId),
+      this.listProjectWorktrees(ownerId, projectId),
+      this.listChats(ownerId, projectId),
+      this.listTerminals(ownerId, projectId),
+      this.listExplorers(ownerId, projectId),
+      this.listCodeTabs(ownerId, projectId),
+      this.listBrowsers(ownerId, projectId),
+      this.listRemoteDesktops(ownerId, projectId),
+      this.listRemoteSurfaces(ownerId, projectId),
+    ]);
+    if (!replicas) return null;
+    return buildExecutionTargetCatalog({
+      browsers,
+      chats,
+      codeTabs,
+      desktops,
+      explorers,
+      isWorkerConnected,
+      projectId,
+      remoteSurfaces,
+      replicas,
+      terminals,
+      workers,
+      worktrees,
+    });
+  }
+
   async listProjectWorktrees(
     ownerId: string,
     projectId: string,
@@ -7479,7 +7847,8 @@ export class ServerRepository {
           explorerId: row.explorer.id,
           projectId: row.explorer.projectId,
           root: row.worktree.absolutePath,
-          workerId: row.worktree.workerId,
+          workerId: row.explorer.activeWorkerId,
+          worktreeId: row.worktree.id,
         }
       : null;
   }
@@ -8569,7 +8938,7 @@ export class ServerRepository {
       ? {
           terminalId: row.terminal.id,
           projectId: row.terminal.projectId,
-          workerId: row.worktree.workerId,
+          workerId: row.terminal.activeWorkerId,
           worktreeId: row.worktree.id,
           cwd: row.worktree.absolutePath,
           linkedChatId: row.terminal.linkedChatId,

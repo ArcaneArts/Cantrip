@@ -66,6 +66,9 @@ import {
   explorerSummarySchema,
   executionPlacementResolutionSchema,
   executionPlacementResolveRequestSchema,
+  executionTargetCatalogSchema,
+  executionTargetResolutionSchema,
+  executionTargetResolveRequestSchema,
   githubAuthStatusSchema,
   githubIssueDetailSchema,
   githubIssueListSchema,
@@ -257,6 +260,7 @@ import type {
   ProjectReplicaSynchronizeCreate,
   ExecutionPlacementResolveRequest,
   ExecutionTarget,
+  ExecutionTargetResolveRequest,
   ProjectPreferredWorkerUpdate,
   ProjectWorkspaceCreate,
   ProjectWorkspaceUpdate,
@@ -1710,6 +1714,26 @@ export async function resolveProjectPlacement(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/placement/resolve`,
       executionPlacementResolveRequestSchema.parse(input),
+    ),
+  );
+}
+
+export async function getProjectExecutionTargets(projectId: string) {
+  return executionTargetCatalogSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/execution-targets`,
+    ),
+  );
+}
+
+export async function resolveExecutionTarget(
+  projectId: string,
+  input: ExecutionTargetResolveRequest,
+) {
+  return executionTargetResolutionSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/execution-targets/resolve`,
+      executionTargetResolveRequestSchema.parse(input),
     ),
   );
 }
