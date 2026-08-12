@@ -142,6 +142,7 @@ import {
   type SecretVault,
 } from "../security/secret-vault.js";
 import * as schema from "./schema.js";
+import { ChatRelocationJobRepository } from "./chat-relocation-jobs.js";
 import { ProjectAutomationRepository } from "./project-automations.js";
 import { ProjectReplicaJobRepository } from "./project-replica-jobs.js";
 import { WorkflowRunRepository } from "./workflow-runs.js";
@@ -998,6 +999,7 @@ function toChatSummary(chat: typeof schema.chats.$inferSelect): ChatSummary {
     status: chat.status as ChatSummary["status"],
     activeWorkerId: chat.activeWorkerId,
     activeWorktreeId: chat.activeWorktreeId,
+    placementRevision: chat.placementRevision,
     worktreeMode: chat.worktreeMode as ChatSummary["worktreeMode"],
     modelId: chat.modelId,
     permissionProfileId: chat.permissionProfileId,
@@ -1446,6 +1448,7 @@ function toQueuedPrompt(
 }
 
 export class ServerRepository {
+  readonly chatRelocationJobs: ChatRelocationJobRepository;
   readonly projectAutomations: ProjectAutomationRepository;
   readonly projectReplicaJobs: ProjectReplicaJobRepository;
   readonly tabLayouts: ProjectTabLayoutRepository;
@@ -1457,6 +1460,7 @@ export class ServerRepository {
     private readonly database: RepositoryDatabase,
     private readonly secretVault: SecretVault,
   ) {
+    this.chatRelocationJobs = new ChatRelocationJobRepository(database);
     this.projectAutomations = new ProjectAutomationRepository(database);
     this.projectReplicaJobs = new ProjectReplicaJobRepository(database);
     this.workflows = new WorkflowRepository(database);
@@ -6256,6 +6260,7 @@ export class ServerRepository {
           .where(
             and(
               eq(schema.projectWorktrees.isPrimary, true),
+              eq(schema.projectSources.workerId, context.lane.workerId),
               isNull(schema.projectSources.removedAt),
             ),
           )
@@ -6332,6 +6337,7 @@ export class ServerRepository {
           .set({
             activeWorkerId: primary.workerId,
             activeWorktreeId: primary.id,
+            placementRevision: sql`${schema.chats.placementRevision} + 1`,
             worktreeMode: "agent-managed",
             updatedAt: new Date(),
           })
@@ -6387,6 +6393,11 @@ export class ServerRepository {
       targetWorktreeId,
     );
     if (!target || target.worktree.lifecycleState !== "ready") return null;
+    if (target.workerId !== current.workerId) {
+      throw new ExecutionLaneConflictError(
+        "Moving a chat to another worker requires a durable relocation.",
+      );
+    }
     if (transitionKind === "release" && !target.worktree.isPrimary) {
       throw new ExecutionLaneConflictError(
         "A release transition must return the chat to Primary.",
@@ -6602,6 +6613,11 @@ export class ServerRepository {
         "The target worktree is no longer ready for execution.",
       );
     }
+    if (pending.worktree.workerId !== pending.chat.activeWorkerId) {
+      throw new ExecutionLaneConflictError(
+        "Moving a chat to another worker requires a durable relocation.",
+      );
+    }
     if (chatIsExecuting(pending.chat.status)) {
       throw new ExecutionLaneConflictError(
         "Finish the active turn before applying its worktree transition.",
@@ -6653,6 +6669,7 @@ export class ServerRepository {
         .set({
           activeWorkerId: pending.worktree.workerId,
           activeWorktreeId: pending.worktree.id,
+          placementRevision: sql`${schema.chats.placementRevision} + 1`,
           updatedAt: new Date(),
         })
         .where(eq(schema.chats.id, chatId))
@@ -8611,6 +8628,15 @@ export class ServerRepository {
     const changingWorktree = chat.activeWorktreeId !== target.worktree.id;
     if (
       changingWorktree &&
+      chat.activeWorkerId !== null &&
+      chat.activeWorkerId !== target.workerId
+    ) {
+      throw new ExecutionLaneConflictError(
+        "Moving a chat to another worker requires a durable relocation.",
+      );
+    }
+    if (
+      changingWorktree &&
       chatIsExecuting(chat.status as ChatSummary["status"])
     ) {
       throw new ExecutionLaneConflictError(
@@ -8742,6 +8768,11 @@ export class ServerRepository {
         .set({
           activeWorkerId: target.workerId,
           activeWorktreeId: target.worktree.id,
+          ...(changingWorktree
+            ? {
+                placementRevision: sql`${schema.chats.placementRevision} + 1`,
+              }
+            : {}),
           worktreeMode: input.mode,
           updatedAt: new Date(),
         })
@@ -9577,15 +9608,23 @@ export class ServerRepository {
       .where(eq(schema.chats.id, chatId))
       .limit(1);
     if (!owned[0]) return null;
-    const rows = await this.database
-      .insert(schema.chatAttachments)
-      .values({
-        ...input,
-        chatId,
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .insert(schema.chatAttachments)
+        .values({
+          ...input,
+          chatId,
+          status: "ready",
+        })
+        .returning();
+      const attachment = firstOrThrow(rows, "creating an attachment");
+      await transaction.insert(schema.chatAttachmentReplicas).values({
+        attachmentId: attachment.id,
+        workerId: input.workerId,
         status: "ready",
-      })
-      .returning();
-    return toChatAttachment(firstOrThrow(rows, "creating an attachment"));
+      });
+      return toChatAttachment(attachment);
+    });
   }
 
   async getChatAttachment(

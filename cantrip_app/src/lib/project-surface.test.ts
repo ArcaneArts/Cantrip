@@ -61,6 +61,7 @@ describe("project surfaces", () => {
           status: "idle",
           activeWorkerId: "worker-1",
           activeWorktreeId: "worktree-1",
+          placementRevision: 1,
           worktreeMode: "agent-managed",
           modelId: null,
           permissionProfileId: null,

@@ -5,6 +5,10 @@ import type {
   ChatAttachmentSource,
   ChatAttachmentSummary,
   ChatMessageContent,
+  ChatRelocationContextPayload,
+  ChatRelocationErrorCode,
+  ChatRelocationProgress,
+  ChatRelocationState,
   ChatTurnMode,
   CodeCapabilities,
   CodexRuntimeReport,
@@ -20,6 +24,7 @@ import type {
   ProjectReplicaJobState,
   RemoteSurfaceCapabilities,
   RemoteSurfaceConfiguration,
+  ExecutionPlacement,
   TunnelDestinationEndpoint,
   TunnelSourceEndpoint,
   WorktreeStatusResult,
@@ -1035,6 +1040,7 @@ export const chats = pgTable("chats", {
   activeWorktreeId: text("active_worktree_id")
     .notNull()
     .references(() => projectWorktrees.id, { onDelete: "restrict" }),
+  placementRevision: integer("placement_revision").notNull().default(1),
   worktreeMode: text("worktree_mode").notNull().default("agent-managed"),
   modelId: text("model_id").references(() => modelProfiles.id, {
     onDelete: "restrict",
@@ -1539,6 +1545,166 @@ export const chatAttachments = pgTable(
       table.createdAt,
     ),
     index("chat_attachments_worker_index").on(table.workerId),
+  ],
+);
+
+export const chatAttachmentReplicas = pgTable(
+  "chat_attachment_replicas",
+  {
+    attachmentId: text("attachment_id")
+      .notNull()
+      .references(() => chatAttachments.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("ready"),
+    verifiedAt: timestamp("verified_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.attachmentId, table.workerId] }),
+    index("chat_attachment_replicas_worker_status_index").on(
+      table.workerId,
+      table.status,
+    ),
+    check(
+      "chat_attachment_replicas_status_check",
+      sql`${table.status} IN ('pending', 'ready', 'failed')`,
+    ),
+  ],
+);
+
+export const chatRelocationJobs = pgTable(
+  "chat_relocation_jobs",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    state: text("state").$type<ChatRelocationState>().notNull(),
+    stateRevision: integer("state_revision").notNull().default(1),
+    idempotencyKey: text("idempotency_key").notNull(),
+    payloadFingerprint: text("payload_fingerprint").notNull(),
+    sourcePlacement: jsonb("source_placement")
+      .$type<ExecutionPlacement>()
+      .notNull(),
+    sourcePlacementRevision: integer("source_placement_revision").notNull(),
+    targetPlacement: jsonb("target_placement")
+      .$type<ExecutionPlacement>()
+      .notNull(),
+    targetRuntimeThreadId: text("target_runtime_thread_id"),
+    attempt: integer("attempt").notNull().default(0),
+    commandId: text("command_id"),
+    progress: jsonb("progress").$type<ChatRelocationProgress>().notNull(),
+    lastErrorCode: text("last_error_code").$type<ChatRelocationErrorCode>(),
+    lastErrorMessage: text("last_error_message"),
+    errorRetryable: boolean("error_retryable"),
+    availableAt: timestamp("available_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    cancellationUnsafeAt: timestamp("cancellation_unsafe_at", {
+      withTimezone: true,
+    }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("chat_relocation_jobs_owner_idempotency_unique").on(
+      table.ownerId,
+      table.idempotencyKey,
+    ),
+    uniqueIndex("chat_relocation_jobs_command_unique")
+      .on(table.commandId)
+      .where(sql`${table.commandId} IS NOT NULL`),
+    uniqueIndex("chat_relocation_jobs_active_chat_unique")
+      .on(table.chatId)
+      .where(
+        sql`${table.state} IN ('queued', 'waiting-for-idle', 'validating', 'preparing-replica', 'transferring-attachments', 'hydrating-runtime', 'ready-to-commit', 'blocked')`,
+      ),
+    index("chat_relocation_jobs_dispatch_index").on(
+      table.state,
+      table.availableAt,
+      table.createdAt,
+    ),
+    index("chat_relocation_jobs_chat_created_index").on(
+      table.chatId,
+      table.createdAt,
+    ),
+    check(
+      "chat_relocation_jobs_state_check",
+      sql`${table.state} IN ('queued', 'waiting-for-idle', 'validating', 'preparing-replica', 'transferring-attachments', 'hydrating-runtime', 'ready-to-commit', 'succeeded', 'blocked', 'failed', 'cancelled')`,
+    ),
+    check(
+      "chat_relocation_jobs_revision_check",
+      sql`${table.stateRevision} > 0 AND ${table.sourcePlacementRevision} > 0`,
+    ),
+    check("chat_relocation_jobs_attempt_check", sql`${table.attempt} >= 0`),
+    check(
+      "chat_relocation_jobs_error_shape_check",
+      sql`(${table.lastErrorCode} IS NULL AND ${table.lastErrorMessage} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.lastErrorMessage} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const chatRelocationSnapshots = pgTable(
+  "chat_relocation_snapshots",
+  {
+    id: text("id").primaryKey(),
+    jobId: text("job_id")
+      .notNull()
+      .unique()
+      .references(() => chatRelocationJobs.id, { onDelete: "cascade" }),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    sourcePlacement: jsonb("source_placement")
+      .$type<ExecutionPlacement>()
+      .notNull(),
+    throughSequence: integer("through_sequence").notNull(),
+    transcriptSha256: text("transcript_sha256").notNull(),
+    payload: jsonb("payload").$type<ChatRelocationContextPayload>().notNull(),
+    messageCount: integer("message_count").notNull(),
+    attachmentCount: integer("attachment_count").notNull(),
+    modelId: text("model_id").references(() => modelProfiles.id, {
+      onDelete: "set null",
+    }),
+    modelRouteId: text("model_route_id").references(() => modelRoutes.id, {
+      onDelete: "set null",
+    }),
+    permissionProfileId: text("permission_profile_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("chat_relocation_snapshots_chat_created_index").on(
+      table.chatId,
+      table.createdAt,
+    ),
+    check(
+      "chat_relocation_snapshots_counts_check",
+      sql`${table.throughSequence} >= 0 AND ${table.messageCount} >= 0 AND ${table.attachmentCount} >= 0`,
+    ),
   ],
 );
 
