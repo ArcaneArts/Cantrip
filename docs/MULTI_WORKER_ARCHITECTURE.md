@@ -20,8 +20,9 @@ another.
 
 This document defines the contracts later multi-worker changes must preserve.
 Replica persistence, reads, exact-revision provisioning, guarded
-synchronization, safe removal, and placement-policy settings are implemented.
-Placement switching and chat relocation remain disabled until their complete
+synchronization, safe removal, placement-policy settings, and canonical
+placement resolution for new surfaces are implemented. The app's explicit
+placement chooser and chat relocation remain disabled until their complete
 lifecycles are implemented.
 
 ## Current replica read contract
@@ -71,12 +72,20 @@ every linked worker alongside its replica observation, capabilities, and most
 recent durable job. It also exposes explicit provision, synchronize,
 retry/cancel, and safe-remove actions.
 
-These controls establish policy for the next implementation stage; changing a
-preference does not move an existing surface or start an implicit replica job.
-New surface placement consumes the project preference first, then the account
-default, only after Cycle 5 ships the shared resolver. Existing single-worker
-installations are backfilled to their earliest active worker as the Default,
-while a cleared preference uses deterministic automatic fallback.
+Changing a preference does not move an existing surface or start an implicit
+replica job. New chats, terminals, Explorers, Code tabs, Browsers, and Remote
+Desktops resolve placement through one server-owned resolver. It consumes the
+project preference first, then the account default, then a stable compatible
+fallback. Existing single-worker installations are backfilled to their
+earliest active worker as the Default, while a cleared preference uses the
+same deterministic fallback.
+
+The creation contracts accept an optional `ExecutionTarget`. Legacy
+`worktreeId` callers remain supported for replica-local surfaces, but a request
+cannot send both selectors. `POST /api/projects/:projectId/placement/resolve`
+lets a client preview the canonical placement and reports whether it came from
+an explicit target, project preference, Default worker, or fallback. Browser
+summaries now include their owning worker during rolling compatibility.
 
 ## Terms
 
@@ -141,8 +150,9 @@ workers, but workers do not receive addresses or credentials for one another.
 
 ## Protocol contracts
 
-`@cantrip/protocol` exports `executionTargetSchema` for request selectors and
-`executionPlacementSchema` for server-resolved placements.
+`@cantrip/protocol` exports `executionTargetSchema` for request selectors,
+`executionPlacementSchema` for server-resolved placements, and the bounded
+placement resolution request and response schemas used by the preview route.
 
 ### Execution targets are selectors
 
@@ -227,6 +237,19 @@ Creation uses this deterministic order:
 3. The account's Default worker, if online and replica-ready.
 4. A deterministic compatible online replica ordered by stable worker ID.
 5. An actionable “no compatible placement” result.
+
+The resolver requires a live worker connection as well as a recent heartbeat.
+Code, Browser, and Remote Desktop placements require their advertised worker
+capability. Chats, terminals, Explorers, and Code tabs additionally require an
+active project replica with a ready worktree; the replica's Default worktree is
+chosen first, followed by Primary and stable creation order. Browser and Remote
+Desktop placements may be machine-level and therefore omit replica and
+worktree IDs.
+
+An explicit unavailable target is rejected with a structured error and is
+never replaced by a fallback. Automatic preferences may be skipped when they
+are offline, incompatible, or lack a ready replica. The resolved worker and
+worktree are persisted on the new surface before it can receive commands.
 
 Cantrip never silently relocates an existing surface when a worker goes
 offline. Single-worker users continue to receive the only compatible placement

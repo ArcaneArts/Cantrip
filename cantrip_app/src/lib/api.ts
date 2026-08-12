@@ -58,6 +58,8 @@ import {
   explorerFileWriteSchema,
   explorerListSchema,
   explorerSummarySchema,
+  executionPlacementResolutionSchema,
+  executionPlacementResolveRequestSchema,
   githubAuthStatusSchema,
   githubIssueDetailSchema,
   githubIssueListSchema,
@@ -244,6 +246,8 @@ import type {
   ProjectReplicaProvisionCreate,
   ProjectReplicaRemoveCreate,
   ProjectReplicaSynchronizeCreate,
+  ExecutionPlacementResolveRequest,
+  ExecutionTarget,
   ProjectPreferredWorkerUpdate,
   ProjectWorkspaceCreate,
   ProjectWorkspaceUpdate,
@@ -1689,6 +1693,18 @@ export async function getProjectReplicas(projectId: string) {
   );
 }
 
+export async function resolveProjectPlacement(
+  projectId: string,
+  input: ExecutionPlacementResolveRequest,
+) {
+  return executionPlacementResolutionSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/placement/resolve`,
+      executionPlacementResolveRequestSchema.parse(input),
+    ),
+  );
+}
+
 export async function getProjectReplica(
   projectId: string,
   projectReplicaId: string,
@@ -1886,6 +1902,7 @@ export async function createChat(
   worktreeId?: string,
   worktreeMode?: "agent-managed" | "pinned",
   tabGroupId?: string,
+  target?: ExecutionTarget,
 ) {
   return chatSummarySchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/chats`, {
@@ -1893,6 +1910,7 @@ export async function createChat(
       ...(worktreeId ? { worktreeId } : {}),
       ...(worktreeMode ? { worktreeMode } : {}),
       ...(tabGroupId ? { tabGroupId } : {}),
+      ...(target ? { target } : {}),
     }),
   );
 }
@@ -1916,12 +1934,14 @@ export async function createTerminal(
   title: string,
   worktreeId?: string,
   tabGroupId?: string,
+  target?: ExecutionTarget,
 ) {
   return terminalSummarySchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/terminals`, {
       title,
       ...(worktreeId ? { worktreeId } : {}),
       ...(tabGroupId ? { tabGroupId } : {}),
+      ...(target ? { target } : {}),
     }),
   );
 }
@@ -1983,12 +2003,14 @@ export async function createExplorer(
   title: string,
   worktreeId?: string,
   tabGroupId?: string,
+  target?: ExecutionTarget,
 ) {
   return explorerSummarySchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/explorers`, {
       title,
       ...(worktreeId ? { worktreeId } : {}),
       ...(tabGroupId ? { tabGroupId } : {}),
+      ...(target ? { target } : {}),
     }),
   );
 }
@@ -2048,11 +2070,13 @@ export async function createBrowser(
   projectId: string,
   title: string,
   tabGroupId?: string,
+  target?: ExecutionTarget,
 ) {
   return browserSummarySchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/browsers`, {
       title,
       ...(tabGroupId ? { tabGroupId } : {}),
+      ...(target ? { target } : {}),
     }),
   );
 }
@@ -2092,11 +2116,15 @@ export async function getRemoteDesktop(desktopId: string) {
 export async function createRemoteDesktop(
   projectId: string,
   tabGroupId?: string,
+  target?: ExecutionTarget,
 ) {
   return remoteDesktopSummarySchema.parse(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/remote-desktops`,
-      tabGroupId ? { tabGroupId } : {},
+      {
+        ...(tabGroupId ? { tabGroupId } : {}),
+        ...(target ? { target } : {}),
+      },
     ),
   );
 }
@@ -2130,12 +2158,14 @@ export async function createCodeTab(
   title = "Code",
   worktreeId?: string,
   tabGroupId?: string,
+  target?: ExecutionTarget,
 ) {
   return codeTabSummarySchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/code-tabs`, {
       title,
       ...(worktreeId ? { worktreeId } : {}),
       ...(tabGroupId ? { tabGroupId } : {}),
+      ...(target ? { target } : {}),
     }),
   );
 }

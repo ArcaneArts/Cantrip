@@ -3441,6 +3441,8 @@ export function App() {
     (worker) =>
       worker.workerId ===
       (selectedCodeTab?.activeWorkerId ??
+        selectedBrowser?.workerId ??
+        remoteDesktop.data?.workerId ??
         activeWorktree?.workerId ??
         selectedProject?.source?.workerId),
   );

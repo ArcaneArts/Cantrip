@@ -1782,6 +1782,25 @@ export const executionTargetSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
+export const executionPlacementSelectionSchema = z.enum([
+  "explicit",
+  "project-preference",
+  "default-worker",
+  "fallback",
+]);
+
+export const executionPlacementResolveRequestSchema = z
+  .object({
+    surfaceKind: executionSurfaceKindSchema,
+    target: executionTargetSchema.optional(),
+  })
+  .strict();
+
+export const executionPlacementResolutionSchema = z.object({
+  placement: executionPlacementSchema,
+  selection: executionPlacementSelectionSchema,
+});
+
 export const worktreePolicySchema = z.enum([
   "direct",
   "agent-managed",
@@ -2206,12 +2225,17 @@ export const projectTokenUsageSchema = z.object({
   }),
 });
 
-export const chatCreateSchema = z.object({
-  title: z.string().trim().min(1).max(200).default("New chat"),
-  worktreeId: z.string().min(1).optional(),
-  worktreeMode: z.enum(["agent-managed", "pinned"]).default("agent-managed"),
-  tabGroupId: z.string().min(1).optional(),
-});
+export const chatCreateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).default("New chat"),
+    worktreeId: z.string().min(1).optional(),
+    worktreeMode: z.enum(["agent-managed", "pinned"]).default("agent-managed"),
+    tabGroupId: z.string().min(1).optional(),
+    target: executionTargetSchema.optional(),
+  })
+  .refine((input) => !(input.worktreeId && input.target), {
+    message: "Choose either a legacy worktreeId or an execution target.",
+  });
 
 export const chatUpdateSchema = z.object({
   title: z.string().trim().min(1).max(200),
@@ -2278,11 +2302,16 @@ export const chatPermissionProfileUpdateSchema = z.object({
   id: permissionProfileIdSchema,
 });
 
-export const terminalCreateSchema = z.object({
-  title: z.string().trim().min(1).max(200).default("Terminal"),
-  worktreeId: z.string().min(1).optional(),
-  tabGroupId: z.string().min(1).optional(),
-});
+export const terminalCreateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).default("Terminal"),
+    worktreeId: z.string().min(1).optional(),
+    tabGroupId: z.string().min(1).optional(),
+    target: executionTargetSchema.optional(),
+  })
+  .refine((input) => !(input.worktreeId && input.target), {
+    message: "Choose either a legacy worktreeId or an execution target.",
+  });
 
 export const terminalUpdateSchema = z.object({
   title: z.string().trim().min(1).max(200),
@@ -2361,11 +2390,16 @@ export const scriptCommandSchema = z.object({
 
 export const scriptCommandListSchema = z.array(scriptCommandSchema).max(500);
 
-export const explorerCreateSchema = z.object({
-  title: z.string().trim().min(1).max(200).default("Explorer"),
-  worktreeId: z.string().min(1).optional(),
-  tabGroupId: z.string().min(1).optional(),
-});
+export const explorerCreateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).default("Explorer"),
+    worktreeId: z.string().min(1).optional(),
+    tabGroupId: z.string().min(1).optional(),
+    target: executionTargetSchema.optional(),
+  })
+  .refine((input) => !(input.worktreeId && input.target), {
+    message: "Choose either a legacy worktreeId or an execution target.",
+  });
 
 export const explorerUpdateSchema = z.object({
   title: z.string().trim().min(1).max(200),
@@ -2413,13 +2447,18 @@ export const codeSessionStatusSchema = z.enum([
   "failed",
 ]);
 
-export const codeTabCreateSchema = z.object({
-  title: z.string().trim().min(1).max(200).default("Code"),
-  worktreeId: z.string().min(1).optional(),
-  profileId: z.string().trim().min(1).max(200).default("default"),
-  themeMode: codeThemeModeSchema.default("follow-cantrip"),
-  tabGroupId: z.string().min(1).optional(),
-});
+export const codeTabCreateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).default("Code"),
+    worktreeId: z.string().min(1).optional(),
+    profileId: z.string().trim().min(1).max(200).default("default"),
+    themeMode: codeThemeModeSchema.default("follow-cantrip"),
+    tabGroupId: z.string().min(1).optional(),
+    target: executionTargetSchema.optional(),
+  })
+  .refine((input) => !(input.worktreeId && input.target), {
+    message: "Choose either a legacy worktreeId or an execution target.",
+  });
 
 export const codeTabUpdateSchema = z
   .object({
@@ -2799,6 +2838,7 @@ export function decodeCodeTunnelFrame(frame: Uint8Array): {
 export const browserCreateSchema = z.object({
   title: z.string().trim().min(1).max(200).default("Browser"),
   tabGroupId: z.string().min(1).optional(),
+  target: executionTargetSchema.optional(),
 });
 
 export const browserUpdateSchema = z
@@ -2816,6 +2856,7 @@ export const browserSummarySchema = z.object({
   title: z.string().min(1),
   position: z.number().int().nonnegative(),
   url: z.string().url(),
+  workerId: z.string().min(1).nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -2857,7 +2898,10 @@ export const browserTunnelRequestSchema = z
   .strict();
 
 export const remoteDesktopCreateSchema = z
-  .object({ tabGroupId: z.string().min(1).optional() })
+  .object({
+    tabGroupId: z.string().min(1).optional(),
+    target: executionTargetSchema.optional(),
+  })
   .strict();
 
 export const remoteDesktopTargetSchema = z.discriminatedUnion("kind", [
@@ -7312,6 +7356,15 @@ export type ProjectWorkspaceSummary = z.infer<
 export type ExecutionSurfaceKind = z.infer<typeof executionSurfaceKindSchema>;
 export type ExecutionPlacement = z.infer<typeof executionPlacementSchema>;
 export type ExecutionTarget = z.infer<typeof executionTargetSchema>;
+export type ExecutionPlacementSelection = z.infer<
+  typeof executionPlacementSelectionSchema
+>;
+export type ExecutionPlacementResolveRequest = z.infer<
+  typeof executionPlacementResolveRequestSchema
+>;
+export type ExecutionPlacementResolution = z.infer<
+  typeof executionPlacementResolutionSchema
+>;
 export type TunnelOrigin = z.infer<typeof tunnelOriginSchema>;
 export type TunnelManagement = z.infer<typeof tunnelManagementSchema>;
 export type TunnelProtocolHint = z.infer<typeof tunnelProtocolHintSchema>;

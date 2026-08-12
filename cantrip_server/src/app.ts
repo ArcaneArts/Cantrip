@@ -97,6 +97,8 @@ import {
   explorerListSchema,
   explorerSummarySchema,
   explorerUpdateSchema,
+  executionPlacementResolveRequestSchema,
+  executionPlacementResolutionSchema,
   githubAuthStatusSchema,
   githubIssueCloseSchema,
   githubIssueCommentCreateSchema,
@@ -434,6 +436,7 @@ import {
   AgentInteractionConflictError,
   CodeCapabilityUnavailableError,
   ExecutionLaneConflictError,
+  ExecutionPlacementUnavailableError,
   LOCAL_USER_ID,
   ProjectWorkspaceInvariantError,
   TunnelManagementError,
@@ -5526,6 +5529,35 @@ export async function buildApp({
     const projects = await repository.listProjects(applicationOwnerId());
     return reply.send(projectListSchema.parse(projects));
   });
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/placement/resolve",
+    async (request, reply) => {
+      const input = executionPlacementResolveRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const resolution = await repository.resolveProjectExecutionPlacement(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data.surfaceKind,
+          input.data.target,
+          (workerId) => bridge.isConnected(workerId),
+        );
+        return reply.send(executionPlacementResolutionSchema.parse(resolution));
+      } catch (error) {
+        if (error instanceof ExecutionPlacementUnavailableError) {
+          return reply
+            .code(error.code === "project-not-found" ? 404 : 409)
+            .send({ code: error.code, error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
 
   app.get<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/replicas",
@@ -10981,12 +11013,21 @@ export async function buildApp({
           applicationOwnerId(),
           request.params.projectId,
           input.data,
+          (workerId) => bridge.isConnected(workerId),
         );
         if (!chat) {
           return reply.code(404).send({ error: "Project source not found" });
         }
         return reply.code(201).send(chatSummarySchema.parse(chat));
       } catch (error) {
+        if (error instanceof ExecutionPlacementUnavailableError) {
+          if (error.code === "project-not-found") {
+            return reply.code(404).send({ error: "Project source not found" });
+          }
+          return reply
+            .code(409)
+            .send({ code: error.code, error: error.message });
+        }
         if (
           error instanceof ExecutionLaneConflictError ||
           /unique|duplicate/i.test(errorMessage(error))
@@ -11084,14 +11125,24 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const terminal = await repository.createTerminal(
-        applicationOwnerId(),
-        request.params.projectId,
-        input.data,
-      );
-      return terminal
-        ? reply.code(201).send(terminalSummarySchema.parse(terminal))
-        : reply.code(404).send({ error: "Project source not found." });
+      try {
+        const terminal = await repository.createTerminal(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data,
+          (workerId) => bridge.isConnected(workerId),
+        );
+        return terminal
+          ? reply.code(201).send(terminalSummarySchema.parse(terminal))
+          : reply.code(404).send({ error: "Project source not found." });
+      } catch (error) {
+        if (error instanceof ExecutionPlacementUnavailableError) {
+          return reply
+            .code(error.code === "project-not-found" ? 404 : 409)
+            .send({ code: error.code, error: error.message });
+        }
+        throw error;
+      }
     },
   );
 
@@ -11310,6 +11361,7 @@ export async function buildApp({
           applicationOwnerId(),
           request.params.projectId,
           { ...input.data, themeMode: "follow-cantrip" },
+          (workerId) => bridge.isConnected(workerId),
         );
         return codeTab
           ? reply.code(201).send(codeTabSummarySchema.parse(codeTab))
@@ -11317,6 +11369,11 @@ export async function buildApp({
               .code(404)
               .send({ error: "Project source or worktree not found." });
       } catch (error) {
+        if (error instanceof ExecutionPlacementUnavailableError) {
+          return reply
+            .code(error.code === "project-not-found" ? 404 : 409)
+            .send({ code: error.code, error: error.message });
+        }
         if (error instanceof CodeCapabilityUnavailableError) {
           return reply.code(409).send({ error: error.message });
         }
@@ -11874,30 +11931,24 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const source = await repository.getProjectSource(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      if (!source) {
-        return reply.code(404).send({ error: "Project source not found." });
+      try {
+        const browser = await repository.createBrowser(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data,
+          (workerId) => bridge.isConnected(workerId),
+        );
+        return browser
+          ? reply.code(201).send(browserSummarySchema.parse(browser))
+          : reply.code(404).send({ error: "Project source not found." });
+      } catch (error) {
+        if (error instanceof ExecutionPlacementUnavailableError) {
+          return reply
+            .code(error.code === "project-not-found" ? 404 : 409)
+            .send({ code: error.code, error: error.message });
+        }
+        throw error;
       }
-      const worker = (await repository.listWorkers(applicationOwnerId())).find(
-        ({ workerId }) => workerId === source.workerId,
-      );
-      if (!worker?.remoteSurfaces.browser) {
-        return reply.code(409).send({
-          error:
-            "The project worker does not have an available Chromium browser.",
-        });
-      }
-      const browser = await repository.createBrowser(
-        applicationOwnerId(),
-        request.params.projectId,
-        input.data,
-      );
-      return browser
-        ? reply.code(201).send(browserSummarySchema.parse(browser))
-        : reply.code(404).send({ error: "Project source not found." });
     },
   );
 
@@ -12053,29 +12104,37 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const source = await repository.getProjectSource(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      if (!source) return reply.code(404).send({ error: "Project not found." });
-      const worker = (await repository.listWorkers(applicationOwnerId())).find(
-        ({ workerId }) => workerId === source.workerId,
-      );
-      if (!worker) return reply.code(404).send({ error: "Worker not found." });
-      if (!worker.remoteSurfaces.desktop) {
-        return reply.code(409).send({
-          error: "The project worker does not support managed Remote Desktop.",
-        });
+      let workerId: string;
+      try {
+        workerId = (
+          await repository.resolveProjectExecutionPlacement(
+            applicationOwnerId(),
+            request.params.projectId,
+            "remote-desktop",
+            input.data.target,
+            (workerId) => bridge.isConnected(workerId),
+          )
+        ).placement.workerId;
+      } catch (error) {
+        if (error instanceof ExecutionPlacementUnavailableError) {
+          return reply
+            .code(error.code === "project-not-found" ? 404 : 409)
+            .send({ code: error.code, error: error.message });
+        }
+        throw error;
       }
-      if (!bridge.isConnected(worker.workerId)) {
-        return reply.code(409).send({ error: "Worker is offline." });
+      if (!bridge.isConnected(workerId)) {
+        return reply.code(409).send({
+          code: "worker-offline",
+          error: "The selected worker is offline.",
+        });
       }
 
       const desktopId = randomUUID();
       try {
         const probe = remoteDesktopProbeResultSchema.parse(
           await bridge.request(
-            worker.workerId,
+            workerId,
             { type: "surface.desktop.probe" },
             { timeoutMs: 20_000 },
           ),
@@ -12091,7 +12150,7 @@ export async function buildApp({
           applicationOwnerId(),
           request.params.projectId,
           desktopId,
-          worker.workerId,
+          workerId,
           input.data.tabGroupId,
         );
         if (!desktop) {
@@ -12132,14 +12191,25 @@ export async function buildApp({
             "Create desktop surfaces through the managed Remote Desktop endpoint.",
         });
       }
-      const worker = (await repository.listWorkers(applicationOwnerId())).find(
-        ({ workerId }) => workerId === input.data.workerId,
-      );
-      if (!worker) return reply.code(404).send({ error: "Worker not found." });
-      if (!worker.remoteSurfaces[input.data.configuration.kind]) {
-        return reply.code(409).send({
-          error: `Worker does not support ${input.data.configuration.kind} Remote Surfaces.`,
-        });
+      try {
+        await repository.resolveProjectExecutionPlacement(
+          applicationOwnerId(),
+          request.params.projectId,
+          "browser",
+          {
+            kind: "worker",
+            projectId: request.params.projectId,
+            workerId: input.data.workerId,
+          },
+          (workerId) => bridge.isConnected(workerId),
+        );
+      } catch (error) {
+        if (error instanceof ExecutionPlacementUnavailableError) {
+          return reply
+            .code(error.code === "project-not-found" ? 404 : 409)
+            .send({ code: error.code, error: error.message });
+        }
+        throw error;
       }
       const surface = await repository.createRemoteSurface(
         applicationOwnerId(),
@@ -12540,14 +12610,24 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const explorer = await repository.createExplorer(
-        applicationOwnerId(),
-        request.params.projectId,
-        input.data,
-      );
-      return explorer
-        ? reply.code(201).send(explorerSummarySchema.parse(explorer))
-        : reply.code(404).send({ error: "Project source not found." });
+      try {
+        const explorer = await repository.createExplorer(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data,
+          (workerId) => bridge.isConnected(workerId),
+        );
+        return explorer
+          ? reply.code(201).send(explorerSummarySchema.parse(explorer))
+          : reply.code(404).send({ error: "Project source not found." });
+      } catch (error) {
+        if (error instanceof ExecutionPlacementUnavailableError) {
+          return reply
+            .code(error.code === "project-not-found" ? 404 : 409)
+            .send({ code: error.code, error: error.message });
+        }
+        throw error;
+      }
     },
   );
 
