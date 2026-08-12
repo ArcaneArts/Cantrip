@@ -6,6 +6,7 @@ import {
   reconcileWorkspaceSelection,
   selectedWorkspaceTabKey,
   selectWorkspaceGroup,
+  selectWorkspaceOverview,
   selectWorkspaceTab,
 } from "./workspace-selection";
 
@@ -128,6 +129,37 @@ describe("workspace selection", () => {
 
     expect(selected.destination).toBe("surface");
     expect(selectedWorkspaceTabKey(selected)).toBe("chat:two");
+  });
+
+  it("returns to overview without forgetting valid group-local members", () => {
+    const selected = selectWorkspaceTab(
+      reconcileWorkspaceSelection(emptyWorkspaceSelection(), initialLayout),
+      initialLayout,
+      "terminal:one",
+    );
+    const overview = selectWorkspaceOverview(selected);
+
+    expect(overview).toMatchObject({
+      destination: "overview",
+      projectId: "project-1",
+      selectedGroupId: null,
+      activeTabByGroup: {
+        "group-1": "terminal:one",
+        "group-2": "chat:two",
+      },
+    });
+  });
+
+  it("clears remembered members when overview changes projects", () => {
+    const selected = selectWorkspaceTab(
+      reconcileWorkspaceSelection(emptyWorkspaceSelection(), initialLayout),
+      initialLayout,
+      "terminal:one",
+    );
+
+    expect(selectWorkspaceOverview(selected, "project-2")).toEqual(
+      emptyWorkspaceSelection("project-2"),
+    );
   });
 
   it("resets group-local state when the project changes", () => {

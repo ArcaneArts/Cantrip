@@ -26,6 +26,19 @@ export function selectedWorkspaceTabKey(
     : null;
 }
 
+export function selectWorkspaceOverview(
+  selection: WorkspaceSelection,
+  projectId: string | null = selection.projectId,
+): WorkspaceSelection {
+  if (projectId !== selection.projectId)
+    return emptyWorkspaceSelection(projectId);
+  return {
+    ...selection,
+    destination: "overview",
+    selectedGroupId: null,
+  };
+}
+
 export function reconcileWorkspaceSelection(
   selection: WorkspaceSelection,
   layout: ProjectTabLayoutSummary | null | undefined,
