@@ -9873,6 +9873,32 @@ export class ServerRepository {
     return result[0] ? toQueuedPrompt(result[0]) : null;
   }
 
+  async getQueuedPromptByIdempotencyKey(
+    ownerId: string,
+    chatId: string,
+    idempotencyKey: string,
+  ): Promise<QueuedPrompt | null> {
+    const rows = await this.database
+      .select({ prompt: schema.queuedPrompts })
+      .from(schema.queuedPrompts)
+      .innerJoin(schema.chats, eq(schema.chats.id, schema.queuedPrompts.chatId))
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.queuedPrompts.chatId, chatId),
+          eq(schema.queuedPrompts.idempotencyKey, idempotencyKey),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? toQueuedPrompt(rows[0].prompt) : null;
+  }
+
   async deleteQueuedPrompt(
     ownerId: string,
     promptId: string,

@@ -226,6 +226,106 @@ describe.sequential("project automation API", () => {
     ).toHaveLength(1);
   });
 
+  it("recovers an expired dispatch lease and fences its previous holder", async () => {
+    const scheduledFor = new Date(Date.now() + 20_000);
+    const automation = await database.repository.projectAutomations.create(
+      LOCAL_USER_ID,
+      projectId,
+      {
+        name: "Recoverable dispatch",
+        chatId,
+        prompt: "Recover this occurrence once.",
+        schedule: {
+          kind: "interval",
+          every: 5,
+          unit: "minute",
+          startsAt: scheduledFor.toISOString(),
+        },
+        condition: null,
+        enabled: true,
+      },
+    );
+    expect(automation).not.toBeNull();
+    const request = {
+      revision: automation!.revision,
+      scheduledFor: automation!.nextRunAt!,
+    };
+    const first = await database.repository.projectAutomations.claimDue(
+      LOCAL_USER_ID,
+      "automation-worker",
+      automation!.id,
+      request,
+      "relay-a",
+      30_000,
+      scheduledFor,
+    );
+    expect(first).toMatchObject({ fencingToken: 1 });
+    expect(
+      await database.repository.projectAutomations.claimDue(
+        LOCAL_USER_ID,
+        "automation-worker",
+        automation!.id,
+        request,
+        "relay-b",
+        30_000,
+        new Date(scheduledFor.getTime() + 10_000),
+      ),
+    ).toBeNull();
+    expect(
+      await database.repository.projectAutomations.finishDispatch(
+        first!,
+        "queued",
+        null,
+        new Date(scheduledFor.getTime() + 31_000),
+      ),
+    ).toBe(false);
+    const recovered = await database.repository.projectAutomations.claimDue(
+      LOCAL_USER_ID,
+      "automation-worker",
+      automation!.id,
+      request,
+      "relay-b",
+      30_000,
+      new Date(scheduledFor.getTime() + 31_000),
+    );
+    expect(recovered).toMatchObject({
+      runId: first!.runId,
+      fencingToken: 2,
+      dispatchInstanceId: "relay-b",
+    });
+    expect(
+      await database.repository.projectAutomations.finishDispatch(
+        first!,
+        "queued",
+        null,
+        new Date(scheduledFor.getTime() + 32_000),
+      ),
+    ).toBe(false);
+    expect(
+      await database.repository.projectAutomations.finishDispatch(
+        recovered!,
+        "queued",
+        null,
+        new Date(scheduledFor.getTime() + 32_000),
+      ),
+    ).toBe(true);
+    expect(
+      await database.repository.projectAutomations.get(
+        LOCAL_USER_ID,
+        automation!.id,
+      ),
+    ).toMatchObject({
+      lastStatus: "queued",
+      lastRunAt: scheduledFor.toISOString(),
+    });
+    expect(
+      await database.repository.projectAutomations.delete(
+        LOCAL_USER_ID,
+        automation!.id,
+      ),
+    ).toBe(true);
+  });
+
   it("advances a due occurrence without queuing when its condition is false", async () => {
     conditionAllowed = false;
     const startsAt = new Date(Date.now() + 10_000).toISOString();

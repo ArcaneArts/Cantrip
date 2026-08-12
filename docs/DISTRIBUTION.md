@@ -152,8 +152,11 @@ an absent or invalid trusted-proxy list. Password and account modes use
 revocable server-side sessions, tenant authorization, and per-worker
 enrollment. Account/worker quotas, audit visibility, operational probes,
 Prometheus metrics, and production deployment assets are implemented. Public
-horizontal hosting uses the Redis coordination layer. Exactly-once scheduler
-fencing remains required before multiple replicas may run scheduled automation.
+horizontal hosting uses the Redis coordination layer. Scheduled workflow and
+project automation occurrences use durable database claims with instance-bound
+lease tokens and monotonically increasing fencing tokens. Expired claims can be
+recovered by another replica without allowing the stale holder to finalize the
+occurrence. `CANTRIP_SCHEDULER_LEASE_TTL_MS` controls the recovery interval.
 The encryption keyring protects provider API keys plus MCP environment and
 static-header values. MCP configuration responses contain fixed masks rather
 than plaintext; preserve old keyring entries until startup has rewrapped every

@@ -1791,6 +1791,71 @@ export const projectAutomations = pgTable(
   ],
 );
 
+export const projectAutomationRuns = pgTable(
+  "project_automation_runs",
+  {
+    id: text("id").primaryKey(),
+    automationId: text("automation_id")
+      .notNull()
+      .references(() => projectAutomations.id, { onDelete: "cascade" }),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    chatId: text("chat_id").notNull(),
+    workerId: text("worker_id").notNull(),
+    automationRevision: integer("automation_revision").notNull(),
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
+    status: text("status").notNull().default("dispatching"),
+    dispatchInstanceId: text("dispatch_instance_id").notNull(),
+    leaseToken: text("lease_token").notNull(),
+    fencingToken: integer("fencing_token").notNull().default(1),
+    leaseExpiresAt: timestamp("lease_expires_at", {
+      withTimezone: true,
+    }).notNull(),
+    attemptCount: integer("attempt_count").notNull().default(1),
+    errorMessage: text("error_message"),
+    claimedAt: timestamp("claimed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("project_automation_runs_occurrence_unique").on(
+      table.automationId,
+      table.scheduledFor,
+    ),
+    index("project_automation_runs_recovery_index").on(
+      table.status,
+      table.leaseExpiresAt,
+    ),
+    index("project_automation_runs_owner_index").on(
+      table.ownerId,
+      table.createdAt,
+    ),
+    check(
+      "project_automation_runs_status_check",
+      sql`${table.status} IN ('dispatching', 'started', 'queued', 'skipped', 'failed')`,
+    ),
+    check(
+      "project_automation_runs_fencing_token_check",
+      sql`${table.fencingToken} > 0`,
+    ),
+    check(
+      "project_automation_runs_attempt_count_check",
+      sql`${table.attemptCount} > 0`,
+    ),
+  ],
+);
+
 export const workflowDefinitions = pgTable(
   "workflow_definitions",
   {
@@ -2201,6 +2266,10 @@ export const workflowTriggerDeliveries = pgTable(
       .default({}),
     errorCode: text("error_code"),
     errorMessage: text("error_message"),
+    dispatchInstanceId: text("dispatch_instance_id"),
+    leaseToken: text("lease_token"),
+    fencingToken: integer("fencing_token").notNull().default(0),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -2220,6 +2289,10 @@ export const workflowTriggerDeliveries = pgTable(
     check(
       "workflow_trigger_deliveries_status_check",
       sql`${table.status} IN ('pending', 'accepted', 'failed')`,
+    ),
+    check(
+      "workflow_trigger_deliveries_fencing_token_check",
+      sql`${table.fencingToken} >= 0`,
     ),
   ],
 );

@@ -103,6 +103,7 @@ describe("server configuration safety", () => {
     vi.stubEnv("REDIS_URL", "rediss://redis.cantrip.test:6380");
     vi.stubEnv("CANTRIP_SERVER_INSTANCE_ID", "relay-us-central-1");
     vi.stubEnv("CANTRIP_COORDINATION_PRESENCE_TTL_MS", "45000");
+    vi.stubEnv("CANTRIP_SCHEDULER_LEASE_TTL_MS", "180000");
     expect(readServerConfig()).toMatchObject({
       appOrigins: ["https://app.cantrip.test"],
       databaseUrl: "postgres://cantrip:test@db/cantrip",
@@ -112,6 +113,7 @@ describe("server configuration safety", () => {
       redisUrl: "rediss://redis.cantrip.test:6380",
       serverInstanceId: "relay-us-central-1",
       coordinationPresenceTtlMs: 45_000,
+      schedulerLeaseTtlMs: 180_000,
       trustedProxies: ["loopback", "10.0.0.0/8"],
     });
 
@@ -139,6 +141,9 @@ describe("server configuration safety", () => {
     vi.stubEnv("CANTRIP_SERVER_INSTANCE_ID", "relay-1");
     vi.stubEnv("CANTRIP_COORDINATION_PRESENCE_TTL_MS", "1000");
     expect(() => readServerConfig()).toThrow(/PRESENCE_TTL/i);
+    vi.stubEnv("CANTRIP_COORDINATION_PRESENCE_TTL_MS", "30000");
+    vi.stubEnv("CANTRIP_SCHEDULER_LEASE_TTL_MS", "1000");
+    expect(() => readServerConfig()).toThrow(/SCHEDULER_LEASE_TTL/i);
   });
 
   it("partitions global quotas safely across the configured replica ceiling", () => {
