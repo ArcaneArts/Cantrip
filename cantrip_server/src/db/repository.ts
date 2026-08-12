@@ -231,6 +231,16 @@ export class ProjectWorkspaceInvariantError extends Error {}
 export class WorkerEnrollmentError extends Error {}
 export class TunnelManagementError extends Error {}
 
+export interface TunnelAttachmentAuthorization {
+  attachmentId: string;
+  clientId: string;
+  destination: Extract<TunnelDestinationEndpoint, { kind: "worker-tcp" }>;
+  expiresAt: Date;
+  ownerId: string;
+  projectId: string | null;
+  tunnelId: string;
+}
+
 export interface TerminalExecutionContext {
   cwd: string;
   linkedChatId: string | null;
@@ -3086,6 +3096,21 @@ export class ServerRepository {
         "Managed tunnels are controlled by their owning feature.",
       );
     }
+    const activeAttachments = await this.database
+      .select({ id: schema.tunnelAttachments.id })
+      .from(schema.tunnelAttachments)
+      .where(
+        and(
+          eq(schema.tunnelAttachments.tunnelId, tunnelId),
+          notInArray(schema.tunnelAttachments.status, ["stopped", "failed"]),
+        ),
+      )
+      .limit(1);
+    if (activeAttachments.length > 0) {
+      throw new TunnelManagementError(
+        "Stop every tunnel attachment before editing this tunnel.",
+      );
+    }
     const projectId =
       input.projectId === undefined ? existing.projectId : input.projectId;
     const destination = input.destination ?? existing.destinationEndpoint;
@@ -3145,6 +3170,21 @@ export class ServerRepository {
     if (existing.management !== "user-managed") {
       throw new TunnelManagementError(
         "Managed tunnels are controlled by their owning feature.",
+      );
+    }
+    const activeAttachments = await this.database
+      .select({ id: schema.tunnelAttachments.id })
+      .from(schema.tunnelAttachments)
+      .where(
+        and(
+          eq(schema.tunnelAttachments.tunnelId, tunnelId),
+          notInArray(schema.tunnelAttachments.status, ["stopped", "failed"]),
+        ),
+      )
+      .limit(1);
+    if (activeAttachments.length > 0) {
+      throw new TunnelManagementError(
+        "Stop every tunnel attachment before deleting this tunnel.",
       );
     }
     const rows = await this.database
@@ -3236,6 +3276,360 @@ export class ServerRepository {
       )
       .returning({ id: schema.tunnels.id });
     return rows.length === 1;
+  }
+
+  async createDesktopTunnelAttachment(
+    ownerId: string,
+    tunnelId: string,
+    input: {
+      clientId: string;
+      expiresAt: Date;
+      secretExpiresAt: Date;
+      secretHash: string;
+    },
+  ): Promise<{ attachmentId: string; projectId: string | null } | null> {
+    return this.database.transaction(async (transaction) => {
+      const tunnels = await transaction
+        .select({
+          id: schema.tunnels.id,
+          management: schema.tunnels.management,
+          projectId: schema.tunnels.projectId,
+          sourceEndpoint: schema.tunnels.sourceEndpoint,
+        })
+        .from(schema.tunnels)
+        .where(
+          and(
+            eq(schema.tunnels.id, tunnelId),
+            eq(schema.tunnels.ownerId, ownerId),
+          ),
+        )
+        .limit(1);
+      const tunnel = tunnels[0];
+      if (
+        !tunnel ||
+        tunnel.management !== "user-managed" ||
+        tunnel.sourceEndpoint.kind !== "desktop-loopback"
+      ) {
+        return null;
+      }
+      const existing = await transaction
+        .select({ id: schema.tunnelAttachments.id })
+        .from(schema.tunnelAttachments)
+        .where(
+          and(
+            eq(schema.tunnelAttachments.tunnelId, tunnelId),
+            eq(schema.tunnelAttachments.clientId, input.clientId),
+          ),
+        )
+        .limit(1);
+      const now = new Date();
+      const attachmentId = existing[0]?.id ?? randomUUID();
+      const values = {
+        activeConnectionCount: 0,
+        expiresAt: input.expiresAt,
+        lastError: null,
+        lastSeenAt: null,
+        localHost: null,
+        localPort: null,
+        secretExpiresAt: input.secretExpiresAt,
+        secretHash: input.secretHash,
+        status: "starting",
+        updatedAt: now,
+      } as const;
+      if (existing[0]) {
+        await transaction
+          .update(schema.tunnelAttachments)
+          .set(values)
+          .where(eq(schema.tunnelAttachments.id, attachmentId));
+      } else {
+        await transaction.insert(schema.tunnelAttachments).values({
+          id: attachmentId,
+          tunnelId,
+          kind: "desktop-loopback",
+          clientId: input.clientId,
+          ...values,
+        });
+      }
+      await transaction
+        .update(schema.tunnels)
+        .set({
+          desiredState: "started",
+          lastError: null,
+          status: "starting",
+          updatedAt: now,
+        })
+        .where(eq(schema.tunnels.id, tunnelId));
+      return { attachmentId, projectId: tunnel.projectId };
+    });
+  }
+
+  async authorizeDesktopTunnelAttachment(
+    attachmentId: string,
+    secretHash: string,
+  ): Promise<TunnelAttachmentAuthorization | null> {
+    const now = new Date();
+    const rows = await this.database
+      .select({ attachment: schema.tunnelAttachments, tunnel: schema.tunnels })
+      .from(schema.tunnelAttachments)
+      .innerJoin(
+        schema.tunnels,
+        eq(schema.tunnels.id, schema.tunnelAttachments.tunnelId),
+      )
+      .where(
+        and(
+          eq(schema.tunnelAttachments.id, attachmentId),
+          eq(schema.tunnelAttachments.kind, "desktop-loopback"),
+          eq(schema.tunnelAttachments.secretHash, secretHash),
+          gt(schema.tunnelAttachments.secretExpiresAt, now),
+          gt(schema.tunnelAttachments.expiresAt, now),
+          ne(schema.tunnelAttachments.status, "stopped"),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (
+      !row?.attachment.clientId ||
+      row.tunnel.sourceEndpoint.kind !== "desktop-loopback" ||
+      row.tunnel.destinationEndpoint.kind !== "worker-tcp"
+    ) {
+      return null;
+    }
+    return {
+      attachmentId,
+      clientId: row.attachment.clientId,
+      destination: row.tunnel.destinationEndpoint,
+      expiresAt: row.attachment.expiresAt!,
+      ownerId: row.tunnel.ownerId,
+      projectId: row.tunnel.projectId,
+      tunnelId: row.tunnel.id,
+    };
+  }
+
+  async activateDesktopTunnelAttachment(
+    attachmentId: string,
+    clientId: string,
+    localPort: number,
+  ): Promise<boolean> {
+    return this.database.transaction(async (transaction) => {
+      const now = new Date();
+      const attachments = await transaction
+        .update(schema.tunnelAttachments)
+        .set({
+          lastError: null,
+          lastSeenAt: now,
+          localHost: "127.0.0.1",
+          localPort,
+          status: "active",
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.tunnelAttachments.id, attachmentId),
+            eq(schema.tunnelAttachments.clientId, clientId),
+            ne(schema.tunnelAttachments.status, "stopped"),
+            gt(schema.tunnelAttachments.expiresAt, now),
+          ),
+        )
+        .returning({ tunnelId: schema.tunnelAttachments.tunnelId });
+      if (!attachments[0]) return false;
+      await transaction
+        .update(schema.tunnels)
+        .set({
+          desiredState: "started",
+          lastError: null,
+          status: "active",
+          updatedAt: now,
+        })
+        .where(eq(schema.tunnels.id, attachments[0].tunnelId));
+      return true;
+    });
+  }
+
+  async touchDesktopTunnelAttachment(attachmentId: string): Promise<void> {
+    await this.database
+      .update(schema.tunnelAttachments)
+      .set({ lastSeenAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.tunnelAttachments.id, attachmentId),
+          eq(schema.tunnelAttachments.status, "active"),
+        ),
+      );
+  }
+
+  async markDesktopTunnelAttachmentOffline(
+    attachmentId: string,
+  ): Promise<void> {
+    const now = new Date();
+    const rows = await this.database
+      .update(schema.tunnelAttachments)
+      .set({
+        activeConnectionCount: 0,
+        lastError: "Desktop client disconnected.",
+        status: "offline",
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.tunnelAttachments.id, attachmentId),
+          ne(schema.tunnelAttachments.status, "stopped"),
+          gt(schema.tunnelAttachments.expiresAt, now),
+        ),
+      )
+      .returning({ tunnelId: schema.tunnelAttachments.tunnelId });
+    if (!rows[0]) return;
+    await this.database
+      .update(schema.tunnels)
+      .set({
+        activeConnectionCount: 0,
+        lastError: "Desktop client disconnected.",
+        status: "offline",
+        updatedAt: now,
+      })
+      .where(eq(schema.tunnels.id, rows[0].tunnelId));
+  }
+
+  async stopDesktopTunnelAttachment(
+    ownerId: string,
+    attachmentId: string,
+    error: string | null = null,
+  ): Promise<{ projectId: string | null; tunnelId: string } | null> {
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select({
+          projectId: schema.tunnels.projectId,
+          tunnelId: schema.tunnels.id,
+        })
+        .from(schema.tunnelAttachments)
+        .innerJoin(
+          schema.tunnels,
+          eq(schema.tunnels.id, schema.tunnelAttachments.tunnelId),
+        )
+        .where(
+          and(
+            eq(schema.tunnelAttachments.id, attachmentId),
+            eq(schema.tunnels.ownerId, ownerId),
+          ),
+        )
+        .limit(1);
+      const row = rows[0];
+      if (!row) return null;
+      const now = new Date();
+      await transaction
+        .update(schema.tunnelAttachments)
+        .set({
+          activeConnectionCount: 0,
+          lastError: error,
+          secretExpiresAt: null,
+          secretHash: null,
+          status: error ? "failed" : "stopped",
+          updatedAt: now,
+        })
+        .where(eq(schema.tunnelAttachments.id, attachmentId));
+      const remaining = await transaction
+        .select({ id: schema.tunnelAttachments.id })
+        .from(schema.tunnelAttachments)
+        .where(
+          and(
+            eq(schema.tunnelAttachments.tunnelId, row.tunnelId),
+            ne(schema.tunnelAttachments.id, attachmentId),
+            notInArray(schema.tunnelAttachments.status, ["stopped", "failed"]),
+          ),
+        )
+        .limit(1);
+      if (remaining.length === 0) {
+        await transaction
+          .update(schema.tunnels)
+          .set({
+            activeConnectionCount: 0,
+            desiredState: "stopped",
+            lastError: error,
+            status: error ? "failed" : "stopped",
+            updatedAt: now,
+          })
+          .where(eq(schema.tunnels.id, row.tunnelId));
+      }
+      return row;
+    });
+  }
+
+  async resetTransientTunnelAttachments(): Promise<void> {
+    const now = new Date();
+    await this.database
+      .update(schema.tunnelAttachments)
+      .set({
+        activeConnectionCount: 0,
+        lastError: "The server restarted.",
+        secretExpiresAt: null,
+        secretHash: null,
+        status: "offline",
+        updatedAt: now,
+      })
+      .where(
+        inArray(schema.tunnelAttachments.status, [
+          "starting",
+          "active",
+          "degraded",
+          "stopping",
+        ]),
+      );
+    await this.database
+      .update(schema.tunnels)
+      .set({
+        activeConnectionCount: 0,
+        lastError: "The server restarted.",
+        status: "offline",
+        updatedAt: now,
+      })
+      .where(
+        inArray(schema.tunnels.status, [
+          "starting",
+          "active",
+          "degraded",
+          "stopping",
+        ]),
+      );
+  }
+
+  async expireDesktopTunnelAttachments(now = new Date()): Promise<
+    Array<{
+      attachmentId: string;
+      ownerId: string;
+      projectId: string | null;
+      tunnelId: string;
+    }>
+  > {
+    const expired = await this.database
+      .select({
+        attachmentId: schema.tunnelAttachments.id,
+        ownerId: schema.tunnels.ownerId,
+        projectId: schema.tunnels.projectId,
+        tunnelId: schema.tunnels.id,
+      })
+      .from(schema.tunnelAttachments)
+      .innerJoin(
+        schema.tunnels,
+        eq(schema.tunnels.id, schema.tunnelAttachments.tunnelId),
+      )
+      .where(
+        and(
+          lte(schema.tunnelAttachments.expiresAt, now),
+          notInArray(schema.tunnelAttachments.status, ["stopped", "failed"]),
+        ),
+      );
+    const stopped = [] as typeof expired;
+    for (const attachment of expired) {
+      if (
+        await this.stopDesktopTunnelAttachment(
+          attachment.ownerId,
+          attachment.attachmentId,
+          "Tunnel attachment expired.",
+        )
+      ) {
+        stopped.push(attachment);
+      }
+    }
+    return stopped;
   }
 
   private async projectReplicasByProject(
