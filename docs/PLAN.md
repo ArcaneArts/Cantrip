@@ -304,7 +304,7 @@ The database is the source of truth for Cantrip entities. Exact columns can evol
 | `sessions` | Browser/mobile/desktop sessions and revocation metadata. |
 | `workers` | Owner, display name, status, platform, capabilities, protocol version, public key, last seen time. |
 | `worker_credentials` | Hashed/encrypted enrollment material and rotation metadata; never raw provider secrets. |
-| `projects` | Server-owned logical project name, owner, settings, and optional default worker/source binding. |
+| `projects` | Server-owned logical project name, owner, settings, and optional preferred worker. Physical sources are represented by per-worker replicas. |
 | `project_sources` | One worker-owned installation of a logical repository: canonical path, display path, repository fingerprint, Git metadata, and allowed access policy. |
 | `project_worktrees` | Durable observations for Primary, Cantrip-managed, agent, user, and external checkouts: worker/path ownership, branch/HEAD, lifecycle, lock, detached, and scan state. |
 | `chats` | Server-owned logical conversation with project, title, active worker, runtime profile, status, model, and event cursor. |
@@ -455,7 +455,7 @@ Workers pair using a high-entropy, short-lived, single-use code generated for a 
 
 The account-scoped Workers settings page is the management boundary for this lifecycle. It reports presence, last-seen time, platform/runtime capabilities, project-source associations, and redacted credential metadata. Pairing displays the raw link code only while onboarding is active. Rename uses a durable display alias that heartbeat updates cannot overwrite. Rotation transfers the replacement credential over the already-authenticated worker channel when online and otherwise displays it once for manual secret-manager installation. Unlinking revokes credentials and hides the worker without deleting server-owned projects or conversations; re-enrolling the same immutable identity restores its associations. Embedded and `pnpm dev` workers are visibly internal and cannot be renamed or removed.
 
-Bootstrap advertises `linkCodes` and `multipleWorkers` only now that enrollment and the complete management lifecycle are available. `workerSwitching` and `gitSync` remain false until source-replica routing and synchronization are implemented.
+Bootstrap advertises `linkCodes` and `multipleWorkers` now that enrollment and the complete management lifecycle are available. `gitSync` is advertised only with the guarded exact-revision replica job lifecycle; `workerSwitching` remains false until new-surface placement and recovery paths ship. The Workers settings page also owns the account Default worker and automatic replica provisioning/synchronization policies, while Project Settings owns the per-project preferred worker and explicit replica controls.
 
 For `pnpm dev` and the embedded Tauri runtime, server and worker may share a development-only token through explicit loopback bootstrap configuration. The server refuses that path in standalone, password, account, non-loopback, and hosted modes. It is bootstrap plumbing, not remote enrollment, and the app never receives it.
 

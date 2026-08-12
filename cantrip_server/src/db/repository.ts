@@ -474,6 +474,7 @@ function toProjectSummary(
     setupStatus: project.setupStatus as ProjectSummary["setupStatus"],
     setupError: project.setupError,
     worktreePolicy: project.worktreePolicy as ProjectSummary["worktreePolicy"],
+    preferredWorkerId: project.preferredWorkerId,
     github,
     source: replicas[0]
       ? {
@@ -1892,6 +1893,10 @@ export class ServerRepository {
         desktopStreamQuality:
           settings.desktopStreamQuality as UserSettings["desktopStreamQuality"],
         defaultModelId: settings.defaultModelId,
+        defaultWorkerId: settings.defaultWorkerId,
+        automaticReplicaProvisioning: settings.automaticReplicaProvisioning,
+        automaticReplicaSynchronization:
+          settings.automaticReplicaSynchronization as UserSettings["automaticReplicaSynchronization"],
       },
       providers: providerRows.map((provider) =>
         toProviderSummary(provider, providerUsage.get(provider.id)),
@@ -2154,6 +2159,10 @@ export class ServerRepository {
       desktopStreamQuality:
         settings.desktopStreamQuality as UserSettings["desktopStreamQuality"],
       defaultModelId: settings.defaultModelId,
+      defaultWorkerId: settings.defaultWorkerId,
+      automaticReplicaProvisioning: settings.automaticReplicaProvisioning,
+      automaticReplicaSynchronization:
+        settings.automaticReplicaSynchronization as UserSettings["automaticReplicaSynchronization"],
     };
   }
 
@@ -2166,6 +2175,12 @@ export class ServerRepository {
       if (!model) {
         return null;
       }
+    }
+    if (
+      input.defaultWorkerId &&
+      !(await this.getWorker(ownerId, input.defaultWorkerId))
+    ) {
+      return null;
     }
     await this.database
       .update(schema.userSettings)
@@ -4351,6 +4366,31 @@ export class ServerRepository {
     const rows = await this.database
       .update(schema.projects)
       .set({ worktreePolicy: input.policy, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .returning();
+    if (!rows[0]) return null;
+    return toProjectSummary(
+      rows[0],
+      (await this.listProjectReplicas(ownerId, projectId)) ?? [],
+    );
+  }
+
+  async updateProjectPreferredWorker(
+    ownerId: string,
+    projectId: string,
+    workerId: string | null,
+  ): Promise<ProjectSummary | null> {
+    if (workerId && !(await this.getWorker(ownerId, workerId))) {
+      return null;
+    }
+    const rows = await this.database
+      .update(schema.projects)
+      .set({ preferredWorkerId: workerId, updatedAt: new Date() })
       .where(
         and(
           eq(schema.projects.id, projectId),

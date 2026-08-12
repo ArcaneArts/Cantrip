@@ -19,6 +19,7 @@ import {
   Cable,
   CircleAlert,
   Code2,
+  Database,
   ExternalLink,
   FolderTree,
   GitBranch,
@@ -74,6 +75,7 @@ import {
 import { cn } from "@/lib/utils";
 import { WorkflowCenter } from "@/components/workflows/workflow-center";
 import { ProjectAutomationsSettings } from "./project-automations-settings";
+import { ProjectReplicaSettings } from "./project-replica-settings";
 import { SkillsSettings } from "@/components/settings/skills-settings";
 import { TunnelSettings } from "@/components/settings/tunnel-settings";
 import {
@@ -88,6 +90,7 @@ type ProjectSettingsSection =
   | "general"
   | "automations"
   | "workflows"
+  | "replicas"
   | "worktrees"
   | "tunnels"
   | "skills"
@@ -97,6 +100,7 @@ const projectSettingsTabs: readonly SettingsTab<ProjectSettingsSection>[] = [
   { id: "general", label: "General", icon: SlidersHorizontal },
   { id: "automations", label: "Automations", icon: CalendarClock },
   { id: "workflows", label: "Workflows", icon: Workflow },
+  { id: "replicas", label: "Replicas", icon: Database },
   { id: "worktrees", label: "Worktrees", icon: GitFork },
   { id: "tunnels", label: "Tunnels", icon: Route },
   { id: "skills", label: "Skills", icon: Sparkles },
@@ -412,6 +416,9 @@ export function ProjectSettingsPage({
             onOpenHistory={onCreateHistory}
           />
         </div>
+      ) : null}
+      {section === "replicas" ? (
+        <ProjectReplicaSettings project={project} workers={workers} />
       ) : null}
       <div
         className={cn(

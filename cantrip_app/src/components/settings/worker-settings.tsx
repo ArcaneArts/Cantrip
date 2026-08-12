@@ -8,6 +8,8 @@ import {
   Check,
   Copy,
   Cpu,
+  GitCompareArrows,
+  HardDrive,
   KeyRound,
   Laptop,
   Loader2,
@@ -38,9 +40,11 @@ import {
   getWorkerCredentials,
   getWorkerEnrollmentCodeStatus,
   getWorkerManagement,
+  getSettings,
   revokeWorkerCredential,
   rotateWorkerCredential,
   unlinkWorker,
+  updateSettings,
   updateWorker,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
@@ -129,10 +133,12 @@ function CredentialRow({
 }
 
 function WorkerRow({
+  isDefault,
   worker,
   onManage,
   onUnlink,
 }: {
+  isDefault: boolean;
   worker: WorkerManagementSummary;
   onManage(): void;
   onUnlink(): void;
@@ -160,6 +166,7 @@ function WorkerRow({
             {worker.internal ? (
               <Badge variant="secondary">Internal</Badge>
             ) : null}
+            {isDefault ? <Badge variant="outline">Default</Badge> : null}
           </div>
           <p className="truncate text-xs text-muted-foreground">
             {worker.online ? "Online" : "Offline"} · last seen{" "}
@@ -184,6 +191,9 @@ function WorkerRow({
         </p>
         <p className="truncate text-xs text-muted-foreground">
           {worker.sources.length} source{worker.sources.length === 1 ? "" : "s"}
+          {worker.sources.length
+            ? ` · ${worker.sources.map(({ displayPath }) => displayPath).join(", ")}`
+            : ""}
           {worker.internal
             ? " · managed by this Cantrip installation"
             : ` · ${worker.activeCredentialCount} active credential${worker.activeCredentialCount === 1 ? "" : "s"}`}
@@ -218,6 +228,7 @@ export function WorkerSettings() {
     queryKey: ["worker-management"],
     refetchInterval: 10_000,
   });
+  const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
   const [search, setSearch] = useState("");
   const [pairOpen, setPairOpen] = useState(false);
   const [pairLabel, setPairLabel] = useState("");
@@ -320,8 +331,13 @@ export function WorkerSettings() {
         queryClient.invalidateQueries({ queryKey: ["worker-management"] }),
         queryClient.invalidateQueries({ queryKey: ["workers"] }),
         queryClient.invalidateQueries({ queryKey: ["projects"] }),
+        queryClient.invalidateQueries({ queryKey: ["settings"] }),
       ]);
     },
+  });
+  const updatePlacementPolicy = useMutation({
+    mutationFn: updateSettings,
+    onSuccess: (value) => queryClient.setQueryData(["settings"], value),
   });
 
   const normalizedSearch = search.trim().toLowerCase();
@@ -382,6 +398,114 @@ export function WorkerSettings() {
         </Button>
       </div>
 
+      <section className="border-y" aria-labelledby="worker-placement-title">
+        <div className="flex items-center gap-2.5 px-3 py-3">
+          <HardDrive className="size-4 shrink-0 text-muted-foreground" />
+          <div>
+            <h2 id="worker-placement-title" className="text-sm font-semibold">
+              Placement defaults
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Defaults used when Cantrip places future project replicas and
+              surfaces. Existing resources are not moved.
+            </p>
+          </div>
+        </div>
+        <div className="divide-y border-t">
+          <label className="grid gap-2 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_18rem] sm:items-center">
+            <span>
+              <span className="block text-sm font-medium">Default worker</span>
+              <span className="block text-xs text-muted-foreground">
+                Preferred machine when a project does not override placement.
+              </span>
+            </span>
+            <select
+              className={inputClass}
+              disabled={settings.isLoading || updatePlacementPolicy.isPending}
+              value={settings.data?.preferences.defaultWorkerId ?? ""}
+              onChange={(event) =>
+                updatePlacementPolicy.mutate({
+                  defaultWorkerId: event.target.value || null,
+                })
+              }
+            >
+              <option value="">Automatic fallback</option>
+              {(workers.data ?? []).map((worker) => (
+                <option key={worker.workerId} value={worker.workerId}>
+                  {worker.name} ({worker.online ? "online" : "offline"})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex cursor-pointer items-center justify-between gap-4 px-3 py-3">
+            <span className="flex min-w-0 items-start gap-2.5">
+              <Plus className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <span>
+                <span className="block text-sm font-medium">
+                  Provision missing replicas automatically
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  Allows future placement flows to create a worker-local clone
+                  when the selected worker has no replica.
+                </span>
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              className="size-4 shrink-0 accent-foreground"
+              checked={
+                settings.data?.preferences.automaticReplicaProvisioning ?? false
+              }
+              disabled={settings.isLoading || updatePlacementPolicy.isPending}
+              onChange={(event) =>
+                updatePlacementPolicy.mutate({
+                  automaticReplicaProvisioning: event.target.checked,
+                })
+              }
+            />
+          </label>
+          <label className="grid gap-2 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_18rem] sm:items-center">
+            <span className="flex min-w-0 items-start gap-2.5">
+              <GitCompareArrows className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <span>
+                <span className="block text-sm font-medium">
+                  Automatic replica synchronization
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  Safety policy for future placement. Fast-forward never resets,
+                  rebases, cleans, or overwrites local work.
+                </span>
+              </span>
+            </span>
+            <select
+              className={inputClass}
+              disabled={settings.isLoading || updatePlacementPolicy.isPending}
+              value={
+                settings.data?.preferences.automaticReplicaSynchronization ??
+                "off"
+              }
+              onChange={(event) =>
+                updatePlacementPolicy.mutate({
+                  automaticReplicaSynchronization: event.target.value as
+                    "off" | "verify-only" | "fast-forward-primary",
+                })
+              }
+            >
+              <option value="off">Off</option>
+              <option value="verify-only">Verify exact revision</option>
+              <option value="fast-forward-primary">
+                Fast-forward clean Primary
+              </option>
+            </select>
+          </label>
+        </div>
+        {settings.isError || updatePlacementPolicy.isError ? (
+          <p className="border-t px-3 py-2 text-sm text-destructive">
+            {errorMessage(settings.error ?? updatePlacementPolicy.error)}
+          </p>
+        ) : null}
+      </section>
+
       <section className="border-y">
         <div className="flex items-center justify-between gap-3 px-3 py-3">
           <div className="flex min-w-0 items-center gap-2.5">
@@ -418,6 +542,9 @@ export function WorkerSettings() {
           {visibleWorkers.map((worker) => (
             <WorkerRow
               key={worker.workerId}
+              isDefault={
+                settings.data?.preferences.defaultWorkerId === worker.workerId
+              }
               worker={worker}
               onManage={() => {
                 setSelected(worker);

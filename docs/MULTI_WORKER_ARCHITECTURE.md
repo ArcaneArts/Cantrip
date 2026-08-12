@@ -20,9 +20,9 @@ another.
 
 This document defines the contracts later multi-worker changes must preserve.
 Replica persistence, reads, exact-revision provisioning, guarded
-synchronization, and safe removal are implemented. Placement switching and
-chat relocation remain disabled until their complete lifecycles are
-implemented.
+synchronization, safe removal, and placement-policy settings are implemented.
+Placement switching and chat relocation remain disabled until their complete
+lifecycles are implemented.
 
 ## Current replica read contract
 
@@ -60,6 +60,23 @@ them an unsupported command. Provisioning and synchronization require
 `exactRevision` plus their operation-specific capability; removal requires its
 own capability. `capabilities.gitSync` is true only when the server exposes the
 complete guarded synchronization lifecycle.
+
+## Current placement-policy controls
+
+The account-scoped Workers settings page persists a nullable Default worker,
+an automatic missing-replica provisioning toggle, and an automatic
+synchronization policy (`off`, `verify-only`, or `fast-forward-primary`). The
+project-scoped Replicas page persists an optional preferred worker and shows
+every linked worker alongside its replica observation, capabilities, and most
+recent durable job. It also exposes explicit provision, synchronize,
+retry/cancel, and safe-remove actions.
+
+These controls establish policy for the next implementation stage; changing a
+preference does not move an existing surface or start an implicit replica job.
+New surface placement consumes the project preference first, then the account
+default, only after Cycle 5 ships the shared resolver. Existing single-worker
+installations are backfilled to their earliest active worker as the Default,
+while a cleared preference uses deterministic automatic fallback.
 
 ## Terms
 

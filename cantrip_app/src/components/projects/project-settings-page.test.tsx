@@ -201,7 +201,11 @@ describe("project settings", () => {
     } satisfies ProjectSummary;
     const renderSection = (
       initialSection:
-        "general" | "workflows" | "worktrees" | "tunnels" = "general",
+        | "general"
+        | "workflows"
+        | "replicas"
+        | "worktrees"
+        | "tunnels" = "general",
     ) => {
       const queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false } },
@@ -235,6 +239,7 @@ describe("project settings", () => {
     expect(markup).toContain("~/repos/cantrip");
     expect(markup).toContain("Workflows");
     expect(markup).toContain("Worktrees");
+    expect(markup).toContain("Replicas");
     expect(markup).toContain("Tunnels");
     expect(markup).toContain("Skills");
     expect(markup).toContain("MCP");
@@ -255,6 +260,11 @@ describe("project settings", () => {
     expect(worktreesMarkup).toContain("Worker offline");
     expect(worktreesMarkup).toContain('aria-label="Search worktrees"');
     expect(worktreesMarkup).not.toContain("New workflow");
+
+    const replicasMarkup = renderSection("replicas");
+    expect(replicasMarkup).toContain("Project placement");
+    expect(replicasMarkup).toContain("Worker replicas");
+    expect(replicasMarkup).not.toContain("Agent managed");
 
     const tunnelsMarkup = renderSection("tunnels");
     expect(tunnelsMarkup).toContain("Project tunnels");

@@ -225,6 +225,7 @@ import {
   projectReplicaSummarySchema,
   projectShareAttachmentSchema,
   projectSummarySchema,
+  projectPreferredWorkerUpdateSchema,
   projectWorkspaceCreateSchema,
   projectWorkspaceListSchema,
   projectWorkspaceSummarySchema,
@@ -588,6 +589,7 @@ function mutationLiveResources(route: string): AppLiveResource[] {
     route === "/api/projects/from-github" ||
     route === "/api/projects/order" ||
     route === "/api/projects/:projectId" ||
+    route === "/api/projects/:projectId/preferred-worker" ||
     route === "/api/projects/:projectId/worktree-policy"
   ) {
     return ["project"];
@@ -4996,7 +4998,9 @@ export async function buildApp({
       input.data,
     );
     if (!settings) {
-      return reply.code(400).send({ error: "Default model was not found." });
+      return reply
+        .code(400)
+        .send({ error: "Default model or worker was not found." });
     }
     return reply.send(settingsBundleSchema.parse(settings));
   });
@@ -7840,6 +7844,24 @@ export async function buildApp({
       ))
         ? reply.code(204).send()
         : reply.code(404).send({ error: "Project share not found." }),
+  );
+
+  app.patch<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/preferred-worker",
+    async (request, reply) => {
+      const input = projectPreferredWorkerUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const project = await repository.updateProjectPreferredWorker(
+        applicationOwnerId(),
+        request.params.projectId,
+        input.data.workerId,
+      );
+      return project
+        ? reply.send(projectSummarySchema.parse(project))
+        : reply.code(404).send({ error: "Project or worker not found." });
+    },
   );
 
   app.patch<{ Params: { projectId: string } }>(
