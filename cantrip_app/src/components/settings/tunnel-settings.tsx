@@ -151,14 +151,15 @@ export function summarizeDesktopTransports(
 ) {
   return forwards.reduce(
     (summary, forward) => {
-      summary[forward.routeState === "local-direct" ? "direct" : "relayed"] +=
-        1;
+      if (forward.routeState === "local-direct") summary.direct += 1;
+      else if (forward.routeState === "relayed") summary.relayed += 1;
+      else summary.degraded += 1;
       summary.bytes +=
         (forward.bytesFromLocal ?? 0) + (forward.bytesToLocal ?? 0);
       summary.connections += forward.connectionsOpened ?? 0;
       return summary;
     },
-    { bytes: 0, connections: 0, direct: 0, relayed: 0 },
+    { bytes: 0, connections: 0, degraded: 0, direct: 0, relayed: 0 },
   );
 }
 
@@ -287,7 +288,7 @@ function TunnelRows({
                 </span>
                 <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
                   {local
-                    ? `${local.routeState === "local-direct" ? "Local direct" : "Server relayed"} · ${local.localHost}:${local.localPort}`
+                    ? `${local.routeState === "local-direct" ? "Local direct" : local.routeState === "relayed" ? "Server relayed" : "Reconnecting"} · ${local.localHost}:${local.localPort}`
                     : tunnel.attachments.length
                       ? `${tunnel.attachments.length} remote ${tunnel.attachments.length === 1 ? "attachment" : "attachments"}`
                       : "Not attached on this device"}
@@ -664,6 +665,9 @@ export function TunnelSettings({
           <span className="inline-flex items-center gap-1.5 text-muted-foreground">
             <span className="size-1.5 rounded-full bg-amber-500" />
             {transportSummary.relayed} server relayed
+            {transportSummary.degraded > 0
+              ? ` · ${transportSummary.degraded} reconnecting`
+              : ""}
           </span>
           <span className="text-muted-foreground">
             {transportSummary.connections} connections ·{" "}

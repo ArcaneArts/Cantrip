@@ -123,6 +123,12 @@ uses the ordinary server WebSocket relay if the proof, connection, or capability
 cannot be used. Attachment, session, account, worker-control, and server
 lifecycle revocation all tear down the direct lease.
 
+The native forwarder keeps relay credentials short-lived. If a long-running
+direct connection drops after its original relay credential expires, Tauri
+marks the listener degraded and asks the server to rotate that attachment's
+credential before reconnecting through the relay. The local listener and its
+port stay stable during this recovery.
+
 ## Status and observability
 
 Tunnel rows distinguish desired state from observed `starting`, `active`,
