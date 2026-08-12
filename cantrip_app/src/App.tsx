@@ -22,6 +22,7 @@ import type {
   SettingsBundle,
   SkillSummary,
   TerminalSummary,
+  TunnelSummary,
 } from "@cantrip/protocol";
 import {
   useMutation,
@@ -2380,7 +2381,7 @@ export function App() {
   const [showImporter, setShowImporter] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsSection, setSettingsSection] = useState<
-    "general" | "workers" | "skills" | "mcp" | "workspaces"
+    "general" | "workers" | "tunnels" | "skills" | "mcp" | "workspaces"
   >("general");
   const [showProjectSettings, setShowProjectSettings] = useState(false);
   const projectOverviewSelected =
@@ -2483,6 +2484,22 @@ export function App() {
     setShowProjectSettings(true);
     setSelectedWorkflowIntentId(workflowId);
     setMobileTabGridOpen(false);
+  };
+
+  const openTunnelOwner = (tunnel: TunnelSummary) => {
+    if (!tunnel.managedBy || !tunnel.projectId) return;
+    if (tunnel.managedBy.kind === "browser") {
+      openCreatedTab(tunnel.projectId, "browser", tunnel.managedBy.id);
+      return;
+    }
+    if (tunnel.managedBy.kind === "code") {
+      openCreatedTab(tunnel.projectId, "code", tunnel.managedBy.id);
+      return;
+    }
+    openProjectSettings(
+      tunnel.projectId,
+      tunnel.managedBy.kind === "workflow" ? tunnel.managedBy.id : null,
+    );
   };
 
   const bootstrap = useQuery({
@@ -3971,7 +3988,8 @@ export function App() {
     setSelectedWorkflowIntentId(null);
   };
   const openCompactRootSettings = (
-    section: "general" | "skills" | "mcp" | "workspaces" = "general",
+    section:
+      "general" | "tunnels" | "skills" | "mcp" | "workspaces" = "general",
   ) => {
     setSelectedProjectId(null);
     setWorkspaceSelection(emptyWorkspaceSelection());
@@ -4871,7 +4889,10 @@ export function App() {
             onSelectWorkspace={selectProjectWorkspace}
           />
         ) : showSettings ? (
-          <SettingsPage initialSection={settingsSection} />
+          <SettingsPage
+            initialSection={settingsSection}
+            onOpenTunnelOwner={openTunnelOwner}
+          />
         ) : showProjectSettings && selectedProject ? (
           <ProjectSettingsPage
             initialWorkflowId={selectedWorkflowIntentId}
@@ -4916,6 +4937,7 @@ export function App() {
                 worktreeId,
               })
             }
+            onOpenTunnelOwner={openTunnelOwner}
           />
         ) : showImporter ? (
           <RepositoryImporter

@@ -200,7 +200,8 @@ describe("project settings", () => {
       updatedAt: now,
     } satisfies ProjectSummary;
     const renderSection = (
-      initialSection: "general" | "workflows" | "worktrees" = "general",
+      initialSection:
+        "general" | "workflows" | "worktrees" | "tunnels" = "general",
     ) => {
       const queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false } },
@@ -234,6 +235,7 @@ describe("project settings", () => {
     expect(markup).toContain("~/repos/cantrip");
     expect(markup).toContain("Workflows");
     expect(markup).toContain("Worktrees");
+    expect(markup).toContain("Tunnels");
     expect(markup).toContain("Skills");
     expect(markup).toContain("MCP");
     expect(markup).not.toContain("MCP servers");
@@ -253,5 +255,11 @@ describe("project settings", () => {
     expect(worktreesMarkup).toContain("Worker offline");
     expect(worktreesMarkup).toContain('aria-label="Search worktrees"');
     expect(worktreesMarkup).not.toContain("New workflow");
+
+    const tunnelsMarkup = renderSection("tunnels");
+    expect(tunnelsMarkup).toContain("Project tunnels");
+    expect(tunnelsMarkup).toContain("Project Tunnels");
+    expect(tunnelsMarkup).toContain("All Tunnels");
+    expect(tunnelsMarkup).not.toContain("New workflow");
   });
 });
