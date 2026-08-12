@@ -15,8 +15,9 @@ automatic deploys enabled. Host-based ingress serves the marketing site at
 `cantrip.art`, the browser application at `app.cantrip.art`, and redirects the
 DigitalOcean starter hostname to the marketing site. The components build from
 the repository root so pnpm can resolve the shared workspace protocol package.
-Both custom domains declare the DigitalOcean-managed `cantrip.art` DNS zone in
-the app spec, allowing App Platform to maintain their routing records.
+The `cantrip.art` DigitalOcean DNS zone manages routing explicitly: the apex
+uses App Platform's static ingress addresses and `app` is a CNAME to the app's
+DigitalOcean starter hostname.
 
 Once the `release` branch exists, update the existing App Platform
 configuration with:
