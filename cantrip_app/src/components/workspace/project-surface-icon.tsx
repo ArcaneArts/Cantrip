@@ -14,9 +14,10 @@ import {
 import type { ProjectTabGroupVisualKind } from "@/lib/project-tab-group";
 
 export function ProjectSurfaceIcon({
+  filled = false,
   kind,
   ...props
-}: LucideProps & { kind: ProjectTabGroupVisualKind }) {
+}: LucideProps & { filled?: boolean; kind: ProjectTabGroupVisualKind }) {
   const Icon =
     kind === "chat"
       ? MessageSquare
@@ -35,5 +36,5 @@ export function ProjectSurfaceIcon({
                   : kind === "remote-desktop"
                     ? MonitorUp
                     : Layers3;
-  return <Icon {...props} />;
+  return <Icon {...props} fill={filled ? "currentColor" : props.fill} />;
 }

@@ -24,6 +24,9 @@ describe("shared settings controls", () => {
     expect(markup).toContain('aria-label="Account settings sections"');
     expect(markup).toContain('aria-selected="false"');
     expect(markup).toContain('aria-selected="true"');
+    expect(markup).toContain("overflow-x-auto");
+    expect(markup).toContain("[scrollbar-width:none]");
+    expect(markup).toContain("shrink-0");
     expect(markup).toContain("General");
     expect(markup).toContain("MCP");
   });

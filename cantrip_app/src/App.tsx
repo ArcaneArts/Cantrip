@@ -4516,10 +4516,6 @@ export function App() {
               selectedProject.source?.displayPath ??
               selectedProject.name
             }`}
-            onCloseProject={closeCompactProject}
-            onOpenProjectSettings={() =>
-              openProjectSettings(selectedProject.id)
-            }
             title={selectedProject.name}
           />
         ) : compactShell && projectOverviewSelected && selectedProject ? (
