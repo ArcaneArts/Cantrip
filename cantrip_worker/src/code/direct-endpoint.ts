@@ -29,6 +29,24 @@ const BASE_PATH = "/code";
 const MAX_BUFFERED_BYTES = 8 * 1_024 * 1_024;
 const FRAME_ANCESTORS =
   "frame-ancestors 'self' http://127.0.0.1:1420 http://tauri.localhost https://tauri.localhost tauri://localhost";
+const ABNORMAL_CLOSE_CODE = 1011;
+const ABNORMAL_CLOSE_REASON = "Cantrip Code peer disconnected abnormally";
+
+export function forwardableCodeWebSocketClose(
+  code: number,
+  reason: Buffer,
+): { code: number; reason: Buffer | string } {
+  const valid =
+    (code >= 1000 &&
+      code <= 1014 &&
+      code !== 1004 &&
+      code !== 1005 &&
+      code !== 1006) ||
+    (code >= 3000 && code <= 4999);
+  return valid
+    ? { code, reason }
+    : { code: ABNORMAL_CLOSE_CODE, reason: ABNORMAL_CLOSE_REASON };
+}
 
 function rawHeaders(request: IncomingMessage): Array<[string, string]> {
   const result: Array<[string, string]> = [];
@@ -325,8 +343,10 @@ export class CodeDirectEndpointManager {
       });
       client.once("close", (code, reason) => {
         endStream();
-        if (upstream.readyState === WebSocket.OPEN)
-          upstream.close(code, reason);
+        if (upstream.readyState === WebSocket.OPEN) {
+          const forwarded = forwardableCodeWebSocketClose(code, reason);
+          upstream.close(forwarded.code, forwarded.reason);
+        }
         else upstream.terminate();
       });
       client.once("error", () => {
@@ -335,7 +355,10 @@ export class CodeDirectEndpointManager {
       });
       upstream.once("close", (code, reason) => {
         endStream();
-        if (client.readyState === WebSocket.OPEN) client.close(code, reason);
+        if (client.readyState === WebSocket.OPEN) {
+          const forwarded = forwardableCodeWebSocketClose(code, reason);
+          client.close(forwarded.code, forwarded.reason);
+        }
       });
       upstream.once("error", () => {
         endStream();
