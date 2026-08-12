@@ -829,16 +829,32 @@ export const operationalProbeSchema = z.object({
       latencyMs: z.number().nonnegative(),
     })
     .optional(),
+  coordination: z
+    .object({
+      shared: z.boolean(),
+      status: z.enum(["ready", "unavailable"]),
+    })
+    .optional(),
   timestamp: z.string().datetime(),
 });
 
 const operationalCounterSchema = z.number().int().nonnegative();
 
 export const serverOperationalStatsSchema = z.object({
+  instanceId: z.string().min(1).max(100),
   uptimeSeconds: z.number().nonnegative(),
   http: z.object({
     activeRequests: operationalCounterSchema,
     requestCount: operationalCounterSchema,
+  }),
+  coordination: z.object({
+    cachedWorkers: operationalCounterSchema,
+    instanceCount: operationalCounterSchema,
+    maximumInstances: z.number().int().positive(),
+    receivedMessages: operationalCounterSchema,
+    rejectedMessages: operationalCounterSchema,
+    sentMessages: operationalCounterSchema,
+    shared: z.boolean(),
   }),
   workerCommands: z.object({
     activeRequests: operationalCounterSchema,

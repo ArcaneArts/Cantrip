@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { buildApp } from "./app.js";
 import { readServerConfig, resolveCodeSurfaceConfig } from "./config.js";
 import {
@@ -6,9 +8,11 @@ import {
   createCodeSurfaceServer,
 } from "./code/tunnel.js";
 import { connectDatabase } from "./db/index.js";
+import { RedisRelayCoordinator } from "./coordination/relay-coordinator.js";
 import { RelayQuotaManager } from "./operations/relay-quotas.js";
 import { ProjectShareTunnelBroker } from "./project-shares/tunnel.js";
 import { WorkerBridge } from "./workers/bridge.js";
+import { CoordinatedWorkerBridge } from "./workers/coordinated-bridge.js";
 
 async function listenCodeSurface(
   server: ReturnType<typeof createCodeSurfaceServer>,
@@ -32,8 +36,24 @@ async function listenCodeSurface(
 
 async function start(): Promise<void> {
   const config = readServerConfig();
+  config.serverInstanceId ??= randomUUID();
   const database = await connectDatabase(config);
-  const workerBridge = new WorkerBridge();
+  const coordinator = config.redisUrl
+    ? new RedisRelayCoordinator({
+        instanceId: config.serverInstanceId,
+        maximumInstances: config.coordinationMaxInstances,
+        presenceTtlMs: config.coordinationPresenceTtlMs,
+        url: config.redisUrl,
+      })
+    : undefined;
+  await coordinator?.start();
+  const workerBridge = coordinator
+    ? new CoordinatedWorkerBridge({
+        coordinator,
+        resolveOwnerId: (workerId) =>
+          database.repository.getWorkerOwnerId(workerId),
+      })
+    : new WorkerBridge();
   const relayQuotas = new RelayQuotaManager(config);
   const surfaceConfig = resolveCodeSurfaceConfig(config);
   const codeTunnel = new CodeTunnelBroker(workerBridge, {
@@ -48,6 +68,7 @@ async function start(): Promise<void> {
   const app = await buildApp({
     codeTunnel,
     config,
+    coordinator,
     database,
     projectShareTunnel,
     relayQuotas,

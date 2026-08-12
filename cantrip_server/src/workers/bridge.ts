@@ -45,8 +45,12 @@ export type WorkerNotificationListener = (
 ) => Promise<void> | void;
 
 export interface WorkerCommandBus {
-  attach(workerId: string, socket: WorkerSocket): void;
-  close(): void;
+  attach(
+    workerId: string,
+    socket: WorkerSocket,
+    ownerId?: string,
+  ): Promise<void> | void;
+  close(): Promise<void> | void;
   disconnect?(workerId: string, reason?: string, code?: number): void;
   isConnected(workerId: string): boolean;
   sendSurfaceFrame(
@@ -90,6 +94,7 @@ export interface WorkerCommandBusStats {
 
 export interface WorkerRequestOptions {
   onEvent?(event: WorkerEvent): Promise<void> | void;
+  ownerId?: string;
   timeoutMs?: number | null;
 }
 

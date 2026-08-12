@@ -59,12 +59,16 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
     );
   }
 
-  attach(workerId: string, socket: Parameters<WorkerCommandBus["attach"]>[1]) {
-    this.delegate.attach(workerId, socket);
+  attach(
+    workerId: string,
+    socket: Parameters<WorkerCommandBus["attach"]>[1],
+    ownerId?: string,
+  ) {
+    return this.delegate.attach(workerId, socket, ownerId);
   }
 
-  close(): void {
-    this.delegate.close();
+  close(): Promise<void> | void {
+    return this.delegate.close();
   }
 
   disconnect(workerId: string, reason?: string, code?: number): void {
@@ -183,6 +187,7 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
         options?.onEvent && this.options.consumeRelayBytes
           ? {
               ...options,
+              ownerId,
               onEvent: async (
                 event: Parameters<
                   NonNullable<WorkerRequestOptions["onEvent"]>
@@ -202,7 +207,7 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
                 await options.onEvent!(event);
               },
             }
-          : options;
+          : { ...options, ownerId };
       const result = await this.delegate.request(
         workerId,
         command,

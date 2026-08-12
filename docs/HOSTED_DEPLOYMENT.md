@@ -208,9 +208,35 @@ existing request, WebSocket, upload-concurrency, and worker-command limits:
 | `CANTRIP_WORKER_REMOTE_SURFACE_LIMIT`     |         8 | Concurrent browser/desktop surfaces per worker  |
 
 Quota rejection is explicit (HTTP 429, WebSocket close code 1013, or a worker
-command error) and does not silently queue work. These counters are currently
-process-local. Run one server replica until the documented Redis-backed
-coordination layer replaces them with shared atomic counters.
+command error) and does not silently queue work. Limits are configured globally
+and conservatively divided by `CANTRIP_COORDINATION_MAX_INSTANCES`. Set that
+value to the deployment's hard replica ceiling before scaling; every limit must
+be at least that ceiling. `/readyz` fails if Redis observes more live instances
+than configured. This static partition avoids a Redis round trip for every
+terminal or media frame, but unused replicas leave part of the quota idle.
+
+## Multi-instance server operation
+
+Set `REDIS_URL` for every replica and give each one a unique
+`CANTRIP_SERVER_INSTANCE_ID`, or omit the ID and let Cantrip generate a new UUID
+at process start. Use a shared PostgreSQL database, Redis deployment, encryption
+keyring, public origins, and proxy configuration. Configure load-balancer
+stickiness for WebSockets to reduce cross-instance media traffic, but do not
+depend on it: Redis routes worker commands, responses, notifications, binary
+frames, disconnects, and application live invalidations to the correct process.
+
+Worker ownership and server instance records use TTL leases. A reconnect on a
+new process fences and closes the previous socket. A crashed process loses its
+claims after `CANTRIP_COORDINATION_PRESENCE_TTL_MS`; until then commands fail
+visibly rather than being sent to an unverified replacement. Monitor
+`cantrip_coordination_instances`, message rejection, worker presence, and
+readiness. Redis loss makes coordinated replicas not ready; existing local
+connections may finish local work, but operators should stop routing new
+traffic until coordination recovers.
+
+Redis pub/sub carries bounded ephemeral routing envelopes. It is not a job
+queue, event history, or backup target. PostgreSQL remains authoritative, and
+application reconnects resynchronize snapshots when their server epoch changes.
 
 Security audit events are durable PostgreSQL records and are included in normal
 database backups. Account users can review their own audit stream and current

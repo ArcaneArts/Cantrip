@@ -2,6 +2,7 @@ import type { AppLiveHubStats } from "../live/hub.js";
 import type { RelayQuotaStats } from "./relay-quotas.js";
 import type { TunnelStreamBrokerStats } from "../tunnels/broker.js";
 import type { WorkerCommandBusStats } from "../workers/bridge.js";
+import type { RelayCoordinatorStats } from "../coordination/relay-coordinator.js";
 
 interface HttpMetric {
   durationSeconds: number;
@@ -141,6 +142,7 @@ export class OperationalMetrics {
   }
 
   renderPrometheus(input: {
+    coordination: RelayCoordinatorStats;
     live: AppLiveHubStats;
     quotas: RelayQuotaStats;
     tunnels: TunnelStreamBrokerStats;
@@ -171,6 +173,30 @@ export class OperationalMetrics {
     }
     lines.push(
       metricLine("cantrip_database_ready", this.#database.ready ? 1 : 0),
+      metricLine(
+        "cantrip_coordination_shared",
+        input.coordination.shared ? 1 : 0,
+      ),
+      metricLine(
+        "cantrip_coordination_instances",
+        input.coordination.instanceCount,
+      ),
+      metricLine(
+        "cantrip_coordination_maximum_instances",
+        input.coordination.maximumInstances,
+      ),
+      metricLine(
+        "cantrip_coordination_messages_sent_total",
+        input.coordination.sentMessages,
+      ),
+      metricLine(
+        "cantrip_coordination_messages_received_total",
+        input.coordination.receivedMessages,
+      ),
+      metricLine(
+        "cantrip_coordination_messages_rejected_total",
+        input.coordination.rejectedMessages,
+      ),
       metricLine(
         "cantrip_database_probe_latency_seconds",
         this.#database.latencySeconds,

@@ -2,8 +2,8 @@
 
 - Status: protected authentication, owner enforcement, worker enrollment,
   secret encryption, account/worker quotas, HTTP/proxy hardening, operational
-  probes/metrics, and owner-scoped security audit visibility implemented;
-  shared multi-instance control remains
+  probes/metrics, owner-scoped security audit visibility, and Redis-backed
+  multi-instance relay routing implemented; scheduler fencing remains
 - Route inventory: [`security/server-route-inventory.json`](security/server-route-inventory.json)
 - Regenerate: `pnpm audit:server-boundaries:write`
 - Verify: `pnpm audit:server-boundaries`
@@ -28,7 +28,7 @@ flowchart LR
 
     APP <-->|"authenticated HTTPS and WSS"| API
     API --> DB
-    API -.->|"multi-instance milestone"| BUS
+    API <-->|"presence leases, routed envelopes, live fanout"| BUS
     WORKER -->|"outbound authenticated WSS"| API
     WORKER --> FILES
 ```
@@ -275,9 +275,13 @@ a worker is bounded by per-worker and per-account byte, rate, and concurrency
 ceilings; reaching a ceiling fails visibly instead of accumulating an unbounded
 queue. These guards do not impose a short execution timeout, so an admitted
 Codex turn may remain active for its normal lifetime. Binary transports retain
-their schema payload ceilings and buffered-byte backpressure rules. The current
-limiters are process-local; the multi-instance coordination layer must replace
-them with shared counters before horizontal replicas are advertised.
+their schema payload ceilings and buffered-byte backpressure rules. Each process
+enforces a conservative partition of the configured global limits.
+`CANTRIP_COORDINATION_MAX_INSTANCES` is the hard deployment ceiling and Redis
+readiness fails when more live server leases exist. This preserves the global
+bound without putting synchronous media frames behind a Redis round trip. It
+can under-use capacity when fewer replicas are running, which is an intentional
+availability-versus-abuse-resistance tradeoff.
 
 `/healthz` proves only that the server process can answer HTTP. `/readyz` probes
 the authoritative database and returns 503 while it is unavailable. `/metrics`
@@ -321,5 +325,30 @@ server profile or `localStorage`.
    active sockets and attachments.
 7. Logs and metrics contain correlation IDs, never credentials, prompts,
    terminal contents, or source contents by default.
-8. Multi-instance routing may move envelopes between servers, but may not
-   weaken the same principal, owner, worker, and capability checks.
+8. Multi-instance routing moves only bounded, expiring envelopes carrying
+   correlation IDs. The receiving instance revalidates worker ownership and
+   protocol payloads before reaching a local worker socket.
+
+## 10. Shared relay coordination
+
+`REDIS_URL` enables the production coordination path. Every process receives a
+unique instance ID (or an operator-provided stable ID), writes a TTL-backed
+instance lease, and claims each locally connected worker with a connection-ID
+fenced presence lease. The newest Redis claim wins. An older connection closes
+when it receives the replacement notice or when its compare-and-refresh fails;
+stale owners disappear automatically after the configured presence TTL.
+
+Commands sent to a worker owned by another process use an instance-targeted,
+expiring envelope. Request, event, response, notification, disconnect, and
+binary frame messages are schema-checked or protocol-checked at receipt.
+Pending and incoming command counts plus asynchronous publication counts are
+bounded. Worker/account identity is derived from PostgreSQL and the presence
+lease rather than trusted from a client payload. Code, Remote Surface, project
+share, and generic tunnel frames use the same bridge, so sticky routing improves
+bandwidth locality but is not required for correctness.
+
+Application live invalidations are broadcast to every server and filtered by
+the destination hub's authenticated owner and authorized subscriptions.
+Per-instance epochs and authoritative HTTP snapshots remain the reconnect
+contract; Redis pub/sub is an invalidation transport, not durable history.
+PostgreSQL remains authoritative for conversations and configuration.
