@@ -2434,6 +2434,18 @@ export async function releaseCodeAttachment(attachmentId: string) {
   });
 }
 
+export async function createDirectCodeAttachment(
+  attachmentId: string,
+  clientId: string,
+) {
+  return directTunnelTicketSchema.parse(
+    await post(
+      `/api/code-attachments/${encodeURIComponent(attachmentId)}/direct`,
+      projectShareDirectCreateSchema.parse({ clientId }),
+    ),
+  );
+}
+
 export async function saveAllCodeTab(codeTabId: string) {
   return codeSaveAllResultSchema.parse(
     await post(`/api/code-tabs/${encodeURIComponent(codeTabId)}/save-all`, {}),

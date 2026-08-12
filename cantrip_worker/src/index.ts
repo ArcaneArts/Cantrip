@@ -19,6 +19,7 @@ import { discoverBrowserServices } from "./browser/service-discovery.js";
 import { discoverCantripCode } from "./code/installation.js";
 import { CodeSupervisor } from "./code/supervisor.js";
 import { CodeTunnelProxy } from "./code/tunnel-proxy.js";
+import { CodeDirectEndpointManager } from "./code/direct-endpoint.js";
 import { readWorkerConfig } from "./config.js";
 import { saveWorkerCredential } from "./credential-store.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
@@ -142,13 +143,27 @@ async function start(): Promise<void> {
   });
   await code.start();
   const codeTunnel = new CodeTunnelProxy(code);
+  const codeDirectEndpoints = new CodeDirectEndpointManager(code);
   const terminals = new TerminalManager();
   const terminalDirectEndpoints = new TerminalDirectEndpointManager(terminals);
   const directBroker = new DirectBroker();
   directBroker.setTunnelTargetResolver(async (binding, target) => {
-    if (target.kind !== "adapter" || target.adapter !== "terminal") {
+    if (target.kind !== "adapter") {
       return target;
     }
+    if (target.adapter === "code") {
+      if (
+        binding.resourceKind !== "code" ||
+        binding.resourceId !== target.resourceId
+      ) {
+        throw new Error("Direct Code target escaped its capability binding.");
+      }
+      return codeDirectEndpoints.prepare(
+        binding.capabilityId,
+        target.resourceId,
+      );
+    }
+    if (target.adapter !== "terminal") return target;
     if (
       binding.resourceKind !== "terminal" ||
       binding.resourceId !== target.resourceId
@@ -160,9 +175,10 @@ async function start(): Promise<void> {
       target.resourceId,
     );
   });
-  directBroker.setCapabilityRevoker((capabilityId, reason) =>
-    terminalDirectEndpoints.revoke(capabilityId, reason),
-  );
+  directBroker.setCapabilityRevoker((capabilityId, reason) => {
+    terminalDirectEndpoints.revoke(capabilityId, reason);
+    codeDirectEndpoints.revoke(capabilityId, reason);
+  });
   await directBroker.start();
   const heartbeat = createHeartbeat(
     config,
@@ -1405,6 +1421,7 @@ async function start(): Promise<void> {
       commandConnection.close();
       await directBroker.close();
       terminalDirectEndpoints.close();
+      codeDirectEndpoints.close();
       for (const client of codexAuthClients.values()) client.close();
       terminals.closeAll();
       tunnelDestinations.close();

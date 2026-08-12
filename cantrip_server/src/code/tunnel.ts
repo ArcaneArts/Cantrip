@@ -55,6 +55,15 @@ export interface CreateCodeAttachmentInput {
   workerId: string;
 }
 
+export interface CodeDirectAttachmentContext {
+  codeTabId: string;
+  expiresAt: Date;
+  ownerId: string;
+  projectId: string;
+  sessionId: string;
+  workerId: string;
+}
+
 export interface CodeTunnelBrokerOptions {
   allowedFrameAncestors: string[];
   consumeRelayBytes?(ownerId: string, workerId: string, bytes: number): boolean;
@@ -286,6 +295,28 @@ export class CodeTunnelBroker {
 
   hasAttachment(token: string): boolean {
     return this.#resolve(token) !== null;
+  }
+
+  prepareDirectAttachment(
+    attachmentId: string,
+    ownerId: string,
+  ): CodeDirectAttachmentContext | null {
+    const binding = [...this.#attachments.values()].find(
+      (candidate) =>
+        candidate.attachmentId === attachmentId &&
+        candidate.ownerId === ownerId,
+    );
+    if (!binding) return null;
+    const now = Date.now();
+    this.#touch(binding, now);
+    return {
+      codeTabId: binding.codeTabId,
+      expiresAt: new Date(binding.createdAt + this.#maxLifetimeMs),
+      ownerId: binding.ownerId,
+      projectId: binding.projectId,
+      sessionId: binding.sessionId,
+      workerId: binding.workerId,
+    };
   }
 
   async revokeAttachment(

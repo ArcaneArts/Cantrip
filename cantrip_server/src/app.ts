@@ -13015,11 +13015,27 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       try {
+        const previousSessions =
+          (await repository.listCodeSessions(
+            applicationOwnerId(),
+            request.params.codeTabId,
+          )) ?? [];
         const codeTab = await repository.updateCodeTabWorktree(
           applicationOwnerId(),
           request.params.codeTabId,
           input.data,
         );
+        if (codeTab) {
+          await Promise.all(
+            previousSessions.map((session) =>
+              directAttachments.revokeResource(
+                applicationOwnerId(),
+                "code",
+                session.id,
+              ),
+            ),
+          );
+        }
         return codeTab
           ? reply.send(codeTabSummarySchema.parse(codeTab))
           : reply.code(404).send({ error: "Code tab or worktree not found." });
@@ -13241,7 +13257,68 @@ export async function buildApp({
         request.params.attachmentId,
         applicationOwnerId(),
       );
+      await directAttachments.revokeAttachment(request.params.attachmentId);
       return reply.code(204).send();
+    },
+  );
+
+  app.post<{ Params: { attachmentId: string } }>(
+    "/api/code-attachments/:attachmentId/direct",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = projectShareDirectCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = authenticatedPrincipal(request);
+      const context = codeTunnel.prepareDirectAttachment(
+        request.params.attachmentId,
+        principal.user.id,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Code attachment not found." });
+      }
+      const worker = await repository.getWorker(
+        principal.user.id,
+        context.workerId,
+      );
+      if (!worker || !bridge.isConnected(context.workerId)) {
+        return reply.code(409).send({ error: "Code worker is offline." });
+      }
+      const route = {
+        tunnelId: `direct-code:${context.sessionId}`,
+        attachmentId: request.params.attachmentId,
+        sourceEndpointId: `desktop:${input.data.clientId}:${request.params.attachmentId}`,
+        destinationEndpointId: `worker:${context.workerId}`,
+      };
+      try {
+        const ticket = await directAttachments.prepare({
+          attachmentId: request.params.attachmentId,
+          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          channels: ["tunnel-data"],
+          leaseExpiresAt: context.expiresAt,
+          ownerId: principal.user.id,
+          resourceId: context.sessionId,
+          resourceKind: "code",
+          tunnelRoute: {
+            ...route,
+            target: {
+              kind: "adapter",
+              adapter: "code",
+              resourceId: context.sessionId,
+            },
+          },
+          worker,
+        });
+        return reply
+          .code(201)
+          .send(directTunnelTicketSchema.parse({ ...ticket, route }));
+      } catch (error) {
+        if (error instanceof DirectAttachmentUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
     },
   );
 
@@ -13314,6 +13391,11 @@ export async function buildApp({
           }),
         );
         await codeTunnel.revokeSession(session.id);
+        await directAttachments.revokeResource(
+          applicationOwnerId(),
+          "code",
+          session.id,
+        );
         await updateCodeSessionRuntime(
           applicationOwnerId(),
           context.codeTab.id,
@@ -13394,6 +13476,15 @@ export async function buildApp({
       }
       await Promise.all(
         sessions.map((session) => codeTunnel.revokeSession(session.id)),
+      );
+      await Promise.all(
+        sessions.map((session) =>
+          directAttachments.revokeResource(
+            applicationOwnerId(),
+            "code",
+            session.id,
+          ),
+        ),
       );
       if (bridge.isConnected(context.workerId)) {
         await Promise.allSettled(

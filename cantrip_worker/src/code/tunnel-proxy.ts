@@ -107,13 +107,13 @@ function responseBase(stream: CodeStream) {
   };
 }
 
-function rawBytes(data: RawData): Buffer {
+export function rawCodeWebSocketBytes(data: RawData): Buffer {
   if (Array.isArray(data)) return Buffer.concat(data);
   if (data instanceof ArrayBuffer) return Buffer.from(data);
   return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
 }
 
-function editorAuthenticatedPayload(
+export function editorAuthenticatedPayload(
   payload: Uint8Array,
   connectionToken: string,
 ): Uint8Array {
@@ -181,7 +181,7 @@ function parts(payload: Uint8Array): Buffer[] {
   return output;
 }
 
-function requestHeaders(
+export function codeEditorRequestHeaders(
   headers: Array<[string, string]>,
   target: URL,
   basePath: string,
@@ -206,7 +206,9 @@ function requestHeaders(
   );
 }
 
-function responseHeaders(message: IncomingMessage): Array<[string, string]> {
+export function codeEditorResponseHeaders(
+  message: IncomingMessage,
+): Array<[string, string]> {
   const headers: Array<[string, string]> = [];
   for (let index = 0; index < message.rawHeaders.length; index += 2) {
     const name = message.rawHeaders[index];
@@ -222,7 +224,7 @@ function responseHeaders(message: IncomingMessage): Array<[string, string]> {
   return headers;
 }
 
-function targetUrl(
+export function codeEditorTargetUrl(
   editorOrigin: string,
   rawPath: string,
   basePath: string,
@@ -249,7 +251,7 @@ function targetUrl(
   return target;
 }
 
-function headerValue(
+export function codeHeaderValue(
   headers: Array<[string, string]>,
   targetName: string,
 ): string | undefined {
@@ -478,7 +480,7 @@ export class CodeTunnelProxy {
       if (proxy.codeTabId !== tunnelTarget.resourceId) {
         throw new Error("Cantrip Code session does not belong to this tunnel.");
       }
-      const target = targetUrl(
+      const target = codeEditorTargetUrl(
         proxy.editorOrigin,
         head.path,
         head.basePath,
@@ -490,7 +492,7 @@ export class CodeTunnelProxy {
           target,
           {
             method: head.method,
-            headers: requestHeaders(
+            headers: codeEditorRequestHeaders(
               head.headers,
               target,
               head.basePath,
@@ -515,12 +517,12 @@ export class CodeTunnelProxy {
       }
       target.protocol = "ws:";
       const protocols = (
-        headerValue(head.headers, "sec-websocket-protocol") ?? ""
+        codeHeaderValue(head.headers, "sec-websocket-protocol") ?? ""
       )
         .split(",")
         .map((value) => value.trim())
         .filter(Boolean);
-      const headers = requestHeaders(
+      const headers = codeEditorRequestHeaders(
         head.headers.filter(
           ([name]) => name.toLowerCase() !== "sec-websocket-protocol",
         ),
@@ -557,7 +559,7 @@ export class CodeTunnelProxy {
               binary
                 ? CODE_ADAPTER_WEBSOCKET_BINARY_RECORD
                 : CODE_ADAPTER_WEBSOCKET_TEXT_RECORD,
-              rawBytes(data),
+              rawCodeWebSocketBytes(data),
             ),
           );
           void this.#drainOutput(stream);
@@ -605,7 +607,7 @@ export class CodeTunnelProxy {
           protocolVersion: 1,
           kind: "http",
           statusCode: response.statusCode ?? 502,
-          headers: responseHeaders(response),
+          headers: codeEditorResponseHeaders(response),
         }),
       );
       await this.#drainOutput(stream);

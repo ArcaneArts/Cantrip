@@ -20,6 +20,10 @@ import {
   stopCodeTab,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+import {
+  preferDirectCodeAttachment,
+  stopDirectCodeAttachment,
+} from "@/lib/desktop-code";
 
 const MAX_RECONNECT_DELAY_MS = 15_000;
 const CODE_RUNTIME_POLL_DELAY_MS = 500;
@@ -114,8 +118,10 @@ export function CodeView({
   useEffect(() => {
     const generation = ++connectionGeneration.current;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let directHealthTimer: ReturnType<typeof setTimeout> | undefined;
     let cancelled = false;
     let ownedAttachmentId: string | null = null;
+    let ownedDirectTunnelId: string | null = null;
     stopped.current = false;
     setAttachment(null);
     setActionError(null);
@@ -133,15 +139,25 @@ export function CodeView({
       setConnecting(true);
       setConnectAttempt(attempt);
       try {
-        const next = await createCodeAttachment(
+        const relayAttachment = await createCodeAttachment(
           codeTab.id,
           appearanceRef.current,
         );
+        ownedAttachmentId = relayAttachment.attachmentId;
+        const preferred = await preferDirectCodeAttachment(
+          relayAttachment,
+        ).catch(() => ({
+          attachment: relayAttachment,
+          directHealthUrl: null,
+          directTunnelId: null,
+        }));
+        const next = preferred.attachment;
+        ownedDirectTunnelId = preferred.directTunnelId;
         if (cancelled || generation !== connectionGeneration.current) {
+          void stopDirectCodeAttachment(ownedDirectTunnelId);
           void releaseCodeAttachment(next.attachmentId).catch(() => undefined);
           return;
         }
-        ownedAttachmentId = next.attachmentId;
         setAttachment(next);
         setBackgroundError(null);
         setConnectError(null);
@@ -150,6 +166,33 @@ export function CodeView({
         setFrameLoaded(false);
         setFrameReadyToReveal(false);
         onChangedRef.current?.();
+        if (preferred.directHealthUrl) {
+          let failures = 0;
+          const checkDirectRoute = async () => {
+            if (cancelled || !ownedDirectTunnelId) return;
+            try {
+              const response = await fetch(preferred.directHealthUrl!, {
+                cache: "no-store",
+              });
+              if (!response.ok)
+                throw new Error("Direct Code route is unavailable.");
+              failures = 0;
+            } catch {
+              failures += 1;
+              if (failures >= 2 && !cancelled) {
+                const tunnelId = ownedDirectTunnelId;
+                ownedDirectTunnelId = null;
+                void stopDirectCodeAttachment(tunnelId);
+                setAttachment(relayAttachment);
+                setFrameLoaded(false);
+                setFrameReadyToReveal(false);
+                return;
+              }
+            }
+            directHealthTimer = setTimeout(checkDirectRoute, 5_000);
+          };
+          directHealthTimer = setTimeout(checkDirectRoute, 5_000);
+        }
       } catch (error) {
         if (cancelled || generation !== connectionGeneration.current) return;
         setConnectError(errorText(error));
@@ -169,6 +212,8 @@ export function CodeView({
     return () => {
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
+      if (directHealthTimer) clearTimeout(directHealthTimer);
+      void stopDirectCodeAttachment(ownedDirectTunnelId);
       if (ownedAttachmentId) {
         void releaseCodeAttachment(ownedAttachmentId).catch(() => undefined);
       }
