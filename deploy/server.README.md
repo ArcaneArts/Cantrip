@@ -6,6 +6,11 @@ archive includes its own platform-matched Node.js runtime, production
 dependencies, and PGlite migrations; PostgreSQL can be selected with
 `DATABASE_URL`.
 
+Run `migrate.sh` (or `migrate.cmd`) for a migration-only deployment job. Normal
+startup also applies pending migrations. Production container, Compose,
+reverse-proxy, backup, restore, and rolling-upgrade instructions live in
+`docs/HOSTED_DEPLOYMENT.md` in the source release.
+
 `CANTRIP_AUTH_MODE=password` protects one personal owner with an Argon2id hash.
 `CANTRIP_AUTH_MODE=accounts` enables email/password sessions and requires either
 public registration or a one-time first-owner bootstrap token. Hosted account

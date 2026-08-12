@@ -22,7 +22,7 @@ export async function bundleNodeRuntime(
   return bundledNode;
 }
 
-export async function writeServiceLaunchers(destination) {
+export async function writeServiceLaunchers(destination, options = {}) {
   await writeFile(
     path.join(destination, "start.sh"),
     `#!/bin/sh
@@ -37,4 +37,20 @@ exec "$SCRIPT_DIR/runtime/node" --env-file-if-exists=.env dist/index.js
     path.join(destination, "start.cmd"),
     '@echo off\r\nsetlocal\r\ncd /d "%~dp0"\r\n"%~dp0runtime\\node.exe" --env-file-if-exists=.env dist\\index.js\r\n',
   );
+  if (options.migrations) {
+    await writeFile(
+      path.join(destination, "migrate.sh"),
+      `#!/bin/sh
+set -eu
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$SCRIPT_DIR"
+exec "$SCRIPT_DIR/runtime/node" --env-file-if-exists=.env dist/migrate.js
+`,
+      { mode: 0o755 },
+    );
+    await writeFile(
+      path.join(destination, "migrate.cmd"),
+      '@echo off\r\nsetlocal\r\ncd /d "%~dp0"\r\n"%~dp0runtime\\node.exe" --env-file-if-exists=.env dist\\migrate.js\r\n',
+    );
+  }
 }

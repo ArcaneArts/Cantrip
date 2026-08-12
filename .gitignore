@@ -31,6 +31,7 @@ postgres-data/
 .env.*
 !.env.example
 .envrc
+deploy/hosted.env
 
 # Logs, coverage, and test artifacts.
 *.log

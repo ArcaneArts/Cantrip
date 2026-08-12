@@ -104,7 +104,7 @@ async function packageService(name, destination, { standalone = true } = {}) {
 
   if (standalone) {
     await bundleNodeRuntime(path.join(destination, "runtime"));
-    await writeServiceLaunchers(destination);
+    await writeServiceLaunchers(destination, { migrations: name === "server" });
   }
   await cp(
     path.join(root, "deploy", `${name}.env.example`),
