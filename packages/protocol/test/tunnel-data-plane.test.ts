@@ -4,7 +4,6 @@ import {
   decodeTunnelDataPlaneFrame,
   encodeTunnelDataPlaneFrame,
   isCodeTunnelFrame,
-  isProjectShareTunnelFrame,
   isTunnelDataPlaneFrame,
   TUNNEL_DATA_PLANE_MAX_CREDIT_BYTES,
   TUNNEL_DATA_PLANE_MAX_PAYLOAD_BYTES,
@@ -33,7 +32,6 @@ describe("generic tunnel data plane protocol", () => {
 
     expect(isTunnelDataPlaneFrame(encoded)).toBe(true);
     expect(isCodeTunnelFrame(encoded)).toBe(false);
-    expect(isProjectShareTunnelFrame(encoded)).toBe(false);
     const decoded = decodeTunnelDataPlaneFrame(encoded);
     expect(decoded.header).toEqual(header);
     expect(decoded.payload).toEqual(payload);

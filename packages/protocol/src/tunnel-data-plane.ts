@@ -32,6 +32,13 @@ export const tunnelDataPlaneTargetSchema = z.discriminatedUnion("kind", [
       port: z.number().int().min(1).max(65_535),
     })
     .strict(),
+  z
+    .object({
+      kind: z.literal("adapter"),
+      adapter: z.enum(["code", "project-share"]),
+      resourceId: idSchema,
+    })
+    .strict(),
 ]);
 
 const frameBaseSchema = z

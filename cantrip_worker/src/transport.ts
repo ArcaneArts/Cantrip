@@ -1,17 +1,13 @@
 import {
   decodeCodeTunnelFrame,
-  decodeProjectShareTunnelFrame,
   decodeRemoteSurfaceFrame,
   decodeTunnelDataPlaneFrame,
   encodeCodeTunnelFrame,
-  encodeProjectShareTunnelFrame,
   encodeRemoteSurfaceFrame,
   encodeTunnelDataPlaneFrame,
   isCodeTunnelFrame,
-  isProjectShareTunnelFrame,
   isTunnelDataPlaneFrame,
   type CodeTunnelFrameHeader,
-  type ProjectShareTunnelFrameHeader,
   type RemoteSurfaceFrameHeader,
   type TunnelDataPlaneFrameHeader,
   type WorkerCommand,
@@ -38,11 +34,6 @@ type SurfaceFrameHandler = (
 
 type CodeTunnelFrameHandler = (
   header: CodeTunnelFrameHeader,
-  payload: Uint8Array,
-) => Promise<void> | void;
-
-type ProjectShareTunnelFrameHandler = (
-  header: ProjectShareTunnelFrameHeader,
   payload: Uint8Array,
 ) => Promise<void> | void;
 
@@ -73,8 +64,6 @@ export class WorkerConnection {
     private readonly handleCommand: CommandHandler,
     private readonly handleSurfaceFrame: SurfaceFrameHandler = () => undefined,
     private readonly handleCodeTunnelFrame: CodeTunnelFrameHandler = () =>
-      undefined,
-    private readonly handleProjectShareTunnelFrame: ProjectShareTunnelFrameHandler = () =>
       undefined,
     private readonly handleTunnelDataPlaneFrame: TunnelDataPlaneFrameHandler = () =>
       undefined,
@@ -183,23 +172,6 @@ export class WorkerConnection {
     }
   }
 
-  sendProjectShareTunnelFrame(
-    header: ProjectShareTunnelFrameHeader,
-    payload: Uint8Array,
-  ): boolean {
-    const socket = this.#socket;
-    if (!socket || socket.readyState !== WebSocket.OPEN) return false;
-    if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) return false;
-    try {
-      socket.send(encodeProjectShareTunnelFrame(header, payload), {
-        binary: true,
-      });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   sendTunnelDataPlaneFrame(
     header: TunnelDataPlaneFrameHeader,
     payload: Uint8Array,
@@ -251,10 +223,6 @@ export class WorkerConnection {
     return false;
   }
 
-  waitForProjectShareTunnelCapacity(): Promise<boolean> {
-    return this.waitForCodeTunnelCapacity();
-  }
-
   waitForTunnelDataPlaneCapacity(): Promise<boolean> {
     return this.waitForCodeTunnelCapacity();
   }
@@ -270,9 +238,6 @@ export class WorkerConnection {
         if (isTunnelDataPlaneFrame(bytes)) {
           const frame = decodeTunnelDataPlaneFrame(bytes);
           await this.handleTunnelDataPlaneFrame(frame.header, frame.payload);
-        } else if (isProjectShareTunnelFrame(bytes)) {
-          const frame = decodeProjectShareTunnelFrame(bytes);
-          await this.handleProjectShareTunnelFrame(frame.header, frame.payload);
         } else if (isCodeTunnelFrame(bytes)) {
           const frame = decodeCodeTunnelFrame(bytes);
           await this.handleCodeTunnelFrame(frame.header, frame.payload);

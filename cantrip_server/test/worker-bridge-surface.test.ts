@@ -1,15 +1,12 @@
 import {
   decodeCodeTunnelFrame,
-  decodeProjectShareTunnelFrame,
   decodeRemoteSurfaceFrame,
   decodeTunnelDataPlaneFrame,
   encodeCodeTunnelFrame,
-  encodeProjectShareTunnelFrame,
   encodeRemoteSurfaceFrame,
   encodeTunnelDataPlaneFrame,
   workerNotificationEnvelopeSchema,
   type CodeTunnelFrameHeader,
-  type ProjectShareTunnelFrameHeader,
   type RemoteSurfaceFrameHeader,
   type TunnelDataPlaneFrameHeader,
 } from "@cantrip/protocol";
@@ -91,7 +88,7 @@ describe("WorkerBridge Remote Surface transport", () => {
     bridge.close();
   });
 
-  it("keeps Code and project-share tunnels distinct on the shared worker socket", () => {
+  it("keeps Code tunnel frames distinct on the shared worker socket", () => {
     const bridge = new WorkerBridge();
     const socket = new TestWorkerSocket();
     bridge.attach("worker-1", socket);
@@ -122,48 +119,17 @@ describe("WorkerBridge Remote Surface transport", () => {
       decodeCodeTunnelFrame(socket.sent.at(-1) as Uint8Array).header.kind,
     ).toBe("http-request-end");
 
-    const shareListener = vi.fn();
-    bridge.subscribeProjectShareTunnelFrames("worker-1", shareListener);
-    const shareHeader: ProjectShareTunnelFrameHeader = {
-      protocolVersion: 1,
-      shareId: "share-1",
-      streamId: "stream-1",
-      kind: "http-response-data",
-    };
-    socket.emit(
-      "message",
-      encodeProjectShareTunnelFrame(shareHeader, new Uint8Array([9, 10])),
-      true,
-    );
-    expect(shareListener).toHaveBeenCalledWith(
-      shareHeader,
-      new Uint8Array([9, 10]),
-    );
-    expect(listener).toHaveBeenCalledOnce();
-    expect(
-      bridge.sendProjectShareTunnelFrame(
-        "worker-1",
-        { ...shareHeader, kind: "http-request-end" },
-        new Uint8Array(),
-      ),
-    ).toBe(true);
-    expect(
-      decodeProjectShareTunnelFrame(socket.sent.at(-1) as Uint8Array).header
-        .kind,
-    ).toBe("http-request-end");
     bridge.close();
   });
 
-  it("multiplexes generic tunnel frames without leaking them to legacy listeners", () => {
+  it("multiplexes generic tunnel frames without leaking them to Code listeners", () => {
     const bridge = new WorkerBridge();
     const socket = new TestWorkerSocket();
     bridge.attach("worker-1", socket);
     const tunnelListener = vi.fn();
     const codeListener = vi.fn();
-    const shareListener = vi.fn();
     bridge.subscribeTunnelDataPlaneFrames("worker-1", tunnelListener);
     bridge.subscribeCodeTunnelFrames("worker-1", codeListener);
-    bridge.subscribeProjectShareTunnelFrames("worker-1", shareListener);
     const tunnelHeader: TunnelDataPlaneFrameHeader = {
       protocolVersion: 1,
       tunnelId: "tunnel-1",
@@ -186,7 +152,6 @@ describe("WorkerBridge Remote Surface transport", () => {
       new Uint8Array([11, 12]),
     );
     expect(codeListener).not.toHaveBeenCalled();
-    expect(shareListener).not.toHaveBeenCalled();
 
     expect(
       bridge.sendTunnelDataPlaneFrame(

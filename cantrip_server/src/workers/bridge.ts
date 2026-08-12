@@ -2,18 +2,14 @@ import { randomUUID } from "node:crypto";
 
 import {
   decodeCodeTunnelFrame,
-  decodeProjectShareTunnelFrame,
   decodeRemoteSurfaceFrame,
   decodeTunnelDataPlaneFrame,
   encodeCodeTunnelFrame,
-  encodeProjectShareTunnelFrame,
   encodeRemoteSurfaceFrame,
   encodeTunnelDataPlaneFrame,
   isCodeTunnelFrame,
-  isProjectShareTunnelFrame,
   isTunnelDataPlaneFrame,
   type CodeTunnelFrameHeader,
-  type ProjectShareTunnelFrameHeader,
   type RemoteSurfaceFrameHeader,
   type TunnelDataPlaneFrameHeader,
   type WorkerCommand,
@@ -48,11 +44,6 @@ export type WorkerCodeTunnelFrameListener = (
   payload: Uint8Array,
 ) => void;
 
-export type WorkerProjectShareTunnelFrameListener = (
-  header: ProjectShareTunnelFrameHeader,
-  payload: Uint8Array,
-) => void;
-
 export type WorkerTunnelDataPlaneFrameListener = (
   header: TunnelDataPlaneFrameHeader,
   payload: Uint8Array,
@@ -77,11 +68,6 @@ export interface WorkerCommandBus {
     header: CodeTunnelFrameHeader,
     payload: Uint8Array,
   ): boolean;
-  sendProjectShareTunnelFrame?(
-    workerId: string,
-    header: ProjectShareTunnelFrameHeader,
-    payload: Uint8Array,
-  ): boolean;
   sendTunnelDataPlaneFrame?(
     workerId: string,
     header: TunnelDataPlaneFrameHeader,
@@ -95,10 +81,6 @@ export interface WorkerCommandBus {
   subscribeCodeTunnelFrames?(
     workerId: string,
     listener: WorkerCodeTunnelFrameListener,
-  ): () => void;
-  subscribeProjectShareTunnelFrames?(
-    workerId: string,
-    listener: WorkerProjectShareTunnelFrameListener,
   ): () => void;
   subscribeTunnelDataPlaneFrames?(
     workerId: string,
@@ -156,10 +138,6 @@ export class WorkerBridge implements WorkerCommandBus {
     string,
     Set<WorkerCodeTunnelFrameListener>
   >();
-  readonly #projectShareTunnelListeners = new Map<
-    string,
-    Set<WorkerProjectShareTunnelFrameListener>
-  >();
   readonly #sockets = new Map<string, WorkerSocket>();
   readonly #surfaceListeners = new Map<
     string,
@@ -189,13 +167,6 @@ export class WorkerBridge implements WorkerCommandBus {
           if (isTunnelDataPlaneFrame(bytes)) {
             const frame = decodeTunnelDataPlaneFrame(bytes);
             for (const listener of this.#tunnelDataPlaneListeners.get(
-              workerId,
-            ) ?? []) {
-              listener(frame.header, frame.payload);
-            }
-          } else if (isProjectShareTunnelFrame(bytes)) {
-            const frame = decodeProjectShareTunnelFrame(bytes);
-            for (const listener of this.#projectShareTunnelListeners.get(
               workerId,
             ) ?? []) {
               listener(frame.header, frame.payload);
@@ -356,24 +327,6 @@ export class WorkerBridge implements WorkerCommandBus {
     }
   }
 
-  sendProjectShareTunnelFrame(
-    workerId: string,
-    header: ProjectShareTunnelFrameHeader,
-    payload: Uint8Array,
-  ): boolean {
-    const socket = this.#sockets.get(workerId);
-    if (!socket || socket.readyState !== 1) return false;
-    if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) return false;
-    try {
-      socket.send(encodeProjectShareTunnelFrame(header, payload), {
-        binary: true,
-      });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   sendTunnelDataPlaneFrame(
     workerId: string,
     header: TunnelDataPlaneFrameHeader,
@@ -421,24 +374,6 @@ export class WorkerBridge implements WorkerCommandBus {
     return () => {
       listeners?.delete(listener);
       if (listeners?.size === 0) this.#codeTunnelListeners.delete(workerId);
-    };
-  }
-
-  subscribeProjectShareTunnelFrames(
-    workerId: string,
-    listener: WorkerProjectShareTunnelFrameListener,
-  ): () => void {
-    let listeners = this.#projectShareTunnelListeners.get(workerId);
-    if (!listeners) {
-      listeners = new Set();
-      this.#projectShareTunnelListeners.set(workerId, listeners);
-    }
-    listeners.add(listener);
-    return () => {
-      listeners?.delete(listener);
-      if (listeners?.size === 0) {
-        this.#projectShareTunnelListeners.delete(workerId);
-      }
     };
   }
 
@@ -533,7 +468,6 @@ export class WorkerBridge implements WorkerCommandBus {
     }
     this.#sockets.clear();
     this.#codeTunnelListeners.clear();
-    this.#projectShareTunnelListeners.clear();
     this.#surfaceListeners.clear();
     this.#tunnelDataPlaneListeners.clear();
     this.#notificationListeners.clear();

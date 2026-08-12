@@ -82,6 +82,7 @@ import {
   skillListSchema,
   terminalListSchema,
   terminalSummarySchema,
+  tunnelListSchema,
   unprobedCodexRuntimeReport,
   workerListSchema,
   workerManagementListSchema,
@@ -2146,6 +2147,34 @@ describe("local server foundation", () => {
       publicOrigin: "http://127.0.0.1:4311",
     });
     expect(openedProjectShares[1]).toEqual(openedProjectShares[0]);
+    const projectShareTunnels = tunnelListSchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/tunnels`,
+        })
+      ).json(),
+    );
+    expect(projectShareTunnels).toEqual([
+      expect.objectContaining({
+        projectId: project.id,
+        origin: "project-share",
+        protocolHint: "webdav",
+        source: { kind: "server-http", adapter: "project-share" },
+        destination: expect.objectContaining({
+          kind: "worker-adapter",
+          adapter: "project-share",
+          resourceId: projectShare.attachmentId,
+        }),
+        attachments: [
+          expect.objectContaining({
+            id: projectShare.attachmentId,
+            kind: "server-relay",
+            status: "active",
+          }),
+        ],
+      }),
+    ]);
     expect(
       await firstApp.inject({
         method: "DELETE",
@@ -2153,6 +2182,16 @@ describe("local server foundation", () => {
       }),
     ).toMatchObject({ statusCode: 204 });
     expect(closedProjectShareIds).toEqual([projectShare.attachmentId]);
+    expect(
+      tunnelListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/tunnels`,
+          })
+        ).json(),
+      ),
+    ).toEqual([]);
     const codeTab = codeTabSummarySchema.parse(
       (
         await firstApp.inject({

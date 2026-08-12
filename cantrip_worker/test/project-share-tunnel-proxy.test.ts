@@ -1,20 +1,19 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import type { ProjectShareTunnelFrameHeader } from "@cantrip/protocol";
+import type { TunnelDataPlaneFrameHeader } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectShareManager } from "../src/project-share-manager.js";
 import {
-  ProjectShareTunnelProxy,
+  ProjectShareTunnelDestinationAdapter,
   StreamingByteRewriter,
-} from "../src/project-share-tunnel-proxy.js";
+} from "../src/project-share-tunnel-adapter.js";
 
 const directories: string[] = [];
 const managers: ProjectShareManager[] = [];
-let sequence = 0;
 const PUBLIC_BASE_PATH = `/project-shares/${"a".repeat(43)}`;
 const PUBLIC_ORIGIN = "https://surface.cantrip.example";
 
@@ -37,11 +36,7 @@ function digestProperties(challenge: string): Record<string, string> {
 }
 
 async function tunnelRequest(
-  proxy: ProjectShareTunnelProxy,
-  frames: Array<{
-    header: ProjectShareTunnelFrameHeader;
-    payload: Uint8Array;
-  }>,
+  adapter: ProjectShareTunnelDestinationAdapter,
   input: {
     body?: string;
     headers?: Array<[string, string]>;
@@ -50,76 +45,104 @@ async function tunnelRequest(
     shareId: string;
   },
 ): Promise<TunnelResponse> {
-  const streamId = `stream-${++sequence}`;
-  await proxy.handleFrame(
+  const connectionId = randomUUID();
+  const tunnelId = "tunnel-1";
+  const attachmentId = input.shareId;
+  const sourceEndpointId = `server:project-share:${input.shareId}`;
+  const destinationEndpointId = `worker:${input.shareId}`;
+  const frames: Array<{
+    header: TunnelDataPlaneFrameHeader;
+    payload: Uint8Array;
+  }> = [];
+  adapter.setFrameEmitter((header, payload) => {
+    frames.push({ header, payload: Uint8Array.from(payload) });
+    return true;
+  });
+  const base = {
+    protocolVersion: 1 as const,
+    tunnelId,
+    attachmentId,
+    sourceEndpointId,
+    destinationEndpointId,
+    connectionId,
+  };
+  adapter.handleFrame(
     {
+      ...base,
+      sequence: 0,
+      kind: "connect",
+      target: {
+        kind: "adapter",
+        adapter: "project-share",
+        resourceId: input.shareId,
+      },
+      initialCreditBytes: 1024 * 1024,
+    },
+    new Uint8Array(),
+  );
+  const encodedHead = Buffer.from(
+    JSON.stringify({
       protocolVersion: 1,
-      shareId: input.shareId,
-      streamId,
-      kind: "http-request-start",
       method: input.method,
       path: input.path,
       headers: input.headers ?? [],
-    },
-    new Uint8Array(),
+    }),
   );
-  if (input.body !== undefined) {
-    await proxy.handleFrame(
-      {
-        protocolVersion: 1,
-        shareId: input.shareId,
-        streamId,
-        kind: "http-request-data",
-      },
-      new TextEncoder().encode(input.body),
-    );
-  }
-  await proxy.handleFrame(
+  const request = Buffer.allocUnsafe(4 + encodedHead.byteLength);
+  request.writeUInt32BE(encodedHead.byteLength, 0);
+  encodedHead.copy(request, 4);
+  const body = Buffer.from(input.body ?? "");
+  adapter.handleFrame(
     {
-      protocolVersion: 1,
-      shareId: input.shareId,
-      streamId,
-      kind: "http-request-end",
+      ...base,
+      sequence: 1,
+      kind: "data",
+      direction: "source-to-destination",
+    },
+    Buffer.concat([request, body]),
+  );
+  adapter.handleFrame(
+    {
+      ...base,
+      sequence: 2,
+      kind: "half-close",
+      direction: "source-to-destination",
     },
     new Uint8Array(),
   );
-  await vi.waitFor(() => {
+  await vi.waitFor(() =>
     expect(
       frames.some(
         ({ header }) =>
-          header.streamId === streamId &&
-          (header.kind === "http-response-end" || header.kind === "error"),
+          header.connectionId === connectionId && header.kind === "half-close",
       ),
-    ).toBe(true);
-  });
-  const streamFrames = frames.filter(
-    ({ header }) => header.streamId === streamId,
+    ).toBe(true),
   );
-  const error = streamFrames.find(({ header }) => header.kind === "error");
-  if (error?.header.kind === "error") throw new Error(error.header.message);
-  const start = streamFrames.find(
-    ({ header }) => header.kind === "http-response-start",
-  )?.header;
-  if (!start || start.kind !== "http-response-start") {
-    throw new Error("Tunnel response did not start.");
-  }
+  const responseBytes = Buffer.concat(
+    frames
+      .filter(
+        ({ header }) =>
+          header.connectionId === connectionId && header.kind === "data",
+      )
+      .map(({ payload }) => Buffer.from(payload)),
+  );
+  const headLength = responseBytes.readUInt32BE(0);
+  const head = JSON.parse(
+    responseBytes.subarray(4, 4 + headLength).toString("utf8"),
+  ) as { statusCode: number; headers: Array<[string, string]> };
+  adapter.handleFrame(
+    { ...base, sequence: 3, kind: "close", code: "normal", message: null },
+    new Uint8Array(),
+  );
   return {
-    headers: start.headers,
-    status: start.statusCode,
-    text: Buffer.concat(
-      streamFrames
-        .filter(({ header }) => header.kind === "http-response-data")
-        .map(({ payload }) => Buffer.from(payload)),
-    ).toString(),
+    headers: head.headers,
+    status: head.statusCode,
+    text: responseBytes.subarray(4 + headLength).toString(),
   };
 }
 
 async function authenticatedTunnelRequest(
-  proxy: ProjectShareTunnelProxy,
-  frames: Array<{
-    header: ProjectShareTunnelFrameHeader;
-    payload: Uint8Array;
-  }>,
+  adapter: ProjectShareTunnelDestinationAdapter,
   descriptor: NonNullable<ReturnType<ProjectShareManager["get"]>>,
   input: {
     body?: string;
@@ -128,7 +151,7 @@ async function authenticatedTunnelRequest(
     path: string;
   },
 ): Promise<TunnelResponse> {
-  const initial = await tunnelRequest(proxy, frames, {
+  const initial = await tunnelRequest(adapter, {
     ...input,
     shareId: descriptor.shareId,
   });
@@ -148,7 +171,7 @@ async function authenticatedTunnelRequest(
   const response = md5(
     `${ha1}:${properties.nonce}:${nc}:${cnonce}:${qop}:${ha2}`,
   );
-  return tunnelRequest(proxy, frames, {
+  return tunnelRequest(adapter, {
     ...input,
     headers: [
       ...(input.headers ?? []),
@@ -180,23 +203,22 @@ afterEach(async () => {
   );
 });
 
-describe("ProjectShareTunnelProxy", () => {
+describe("ProjectShareTunnelDestinationAdapter", () => {
   it("rewrites public origins split across response chunks", () => {
     const rewriter = new StreamingByteRewriter(
       "http://surface.cantrip.example",
       "https://surface.cantrip.example",
     );
-    const chunks = [
-      rewriter.write(new TextEncoder().encode("<href>http://surface.can")),
-      rewriter.write(new TextEncoder().encode("trip.example/project</href>")),
-      rewriter.end(),
-    ];
-    expect(Buffer.concat(chunks).toString()).toBe(
-      "<href>https://surface.cantrip.example/project</href>",
-    );
+    expect(
+      Buffer.concat([
+        rewriter.write(Buffer.from("<href>http://surface.can")),
+        rewriter.write(Buffer.from("trip.example/project</href>")),
+        rewriter.end(),
+      ]).toString(),
+    ).toBe("<href>https://surface.cantrip.example/project</href>");
   });
 
-  it("preserves Digest paths and WebDAV Destination headers through worker loopback", async () => {
+  it("preserves Digest paths, writes, and WebDAV Destination headers", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "cantrip-share-tunnel-"));
     directories.push(root);
     await writeFile(path.join(root, "README.md"), "shared through tunnel\n");
@@ -208,26 +230,13 @@ describe("ProjectShareTunnelProxy", () => {
       root,
       shareId: "share-1",
     });
-    const frames: Array<{
-      header: ProjectShareTunnelFrameHeader;
-      payload: Uint8Array;
-    }> = [];
-    const proxy = new ProjectShareTunnelProxy(manager);
-    proxy.setFrameEmitter((header, payload) => {
-      frames.push({ header, payload: Uint8Array.from(payload) });
-      return true;
-    });
+    const adapter = new ProjectShareTunnelDestinationAdapter(manager);
 
-    const directory = await authenticatedTunnelRequest(
-      proxy,
-      frames,
-      descriptor,
-      {
-        method: "PROPFIND",
-        path: `${descriptor.publicBasePath}/`,
-        headers: [["Depth", "1"]],
-      },
-    );
+    const directory = await authenticatedTunnelRequest(adapter, descriptor, {
+      method: "PROPFIND",
+      path: `${descriptor.publicBasePath}/`,
+      headers: [["Depth", "1"]],
+    });
     expect(directory.status).toBe(207);
     expect(directory.text).toContain("README.md");
     expect(directory.text).toContain(PUBLIC_ORIGIN);
@@ -235,24 +244,19 @@ describe("ProjectShareTunnelProxy", () => {
       `${descriptor.loopbackHost}:${descriptor.loopbackPort}`,
     );
 
-    const written = await authenticatedTunnelRequest(
-      proxy,
-      frames,
-      descriptor,
-      {
-        body: "network drive write\n",
-        method: "PUT",
-        path: `${descriptor.publicBasePath}/before-move.txt`,
-      },
-    );
+    const written = await authenticatedTunnelRequest(adapter, descriptor, {
+      body: "network drive write\n",
+      method: "PUT",
+      path: `${descriptor.publicBasePath}/before-move.txt`,
+    });
     expect([201, 204]).toContain(written.status);
-    const moved = await authenticatedTunnelRequest(proxy, frames, descriptor, {
+    const moved = await authenticatedTunnelRequest(adapter, descriptor, {
       method: "MOVE",
       path: `${descriptor.publicBasePath}/before-move.txt`,
       headers: [
         [
           "Destination",
-          `https://surface.cantrip.example${descriptor.publicBasePath}/after-move.txt`,
+          `${PUBLIC_ORIGIN}${descriptor.publicBasePath}/after-move.txt`,
         ],
       ],
     });
@@ -263,7 +267,6 @@ describe("ProjectShareTunnelProxy", () => {
     await expect(
       readFile(path.join(root, "before-move.txt"), "utf8"),
     ).rejects.toThrow();
-
-    proxy.close();
+    adapter.close();
   });
 });
