@@ -19,6 +19,11 @@ Cantrip should support these deployment shapes without maintaining separate prod
 3. **Fully hosted:** the server and workers run in cloud infrastructure, while the app runs in a browser, Tauri, or Capacitor.
 4. **Multi-worker:** a server account can own workers on a laptop, desktop, and VPS. A logical chat has an active worker runtime, but its server-held transcript remains available when that worker is offline and can later be handed to another compatible worker.
 
+The accepted [multi-worker architecture contract](MULTI_WORKER_ARCHITECTURE.md)
+defines the terminology, authority boundaries, protocol selectors, placement
+resolution, lifecycle state machines, and compatibility rules for delivering
+this deployment shape incrementally.
+
 ## 2. Goals
 
 - Organize chats inside projects, where each MVP project represents one GitHub repository and one worker-owned source folder.

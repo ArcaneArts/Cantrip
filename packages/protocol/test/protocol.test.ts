@@ -28,6 +28,8 @@ import {
   desktopStreamSettingsSchema,
   encodeCodeTunnelFrame,
   encodeRemoteSurfaceFrame,
+  executionPlacementSchema,
+  executionTargetSchema,
   explorerFileWriteSchema,
   remoteBrowserClipboardMessageSchema,
   remoteBrowserClientMessageSchema,
@@ -127,6 +129,77 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("validates resolved execution placements and untrusted target selectors", () => {
+    expect(
+      executionPlacementSchema.parse({
+        projectId: "project-one",
+        workerId: "worker-two",
+        projectReplicaId: "replica-two",
+        worktreeId: "worktree-three",
+        surface: {
+          kind: "terminal",
+          id: "terminal-four",
+        },
+      }),
+    ).toMatchObject({
+      workerId: "worker-two",
+      projectReplicaId: "replica-two",
+      worktreeId: "worktree-three",
+    });
+    expect(
+      executionPlacementSchema.safeParse({
+        projectId: "project-one",
+        workerId: "worker-two",
+        projectReplicaId: null,
+        worktreeId: "worktree-three",
+        surface: null,
+      }).success,
+    ).toBe(false);
+
+    expect(
+      executionTargetSchema.parse({
+        kind: "surface",
+        projectId: "project-one",
+        surfaceKind: "terminal",
+        surfaceId: "terminal-four",
+      }),
+    ).toEqual({
+      kind: "surface",
+      projectId: "project-one",
+      surfaceKind: "terminal",
+      surfaceId: "terminal-four",
+    });
+    for (const target of [
+      { kind: "project", projectId: "project-one" },
+      {
+        kind: "worker",
+        projectId: "project-one",
+        workerId: "worker-two",
+      },
+      {
+        kind: "replica",
+        projectId: "project-one",
+        projectReplicaId: "replica-two",
+      },
+      {
+        kind: "worktree",
+        projectId: "project-one",
+        worktreeId: "worktree-three",
+      },
+    ]) {
+      expect(executionTargetSchema.safeParse(target).success).toBe(true);
+    }
+    expect(
+      executionTargetSchema.safeParse({
+        kind: "surface",
+        projectId: "project-one",
+        surfaceKind: "terminal",
+        surfaceId: "terminal-four",
+        workerId: "untrusted-worker-claim",
+      }).success,
+    ).toBe(false);
+  });
+
   it("validates bounded worker enrollment and redacted credential metadata", () => {
     const heartbeat = workerHeartbeatSchema.parse({
       workerId: "worker-one",
