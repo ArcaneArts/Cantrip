@@ -12,6 +12,10 @@ import { migrate as migratePostgres } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 
 import type { ServerConfig } from "../config.js";
+import {
+  resolveSecretVault,
+  type SecretVault,
+} from "../security/secret-vault.js";
 import { ServerRepository } from "./repository.js";
 import * as schema from "./schema.js";
 
@@ -28,13 +32,14 @@ export interface DatabaseConnection {
 
 async function connectPglite(
   config: ServerConfig,
+  secretVault: SecretVault,
 ): Promise<DatabaseConnection> {
   await mkdir(config.dataDirectory, { recursive: true });
 
   const databaseDirectory = path.join(config.dataDirectory, "server-db");
 
   try {
-    return await openPglite(databaseDirectory);
+    return await openPglite(databaseDirectory, secretVault);
   } catch (error) {
     if (config.bootstrapMode !== "pnpm-dev" || !isPgliteAbort(error)) {
       throw error;
@@ -48,7 +53,7 @@ async function connectPglite(
     console.warn(
       `[cantrip_server] PGlite data was unreadable. Preserved it at ${backupDirectory} and created a fresh development database.`,
     );
-    return openPglite(databaseDirectory);
+    return openPglite(databaseDirectory, secretVault);
   }
 }
 
@@ -76,14 +81,16 @@ function isPgliteAbort(error: unknown): boolean {
 
 async function openPglite(
   databaseDirectory: string,
+  secretVault: SecretVault,
 ): Promise<DatabaseConnection> {
   const client = new PGlite(databaseDirectory);
   const database = drizzlePglite(client, { schema });
 
   try {
     await migratePglite(database, { migrationsFolder });
-    const repository = new ServerRepository(database);
+    const repository = new ServerRepository(database, secretVault);
     await repository.ensureLocalIdentity();
+    await repository.migrateProviderSecrets();
 
     return {
       engine: "pglite",
@@ -103,6 +110,7 @@ async function openPglite(
 
 async function connectPostgres(
   databaseUrl: string,
+  secretVault: SecretVault,
   attempts = 30,
 ): Promise<DatabaseConnection> {
   let lastError: unknown;
@@ -117,8 +125,9 @@ async function connectPostgres(
     try {
       await database.execute(sql`select 1`);
       await migratePostgres(database, { migrationsFolder });
-      const repository = new ServerRepository(database);
+      const repository = new ServerRepository(database, secretVault);
       await repository.ensureLocalIdentity();
+      await repository.migrateProviderSecrets();
 
       return {
         engine: "postgres",
@@ -146,9 +155,10 @@ async function connectPostgres(
 export async function connectDatabase(
   config: ServerConfig,
 ): Promise<DatabaseConnection> {
+  const secretVault = await resolveSecretVault(config);
   if (config.databaseUrl) {
-    return connectPostgres(config.databaseUrl);
+    return connectPostgres(config.databaseUrl, secretVault);
   }
 
-  return connectPglite(config);
+  return connectPglite(config, secretVault);
 }

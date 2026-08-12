@@ -185,7 +185,9 @@ export const modelProviders = pgTable(
     name: text("name").notNull(),
     kind: text("kind").notNull(),
     baseUrl: text("base_url").notNull(),
+    /** @deprecated Read only during the encrypted-secret data migration. */
     apiKey: text("api_key"),
+    apiKeyEnvelope: text("api_key_envelope"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

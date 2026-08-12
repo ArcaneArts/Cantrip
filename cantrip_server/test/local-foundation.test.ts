@@ -1626,20 +1626,19 @@ describe("local server foundation", () => {
       desktopStreamQuality: "adaptive",
       defaultModelId: expect.any(String),
     });
-    const provider = modelProviderSummarySchema.parse(
-      (
-        await firstApp.inject({
-          method: "POST",
-          url: "/api/settings/providers",
-          payload: {
-            name: "Test provider",
-            kind: "openai-compatible",
-            baseUrl: "https://models.example.test/v1",
-            apiKey: "server-only-secret",
-          },
-        })
-      ).json(),
-    );
+    const providerResponse = await firstApp.inject({
+      method: "POST",
+      url: "/api/settings/providers",
+      payload: {
+        name: "Test provider",
+        kind: "openai-compatible",
+        baseUrl: "https://models.example.test/v1",
+        apiKey: "server-only-secret",
+      },
+    });
+    expect(providerResponse.body).not.toContain("server-only-secret");
+    expect(providerResponse.body).not.toContain("apiKey");
+    const provider = modelProviderSummarySchema.parse(providerResponse.json());
     expect(provider.hasApiKey).toBe(true);
     const editedProvider = modelProviderSummarySchema.parse(
       (

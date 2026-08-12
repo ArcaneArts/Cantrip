@@ -208,7 +208,7 @@ async function repositoryMethodInventory() {
           : "owner-parameter-unused"
         : /\bworkerId\b/u.test(parameters)
           ? "worker-scoped"
-          : /^(ensureLocalIdentity|getOrCreateServerId|reset|expire)/u.test(
+          : /^(ensureLocalIdentity|getOrCreateServerId|migrateProviderSecrets|reset|expire)/u.test(
                 match[1],
               )
             ? "system-lifecycle"

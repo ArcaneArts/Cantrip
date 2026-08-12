@@ -126,6 +126,10 @@ import {
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
+import {
+  modelProviderSecretContext,
+  type SecretVault,
+} from "../security/secret-vault.js";
 import * as schema from "./schema.js";
 import { ProjectAutomationRepository } from "./project-automations.js";
 import { WorkflowRunRepository } from "./workflow-runs.js";
@@ -1116,7 +1120,7 @@ function toProviderSummary(
     name: provider.name,
     kind: provider.kind as ModelProviderSummary["kind"],
     baseUrl: provider.baseUrl,
-    hasApiKey: provider.apiKey !== null,
+    hasApiKey: provider.apiKeyEnvelope !== null || provider.apiKey !== null,
     tokenUsage,
     createdAt: toISOString(provider.createdAt),
     updatedAt: toISOString(provider.updatedAt),
@@ -1222,12 +1226,55 @@ export class ServerRepository {
   readonly workflowRuns: WorkflowRunRepository;
   readonly workflowTriggers: WorkflowTriggerRepository;
 
-  constructor(private readonly database: RepositoryDatabase) {
+  constructor(
+    private readonly database: RepositoryDatabase,
+    private readonly secretVault: SecretVault,
+  ) {
     this.projectAutomations = new ProjectAutomationRepository(database);
     this.workflows = new WorkflowRepository(database);
     this.workflowRuns = new WorkflowRunRepository(database);
     this.workflowTriggers = new WorkflowTriggerRepository(database);
     this.tabLayouts = new ProjectTabLayoutRepository(database);
+  }
+
+  async migrateProviderSecrets(): Promise<void> {
+    const providers = await this.database.select().from(schema.modelProviders);
+    for (const provider of providers) {
+      const context = modelProviderSecretContext(provider.ownerId, provider.id);
+      if (provider.apiKeyEnvelope) {
+        const plaintext = this.secretVault.decrypt(
+          provider.apiKeyEnvelope,
+          context,
+        );
+        const needsRotation = this.secretVault.needsRotation(
+          provider.apiKeyEnvelope,
+        );
+        if (!provider.apiKey && !needsRotation) continue;
+        await this.database
+          .update(schema.modelProviders)
+          .set({
+            apiKey: null,
+            updatedAt: new Date(),
+            ...(needsRotation
+              ? {
+                  apiKeyEnvelope: this.secretVault.encrypt(plaintext, context),
+                }
+              : {}),
+          })
+          .where(eq(schema.modelProviders.id, provider.id));
+        continue;
+      }
+      if (provider.apiKey) {
+        await this.database
+          .update(schema.modelProviders)
+          .set({
+            apiKey: null,
+            apiKeyEnvelope: this.secretVault.encrypt(provider.apiKey, context),
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.modelProviders.id, provider.id));
+      }
+    }
   }
 
   async ensureLocalIdentity(): Promise<UserSummary> {
@@ -1916,15 +1963,22 @@ export class ServerRepository {
     ownerId: string,
     input: ModelProviderCreate,
   ): Promise<ModelProviderSummary> {
+    const id = randomUUID();
     const result = await this.database
       .insert(schema.modelProviders)
       .values({
-        id: randomUUID(),
+        id,
         ownerId,
         name: input.name,
         kind: input.kind,
         baseUrl: normalizeResponsesBaseUrl(input.baseUrl),
-        apiKey: input.apiKey ?? null,
+        apiKey: null,
+        apiKeyEnvelope: input.apiKey
+          ? this.secretVault.encrypt(
+              input.apiKey,
+              modelProviderSecretContext(ownerId, id),
+            )
+          : null,
       })
       .returning();
     return toProviderSummary(firstOrThrow(result, "creating a model provider"));
@@ -1971,7 +2025,17 @@ export class ServerRepository {
         name: input.name,
         kind: input.kind,
         baseUrl: normalizeResponsesBaseUrl(input.baseUrl),
-        ...(input.apiKey !== undefined ? { apiKey: input.apiKey } : {}),
+        ...(input.apiKey === undefined
+          ? {}
+          : input.apiKey === null
+            ? { apiKey: null, apiKeyEnvelope: null }
+            : {
+                apiKey: null,
+                apiKeyEnvelope: this.secretVault.encrypt(
+                  input.apiKey,
+                  modelProviderSecretContext(ownerId, providerId),
+                ),
+              }),
         updatedAt: new Date(),
       })
       .where(
@@ -2244,7 +2308,12 @@ export class ServerRepository {
         name: row.provider.name,
         kind: row.provider.kind as ModelProviderSummary["kind"],
         baseUrl: row.provider.baseUrl,
-        apiKey: row.provider.apiKey,
+        apiKey: row.provider.apiKeyEnvelope
+          ? this.secretVault.decrypt(
+              row.provider.apiKeyEnvelope,
+              modelProviderSecretContext(row.provider.ownerId, row.provider.id),
+            )
+          : null,
       },
     }));
   }

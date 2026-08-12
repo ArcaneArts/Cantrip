@@ -6,6 +6,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it } from "vitest";
 
 import { ServerRepository } from "../src/db/repository.js";
+import { SecretVault } from "../src/security/secret-vault.js";
 import * as schema from "../src/db/schema.js";
 
 const migrationsDirectory = fileURLToPath(
@@ -170,7 +171,13 @@ describe("workflow domain migration", () => {
         );
       `);
 
-      const repository = new ServerRepository(drizzle(database, { schema }));
+      const repository = new ServerRepository(
+        drizzle(database, { schema }),
+        new SecretVault({
+          activeKeyId: "test",
+          keys: [{ id: "test", key: Buffer.alloc(32, 1) }],
+        }),
+      );
       const reservation = await repository.workflowRuns.reserveWorktreeLease(
         "user-1",
         {

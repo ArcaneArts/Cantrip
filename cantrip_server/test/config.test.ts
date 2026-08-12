@@ -54,12 +54,37 @@ describe("server configuration safety", () => {
 
     vi.stubEnv("CANTRIP_SERVER_HOST", "0.0.0.0");
     vi.stubEnv("CANTRIP_ALLOW_INSECURE_REMOTE", "true");
+    vi.stubEnv(
+      "CANTRIP_SECRET_ENCRYPTION_KEYS",
+      JSON.stringify({ primary: Buffer.alloc(32, 1).toString("base64") }),
+    );
     expect(readServerConfig()).toMatchObject({
       allowInsecureRemote: true,
       cookieSameSite: "none",
       cookieSecure: true,
       deploymentMode: "hosted",
       host: "0.0.0.0",
+    });
+  });
+
+  it("requires a versioned encryption keyring for hosted secrets", () => {
+    vi.stubEnv("CANTRIP_DEPLOYMENT_MODE", "hosted");
+    vi.stubEnv("CANTRIP_AUTH_MODE", "accounts");
+    vi.stubEnv("CANTRIP_SERVER_HOST", "0.0.0.0");
+    expect(() => readServerConfig()).toThrow(/encryption_keys/i);
+
+    const oldKey = Buffer.alloc(32, 1).toString("base64");
+    const currentKey = Buffer.alloc(32, 2).toString("base64");
+    vi.stubEnv(
+      "CANTRIP_SECRET_ENCRYPTION_KEYS",
+      JSON.stringify({ old: oldKey, current: currentKey }),
+    );
+    expect(() => readServerConfig()).toThrow(/active.*key/i);
+
+    vi.stubEnv("CANTRIP_ACTIVE_SECRET_ENCRYPTION_KEY_ID", "current");
+    expect(readServerConfig().secretEncryption).toMatchObject({
+      activeKeyId: "current",
+      keys: [{ id: "old" }, { id: "current" }],
     });
   });
 

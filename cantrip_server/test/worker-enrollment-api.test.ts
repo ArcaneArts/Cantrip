@@ -72,6 +72,10 @@ async function createConfig(): Promise<ServerConfig> {
     ollamaBaseUrl: "http://127.0.0.1:11434/v1",
     port: 4310,
     publicRegistration: false,
+    secretEncryption: {
+      activeKeyId: "test",
+      keys: [{ id: "test", key: Buffer.alloc(32, 8) }],
+    },
     sessionTtlSeconds: 3_600,
     workerToken: "legacy-token-must-not-work",
   };
