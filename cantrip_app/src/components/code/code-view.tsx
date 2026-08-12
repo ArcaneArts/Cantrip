@@ -27,7 +27,7 @@ import {
 
 const MAX_RECONNECT_DELAY_MS = 15_000;
 const CODE_RUNTIME_POLL_DELAY_MS = 500;
-const CODE_FRAME_REVEAL_FALLBACK_MS = 30_000;
+const CODE_RUNTIME_POLL_WINDOW_MS = 30_000;
 const ATTACHMENT_UNAVAILABLE_MESSAGE = "cantrip-code-attachment-unavailable-v1";
 
 export interface CodeHeaderState {
@@ -70,6 +70,10 @@ export function isCodeWorkbenchReady(
   return runtime.sessionId === sessionId && runtime.bridgeConnected;
 }
 
+export function isCodeFrameReadyToReveal(frameLoaded: boolean): boolean {
+  return frameLoaded;
+}
+
 function errorText(error: unknown): string {
   return errorMessage(error, "Cantrip Code could not open.");
 }
@@ -98,7 +102,6 @@ export function CodeView({
   const [connectError, setConnectError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [frameLoaded, setFrameLoaded] = useState(false);
-  const [frameReadyToReveal, setFrameReadyToReveal] = useState(false);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [retrying, setRetrying] = useState(false);
   const appearanceRef = useRef(appearance);
@@ -132,7 +135,6 @@ export function CodeView({
     setConnecting(false);
     setRetrying(false);
     setFrameLoaded(false);
-    setFrameReadyToReveal(false);
 
     const connect = async (attempt: number) => {
       if (cancelled || stopped.current) return;
@@ -164,7 +166,6 @@ export function CodeView({
         setConnecting(false);
         setRetrying(false);
         setFrameLoaded(false);
-        setFrameReadyToReveal(false);
         onChangedRef.current?.();
         if (preferred.directHealthUrl) {
           let failures = 0;
@@ -185,7 +186,6 @@ export function CodeView({
                 void stopDirectCodeAttachment(tunnelId);
                 setAttachment(relayAttachment);
                 setFrameLoaded(false);
-                setFrameReadyToReveal(false);
                 return;
               }
             }
@@ -268,13 +268,15 @@ export function CodeView({
   }, [actionMessage]);
 
   useEffect(() => {
-    if (!attachment || !frameLoaded || frameReadyToReveal) return;
+    if (
+      !attachment ||
+      !frameLoaded ||
+      isCodeWorkbenchReady(attachment.runtime, attachment.sessionId)
+    )
+      return;
     let cancelled = false;
     let pollTimer: ReturnType<typeof setTimeout> | undefined;
-    const revealFallback = setTimeout(
-      () => setFrameReadyToReveal(true),
-      CODE_FRAME_REVEAL_FALLBACK_MS,
-    );
+    const pollDeadline = Date.now() + CODE_RUNTIME_POLL_WINDOW_MS;
 
     const pollRuntime = async () => {
       try {
@@ -286,22 +288,22 @@ export function CodeView({
               ? { ...current, runtime }
               : current,
           );
-          setFrameReadyToReveal(true);
           return;
         }
       } catch {
         if (cancelled) return;
       }
-      pollTimer = setTimeout(pollRuntime, CODE_RUNTIME_POLL_DELAY_MS);
+      if (Date.now() < pollDeadline) {
+        pollTimer = setTimeout(pollRuntime, CODE_RUNTIME_POLL_DELAY_MS);
+      }
     };
 
     void pollRuntime();
     return () => {
       cancelled = true;
-      clearTimeout(revealFallback);
       if (pollTimer) clearTimeout(pollTimer);
     };
-  }, [attachment, codeTab.id, frameLoaded, frameReadyToReveal]);
+  }, [attachment, codeTab.id, frameLoaded]);
 
   const runAction = useCallback(
     async (name: string, action: () => Promise<void>) => {
@@ -350,7 +352,6 @@ export function CodeView({
         }
         setAttachment(null);
         setFrameLoaded(false);
-        setFrameReadyToReveal(false);
         setConnectError(null);
         setActionMessage("Editor stopped.");
       }),
@@ -430,7 +431,7 @@ export function CodeView({
           />
           <SurfaceLoadingVeil
             label="Loading the browser-native workbench…"
-            visible={!frameReadyToReveal}
+            visible={!isCodeFrameReadyToReveal(frameLoaded)}
           />
         </>
       ) : (
