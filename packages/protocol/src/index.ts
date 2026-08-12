@@ -2348,6 +2348,7 @@ export const chatSummarySchema = z.object({
   ]),
   activeWorkerId: z.string().min(1).nullable(),
   activeWorktreeId: z.string().min(1),
+  placementRevision: z.number().int().positive().default(1),
   worktreeMode: z.enum(["agent-managed", "pinned"]),
   modelId: z.string().min(1).nullable(),
   permissionProfileId: z.string().min(1).max(200).nullable(),
@@ -3832,6 +3833,123 @@ export const chatMessageSchema = chatMessageCreateSchema
     providerModelName: z.string().min(1).nullable(),
     createdAt: z.string().datetime(),
   });
+
+export const chatRelocationStateSchema = z.enum([
+  "queued",
+  "waiting-for-idle",
+  "validating",
+  "preparing-replica",
+  "transferring-attachments",
+  "hydrating-runtime",
+  "ready-to-commit",
+  "succeeded",
+  "blocked",
+  "failed",
+  "cancelled",
+]);
+
+export const chatRelocationErrorCodeSchema = z.enum([
+  "target-not-found",
+  "target-mismatch",
+  "worker-offline",
+  "capability-missing",
+  "replica-not-ready",
+  "worktree-dirty",
+  "revision-diverged",
+  "attachment-unavailable",
+  "runtime-incompatible",
+  "stale-attempt",
+  "policy-denied",
+  "worker-error",
+]);
+
+export const chatRelocationErrorSchema = z.object({
+  code: chatRelocationErrorCodeSchema,
+  message: z.string().min(1).max(4_000),
+  retryable: z.boolean(),
+});
+
+export const chatRelocationProgressSchema = z.object({
+  stage: z.string().min(1).max(120),
+  percent: z.number().int().min(0).max(100),
+  message: z.string().min(1).max(1_000),
+  updatedAt: z.string().datetime(),
+});
+
+export const chatRelocationContextMessageSchema = z.object({
+  sequence: z.number().int().positive(),
+  role: chatMessageRoleSchema,
+  mode: chatTurnModeSchema,
+  content: chatMessageContentSchema,
+  createdAt: z.string().datetime(),
+});
+
+export const chatRelocationAttachmentAvailabilitySchema = z.object({
+  attachment: chatAttachmentSummarySchema,
+  sha256: z.string().regex(/^[0-9a-f]{64}$/u),
+  sourceWorkerId: z.string().min(1).max(200),
+  availableWorkerIds: z.array(z.string().min(1).max(200)).max(1_000),
+});
+
+export const chatRelocationContextPayloadSchema = z.object({
+  version: z.literal(1),
+  messages: z.array(chatRelocationContextMessageSchema).max(100_000),
+  attachments: z.array(chatRelocationAttachmentAvailabilitySchema).max(2_000),
+});
+
+export const chatRelocationSnapshotSummarySchema = z.object({
+  id: z.string().uuid(),
+  chatId: z.string().min(1),
+  sourcePlacement: executionPlacementSchema,
+  throughSequence: z.number().int().nonnegative(),
+  transcriptSha256: z.string().regex(/^[0-9a-f]{64}$/u),
+  messageCount: z.number().int().nonnegative(),
+  attachmentCount: z.number().int().nonnegative(),
+  modelId: z.string().min(1).nullable(),
+  modelRouteId: z.string().min(1).nullable(),
+  permissionProfileId: z.string().min(1).max(200).nullable(),
+  createdAt: z.string().datetime(),
+});
+
+export const chatRelocationJobSummarySchema = z.object({
+  id: z.string().uuid(),
+  projectId: z.string().min(1),
+  chatId: z.string().min(1),
+  state: chatRelocationStateSchema,
+  stateRevision: z.number().int().positive(),
+  idempotencyKey: z.string().min(1).max(200),
+  sourcePlacement: executionPlacementSchema,
+  sourcePlacementRevision: z.number().int().positive(),
+  targetPlacement: executionPlacementSchema,
+  contextSnapshotId: z.string().uuid(),
+  targetRuntimeThreadId: z.string().min(1).nullable(),
+  attempt: z.number().int().nonnegative(),
+  progress: chatRelocationProgressSchema,
+  error: chatRelocationErrorSchema.nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  startedAt: z.string().datetime().nullable(),
+  cancellationUnsafeAt: z.string().datetime().nullable(),
+  completedAt: z.string().datetime().nullable(),
+});
+
+export const chatRelocationJobListSchema = z
+  .array(chatRelocationJobSummarySchema)
+  .max(1_000);
+
+export const chatRelocationCreateSchema = z.object({
+  target: executionTargetSchema,
+  approved: z.literal(true),
+  idempotencyKey: z.string().trim().min(1).max(200),
+});
+
+export const chatRelocationJobRetrySchema = z.object({
+  stateRevision: z.number().int().positive(),
+});
+
+export const chatRelocationJobCancelSchema = z.object({
+  stateRevision: z.number().int().positive(),
+});
 
 export const chatExecutionLaneActorSchema = z.enum(["agent", "user"]);
 export const chatExecutionLaneStateSchema = z.enum([
@@ -7746,6 +7864,36 @@ export type ChatUpdate = z.infer<typeof chatUpdateSchema>;
 export type ChatFork = z.infer<typeof chatForkSchema>;
 export type OrderedIds = z.infer<typeof orderedIdsSchema>;
 export type ChatSummary = z.infer<typeof chatSummarySchema>;
+export type ChatRelocationState = z.infer<typeof chatRelocationStateSchema>;
+export type ChatRelocationErrorCode = z.infer<
+  typeof chatRelocationErrorCodeSchema
+>;
+export type ChatRelocationError = z.infer<typeof chatRelocationErrorSchema>;
+export type ChatRelocationProgress = z.infer<
+  typeof chatRelocationProgressSchema
+>;
+export type ChatRelocationContextMessage = z.infer<
+  typeof chatRelocationContextMessageSchema
+>;
+export type ChatRelocationAttachmentAvailability = z.infer<
+  typeof chatRelocationAttachmentAvailabilitySchema
+>;
+export type ChatRelocationContextPayload = z.infer<
+  typeof chatRelocationContextPayloadSchema
+>;
+export type ChatRelocationSnapshotSummary = z.infer<
+  typeof chatRelocationSnapshotSummarySchema
+>;
+export type ChatRelocationJobSummary = z.infer<
+  typeof chatRelocationJobSummarySchema
+>;
+export type ChatRelocationCreate = z.infer<typeof chatRelocationCreateSchema>;
+export type ChatRelocationJobRetry = z.infer<
+  typeof chatRelocationJobRetrySchema
+>;
+export type ChatRelocationJobCancel = z.infer<
+  typeof chatRelocationJobCancelSchema
+>;
 export type PermissionProfileSummary = z.infer<
   typeof permissionProfileSummarySchema
 >;

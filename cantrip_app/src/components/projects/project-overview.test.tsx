@@ -109,6 +109,7 @@ function chatSurface(status: ChatSummary["status"]): ProjectSurface {
     status,
     activeWorkerId: "worker-1",
     activeWorktreeId: worktree.id,
+    placementRevision: 1,
     worktreeMode: "pinned",
     modelId: null,
     permissionProfileId: null,

@@ -22,8 +22,10 @@ This document defines the contracts later multi-worker changes must preserve.
 Replica persistence, reads, exact-revision provisioning, guarded
 synchronization, safe removal, placement-policy settings, and canonical
 placement resolution and selection for new surfaces, and fleet-wide Browser
-service discovery are implemented. Chat relocation remains disabled until its
-complete lifecycle is implemented.
+service discovery are implemented. Durable chat relocation jobs and canonical
+context snapshots are implemented as an internal foundation; worker switching
+remains disabled until runtime preparation, attachment transfer, and the user
+workflow are complete.
 
 ## Current replica read contract
 
@@ -381,6 +383,23 @@ The context handoff is a durable server artifact with a transcript cursor,
 summary/version, attachment availability, model route, permission profile, and
 source placement. A fixed last-message window is not a relocation contract.
 The original placement remains active until the compare-and-swap succeeds.
+
+The durable foundation stores the entire canonical transcript through a fixed
+sequence cursor rather than reading a moving tail during execution. It records
+attachment availability independently per worker, preserves the legacy
+attachment owner for rolling code, and binds every job to a source placement
+revision. Job creation is idempotent, only one active relocation may exist per
+chat, interrupted preparation can be replayed, and cancellation is rejected
+after the job reaches its unsafe commit boundary.
+
+Placement commit is a single database transaction. It installs the prepared
+target runtime, updates the chat and linked console placement, and completes
+the job only when the chat is idle and its source worker, worktree, and
+placement revision still match the snapshot. A failed compare-and-swap marks
+the job stale without changing the original placement. The earlier worktree
+selection APIs now reject cross-worker chat changes so callers cannot bypass
+this lifecycle; same-worker worktree transitions continue to use their
+existing lane handoff.
 
 ### Offline recovery
 

@@ -107,6 +107,7 @@ describe("project settings", () => {
       status: "idle",
       activeWorkerId: null,
       activeWorktreeId: worktree.id,
+      placementRevision: 1,
       worktreeMode: "pinned",
       modelId: null,
       permissionProfileId: null,

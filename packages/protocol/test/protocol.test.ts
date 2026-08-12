@@ -26,6 +26,9 @@ import {
   chatPlanStateSchema,
   chatPauseStateSchema,
   chatPauseUpdateSchema,
+  chatRelocationContextPayloadSchema,
+  chatRelocationCreateSchema,
+  chatRelocationJobSummarySchema,
   chatTurnCreateSchema,
   codeRuntimeStatusSchema,
   codeTabSummarySchema,
@@ -3909,5 +3912,104 @@ describe("Cantrip protocol", () => {
         nextCursor: null,
       }).success,
     ).toBe(false);
+  });
+
+  it("validates durable chat relocation requests, snapshots, and jobs", () => {
+    const sourcePlacement = {
+      projectId: "project-1",
+      workerId: "worker-alpha",
+      projectReplicaId: "replica-alpha",
+      worktreeId: "worktree-alpha",
+      surface: { kind: "chat" as const, id: "chat-1" },
+    };
+    const targetPlacement = {
+      ...sourcePlacement,
+      workerId: "worker-beta",
+      projectReplicaId: "replica-beta",
+      worktreeId: "worktree-beta",
+    };
+    expect(
+      chatRelocationCreateSchema.parse({
+        target: {
+          kind: "worker",
+          projectId: "project-1",
+          workerId: "worker-beta",
+        },
+        approved: true,
+        idempotencyKey: "relocate:chat-1:worker-beta",
+      }).approved,
+    ).toBe(true);
+    expect(
+      chatRelocationCreateSchema.safeParse({
+        target: {
+          kind: "worker",
+          projectId: "project-1",
+          workerId: "worker-beta",
+        },
+        approved: false,
+        idempotencyKey: "relocate:chat-1:worker-beta",
+      }).success,
+    ).toBe(false);
+    expect(
+      chatRelocationContextPayloadSchema.parse({
+        version: 1,
+        messages: [
+          {
+            sequence: 1,
+            role: "user",
+            mode: "default",
+            content: [{ type: "text", text: "Continue on Beta." }],
+            createdAt: "2026-08-12T00:00:00.000Z",
+          },
+        ],
+        attachments: [
+          {
+            attachment: {
+              id: "attachment-1",
+              chatId: "chat-1",
+              fileName: "context.txt",
+              mimeType: "text/plain",
+              sizeBytes: 7,
+              kind: "text",
+              source: "file",
+              status: "ready",
+              previewText: "context",
+              createdAt: "2026-08-12T00:00:00.000Z",
+            },
+            sha256: "a".repeat(64),
+            sourceWorkerId: "worker-alpha",
+            availableWorkerIds: ["worker-alpha"],
+          },
+        ],
+      }).messages,
+    ).toHaveLength(1);
+    expect(
+      chatRelocationJobSummarySchema.parse({
+        id: "11111111-1111-4111-8111-111111111111",
+        projectId: "project-1",
+        chatId: "chat-1",
+        state: "waiting-for-idle",
+        stateRevision: 1,
+        idempotencyKey: "relocate:chat-1:worker-beta",
+        sourcePlacement,
+        sourcePlacementRevision: 1,
+        targetPlacement,
+        contextSnapshotId: "11111111-1111-4111-8111-111111111111",
+        targetRuntimeThreadId: null,
+        attempt: 0,
+        progress: {
+          stage: "waiting-for-idle",
+          percent: 0,
+          message: "Waiting for an idle boundary.",
+          updatedAt: "2026-08-12T00:00:00.000Z",
+        },
+        error: null,
+        createdAt: "2026-08-12T00:00:00.000Z",
+        updatedAt: "2026-08-12T00:00:00.000Z",
+        startedAt: null,
+        cancellationUnsafeAt: null,
+        completedAt: null,
+      }).targetPlacement.workerId,
+    ).toBe("worker-beta");
   });
 });
