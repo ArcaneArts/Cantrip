@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  mobileSecondNavigationTarget,
+  assignMobileBottomTab,
+  initialMobileBottomTabs,
+  PRIMARY_MOBILE_BOTTOM_TAB_ID,
   projectSelectionAction,
-  validMobileSurfaceTabKey,
+  reconcileMobileBottomTabs,
+  removeMobileBottomTab,
 } from "./mobile-navigation";
 
 const projects = [{ id: "one" }, { id: "two" }];
@@ -59,55 +62,49 @@ describe("mobile project selection", () => {
   });
 });
 
-describe("mobile second destination", () => {
-  const validTabKeys = new Set(["chat:one", "terminal:one"]);
-
-  it("opens the grid before a surface has been selected", () => {
-    expect(
-      mobileSecondNavigationTarget({
-        gridOpen: false,
-        overviewSelected: true,
-        rememberedTabKey: null,
-        selectedTabKey: null,
-        validTabKeys,
-      }),
-    ).toEqual({ kind: "grid" });
+describe("mobile bottom tabs", () => {
+  it("starts with one permanent unassigned project tab", () => {
+    expect(initialMobileBottomTabs()).toEqual([
+      { groupId: null, id: PRIMARY_MOBILE_BOTTOM_TAB_ID },
+    ]);
   });
 
-  it("returns from overview to the remembered surface", () => {
+  it("assigns a project group to a bottom tab", () => {
+    const tabs = initialMobileBottomTabs();
     expect(
-      mobileSecondNavigationTarget({
-        gridOpen: false,
-        overviewSelected: true,
-        rememberedTabKey: "terminal:one",
-        selectedTabKey: null,
-        validTabKeys,
-      }),
-    ).toEqual({ kind: "surface", tabKey: "terminal:one" });
+      assignMobileBottomTab(tabs, PRIMARY_MOBILE_BOTTOM_TAB_ID, "group-1"),
+    ).toEqual([{ groupId: "group-1", id: PRIMARY_MOBILE_BOTTOM_TAB_ID }]);
+    expect(tabs[0]?.groupId).toBeNull();
   });
 
-  it("reopens the grid when the active surface destination is tapped", () => {
+  it("returns deleted groups to the tab switcher", () => {
     expect(
-      mobileSecondNavigationTarget({
-        gridOpen: false,
-        overviewSelected: false,
-        rememberedTabKey: "chat:one",
-        selectedTabKey: "chat:one",
-        validTabKeys,
-      }),
-    ).toEqual({ kind: "grid" });
+      reconcileMobileBottomTabs(
+        [
+          { groupId: "group-1", id: PRIMARY_MOBILE_BOTTOM_TAB_ID },
+          { groupId: "deleted", id: "mobile-1" },
+        ],
+        new Set(["group-1"]),
+      ),
+    ).toEqual([
+      { groupId: "group-1", id: PRIMARY_MOBILE_BOTTOM_TAB_ID },
+      { groupId: null, id: "mobile-1" },
+    ]);
   });
 
-  it("clears deleted remembered surfaces", () => {
-    expect(validMobileSurfaceTabKey("chat:deleted", validTabKeys)).toBeNull();
+  it("protects the first project tab and selects the previous tab after removal", () => {
+    const tabs = [
+      { groupId: "group-1", id: PRIMARY_MOBILE_BOTTOM_TAB_ID },
+      { groupId: "group-2", id: "mobile-1" },
+      { groupId: "group-3", id: "mobile-2" },
+    ];
+
     expect(
-      mobileSecondNavigationTarget({
-        gridOpen: false,
-        overviewSelected: true,
-        rememberedTabKey: "chat:deleted",
-        selectedTabKey: null,
-        validTabKeys,
-      }),
-    ).toEqual({ kind: "grid" });
+      removeMobileBottomTab(tabs, PRIMARY_MOBILE_BOTTOM_TAB_ID),
+    ).toBeNull();
+    expect(removeMobileBottomTab(tabs, "mobile-2")).toEqual({
+      activeTabId: "mobile-1",
+      tabs: tabs.slice(0, 2),
+    });
   });
 });

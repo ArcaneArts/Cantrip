@@ -7,7 +7,6 @@ import {
   CircleAlert,
   FolderGit2,
   Loader2,
-  Plus,
   Search,
   Settings,
   WandSparkles,
@@ -224,12 +223,6 @@ export function MobileProjectSelector({
         )}
       </div>
 
-      <div className="shrink-0 px-4 pb-3 pt-2">
-        <Button className="h-11 w-full" onClick={onNewProject}>
-          <Plus className="size-4" />
-          New Project
-        </Button>
-      </div>
       <footer className="mobile-safe-bottom flex shrink-0 items-center gap-1 border-t px-3 py-2">
         <ServerSwitcher
           currentUserName={currentUserName}
