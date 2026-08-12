@@ -219,6 +219,8 @@ import {
   projectReplicaJobSummarySchema,
   projectReplicaListSchema,
   projectReplicaProvisionCreateSchema,
+  projectReplicaRemoveCreateSchema,
+  projectReplicaSynchronizeCreateSchema,
   projectReplicaSummarySchema,
   projectShareAttachmentSchema,
   projectSummarySchema,
@@ -3878,7 +3880,7 @@ export async function buildApp({
           projectReplicas: true,
           replicaProvisioning: true,
           workerSwitching: false,
-          gitSync: false,
+          gitSync: true,
           worktrees: true,
           remoteSurfaces: {
             enabled: true,
@@ -5163,6 +5165,72 @@ export async function buildApp({
         const job = await repository.projectReplicaJobs.createProvision(
           applicationOwnerId(),
           request.params.projectId,
+          input.data,
+        );
+        publishProjectReplicaJobChange({
+          ownerId: applicationOwnerId(),
+          job,
+        });
+        projectReplicaJobExecutor.queueAvailable();
+        return reply.code(202).send(projectReplicaJobSummarySchema.parse(job));
+      } catch (error) {
+        if (error instanceof ProjectReplicaJobNotFoundError) {
+          return reply.code(404).send({ error: error.message });
+        }
+        if (error instanceof ProjectReplicaJobConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; replicaId: string } }>(
+    "/api/projects/:projectId/replicas/:replicaId/synchronize",
+    async (request, reply) => {
+      const input = projectReplicaSynchronizeCreateSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const job = await repository.projectReplicaJobs.createSynchronize(
+          applicationOwnerId(),
+          request.params.projectId,
+          request.params.replicaId,
+          input.data,
+        );
+        publishProjectReplicaJobChange({
+          ownerId: applicationOwnerId(),
+          job,
+        });
+        projectReplicaJobExecutor.queueAvailable();
+        return reply.code(202).send(projectReplicaJobSummarySchema.parse(job));
+      } catch (error) {
+        if (error instanceof ProjectReplicaJobNotFoundError) {
+          return reply.code(404).send({ error: error.message });
+        }
+        if (error instanceof ProjectReplicaJobConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; replicaId: string } }>(
+    "/api/projects/:projectId/replicas/:replicaId/remove",
+    async (request, reply) => {
+      const input = projectReplicaRemoveCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const job = await repository.projectReplicaJobs.createRemove(
+          applicationOwnerId(),
+          request.params.projectId,
+          request.params.replicaId,
           input.data,
         );
         publishProjectReplicaJobChange({

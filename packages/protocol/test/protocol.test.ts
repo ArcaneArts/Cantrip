@@ -383,6 +383,30 @@ describe("Cantrip protocol", () => {
         expectedRevision: "main",
       }).success,
     ).toBe(false);
+    expect(
+      workerCommandSchema.parse({
+        type: "project.replica.synchronize",
+        jobId,
+        attempt: 3,
+        repository: { nameWithOwner: "ArcaneArts/Cantrip" },
+        sourcePath: "/worker/repositories/ArcaneArts/Cantrip",
+        expectedRevision: "b".repeat(40),
+        policy: "fast-forward-primary",
+      }),
+    ).toMatchObject({
+      type: "project.replica.synchronize",
+      policy: "fast-forward-primary",
+    });
+    expect(
+      workerCommandSchema.parse({
+        type: "project.replica.remove",
+        jobId,
+        attempt: 4,
+        repository: { nameWithOwner: "ArcaneArts/Cantrip" },
+        sourcePath: "/worker/repositories/ArcaneArts/Cantrip",
+        deleteLocalFiles: true,
+      }),
+    ).toMatchObject({ type: "project.replica.remove", deleteLocalFiles: true });
   });
 
   it("validates split project token usage analytics", () => {

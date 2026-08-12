@@ -34,8 +34,8 @@ export function createHeartbeat(
     code,
     projectReplicas: {
       provision: true,
-      synchronize: false,
-      remove: false,
+      synchronize: true,
+      remove: true,
       exactRevision: true,
     },
     startedAt,

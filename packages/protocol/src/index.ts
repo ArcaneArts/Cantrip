@@ -1562,6 +1562,8 @@ export const projectReplicaJobErrorCodeSchema = z.enum([
   "stale-attempt",
   "policy-denied",
   "remote-unavailable",
+  "replica-in-use",
+  "unpushed-commits",
   "worker-error",
 ]);
 
@@ -1599,6 +1601,11 @@ export const projectReplicaJobSummarySchema = z.object({
   repository: z.string().min(1),
   expectedRevision: gitObjectRevisionSchema.nullable(),
   resolvedRevision: gitObjectRevisionSchema.nullable(),
+  synchronizationPolicy: z
+    .enum(["verify-only", "fast-forward-primary"])
+    .nullable()
+    .default(null),
+  deleteLocalFiles: z.boolean().nullable().default(null),
   attempt: z.number().int().nonnegative(),
   progress: projectReplicaJobProgressSchema,
   error: projectReplicaJobErrorSchema.nullable(),
@@ -1616,6 +1623,22 @@ export const projectReplicaJobListSchema = z
 export const projectReplicaProvisionCreateSchema = z.object({
   workerId: z.string().min(1),
   expectedRevision: gitObjectRevisionSchema.nullable().default(null),
+  idempotencyKey: z.string().trim().min(1).max(200),
+});
+
+export const projectReplicaSynchronizationPolicySchema = z.enum([
+  "verify-only",
+  "fast-forward-primary",
+]);
+
+export const projectReplicaSynchronizeCreateSchema = z.object({
+  expectedRevision: gitObjectRevisionSchema,
+  policy: projectReplicaSynchronizationPolicySchema.default("verify-only"),
+  idempotencyKey: z.string().trim().min(1).max(200),
+});
+
+export const projectReplicaRemoveCreateSchema = z.object({
+  deleteLocalFiles: z.boolean().default(true),
   idempotencyKey: z.string().trim().min(1).max(200),
 });
 
@@ -4308,6 +4331,35 @@ export const projectReplicaProvisionResultSchema = z.discriminatedUnion(
   [projectReplicaProvisionBlockedSchema, projectReplicaProvisionReadySchema],
 );
 
+export const projectReplicaSynchronizeReadySchema = z.object({
+  status: z.literal("ready"),
+  jobId: z.string().uuid(),
+  attempt: z.number().int().positive(),
+  path: z.string().min(1),
+  previousRevision: gitObjectRevisionSchema,
+  resolvedRevision: gitObjectRevisionSchema,
+  branch: z.string().min(1).nullable(),
+  changed: z.boolean(),
+});
+
+export const projectReplicaSynchronizeResultSchema = z.discriminatedUnion(
+  "status",
+  [projectReplicaProvisionBlockedSchema, projectReplicaSynchronizeReadySchema],
+);
+
+export const projectReplicaRemoveReadySchema = z.object({
+  status: z.literal("removed"),
+  jobId: z.string().uuid(),
+  attempt: z.number().int().positive(),
+  path: z.string().min(1),
+  localFilesDeleted: z.boolean(),
+});
+
+export const projectReplicaRemoveResultSchema = z.discriminatedUnion("status", [
+  projectReplicaProvisionBlockedSchema,
+  projectReplicaRemoveReadySchema,
+]);
+
 export const projectRemoveSchema = z.object({
   deleteLocalFiles: z.boolean().default(false),
 });
@@ -6120,6 +6172,27 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     expectedRevision: gitObjectRevisionSchema.nullable(),
   }),
   z.object({
+    type: z.literal("project.replica.synchronize"),
+    jobId: z.string().uuid(),
+    attempt: z.number().int().positive(),
+    repository: z.object({
+      nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
+    }),
+    sourcePath: z.string().min(1).max(8_192),
+    expectedRevision: gitObjectRevisionSchema,
+    policy: projectReplicaSynchronizationPolicySchema,
+  }),
+  z.object({
+    type: z.literal("project.replica.remove"),
+    jobId: z.string().uuid(),
+    attempt: z.number().int().positive(),
+    repository: z.object({
+      nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
+    }),
+    sourcePath: z.string().min(1).max(8_192),
+    deleteLocalFiles: z.boolean(),
+  }),
+  z.object({
     type: z.literal("project.files.delete"),
     path: z.string().min(1),
   }),
@@ -7226,6 +7299,15 @@ export type ProjectReplicaJobSummary = z.infer<
 export type ProjectReplicaProvisionCreate = z.infer<
   typeof projectReplicaProvisionCreateSchema
 >;
+export type ProjectReplicaSynchronizationPolicy = z.infer<
+  typeof projectReplicaSynchronizationPolicySchema
+>;
+export type ProjectReplicaSynchronizeCreate = z.infer<
+  typeof projectReplicaSynchronizeCreateSchema
+>;
+export type ProjectReplicaRemoveCreate = z.infer<
+  typeof projectReplicaRemoveCreateSchema
+>;
 export type ProjectReplicaJobRetry = z.infer<
   typeof projectReplicaJobRetrySchema
 >;
@@ -7370,6 +7452,12 @@ export type GithubProjectCreate = z.infer<typeof githubProjectCreateSchema>;
 export type ProjectCloneResult = z.infer<typeof projectCloneResultSchema>;
 export type ProjectReplicaProvisionResult = z.infer<
   typeof projectReplicaProvisionResultSchema
+>;
+export type ProjectReplicaSynchronizeResult = z.infer<
+  typeof projectReplicaSynchronizeResultSchema
+>;
+export type ProjectReplicaRemoveResult = z.infer<
+  typeof projectReplicaRemoveResultSchema
 >;
 export type ProjectRemove = z.infer<typeof projectRemoveSchema>;
 export type GitRef = z.infer<typeof gitRefSchema>;

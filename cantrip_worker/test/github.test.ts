@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import {
+  access,
   chmod,
   mkdtemp,
   mkdir,
@@ -154,6 +155,167 @@ describe("GitHub project files", () => {
       status: "blocked",
       error: { code: "revision-diverged", retryable: false },
     });
+  });
+
+  it("synchronizes only by policy and removes only fully published replicas", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-replica-lifecycle-test-"),
+    );
+    directories.push(dataDirectory);
+    const fakeGithub = path.join(dataDirectory, "github");
+    const bareRepository = path.join(fakeGithub, "ArcaneArts", "Cantrip.git");
+    const seed = path.join(dataDirectory, "seed");
+    const managed = path.join(
+      dataDirectory,
+      "repositories",
+      "ArcaneArts",
+      "Cantrip",
+    );
+    await mkdir(path.dirname(bareRepository), { recursive: true });
+    await execFileAsync("git", ["init", "--bare", bareRepository]);
+    await execFileAsync("git", ["init", "--initial-branch=main", seed]);
+    await writeFile(path.join(seed, ".gitignore"), "secret.tmp\n");
+    await writeFile(path.join(seed, "README.md"), "one\n");
+    await execFileAsync("git", ["-C", seed, "add", ".gitignore", "README.md"]);
+    await execFileAsync("git", [
+      "-C",
+      seed,
+      "-c",
+      "user.name=Cantrip Test",
+      "-c",
+      "user.email=cantrip@example.test",
+      "commit",
+      "-m",
+      "Initial",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      seed,
+      "remote",
+      "add",
+      "origin",
+      bareRepository,
+    ]);
+    await execFileAsync("git", ["-C", seed, "push", "-u", "origin", "main"]);
+    await execFileAsync("git", [
+      "--git-dir",
+      bareRepository,
+      "symbolic-ref",
+      "HEAD",
+      "refs/heads/main",
+    ]);
+    process.env.GIT_CONFIG_COUNT = "1";
+    process.env.GIT_CONFIG_KEY_0 = `url.${fakeGithub}${path.sep}.insteadOf`;
+    process.env.GIT_CONFIG_VALUE_0 = "https://github.com/";
+    await mkdir(path.dirname(managed), { recursive: true });
+    await execFileAsync("git", [
+      "clone",
+      "https://github.com/ArcaneArts/Cantrip.git",
+      managed,
+    ]);
+
+    await writeFile(path.join(seed, "README.md"), "two\n");
+    await execFileAsync("git", ["-C", seed, "add", "README.md"]);
+    await execFileAsync("git", [
+      "-C",
+      seed,
+      "-c",
+      "user.name=Cantrip Test",
+      "-c",
+      "user.email=cantrip@example.test",
+      "commit",
+      "-m",
+      "Second",
+    ]);
+    await execFileAsync("git", ["-C", seed, "push", "origin", "main"]);
+    const revision = (
+      await execFileAsync("git", ["-C", seed, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    const github = new GithubClient(dataDirectory);
+    const operation = {
+      jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb337",
+      attempt: 1,
+      nameWithOwner: "ArcaneArts/Cantrip",
+      sourcePath: managed,
+      expectedRevision: revision,
+    };
+    await expect(
+      github.synchronizeReplica({ ...operation, policy: "verify-only" }),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      error: { code: "revision-diverged" },
+    });
+    await expect(
+      github.synchronizeReplica({
+        ...operation,
+        attempt: 2,
+        policy: "fast-forward-primary",
+      }),
+    ).resolves.toMatchObject({
+      status: "ready",
+      changed: true,
+      resolvedRevision: revision,
+    });
+
+    await writeFile(path.join(managed, "secret.tmp"), "local secret\n");
+    await expect(
+      github.removeReplica({
+        jobId: operation.jobId,
+        attempt: 3,
+        nameWithOwner: operation.nameWithOwner,
+        sourcePath: managed,
+        deleteLocalFiles: true,
+      }),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      error: { code: "worktree-dirty" },
+    });
+    await rm(path.join(managed, "secret.tmp"));
+    await writeFile(path.join(managed, "LOCAL.md"), "unpublished\n");
+    await execFileAsync("git", ["-C", managed, "add", "LOCAL.md"]);
+    await execFileAsync("git", [
+      "-C",
+      managed,
+      "-c",
+      "user.name=Cantrip Test",
+      "-c",
+      "user.email=cantrip@example.test",
+      "commit",
+      "-m",
+      "Unpublished",
+    ]);
+    await expect(
+      github.removeReplica({
+        jobId: operation.jobId,
+        attempt: 4,
+        nameWithOwner: operation.nameWithOwner,
+        sourcePath: managed,
+        deleteLocalFiles: true,
+      }),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      error: { code: "unpushed-commits" },
+    });
+    await execFileAsync("git", [
+      "-C",
+      managed,
+      "reset",
+      "--hard",
+      "origin/main",
+    ]);
+    await expect(
+      github.removeReplica({
+        jobId: operation.jobId,
+        attempt: 5,
+        nameWithOwner: operation.nameWithOwner,
+        sourcePath: managed,
+        deleteLocalFiles: true,
+      }),
+    ).resolves.toMatchObject({
+      status: "removed",
+      localFilesDeleted: true,
+    });
+    await expect(access(managed)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("reads an optional repository worktree policy without trusting invalid files", async () => {

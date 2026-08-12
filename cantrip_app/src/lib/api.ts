@@ -240,6 +240,8 @@ import type {
   ProjectReplicaJobCancel,
   ProjectReplicaJobRetry,
   ProjectReplicaProvisionCreate,
+  ProjectReplicaRemoveCreate,
+  ProjectReplicaSynchronizeCreate,
   ProjectWorkspaceCreate,
   ProjectWorkspaceUpdate,
   ProjectWorktreeCreate,
@@ -1701,6 +1703,32 @@ export async function createProjectReplica(
   return projectReplicaJobSummarySchema.parse(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/replicas`,
+      input,
+    ),
+  );
+}
+
+export async function synchronizeProjectReplica(
+  projectId: string,
+  projectReplicaId: string,
+  input: ProjectReplicaSynchronizeCreate,
+) {
+  return projectReplicaJobSummarySchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/replicas/${encodeURIComponent(projectReplicaId)}/synchronize`,
+      input,
+    ),
+  );
+}
+
+export async function removeProjectReplica(
+  projectId: string,
+  projectReplicaId: string,
+  input: ProjectReplicaRemoveCreate,
+) {
+  return projectReplicaJobSummarySchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/replicas/${encodeURIComponent(projectReplicaId)}/remove`,
       input,
     ),
   );

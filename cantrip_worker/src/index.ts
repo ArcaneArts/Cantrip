@@ -371,6 +371,41 @@ async function start(): Promise<void> {
               progress,
             }),
         );
+      case "project.replica.synchronize":
+        return github.synchronizeReplica(
+          {
+            jobId: command.jobId,
+            attempt: command.attempt,
+            nameWithOwner: command.repository.nameWithOwner,
+            sourcePath: command.sourcePath,
+            expectedRevision: command.expectedRevision,
+            policy: command.policy,
+          },
+          (progress) =>
+            emit({
+              type: "project.replica.progress",
+              jobId: command.jobId,
+              attempt: command.attempt,
+              progress,
+            }),
+        );
+      case "project.replica.remove":
+        return github.removeReplica(
+          {
+            jobId: command.jobId,
+            attempt: command.attempt,
+            nameWithOwner: command.repository.nameWithOwner,
+            sourcePath: command.sourcePath,
+            deleteLocalFiles: command.deleteLocalFiles,
+          },
+          (progress) =>
+            emit({
+              type: "project.replica.progress",
+              jobId: command.jobId,
+              attempt: command.attempt,
+              progress,
+            }),
+        );
       case "project.files.delete":
         return github.deleteRepository(command.path);
       case "project.script-commands":

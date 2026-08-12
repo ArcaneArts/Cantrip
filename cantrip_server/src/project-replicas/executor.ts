@@ -1,6 +1,9 @@
 import {
   projectReplicaProvisionResultSchema,
+  projectReplicaRemoveResultSchema,
+  projectReplicaSynchronizeResultSchema,
   type ProjectReplicaJobSummary,
+  type WorkerEvent,
 } from "@cantrip/protocol";
 
 import {
@@ -126,92 +129,196 @@ export class ProjectReplicaJobExecutor {
         this.onChanged({ ownerId: claimed.ownerId, job: blocked });
         return;
       }
-      if (
-        !worker.projectReplicas.provision ||
-        !worker.projectReplicas.exactRevision
-      ) {
+      const capable =
+        job.kind === "provision"
+          ? worker.projectReplicas.provision &&
+            worker.projectReplicas.exactRevision
+          : job.kind === "synchronize"
+            ? worker.projectReplicas.synchronize &&
+              worker.projectReplicas.exactRevision
+            : worker.projectReplicas.remove;
+      if (!capable) {
         const blocked = await this.repository.projectReplicaJobs.block(
           job.id,
           claimed.commandId,
           {
             code: "capability-missing",
-            message:
-              "The target worker does not advertise exact-revision replica provisioning.",
+            message: `The target worker does not advertise safe replica ${job.kind} capability.`,
             retryable: false,
           },
         );
         this.onChanged({ ownerId: claimed.ownerId, job: blocked });
         return;
       }
-      if (job.kind !== "provision") {
-        const failed = await this.repository.projectReplicaJobs.fail(
+      const onEvent = async (event: WorkerEvent) => {
+        if (event.type !== "project.replica.progress") return;
+        if (event.jobId !== job.id || event.attempt !== job.attempt) {
+          this.logger.warn(
+            {
+              projectReplicaJobId: job.id,
+              reportedJobId: event.jobId,
+              reportedAttempt: event.attempt,
+            },
+            "Ignored stale project replica job progress",
+          );
+          return;
+        }
+        const updated = await this.repository.projectReplicaJobs.updateProgress(
           job.id,
           claimed.commandId,
-          {
-            code: "capability-missing",
-            message: `Replica job kind ${job.kind} is not enabled by this server version.`,
-            retryable: false,
-          },
+          job.attempt,
+          event.progress,
         );
-        this.onChanged({ ownerId: claimed.ownerId, job: failed });
-        return;
-      }
-      const result = projectReplicaProvisionResultSchema.parse(
-        await this.bridge.request(
-          job.workerId,
-          {
-            type: "project.replica.provision",
-            jobId: job.id,
-            attempt: job.attempt,
-            repository: { nameWithOwner: job.repository },
-            expectedRevision: job.expectedRevision,
-          },
-          {
-            timeoutMs: null,
-            onEvent: async (event) => {
-              if (event.type !== "project.replica.progress") return;
-              if (event.jobId !== job.id || event.attempt !== job.attempt) {
-                this.logger.warn(
-                  {
-                    projectReplicaJobId: job.id,
-                    reportedJobId: event.jobId,
-                    reportedAttempt: event.attempt,
-                  },
-                  "Ignored stale project replica job progress",
-                );
-                return;
-              }
-              const updated =
-                await this.repository.projectReplicaJobs.updateProgress(
+        if (updated) {
+          this.onChanged({ ownerId: claimed.ownerId, job: updated });
+        }
+      };
+      const options = { timeoutMs: null, onEvent };
+      let settled: ProjectReplicaJobSummary;
+      if (job.kind === "provision") {
+        const result = projectReplicaProvisionResultSchema.parse(
+          await this.bridge.request(
+            job.workerId,
+            {
+              type: "project.replica.provision",
+              jobId: job.id,
+              attempt: job.attempt,
+              repository: { nameWithOwner: job.repository },
+              expectedRevision: job.expectedRevision,
+            },
+            options,
+          ),
+        );
+        this.assertCurrentResult(job, result);
+        settled =
+          result.status === "blocked"
+            ? await this.repository.projectReplicaJobs.block(
+                job.id,
+                claimed.commandId,
+                result.error,
+              )
+            : await this.repository.projectReplicaJobs.completeProvision(
+                job.id,
+                claimed.commandId,
+                result,
+              );
+      } else {
+        const context =
+          await this.repository.projectReplicaJobs.operationContext(
+            job.id,
+            claimed.commandId,
+          );
+        if (!context || !job.projectReplicaId) {
+          settled = await this.repository.projectReplicaJobs.block(
+            job.id,
+            claimed.commandId,
+            {
+              code: "target-not-found",
+              message: "The active replica target no longer exists.",
+              retryable: false,
+            },
+          );
+        } else if (job.kind === "synchronize") {
+          if (!job.expectedRevision || !job.synchronizationPolicy) {
+            throw new Error("Synchronization job payload is incomplete.");
+          }
+          const result = projectReplicaSynchronizeResultSchema.parse(
+            await this.bridge.request(
+              job.workerId,
+              {
+                type: "project.replica.synchronize",
+                jobId: job.id,
+                attempt: job.attempt,
+                repository: { nameWithOwner: job.repository },
+                sourcePath: context.sourcePath,
+                expectedRevision: job.expectedRevision,
+                policy: job.synchronizationPolicy,
+              },
+              options,
+            ),
+          );
+          this.assertCurrentResult(job, result);
+          settled =
+            result.status === "blocked"
+              ? await this.repository.projectReplicaJobs.block(
                   job.id,
                   claimed.commandId,
-                  job.attempt,
-                  event.progress,
+                  result.error,
+                )
+              : await this.repository.projectReplicaJobs.completeSynchronize(
+                  job.id,
+                  claimed.commandId,
+                  result,
                 );
-              if (updated) {
-                this.onChanged({ ownerId: claimed.ownerId, job: updated });
-              }
-            },
-          },
-        ),
-      );
-      if (result.jobId !== job.id || result.attempt !== job.attempt) {
-        throw new ProjectReplicaJobStaleAttemptError(
-          "The worker response does not match the active replica job attempt.",
-        );
-      }
-      const settled =
-        result.status === "blocked"
-          ? await this.repository.projectReplicaJobs.block(
+        } else {
+          const blocker =
+            await this.repository.projectReplicaJobs.removalBlocker(
+              job.projectReplicaId,
               job.id,
-              claimed.commandId,
-              result.error,
-            )
-          : await this.repository.projectReplicaJobs.completeProvision(
-              job.id,
-              claimed.commandId,
-              result,
             );
+          if (blocker) {
+            settled = await this.repository.projectReplicaJobs.block(
+              job.id,
+              claimed.commandId,
+              {
+                code: "replica-in-use",
+                message: blocker,
+                retryable: false,
+              },
+            );
+          } else {
+            const marked =
+              await this.repository.projectReplicaJobs.markRemovalStarted(
+                job.projectReplicaId,
+              );
+            if (!marked) {
+              settled = await this.repository.projectReplicaJobs.block(
+                job.id,
+                claimed.commandId,
+                {
+                  code: "replica-not-ready",
+                  message:
+                    "The replica Primary worktree is not ready for removal.",
+                  retryable: false,
+                },
+              );
+            } else {
+              const result = projectReplicaRemoveResultSchema.parse(
+                await this.bridge.request(
+                  job.workerId,
+                  {
+                    type: "project.replica.remove",
+                    jobId: job.id,
+                    attempt: job.attempt,
+                    repository: { nameWithOwner: job.repository },
+                    sourcePath: context.sourcePath,
+                    deleteLocalFiles: job.deleteLocalFiles ?? true,
+                  },
+                  options,
+                ),
+              );
+              this.assertCurrentResult(job, result);
+              if (result.status === "blocked") {
+                await this.repository.projectReplicaJobs.restoreRemovalReady(
+                  job.projectReplicaId,
+                );
+                settled = await this.repository.projectReplicaJobs.block(
+                  job.id,
+                  claimed.commandId,
+                  result.error,
+                );
+              } else {
+                settled =
+                  await this.repository.projectReplicaJobs.completeRemove(
+                    job.id,
+                    claimed.commandId,
+                    result,
+                  );
+              }
+            }
+          }
+        }
+      }
       this.onChanged({ ownerId: claimed.ownerId, job: settled });
     } catch (error) {
       if (error instanceof ProjectReplicaJobStaleAttemptError) {
@@ -229,8 +336,7 @@ export class ProjectReplicaJobExecutor {
                 claimed.commandId,
                 {
                   code: "worker-offline",
-                  message:
-                    "The target worker disconnected during provisioning. The job will resume after it reconnects.",
+                  message: `The target worker disconnected during replica ${job.kind}. The job will resume after it reconnects.`,
                   retryable: true,
                 },
               )
@@ -242,7 +348,7 @@ export class ProjectReplicaJobExecutor {
                   message:
                     error instanceof Error
                       ? error.message.slice(0, 4_000)
-                      : "The worker failed to provision the replica.",
+                      : `The worker failed to ${job.kind} the replica.`,
                   retryable: true,
                 },
               );
@@ -252,6 +358,17 @@ export class ProjectReplicaJobExecutor {
           throw settleError;
         }
       }
+    }
+  }
+
+  private assertCurrentResult(
+    job: ProjectReplicaJobSummary,
+    result: { jobId: string; attempt: number },
+  ): void {
+    if (result.jobId !== job.id || result.attempt !== job.attempt) {
+      throw new ProjectReplicaJobStaleAttemptError(
+        "The worker response does not match the active replica job attempt.",
+      );
     }
   }
 }

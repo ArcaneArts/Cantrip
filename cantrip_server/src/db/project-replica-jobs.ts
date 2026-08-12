@@ -9,8 +9,12 @@ import {
   type ProjectReplicaJobSummary,
   type ProjectReplicaProvisionCreate,
   type ProjectReplicaProvisionResult,
+  type ProjectReplicaRemoveCreate,
+  type ProjectReplicaRemoveResult,
+  type ProjectReplicaSynchronizeCreate,
+  type ProjectReplicaSynchronizeResult,
 } from "@cantrip/protocol";
-import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -30,6 +34,11 @@ export interface ClaimedProjectReplicaJob {
   commandId: string;
   job: ProjectReplicaJobSummary;
   ownerId: string;
+}
+
+export interface ProjectReplicaOperationContext {
+  primaryWorktreeId: string;
+  sourcePath: string;
 }
 
 function toISOString(value: Date): string {
@@ -58,6 +67,8 @@ function toJob(row: ProjectReplicaJobRow): ProjectReplicaJobSummary {
     repository: row.repository,
     expectedRevision: row.expectedRevision,
     resolvedRevision: row.resolvedRevision,
+    synchronizationPolicy: row.synchronizationPolicy,
+    deleteLocalFiles: row.deleteLocalFiles,
     attempt: row.attempt,
     progress: row.progress,
     error:
@@ -91,6 +102,17 @@ function provisionFingerprint(
         expectedRevision: input.expectedRevision,
       }),
     )
+    .digest("hex");
+}
+
+function replicaOperationFingerprint(
+  kind: "synchronize" | "remove",
+  projectId: string,
+  projectReplicaId: string,
+  input: ProjectReplicaSynchronizeCreate | ProjectReplicaRemoveCreate,
+): string {
+  return createHash("sha256")
+    .update(JSON.stringify({ kind, projectId, projectReplicaId, ...input }))
     .digest("hex");
 }
 
@@ -182,6 +204,7 @@ export class ProjectReplicaJobRepository {
             and(
               eq(schema.projectSources.projectId, projectId),
               eq(schema.projectSources.workerId, input.workerId),
+              isNull(schema.projectSources.removedAt),
             ),
           )
           .limit(1);
@@ -255,6 +278,213 @@ export class ProjectReplicaJobRepository {
     }
   }
 
+  async createSynchronize(
+    ownerId: string,
+    projectId: string,
+    projectReplicaId: string,
+    input: ProjectReplicaSynchronizeCreate,
+  ): Promise<ProjectReplicaJobSummary> {
+    return this.createReplicaOperation(
+      ownerId,
+      projectId,
+      projectReplicaId,
+      "synchronize",
+      input,
+    );
+  }
+
+  async createRemove(
+    ownerId: string,
+    projectId: string,
+    projectReplicaId: string,
+    input: ProjectReplicaRemoveCreate,
+  ): Promise<ProjectReplicaJobSummary> {
+    return this.createReplicaOperation(
+      ownerId,
+      projectId,
+      projectReplicaId,
+      "remove",
+      input,
+    );
+  }
+
+  private async createReplicaOperation(
+    ownerId: string,
+    projectId: string,
+    projectReplicaId: string,
+    kind: "synchronize" | "remove",
+    input: ProjectReplicaSynchronizeCreate | ProjectReplicaRemoveCreate,
+  ): Promise<ProjectReplicaJobSummary> {
+    const fingerprint = replicaOperationFingerprint(
+      kind,
+      projectId,
+      projectReplicaId,
+      input,
+    );
+    const existing = await this.database
+      .select()
+      .from(schema.projectReplicaJobs)
+      .where(
+        and(
+          eq(schema.projectReplicaJobs.ownerId, ownerId),
+          eq(schema.projectReplicaJobs.idempotencyKey, input.idempotencyKey),
+        ),
+      )
+      .limit(1);
+    if (existing[0]) {
+      if (existing[0].payloadFingerprint !== fingerprint) {
+        throw new ProjectReplicaJobConflictError(
+          "This idempotency key is already attached to a different replica request.",
+        );
+      }
+      return toJob(existing[0]);
+    }
+
+    const now = new Date();
+    try {
+      const created = await this.database.transaction(async (transaction) => {
+        const targets = await transaction
+          .select({
+            project: schema.projects,
+            source: schema.projectSources,
+          })
+          .from(schema.projectSources)
+          .innerJoin(
+            schema.projects,
+            and(
+              eq(schema.projects.id, schema.projectSources.projectId),
+              eq(schema.projects.ownerId, ownerId),
+            ),
+          )
+          .innerJoin(
+            schema.workers,
+            and(
+              eq(schema.workers.id, schema.projectSources.workerId),
+              isNull(schema.workers.unlinkedAt),
+            ),
+          )
+          .where(
+            and(
+              eq(schema.projects.id, projectId),
+              eq(schema.projectSources.id, projectReplicaId),
+              isNull(schema.projectSources.removedAt),
+            ),
+          )
+          .for("update")
+          .limit(1);
+        const target = targets[0];
+        if (!target) {
+          throw new ProjectReplicaJobNotFoundError(
+            "Project replica or target worker was not found.",
+          );
+        }
+        if (!target.project.githubRepositoryFullName) {
+          throw new ProjectReplicaJobConflictError(
+            "Only GitHub-backed project replicas support this operation.",
+          );
+        }
+        if (kind === "remove") {
+          const activeReplicas = await transaction
+            .select({ id: schema.projectSources.id })
+            .from(schema.projectSources)
+            .where(
+              and(
+                eq(schema.projectSources.projectId, projectId),
+                isNull(schema.projectSources.removedAt),
+              ),
+            );
+          if (activeReplicas.length <= 1) {
+            throw new ProjectReplicaJobConflictError(
+              "The last project replica cannot be removed. Remove the project instead.",
+            );
+          }
+        }
+        const active = await transaction
+          .select({ id: schema.projectReplicaJobs.id })
+          .from(schema.projectReplicaJobs)
+          .where(
+            and(
+              kind === "remove"
+                ? or(
+                    eq(
+                      schema.projectReplicaJobs.projectReplicaId,
+                      projectReplicaId,
+                    ),
+                    and(
+                      eq(schema.projectReplicaJobs.projectId, projectId),
+                      eq(schema.projectReplicaJobs.kind, "remove"),
+                    ),
+                  )
+                : eq(
+                    schema.projectReplicaJobs.projectReplicaId,
+                    projectReplicaId,
+                  ),
+              inArray(schema.projectReplicaJobs.state, [...ACTIVE_STATES]),
+            ),
+          )
+          .limit(1);
+        if (active[0]) {
+          throw new ProjectReplicaJobConflictError(
+            "Another operation is already active for this replica.",
+          );
+        }
+        const synchronizeInput =
+          kind === "synchronize"
+            ? (input as ProjectReplicaSynchronizeCreate)
+            : null;
+        const removeInput =
+          kind === "remove" ? (input as ProjectReplicaRemoveCreate) : null;
+        const rows = await transaction
+          .insert(schema.projectReplicaJobs)
+          .values({
+            id: randomUUID(),
+            ownerId,
+            projectId,
+            projectReplicaId,
+            workerId: target.source.workerId,
+            kind,
+            state: "queued",
+            idempotencyKey: input.idempotencyKey,
+            payloadFingerprint: fingerprint,
+            repository: target.project.githubRepositoryFullName,
+            expectedRevision: synchronizeInput?.expectedRevision ?? null,
+            synchronizationPolicy: synchronizeInput?.policy ?? null,
+            deleteLocalFiles: removeInput?.deleteLocalFiles ?? null,
+            progress: progress(
+              "queued",
+              0,
+              `Waiting to ${kind} the replica.`,
+              now,
+            ),
+            availableAt: now,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning();
+        return rows[0]!;
+      });
+      return toJob(created);
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      const raced = await this.database
+        .select()
+        .from(schema.projectReplicaJobs)
+        .where(
+          and(
+            eq(schema.projectReplicaJobs.ownerId, ownerId),
+            eq(schema.projectReplicaJobs.idempotencyKey, input.idempotencyKey),
+          ),
+        )
+        .limit(1);
+      if (raced[0]?.payloadFingerprint === fingerprint) return toJob(raced[0]);
+      throw new ProjectReplicaJobConflictError(
+        raced[0]
+          ? "This idempotency key is already attached to a different replica request."
+          : "Another operation is already active for this replica.",
+      );
+    }
+  }
+
   async get(
     ownerId: string,
     jobId: string,
@@ -295,6 +525,159 @@ export class ProjectReplicaJobRepository {
     return projectReplicaJobListSchema.parse(rows.map(toJob));
   }
 
+  async operationContext(
+    jobId: string,
+    commandId: string,
+  ): Promise<ProjectReplicaOperationContext | null> {
+    const rows = await this.database
+      .select({
+        primaryWorktreeId: schema.projectWorktrees.id,
+        sourcePath: schema.projectSources.absolutePath,
+      })
+      .from(schema.projectReplicaJobs)
+      .innerJoin(
+        schema.projectSources,
+        and(
+          eq(
+            schema.projectSources.id,
+            schema.projectReplicaJobs.projectReplicaId,
+          ),
+          isNull(schema.projectSources.removedAt),
+        ),
+      )
+      .innerJoin(
+        schema.projectWorktrees,
+        and(
+          eq(schema.projectWorktrees.projectSourceId, schema.projectSources.id),
+          eq(schema.projectWorktrees.isPrimary, true),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.projectReplicaJobs.id, jobId),
+          eq(schema.projectReplicaJobs.commandId, commandId),
+          eq(schema.projectReplicaJobs.state, "running"),
+        ),
+      )
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  async removalBlocker(
+    projectReplicaId: string,
+    currentJobId: string,
+  ): Promise<string | null> {
+    const worktrees = await this.database
+      .select({ id: schema.projectWorktrees.id })
+      .from(schema.projectWorktrees)
+      .where(eq(schema.projectWorktrees.projectSourceId, projectReplicaId));
+    if (worktrees.length !== 1) {
+      return "Remove managed worktrees from this replica before removing it.";
+    }
+    const worktreeId = worktrees[0]?.id;
+    if (!worktreeId) return "The replica has no Primary worktree record.";
+
+    const [chats, terminals, explorers, codeTabs, views, lanes, leases, jobs] =
+      await Promise.all([
+        this.database
+          .select({ id: schema.chats.id })
+          .from(schema.chats)
+          .where(eq(schema.chats.activeWorktreeId, worktreeId))
+          .limit(1),
+        this.database
+          .select({ id: schema.terminals.id })
+          .from(schema.terminals)
+          .where(eq(schema.terminals.worktreeId, worktreeId))
+          .limit(1),
+        this.database
+          .select({ id: schema.explorers.id })
+          .from(schema.explorers)
+          .where(eq(schema.explorers.worktreeId, worktreeId))
+          .limit(1),
+        this.database
+          .select({ id: schema.codeTabs.id })
+          .from(schema.codeTabs)
+          .where(eq(schema.codeTabs.worktreeId, worktreeId))
+          .limit(1),
+        this.database
+          .select({ id: schema.projectViews.id })
+          .from(schema.projectViews)
+          .where(eq(schema.projectViews.worktreeId, worktreeId))
+          .limit(1),
+        this.database
+          .select({ id: schema.chatExecutionLanes.id })
+          .from(schema.chatExecutionLanes)
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.worktreeId, worktreeId),
+              sql`${schema.chatExecutionLanes.state} <> 'released'`,
+            ),
+          )
+          .limit(1),
+        this.database
+          .select({ id: schema.workflowWorktreeLeases.id })
+          .from(schema.workflowWorktreeLeases)
+          .where(
+            and(
+              eq(schema.workflowWorktreeLeases.worktreeId, worktreeId),
+              sql`${schema.workflowWorktreeLeases.state} <> 'released'`,
+            ),
+          )
+          .limit(1),
+        this.database
+          .select({ id: schema.projectReplicaJobs.id })
+          .from(schema.projectReplicaJobs)
+          .where(
+            and(
+              eq(schema.projectReplicaJobs.projectReplicaId, projectReplicaId),
+              sql`${schema.projectReplicaJobs.id} <> ${currentJobId}`,
+              inArray(schema.projectReplicaJobs.state, [...ACTIVE_STATES]),
+            ),
+          )
+          .limit(1),
+      ]);
+    if (chats[0]) return "A chat is still assigned to this replica.";
+    if (terminals[0]) return "A terminal is still assigned to this replica.";
+    if (explorers[0]) return "An Explorer is still assigned to this replica.";
+    if (codeTabs[0]) return "A Code tab is still assigned to this replica.";
+    if (views[0]) return "A project view is still assigned to this replica.";
+    if (lanes[0]) return "An execution lane is still using this replica.";
+    if (leases[0]) return "A workflow lease is still using this replica.";
+    if (jobs[0]) return "Another replica job is still active.";
+    return null;
+  }
+
+  async markRemovalStarted(projectReplicaId: string): Promise<boolean> {
+    const rows = await this.database
+      .update(schema.projectWorktrees)
+      .set({ lifecycleState: "removing", updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.projectWorktrees.projectSourceId, projectReplicaId),
+          eq(schema.projectWorktrees.isPrimary, true),
+          inArray(schema.projectWorktrees.lifecycleState, [
+            "ready",
+            "removing",
+          ]),
+        ),
+      )
+      .returning({ id: schema.projectWorktrees.id });
+    return rows.length === 1;
+  }
+
+  async restoreRemovalReady(projectReplicaId: string): Promise<void> {
+    await this.database
+      .update(schema.projectWorktrees)
+      .set({ lifecycleState: "ready", updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.projectWorktrees.projectSourceId, projectReplicaId),
+          eq(schema.projectWorktrees.isPrimary, true),
+          eq(schema.projectWorktrees.lifecycleState, "removing"),
+        ),
+      );
+  }
+
   async recoverInterrupted(): Promise<number> {
     const now = new Date();
     const rows = await this.database
@@ -304,7 +687,6 @@ export class ProjectReplicaJobRepository {
         stateRevision: sql`${schema.projectReplicaJobs.stateRevision} + 1`,
         commandId: null,
         leaseExpiresAt: null,
-        cancellationUnsafeAt: null,
         availableAt: now,
         progress: progress(
           "queued",
@@ -356,7 +738,7 @@ export class ProjectReplicaJobRepository {
           progress: progress(
             "dispatching",
             5,
-            "Dispatching exact-revision provisioning.",
+            `Dispatching replica ${candidate.kind}.`,
             now,
           ),
           lastErrorCode: null,
@@ -437,7 +819,7 @@ export class ProjectReplicaJobRepository {
           stateRevision: sql`${schema.projectReplicaJobs.stateRevision} + 1`,
           commandId: null,
           leaseExpiresAt: null,
-          cancellationUnsafeAt: null,
+          cancellationUnsafeAt: sql`CASE WHEN ${schema.projectReplicaJobs.kind} = 'provision' THEN NULL ELSE ${schema.projectReplicaJobs.cancellationUnsafeAt} END`,
           completedAt: state === "failed" ? now : null,
           progress: progress(
             state,
@@ -466,7 +848,12 @@ export class ProjectReplicaJobRepository {
       const readyReplica = await transaction
         .select({ id: schema.projectSources.id })
         .from(schema.projectSources)
-        .where(eq(schema.projectSources.projectId, updated[0].projectId))
+        .where(
+          and(
+            eq(schema.projectSources.projectId, updated[0].projectId),
+            isNull(schema.projectSources.removedAt),
+          ),
+        )
         .limit(1);
       if (!readyReplica[0]) {
         await transaction
@@ -519,6 +906,7 @@ export class ProjectReplicaJobRepository {
           and(
             eq(schema.projectSources.projectId, job.projectId),
             eq(schema.projectSources.workerId, job.workerId),
+            isNull(schema.projectSources.removedAt),
           ),
         )
         .limit(1);
@@ -626,6 +1014,197 @@ export class ProjectReplicaJobRepository {
     return toJob(completed);
   }
 
+  async completeSynchronize(
+    jobId: string,
+    commandId: string,
+    result: Extract<ProjectReplicaSynchronizeResult, { status: "ready" }>,
+  ): Promise<ProjectReplicaJobSummary> {
+    const now = new Date();
+    const completed = await this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select()
+        .from(schema.projectReplicaJobs)
+        .where(eq(schema.projectReplicaJobs.id, jobId))
+        .for("update")
+        .limit(1);
+      const job = rows[0];
+      if (
+        !job ||
+        job.kind !== "synchronize" ||
+        job.state !== "running" ||
+        job.commandId !== commandId ||
+        job.attempt !== result.attempt ||
+        job.id !== result.jobId ||
+        !job.projectReplicaId ||
+        job.expectedRevision !== result.resolvedRevision
+      ) {
+        throw new ProjectReplicaJobStaleAttemptError(
+          "The replica synchronization result does not match the active attempt.",
+        );
+      }
+      const source = await transaction
+        .select({ path: schema.projectSources.absolutePath })
+        .from(schema.projectSources)
+        .where(
+          and(
+            eq(schema.projectSources.id, job.projectReplicaId),
+            isNull(schema.projectSources.removedAt),
+          ),
+        )
+        .limit(1);
+      if (!source[0] || source[0].path !== result.path) {
+        throw new ProjectReplicaJobConflictError(
+          "The worker synchronized a different replica path.",
+        );
+      }
+      await transaction
+        .update(schema.projectWorktrees)
+        .set({
+          branch: result.branch,
+          detached: result.branch === null,
+          head: result.resolvedRevision,
+          lifecycleState: "ready",
+          lastScannedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.projectWorktrees.projectSourceId, job.projectReplicaId),
+            eq(schema.projectWorktrees.isPrimary, true),
+          ),
+        );
+      const updated = await transaction
+        .update(schema.projectReplicaJobs)
+        .set({
+          state: "succeeded",
+          stateRevision: job.stateRevision + 1,
+          resolvedRevision: result.resolvedRevision,
+          commandId: null,
+          leaseExpiresAt: null,
+          cancellationUnsafeAt: null,
+          progress: progress(
+            "succeeded",
+            100,
+            result.changed
+              ? "Replica fast-forwarded to the expected revision."
+              : "Replica already matches the expected revision.",
+            now,
+          ),
+          completedAt: now,
+          lastErrorCode: null,
+          lastErrorMessage: null,
+          errorRetryable: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.projectReplicaJobs.id, job.id),
+            eq(schema.projectReplicaJobs.commandId, commandId),
+          ),
+        )
+        .returning();
+      if (!updated[0]) {
+        throw new ProjectReplicaJobStaleAttemptError(
+          "The replica synchronization attempt is no longer current.",
+        );
+      }
+      return updated[0];
+    });
+    return toJob(completed);
+  }
+
+  async completeRemove(
+    jobId: string,
+    commandId: string,
+    result: Extract<ProjectReplicaRemoveResult, { status: "removed" }>,
+  ): Promise<ProjectReplicaJobSummary> {
+    const now = new Date();
+    const completed = await this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select()
+        .from(schema.projectReplicaJobs)
+        .where(eq(schema.projectReplicaJobs.id, jobId))
+        .for("update")
+        .limit(1);
+      const job = rows[0];
+      if (
+        !job ||
+        job.kind !== "remove" ||
+        job.state !== "running" ||
+        job.commandId !== commandId ||
+        job.attempt !== result.attempt ||
+        job.id !== result.jobId ||
+        !job.projectReplicaId ||
+        job.deleteLocalFiles !== result.localFilesDeleted
+      ) {
+        throw new ProjectReplicaJobStaleAttemptError(
+          "The replica removal result does not match the active attempt.",
+        );
+      }
+      const source = await transaction
+        .select({ path: schema.projectSources.absolutePath })
+        .from(schema.projectSources)
+        .where(
+          and(
+            eq(schema.projectSources.id, job.projectReplicaId),
+            isNull(schema.projectSources.removedAt),
+          ),
+        )
+        .limit(1);
+      if (!source[0] || source[0].path !== result.path) {
+        throw new ProjectReplicaJobConflictError(
+          "The worker removed a different replica path.",
+        );
+      }
+      await transaction
+        .update(schema.projectSources)
+        .set({ removedAt: now, updatedAt: now })
+        .where(eq(schema.projectSources.id, job.projectReplicaId));
+      await transaction
+        .update(schema.projectWorktrees)
+        .set({ lifecycleState: "missing", updatedAt: now })
+        .where(
+          eq(schema.projectWorktrees.projectSourceId, job.projectReplicaId),
+        );
+      const updated = await transaction
+        .update(schema.projectReplicaJobs)
+        .set({
+          state: "succeeded",
+          stateRevision: job.stateRevision + 1,
+          commandId: null,
+          leaseExpiresAt: null,
+          cancellationUnsafeAt: null,
+          progress: progress(
+            "succeeded",
+            100,
+            result.localFilesDeleted
+              ? "Replica local files were safely removed."
+              : "Replica was removed from Cantrip; local files were retained.",
+            now,
+          ),
+          completedAt: now,
+          lastErrorCode: null,
+          lastErrorMessage: null,
+          errorRetryable: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.projectReplicaJobs.id, job.id),
+            eq(schema.projectReplicaJobs.commandId, commandId),
+          ),
+        )
+        .returning();
+      if (!updated[0]) {
+        throw new ProjectReplicaJobStaleAttemptError(
+          "The replica removal attempt is no longer current.",
+        );
+      }
+      return updated[0];
+    });
+    return toJob(completed);
+  }
+
   async retry(
     ownerId: string,
     jobId: string,
@@ -640,7 +1219,6 @@ export class ProjectReplicaJobRepository {
           stateRevision: stateRevision + 1,
           commandId: null,
           leaseExpiresAt: null,
-          cancellationUnsafeAt: null,
           availableAt: now,
           completedAt: null,
           progress: progress("queued", 0, "Retry requested.", now),
@@ -662,7 +1240,12 @@ export class ProjectReplicaJobRepository {
         const readyReplica = await transaction
           .select({ id: schema.projectSources.id })
           .from(schema.projectSources)
-          .where(eq(schema.projectSources.projectId, updated[0].projectId))
+          .where(
+            and(
+              eq(schema.projectSources.projectId, updated[0].projectId),
+              isNull(schema.projectSources.removedAt),
+            ),
+          )
           .limit(1);
         if (!readyReplica[0]) {
           await transaction
@@ -704,6 +1287,7 @@ export class ProjectReplicaJobRepository {
             eq(schema.projectReplicaJobs.ownerId, ownerId),
             eq(schema.projectReplicaJobs.stateRevision, stateRevision),
             inArray(schema.projectReplicaJobs.state, ["queued", "blocked"]),
+            isNull(schema.projectReplicaJobs.cancellationUnsafeAt),
           ),
         )
         .returning();
@@ -711,7 +1295,12 @@ export class ProjectReplicaJobRepository {
       const readyReplica = await transaction
         .select({ id: schema.projectSources.id })
         .from(schema.projectSources)
-        .where(eq(schema.projectSources.projectId, updated[0].projectId))
+        .where(
+          and(
+            eq(schema.projectSources.projectId, updated[0].projectId),
+            isNull(schema.projectSources.removedAt),
+          ),
+        )
         .limit(1);
       if (!readyReplica[0]) {
         await transaction
@@ -737,7 +1326,6 @@ export class ProjectReplicaJobRepository {
           state: "queued",
           stateRevision: sql`${schema.projectReplicaJobs.stateRevision} + 1`,
           availableAt: now,
-          cancellationUnsafeAt: null,
           progress: progress(
             "queued",
             0,
@@ -764,7 +1352,12 @@ export class ProjectReplicaJobRepository {
         const readyReplica = await transaction
           .select({ id: schema.projectSources.id })
           .from(schema.projectSources)
-          .where(eq(schema.projectSources.projectId, projectId))
+          .where(
+            and(
+              eq(schema.projectSources.projectId, projectId),
+              isNull(schema.projectSources.removedAt),
+            ),
+          )
           .limit(1);
         if (!readyReplica[0]) {
           await transaction
