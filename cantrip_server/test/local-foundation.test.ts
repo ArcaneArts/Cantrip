@@ -60,6 +60,7 @@ import {
   projectListSchema,
   projectShareAttachmentSchema,
   projectSummarySchema,
+  projectTokenUsageSchema,
   projectTabLayoutSummarySchema,
   projectWorkspaceListSchema,
   projectWorkspaceSummarySchema,
@@ -3713,6 +3714,79 @@ describe("local server foundation", () => {
       ).toBe(true);
     });
     richLiveSocket.terminate();
+    const projectUsage = projectTokenUsageSchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/token-usage`,
+        })
+      ).json(),
+    );
+    expect(projectUsage.total).toEqual({
+      inputTokens: 800,
+      outputTokens: 400,
+      totalTokens: 1_200,
+    });
+    expect(projectUsage.daily.at(-1)).toMatchObject({ totalTokens: 1_200 });
+    expect(projectUsage.providers).toContainEqual(
+      expect.objectContaining({
+        id: provider.id,
+        name: "Edited test provider",
+        totalTokens: 1_200,
+      }),
+    );
+    expect(projectUsage.models).toContainEqual(
+      expect.objectContaining({
+        id: selectedModel.id,
+        name: "Edited test model",
+        totalTokens: 1_200,
+      }),
+    );
+    await firstDatabase.repository.recordTokenUsage(LOCAL_USER_ID, {
+      projectId: project.id,
+      chatId: richChat.id,
+      sourceKey: `chat:${richChat.id}:rich-turn-1`,
+      modelRouteId: selectedModel.routes[0]!.id,
+      modelName: "Edited test model",
+      providerName: "Edited test provider",
+      providerModelName: "edited-test-model",
+      usage: {
+        inputTokens: 850,
+        cachedInputTokens: 100,
+        outputTokens: 300,
+        reasoningOutputTokens: 150,
+        totalTokens: 1_300,
+      },
+    });
+    const refreshedProjectUsage = projectTokenUsageSchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/token-usage`,
+        })
+      ).json(),
+    );
+    expect(refreshedProjectUsage.total).toEqual({
+      inputTokens: 850,
+      outputTokens: 450,
+      totalTokens: 1_300,
+    });
+    const usageSettings = settingsBundleSchema.parse(
+      (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),
+    );
+    expect(
+      usageSettings.providers.find(({ id }) => id === provider.id)?.tokenUsage,
+    ).toEqual(refreshedProjectUsage.total);
+    expect(
+      usageSettings.models.find(({ id }) => id === selectedModel.id)
+        ?.tokenUsage,
+    ).toEqual(refreshedProjectUsage.total);
+    expect(
+      await firstApp.inject({
+        method: "GET",
+        url: "/api/projects/missing-project/token-usage",
+      }),
+    ).toMatchObject({ statusCode: 404 });
     const reorderedTerminal = terminalSummarySchema.parse(
       (
         await firstApp.inject({

@@ -189,6 +189,7 @@ import {
   getProjectWorktreeStatus,
   getProjectViews,
   getProjectRepositoryStats,
+  getProjectTokenUsage,
   getRemoteDesktop,
   getQueuedPrompts,
   getServerBootstrap,
@@ -2594,6 +2595,13 @@ export function App() {
     queryKey: ["project-repository-stats", selectedProjectId],
     retry: false,
     staleTime: 30_000,
+  });
+  const projectTokenUsage = useQuery({
+    enabled: Boolean(selectedProjectId) && projectOverviewSelected,
+    queryFn: () => getProjectTokenUsage(selectedProjectId!),
+    queryKey: ["project-token-usage", selectedProjectId],
+    refetchInterval: 15_000,
+    staleTime: 10_000,
   });
   const selectedProjectViewForQuery = projectViews.data?.find(
     (view) => view.id === selectedProjectViewId,
@@ -5011,6 +5019,13 @@ export function App() {
                   : null
               }
               statsLoading={repositoryStats.isLoading}
+              usage={projectTokenUsage.data}
+              usageError={
+                projectTokenUsage.isError
+                  ? errorText(projectTokenUsage.error)
+                  : null
+              }
+              usageLoading={projectTokenUsage.isLoading}
               surfaces={projectSurfaces}
               workerOnline={Boolean(
                 workers.data?.find(

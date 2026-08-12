@@ -210,6 +210,7 @@ import {
   projectCloneResultSchema,
   projectListSchema,
   projectRepositoryStatsSchema,
+  projectTokenUsageSchema,
   projectRemoveSchema,
   projectShareAttachmentSchema,
   projectSummarySchema,
@@ -2249,6 +2250,38 @@ export async function buildApp({
     return repository.getModelRuntime(LOCAL_USER_ID, modelId);
   };
 
+  const recordRuntimeTokenUsage = async (
+    sourceKey: string,
+    projectId: string | null,
+    chatId: string | null,
+    runtime: ModelRuntime,
+    usage: {
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      cachedInputTokens?: number;
+      reasoningOutputTokens?: number;
+    },
+  ): Promise<void> => {
+    try {
+      await repository.recordTokenUsage(LOCAL_USER_ID, {
+        sourceKey,
+        projectId,
+        chatId,
+        modelRouteId: runtime.routeId,
+        modelName: runtime.model.profileName,
+        providerName: runtime.provider.name,
+        providerModelName: runtime.model.name,
+        usage,
+      });
+    } catch (error) {
+      app.log.warn(
+        { err: error, sourceKey },
+        "Unable to persist token usage analytics",
+      );
+    }
+  };
+
   const skillSettingsTarget = async (input: {
     projectId: string | null;
     providerId: string;
@@ -2873,6 +2906,17 @@ export async function buildApp({
                     return;
                   }
                   if (event.type !== "agent.activity") return;
+                  if (event.activity.type === "usage") {
+                    const usageTurnId =
+                      event.activity.correlation?.turnId ?? event.activity.id;
+                    await recordRuntimeTokenUsage(
+                      `chat:${execution.chatId}:${usageTurnId}`,
+                      execution.projectId,
+                      execution.chatId,
+                      runtime,
+                      event.activity.last,
+                    );
+                  }
                   if (event.activity.type === "fileChange") {
                     for (const change of event.activity.changes) {
                       changedPaths.add(change.path);
@@ -4698,6 +4742,13 @@ export async function buildApp({
             { timeoutMs: WORKFLOW_GENERATION_TIMEOUT_MS + 10_000 },
           ),
         );
+        await recordRuntimeTokenUsage(
+          `workflow-definition:${generationId}`,
+          context.projectId,
+          context.chatId,
+          runtime,
+          result.measuredUsage,
+        );
         const generated = workflowDefinitionGenerationModelOutputSchema.parse(
           result.structuredResult,
         );
@@ -4845,6 +4896,13 @@ export async function buildApp({
                 },
                 { timeoutMs: GIT_AGENT_GENERATION_TIMEOUT_MS + 10_000 },
               ),
+            );
+            await recordRuntimeTokenUsage(
+              `git-agent:${generationId}`,
+              request.params.projectId,
+              null,
+              runtime,
+              result.measuredUsage,
             );
             generated = gitAgentDraftModelOutputSchema.parse(
               result.structuredResult,
@@ -8814,6 +8872,19 @@ export async function buildApp({
     },
   );
 
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/token-usage",
+    async (request, reply) => {
+      const usage = await repository.getProjectTokenUsage(
+        LOCAL_USER_ID,
+        request.params.projectId,
+      );
+      return usage
+        ? reply.send(projectTokenUsageSchema.parse(usage))
+        : reply.code(404).send({ error: "Project not found." });
+    },
+  );
+
   app.post<{
     Params: { projectId: string; worktreeId: string };
   }>(
@@ -11939,6 +12010,16 @@ export async function buildApp({
               syncAttribution,
             );
           } else if (item.type === "activity") {
+            if (item.activity.type === "usage") {
+              const usageTurnId = item.activity.correlation?.turnId ?? turn.id;
+              await recordRuntimeTokenUsage(
+                `chat:${context.chatId}:${usageTurnId}`,
+                context.projectId,
+                context.chatId,
+                runtime,
+                item.activity.last,
+              );
+            }
             await upsertLiveChatMessage(
               LOCAL_USER_ID,
               context.chatId,

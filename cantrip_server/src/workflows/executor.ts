@@ -615,6 +615,7 @@ export class WorkflowExecutor {
         },
       );
       const result = workflowNodeExecutionResultSchema.parse(rawResult);
+      await this.recordWorkflowTokenUsage(lease, runtime, result.measuredUsage);
       if (
         lease.candidate.verification &&
         lease.candidate.verification.failurePolicy === "fail-run" &&
@@ -793,6 +794,17 @@ export class WorkflowExecutor {
         event.type === "workflow.node.activity" &&
         event.activity.type === "usage"
       ) {
+        const runtime = await this.repository.getModelRuntimeByRoute(
+          LOCAL_USER_ID,
+          lease.assignment.modelRouteId,
+        );
+        if (runtime) {
+          await this.recordWorkflowTokenUsage(
+            lease,
+            runtime,
+            event.activity.last,
+          );
+        }
         const budget = await this.repository.workflowRuns.enforceRunBudget(
           LOCAL_USER_ID,
           lease.candidate.run.id,
@@ -819,6 +831,36 @@ export class WorkflowExecutor {
         );
       }
       throw error;
+    }
+  }
+
+  private async recordWorkflowTokenUsage(
+    lease: WorkflowAttemptLease,
+    runtime: ModelRuntime,
+    usage: {
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      cachedInputTokens?: number;
+      reasoningOutputTokens?: number;
+    },
+  ): Promise<void> {
+    try {
+      await this.repository.recordTokenUsage(LOCAL_USER_ID, {
+        sourceKey: `workflow:${lease.attemptId}`,
+        projectId: lease.candidate.projectId,
+        chatId: null,
+        modelRouteId: runtime.routeId,
+        modelName: runtime.model.profileName,
+        providerName: runtime.provider.name,
+        providerModelName: runtime.model.name,
+        usage,
+      });
+    } catch (error) {
+      this.logger.warn(
+        { err: error, workflowAttemptId: lease.attemptId },
+        "Unable to persist workflow token usage analytics",
+      );
     }
   }
 

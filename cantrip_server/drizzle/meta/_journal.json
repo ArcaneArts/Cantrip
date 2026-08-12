@@ -351,6 +351,13 @@
       "when": 1786494072737,
       "tag": "0049_flippant_meggan",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1786495095621,
+      "tag": "0050_dazzling_stryfe",
+      "breakpoints": true
     }
   ]
 }

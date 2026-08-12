@@ -124,6 +124,7 @@ import {
   orderedIdsSchema,
   projectListSchema,
   projectRepositoryStatsSchema,
+  projectTokenUsageSchema,
   projectShareAttachmentSchema,
   projectSummarySchema,
   projectWorkspaceCreateSchema,
@@ -1312,6 +1313,12 @@ export async function getProjectRepositoryStats(projectId: string) {
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/repository-stats`,
     ),
+  );
+}
+
+export async function getProjectTokenUsage(projectId: string) {
+  return projectTokenUsageSchema.parse(
+    await request(`/api/projects/${encodeURIComponent(projectId)}/token-usage`),
   );
 }
 

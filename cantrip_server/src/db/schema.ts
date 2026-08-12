@@ -23,6 +23,7 @@ import type {
 } from "@cantrip/protocol/automations";
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   bigserial,
   boolean,
   check,
@@ -1094,6 +1095,77 @@ export const chatMessages = pgTable(
     uniqueIndex("chat_messages_chat_idempotency_unique").on(
       table.chatId,
       table.idempotencyKey,
+    ),
+  ],
+);
+
+export const tokenUsageRecords = pgTable(
+  "token_usage_records",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    chatId: text("chat_id").references(() => chats.id, {
+      onDelete: "set null",
+    }),
+    sourceKey: text("source_key").notNull(),
+    modelId: text("model_id").references(() => modelProfiles.id, {
+      onDelete: "set null",
+    }),
+    modelRouteId: text("model_route_id").references(() => modelRoutes.id, {
+      onDelete: "set null",
+    }),
+    providerId: text("provider_id").references(() => modelProviders.id, {
+      onDelete: "set null",
+    }),
+    modelName: text("model_name").notNull(),
+    providerName: text("provider_name").notNull(),
+    providerModelName: text("provider_model_name").notNull(),
+    inputTokens: bigint("input_tokens", { mode: "number" })
+      .notNull()
+      .default(0),
+    outputTokens: bigint("output_tokens", { mode: "number" })
+      .notNull()
+      .default(0),
+    cachedInputTokens: bigint("cached_input_tokens", { mode: "number" })
+      .notNull()
+      .default(0),
+    reasoningOutputTokens: bigint("reasoning_output_tokens", {
+      mode: "number",
+    })
+      .notNull()
+      .default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("token_usage_records_owner_source_unique").on(
+      table.ownerId,
+      table.sourceKey,
+    ),
+    index("token_usage_records_project_created_index").on(
+      table.projectId,
+      table.createdAt,
+    ),
+    index("token_usage_records_owner_provider_index").on(
+      table.ownerId,
+      table.providerId,
+    ),
+    index("token_usage_records_owner_model_index").on(
+      table.ownerId,
+      table.modelId,
+    ),
+    check(
+      "token_usage_records_nonnegative_check",
+      sql`${table.inputTokens} >= 0 AND ${table.outputTokens} >= 0 AND ${table.cachedInputTokens} >= 0 AND ${table.reasoningOutputTokens} >= 0`,
     ),
   ],
 );

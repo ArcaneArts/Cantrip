@@ -93,6 +93,7 @@ import {
   projectWorkspaceUpdateSchema,
   projectWorktreeSummarySchema,
   projectTabLayoutSummarySchema,
+  projectTokenUsageSchema,
   remoteDesktopCreateSchema,
   remoteDesktopClientMessageSchema,
   remoteDesktopServerMessageSchema,
@@ -121,6 +122,46 @@ import {
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("validates split project token usage analytics", () => {
+    expect(
+      projectTokenUsageSchema.parse({
+        total: {
+          inputTokens: 800,
+          outputTokens: 400,
+          totalTokens: 1_200,
+        },
+        daily: [
+          {
+            date: "2026-08-11",
+            inputTokens: 800,
+            outputTokens: 400,
+            totalTokens: 1_200,
+          },
+        ],
+        providers: [
+          {
+            id: "provider-1",
+            name: "ChatGPT",
+            inputTokens: 800,
+            outputTokens: 400,
+            totalTokens: 1_200,
+          },
+        ],
+        models: [],
+        range: { start: "2025-08-12", end: "2026-08-11" },
+      }).total,
+    ).toEqual({ inputTokens: 800, outputTokens: 400, totalTokens: 1_200 });
+    expect(
+      projectTokenUsageSchema.safeParse({
+        total: { inputTokens: -1, outputTokens: 0, totalTokens: -1 },
+        daily: [],
+        providers: [],
+        models: [],
+        range: { start: "not-a-date", end: "2026-08-11" },
+      }).success,
+    ).toBe(false);
+  });
+
   it("validates preview-only Git agent draft requests and provenance", () => {
     expect(
       gitAgentDraftCreateSchema.parse({
