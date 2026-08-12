@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -112,5 +113,16 @@ test("validates the committed production target", () => {
   assert.throws(
     () => validateDeploymentConfig({ ...config, apiDomain: config.codeDomain }),
     /must differ/u,
+  );
+});
+
+test("keeps extracted production releases traversable by the service user", async () => {
+  const installer = await readFile(
+    new URL("../deploy/production/install.sh", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    installer,
+    /tar -xzf "\$artifact_path" -C "\$incoming_directory"\n  chmod 0755 "\$incoming_directory"/u,
   );
 });
