@@ -8,8 +8,15 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use tauri::{Manager, RunEvent, State};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Manager, RunEvent, State, WindowEvent,
+};
+#[cfg(desktop)]
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
+mod desktop_worker;
 mod project_share;
 mod tunnel_forward;
 
@@ -156,7 +163,7 @@ fn reserved_port(listener: &TcpListener, label: &str) -> Result<u16, String> {
         .map(|address| address.port())
 }
 
-fn terminate_child(child: &mut Child) {
+pub(crate) fn terminate_child(child: &mut Child) {
     if child.try_wait().ok().flatten().is_some() {
         return;
     }
@@ -180,6 +187,85 @@ fn terminate_child(child: &mut Child) {
     }
     let _ = child.kill();
     let _ = child.wait();
+}
+
+#[tauri::command]
+fn desktop_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
+    #[cfg(desktop)]
+    {
+        app.autolaunch()
+            .is_enabled()
+            .map_err(|error| format!("Could not inspect launch-at-login: {error}"))
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = app;
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+fn set_desktop_autostart(app: tauri::AppHandle, enabled: bool) -> Result<bool, String> {
+    #[cfg(desktop)]
+    {
+        let manager = app.autolaunch();
+        if enabled {
+            manager
+                .enable()
+                .map_err(|error| format!("Could not enable launch-at-login: {error}"))?;
+        } else {
+            manager
+                .disable()
+                .map_err(|error| format!("Could not disable launch-at-login: {error}"))?;
+        }
+        manager
+            .is_enabled()
+            .map_err(|error| format!("Could not verify launch-at-login: {error}"))
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (app, enabled);
+        Ok(false)
+    }
+}
+
+#[cfg(desktop)]
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+#[cfg(desktop)]
+fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
+    let show = MenuItem::with_id(app, "show", "Open Cantrip", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Cantrip", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &quit])?;
+    let mut tray = TrayIconBuilder::new().menu(&menu).tooltip("Cantrip");
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.on_menu_event(|app, event| match event.id.as_ref() {
+        "show" => show_main_window(app),
+        "quit" => app.exit(0),
+        _ => {}
+    })
+    .on_tray_icon_event(|tray, event| {
+        if matches!(
+            event,
+            TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            }
+        ) {
+            show_main_window(tray.app_handle());
+        }
+    })
+    .build(app)?;
+    Ok(())
 }
 
 fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
@@ -289,9 +375,18 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            #[cfg(desktop)]
+            show_main_window(app);
+        }))
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            desktop_autostart_enabled,
+            set_desktop_autostart,
+            desktop_worker::list_desktop_workers,
+            desktop_worker::pair_desktop_worker,
+            desktop_worker::forget_desktop_worker,
             local_server_url,
             relay_client_log,
             set_macos_pro_mode,
@@ -301,12 +396,29 @@ pub fn run() {
             tunnel_forward::list_tunnel_forwards,
         ])
         .setup(|app| {
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_autostart::init(
+                MacosLauncher::LaunchAgent,
+                Some(vec!["--background"]),
+            ))?;
             let runtime = build_runtime(app).map_err(std::io::Error::other)?;
+            let desktop_workers = desktop_worker::build(app).map_err(std::io::Error::other)?;
             app.manage(runtime);
+            app.manage(desktop_workers);
             app.manage(ProjectShareMounts::default());
             app.manage(TunnelForwards::default());
+            #[cfg(desktop)]
+            {
+                setup_tray(app)?;
+                if std::env::args().any(|argument| argument == "--background") {
+                    if let Some(window) = app.get_webview_window("main") {
+                        window.hide()?;
+                    }
+                }
+            }
             Ok(())
-        })
+        });
+    let app = builder
         .build(tauri::generate_context!())
         .expect("error while building Cantrip");
 
@@ -318,9 +430,28 @@ pub fn run() {
     }
 
     app.run(|handle, event| {
+        #[cfg(target_os = "macos")]
+        if let RunEvent::Reopen { .. } = &event {
+            show_main_window(handle);
+        }
+        #[cfg(desktop)]
+        if let RunEvent::WindowEvent {
+            label,
+            event: WindowEvent::CloseRequested { api, .. },
+            ..
+        } = &event
+        {
+            if label == "main" {
+                api.prevent_close();
+                if let Some(window) = handle.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
+        }
         if matches!(event, RunEvent::Exit) {
             handle.state::<ProjectShareMounts>().cleanup();
             handle.state::<TunnelForwards>().cleanup();
+            handle.state::<desktop_worker::DesktopWorkers>().stop_all();
             let runtime = handle.state::<ManagedRuntime>();
             if let Ok(mut children) = runtime.children.lock() {
                 for child in children.iter_mut().rev() {

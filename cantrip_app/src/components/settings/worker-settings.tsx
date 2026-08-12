@@ -16,6 +16,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Rocket,
   ShieldCheck,
   Trash2,
   Unplug,
@@ -48,7 +49,18 @@ import {
   updateWorker,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
-import { getActiveServerUrl } from "@/lib/server-connections";
+import {
+  forgetDesktopWorker,
+  getDesktopAutostart,
+  listDesktopWorkers,
+  pairDesktopWorker,
+  setDesktopAutostart,
+  supportsDesktopWorkers,
+} from "@/lib/desktop-worker";
+import {
+  getActiveServerConnection,
+  getActiveServerUrl,
+} from "@/lib/server-connections";
 import { SettingsSearchField } from "./settings-controls";
 
 const inputClass =
@@ -71,6 +83,22 @@ export function workerPairingCommands(
     posix: `CANTRIP_SERVER_URL='${serverUrl}' CANTRIP_WORKER_ENROLLMENT_CODE='${code}' ./bin/cantrip-worker`,
     powershell: `$env:CANTRIP_SERVER_URL=\"${serverUrl}\"; $env:CANTRIP_WORKER_ENROLLMENT_CODE=\"${code}\"; .\\bin\\cantrip-worker.exe`,
   };
+}
+
+export function canAddThisMachine(input: {
+  desktopApp: boolean;
+  hasInternalWorker: boolean;
+  linkedWorkerId: string | null;
+  serverIsRemote: boolean;
+  serverWorkerIds: string[];
+}): boolean {
+  return (
+    input.desktopApp &&
+    input.serverIsRemote &&
+    !input.hasInternalWorker &&
+    (!input.linkedWorkerId ||
+      !input.serverWorkerIds.includes(input.linkedWorkerId))
+  );
 }
 
 async function copyText(value: string): Promise<void> {
@@ -134,11 +162,13 @@ function CredentialRow({
 
 function WorkerRow({
   isDefault,
+  isThisMachine,
   worker,
   onManage,
   onUnlink,
 }: {
   isDefault: boolean;
+  isThisMachine: boolean;
   worker: WorkerManagementSummary;
   onManage(): void;
   onUnlink(): void;
@@ -165,6 +195,9 @@ function WorkerRow({
             <p className="truncate text-sm font-medium">{worker.name}</p>
             {worker.internal ? (
               <Badge variant="secondary">Internal</Badge>
+            ) : null}
+            {isThisMachine && !worker.internal ? (
+              <Badge variant="secondary">This machine</Badge>
             ) : null}
             {isDefault ? <Badge variant="outline">Default</Badge> : null}
           </div>
@@ -223,12 +256,26 @@ function WorkerRow({
 
 export function WorkerSettings() {
   const queryClient = useQueryClient();
+  const desktopApp = supportsDesktopWorkers();
+  const activeConnection = getActiveServerConnection();
+  const serverUrl = getActiveServerUrl() || window.location.origin;
   const workers = useQuery({
     queryFn: getWorkerManagement,
     queryKey: ["worker-management"],
     refetchInterval: 10_000,
   });
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
+  const desktopWorkers = useQuery({
+    enabled: desktopApp,
+    queryFn: listDesktopWorkers,
+    queryKey: ["desktop-workers"],
+    refetchInterval: 5_000,
+  });
+  const desktopAutostart = useQuery({
+    enabled: desktopApp,
+    queryFn: getDesktopAutostart,
+    queryKey: ["desktop-autostart"],
+  });
   const [search, setSearch] = useState("");
   const [pairOpen, setPairOpen] = useState(false);
   const [pairLabel, setPairLabel] = useState("");
@@ -250,6 +297,8 @@ export function WorkerSettings() {
   } | null>(null);
   const [unlinkTarget, setUnlinkTarget] =
     useState<WorkerManagementSummary | null>(null);
+  const [desktopEnrollment, setDesktopEnrollment] =
+    useState<WorkerEnrollmentCodeResult | null>(null);
 
   const pairing = useMutation({
     mutationFn: () =>
@@ -275,6 +324,49 @@ export function WorkerSettings() {
       queryClient.invalidateQueries({ queryKey: ["workers"] }),
     ]);
   }, [pairingStatus.data?.status, queryClient]);
+
+  const desktopEnrollmentStatus = useQuery({
+    enabled: Boolean(desktopEnrollment),
+    queryFn: () => getWorkerEnrollmentCodeStatus(desktopEnrollment!.id),
+    queryKey: ["desktop-worker-enrollment-status", desktopEnrollment?.id],
+    refetchInterval: (query) =>
+      query.state.data?.status === "pending" || !query.state.data
+        ? 1_000
+        : false,
+  });
+  useEffect(() => {
+    if (desktopEnrollmentStatus.data?.status !== "paired") return;
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["desktop-workers"] }),
+      queryClient.invalidateQueries({ queryKey: ["worker-management"] }),
+      queryClient.invalidateQueries({ queryKey: ["workers"] }),
+    ]);
+  }, [desktopEnrollmentStatus.data?.status, queryClient]);
+
+  const updateAutostart = useMutation({
+    mutationFn: setDesktopAutostart,
+    onSuccess: (enabled) =>
+      queryClient.setQueryData(["desktop-autostart"], enabled),
+  });
+  const addThisMachine = useMutation({
+    mutationFn: async () => {
+      const enrollment = await createWorkerEnrollmentCode({
+        label: "This machine",
+        expiresInSeconds: 300,
+      });
+      const desktopWorker = await pairDesktopWorker({
+        enrollmentCode: enrollment.code,
+        name: "This machine",
+        serverUrl,
+      });
+      return { desktopWorker, enrollment };
+    },
+    onSuccess: ({ enrollment }) => {
+      setDesktopEnrollment(enrollment);
+      void queryClient.invalidateQueries({ queryKey: ["desktop-workers"] });
+      if (!desktopAutostart.data) updateAutostart.mutate(true);
+    },
+  });
 
   const credentials = useQuery({
     enabled: Boolean(selected),
@@ -324,7 +416,13 @@ export function WorkerSettings() {
     },
   });
   const unlink = useMutation({
-    mutationFn: () => unlinkWorker(unlinkTarget!.workerId),
+    mutationFn: async () => {
+      const workerId = unlinkTarget!.workerId;
+      await unlinkWorker(workerId);
+      if (desktopWorkers.data?.some((worker) => worker.workerId === workerId)) {
+        await forgetDesktopWorker(workerId);
+      }
+    },
     onSuccess: async () => {
       setUnlinkTarget(null);
       await Promise.all([
@@ -332,6 +430,7 @@ export function WorkerSettings() {
         queryClient.invalidateQueries({ queryKey: ["workers"] }),
         queryClient.invalidateQueries({ queryKey: ["projects"] }),
         queryClient.invalidateQueries({ queryKey: ["settings"] }),
+        queryClient.invalidateQueries({ queryKey: ["desktop-workers"] }),
       ]);
     },
   });
@@ -360,7 +459,23 @@ export function WorkerSettings() {
       ),
     [normalizedSearch, workers.data],
   );
-  const serverUrl = getActiveServerUrl() || window.location.origin;
+  const desktopWorkerForServer = desktopWorkers.data?.find(
+    (worker) => worker.serverUrl === serverUrl,
+  );
+  const serverWorkerIds = (workers.data ?? []).map((worker) => worker.workerId);
+  const hasInternalWorker = (workers.data ?? []).some(
+    (worker) => worker.internal,
+  );
+  const offerThisMachine = canAddThisMachine({
+    desktopApp,
+    hasInternalWorker,
+    linkedWorkerId: desktopWorkerForServer?.workerId ?? null,
+    serverIsRemote: activeConnection.kind === "remote",
+    serverWorkerIds,
+  });
+  const desktopPairing =
+    addThisMachine.isPending ||
+    desktopEnrollmentStatus.data?.status === "pending";
   const commands = pairResult
     ? workerPairingCommands(serverUrl, pairResult.code)
     : null;
@@ -378,15 +493,37 @@ export function WorkerSettings() {
 
   return (
     <div className="mx-auto grid max-w-6xl gap-4">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <SettingsSearchField
           ariaLabel="Search workers"
           placeholder="Search workers, platforms, and project sources"
           value={search}
           onValueChange={setSearch}
         />
+        {!workers.isLoading &&
+        !desktopWorkers.isLoading &&
+        desktopEnrollmentStatus.data?.status !== "paired" &&
+        (offerThisMachine || desktopPairing) ? (
+          <Button
+            className="shrink-0"
+            disabled={desktopPairing}
+            onClick={() => {
+              addThisMachine.reset();
+              setDesktopEnrollment(null);
+              addThisMachine.mutate();
+            }}
+          >
+            {desktopPairing ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Laptop className="size-4" />
+            )}
+            {desktopPairing ? "Adding this machine…" : "Add this machine"}
+          </Button>
+        ) : null}
         <Button
           className="shrink-0"
+          variant={offerThisMachine || desktopPairing ? "outline" : "default"}
           onClick={() => {
             pairing.reset();
             setPairResult(null);
@@ -397,6 +534,63 @@ export function WorkerSettings() {
           <Plus className="size-4" /> Pair worker
         </Button>
       </div>
+
+      {desktopApp ? (
+        <section className="border-y" aria-labelledby="desktop-worker-title">
+          <div className="flex items-center gap-2.5 px-3 py-3">
+            <Rocket className="size-4 shrink-0 text-muted-foreground" />
+            <div>
+              <h2 id="desktop-worker-title" className="text-sm font-semibold">
+                This desktop
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                {activeConnection.kind === "local"
+                  ? "The bundled local worker is detected and managed automatically."
+                  : desktopWorkerForServer
+                    ? `${desktopWorkerForServer.name} is ${desktopWorkerForServer.running ? "running" : "stopped"} for ${activeConnection.name}.`
+                    : `Add this machine to run work for ${activeConnection.name} without copying a link code.`}
+              </p>
+            </div>
+          </div>
+          <label className="flex cursor-pointer items-center justify-between gap-4 border-t px-3 py-3">
+            <span className="flex min-w-0 items-start gap-2.5">
+              <Laptop className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <span>
+                <span className="block text-sm font-medium">
+                  Launch Cantrip at login
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  Starts hidden in the system tray so linked workers reconnect
+                  after a restart. Closing the window also keeps them online.
+                </span>
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              className="size-4 shrink-0 accent-foreground"
+              checked={desktopAutostart.data ?? false}
+              disabled={desktopAutostart.isLoading || updateAutostart.isPending}
+              onChange={(event) => updateAutostart.mutate(event.target.checked)}
+            />
+          </label>
+          {addThisMachine.isError ||
+          desktopEnrollmentStatus.isError ||
+          updateAutostart.isError ? (
+            <p className="border-t px-3 py-2 text-sm text-destructive">
+              {errorMessage(
+                addThisMachine.error ??
+                  desktopEnrollmentStatus.error ??
+                  updateAutostart.error,
+              )}
+            </p>
+          ) : desktopEnrollmentStatus.data?.status === "expired" ? (
+            <p className="border-t px-3 py-2 text-sm text-destructive">
+              This machine did not finish linking before enrollment expired. Try
+              adding it again.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="border-y" aria-labelledby="worker-placement-title">
         <div className="flex items-center gap-2.5 px-3 py-3">
@@ -544,6 +738,9 @@ export function WorkerSettings() {
               key={worker.workerId}
               isDefault={
                 settings.data?.preferences.defaultWorkerId === worker.workerId
+              }
+              isThisMachine={
+                desktopWorkerForServer?.workerId === worker.workerId
               }
               worker={worker}
               onManage={() => {
