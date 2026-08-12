@@ -138,7 +138,10 @@ import { MobileProjectTabGrid } from "@/components/mobile/mobile-project-tab-gri
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
 import { GithubRepositoryCreateDialog } from "@/components/projects/github-repository-create-dialog";
-import { SettingsPage } from "@/components/settings/settings-page";
+import {
+  SettingsPage,
+  type SettingsSection,
+} from "@/components/settings/settings-page";
 import { ServerSwitcher } from "@/components/servers/server-switcher";
 import {
   WorktreeControl,
@@ -2420,9 +2423,8 @@ export function App() {
   );
   const [showImporter, setShowImporter] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [settingsSection, setSettingsSection] = useState<
-    "general" | "workers" | "tunnels" | "skills" | "mcp" | "workspaces"
-  >("general");
+  const [settingsSection, setSettingsSection] =
+    useState<SettingsSection>("general");
   const [showProjectSettings, setShowProjectSettings] = useState(false);
   const projectOverviewSelected =
     !isPopout &&
@@ -4156,10 +4158,7 @@ export function App() {
     setShowProjectSettings(false);
     setSelectedWorkflowIntentId(null);
   };
-  const openCompactRootSettings = (
-    section:
-      "general" | "tunnels" | "skills" | "mcp" | "workspaces" = "general",
-  ) => {
+  const openCompactRootSettings = (section: SettingsSection = "general") => {
     setSelectedProjectId(null);
     setWorkspaceSelection(emptyWorkspaceSelection());
     resetMobileBottomTabs();
