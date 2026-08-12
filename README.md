@@ -2,9 +2,9 @@
 
 Cantrip is a local-first, self-hostable coding-agent workspace powered by the open-source Codex CLI. It combines Codex chats, real terminals, project files, Git tooling, and lightweight browser tabs in one interface.
 
-The project is inspired by the Codex desktop experience, but its architecture is designed around a server and independent workers. Today, the supported development path runs the app, server, and one worker on the same computer. The same boundaries are intended to support a hosted server, multiple workers, and browser, desktop, or mobile clients later.
+The project is inspired by the Codex desktop experience, but its architecture is designed around a server and independent workers. The local development path runs the app, server, and one worker on the same computer. The hosted path runs an authenticated PostgreSQL-backed control plane with independently enrolled workers and browser, desktop, or mobile clients.
 
-> Cantrip is under active development. Local single-user mode is the current target. Standalone server and worker packages can be used on trusted networks, but hosted accounts, secure worker enrollment, and production multi-user access are not ready yet.
+> Cantrip is under active development. Anonymous loopback use remains the fastest development path; password and account modes, secure worker enrollment, Redis-backed relay coordination, quotas, audit events, and production deployment assets are implemented for hosted evaluation. Review the [hosted deployment guide](docs/HOSTED_DEPLOYMENT.md) and [acceptance ledger](docs/HOSTED_RELAY_ACCEPTANCE.md) before exposing a server publicly.
 
 ## What Cantrip does
 
@@ -113,6 +113,9 @@ Production Linux server/worker images, PostgreSQL/Redis Compose services,
 Caddy and Nginx proxy examples, explicit migrations, and backup/restore guidance
 live in the [hosted deployment guide](docs/HOSTED_DEPLOYMENT.md). Native server
 and worker archives remain self-contained and require no external Node runtime.
+The [hosted relay acceptance ledger](docs/HOSTED_RELAY_ACCEPTANCE.md) maps the
+security and multi-instance guarantees to their automated checks and records
+the practical smoke-test boundary for each release candidate.
 
 Conversation history and configuration live on the server, so they remain readable when a worker is unavailable. Project files and live runtime state remain on the worker. Moving a conversation to another worker will therefore require a compatible checkout and an explicit handoff rather than pretending that uncommitted files moved automatically.
 

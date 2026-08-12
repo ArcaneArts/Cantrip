@@ -53,7 +53,7 @@ function ownerEvidence(path, text) {
   ) {
     return "attachment-credential";
   }
-  if (path.startsWith("/api/internal/")) return "legacy-worker-token";
+  if (path.startsWith("/api/internal/")) return "worker-credential";
   if (
     text.includes("applicationOwnerId(") ||
     text.includes("principalOwnerId(") ||
@@ -309,6 +309,9 @@ async function buildInventory() {
       total: routes.length,
       websocket: routes.filter((route) => route.transport === "websocket")
         .length,
+      workerCredentialRoutes: routes.filter(
+        (route) => route.ownerEvidence === "worker-credential",
+      ).length,
       workerCommands: literalValuesInInitializer(
         protocolText,
         "workerCommandSchema",
@@ -351,7 +354,8 @@ async function buildInventory() {
         boundary: "worker-control",
         implementation: "cantrip_server/src/workers/bridge.ts",
         name: "Worker command and binary tunnel multiplexing",
-        ownerBinding: "connected worker ID; per-worker credentials are pending",
+        ownerBinding:
+          "owner and immutable worker ID from an independently revocable worker credential",
       },
       {
         boundary: "application-principal",

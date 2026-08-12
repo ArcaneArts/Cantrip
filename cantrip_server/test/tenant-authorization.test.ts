@@ -199,6 +199,42 @@ describe("hosted tenant authorization", () => {
         }),
       ).toMatchObject({ statusCode: 404 });
 
+      await database.repository.recordTokenUsage(first.userId, {
+        sourceKey: "tenant-isolation-token-usage",
+        projectId: project.id,
+        chatId: null,
+        modelRouteId: null,
+        modelName: "test-model",
+        providerName: "test-provider",
+        providerModelName: "test-provider-model",
+        usage: {
+          inputTokens: 8,
+          outputTokens: 5,
+          totalTokens: 13,
+        },
+      });
+      const [firstUsage, foreignUsage] = await Promise.all([
+        app.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/token-usage`,
+          headers: headers(first),
+        }),
+        app.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/token-usage`,
+          headers: headers(second),
+        }),
+      ]);
+      expect(firstUsage.statusCode).toBe(200);
+      expect(firstUsage.json()).toMatchObject({
+        total: {
+          inputTokens: 8,
+          outputTokens: 5,
+          totalTokens: 13,
+        },
+      });
+      expect(foreignUsage).toMatchObject({ statusCode: 404 });
+
       const unknownProjectId = "00000000-0000-0000-0000-00000000fffe";
       for (const projectId of [project.id, unknownProjectId]) {
         const response = await app.inject({

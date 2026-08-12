@@ -12,10 +12,11 @@
     "public-bootstrap": 2,
     "worker-control": 6,
     "http": 304,
-    "legacyLocalOwnerRoutes": 1,
-    "requestPrincipalRoutes": 284,
+    "legacyLocalOwnerRoutes": 0,
+    "requestPrincipalRoutes": 285,
     "total": 309,
     "websocket": 5,
+    "workerCredentialRoutes": 6,
     "workerCommands": 170,
     "liveResources": 30,
     "repositoryMethods": 273,
@@ -760,7 +761,7 @@
       "boundary": "worker-control",
       "line": 16035,
       "method": "POST",
-      "ownerEvidence": "legacy-worker-token",
+      "ownerEvidence": "worker-credential",
       "path": "/api/internal/agent-tools/worktree",
       "transport": "http"
     },
@@ -768,7 +769,7 @@
       "boundary": "worker-control",
       "line": 15803,
       "method": "GET",
-      "ownerEvidence": "legacy-worker-token",
+      "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/automations",
       "transport": "http"
     },
@@ -776,7 +777,7 @@
       "boundary": "worker-control",
       "line": 15839,
       "method": "POST",
-      "ownerEvidence": "legacy-worker-token",
+      "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/automations/:automationId/dispatch",
       "transport": "http"
     },
@@ -784,7 +785,7 @@
       "boundary": "worker-control",
       "line": 16186,
       "method": "GET",
-      "ownerEvidence": "legacy-worker-token",
+      "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/connect",
       "transport": "websocket"
     },
@@ -792,7 +793,7 @@
       "boundary": "worker-control",
       "line": 15749,
       "method": "POST",
-      "ownerEvidence": "legacy-worker-token",
+      "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/enroll",
       "transport": "http"
     },
@@ -800,7 +801,7 @@
       "boundary": "worker-control",
       "line": 16133,
       "method": "POST",
-      "ownerEvidence": "legacy-worker-token",
+      "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/heartbeat",
       "transport": "http"
     },
@@ -1232,7 +1233,7 @@
       "boundary": "application-principal",
       "line": 11092,
       "method": "GET",
-      "ownerEvidence": "legacy-local-owner",
+      "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/token-usage",
       "transport": "http"
     },
@@ -4368,7 +4369,7 @@
       "boundary": "worker-control",
       "implementation": "cantrip_server/src/workers/bridge.ts",
       "name": "Worker command and binary tunnel multiplexing",
-      "ownerBinding": "connected worker ID; per-worker credentials are pending"
+      "ownerBinding": "owner and immutable worker ID from an independently revocable worker credential"
     },
     {
       "boundary": "application-principal",

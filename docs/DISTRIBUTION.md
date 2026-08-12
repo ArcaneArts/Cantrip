@@ -120,7 +120,8 @@ Copy the packaged `.env.example` to `.env`. The startup scripts use Node's
   `CANTRIP_PAIRING_RATE_LIMIT_PER_MINUTE`,
   `CANTRIP_UPLOAD_RATE_LIMIT_PER_MINUTE`, and
   `CANTRIP_WEBSOCKET_HANDSHAKE_RATE_PER_MINUTE`: independent in-process request
-  buckets. A shared limiter is added by the multi-instance deployment layer.
+  buckets. In a multi-instance deployment, each replica receives a conservative
+  partition of the configured global budget.
 - `CANTRIP_ACCOUNT_UPLOAD_CONCURRENCY`,
   `CANTRIP_ACCOUNT_WEBSOCKET_LIMIT`,
   `CANTRIP_ACCOUNT_REMOTE_SURFACE_LIMIT`,
@@ -133,8 +134,8 @@ Copy the packaged `.env.example` to `.env`. The startup scripts use Node's
   `CANTRIP_WORKER_UPLOAD_BYTES_PER_MINUTE`,
   `CANTRIP_ACCOUNT_RELAY_BYTES_PER_MINUTE`, and
   `CANTRIP_WORKER_RELAY_BYTES_PER_MINUTE`: process-local byte budgets for
-  attachments and worker relay traffic. Use a single server replica until the
-  shared coordination layer is enabled.
+  attachments and worker relay traffic. The configured global budgets are
+  divided by the hard replica ceiling when Redis coordination is enabled.
 - `CANTRIP_METRICS_TOKEN`: optional 32+ character operator bearer token for
   aggregate Prometheus metrics. Owner/admin sessions can also read metrics.
 - `REDIS_URL`: optional shared coordination endpoint. When present, server

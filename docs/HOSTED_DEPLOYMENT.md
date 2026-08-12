@@ -1,5 +1,8 @@
 # Hosted deployment and recovery
 
+For the release-candidate validation matrix, see
+[HOSTED_RELAY_ACCEPTANCE.md](HOSTED_RELAY_ACCEPTANCE.md).
+
 Cantrip's hosted server is the authenticated rendezvous point for applications
 and worker-initiated outbound connections. PostgreSQL owns durable account,
 conversation, configuration, and routing state. Workers own repositories,
@@ -263,6 +266,45 @@ content, email addresses, or credentials.
 When a worker is offline, server-owned conversations and configuration remain
 available while worker-backed tabs become unavailable/read-only. Do not move a
 dirty worktree, running process, or active agent to another worker implicitly.
+
+## Troubleshooting
+
+- **Server refuses to start:** run Compose `config --quiet`, then inspect the
+  first configuration error. Hosted mode intentionally rejects PGlite,
+  anonymous auth, HTTP public/Code origins, missing or wildcard app origins,
+  an absent trusted-proxy list, missing encryption keys, and replica ceilings
+  smaller than configured limits.
+- **Readiness is 503 while health is 200:** inspect the JSON dependency details
+  from `/readyz`. Verify PostgreSQL connectivity and migrations first. With
+  multiple replicas, verify Redis connectivity, unique instance leases, and
+  that live instances do not exceed `CANTRIP_COORDINATION_MAX_INSTANCES`.
+- **Login succeeds but the browser acts signed out:** confirm the public origin,
+  approved app origin, forwarded HTTPS scheme, cookie `Secure`/`SameSite`
+  policy, and proxy preservation of `Host`. Do not loosen CORS to `*`.
+- **Worker enrollment or reconnect fails:** confirm the one-time code has not
+  expired or been consumed, the worker points at the API origin, and its data
+  directory is writable. After enrollment, remove the code and preserve the
+  generated credential file. A rotated or revoked credential is expected to
+  fail immediately.
+- **Worker is online but a tab is unavailable:** verify the resource's execution
+  placement and project replica belong to that worker. Repository identity,
+  canonical root, dirty state, and exact revision are safety checks; do not
+  bypass them by editing database IDs.
+- **Commands work only through one server replica:** verify every replica uses
+  the same Redis, PostgreSQL, origins, keyring, and replica ceiling. Check worker
+  presence and coordination rejection metrics; sticky routing is an
+  optimization, not a correctness requirement.
+- **Code or binary surfaces disconnect:** confirm the isolated Code origin and
+  WebSocket upgrades are proxied without buffering, capability URLs are not
+  rewritten, and relay-byte/concurrency quotas are not rejecting the stream.
+- **Scheduled work is delayed or recovered:** compare scheduler lag,
+  contention, and recovery metrics with
+  `CANTRIP_SCHEDULER_LEASE_TTL_MS`. A stale process cannot finalize after a
+  higher fencing token has recovered the occurrence.
+
+Keep request IDs and bounded server/worker logs when escalating a failure. Do
+not attach cookies, worker credentials, provider keys, prompts, terminal
+content, or source files.
 
 ## Incident recovery checklist
 

@@ -3275,7 +3275,7 @@ export async function buildApp({
     },
   ): Promise<void> => {
     try {
-      await repository.recordTokenUsage(LOCAL_USER_ID, {
+      await repository.recordTokenUsage(applicationOwnerId(), {
         sourceKey,
         projectId,
         chatId,
@@ -11093,7 +11093,7 @@ export async function buildApp({
     "/api/projects/:projectId/token-usage",
     async (request, reply) => {
       const usage = await repository.getProjectTokenUsage(
-        LOCAL_USER_ID,
+        applicationOwnerId(),
         request.params.projectId,
       );
       return usage
