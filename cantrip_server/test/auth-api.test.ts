@@ -14,10 +14,29 @@ const bootstrapToken = "bootstrap-token-with-at-least-32-characters";
 const password = "correct horse battery staple";
 const dataDirectories: string[] = [];
 
-function sessionCookie(response: { headers: Record<string, unknown> }): string {
+function responseCookies(response: {
+  headers: Record<string, unknown>;
+}): string[] {
   const header = response.headers["set-cookie"];
-  if (typeof header !== "string") throw new Error("Expected a session cookie.");
-  return header.split(";", 1)[0]!;
+  if (typeof header === "string") return [header];
+  if (
+    Array.isArray(header) &&
+    header.every((value) => typeof value === "string")
+  ) {
+    return header;
+  }
+  throw new Error("Expected a session cookie.");
+}
+
+function sessionCookie(
+  response: { headers: Record<string, unknown> },
+  name = "__Host-cantrip_session",
+): string {
+  const cookie = responseCookies(response).find((value) =>
+    value.startsWith(`${name}=`),
+  );
+  if (!cookie) throw new Error(`Expected the ${name} cookie.`);
+  return cookie.split(";", 1)[0]!;
 }
 
 async function createConfig(
@@ -114,13 +133,23 @@ describe("server account authentication", () => {
           role: "owner",
         },
       });
-      expect(registered.headers["set-cookie"]).toContain(
-        "__Host-cantrip_session=",
-      );
-      expect(registered.headers["set-cookie"]).toContain("HttpOnly");
-      expect(registered.headers["set-cookie"]).toContain("SameSite=None");
-      expect(registered.headers["set-cookie"]).toContain("Secure");
+      const cookies = responseCookies(registered);
+      expect(cookies).toHaveLength(2);
+      expect(cookies[0]).toContain("__Host-cantrip_session=");
+      expect(cookies[0]).toContain("HttpOnly");
+      expect(cookies[0]).toContain("SameSite=None");
+      expect(cookies[0]).toContain("Secure");
+      expect(cookies[0]).not.toContain("Partitioned");
+      expect(cookies[1]).toContain("__Host-cantrip_partitioned_session=");
+      expect(cookies[1]).toContain("HttpOnly");
+      expect(cookies[1]).toContain("SameSite=None");
+      expect(cookies[1]).toContain("Secure");
+      expect(cookies[1]).toContain("Partitioned");
       const cookie = sessionCookie(registered);
+      const partitionedCookie = sessionCookie(
+        registered,
+        "__Host-cantrip_partitioned_session",
+      );
       let csrfToken = registered.json().csrfToken as string;
 
       const restoredSession = await app.inject({
@@ -142,6 +171,17 @@ describe("server account authentication", () => {
       });
       expect(restoredSession.json().csrfToken).not.toBe(csrfToken);
       csrfToken = restoredSession.json().csrfToken as string;
+
+      const restoredPartitionedSession = await app.inject({
+        method: "GET",
+        url: "/api/auth/session",
+        headers: { cookie: partitionedCookie, origin },
+      });
+      expect(restoredPartitionedSession.statusCode).toBe(200);
+      expect(restoredPartitionedSession.json()).toMatchObject({
+        currentUser: { email: "Owner@Example.com" },
+      });
+      csrfToken = restoredPartitionedSession.json().csrfToken as string;
 
       const mobileGrant = await app.inject({
         method: "POST",
@@ -219,6 +259,14 @@ describe("server account authentication", () => {
         headers: { cookie, origin, "x-cantrip-csrf": csrfToken },
       });
       expect(loggedOut.statusCode).toBe(204);
+      expect(responseCookies(loggedOut)).toEqual([
+        expect.stringContaining("__Host-cantrip_session="),
+        expect.stringContaining("__Host-cantrip_partitioned_session="),
+      ]);
+      expect(responseCookies(loggedOut)).toEqual([
+        expect.stringContaining("Max-Age=0"),
+        expect.stringContaining("Max-Age=0"),
+      ]);
       expect(
         (
           await app.inject({
