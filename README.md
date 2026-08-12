@@ -81,7 +81,7 @@ The React frontend is the control surface. Vite provides the browser development
 
 ### `cantrip_server`
 
-The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings, stores projects, durable conversation history, workflow definitions, runs, and triggers, tracks worker presence, persists worktree observations and chat execution leases, and routes every file, terminal, Git, Codex, and workflow operation to the correct worker checkout.
+The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings, stores projects, durable conversation history, workflow definitions, runs, and triggers, tracks worker presence, persists worktree observations plus project-wide logical branch leases, and routes every file, terminal, Git, Codex, and workflow operation to the correct worker checkout.
 
 Local development uses embedded PGlite under `.cantrip/dev/`. A PostgreSQL `DATABASE_URL` can be supplied for a standalone database. Source files and attachment bytes are not copied into the server database. The server stores attachment metadata with conversation history and relays bounded upload and preview chunks to the owning worker.
 

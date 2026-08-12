@@ -19,6 +19,11 @@ import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
 import * as schema from "./schema.js";
+import {
+  acquireChatLogicalBranchLease,
+  LogicalBranchLeaseConflictError,
+  releaseChatLogicalBranchLease,
+} from "./logical-branch-leases.js";
 
 type ChatRelocationDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type ChatRelocationJobRow = typeof schema.chatRelocationJobs.$inferSelect;
@@ -1162,6 +1167,33 @@ export class ChatRelocationJobRepository {
           "The relocation context snapshot is missing.",
         );
       }
+      const targetWorktrees = await transaction
+        .select({ worktree: schema.projectWorktrees })
+        .from(schema.projectWorktrees)
+        .innerJoin(
+          schema.projectSources,
+          and(
+            eq(
+              schema.projectSources.id,
+              schema.projectWorktrees.projectSourceId,
+            ),
+            eq(schema.projectSources.projectId, job.projectId),
+          ),
+        )
+        .where(
+          and(
+            eq(schema.projectWorktrees.id, job.targetPlacement.worktreeId),
+            eq(schema.projectWorktrees.workerId, job.targetPlacement.workerId),
+            eq(schema.projectWorktrees.lifecycleState, "ready"),
+          ),
+        )
+        .limit(1);
+      const targetWorktree = targetWorktrees[0]?.worktree;
+      if (!targetWorktree) {
+        throw new ChatRelocationJobConflictError(
+          "The target worktree is no longer ready to receive this chat.",
+        );
+      }
       const now = new Date();
       const chats = await transaction
         .update(schema.chats)
@@ -1286,7 +1318,9 @@ export class ChatRelocationJobRepository {
           ),
         )
         .limit(1);
+      let targetLaneId: string;
       if (targetLanes[0]) {
+        targetLaneId = targetLanes[0].id;
         await transaction
           .update(schema.chatExecutionLanes)
           .set({
@@ -1299,18 +1333,38 @@ export class ChatRelocationJobRepository {
           })
           .where(eq(schema.chatExecutionLanes.id, targetLanes[0].id));
       } else {
+        targetLaneId = randomUUID();
         await transaction.insert(schema.chatExecutionLanes).values({
-          id: randomUUID(),
+          id: targetLaneId,
           chatId: job.chatId,
           worktreeId: job.targetPlacement.worktreeId,
           workerId: job.targetPlacement.workerId,
           acquiringActor: "user",
-          exclusive: false,
+          exclusive: !targetWorktree.isPrimary,
           purpose: `Relocated by job ${job.id}`,
           state: "suspended",
           runtimeSessionId: runtime.id,
           codexThreadId: job.targetRuntimeThreadId,
         });
+      }
+      try {
+        await acquireChatLogicalBranchLease(transaction, {
+          branchName: targetWorktree.branch,
+          chatId: job.chatId,
+          detached: targetWorktree.detached,
+          laneId: targetLaneId,
+          projectId: job.projectId,
+          workerId: job.targetPlacement.workerId,
+          worktreeId: job.targetPlacement.worktreeId,
+        });
+      } catch (error) {
+        if (error instanceof LogicalBranchLeaseConflictError) {
+          throw new ChatRelocationJobConflictError(error.message);
+        }
+        throw error;
+      }
+      if (targetWorktree.isPrimary) {
+        await releaseChatLogicalBranchLease(transaction, targetLaneId);
       }
       await transaction
         .update(schema.terminals)

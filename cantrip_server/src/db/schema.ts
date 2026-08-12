@@ -2696,6 +2696,62 @@ export const workflowWorktreeLeases = pgTable(
   ],
 );
 
+export const projectBranchLeases = pgTable(
+  "project_branch_leases",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    branchName: text("branch_name").notNull(),
+    chatExecutionLaneId: text("chat_execution_lane_id").references(
+      () => chatExecutionLanes.id,
+      { onDelete: "cascade" },
+    ),
+    workflowWorktreeLeaseId: text("workflow_worktree_lease_id").references(
+      () => workflowWorktreeLeases.id,
+      { onDelete: "cascade" },
+    ),
+    worktreeId: text("worktree_id").references(() => projectWorktrees.id, {
+      onDelete: "set null",
+    }),
+    workerId: text("worker_id").references(() => workers.id, {
+      onDelete: "set null",
+    }),
+    state: text("state").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("project_branch_leases_active_branch_unique")
+      .on(table.projectId, table.branchName)
+      .where(sql`${table.state} = 'active'`),
+    uniqueIndex("project_branch_leases_chat_lane_unique").on(
+      table.chatExecutionLaneId,
+    ),
+    uniqueIndex("project_branch_leases_workflow_lease_unique").on(
+      table.workflowWorktreeLeaseId,
+    ),
+    index("project_branch_leases_project_state_index").on(
+      table.projectId,
+      table.state,
+    ),
+    check(
+      "project_branch_leases_holder_check",
+      sql`(${table.chatExecutionLaneId} IS NOT NULL AND ${table.workflowWorktreeLeaseId} IS NULL) OR (${table.chatExecutionLaneId} IS NULL AND ${table.workflowWorktreeLeaseId} IS NOT NULL)`,
+    ),
+    check(
+      "project_branch_leases_state_check",
+      sql`${table.state} IN ('active', 'released')`,
+    ),
+  ],
+);
+
 export const workflowRunEvents = pgTable(
   "workflow_run_events",
   {

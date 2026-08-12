@@ -159,18 +159,19 @@ false and retain the single-worker target menu.
 
 ## Terms
 
-| Term                 | Contract                                                                                                                                                                                                              |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Worker**           | One enrolled machine that connects outbound to the server and performs worker-owned operations.                                                                                                                       |
-| **Project**          | The server-owned logical repository, independent of any checkout or machine.                                                                                                                                          |
-| **Project replica**  | One worker-local installation of a project repository. Existing `project_sources` rows become replicas without changing their identity. `Project source` remains an internal and compatibility name during migration. |
-| **Worktree**         | One Git worktree inside exactly one replica. Every replica has its own non-removable Primary worktree.                                                                                                                |
-| **Placement**        | The server-resolved project, worker, replica, worktree, and optional surface at which an operation executes. Replica and worktree may be absent for machine-level surfaces.                                           |
-| **Execution target** | An untrusted request selector naming a project, worker, replica, worktree, or surface. The server resolves it to a placement; a target is never authorization by itself.                                              |
-| **Surface**          | A durable chat, terminal, Explorer, Code tab, Browser, Remote Desktop, or underlying Remote Surface. A terminal service inherits its terminal placement.                                                              |
-| **Provisioning**     | Creating a replica on a worker at a requested, immutable Git revision.                                                                                                                                                |
-| **Synchronization**  | Fetching references and reconciling a clean replica or worktree to an expected revision under an explicit policy. It does not mean unconditional pull.                                                                |
-| **Relocation**       | Moving future chat execution to a prepared placement at a safe idle boundary. It does not move a live process.                                                                                                        |
+| Term                     | Contract                                                                                                                                                                                                              |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Worker**               | One enrolled machine that connects outbound to the server and performs worker-owned operations.                                                                                                                       |
+| **Project**              | The server-owned logical repository, independent of any checkout or machine.                                                                                                                                          |
+| **Project replica**      | One worker-local installation of a project repository. Existing `project_sources` rows become replicas without changing their identity. `Project source` remains an internal and compatibility name during migration. |
+| **Worktree**             | One Git worktree inside exactly one replica. Every replica has its own non-removable Primary worktree.                                                                                                                |
+| **Placement**            | The server-resolved project, worker, replica, worktree, and optional surface at which an operation executes. Replica and worktree may be absent for machine-level surfaces.                                           |
+| **Execution target**     | An untrusted request selector naming a project, worker, replica, worktree, or surface. The server resolves it to a placement; a target is never authorization by itself.                                              |
+| **Surface**              | A durable chat, terminal, Explorer, Code tab, Browser, Remote Desktop, or underlying Remote Surface. A terminal service inherits its terminal placement.                                                              |
+| **Provisioning**         | Creating a replica on a worker at a requested, immutable Git revision.                                                                                                                                                |
+| **Synchronization**      | Fetching references and reconciling a clean replica or worktree to an expected revision under an explicit policy. It does not mean unconditional pull.                                                                |
+| **Relocation**           | Moving future chat execution to a prepared placement at a safe idle boundary. It does not move a live process.                                                                                                        |
+| **Logical branch lease** | A server-owned mutation fence for one `(project, branch)` across every worker-local replica and physical worktree. It complements, rather than replaces, a worktree-local execution lane.                             |
 
 Use **Default worker** in user-facing text. Do not use “Primary worker”; Primary
 already names the distinguished Git worktree within each replica.
@@ -200,6 +201,38 @@ branch, or revision identifiers do not imply equal uncommitted files.
 Every worktree belongs to one replica and its worker must equal the replica's
 worker. A worktree placement without a replica is invalid. Machine-level
 surfaces may have a worker but no replica or worktree.
+
+## Project-wide branch coordination
+
+Physical worktree IDs are worker-local. Two replicas can therefore expose
+different worktree IDs for the same Git branch, so a worktree-only lease cannot
+prevent two agents from mutating that logical branch concurrently.
+
+The server also persists `project_branch_leases`. A partial unique index permits
+only one active holder for each `(project_id, branch_name)`, regardless of
+worker, replica, or physical worktree. Chat execution acquires this fence in the
+same transaction that activates its execution lane. Workflow execution acquires
+it while reserving the worktree, before provisioning or dispatch. A conflicting
+chat or workflow receives an explicit conflict and no worker command is sent.
+
+Primary chat turns release their logical fence when the turn finishes. A
+secondary chat lane retains it while suspended because that worktree may contain
+uncommitted state and can be resumed; explicit lane release relinquishes it.
+Workflow leases retain the fence through active, checkpointed, and recoverable
+states, then release it with a terminal outcome or non-recoverable allocation
+failure. Durable relocation and same-chat, same-branch handoff transfer the
+fence transactionally, so there is no unowned interval during placement commit.
+
+Detached worktrees have no branch identity and remain isolated by their physical
+lane. For a named but not-yet-observed Primary checkout, a single-replica project
+may continue under its physical lease. A multi-replica project fails closed
+until the worker reports the branch, because the server cannot safely prove
+cross-worker branch identity otherwise.
+
+Migration backfill ranks already-active mutation holders first, retains
+secondary suspended lanes and live workflow leases, ignores idle Primary lanes,
+and creates at most one active owner for each existing project branch. Losing
+legacy contenders must reacquire and will receive the normal branch conflict.
 
 ## Authority boundaries
 
@@ -284,7 +317,8 @@ For every target, the server must:
 3. Resolve its worker, replica, worktree, and surface relationships from
    server-owned records; never trust redundant client relationships.
 4. Verify relational consistency, lifecycle readiness, capability requirements,
-   online state, and any active lease.
+   online state, the physical execution lane, and any project-wide logical
+   branch lease.
 5. Authorize the requested operation, not merely read access to the target.
 6. Record an audit event for security-sensitive or mutating operations.
 7. Dispatch a bounded, idempotent command to the resolved worker.

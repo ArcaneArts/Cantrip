@@ -178,6 +178,40 @@ describe("workflow domain migration", () => {
           keys: [{ id: "test", key: Buffer.alloc(32, 1) }],
         }),
       );
+      await database.exec(`
+        INSERT INTO workers (
+          id, owner_id, name, platform, architecture, started_at, last_seen_at
+        ) VALUES (
+          'worker-2', 'user-1', 'Remote Worker', 'linux', 'x64', now(), now()
+        );
+
+        INSERT INTO project_sources (
+          id, project_id, worker_id, absolute_path, display_path
+        ) VALUES (
+          'source-2', 'project-1', 'worker-2', '/workspace/Cantrip-remote',
+          'ArcaneArts/Cantrip (remote)'
+        );
+
+        INSERT INTO workflow_runs (
+          id, workflow_id, workflow_revision_id, owner_id, project_id, status,
+          trigger_type, trigger_provenance, idempotency_key, structured_input,
+          budget, permission_manifest, worker_id, recovery_state
+        ) VALUES (
+          'run-2', 'workflow-1', 'revision-1', 'user-1', 'project-1', 'running',
+          'manual',
+          '{"actorType":"user","actorId":"user-1","deliveredAt":"2026-08-08T17:00:00.000Z","metadata":{}}'::jsonb,
+          'launch-2', '{}'::jsonb, '{}'::jsonb,
+          '{"filesystem":"workspace-write"}'::jsonb, 'worker-2', 'stable'
+        );
+
+        INSERT INTO workflow_run_nodes (
+          id, run_id, revision_node_id, node_key, node_type, status,
+          structured_input, worker_id, write_capable
+        ) VALUES (
+          'run-node-remote', 'run-2', 'revision-node-1', 'inspect', 'agent',
+          'running', '{}'::jsonb, 'worker-2', true
+        );
+      `);
       const reservation = await repository.workflowRuns.reserveWorktreeLease(
         "user-1",
         {
@@ -198,6 +232,34 @@ describe("workflow domain migration", () => {
           state: "allocating",
         },
       });
+      await expect(
+        repository.workflowRuns.reserveWorktreeLease("user-1", {
+          runId: "run-2",
+          runNodeId: "run-node-remote",
+          runNodeItemId: null,
+          projectSourceId: "source-2",
+          workerId: "worker-2",
+          requestedWorktreeId: "worktree-remote",
+          branchName: "cantrip/workflow/run-1/inspect",
+          baseRevision: "abc123",
+        }),
+      ).rejects.toThrow(/Logical branch .* is already leased/u);
+      await database.exec(`
+        INSERT INTO chats (
+          id, project_id, title, active_worker_id, active_worktree_id
+        ) VALUES (
+          'chat-branch-contender', 'project-1', 'Branch contender',
+          'worker-1', 'worktree-1'
+        );
+      `);
+      await expect(
+        repository.startChatExecutionLane(
+          "user-1",
+          "chat-branch-contender",
+          "agent",
+          "Attempt workflow-owned branch",
+        ),
+      ).rejects.toThrow(/Logical branch .* is already leased/u);
       expect(
         await repository.getWorktreeRemovalBlockers(
           "user-1",
@@ -257,6 +319,25 @@ describe("workflow domain migration", () => {
           { worktreeId: "worktree-1", startingRevision: "abc123" },
         ),
       ).resolves.toMatchObject({ state: "active" });
+      expect(
+        (
+          await database.query<{
+            state: string;
+            worker_id: string | null;
+            worktree_id: string | null;
+          }>(`
+            SELECT state, worker_id, worktree_id
+            FROM project_branch_leases
+            WHERE workflow_worktree_lease_id = '${reservation!.lease.id}'
+          `)
+        ).rows,
+      ).toEqual([
+        {
+          state: "active",
+          worker_id: "worker-1",
+          worktree_id: "worktree-1",
+        },
+      ]);
       await expect(
         repository.workflowRuns.activateWorktreeLease(
           "user-1",
@@ -357,6 +438,10 @@ describe("workflow domain migration", () => {
         UPDATE workflow_worktree_leases
         SET state = 'released', released_at = now()
         WHERE run_id = 'run-1';
+
+        UPDATE project_branch_leases
+        SET state = 'released', released_at = now(), updated_at = now()
+        WHERE workflow_worktree_lease_id = '${reservation!.lease.id}';
       `);
       expect(
         await repository.getWorktreeRemovalBlockers(
@@ -365,6 +450,39 @@ describe("workflow domain migration", () => {
           "worktree-1",
         ),
       ).toMatchObject({ workflowLeaseIds: [] });
+
+      const retainedChatLane = await repository.startChatExecutionLane(
+        "user-1",
+        "chat-branch-contender",
+        "agent",
+        "Retain a secondary branch",
+      );
+      expect(retainedChatLane).not.toBeNull();
+      await repository.finishChatExecutionLane(
+        "chat-branch-contender",
+        retainedChatLane!.executionLaneId,
+        "idle",
+      );
+      await expect(
+        repository.workflowRuns.reserveWorktreeLease("user-1", {
+          runId: "run-1",
+          runNodeId: "run-node-1",
+          runNodeItemId: null,
+          projectSourceId: "source-1",
+          workerId: "worker-1",
+          requestedWorktreeId: "blocked-by-chat",
+          branchName: "cantrip/workflow/run-1/inspect",
+          baseRevision: "abc123",
+        }),
+      ).rejects.toThrow(/Logical branch .* is already leased/u);
+      await expect(
+        repository.releaseChatExecutionLane(
+          "user-1",
+          "chat-branch-contender",
+          retainedChatLane!.executionLaneId,
+          false,
+        ),
+      ).resolves.toMatchObject({ returnedToPrimary: false });
 
       const retryReservation =
         await repository.workflowRuns.reserveWorktreeLease("user-1", {
@@ -405,6 +523,15 @@ describe("workflow domain migration", () => {
         errorCode: "branch-conflict",
         state: "failed",
       });
+      expect(
+        (
+          await database.query<{ state: string }>(`
+            SELECT state
+            FROM project_branch_leases
+            WHERE workflow_worktree_lease_id = '${retryReservation!.lease.id}'
+          `)
+        ).rows,
+      ).toEqual([{ state: "released" }]);
       await expect(
         repository.workflowRuns.activateWorktreeLease(
           "user-1",
