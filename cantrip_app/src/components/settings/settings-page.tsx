@@ -86,11 +86,18 @@ const reasoningOptions: Array<ReasoningEffort | ""> = [
   "xhigh",
 ];
 
-type SettingsSection =
-  "general" | "workers" | "tunnels" | "skills" | "mcp" | "workspaces";
+export type SettingsSection =
+  | "general"
+  | "models"
+  | "workers"
+  | "tunnels"
+  | "skills"
+  | "mcp"
+  | "workspaces";
 
 const settingsTabs: readonly SettingsTab<SettingsSection>[] = [
   { id: "general", label: "General", icon: SlidersHorizontal },
+  { id: "models", label: "Models", icon: Cpu },
   { id: "workers", label: "Workers", icon: Network },
   { id: "tunnels", label: "Tunnels", icon: Route },
   { id: "workspaces", label: "Workspaces", icon: Layers3 },
@@ -279,7 +286,8 @@ export function SettingsPage({
   const queryClient = useQueryClient();
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
   const macosDesktopRuntime = isMacosDesktopRuntime();
-  const [searchQuery, setSearchQuery] = useState("");
+  const [generalSearchQuery, setGeneralSearchQuery] = useState("");
+  const [modelSearchQuery, setModelSearchQuery] = useState("");
   const [proModeOpacityDialogOpen, setProModeOpacityDialogOpen] =
     useState(false);
   const [proModeOpacityDraft, setProModeOpacityDraft] = useState(80);
@@ -460,32 +468,33 @@ export function SettingsPage({
     }
   };
 
-  const search = searchQuery.trim().toLowerCase();
+  const generalSearch = generalSearchQuery.trim().toLowerCase();
+  const modelSearch = modelSearchQuery.trim().toLowerCase();
   const providers = settings.data?.providers ?? [];
   const models = settings.data?.models ?? [];
   const appearanceMatches =
-    !search ||
+    !generalSearch ||
     matchesSearch(
-      search,
+      generalSearch,
       "appearance theme system light dark high contrast pro mode opacity transparency vibrancy blur macos operating system",
     );
   const desktopStreamingMatches =
-    !search ||
+    !generalSearch ||
     matchesSearch(
-      search,
+      generalSearch,
       "remote desktop streaming frame rate fps quality adaptive latency bandwidth data saver sharp",
     );
   const providerSectionMatches =
-    !search ||
+    !modelSearch ||
     matchesSearch(
-      search,
+      modelSearch,
       "providers provider ollama api chatgpt account endpoint key",
     );
   const visibleProviders = providerSectionMatches
     ? providers
     : providers.filter((provider) =>
         matchesSearch(
-          search,
+          modelSearch,
           provider.name,
           provider.kind,
           provider.baseUrl,
@@ -493,16 +502,16 @@ export function SettingsPage({
         ),
       );
   const modelSectionMatches =
-    !search ||
+    !modelSearch ||
     matchesSearch(
-      search,
+      modelSearch,
       "models model default reasoning effort provider routes priority failover new agents",
     );
   const visibleModels = modelSectionMatches
     ? models
     : models.filter((model) =>
         matchesSearch(
-          search,
+          modelSearch,
           model.name,
           model.reasoningEffort,
           ...model.routes.flatMap((route) => [
@@ -517,10 +526,9 @@ export function SettingsPage({
   const providersMatch = providerSectionMatches || visibleProviders.length > 0;
   const modelsMatch = modelSectionMatches || visibleModels.length > 0;
   const hasSearchResults =
-    appearanceMatches ||
-    desktopStreamingMatches ||
-    providersMatch ||
-    modelsMatch;
+    section === "models"
+      ? providersMatch || modelsMatch
+      : appearanceMatches || desktopStreamingMatches;
 
   useEffect(() => {
     setSection(initialSection);
@@ -536,13 +544,19 @@ export function SettingsPage({
       />
       <div className="min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6">
         <div
-          className={`${section === "general" ? "grid" : "hidden"} mx-auto w-full min-w-0 max-w-6xl gap-4`}
+          className={`${section === "general" || section === "models" ? "grid" : "hidden"} mx-auto w-full min-w-0 max-w-6xl gap-4`}
         >
           <SettingsSearchField
             ariaLabel="Search settings"
-            placeholder="Search settings, providers, and models"
-            value={searchQuery}
-            onValueChange={setSearchQuery}
+            placeholder={
+              section === "models"
+                ? "Search providers and models"
+                : "Search general settings"
+            }
+            value={section === "models" ? modelSearchQuery : generalSearchQuery}
+            onValueChange={
+              section === "models" ? setModelSearchQuery : setGeneralSearchQuery
+            }
           />
 
           {settings.isError ? (
@@ -553,7 +567,7 @@ export function SettingsPage({
 
           {hasSearchResults ? (
             <div className="min-w-0 divide-y overflow-hidden border-y">
-              {appearanceMatches ? (
+              {section === "general" && appearanceMatches ? (
                 <section>
                   <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-3">
                     <div className="flex min-w-0 items-center gap-2.5">
@@ -643,7 +657,7 @@ export function SettingsPage({
                 </section>
               ) : null}
 
-              {desktopStreamingMatches ? (
+              {section === "general" && desktopStreamingMatches ? (
                 <section>
                   <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
                     <div className="flex min-w-0 items-center gap-2.5">
@@ -710,7 +724,7 @@ export function SettingsPage({
                 </section>
               ) : null}
 
-              {providersMatch ? (
+              {section === "models" && providersMatch ? (
                 <section>
                   <div className="flex items-center justify-between gap-3 px-3 py-3">
                     <div className="flex min-w-0 items-center gap-2.5">
@@ -720,7 +734,7 @@ export function SettingsPage({
                           <h2 className="text-sm font-semibold">Providers</h2>
                           <span className="text-xs text-muted-foreground">
                             {visibleProviders.length}
-                            {search &&
+                            {modelSearch &&
                             visibleProviders.length !== providers.length
                               ? ` of ${providers.length}`
                               : ""}
@@ -761,7 +775,7 @@ export function SettingsPage({
                     ))}
                     {!visibleProviders.length ? (
                       <p className="px-3 py-5 text-center text-sm text-muted-foreground">
-                        No providers match “{searchQuery.trim()}”.
+                        No providers match “{modelSearchQuery.trim()}”.
                       </p>
                     ) : null}
                   </div>
@@ -773,7 +787,7 @@ export function SettingsPage({
                 </section>
               ) : null}
 
-              {modelsMatch ? (
+              {section === "models" && modelsMatch ? (
                 <section>
                   <div className="flex items-center justify-between gap-3 px-3 py-3">
                     <div className="flex min-w-0 items-center gap-2.5">
@@ -783,7 +797,8 @@ export function SettingsPage({
                           <h2 className="text-sm font-semibold">Models</h2>
                           <span className="text-xs text-muted-foreground">
                             {visibleModels.length}
-                            {search && visibleModels.length !== models.length
+                            {modelSearch &&
+                            visibleModels.length !== models.length
                               ? ` of ${models.length}`
                               : ""}
                           </span>
@@ -901,7 +916,7 @@ export function SettingsPage({
                     ))}
                     {!visibleModels.length ? (
                       <p className="px-3 py-5 text-center text-sm text-muted-foreground">
-                        No models match “{searchQuery.trim()}”.
+                        No models match “{modelSearchQuery.trim()}”.
                       </p>
                     ) : null}
                   </div>
@@ -918,17 +933,23 @@ export function SettingsPage({
           {!hasSearchResults ? (
             <div className="py-12 text-center">
               <Search className="mx-auto mb-3 size-5 text-muted-foreground" />
-              <p className="text-sm font-medium">No settings found</p>
+              <p className="text-sm font-medium">
+                {section === "models" ? "No models found" : "No settings found"}
+              </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Try a provider name, model name, theme, or setting.
+                {section === "models"
+                  ? "Try a provider name, model name, or route."
+                  : "Try a theme, display option, or setting."}
               </p>
             </div>
           ) : null}
 
-          <p className="pb-2 text-xs text-muted-foreground">
-            The default initializes new agents. An agent’s selected model
-            applies to its next message.
-          </p>
+          {section === "models" ? (
+            <p className="pb-2 text-xs text-muted-foreground">
+              The default initializes new agents. An agent’s selected model
+              applies to its next message.
+            </p>
+          ) : null}
         </div>
         {section === "workspaces" ? (
           <div className="mx-auto w-full min-w-0 max-w-6xl">
