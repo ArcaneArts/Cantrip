@@ -167,17 +167,21 @@ The five `/api/internal/*` routes are a distinct machine-credential boundary:
 - automation dispatch reporting; and
 - agent worktree tool results.
 
-They currently use the development/shared worker token. Hosted mode must replace
-that token with a unique hashed credential bound to one owner and immutable
-worker ID. An authenticated worker event may mutate only resources already
-leased or assigned to that same owner and worker.
+Hosted and standalone workers authenticate with a unique credential bound to
+one owner and immutable worker ID. The server stores only its SHA-256 hash,
+checks a route-specific scope, updates last-use time, and rejects a credential
+presented for any other worker ID. Rotation or revocation closes the active
+worker socket immediately. The shared worker token remains accepted only for
+anonymous loopback `pnpm-dev` and embedded Tauri bootstraps. An authenticated
+worker event may mutate only resources already leased or assigned to that same
+owner and worker.
 
 ## 6. Non-route data planes
 
 | Plane                 | Current binding                                                              | Required revocation boundary                       |
 | --------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------- |
 | Application live hub  | Request owner plus authorized project/chat/run scope                         | Account session                                    |
-| Worker bridge         | Connected worker ID and legacy token                                         | Individual worker credential                       |
+| Worker bridge         | Owner, worker ID, scope, and individual credential                           | Individual worker credential                       |
 | Cantrip Code tunnel   | Random capability token bound to owner, worker, Code tab, and editor session | Attachment, app session, worker, or editor session |
 | Project share tunnel  | Random capability token bound to owner, project, worker, and root            | Attachment, app session, worker, or project        |
 | Browser/desktop relay | Surface execution context, attachment, and worker                            | Attachment, app session, surface, or worker        |
@@ -206,9 +210,10 @@ The CSRF upgrade revokes any session created by an older server revision rather
 than manufacturing a usable CSRF credential for it.
 
 The migration stores no raw session token, enrollment code, or worker secret.
-The tables are intentionally dormant until their authentication/enrollment
-services are implemented. Provider-secret encryption and audit events have
-their own later hardening milestones.
+The enrollment service consumes link codes transactionally and returns a raw
+credential exactly once; list APIs expose metadata but never hashes or raw
+secrets. Provider-secret encryption and audit events have their own later
+hardening milestones.
 
 ## 8. Application connection audit
 

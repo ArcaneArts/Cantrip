@@ -91,7 +91,6 @@ Copy the packaged `.env.example` to `.env`. The startup scripts use Node's
   separate origin to the Code surface listener without exposing worker ports.
 - `CANTRIP_DATA_DIR`: PGlite data and durable server state.
 - `DATABASE_URL`: optional PostgreSQL connection replacing PGlite.
-- `CANTRIP_WORKER_TOKEN`: shared secret for worker connections.
 - `CANTRIP_APP_ORIGINS`: comma-separated browser/Tauri origins allowed by CORS.
 - `CANTRIP_DEPLOYMENT_MODE` and `CANTRIP_BOOTSTRAP_MODE`: values announced by
   `/api/bootstrap`.
@@ -109,19 +108,29 @@ Copy the packaged `.env.example` to `.env`. The startup scripts use Node's
 
 Anonymous hosted mode still requires `CANTRIP_ALLOW_INSECURE_REMOTE=true`, which
 only disables a safety check. Password and account modes use revocable
-server-side sessions and tenant authorization. Public hosting remains gated on
-the subsequent per-worker enrollment and production-hardening milestones.
+server-side sessions, tenant authorization, and per-worker enrollment. Public
+hosting remains gated on the subsequent secrets, limits, and operational
+hardening milestones.
 The Code surface exposes only a health endpoint and capability-scoped bearer
 attachments; it does not expose application APIs or accept Cantrip cookies.
 
 ## Standalone worker
 
-The worker makes an outbound connection to `CANTRIP_SERVER_URL`. Configure the
-same `CANTRIP_WORKER_TOKEN` as the server, a stable `CANTRIP_WORKER_ID`, a
-display name, and a durable `CANTRIP_WORKER_DATA_DIR`. The artifact contains the
-exact Codex CLI compiled from `cantrip_codex/` for its operating system and
-architecture. GitHub CLI, repository files, credentials, terminals, browsers,
-and worktrees remain on the worker machine.
+The worker makes an outbound connection to `CANTRIP_SERVER_URL`. Generate a
+short-lived link code as a signed-in user, set it once as
+`CANTRIP_WORKER_ENROLLMENT_CODE`, and configure a display name plus durable
+`CANTRIP_WORKER_DATA_DIR`. The worker creates a stable local identity, exchanges
+the single-use code, and stores its unique credential in
+`worker-credential.json` with owner-only filesystem permissions. Remove the
+link code from the environment after the first successful start. Immutable
+deployments may inject `CANTRIP_WORKER_CREDENTIAL` with its bound
+`CANTRIP_WORKER_ID` from a secret manager instead.
+
+The artifact contains the exact Codex CLI compiled from `cantrip_codex/` for
+its operating system and architecture. GitHub CLI, repository files,
+credentials, terminals, browsers, and worktrees remain on the worker machine.
+The legacy shared worker token is accepted only by anonymous loopback
+`pnpm-dev` and embedded Tauri bootstraps.
 
 `CANTRIP_CODE_IDLE_TIMEOUT_MS` controls how long an unattached Code session
 keeps its editor process warm (30 minutes by default). Active tunnel streams,

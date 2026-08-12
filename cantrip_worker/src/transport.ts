@@ -54,6 +54,7 @@ function rawDataBytes(data: RawData): Uint8Array {
 
 export class WorkerConnection {
   #closed = false;
+  #authenticationRejected = false;
   #lastConnectionError: string | null = null;
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   #socket: WebSocket | null = null;
@@ -69,6 +70,7 @@ export class WorkerConnection {
   ) {}
 
   start(): void {
+    this.#authenticationRejected = false;
     this.connect();
   }
 
@@ -110,11 +112,21 @@ export class WorkerConnection {
         );
       }
     });
-    socket.once("close", () => {
+    socket.once("close", (code, reason) => {
       if (this.#socket === socket) {
         this.#socket = null;
       }
-      if (!this.#closed) {
+      if (code === 1008) {
+        this.#authenticationRejected = true;
+        const message = reason.toString() || "worker authentication rejected";
+        if (message !== this.#lastConnectionError) {
+          this.#lastConnectionError = message;
+          console.warn(
+            `[cantrip_worker] Command channel authentication rejected: ${message}. Update or re-enroll this worker, then restart it.`,
+          );
+        }
+      }
+      if (!this.#closed && !this.#authenticationRejected) {
         this.#reconnectTimer = setTimeout(() => this.connect(), 1_000);
       }
     });

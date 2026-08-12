@@ -789,7 +789,7 @@ function testWorkerHeartbeat() {
 
 beforeAll(async () => {
   database = await connectDatabase(config);
-  await database.repository.recordWorker(testWorkerHeartbeat());
+  await database.repository.recordWorker(LOCAL_USER_ID, testWorkerHeartbeat());
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "test-worker",
     repositoryId: "workflow-execution-repository",

@@ -102,9 +102,9 @@ documented in
 
 The current local mode has one anonymous Cantrip user and no Cantrip sign-in screen. `pnpm dev` or `pnpm devtop` starts the server and a local worker together, so the app connects immediately. A packaged Tauri desktop app carries its own production server, worker, Node.js runtime, and PGlite migrations. It starts those services on a private dynamic loopback port and stops them with the app.
 
-The account area in the main sidebar is also the server switcher. Its **Add server** action saves a named server origin in client bootstrap storage, tests `/api/bootstrap`, and switches every HTTP and WebSocket request after a reload. The built-in **Local** profile always selects the desktop-bundled stack in a release build and the normal development stack in `devtop`. Server profiles contain no credentials; multi-account authentication is intentionally a later milestone.
+The account area in the main sidebar is also the server switcher. Its **Add server** action saves a named server origin in client bootstrap storage, tests `/api/bootstrap`, and switches every HTTP and WebSocket request after a reload. The built-in **Local** profile always selects the desktop-bundled stack in a release build and the normal development stack in `devtop`. Server profiles contain no credentials; hosted sessions remain in server-owned HttpOnly cookies.
 
-Standalone server and worker packages establish the deployable boundary for the hosted control plane. The server supports anonymous loopback mode, protected single-user password sessions, and email/password account sessions. The remaining hosted-relay milestones enforce ownership across every route and replace the shared worker token with account-bound enrollment, so this intermediate build is not yet safe to expose directly to the public internet.
+Standalone server and worker packages establish the deployable boundary for the hosted control plane. The server supports anonymous loopback mode, protected single-user password sessions, email/password account sessions, tenant ownership, and independently revocable worker enrollment. The remaining hosted-relay milestones add secret encryption, public-endpoint hardening, shared-instance coordination, quotas, and supported production operations, so this intermediate build is not yet safe to expose directly to the public internet.
 
 Conversation history and configuration live on the server, so they remain readable when a worker is unavailable. Project files and live runtime state remain on the worker. Moving a conversation to another worker will therefore require a compatible checkout and an explicit handoff rather than pretending that uncommitted files moved automatically.
 
@@ -407,7 +407,7 @@ pnpm bundle                  # native service/client archives for this platform
 pnpm package:all             # alias for pnpm bundle
 ```
 
-Standalone service directories include a platform-matched Node.js runtime, compiled JavaScript, production dependencies, startup scripts, and a focused `.env.example`. They do not require Node.js to be installed on the host. Copy `.env.example` to `.env`, configure matching `CANTRIP_WORKER_TOKEN` values, then launch `start.sh` or `start.cmd`. The worker initiates its connection with `CANTRIP_SERVER_URL`; no inbound worker port is exposed.
+Standalone service directories include a platform-matched Node.js runtime, compiled JavaScript, production dependencies, startup scripts, and a focused `.env.example`. They do not require Node.js to be installed on the host. Copy `.env.example` to `.env`, create a short-lived worker link code while signed into the server, put it in the worker environment for its first start, then remove it after enrollment. The worker persists its unique credential in its data directory and initiates every connection through `CANTRIP_SERVER_URL`; no inbound worker port is exposed. The shared `CANTRIP_WORKER_TOKEN` path is limited to explicit loopback `pnpm dev` and embedded Tauri bootstraps.
 
 Run `pnpm release` from a clean `main` branch to pull `origin/main` and
 fast-forward `origin/release`. That branch update starts the native release

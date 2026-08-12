@@ -54,7 +54,6 @@ describe("server configuration safety", () => {
 
     vi.stubEnv("CANTRIP_SERVER_HOST", "0.0.0.0");
     vi.stubEnv("CANTRIP_ALLOW_INSECURE_REMOTE", "true");
-    vi.stubEnv("CANTRIP_WORKER_TOKEN", "a-unique-remote-worker-token");
     expect(readServerConfig()).toMatchObject({
       allowInsecureRemote: true,
       cookieSameSite: "none",
@@ -64,11 +63,19 @@ describe("server configuration safety", () => {
     });
   });
 
-  it("refuses the development worker token for remote deployments", () => {
+  it("confines shared worker tokens to explicit loopback dev bootstraps", () => {
     vi.stubEnv("CANTRIP_SERVER_HOST", "0.0.0.0");
     vi.stubEnv("CANTRIP_ALLOW_INSECURE_REMOTE", "true");
-    vi.stubEnv("CANTRIP_WORKER_TOKEN", "cantrip-local-development");
-    expect(() => readServerConfig()).toThrow(/unique CANTRIP_WORKER_TOKEN/);
+    vi.stubEnv("CANTRIP_WORKER_TOKEN", "a-unique-remote-worker-token");
+    expect(() => readServerConfig()).toThrow(/restricted.*loopback/i);
+
+    vi.stubEnv("CANTRIP_SERVER_HOST", "127.0.0.1");
+    vi.stubEnv("CANTRIP_ALLOW_INSECURE_REMOTE", "false");
+    vi.stubEnv("CANTRIP_BOOTSTRAP_MODE", "standalone");
+    expect(() => readServerConfig()).toThrow(/one-time link code/i);
+
+    vi.stubEnv("CANTRIP_BOOTSTRAP_MODE", "pnpm-dev");
+    expect(readServerConfig().workerToken).toBe("a-unique-remote-worker-token");
   });
 
   it("requires an Argon2id hash for single-user password mode", () => {

@@ -118,10 +118,51 @@ import {
   worktreeInventorySchema,
   workerEventEnvelopeSchema,
   workerHeartbeatSchema,
+  workerCredentialSummarySchema,
+  workerEnrollmentCodeResultSchema,
+  workerEnrollmentExchangeSchema,
   workerNotificationEnvelopeSchema,
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("validates bounded worker enrollment and redacted credential metadata", () => {
+    const heartbeat = workerHeartbeatSchema.parse({
+      workerId: "worker-one",
+      name: "Desk Mac",
+      platform: "darwin",
+      architecture: "arm64",
+      codexVersion: null,
+      startedAt: "2026-08-11T12:00:00.000Z",
+    });
+    expect(
+      workerEnrollmentExchangeSchema.parse({
+        code: `ctwl_${"a".repeat(32)}`,
+        heartbeat,
+      }).heartbeat.workerId,
+    ).toBe("worker-one");
+    expect(
+      workerEnrollmentCodeResultSchema.safeParse({
+        code: "short",
+        label: null,
+        expiresAt: "2026-08-11T12:10:00.000Z",
+      }).success,
+    ).toBe(false);
+    expect(
+      workerCredentialSummarySchema.parse({
+        id: "019fdc2c-e848-7552-b2ea-6fc7ef09e9f2",
+        workerId: "worker-one",
+        label: "Desk Mac",
+        scopes: ["worker:connect", "worker:heartbeat"],
+        createdAt: "2026-08-11T12:00:00.000Z",
+        expiresAt: null,
+        lastUsedAt: null,
+        revokedAt: null,
+        revokedReason: null,
+        active: true,
+      }).active,
+    ).toBe(true);
+  });
+
   it("validates split project token usage analytics", () => {
     expect(
       projectTokenUsageSchema.parse({

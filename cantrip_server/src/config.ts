@@ -199,12 +199,17 @@ export function readServerConfig(): ServerConfig {
       "Unauthenticated remote access is disabled. Set CANTRIP_ALLOW_INSECURE_REMOTE=true only behind a trusted network or authenticating reverse proxy.",
     );
   }
+  const developmentWorkerBootstrap =
+    deploymentMode === "local" &&
+    authMode === "none" &&
+    loopback &&
+    ["pnpm-dev", "tauri"].includes(bootstrapMode);
   if (
-    (!loopback || deploymentMode === "hosted") &&
-    workerToken === DEFAULT_WORKER_TOKEN
+    process.env.CANTRIP_WORKER_TOKEN !== undefined &&
+    !developmentWorkerBootstrap
   ) {
     throw new Error(
-      "Remote deployments must set a unique CANTRIP_WORKER_TOKEN.",
+      "CANTRIP_WORKER_TOKEN is restricted to anonymous loopback pnpm-dev and Tauri bootstraps. Enroll standalone and hosted workers with a one-time link code.",
     );
   }
 

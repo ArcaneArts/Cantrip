@@ -56,6 +56,7 @@ export type WorkerNotificationListener = (
 export interface WorkerCommandBus {
   attach(workerId: string, socket: WorkerSocket): void;
   close(): void;
+  disconnect?(workerId: string, reason?: string): void;
   isConnected(workerId: string): boolean;
   sendSurfaceFrame(
     workerId: string,
@@ -257,6 +258,10 @@ export class WorkerBridge implements WorkerCommandBus {
     };
     socket.on("close", disconnect);
     socket.on("error", disconnect);
+  }
+
+  disconnect(workerId: string, reason = "Worker credential was revoked"): void {
+    this.#sockets.get(workerId)?.close(1008, reason);
   }
 
   isConnected(workerId: string): boolean {

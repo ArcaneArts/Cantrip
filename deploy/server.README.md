@@ -9,5 +9,6 @@ dependencies, and PGlite migrations; PostgreSQL can be selected with
 `CANTRIP_AUTH_MODE=password` protects one personal owner with an Argon2id hash.
 `CANTRIP_AUTH_MODE=accounts` enables email/password sessions and requires either
 public registration or a one-time first-owner bootstrap token. Hosted account
-deployment is still incomplete until tenant-wide ownership enforcement and
-per-worker enrollment land; do not expose this intermediate build publicly.
+workers enroll through signed-in users with short-lived link codes and receive
+independently revocable credentials. The legacy shared worker token is accepted
+only by anonymous loopback pnpm-dev and embedded Tauri bootstraps.

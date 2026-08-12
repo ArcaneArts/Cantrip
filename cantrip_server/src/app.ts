@@ -273,6 +273,13 @@ import {
   terminalSummarySchema,
   terminalUpdateSchema,
   userSettingsUpdateSchema,
+  workerCredentialListSchema,
+  workerCredentialRotateResultSchema,
+  workerCredentialRotateSchema,
+  workerEnrollmentCodeCreateSchema,
+  workerEnrollmentCodeResultSchema,
+  workerEnrollmentExchangeSchema,
+  workerEnrollmentResultSchema,
   workerHeartbeatSchema,
   workerAttachmentReadResultSchema,
   workerAttachmentUploadResultSchema,
@@ -370,6 +377,7 @@ import {
 import {
   AuthRateLimiter,
   DUMMY_PASSWORD_HASH,
+  hashSecret,
   hashPassword,
   normalizeAccountEmail,
   safeSecretMatch,
@@ -396,6 +404,7 @@ import {
   ExecutionLaneConflictError,
   LOCAL_USER_ID,
   ProjectWorkspaceInvariantError,
+  WorkerEnrollmentError,
   WORKER_ONLINE_WINDOW_MS,
   type ChatExecutionContext,
   type ModelRuntime,
@@ -415,6 +424,12 @@ import {
   type WorkerCommandBus,
   WorkerUnavailableError,
 } from "./workers/bridge.js";
+import {
+  authenticateWorkerRequest,
+  createWorkerCredential,
+  createWorkerEnrollmentCode,
+  DEFAULT_WORKER_CREDENTIAL_SCOPES,
+} from "./workers/credentials.js";
 import { RemoteSurfaceRelay } from "./remote-surfaces/relay.js";
 import { createRemoteSurfaceWebRtcConfiguration } from "./remote-surfaces/webrtc.js";
 import {
@@ -622,6 +637,8 @@ export async function buildApp({
               "req.headers.cookie",
               "req.headers.x-cantrip-csrf",
               "req.headers.x-cantrip-bootstrap-token",
+              "req.body.code",
+              "req.body.credential",
               "req.body.password",
               "res.headers.set-cookie",
             ],
@@ -636,6 +653,7 @@ export async function buildApp({
     (_request, body, done) => done(null, body),
   );
   const bridge = workerBridge ?? new WorkerBridge();
+  const revokedWorkerCredentialIds = new Set<string>();
   const codeSurface = resolveCodeSurfaceConfig(config);
   const codeTunnel =
     providedCodeTunnel ??
@@ -3591,6 +3609,126 @@ export async function buildApp({
     const workers = await repository.listWorkers(principalOwnerId(request));
     return reply.send(workerListSchema.parse(workers));
   });
+
+  app.post(
+    "/api/workers/enrollment-codes",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = workerEnrollmentCodeCreateSchema.safeParse(
+        request.body ?? {},
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = authenticatedPrincipal(request);
+      const generated = createWorkerEnrollmentCode();
+      const expiresAt = new Date(
+        Date.now() + input.data.expiresInSeconds * 1_000,
+      );
+      await repository.createWorkerEnrollmentCode({
+        codeHash: generated.codeHash,
+        createdBySessionId: principal.sessionId,
+        expiresAt,
+        label: input.data.label,
+        ownerId: principal.user.id,
+      });
+      return reply.code(201).send(
+        workerEnrollmentCodeResultSchema.parse({
+          code: generated.code,
+          expiresAt: expiresAt.toISOString(),
+          label: input.data.label,
+        }),
+      );
+    },
+  );
+
+  app.get<{ Params: { workerId: string } }>(
+    "/api/workers/:workerId/credentials",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const credentials = await repository.listWorkerCredentials(
+        principalOwnerId(request),
+        request.params.workerId,
+      );
+      return credentials
+        ? reply.send(workerCredentialListSchema.parse(credentials))
+        : reply.code(404).send({ error: "Worker not found." });
+    },
+  );
+
+  app.post<{ Params: { workerId: string } }>(
+    "/api/workers/:workerId/credentials/rotate",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = workerCredentialRotateSchema.safeParse(request.body ?? {});
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const generated = createWorkerCredential();
+      const ownerId = principalOwnerId(request);
+      const previousCredentials = await repository.listWorkerCredentials(
+        ownerId,
+        request.params.workerId,
+      );
+      let credential: Awaited<
+        ReturnType<typeof repository.rotateWorkerCredential>
+      >;
+      try {
+        credential = await repository.rotateWorkerCredential({
+          credentialHash: generated.credentialHash,
+          credentialId: generated.credentialId,
+          label: input.data.label,
+          ownerId,
+          scopes: DEFAULT_WORKER_CREDENTIAL_SCOPES,
+          workerId: request.params.workerId,
+        });
+      } catch (error) {
+        if (error instanceof WorkerEnrollmentError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+      if (!credential) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
+      for (const previous of previousCredentials ?? []) {
+        if (previous.active) revokedWorkerCredentialIds.add(previous.id);
+      }
+      bridge.disconnect?.(
+        request.params.workerId,
+        "Worker credential was rotated",
+      );
+      return reply.send(
+        workerCredentialRotateResultSchema.parse({
+          credential: generated.credential,
+          credentialSummary: credential,
+        }),
+      );
+    },
+  );
+
+  app.delete<{
+    Params: { credentialId: string; workerId: string };
+  }>(
+    "/api/workers/:workerId/credentials/:credentialId",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const revoked = await repository.revokeWorkerCredential(
+        principalOwnerId(request),
+        request.params.workerId,
+        request.params.credentialId,
+      );
+      if (!revoked) {
+        return reply.code(404).send({ error: "Worker credential not found." });
+      }
+      revokedWorkerCredentialIds.add(revoked.id);
+      bridge.disconnect?.(
+        request.params.workerId,
+        "Worker credential was revoked",
+      );
+      return reply.code(204).send();
+    },
+  );
 
   app.get<{
     Querystring: { chatId?: string; limit?: string; status?: string };
@@ -13367,24 +13505,70 @@ export async function buildApp({
     },
   );
 
+  app.post(
+    "/api/internal/workers/enroll",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = workerEnrollmentExchangeSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const generated = createWorkerCredential();
+      try {
+        const provision = await repository.exchangeWorkerEnrollmentCode({
+          codeHash: hashSecret(input.data.code),
+          credentialHash: generated.credentialHash,
+          credentialId: generated.credentialId,
+          heartbeat: input.data.heartbeat,
+          scopes: DEFAULT_WORKER_CREDENTIAL_SCOPES,
+        });
+        publishWorkerPresence(provision.worker);
+        scheduleWorkerOfflineInvalidation(provision.worker.workerId);
+        return reply.code(201).send(
+          workerEnrollmentResultSchema.parse({
+            credential: generated.credential,
+            credentialSummary: provision.credential,
+            worker: provision.worker,
+          }),
+        );
+      } catch (error) {
+        if (error instanceof WorkerEnrollmentError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
   app.get<{ Querystring: { workerId?: string } }>(
     "/api/internal/workers/automations",
     { logLevel: "warn" },
     async (request, reply) => {
-      if (request.headers.authorization !== `Bearer ${config.workerToken}`) {
-        return reply.code(401).send({ error: "Unauthorized" });
-      }
       if (!request.query.workerId) {
         return reply.code(400).send({ error: "workerId is required." });
       }
-      const ownerId = await workerOwnerId(request.query.workerId);
-      if (!ownerId) {
+      const workerAuth = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        request.query.workerId,
+        "worker:automations",
+      );
+      if (!workerAuth) {
+        return reply.code(401).send({ error: "Unauthorized" });
+      }
+      if (
+        !(await repository.getWorker(
+          workerAuth.ownerId,
+          request.query.workerId,
+        ))
+      ) {
         return reply.code(404).send({ error: "Worker not found." });
       }
       return reply.send(
         projectAutomationListSchema.parse(
           await repository.projectAutomations.listForWorker(
-            ownerId,
+            workerAuth.ownerId,
             request.query.workerId,
           ),
         ),
@@ -13400,14 +13584,25 @@ export async function buildApp({
     "/api/internal/workers/automations/:automationId/dispatch",
     { logLevel: "warn" },
     async (request, reply) => {
-      if (request.headers.authorization !== `Bearer ${config.workerToken}`) {
-        return reply.code(401).send({ error: "Unauthorized" });
-      }
       if (!request.query.workerId) {
         return reply.code(400).send({ error: "workerId is required." });
       }
-      const ownerId = await workerOwnerId(request.query.workerId);
-      if (!ownerId) {
+      const workerAuth = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        request.query.workerId,
+        "worker:automations",
+      );
+      if (!workerAuth) {
+        return reply.code(401).send({ error: "Unauthorized" });
+      }
+      if (
+        !(await repository.getWorker(
+          workerAuth.ownerId,
+          request.query.workerId,
+        ))
+      ) {
         return reply.code(404).send({ error: "Worker not found." });
       }
       const input = projectAutomationDispatchRequestSchema.safeParse(
@@ -13416,16 +13611,16 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      return runAsOwner(ownerId, async () => {
+      return runAsOwner(workerAuth.ownerId, async () => {
         const claim = await repository.projectAutomations.claimDue(
-          ownerId,
+          workerAuth.ownerId,
           request.query.workerId!,
           request.params.automationId,
           input.data,
         );
         if (!claim) {
           const current = await repository.projectAutomations.get(
-            ownerId,
+            workerAuth.ownerId,
             request.params.automationId,
           );
           return reply.send(
@@ -13441,7 +13636,7 @@ export async function buildApp({
         const idempotencyKey = `automation:${automation.id}:${input.data.scheduledFor}`;
         try {
           const context = await repository.getChatExecutionContext(
-            ownerId,
+            workerAuth.ownerId,
             automation.chatId,
           );
           if (!context || context.workerId !== request.query.workerId) {
@@ -13451,7 +13646,7 @@ export async function buildApp({
             const githubContext =
               automation.condition.type === "open-issues"
                 ? await repository.getGithubProjectExecutionContext(
-                    ownerId,
+                    workerAuth.ownerId,
                     automation.projectId,
                   )
                 : null;
@@ -13485,7 +13680,7 @@ export async function buildApp({
           if (context.automationPaused || chatIsExecuting(context.status)) {
             const modelId = await resolveModelId(context, undefined);
             const prompt = await createLiveQueuedPrompt(
-              ownerId,
+              workerAuth.ownerId,
               context.chatId,
               {
                 text: automation.prompt,
@@ -13539,25 +13734,33 @@ export async function buildApp({
     "/api/internal/agent-tools/worktree",
     { logLevel: "warn" },
     async (request, reply) => {
-      if (request.headers.authorization !== `Bearer ${config.workerToken}`) {
-        return reply.code(401).send({ error: "Unauthorized" });
-      }
       const input = agentWorktreeToolCallSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const ownerId = await workerOwnerId(input.data.workerId);
-      if (!ownerId) {
+      const workerAuth = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        input.data.workerId,
+        "worker:agent-tools",
+      );
+      if (!workerAuth) {
+        return reply.code(401).send({ error: "Unauthorized" });
+      }
+      if (
+        !(await repository.getWorker(workerAuth.ownerId, input.data.workerId))
+      ) {
         return reply.code(404).send({ error: "Worker not found." });
       }
-      return runAsOwner(ownerId, async () => {
+      return runAsOwner(workerAuth.ownerId, async () => {
         const attribution = {
           executionLaneId: input.data.executionLaneId,
           worktreeId: "",
         };
         try {
           const context = await repository.getChatExecutionContext(
-            ownerId,
+            workerAuth.ownerId,
             input.data.chatId,
           );
           if (!context || context.workerId !== input.data.workerId) {
@@ -13566,7 +13769,7 @@ export async function buildApp({
           attribution.worktreeId = context.worktreeId;
           const result = await executeAgentWorktreeTool(input.data);
           await upsertLiveChatMessage(
-            ownerId,
+            workerAuth.ownerId,
             input.data.chatId,
             {
               role: "assistant",
@@ -13591,7 +13794,7 @@ export async function buildApp({
         } catch (error) {
           if (attribution.worktreeId) {
             await upsertLiveChatMessage(
-              ownerId,
+              workerAuth.ownerId,
               input.data.chatId,
               {
                 role: "assistant",
@@ -13629,7 +13832,21 @@ export async function buildApp({
     "/api/internal/workers/heartbeat",
     { logLevel: "warn" },
     async (request, reply) => {
-      if (request.headers.authorization !== `Bearer ${config.workerToken}`) {
+      const candidateWorkerId =
+        request.body &&
+        typeof request.body === "object" &&
+        "workerId" in request.body &&
+        typeof request.body.workerId === "string"
+          ? request.body.workerId
+          : "";
+      const workerAuth = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        candidateWorkerId,
+        "worker:heartbeat",
+      );
+      if (!workerAuth) {
         return reply.code(401).send({ error: "Unauthorized" });
       }
       const heartbeat = workerHeartbeatSchema.safeParse(request.body);
@@ -13639,7 +13856,10 @@ export async function buildApp({
           issues: heartbeat.error.issues,
         });
       }
-      const worker = await repository.recordWorker(heartbeat.data);
+      const worker = await repository.recordWorker(
+        workerAuth.ownerId,
+        heartbeat.data,
+      );
       publishWorkerPresence(worker);
       scheduleWorkerOfflineInvalidation(worker.workerId);
       void resumePendingWorktreeTransitionsForWorker(heartbeat.data.workerId);
@@ -13661,34 +13881,51 @@ export async function buildApp({
   app.get<{ Querystring: { workerId?: string } }>(
     "/api/internal/workers/connect",
     { websocket: true },
-    (socket, request) => {
-      if (
-        request.headers.authorization !== `Bearer ${config.workerToken}` ||
-        !request.query.workerId
-      ) {
+    async (socket, request) => {
+      const workerId = request.query.workerId;
+      if (!workerId) {
         socket.close(1008, "Unauthorized");
         return;
       }
-      bridge.attach(request.query.workerId, socket);
-      void synchronizeTerminalServicesForWorker(request.query.workerId).catch(
-        (error) => {
-          app.log.error(
-            { err: error, workerId: request.query.workerId },
-            "Could not reconcile terminal services",
-          );
-        },
+      const workerAuth = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        workerId,
+        "worker:connect",
       );
-      ensureWorkerNotificationSubscription(request.query.workerId);
-      scheduleWorkerWorktreeObservation(request.query.workerId);
-      void resumePendingWorktreeTransitionsForWorker(request.query.workerId);
-      void workflowExecutor
-        .recoverWorktreeLeases(request.query.workerId)
-        .catch((error) => {
-          app.log.error(
-            { err: error, workerId: request.query.workerId },
-            "Could not recover workflow worktree leases",
-          );
-        });
+      if (!workerAuth) {
+        socket.close(1008, "Unauthorized");
+        return;
+      }
+      if (
+        !workerAuth.development &&
+        revokedWorkerCredentialIds.has(workerAuth.id)
+      ) {
+        socket.close(1008, "Worker credential was revoked");
+        return;
+      }
+      const ownerId = await repository.getWorkerOwnerId(workerId);
+      if (ownerId !== workerAuth.ownerId) {
+        socket.close(1008, "Worker identity mismatch");
+        return;
+      }
+      bridge.attach(workerId, socket);
+      void synchronizeTerminalServicesForWorker(workerId).catch((error) => {
+        app.log.error(
+          { err: error, workerId },
+          "Could not reconcile terminal services",
+        );
+      });
+      ensureWorkerNotificationSubscription(workerId);
+      scheduleWorkerWorktreeObservation(workerId);
+      void resumePendingWorktreeTransitionsForWorker(workerId);
+      void workflowExecutor.recoverWorktreeLeases(workerId).catch((error) => {
+        app.log.error(
+          { err: error, workerId },
+          "Could not recover workflow worktree leases",
+        );
+      });
       void workflowExecutor.queueAvailableRuns().catch((error) => {
         app.log.error({ err: error }, "Could not dispatch queued workflows");
       });

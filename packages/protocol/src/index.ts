@@ -285,6 +285,70 @@ export const workerSummarySchema = workerHeartbeatSchema.extend({
 
 export const workerListSchema = z.array(workerSummarySchema);
 
+export const workerCredentialScopeSchema = z.enum([
+  "worker:connect",
+  "worker:heartbeat",
+  "worker:automations",
+  "worker:agent-tools",
+]);
+
+export const workerCredentialScopes = workerCredentialScopeSchema.options;
+
+const workerCredentialSecretSchema = z
+  .string()
+  .regex(/^ctwk_[A-Za-z0-9_-]{43}$/u);
+const workerEnrollmentCodeSchema = z
+  .string()
+  .regex(/^ctwl_[A-Za-z0-9_-]{32}$/u);
+
+export const workerEnrollmentCodeCreateSchema = z.object({
+  label: z.string().trim().min(1).max(120).nullable().default(null),
+  expiresInSeconds: z.number().int().min(60).max(1_800).default(600),
+});
+
+export const workerEnrollmentCodeResultSchema = z.object({
+  code: workerEnrollmentCodeSchema,
+  label: z.string().min(1).max(120).nullable(),
+  expiresAt: z.string().datetime({ offset: true }),
+});
+
+export const workerCredentialSummarySchema = z.object({
+  id: z.string().uuid(),
+  workerId: z.string().min(1).max(255),
+  label: z.string().min(1).max(120).nullable(),
+  scopes: z.array(workerCredentialScopeSchema),
+  createdAt: z.string().datetime({ offset: true }),
+  expiresAt: z.string().datetime({ offset: true }).nullable(),
+  lastUsedAt: z.string().datetime({ offset: true }).nullable(),
+  revokedAt: z.string().datetime({ offset: true }).nullable(),
+  revokedReason: z.string().min(1).max(500).nullable(),
+  active: z.boolean(),
+});
+
+export const workerCredentialListSchema = z.array(
+  workerCredentialSummarySchema,
+);
+
+export const workerEnrollmentExchangeSchema = z.object({
+  code: workerEnrollmentCodeSchema,
+  heartbeat: workerHeartbeatSchema,
+});
+
+export const workerEnrollmentResultSchema = z.object({
+  credential: workerCredentialSecretSchema,
+  credentialSummary: workerCredentialSummarySchema,
+  worker: workerSummarySchema,
+});
+
+export const workerCredentialRotateSchema = z.object({
+  label: z.string().trim().min(1).max(120).nullable().default(null),
+});
+
+export const workerCredentialRotateResultSchema = z.object({
+  credential: workerCredentialSecretSchema,
+  credentialSummary: workerCredentialSummarySchema,
+});
+
 export const skillSummarySchema = z.object({
   name: z.string().min(1),
   description: z.string(),
@@ -6451,6 +6515,28 @@ export type CodexRuntimeFeature = z.infer<typeof codexRuntimeFeatureSchema>;
 export type CodexRuntimeReport = z.infer<typeof codexRuntimeReportSchema>;
 export type WorkerHeartbeat = z.infer<typeof workerHeartbeatSchema>;
 export type WorkerSummary = z.infer<typeof workerSummarySchema>;
+export type WorkerCredentialScope = z.infer<typeof workerCredentialScopeSchema>;
+export type WorkerEnrollmentCodeCreate = z.infer<
+  typeof workerEnrollmentCodeCreateSchema
+>;
+export type WorkerEnrollmentCodeResult = z.infer<
+  typeof workerEnrollmentCodeResultSchema
+>;
+export type WorkerCredentialSummary = z.infer<
+  typeof workerCredentialSummarySchema
+>;
+export type WorkerEnrollmentExchange = z.infer<
+  typeof workerEnrollmentExchangeSchema
+>;
+export type WorkerEnrollmentResult = z.infer<
+  typeof workerEnrollmentResultSchema
+>;
+export type WorkerCredentialRotate = z.infer<
+  typeof workerCredentialRotateSchema
+>;
+export type WorkerCredentialRotateResult = z.infer<
+  typeof workerCredentialRotateResultSchema
+>;
 export type SkillSummary = z.infer<typeof skillSummarySchema>;
 export type SystemHealth = z.infer<typeof systemHealthSchema>;
 export type ThemePreference = z.infer<typeof themePreferenceSchema>;
