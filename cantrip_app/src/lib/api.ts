@@ -128,6 +128,8 @@ import {
   mcpServerSummarySchema,
   orderedIdsSchema,
   projectListSchema,
+  projectReplicaJobListSchema,
+  projectReplicaJobSummarySchema,
   projectReplicaListSchema,
   projectReplicaSummarySchema,
   projectRepositoryStatsSchema,
@@ -229,6 +231,9 @@ import type {
   McpServerConfiguration,
   McpServerCopy,
   ProjectViewKind,
+  ProjectReplicaJobCancel,
+  ProjectReplicaJobRetry,
+  ProjectReplicaProvisionCreate,
   ProjectWorkspaceCreate,
   ProjectWorkspaceUpdate,
   ProjectWorktreeCreate,
@@ -1625,6 +1630,56 @@ export async function getProjectReplica(
   return projectReplicaSummarySchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/replicas/${encodeURIComponent(projectReplicaId)}`,
+    ),
+  );
+}
+
+export async function createProjectReplica(
+  projectId: string,
+  input: ProjectReplicaProvisionCreate,
+) {
+  return projectReplicaJobSummarySchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/replicas`,
+      input,
+    ),
+  );
+}
+
+export async function getProjectReplicaJobs(projectId: string) {
+  return projectReplicaJobListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/replica-jobs`,
+    ),
+  );
+}
+
+export async function getProjectReplicaJob(jobId: string) {
+  return projectReplicaJobSummarySchema.parse(
+    await request(`/api/project-replica-jobs/${encodeURIComponent(jobId)}`),
+  );
+}
+
+export async function retryProjectReplicaJob(
+  jobId: string,
+  input: ProjectReplicaJobRetry,
+) {
+  return projectReplicaJobSummarySchema.parse(
+    await post(
+      `/api/project-replica-jobs/${encodeURIComponent(jobId)}/retry`,
+      input,
+    ),
+  );
+}
+
+export async function cancelProjectReplicaJob(
+  jobId: string,
+  input: ProjectReplicaJobCancel,
+) {
+  return projectReplicaJobSummarySchema.parse(
+    await post(
+      `/api/project-replica-jobs/${encodeURIComponent(jobId)}/cancel`,
+      input,
     ),
   );
 }

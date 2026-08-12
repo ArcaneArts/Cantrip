@@ -21,6 +21,9 @@ const execFileAsync = promisify(execFile);
 
 afterEach(async () => {
   process.env.PATH = originalPath;
+  delete process.env.GIT_CONFIG_COUNT;
+  delete process.env.GIT_CONFIG_KEY_0;
+  delete process.env.GIT_CONFIG_VALUE_0;
   await Promise.all(
     directories
       .splice(0)
@@ -29,6 +32,130 @@ afterEach(async () => {
 });
 
 describe("GitHub project files", () => {
+  it("provisions an exact revision without mutating dirty or diverged replicas", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-replica-provision-test-"),
+    );
+    directories.push(dataDirectory);
+    const fakeGithub = path.join(dataDirectory, "github");
+    const bareRepository = path.join(fakeGithub, "ArcaneArts", "Cantrip.git");
+    const seed = path.join(dataDirectory, "seed");
+    const managed = path.join(
+      dataDirectory,
+      "repositories",
+      "ArcaneArts",
+      "Cantrip",
+    );
+    await mkdir(path.dirname(bareRepository), { recursive: true });
+    await execFileAsync("git", ["init", "--bare", bareRepository]);
+    await execFileAsync("git", ["init", "--initial-branch=main", seed]);
+    await writeFile(path.join(seed, "README.md"), "exact\n");
+    await execFileAsync("git", ["-C", seed, "add", "README.md"]);
+    await execFileAsync("git", [
+      "-C",
+      seed,
+      "-c",
+      "user.name=Cantrip Test",
+      "-c",
+      "user.email=cantrip@example.test",
+      "commit",
+      "-m",
+      "Initial",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      seed,
+      "remote",
+      "add",
+      "origin",
+      bareRepository,
+    ]);
+    await execFileAsync("git", ["-C", seed, "push", "-u", "origin", "main"]);
+    await execFileAsync("git", [
+      "--git-dir",
+      bareRepository,
+      "symbolic-ref",
+      "HEAD",
+      "refs/heads/main",
+    ]);
+    const revision = (
+      await execFileAsync("git", ["-C", seed, "rev-parse", "HEAD"])
+    ).stdout.trim();
+
+    process.env.GIT_CONFIG_COUNT = "1";
+    process.env.GIT_CONFIG_KEY_0 = `url.${fakeGithub}${path.sep}.insteadOf`;
+    process.env.GIT_CONFIG_VALUE_0 = "https://github.com/";
+    await mkdir(path.dirname(managed), { recursive: true });
+    await execFileAsync("git", [
+      "clone",
+      "https://github.com/ArcaneArts/Cantrip.git",
+      managed,
+    ]);
+
+    const github = new GithubClient(dataDirectory);
+    const stages: string[] = [];
+    await expect(
+      github.provisionReplica(
+        {
+          jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb336",
+          attempt: 1,
+          nameWithOwner: "ArcaneArts/Cantrip",
+          expectedRevision: revision,
+        },
+        (progress) => stages.push(progress.stage),
+      ),
+    ).resolves.toMatchObject({
+      status: "ready",
+      resolvedRevision: revision,
+      branch: "main",
+      reused: true,
+    });
+    expect(stages).toEqual([
+      "validating",
+      "fetching",
+      "inspecting",
+      "verifying",
+    ]);
+
+    await writeFile(path.join(managed, "LOCAL.txt"), "dirty\n");
+    await expect(
+      github.provisionReplica({
+        jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb336",
+        attempt: 2,
+        nameWithOwner: "ArcaneArts/Cantrip",
+        expectedRevision: revision,
+      }),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      error: { code: "worktree-dirty", retryable: false },
+    });
+    await rm(path.join(managed, "LOCAL.txt"));
+    await writeFile(path.join(managed, "README.md"), "diverged\n");
+    await execFileAsync("git", ["-C", managed, "add", "README.md"]);
+    await execFileAsync("git", [
+      "-C",
+      managed,
+      "-c",
+      "user.name=Cantrip Test",
+      "-c",
+      "user.email=cantrip@example.test",
+      "commit",
+      "-m",
+      "Local divergence",
+    ]);
+    await expect(
+      github.provisionReplica({
+        jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb336",
+        attempt: 3,
+        nameWithOwner: "ArcaneArts/Cantrip",
+        expectedRevision: revision,
+      }),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      error: { code: "revision-diverged", retryable: false },
+    });
+  });
+
   it("reads an optional repository worktree policy without trusting invalid files", async () => {
     const repository = await mkdtemp(
       path.join(tmpdir(), "cantrip-project-policy-test-"),

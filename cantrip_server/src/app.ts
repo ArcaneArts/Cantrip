@@ -208,12 +208,16 @@ import {
   mcpServerSummarySchema,
   mentionedSkillNames,
   orderedIdsSchema,
-  projectCloneResultSchema,
   projectListSchema,
   projectRepositoryStatsSchema,
   projectTokenUsageSchema,
   projectRemoveSchema,
+  projectReplicaJobCancelSchema,
+  projectReplicaJobListSchema,
+  projectReplicaJobRetrySchema,
+  projectReplicaJobSummarySchema,
   projectReplicaListSchema,
+  projectReplicaProvisionCreateSchema,
   projectReplicaSummarySchema,
   projectShareAttachmentSchema,
   projectSummarySchema,
@@ -402,6 +406,10 @@ import {
 } from "./chats/execution-helpers.js";
 import { CodeTunnelBroker } from "./code/tunnel.js";
 import { ProjectShareTunnelBroker } from "./project-shares/tunnel.js";
+import {
+  ProjectReplicaJobExecutor,
+  type ProjectReplicaJobLiveChange,
+} from "./project-replicas/executor.js";
 import type { DatabaseConnection } from "./db/index.js";
 import {
   TabLayoutConflictError,
@@ -420,6 +428,10 @@ import {
   type ModelRuntime,
 } from "./db/repository.js";
 import { ProjectAutomationConflictError } from "./db/project-automations.js";
+import {
+  ProjectReplicaJobConflictError,
+  ProjectReplicaJobNotFoundError,
+} from "./db/project-replica-jobs.js";
 import {
   WorkflowControlConflictError,
   WorkflowRunConflictError,
@@ -1402,6 +1414,54 @@ export async function buildApp({
     app.log,
     publishWorkflowRunChange,
   );
+  const publishProjectReplicaJobChange = (
+    change: ProjectReplicaJobLiveChange,
+  ): void => {
+    if (!livePublishingEnabled) return;
+    try {
+      liveHub.publish({
+        ownerId: change.ownerId,
+        scope: { kind: "project", projectId: change.job.projectId },
+        resource: "project-replica-job",
+        action: "invalidated",
+        entityId: change.job.id,
+        revision: change.job.stateRevision,
+        payload: null,
+      });
+      liveHub.publish({
+        ownerId: change.ownerId,
+        scope: { kind: "project", projectId: change.job.projectId },
+        resource: "project",
+        action: "invalidated",
+        entityId: change.job.projectId,
+        revision: null,
+        payload: null,
+      });
+      if (change.job.state === "succeeded") {
+        liveHub.publish({
+          ownerId: change.ownerId,
+          scope: { kind: "project", projectId: change.job.projectId },
+          resource: "worktree",
+          action: "invalidated",
+          entityId: change.job.projectReplicaId,
+          revision: null,
+          payload: null,
+        });
+        scheduleWorkerWorktreeObservation(change.job.workerId);
+      }
+    } catch (error) {
+      app.log.error(
+        { err: error, projectReplicaJobId: change.job.id },
+        "Could not publish project replica job change",
+      );
+    }
+  };
+  const projectReplicaJobExecutor = new ProjectReplicaJobExecutor(
+    repository,
+    bridge,
+    app.log,
+    publishProjectReplicaJobChange,
+  );
   const [serverId, localUser] = await Promise.all([
     repository.getOrCreateServerId(),
     config.authMode === "accounts"
@@ -1418,6 +1478,8 @@ export async function buildApp({
   }
   await repository.resetTransientRemoteSurfaceStatuses();
   await repository.resetInterruptedChatExecutions();
+  await projectReplicaJobExecutor.recoverAfterRestart();
+  projectReplicaJobExecutor.queueAvailable();
   await workflowExecutor.recoverAfterRestart();
   await workflowExecutor.expireGates();
   void workflowExecutor.queueAvailableRuns().catch((error) => {
@@ -1634,7 +1696,6 @@ export async function buildApp({
   const dispatchingChats = new Set<string>();
   const pendingQueueDispatches = new Set<string>();
   const progressingWorktreeTransitions = new Set<string>();
-  const projectSetupTasks = new Set<Promise<void>>();
   const routeCooldowns = new Map<string, number>();
   const surfaceAttachmentCounts = new Map<string, number>();
   const workerOfflineTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -2261,57 +2322,6 @@ export async function buildApp({
         });
       }
     }
-  };
-
-  const queueProjectSetup = (
-    projectId: string,
-    input: {
-      nameWithOwner: string;
-      workerId: string;
-    },
-  ) => {
-    const task = (async () => {
-      try {
-        const clone = projectCloneResultSchema.parse(
-          await bridge.request(
-            input.workerId,
-            {
-              type: "project.clone",
-              repository: { nameWithOwner: input.nameWithOwner },
-            },
-            { timeoutMs: null },
-          ),
-        );
-        await repository.completeGithubProjectSetup(
-          applicationOwnerId(),
-          projectId,
-          input.workerId,
-          clone,
-        );
-        publishLiveInvalidation("project", { entityId: projectId });
-        publishLiveInvalidation("worktree", { projectId });
-        scheduleWorkerWorktreeObservation(input.workerId);
-      } catch (error) {
-        const message =
-          errorMessage(error).trim().slice(0, 4_000) ||
-          "Repository setup failed.";
-        try {
-          await repository.failGithubProjectSetup(
-            applicationOwnerId(),
-            projectId,
-            message,
-          );
-          publishLiveInvalidation("project", { entityId: projectId });
-        } catch (persistenceError) {
-          app.log.error(
-            { error: persistenceError, projectId },
-            "Could not record failed project setup",
-          );
-        }
-      }
-    })();
-    projectSetupTasks.add(task);
-    void task.finally(() => projectSetupTasks.delete(task));
   };
 
   const resolveModelId = async (
@@ -3592,6 +3602,7 @@ export async function buildApp({
           linkCodes: true,
           multipleWorkers: true,
           projectReplicas: true,
+          replicaProvisioning: true,
           workerSwitching: false,
           gitSync: false,
           worktrees: true,
@@ -4738,6 +4749,133 @@ export async function buildApp({
       return replica
         ? reply.send(projectReplicaSummarySchema.parse(replica))
         : reply.code(404).send({ error: "Project replica not found." });
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/replicas",
+    async (request, reply) => {
+      const input = projectReplicaProvisionCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const job = await repository.projectReplicaJobs.createProvision(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data,
+        );
+        publishProjectReplicaJobChange({
+          ownerId: applicationOwnerId(),
+          job,
+        });
+        projectReplicaJobExecutor.queueAvailable();
+        return reply.code(202).send(projectReplicaJobSummarySchema.parse(job));
+      } catch (error) {
+        if (error instanceof ProjectReplicaJobNotFoundError) {
+          return reply.code(404).send({ error: error.message });
+        }
+        if (error instanceof ProjectReplicaJobConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/replica-jobs",
+    async (request, reply) => {
+      const jobs = await repository.projectReplicaJobs.list(
+        applicationOwnerId(),
+        request.params.projectId,
+      );
+      return jobs
+        ? reply.send(projectReplicaJobListSchema.parse(jobs))
+        : reply.code(404).send({ error: "Project not found." });
+    },
+  );
+
+  app.get<{ Params: { jobId: string } }>(
+    "/api/project-replica-jobs/:jobId",
+    async (request, reply) => {
+      const job = await repository.projectReplicaJobs.get(
+        applicationOwnerId(),
+        request.params.jobId,
+      );
+      return job
+        ? reply.send(projectReplicaJobSummarySchema.parse(job))
+        : reply.code(404).send({ error: "Project replica job not found." });
+    },
+  );
+
+  app.post<{ Params: { jobId: string } }>(
+    "/api/project-replica-jobs/:jobId/retry",
+    async (request, reply) => {
+      const input = projectReplicaJobRetrySchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const existing = await repository.projectReplicaJobs.get(
+        applicationOwnerId(),
+        request.params.jobId,
+      );
+      if (!existing) {
+        return reply
+          .code(404)
+          .send({ error: "Project replica job not found." });
+      }
+      const job = await repository.projectReplicaJobs.retry(
+        applicationOwnerId(),
+        request.params.jobId,
+        input.data.stateRevision,
+      );
+      if (!job) {
+        return reply.code(409).send({
+          error: "The job changed or is not in a retryable state.",
+        });
+      }
+      publishProjectReplicaJobChange({
+        ownerId: applicationOwnerId(),
+        job,
+      });
+      projectReplicaJobExecutor.queueAvailable();
+      return reply.send(projectReplicaJobSummarySchema.parse(job));
+    },
+  );
+
+  app.post<{ Params: { jobId: string } }>(
+    "/api/project-replica-jobs/:jobId/cancel",
+    async (request, reply) => {
+      const input = projectReplicaJobCancelSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const existing = await repository.projectReplicaJobs.get(
+        applicationOwnerId(),
+        request.params.jobId,
+      );
+      if (!existing) {
+        return reply
+          .code(404)
+          .send({ error: "Project replica job not found." });
+      }
+      const job = await repository.projectReplicaJobs.cancel(
+        applicationOwnerId(),
+        request.params.jobId,
+        input.data.stateRevision,
+      );
+      if (!job) {
+        return reply.code(409).send({
+          error:
+            "The job changed or has crossed the safe cancellation boundary.",
+        });
+      }
+      publishProjectReplicaJobChange({
+        ownerId: applicationOwnerId(),
+        job,
+      });
+      return reply.send(projectReplicaJobSummarySchema.parse(job));
     },
   );
 
@@ -9798,6 +9936,19 @@ export async function buildApp({
           .code(409)
           .send({ error: "Wait for the repository clone to finish." });
       }
+      const replicaJobs =
+        (await repository.projectReplicaJobs.list(
+          applicationOwnerId(),
+          request.params.projectId,
+        )) ?? [];
+      if (
+        replicaJobs.some(({ state }) => ["queued", "running"].includes(state))
+      ) {
+        return reply.code(409).send({
+          error:
+            "Cancel or wait for active project replica jobs before deleting the project.",
+        });
+      }
       await projectShareTunnel.revokeProject(
         request.params.projectId,
         applicationOwnerId(),
@@ -9876,13 +10027,31 @@ export async function buildApp({
         error: "This GitHub repository already has a Cantrip project.",
       });
     }
+    if (
+      !(await repository.getWorker(applicationOwnerId(), input.data.workerId))
+    ) {
+      return reply.code(404).send({ error: "Worker not found." });
+    }
 
     try {
       const project = await repository.createGithubProject(
         applicationOwnerId(),
         input.data,
       );
-      queueProjectSetup(project.id, input.data);
+      const job = await repository.projectReplicaJobs.createProvision(
+        applicationOwnerId(),
+        project.id,
+        {
+          workerId: input.data.workerId,
+          expectedRevision: null,
+          idempotencyKey: `project-import:${project.id}:${input.data.workerId}`,
+        },
+      );
+      publishProjectReplicaJobChange({
+        ownerId: applicationOwnerId(),
+        job,
+      });
+      projectReplicaJobExecutor.queueAvailable();
       return reply.code(202).send(projectSummarySchema.parse(project));
     } catch (error) {
       if (error instanceof ProjectWorkspaceInvariantError) {
@@ -14207,6 +14376,14 @@ export async function buildApp({
         return;
       }
       bridge.attach(workerId, socket);
+      void projectReplicaJobExecutor
+        .workerConnected(workerId)
+        .catch((error) => {
+          app.log.error(
+            { err: error, workerId },
+            "Could not resume project replica jobs",
+          );
+        });
       void synchronizeTerminalServicesForWorker(workerId).catch((error) => {
         app.log.error(
           { err: error, workerId },
@@ -14251,6 +14428,7 @@ export async function buildApp({
     workerNotificationSubscriptions.clear();
     for (const timer of workerOfflineTimers.values()) clearTimeout(timer);
     workerOfflineTimers.clear();
+    projectReplicaJobExecutor.stop();
     workflowExecutor.stop();
     app.log.info(
       { live: liveHub.stats() },
@@ -14261,8 +14439,8 @@ export async function buildApp({
     await projectShareTunnel.close();
     bridge.close();
     await activeScheduleTick;
+    await projectReplicaJobExecutor.drain();
     await workflowExecutor.drain();
-    await Promise.allSettled(projectSetupTasks);
     await database.close();
   });
 

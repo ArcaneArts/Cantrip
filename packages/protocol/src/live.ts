@@ -69,6 +69,7 @@ export const appLiveResourceSchema = z.enum([
   "settings",
   "worker",
   "project",
+  "project-replica-job",
   "project-tab-layout",
   "worktree",
   "worktree-status",
