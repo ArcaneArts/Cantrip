@@ -282,6 +282,7 @@ function htmlTitle(content: string): string | null {
 async function probeProtocol(
   candidate: ListeningPortCandidate,
   protocol: BrowserServiceProtocol,
+  workerId: string,
 ): Promise<BrowserService | null> {
   return new Promise((resolve) => {
     let settled = false;
@@ -320,6 +321,7 @@ async function probeProtocol(
         });
         const complete = () =>
           finish({
+            workerId,
             host: candidate.host,
             port: candidate.port,
             protocol,
@@ -346,10 +348,11 @@ async function probeProtocol(
 
 async function probeCandidate(
   candidate: ListeningPortCandidate,
+  workerId: string,
 ): Promise<BrowserService | null> {
   return (
-    (await probeProtocol(candidate, "http")) ??
-    (await probeProtocol(candidate, "https"))
+    (await probeProtocol(candidate, "http", workerId)) ??
+    (await probeProtocol(candidate, "https", workerId))
   );
 }
 
@@ -375,19 +378,17 @@ async function mapConcurrent<T, R>(
   return results;
 }
 
-export async function discoverBrowserServices(
-  options: {
-    candidates?: ListeningPortCandidate[];
-    probe?: (
-      candidate: ListeningPortCandidate,
-    ) => Promise<BrowserService | null>;
-  } = {},
-): Promise<BrowserService[]> {
+export async function discoverBrowserServices(options: {
+  workerId: string;
+  candidates?: ListeningPortCandidate[];
+  probe?: (candidate: ListeningPortCandidate) => Promise<BrowserService | null>;
+}): Promise<BrowserService[]> {
   const candidates = options.candidates ?? (await collectListeningPorts());
   const services = await mapConcurrent(
     candidates.slice(0, MAX_CANDIDATES),
     PROBE_CONCURRENCY,
-    options.probe ?? probeCandidate,
+    options.probe ??
+      ((candidate) => probeCandidate(candidate, options.workerId)),
   );
   return browserServiceListSchema.parse(
     services

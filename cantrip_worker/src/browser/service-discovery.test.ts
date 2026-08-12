@@ -123,6 +123,7 @@ describe("browser service listener discovery", () => {
     }
 
     const services = await discoverBrowserServices({
+      workerId: "worker-test",
       candidates: [
         {
           host: "127.0.0.1",
@@ -143,6 +144,7 @@ describe("browser service listener discovery", () => {
 
     expect(services).toEqual([
       {
+        workerId: "worker-test",
         host: "127.0.0.1",
         port: address.port,
         protocol: "http",

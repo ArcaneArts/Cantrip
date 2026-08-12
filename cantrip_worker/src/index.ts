@@ -413,7 +413,7 @@ async function start(): Promise<void> {
       case "project.repository-stats":
         return readProjectRepositoryStats(command.cwd);
       case "browser.services.discover":
-        return discoverBrowserServices();
+        return discoverBrowserServices({ workerId: config.workerId });
       case "project.share.open":
         return projectShares.open(command);
       case "project.share.close":

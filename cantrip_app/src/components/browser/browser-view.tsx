@@ -15,6 +15,7 @@ import {
   ChevronDown,
   ClipboardCopy,
   ClipboardPaste,
+  CopyPlus,
   ExternalLink,
   Globe2,
   Loader2,
@@ -22,6 +23,7 @@ import {
   RefreshCw,
   RotateCw,
   Search,
+  Route,
   X,
 } from "lucide-react";
 import {
@@ -38,7 +40,18 @@ import {
 } from "@/components/remote-surface/remote-surface-canvas";
 import { Button } from "@/components/ui/button";
 import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
-import { getBrowserServices, remoteSurfaceWebSocketUrl } from "@/lib/api";
+import {
+  createTunnel,
+  ensureBrowserTunnel,
+  getBrowserServices,
+  remoteSurfaceWebSocketUrl,
+} from "@/lib/api";
+import {
+  desktopTunnelAvailable,
+  startDesktopTunnel,
+  type DesktopTunnelForwardSummary,
+} from "@/lib/desktop-tunnel";
+import { errorMessage } from "@/lib/error-message";
 import {
   forwardRemoteSurfaceClipboard,
   remoteSurfacePointerCoordinates,
@@ -100,6 +113,27 @@ export function normalizeBrowserAddress(value: string): string | null {
   } catch {
     return null;
   }
+}
+
+export function browserAddressRequiresTunnel(value: string): boolean {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return ["127.0.0.1", "0.0.0.0", "localhost", "::1", "[::1]"].includes(
+      hostname,
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function browserTunnelLocalUrl(
+  targetUrl: string,
+  attachment: DesktopTunnelForwardSummary,
+): string {
+  const local = new URL(targetUrl);
+  local.hostname = attachment.localHost;
+  local.port = String(attachment.localPort);
+  return local.toString();
 }
 
 async function openBrowserExternally(url: string): Promise<void> {
@@ -167,6 +201,11 @@ export function BrowserView({
   const [clipboardMessage, setClipboardMessage] = useState<string | null>(null);
   const [serviceMenuOpen, setServiceMenuOpen] = useState(false);
   const [serviceSearch, setServiceSearch] = useState("");
+  const [currentWorkerId, setCurrentWorkerId] = useState<string | undefined>();
+  const [externalActionPending, setExternalActionPending] = useState(false);
+  const [externalActionMessage, setExternalActionMessage] = useState<
+    string | null
+  >(null);
   const [cursor, setCursor] = useState<string | undefined>();
   const [renderedSurfaceId, setRenderedSurfaceId] = useState<string | null>(
     null,
@@ -274,6 +313,8 @@ export function BrowserView({
     pageStateRef.current = null;
     setRuntimeStatus("ready");
     setRuntimeMessage(null);
+    setCurrentWorkerId(undefined);
+    setExternalActionMessage(null);
   }, [browser.id]);
 
   useEffect(() => {
@@ -313,7 +354,7 @@ export function BrowserView({
     }
   }, [connectionState, send]);
 
-  const navigateTo = (value: string) => {
+  const navigateTo = (value: string, workerId?: string) => {
     const normalized = normalizeBrowserAddress(value);
     if (!normalized) {
       setInvalidAddress(true);
@@ -322,6 +363,7 @@ export function BrowserView({
     setInvalidAddress(false);
     setAddress(normalized);
     setCurrentUrl(normalized);
+    setCurrentWorkerId(workerId);
     setLoading(true);
     send({ type: "navigate", url: normalized });
     return true;
@@ -339,6 +381,75 @@ export function BrowserView({
       ),
     );
   };
+
+  const tunnelCurrentPage = async () => {
+    if (!desktopTunnelAvailable()) {
+      setExternalActionMessage(
+        "Opening a worker-local service requires the Cantrip desktop app.",
+      );
+      return;
+    }
+    setExternalActionPending(true);
+    setExternalActionMessage(null);
+    try {
+      const tunnel = await ensureBrowserTunnel(browser.id, {
+        url: currentUrl,
+        ...(currentWorkerId ? { workerId: currentWorkerId } : {}),
+      });
+      const attachment = await startDesktopTunnel(tunnel.id);
+      await openBrowserExternally(
+        browserTunnelLocalUrl(currentUrl, attachment),
+      );
+      setExternalActionMessage(
+        `Opened through local port ${attachment.localPort}.`,
+      );
+    } catch (error) {
+      setExternalActionMessage(errorMessage(error));
+    } finally {
+      setExternalActionPending(false);
+    }
+  };
+
+  const saveCurrentTunnel = async () => {
+    setExternalActionPending(true);
+    setExternalActionMessage(null);
+    try {
+      const managed = await ensureBrowserTunnel(browser.id, {
+        url: currentUrl,
+        ...(currentWorkerId ? { workerId: currentWorkerId } : {}),
+      });
+      if (managed.destination.kind !== "worker-tcp") {
+        throw new Error("This Browser route cannot be saved as a TCP tunnel.");
+      }
+      const target = new URL(currentUrl);
+      const saved = await createTunnel({
+        name: `${browser.title} · ${target.host}`.slice(0, 120),
+        description: `Saved from Browser: ${currentUrl}`.slice(0, 1_000),
+        projectId: browser.projectId,
+        protocolHint: managed.protocolHint,
+        destination: managed.destination,
+      });
+      setExternalActionMessage(`Saved “${saved.name}” as a custom tunnel.`);
+    } catch (error) {
+      setExternalActionMessage(errorMessage(error));
+    } finally {
+      setExternalActionPending(false);
+    }
+  };
+
+  const openCurrentPage = async () => {
+    setExternalActionPending(true);
+    setExternalActionMessage(null);
+    try {
+      await openBrowserExternally(currentUrl);
+    } catch (error) {
+      setExternalActionMessage(errorMessage(error));
+    } finally {
+      setExternalActionPending(false);
+    }
+  };
+
+  const currentPageNeedsTunnel = browserAddressRequiresTunnel(currentUrl);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
@@ -487,7 +598,7 @@ export function BrowserView({
                     <DropdownMenuPrimitive.Item
                       key={`${service.url}-${index}`}
                       className="flex cursor-default items-center gap-2 rounded-sm px-2 py-2 outline-none focus:bg-accent focus:text-accent-foreground"
-                      onSelect={() => navigateTo(service.url)}
+                      onSelect={() => navigateTo(service.url, service.workerId)}
                     >
                       <Network className="size-3.5 shrink-0 text-muted-foreground" />
                       <span className="min-w-0 flex-1">
@@ -553,25 +664,105 @@ export function BrowserView({
           <ClipboardPaste className="size-3.5" />
           <span className="sr-only">Paste clipboard into the page</span>
         </Button>
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="size-8"
-          title="Open in your system browser"
-          onClick={() =>
-            void openBrowserExternally(currentUrl).catch(() =>
-              setError("Could not open the system browser."),
-            )
-          }
-        >
-          <ExternalLink className="size-3.5" />
-          <span className="sr-only">Open externally</span>
-        </Button>
+        <DropdownMenuPrimitive.Root>
+          <DropdownMenuPrimitive.Trigger asChild>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="size-8"
+              disabled={externalActionPending}
+              title={
+                currentPageNeedsTunnel
+                  ? "Tunnel this worker-local page to your computer"
+                  : "Open in your system browser"
+              }
+            >
+              {externalActionPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : currentPageNeedsTunnel ? (
+                <Route className="size-3.5" />
+              ) : (
+                <ExternalLink className="size-3.5" />
+              )}
+              <span className="sr-only">
+                {currentPageNeedsTunnel
+                  ? "Tunnel or save local page"
+                  : "Open externally"}
+              </span>
+            </Button>
+          </DropdownMenuPrimitive.Trigger>
+          <DropdownMenuPrimitive.Portal>
+            <DropdownMenuPrimitive.Content
+              align="end"
+              sideOffset={6}
+              className="z-50 w-72 rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+            >
+              {currentPageNeedsTunnel ? (
+                <>
+                  <DropdownMenuPrimitive.Label className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Worker-local address
+                  </DropdownMenuPrimitive.Label>
+                  <DropdownMenuPrimitive.Item
+                    disabled={!desktopTunnelAvailable()}
+                    className="flex cursor-default items-start gap-2 rounded-sm px-2 py-2 outline-none focus:bg-accent data-[disabled]:opacity-50"
+                    onSelect={() => void tunnelCurrentPage()}
+                  >
+                    <Route className="mt-0.5 size-3.5 shrink-0" />
+                    <span>
+                      <span className="block text-xs font-medium">
+                        Tunnel / Open locally
+                      </span>
+                      <span className="block text-[10px] text-muted-foreground">
+                        {desktopTunnelAvailable()
+                          ? "Attach a loopback port and launch your system browser."
+                          : "Available in the Cantrip desktop app."}
+                      </span>
+                    </span>
+                  </DropdownMenuPrimitive.Item>
+                  <DropdownMenuPrimitive.Item
+                    className="flex cursor-default items-start gap-2 rounded-sm px-2 py-2 outline-none focus:bg-accent"
+                    onSelect={() => void saveCurrentTunnel()}
+                  >
+                    <CopyPlus className="mt-0.5 size-3.5 shrink-0" />
+                    <span>
+                      <span className="block text-xs font-medium">
+                        Save as custom tunnel
+                      </span>
+                      <span className="block text-[10px] text-muted-foreground">
+                        Keep an editable project-organized definition.
+                      </span>
+                    </span>
+                  </DropdownMenuPrimitive.Item>
+                </>
+              ) : (
+                <DropdownMenuPrimitive.Item
+                  className="flex cursor-default items-start gap-2 rounded-sm px-2 py-2 outline-none focus:bg-accent"
+                  onSelect={() => void openCurrentPage()}
+                >
+                  <ExternalLink className="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    <span className="block text-xs font-medium">
+                      Open externally
+                    </span>
+                    <span className="block text-[10px] text-muted-foreground">
+                      This address is directly reachable from your computer.
+                    </span>
+                  </span>
+                </DropdownMenuPrimitive.Item>
+              )}
+            </DropdownMenuPrimitive.Content>
+          </DropdownMenuPrimitive.Portal>
+        </DropdownMenuPrimitive.Root>
       </div>
       {invalidAddress ? (
         <p className="shrink-0 bg-destructive/10 px-4 py-1.5 text-xs text-destructive">
           Enter a valid HTTP or HTTPS address.
+        </p>
+      ) : null}
+      {externalActionMessage ? (
+        <p className="shrink-0 border-y bg-muted/30 px-4 py-1.5 text-xs text-muted-foreground">
+          {externalActionMessage}
         </p>
       ) : null}
       <div

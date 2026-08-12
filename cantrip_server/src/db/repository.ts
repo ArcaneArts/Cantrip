@@ -517,12 +517,16 @@ function tunnelCapabilities(
 ): TunnelSummary["capabilities"] {
   const userManaged = tunnel.management === "user-managed";
   if (!userManaged) {
+    const browserDesktopAttachment =
+      tunnel.origin === "browser" &&
+      tunnel.management === "managed-ephemeral" &&
+      tunnel.sourceEndpoint.kind === "desktop-loopback";
     return {
       canEdit: false,
       canDelete: false,
       canStart: false,
       canStop: false,
-      canAttach: false,
+      canAttach: browserDesktopAttachment && tunnel.status !== "stopping",
       canOpenOwner: tunnel.managedByKind !== null,
     };
   }
@@ -3457,6 +3461,25 @@ export class ServerRepository {
     return this.getTunnel(ownerId, id);
   }
 
+  async getManagedTunnel(
+    ownerId: string,
+    managedBy: NonNullable<TunnelSummary["managedBy"]>,
+  ): Promise<TunnelSummary | null> {
+    const rows = await this.database
+      .select({ id: schema.tunnels.id })
+      .from(schema.tunnels)
+      .where(
+        and(
+          eq(schema.tunnels.ownerId, ownerId),
+          ne(schema.tunnels.management, "user-managed"),
+          eq(schema.tunnels.managedByKind, managedBy.kind),
+          eq(schema.tunnels.managedById, managedBy.id),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? this.getTunnel(ownerId, rows[0].id) : null;
+  }
+
   async removeManagedTunnel(
     ownerId: string,
     managedBy: NonNullable<TunnelSummary["managedBy"]>,
@@ -3490,6 +3513,7 @@ export class ServerRepository {
         .select({
           id: schema.tunnels.id,
           management: schema.tunnels.management,
+          origin: schema.tunnels.origin,
           projectId: schema.tunnels.projectId,
           sourceEndpoint: schema.tunnels.sourceEndpoint,
         })
@@ -3504,7 +3528,12 @@ export class ServerRepository {
       const tunnel = tunnels[0];
       if (
         !tunnel ||
-        tunnel.management !== "user-managed" ||
+        !(
+          tunnel.management === "user-managed" ||
+          (tunnel.management === "managed-ephemeral" &&
+            tunnel.origin === "browser" &&
+            tunnel.sourceEndpoint.kind === "desktop-loopback")
+        ) ||
         tunnel.sourceEndpoint.kind !== "desktop-loopback"
       ) {
         return null;

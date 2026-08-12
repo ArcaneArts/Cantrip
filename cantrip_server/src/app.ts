@@ -24,6 +24,7 @@ import {
   browserListSchema,
   browserServiceListSchema,
   browserSummarySchema,
+  browserTunnelRequestSchema,
   browserUpdateSchema,
   codeAttachmentCreateSchema,
   codeAttachmentSchema,
@@ -418,6 +419,7 @@ import {
   type ProjectReplicaJobLiveChange,
 } from "./project-replicas/executor.js";
 import { TunnelRuntimeManager } from "./tunnels/runtime.js";
+import { browserTunnelTarget } from "./tunnels/browser-target.js";
 import type { DatabaseConnection } from "./db/index.js";
 import {
   TabLayoutConflictError,
@@ -558,6 +560,12 @@ function mutationLiveResources(route: string): AppLiveResource[] {
     return ["tunnel"];
   }
   if (route.startsWith("/api/tunnel-attachments/")) return ["tunnel"];
+  if (route === "/api/browsers/:browserId/tunnel") {
+    return ["browser", "tunnel"];
+  }
+  if (route === "/api/browsers/:browserId") {
+    return ["browser", "tunnel", "project-tab-layout"];
+  }
   if (route.startsWith("/api/workers/")) return ["worker"];
   if (
     route === "/api/projects/from-github" ||
@@ -3998,7 +4006,7 @@ export async function buildApp({
       );
       if (!created) {
         return reply.code(404).send({
-          error: "A user-managed desktop tunnel was not found.",
+          error: "An attachable desktop tunnel was not found.",
         });
       }
       tunnelRuntime.closeActive(
@@ -11358,11 +11366,94 @@ export async function buildApp({
           { type: "browser.services.discover" },
           { timeoutMs: 20_000 },
         );
-        return reply.send(browserServiceListSchema.parse(services));
+        const discovered = browserServiceListSchema.parse(services);
+        return reply.send(
+          browserServiceListSchema.parse(
+            discovered.map((service) => ({
+              ...service,
+              workerId: context.workerId,
+            })),
+          ),
+        );
       } catch (error) {
         const status = error instanceof WorkerUnavailableError ? 503 : 502;
         return reply.code(status).send({ error: errorMessage(error) });
       }
+    },
+  );
+
+  app.post<{ Params: { browserId: string } }>(
+    "/api/browsers/:browserId/tunnel",
+    async (request, reply) => {
+      const input = browserTunnelRequestSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = applicationOwnerId();
+      const context = await repository.getRemoteSurfaceExecutionContext(
+        ownerId,
+        request.params.browserId,
+      );
+      if (!context || context.surface.kind !== "browser") {
+        return reply.code(404).send({ error: "Browser not found." });
+      }
+      const workerId = input.data.workerId ?? context.workerId;
+      const workerOwned = (await repository.listWorkers(ownerId)).some(
+        (worker) => worker.workerId === workerId,
+      );
+      if (!workerOwned) {
+        return reply.code(404).send({ error: "Destination worker not found." });
+      }
+      let target;
+      try {
+        target = browserTunnelTarget(input.data.url, workerId);
+      } catch (error) {
+        return reply.code(400).send({ error: errorMessage(error) });
+      }
+      const managedBy = {
+        kind: "browser" as const,
+        id: context.surface.id,
+      };
+      const existing = await repository.getManagedTunnel(ownerId, managedBy);
+      const targetChanged = Boolean(
+        existing &&
+        (existing.destination.kind !== "worker-tcp" ||
+          existing.destination.workerId !== target.destination.workerId ||
+          existing.destination.host !== target.destination.host ||
+          existing.destination.port !== target.destination.port ||
+          existing.protocolHint !== target.protocolHint),
+      );
+      if (targetChanged && existing) {
+        await Promise.all(
+          existing.attachments.map(({ id }) =>
+            tunnelRuntime.revoke(ownerId, id),
+          ),
+        );
+      }
+      const tunnel = await repository.registerManagedTunnel(ownerId, {
+        name: `${context.surface.title} · ${target.label}`.slice(0, 120),
+        description:
+          "Temporary local access created by the owning Browser tab.",
+        projectId: context.surface.projectId,
+        origin: "browser",
+        management: "managed-ephemeral",
+        protocolHint: target.protocolHint,
+        source: { kind: "desktop-loopback" },
+        destination: target.destination,
+        managedBy,
+        desiredState: "started",
+        status:
+          existing && !targetChanged
+            ? existing.status
+            : bridge.isConnected(workerId)
+              ? "stopped"
+              : "offline",
+      });
+      return tunnel
+        ? reply.send(tunnelSummarySchema.parse(tunnel))
+        : reply.code(404).send({
+            error: "Browser project or destination worker not found.",
+          });
     },
   );
 
@@ -11421,17 +11512,30 @@ export async function buildApp({
   app.delete<{ Params: { browserId: string } }>(
     "/api/browsers/:browserId",
     async (request, reply) => {
+      const ownerId = applicationOwnerId();
       const context = await repository.getRemoteSurfaceExecutionContext(
-        applicationOwnerId(),
+        ownerId,
         request.params.browserId,
       );
+      const managedTunnel = await repository.getManagedTunnel(ownerId, {
+        kind: "browser",
+        id: request.params.browserId,
+      });
       if (
-        !(await repository.deleteBrowser(
-          applicationOwnerId(),
-          request.params.browserId,
-        ))
+        !(await repository.deleteBrowser(ownerId, request.params.browserId))
       ) {
         return reply.code(404).send({ error: "Browser not found." });
+      }
+      if (managedTunnel) {
+        await Promise.all(
+          managedTunnel.attachments.map(({ id }) =>
+            tunnelRuntime.revoke(ownerId, id),
+          ),
+        );
+        await repository.removeManagedTunnel(ownerId, {
+          kind: "browser",
+          id: request.params.browserId,
+        });
       }
       if (context && bridge.isConnected(context.workerId)) {
         void bridge

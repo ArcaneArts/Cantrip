@@ -1,15 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  browserAddressRequiresTunnel,
   browserPointerCoordinates,
   browserServiceDisplayName,
   browserTouchPoints,
+  browserTunnelLocalUrl,
   filterBrowserServices,
   normalizeBrowserAddress,
 } from "./browser-view";
 
 describe("browserServiceDisplayName", () => {
   const service = {
+    workerId: "worker-1",
     host: "127.0.0.1",
     port: 5173,
     protocol: "http" as const,
@@ -36,6 +39,7 @@ describe("browserServiceDisplayName", () => {
 describe("filterBrowserServices", () => {
   const services = [
     {
+      workerId: "worker-1",
       host: "127.0.0.1",
       port: 5173,
       protocol: "http" as const,
@@ -45,6 +49,7 @@ describe("filterBrowserServices", () => {
       title: "Cantrip Dev",
     },
     {
+      workerId: "worker-1",
       host: "127.0.0.1",
       port: 9100,
       protocol: "http" as const,
@@ -73,6 +78,30 @@ describe("normalizeBrowserAddress", () => {
       "https://example.com/docs",
     );
     expect(normalizeBrowserAddress("javascript:alert(1)")).toBeNull();
+  });
+});
+
+describe("browser local tunnel URLs", () => {
+  it("distinguishes worker-loopback pages from directly reachable URLs", () => {
+    expect(browserAddressRequiresTunnel("http://localhost:5173/app")).toBe(
+      true,
+    );
+    expect(browserAddressRequiresTunnel("https://127.0.0.1:8443/")).toBe(true);
+    expect(browserAddressRequiresTunnel("https://example.com/docs")).toBe(
+      false,
+    );
+  });
+
+  it("preserves scheme, path, query, and fragment on the local endpoint", () => {
+    expect(
+      browserTunnelLocalUrl("http://localhost:5173/deep/path?mode=hmr#ready", {
+        attachmentId: "attachment-1",
+        expiresAt: "2026-08-12T00:00:00.000Z",
+        localHost: "127.0.0.1",
+        localPort: 41_234,
+        tunnelId: "tunnel-1",
+      }),
+    ).toBe("http://127.0.0.1:41234/deep/path?mode=hmr#ready");
   });
 });
 
