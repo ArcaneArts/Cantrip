@@ -499,9 +499,11 @@ The UI must disable unsupported options and label unverified models. If importan
 
 ### 9.4 Secret distribution
 
-In local mode, the app sends a new provider key over the authenticated local server connection to the selected worker, and the worker returns only a secret handle and masked fingerprint. In remote mode, use worker public-key envelope encryption so the server transports ciphertext it cannot decrypt. A provider profile shared across workers requires provisioning a secret independently to each worker.
+The server stores provider API keys only as authenticated, versioned AES-256-GCM envelopes. Hosted deployments must supply an operator-owned keyring and identify its active key. Older keys remain available during rotation; startup verifies every envelope, migrates legacy plaintext rows, and rewraps older envelopes with the active key. Anonymous local development generates a private mode-0600 key in the ignored server data directory so the zero-configuration loop remains intact.
 
-No provider secret may appear in logs, database JSON payloads, event streams, command arguments, generated support bundles, or browser storage.
+The app receives only `hasApiKey` metadata. A decrypted key exists in server memory only while resolving an authorized model route and is sent solely to the assigned authenticated worker for its Codex runtime. It is never returned through provider APIs or live events. ChatGPT access and refresh tokens remain entirely in each worker's isolated Codex credential store.
+
+No plaintext provider secret may appear in logs, database rows or JSON payloads, event streams, generated support bundles, or browser storage. Database backups must be paired with the relevant encryption keyring, and retired keys must not be removed until all envelopes have been rewrapped and a verified backup has been taken.
 
 ## 10. App experience
 

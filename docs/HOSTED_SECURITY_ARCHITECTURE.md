@@ -1,7 +1,7 @@
 # Hosted relay security architecture
 
-- Status: protected authentication implemented; complete owner enforcement and
-  worker enrollment are subsequent hosted-relay milestones
+- Status: protected authentication, owner enforcement, worker enrollment, and
+  provider-secret encryption implemented; public-server abuse hardening remains
 - Route inventory: [`security/server-route-inventory.json`](security/server-route-inventory.json)
 - Regenerate: `pnpm audit:server-boundaries:write`
 - Verify: `pnpm audit:server-boundaries`
@@ -218,8 +218,24 @@ than manufacturing a usable CSRF credential for it.
 The migration stores no raw session token, enrollment code, or worker secret.
 The enrollment service consumes link codes transactionally and returns a raw
 credential exactly once; list APIs expose metadata but never hashes or raw
-secrets. Provider-secret encryption and audit events have their own later
-hardening milestones.
+secrets.
+
+Provider API keys use versioned AES-256-GCM envelopes authenticated to their
+owner and provider IDs. `CANTRIP_SECRET_ENCRYPTION_KEYS` supplies a bounded JSON
+keyring of key IDs to canonical base64 32-byte keys, and
+`CANTRIP_ACTIVE_SECRET_ENCRYPTION_KEY_ID` selects the writer. Hosted startup
+fails without the keyring. Startup decrypts every existing envelope to detect a
+missing or incorrect key before accepting traffic, migrates legacy plaintext
+rows, clears their plaintext column, and rewraps envelopes written by older
+keys. Anonymous local deployments instead persist an ignored mode-0600 key in
+their server data directory.
+
+Provider list and mutation responses expose only `hasApiKey`; plaintext exists
+briefly in server memory when an authorized model route is dispatched to its
+assigned worker. Operators must back up the keyring separately from PostgreSQL,
+retain old keys until startup has completed a rotation, and never place the
+keyring in source control, logs, or support bundles. Audit events remain a later
+hardening milestone.
 
 ## 8. Application connection audit
 

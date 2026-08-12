@@ -654,6 +654,8 @@ export async function buildApp({
               "req.headers.x-cantrip-bootstrap-token",
               "req.body.code",
               "req.body.credential",
+              "req.body.apiKey",
+              "req.body.enrollmentCode",
               "req.body.password",
               "res.headers.set-cookie",
             ],

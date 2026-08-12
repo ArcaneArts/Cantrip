@@ -50,6 +50,17 @@ export interface ServerConfig {
   codeSurfacePort?: number;
   workerToken: string;
   remoteSurfaceWebRtc?: RemoteSurfaceTurnConfig;
+  secretEncryption?: SecretEncryptionConfig;
+}
+
+export interface SecretEncryptionKeyConfig {
+  id: string;
+  key: Uint8Array;
+}
+
+export interface SecretEncryptionConfig {
+  activeKeyId: string;
+  keys: SecretEncryptionKeyConfig[];
 }
 
 function readBoolean(name: string, value: string | undefined): boolean {
@@ -151,6 +162,62 @@ function readRemoteSurfaceWebRtcConfig(): RemoteSurfaceTurnConfig | undefined {
   };
 }
 
+function decodeSecretEncryptionKey(id: string, value: unknown): Uint8Array {
+  if (!/^[A-Za-z0-9._-]{1,64}$/u.test(id)) {
+    throw new Error(
+      "CANTRIP_SECRET_ENCRYPTION_KEYS contains an invalid key identifier.",
+    );
+  }
+  if (typeof value !== "string") {
+    throw new Error(
+      `CANTRIP_SECRET_ENCRYPTION_KEYS entry ${id} must be a base64 string.`,
+    );
+  }
+  const key = Buffer.from(value, "base64");
+  if (key.byteLength !== 32 || key.toString("base64") !== value) {
+    throw new Error(
+      `CANTRIP_SECRET_ENCRYPTION_KEYS entry ${id} must encode exactly 32 bytes using canonical base64.`,
+    );
+  }
+  return key;
+}
+
+function readSecretEncryptionConfig(): SecretEncryptionConfig | undefined {
+  const encoded = process.env.CANTRIP_SECRET_ENCRYPTION_KEYS?.trim();
+  if (!encoded) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(encoded);
+  } catch {
+    throw new Error(
+      "CANTRIP_SECRET_ENCRYPTION_KEYS must be a JSON object of key IDs to base64-encoded 32-byte keys.",
+    );
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(
+      "CANTRIP_SECRET_ENCRYPTION_KEYS must be a JSON object of key IDs to base64-encoded 32-byte keys.",
+    );
+  }
+  const keys = Object.entries(parsed).map(([id, value]) => ({
+    id,
+    key: decodeSecretEncryptionKey(id, value),
+  }));
+  if (keys.length === 0 || keys.length > 16) {
+    throw new Error(
+      "CANTRIP_SECRET_ENCRYPTION_KEYS must contain between 1 and 16 keys.",
+    );
+  }
+  const activeKeyId =
+    process.env.CANTRIP_ACTIVE_SECRET_ENCRYPTION_KEY_ID?.trim() ??
+    (keys.length === 1 ? keys[0]!.id : "");
+  if (!keys.some(({ id }) => id === activeKeyId)) {
+    throw new Error(
+      "CANTRIP_ACTIVE_SECRET_ENCRYPTION_KEY_ID must name a configured encryption key.",
+    );
+  }
+  return { activeKeyId, keys };
+}
+
 export function readServerConfig(): ServerConfig {
   const host = process.env.CANTRIP_SERVER_HOST ?? "127.0.0.1";
   const workerToken = process.env.CANTRIP_WORKER_TOKEN ?? DEFAULT_WORKER_TOKEN;
@@ -163,6 +230,7 @@ export function readServerConfig(): ServerConfig {
   const authMode = authModeSchema.parse(
     process.env.CANTRIP_AUTH_MODE ?? "none",
   );
+  const secretEncryption = readSecretEncryptionConfig();
   const allowInsecureRemote = readBoolean(
     "CANTRIP_ALLOW_INSECURE_REMOTE",
     process.env.CANTRIP_ALLOW_INSECURE_REMOTE,
@@ -210,6 +278,11 @@ export function readServerConfig(): ServerConfig {
   ) {
     throw new Error(
       "CANTRIP_WORKER_TOKEN is restricted to anonymous loopback pnpm-dev and Tauri bootstraps. Enroll standalone and hosted workers with a one-time link code.",
+    );
+  }
+  if (deploymentMode === "hosted" && !secretEncryption) {
+    throw new Error(
+      "Hosted deployments require CANTRIP_SECRET_ENCRYPTION_KEYS so provider secrets can be encrypted at rest.",
     );
   }
 
@@ -288,6 +361,7 @@ export function readServerConfig(): ServerConfig {
     codeSurfacePort,
     workerToken,
     remoteSurfaceWebRtc: readRemoteSurfaceWebRtcConfig(),
+    secretEncryption,
   };
   if (config.cookieSameSite === "none" && !config.cookieSecure) {
     throw new Error(

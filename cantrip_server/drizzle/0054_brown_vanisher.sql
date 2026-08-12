@@ -1,0 +1,1 @@
+ALTER TABLE "model_providers" ADD COLUMN "api_key_envelope" text;
