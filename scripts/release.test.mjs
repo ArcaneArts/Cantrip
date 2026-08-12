@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { promoteReleaseBranch } from "./release.mjs";
+import { promoteReleaseBranch, releaseCantrip } from "./release.mjs";
 
 function git(root, ...arguments_) {
   return execFileSync("git", arguments_, {
@@ -70,6 +70,28 @@ test("refuses to promote from a non-main branch", async () => {
       () => promoteReleaseBranch({ root: fixture.repository }),
       /must run from main/u,
     );
+  } finally {
+    await rm(fixture.root, { force: true, recursive: true });
+  }
+});
+
+test("deploys the exact commit promoted to release", async () => {
+  const fixture = await repositoryFixture();
+  try {
+    let deployed;
+    const result = await releaseCantrip({
+      root: fixture.repository,
+      deploy: async (options) => {
+        deployed = options;
+        return { commit: options.commit };
+      },
+    });
+    assert.equal(deployed.root, fixture.repository);
+    assert.equal(
+      deployed.commit,
+      git(fixture.repository, "rev-parse", "refs/heads/main"),
+    );
+    assert.equal(result.deployment.commit, deployed.commit);
   } finally {
     await rm(fixture.root, { force: true, recursive: true });
   }

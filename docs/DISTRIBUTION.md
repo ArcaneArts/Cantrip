@@ -14,14 +14,15 @@ runtime used to build it.
 Run packaging on the target operating system because the Worker contains
 native PTY, screen capture, and image modules.
 
-| Command                 | Output                                                            | Host requirement                       |
-| ----------------------- | ----------------------------------------------------------------- | -------------------------------------- |
-| `pnpm package:server`   | `artifacts/cantrip-server-<os>-<arch>`                            | No external runtime                    |
-| `pnpm package:worker`   | `artifacts/cantrip-worker-<os>-<arch>`                            | Native build host, Git at runtime      |
-| `pnpm package:services` | Both service trees                                                | Same as above                          |
-| `pnpm package:app`      | Tauri bundles under `cantrip_app/src-tauri/target/release/bundle` | Tauri build prerequisites              |
-| `pnpm bundle`           | All three native artifacts under `artifacts/bundles/<os>-<arch>`  | Current native build host              |
-| `pnpm release`          | Fast-forwards `release` to synchronized `main`                    | Clean `main` checkout with push access |
+| Command                 | Output                                                            | Host requirement                                      |
+| ----------------------- | ----------------------------------------------------------------- | ----------------------------------------------------- |
+| `pnpm package:server`   | `artifacts/cantrip-server-<os>-<arch>`                            | No external runtime                                   |
+| `pnpm package:worker`   | `artifacts/cantrip-worker-<os>-<arch>`                            | Native build host, Git at runtime                     |
+| `pnpm package:services` | Both service trees                                                | Same as above                                         |
+| `pnpm package:app`      | Tauri bundles under `cantrip_app/src-tauri/target/release/bundle` | Tauri build prerequisites                             |
+| `pnpm bundle`           | All three native artifacts under `artifacts/bundles/<os>-<arch>`  | Current native build host                             |
+| `pnpm deploy:server`    | Builds and deploys the current production server                  | Clean synchronized `main`, Docker, Infisical, and SSH |
+| `pnpm release`          | Promotes `release`, builds, migrates, and deploys production      | Same as `deploy:server`, plus push access             |
 
 `pnpm bundle` performs the complete native build for the current host. It builds
 the protocol once, packages Server and Worker concurrently, then builds the
@@ -45,8 +46,18 @@ pnpm release
 The command first runs `git pull --ff-only origin main`, requires local `main`
 to equal `origin/main`, verifies that `origin/release` can fast-forward, and
 then pushes `main` to `release`. It refuses dirty trees, non-`main` branches,
-unpushed main commits, and divergent release history. It does not build or
-publish anything locally; the `release` branch push is the workflow trigger.
+unpushed main commits, and divergent release history. The branch push triggers
+the native client release workflow. The same command also cross-builds the
+Linux x64 Server with Docker Buildx, loads the production environment from
+Infisical on the release machine, and deploys that exact commit to the
+configured production host. Use `pnpm deploy:server` to retry only the server
+deployment without advancing `release`.
+
+Neither command gives the production host access to Infisical. The release
+machine writes an allowlisted service environment over SSH, excluding the SSH
+deployment key and any other non-server secret, and removes its temporary key
+and bundle after the attempt. See [Hosted deployment and recovery](HOSTED_DEPLOYMENT.md#production-droplet-release)
+for prerequisites, host paths, and service operations.
 
 All lower-level packaging commands accept the native target explicitly, for example
 `pnpm package:worker --target darwin-arm64` or

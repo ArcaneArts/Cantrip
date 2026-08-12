@@ -1,0 +1,15 @@
+{
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+winterhold.cantrip.art {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:4310
+}
+
+code.winterhold.cantrip.art {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:4311
+}

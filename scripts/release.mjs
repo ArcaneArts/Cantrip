@@ -4,6 +4,8 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { deployProduction } from "./deploy-production.mjs";
+
 const scriptRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -99,7 +101,21 @@ export function promoteReleaseBranch({ root = scriptRoot } = {}) {
   return { changed: true, commit: mainCommit };
 }
 
+export async function releaseCantrip({
+  root = scriptRoot,
+  deploy = deployProduction,
+} = {}) {
+  const promotion = promoteReleaseBranch({ root });
+  const deployment = await deploy({ root, commit: promotion.commit });
+  return { deployment, promotion };
+}
+
 const isMain =
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-if (isMain) promoteReleaseBranch();
+if (isMain) {
+  releaseCantrip().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}

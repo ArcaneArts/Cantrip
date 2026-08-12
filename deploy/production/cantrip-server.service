@@ -1,0 +1,33 @@
+[Unit]
+Description=Cantrip server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=cantrip
+Group=cantrip
+WorkingDirectory=/opt/cantrip/current
+EnvironmentFile=/etc/cantrip/production.env
+ExecStart=/opt/cantrip/current/start.sh
+Restart=always
+RestartSec=3
+TimeoutStopSec=30
+KillSignal=SIGTERM
+UMask=0077
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/cantrip
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictRealtime=true
+
+[Install]
+WantedBy=multi-user.target
