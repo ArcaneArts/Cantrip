@@ -198,7 +198,7 @@ export interface AccountCredentialRecord {
 }
 
 export interface ActiveUserSession {
-  authMethod: "password" | "account-password";
+  authMethod: "password" | "account-password" | "mobile-qr";
   csrfTokenHash: string;
   expiresAt: Date;
   id: string;
@@ -1702,6 +1702,91 @@ export class ServerRepository {
       id: row.session.id,
       user: toUserSummary(row.user),
     };
+  }
+
+  async createMobileSignInGrant(input: {
+    codeHash: string;
+    createdBySessionId: string;
+    expiresAt: Date;
+    ownerId: string;
+  }): Promise<string> {
+    const id = randomUUID();
+    await this.database.insert(schema.mobileSignInGrants).values({
+      id,
+      ownerId: input.ownerId,
+      createdBySessionId: input.createdBySessionId,
+      codeHash: input.codeHash,
+      expiresAt: input.expiresAt,
+    });
+    return id;
+  }
+
+  async consumeMobileSignInGrant(
+    codeHash: string,
+  ): Promise<UserSummary | null> {
+    const now = new Date();
+    return this.database.transaction(async (transaction) => {
+      const grants = await transaction
+        .select()
+        .from(schema.mobileSignInGrants)
+        .where(
+          and(
+            eq(schema.mobileSignInGrants.codeHash, codeHash),
+            isNull(schema.mobileSignInGrants.consumedAt),
+            gt(schema.mobileSignInGrants.expiresAt, now),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const grant = grants[0];
+      if (!grant) return null;
+
+      const creatingSessions = grant.createdBySessionId
+        ? await transaction
+            .select({ id: schema.userSessions.id })
+            .from(schema.userSessions)
+            .where(
+              and(
+                eq(schema.userSessions.id, grant.createdBySessionId),
+                eq(schema.userSessions.userId, grant.ownerId),
+                isNull(schema.userSessions.revokedAt),
+                gt(schema.userSessions.expiresAt, now),
+              ),
+            )
+            .limit(1)
+        : [];
+      if (!creatingSessions[0]) return null;
+
+      const consumed = await transaction
+        .update(schema.mobileSignInGrants)
+        .set({ consumedAt: now })
+        .where(
+          and(
+            eq(schema.mobileSignInGrants.id, grant.id),
+            isNull(schema.mobileSignInGrants.consumedAt),
+          ),
+        )
+        .returning({ id: schema.mobileSignInGrants.id });
+      if (!consumed[0]) return null;
+
+      const users = await transaction
+        .select()
+        .from(schema.users)
+        .where(
+          and(
+            eq(schema.users.id, grant.ownerId),
+            eq(schema.users.status, "active"),
+          ),
+        )
+        .limit(1);
+      return users[0] ? toUserSummary(users[0]) : null;
+    });
+  }
+
+  async pruneMobileSignInGrants(before: Date): Promise<void> {
+    await this.database
+      .delete(schema.mobileSignInGrants)
+      .where(lt(schema.mobileSignInGrants.expiresAt, before));
   }
 
   async isUserSessionActive(

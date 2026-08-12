@@ -42,6 +42,14 @@ export function hashSecret(secret: string): string {
   return createHash("sha256").update(secret, "utf8").digest("hex");
 }
 
+export function createMobileSignInCode(): {
+  code: string;
+  codeHash: string;
+} {
+  const code = `ctms_${randomBytes(24).toString("base64url")}`;
+  return { code, codeHash: hashSecret(code) };
+}
+
 export function safeSecretMatch(candidate: string, expected: string): boolean {
   const candidateBuffer = Buffer.from(hashSecret(candidate), "hex");
   const expectedBuffer = Buffer.from(hashSecret(expected), "hex");

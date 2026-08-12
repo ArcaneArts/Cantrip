@@ -21,6 +21,7 @@ import {
 } from "react";
 
 import { ServerSwitcher } from "@/components/servers/server-switcher";
+import { MobileSignInScanner } from "@/components/auth/mobile-sign-in-scanner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -188,6 +189,7 @@ function ConnectionErrorScreen({
             />
           </div>
         </div>
+        <MobileSignInScanner className="w-full" />
       </div>
     </SessionFrame>
   );
@@ -340,6 +342,8 @@ function AuthenticationScreen({
             {registering ? "Create account" : "Continue"}
           </Button>
         </form>
+
+        {!registering ? <MobileSignInScanner className="mt-3 w-full" /> : null}
 
         <div className="mt-4 flex items-center justify-between gap-3 text-xs">
           {canRegister && !bootstrap.auth.registration.bootstrapRequired ? (

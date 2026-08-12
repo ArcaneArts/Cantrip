@@ -139,6 +139,58 @@ describe("server account authentication", () => {
       expect(restoredSession.json().csrfToken).not.toBe(csrfToken);
       csrfToken = restoredSession.json().csrfToken as string;
 
+      const mobileGrant = await app.inject({
+        method: "POST",
+        url: "/api/auth/mobile-sign-in/grants",
+        headers: { cookie, origin, "x-cantrip-csrf": csrfToken },
+        payload: {},
+      });
+      expect(mobileGrant.statusCode).toBe(201);
+      expect(mobileGrant.headers["cache-control"]).toBe("no-store");
+      expect(mobileGrant.json()).toMatchObject({
+        code: expect.stringMatching(/^ctms_/u),
+        expiresAt: expect.any(String),
+      });
+
+      const deniedMobileOrigin = await app.inject({
+        method: "POST",
+        url: "/api/auth/mobile-sign-in/exchange",
+        headers: { origin: "https://attacker.invalid" },
+        payload: { code: mobileGrant.json().code },
+      });
+      expect(deniedMobileOrigin.statusCode).toBe(403);
+
+      const mobileSession = await app.inject({
+        method: "POST",
+        url: "/api/auth/mobile-sign-in/exchange",
+        headers: { origin },
+        payload: { code: mobileGrant.json().code },
+      });
+      expect(mobileSession.statusCode).toBe(200);
+      expect(mobileSession.json().currentUser).toMatchObject({
+        email: "Owner@Example.com",
+      });
+      const mobileCookie = sessionCookie(mobileSession);
+      const mobileSessions = await app.inject({
+        method: "GET",
+        url: "/api/account/sessions",
+        headers: { cookie: mobileCookie, origin },
+      });
+      expect(mobileSessions.statusCode).toBe(200);
+      expect(mobileSessions.json()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ authMethod: "mobile-qr", current: true }),
+        ]),
+      );
+
+      const reusedMobileGrant = await app.inject({
+        method: "POST",
+        url: "/api/auth/mobile-sign-in/exchange",
+        headers: { origin },
+        payload: { code: mobileGrant.json().code },
+      });
+      expect(reusedMobileGrant.statusCode).toBe(401);
+
       const missingCsrf = await app.inject({
         method: "POST",
         url: "/api/auth/logout",

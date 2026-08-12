@@ -4,6 +4,7 @@ import {
   Loader2,
   LogOut,
   Plus,
+  QrCode,
   Server,
   ShieldOff,
   Trash2,
@@ -11,6 +12,7 @@ import {
 import { useMemo, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import { MobileSignInQrDialog } from "@/components/auth/mobile-sign-in-qr-dialog";
 import {
   Dialog,
   DialogContent,
@@ -52,6 +54,7 @@ export function ServerSwitcher({
   const [testResult, setTestResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [mobileQrOpen, setMobileQrOpen] = useState(false);
   const clientSession = getClientSession();
 
   const switchTo = (id: string) => {
@@ -197,6 +200,12 @@ export function ServerSwitcher({
             </DropdownMenuPrimitive.Item>
             {clientSession?.authMode !== "none" ? (
               <>
+                <DropdownMenuPrimitive.Item
+                  className={itemClass}
+                  onSelect={() => setMobileQrOpen(true)}
+                >
+                  <QrCode className="size-4" /> Sign in mobile device
+                </DropdownMenuPrimitive.Item>
                 <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
                 <DropdownMenuPrimitive.Item
                   className={itemClass}
@@ -275,6 +284,10 @@ export function ServerSwitcher({
           </form>
         </DialogContent>
       </Dialog>
+      <MobileSignInQrDialog
+        onOpenChange={setMobileQrOpen}
+        open={mobileQrOpen}
+      />
     </>
   );
 }

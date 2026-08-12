@@ -157,13 +157,35 @@ export const authSessionStateSchema = z.object({
   expiresAt: z.iso.datetime().nullable(),
 });
 
+export const mobileSignInGrantCreateResultSchema = z.object({
+  code: z.string().regex(/^ctms_[A-Za-z0-9_-]{32}$/u),
+  expiresAt: z.iso.datetime(),
+});
+
+export const mobileSignInGrantExchangeSchema = z.object({
+  code: z.string().regex(/^ctms_[A-Za-z0-9_-]{32}$/u),
+});
+
+export const mobileSignInQrPayloadSchema = z.object({
+  type: z.literal("cantrip.mobile-sign-in"),
+  version: z.literal(1),
+  serverId: z.string().min(1),
+  serverName: z.string().trim().min(1).max(120),
+  serverUrl: z.url().refine((value) => {
+    const protocol = new URL(value).protocol;
+    return protocol === "http:" || protocol === "https:";
+  }, "Server URL must use HTTP or HTTPS."),
+  code: mobileSignInGrantExchangeSchema.shape.code,
+  expiresAt: z.iso.datetime(),
+});
+
 export const authLogoutAllResultSchema = z.object({
   revokedSessions: z.number().int().nonnegative(),
 });
 
 export const accountSessionSummarySchema = z.object({
   id: z.string().min(1),
-  authMethod: z.enum(["password", "account-password"]),
+  authMethod: z.enum(["password", "account-password", "mobile-qr"]),
   label: z.string().max(200).nullable(),
   current: z.boolean(),
   createdAt: z.iso.datetime(),
@@ -7625,6 +7647,13 @@ export type AccountRegistration = z.infer<typeof accountRegistrationSchema>;
 export type AuthLogin = z.infer<typeof authLoginSchema>;
 export type AuthSession = z.infer<typeof authSessionSchema>;
 export type AuthSessionState = z.infer<typeof authSessionStateSchema>;
+export type MobileSignInGrantCreateResult = z.infer<
+  typeof mobileSignInGrantCreateResultSchema
+>;
+export type MobileSignInGrantExchange = z.infer<
+  typeof mobileSignInGrantExchangeSchema
+>;
+export type MobileSignInQrPayload = z.infer<typeof mobileSignInQrPayloadSchema>;
 export type AuthLogoutAllResult = z.infer<typeof authLogoutAllResultSchema>;
 export type ServerBootstrap = z.infer<typeof serverBootstrapSchema>;
 export type CodexRuntimeMethodState = z.infer<
