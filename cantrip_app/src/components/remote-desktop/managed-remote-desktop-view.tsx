@@ -16,6 +16,7 @@ import {
   ClipboardPaste,
   Loader2,
   MonitorUp,
+  Network,
   RotateCw,
   Search,
 } from "lucide-react";
@@ -25,6 +26,7 @@ import {
   RemoteSurfaceCanvas,
   type RemoteSurfaceCanvasHandle,
 } from "@/components/remote-surface/remote-surface-canvas";
+import { RemoteDesktopFleetPanel } from "@/components/remote-desktop/remote-desktop-fleet-panel";
 import { Button } from "@/components/ui/button";
 import {
   StyledDropdownMenuContent,
@@ -156,8 +158,14 @@ function ApplicationIcon({ source }: { source?: string | null }) {
 
 export function ManagedRemoteDesktopView({
   desktop,
+  fleetDiscovery = false,
+  onOpenFleetTarget,
+  workerName,
 }: {
   desktop: RemoteDesktopSummary;
+  fleetDiscovery?: boolean;
+  onOpenFleetTarget?: (workerId: string, target: RemoteDesktopTarget) => void;
+  workerName?: string;
 }) {
   const queryClient = useQueryClient();
   const remoteCanvasRef = useRef<RemoteSurfaceCanvasHandle>(null);
@@ -187,6 +195,7 @@ export function ManagedRemoteDesktopView({
   const [targetInventory, setTargetInventory] =
     useState<RemoteDesktopTargetInventory>({ monitors: [], windows: [] });
   const [targetMenuOpen, setTargetMenuOpen] = useState(false);
+  const [fleetOpen, setFleetOpen] = useState(false);
   const [targetSearch, setTargetSearch] = useState("");
   const [iconSources, setIconSources] = useState<Record<string, string | null>>(
     {},
@@ -217,6 +226,9 @@ export function ManagedRemoteDesktopView({
     onSuccess: (updated) => {
       setRequestedTarget(updated.target);
       queryClient.setQueryData(["remote-desktop", desktop.id], updated);
+      void queryClient.invalidateQueries({
+        queryKey: ["remote-desktop-fleet", desktop.projectId],
+      });
     },
   });
 
@@ -444,12 +456,27 @@ export function ManagedRemoteDesktopView({
         <div className="mr-auto flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
           <MonitorUp className="size-4 shrink-0" />
           <span className="truncate">
-            {desktopSize.width} × {desktopSize.height} · project worker
+            {desktopSize.width} × {desktopSize.height} ·{" "}
+            {workerName ?? desktop.workerId}
             {streamStatus
               ? ` · ${Math.round(streamStatus.observedFps)} / ${streamStatus.targetFps} FPS · ${streamStatus.backend}`
               : ""}
           </span>
         </div>
+        {fleetDiscovery ? (
+          <Button
+            aria-pressed={fleetOpen}
+            className="h-8 gap-1.5 px-2"
+            onClick={() => setFleetOpen((open) => !open)}
+            size="sm"
+            title="Show desktop fleet"
+            type="button"
+            variant={fleetOpen ? "outline" : "ghost"}
+          >
+            <Network className="size-3.5" />
+            Fleet
+          </Button>
+        ) : null}
         <DropdownMenuPrimitive.Root
           open={targetMenuOpen}
           onOpenChange={(open) => {
@@ -654,77 +681,93 @@ export function ManagedRemoteDesktopView({
           </Button>
         ) : null}
       </div>
-      <div
-        ref={surfaceRef}
-        className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black"
-      >
-        <RemoteSurfaceCanvas
-          ref={remoteCanvasRef}
-          allowAltModifiedText={false}
-          ariaLabel={`${desktop.title} managed desktop surface`}
-          className="touch-none outline-none"
-          coordinateLimit="last-pixel"
-          framePolicy="latest"
-          getCoordinateSpace={() => desktopSizeRef.current}
-          ignoreRepeatedKeyDown
-          onFocus={() => send({ type: "focus" })}
-          onFrameError={() =>
-            setError("The worker sent an unreadable desktop frame.")
-          }
-          onKey={send}
-          onPointer={send}
-          onRendered={() => setRenderedSurfaceId(desktop.id)}
-          pointerMoveThrottleMs={32}
-          preventContextMenu
-          style={{ width: canvasSize.width, height: canvasSize.height }}
-        />
-        <SurfaceLoadingVeil
-          label={
-            connectionState === "reconnecting"
-              ? "Reconnecting to Remote Desktop…"
-              : "Starting Remote Desktop…"
-          }
-          visible={!surfaceReady}
-        />
-        {surfaceReady && connectionState !== "ready" ? (
-          <div className="pointer-events-none absolute right-4 top-3 flex items-center gap-2 rounded-md bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur-xl">
-            <Loader2 className="size-3 animate-spin" />
-            {connectionState === "connecting"
-              ? "Starting Remote Desktop…"
-              : "Reconnecting…"}
-          </div>
-        ) : null}
-        {runtimeStatus === "launching" || launchingApplication ? (
-          <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-3 rounded-xl bg-background/90 px-4 py-3 text-sm text-foreground shadow-xl backdrop-blur-xl">
-            <Loader2 className="size-4 animate-spin" />
-            Launching {launchingApplication ?? "application"} on the worker…
-          </div>
-        ) : null}
-        {error || updateTarget.error ? (
-          <div className="pointer-events-none absolute bottom-4 left-1/2 max-w-xl -translate-x-1/2 rounded-md bg-destructive/90 px-3 py-2 text-sm text-destructive-foreground shadow-lg">
-            {error ??
-              (updateTarget.error instanceof Error
-                ? updateTarget.error.message
-                : "Could not change the Remote Desktop target.")}
-          </div>
-        ) : null}
-        {targetMessage &&
-        runtimeStatus !== "launching" &&
-        !launchingApplication &&
-        !error ? (
-          <div className="pointer-events-none absolute left-1/2 top-3 max-w-xl -translate-x-1/2 truncate rounded-md bg-background/85 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur-xl">
-            {targetMessage}
-          </div>
-        ) : null}
-        {notice ? (
-          <div className="pointer-events-none absolute bottom-4 right-4 rounded-md bg-background/90 px-3 py-2 text-xs text-foreground shadow-lg backdrop-blur-xl">
-            {notice}
-          </div>
-        ) : null}
-        {connectionState === "ready" && transportState === "fallback" ? (
-          <div className="pointer-events-none absolute left-4 top-3 rounded-md bg-background/80 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur-xl">
-            Server-relayed WebSocket stream
-          </div>
+      <div className="relative flex min-h-0 flex-1">
+        <div
+          ref={surfaceRef}
+          className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden bg-black"
+        >
+          <RemoteSurfaceCanvas
+            ref={remoteCanvasRef}
+            allowAltModifiedText={false}
+            ariaLabel={`${desktop.title} managed desktop surface`}
+            className="touch-none outline-none"
+            coordinateLimit="last-pixel"
+            framePolicy="latest"
+            getCoordinateSpace={() => desktopSizeRef.current}
+            ignoreRepeatedKeyDown
+            onFocus={() => send({ type: "focus" })}
+            onFrameError={() =>
+              setError("The worker sent an unreadable desktop frame.")
+            }
+            onKey={send}
+            onPointer={send}
+            onRendered={() => setRenderedSurfaceId(desktop.id)}
+            pointerMoveThrottleMs={32}
+            preventContextMenu
+            style={{ width: canvasSize.width, height: canvasSize.height }}
+          />
+          <SurfaceLoadingVeil
+            label={
+              connectionState === "reconnecting"
+                ? "Reconnecting to Remote Desktop…"
+                : "Starting Remote Desktop…"
+            }
+            visible={!surfaceReady}
+          />
+          {surfaceReady && connectionState !== "ready" ? (
+            <div className="pointer-events-none absolute right-4 top-3 flex items-center gap-2 rounded-md bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur-xl">
+              <Loader2 className="size-3 animate-spin" />
+              {connectionState === "connecting"
+                ? "Starting Remote Desktop…"
+                : "Reconnecting…"}
+            </div>
+          ) : null}
+          {runtimeStatus === "launching" || launchingApplication ? (
+            <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-3 rounded-xl bg-background/90 px-4 py-3 text-sm text-foreground shadow-xl backdrop-blur-xl">
+              <Loader2 className="size-4 animate-spin" />
+              Launching {launchingApplication ?? "application"} on the worker…
+            </div>
+          ) : null}
+          {error || updateTarget.error ? (
+            <div className="pointer-events-none absolute bottom-4 left-1/2 max-w-xl -translate-x-1/2 rounded-md bg-destructive/90 px-3 py-2 text-sm text-destructive-foreground shadow-lg">
+              {error ??
+                (updateTarget.error instanceof Error
+                  ? updateTarget.error.message
+                  : "Could not change the Remote Desktop target.")}
+            </div>
+          ) : null}
+          {targetMessage &&
+          runtimeStatus !== "launching" &&
+          !launchingApplication &&
+          !error ? (
+            <div className="pointer-events-none absolute left-1/2 top-3 max-w-xl -translate-x-1/2 truncate rounded-md bg-background/85 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur-xl">
+              {targetMessage}
+            </div>
+          ) : null}
+          {notice ? (
+            <div className="pointer-events-none absolute bottom-4 right-4 rounded-md bg-background/90 px-3 py-2 text-xs text-foreground shadow-lg backdrop-blur-xl">
+              {notice}
+            </div>
+          ) : null}
+          {connectionState === "ready" && transportState === "fallback" ? (
+            <div className="pointer-events-none absolute left-4 top-3 rounded-md bg-background/80 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur-xl">
+              Server-relayed WebSocket stream
+            </div>
+          ) : null}
+        </div>
+        {fleetOpen ? (
+          <RemoteDesktopFleetPanel
+            currentDesktop={desktop}
+            onClose={() => setFleetOpen(false)}
+            onSelect={(workerId, target) => {
+              if (workerId === desktop.workerId) {
+                updateTarget.mutate(target);
+              } else {
+                onOpenFleetTarget?.(workerId, target);
+              }
+              setFleetOpen(false);
+            }}
+          />
         ) : null}
       </div>
     </div>

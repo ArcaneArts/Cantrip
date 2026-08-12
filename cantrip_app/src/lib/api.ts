@@ -161,6 +161,7 @@ import {
   queuedPromptListSchema,
   queuedPromptSchema,
   remoteDesktopListSchema,
+  remoteDesktopFleetSchema,
   remoteDesktopSummarySchema,
   serverBootstrapSchema,
   settingsBundleSchema,
@@ -2198,6 +2199,14 @@ export async function getRemoteDesktops(projectId: string) {
   );
 }
 
+export async function getRemoteDesktopFleet(projectId: string) {
+  return remoteDesktopFleetSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/remote-desktop-fleet`,
+    ),
+  );
+}
+
 export async function getRemoteDesktop(desktopId: string) {
   return remoteDesktopSummarySchema.parse(
     await request(`/api/remote-desktops/${encodeURIComponent(desktopId)}`),
@@ -2208,6 +2217,7 @@ export async function createRemoteDesktop(
   projectId: string,
   tabGroupId?: string,
   target?: ExecutionTarget,
+  desktopTarget?: RemoteDesktopTarget,
 ) {
   return remoteDesktopSummarySchema.parse(
     await post(
@@ -2215,6 +2225,7 @@ export async function createRemoteDesktop(
       {
         ...(tabGroupId ? { tabGroupId } : {}),
         ...(target ? { target } : {}),
+        ...(desktopTarget ? { desktopTarget } : {}),
       },
     ),
   );

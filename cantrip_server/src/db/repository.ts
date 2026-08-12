@@ -72,6 +72,7 @@ import type {
   QueuedPromptOrder,
   QueuedPromptUpdate,
   RemoteDesktopSummary,
+  RemoteDesktopTarget,
   RemoteSurfaceCapabilities,
   RemoteSurfaceCreate,
   RemoteSurfaceStatus,
@@ -8638,6 +8639,7 @@ export class ServerRepository {
     desktopId: string,
     workerId: string,
     tabGroupId?: string,
+    target: RemoteDesktopTarget = { kind: "monitor", id: null, name: null },
   ): Promise<RemoteDesktopSummary | null> {
     const [projectRows, workerRows] = await Promise.all([
       this.database
@@ -8681,7 +8683,7 @@ export class ServerRepository {
         preferredTransport: "webrtc",
         configuration: {
           kind: "desktop",
-          target: { kind: "monitor", id: null, name: null },
+          target,
         },
       });
       await attachProjectTab(transaction, {

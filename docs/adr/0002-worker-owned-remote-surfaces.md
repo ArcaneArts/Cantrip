@@ -79,13 +79,20 @@ renderer and no hidden platform-specific fallback.
 
 ### Managed desktop adapter
 
-Creating a Remote Desktop supplies no host, port, password, display name, or
-worker selection. The server resolves the project's primary source worker and
-asks that worker to probe native display capture before it persists the tab.
+Creating a Remote Desktop supplies no host, port, password, or worker address.
+The server resolves an optional explicit worker `ExecutionTarget` through the
+canonical placement policy and asks that worker to probe native display capture
+before it persists the tab.
 The durable configuration contains the desktop kind and a safe capture-target
 identity; the worker remains the authority for display discovery, capture,
 application launch, and input. Target identity stores monitor ID/name or
 window ID/application/title, never an executable command supplied by the app.
+
+Fleet inventory is control-plane metadata, not a combined stream. The server
+fans bounded target-inventory commands out to eligible workers and reports
+per-worker failures. Selecting a fleet target creates or reconfigures one
+worker-owned Remote Surface, preserving independent attachment and reconnect
+state for every stream.
 
 An attached client receives a bounded inventory of monitors and capturable
 windows through the existing control channel. Selecting one persists the tab

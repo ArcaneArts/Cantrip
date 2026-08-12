@@ -7,6 +7,7 @@ import {
   remoteDesktopTargetLabel,
   remoteDesktopTargetMatches,
 } from "./managed-remote-desktop-view";
+import { filterRemoteDesktopFleetTargets } from "./remote-desktop-fleet-panel";
 
 describe("managed Remote Desktop geometry", () => {
   it("letterboxes a worker display without distorting its aspect ratio", () => {
@@ -117,5 +118,11 @@ describe("managed Remote Desktop geometry", () => {
       monitors: [],
       windows: [inventory.windows[1]],
     });
+    expect(
+      filterRemoteDesktopFleetTargets({ inventory }, "primary display"),
+    ).toEqual({ monitors: inventory.monitors, windows: [] });
+    expect(filterRemoteDesktopFleetTargets({ inventory }, "pensacola")).toEqual(
+      { monitors: [], windows: [inventory.windows[1]] },
+    );
   });
 });

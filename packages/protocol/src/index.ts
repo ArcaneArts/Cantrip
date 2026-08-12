@@ -252,6 +252,7 @@ export const serverBootstrapSchema = z.object({
     replicaProvisioning: z.boolean().default(false),
     browserFleetDiscovery: z.boolean().default(false),
     crossWorkerExecutionTargets: z.boolean().default(false),
+    remoteDesktopFleet: z.boolean().default(false),
     workerSwitching: z.boolean(),
     gitSync: z.boolean(),
     worktrees: z.boolean(),
@@ -3015,13 +3016,6 @@ export const browserTunnelRequestSchema = z
   })
   .strict();
 
-export const remoteDesktopCreateSchema = z
-  .object({
-    tabGroupId: z.string().min(1).optional(),
-    target: executionTargetSchema.optional(),
-  })
-  .strict();
-
 export const remoteDesktopTargetSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("monitor"),
@@ -3035,6 +3029,14 @@ export const remoteDesktopTargetSchema = z.discriminatedUnion("kind", [
     title: z.string().trim().min(1).max(1_000).nullable().default(null),
   }),
 ]);
+
+export const remoteDesktopCreateSchema = z
+  .object({
+    tabGroupId: z.string().min(1).optional(),
+    target: executionTargetSchema.optional(),
+    desktopTarget: remoteDesktopTargetSchema.optional(),
+  })
+  .strict();
 
 export const remoteDesktopMonitorSchema = z.object({
   kind: z.literal("monitor"),
@@ -3094,6 +3096,38 @@ export const remoteDesktopSummarySchema = z.object({
 });
 
 export const remoteDesktopListSchema = z.array(remoteDesktopSummarySchema);
+
+export const remoteDesktopFleetWorkerStatusSchema = z.enum([
+  "ok",
+  "offline",
+  "timed-out",
+  "error",
+]);
+
+export const remoteDesktopFleetErrorSchema = z.object({
+  code: z.enum(["worker-offline", "worker-timeout", "worker-error"]),
+  message: z.string().min(1).max(1_000),
+});
+
+export const remoteDesktopFleetWorkerSchema = z.object({
+  workerId: z.string().min(1).max(200),
+  workerName: z.string().min(1).max(200),
+  platform: z.string().min(1).max(100),
+  architecture: z.string().min(1).max(100),
+  status: remoteDesktopFleetWorkerStatusSchema,
+  inventory: remoteDesktopTargetInventorySchema,
+  desktops: z.array(remoteDesktopSummarySchema).max(64),
+  error: remoteDesktopFleetErrorSchema.nullable(),
+  truncated: z.boolean().default(false),
+});
+
+export const remoteDesktopFleetSchema = z.object({
+  projectId: z.string().min(1),
+  observedAt: z.string().datetime(),
+  partial: z.boolean(),
+  truncated: z.boolean().default(false),
+  workers: z.array(remoteDesktopFleetWorkerSchema).max(64),
+});
 
 export const remoteSurfaceConfigurationSchema = z.discriminatedUnion("kind", [
   z.object({
@@ -7195,6 +7229,9 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("surface.desktop.probe"),
   }),
   z.object({
+    type: z.literal("surface.desktop.targets"),
+  }),
+  z.object({
     type: z.literal("chat.turn"),
     chatId: z.string().min(1),
     clientMessageId: z.string().min(1),
@@ -8202,6 +8239,13 @@ export type RemoteDesktopApplicationIcon = z.infer<
 >;
 export type RemoteDesktopUpdate = z.infer<typeof remoteDesktopUpdateSchema>;
 export type RemoteDesktopSummary = z.infer<typeof remoteDesktopSummarySchema>;
+export type RemoteDesktopFleetWorkerStatus = z.infer<
+  typeof remoteDesktopFleetWorkerStatusSchema
+>;
+export type RemoteDesktopFleetWorker = z.infer<
+  typeof remoteDesktopFleetWorkerSchema
+>;
+export type RemoteDesktopFleet = z.infer<typeof remoteDesktopFleetSchema>;
 export type RemoteSurfaceConfiguration = z.infer<
   typeof remoteSurfaceConfigurationSchema
 >;

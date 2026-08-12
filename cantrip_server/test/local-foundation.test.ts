@@ -1639,6 +1639,7 @@ describe("local server foundation", () => {
     expect(bootstrap.capabilities.replicaProvisioning).toBe(true);
     expect(bootstrap.capabilities.browserFleetDiscovery).toBe(true);
     expect(bootstrap.capabilities.crossWorkerExecutionTargets).toBe(true);
+    expect(bootstrap.capabilities.remoteDesktopFleet).toBe(true);
     expect(bootstrap.capabilities.gitSync).toBe(true);
 
     const initialSettings = settingsBundleSchema.parse(

@@ -116,6 +116,7 @@ import {
   projectTabLayoutSummarySchema,
   projectTokenUsageSchema,
   remoteDesktopCreateSchema,
+  remoteDesktopFleetSchema,
   remoteDesktopClientMessageSchema,
   remoteDesktopServerMessageSchema,
   remoteDesktopSummarySchema,
@@ -3213,6 +3214,15 @@ describe("Cantrip protocol", () => {
       tabGroupId: "group-1",
     });
     expect(
+      remoteDesktopCreateSchema.parse({
+        desktopTarget: {
+          kind: "monitor",
+          id: "display-1",
+          name: "Studio Display",
+        },
+      }).desktopTarget,
+    ).toMatchObject({ kind: "monitor", id: "display-1" });
+    expect(
       remoteDesktopCreateSchema.safeParse({ host: "127.0.0.1" }).success,
     ).toBe(false);
     const summary = remoteDesktopSummarySchema.parse({
@@ -3273,6 +3283,41 @@ describe("Cantrip protocol", () => {
     expect(
       workerCommandSchema.parse({ type: "surface.desktop.probe" }).type,
     ).toBe("surface.desktop.probe");
+    expect(
+      workerCommandSchema.parse({ type: "surface.desktop.targets" }).type,
+    ).toBe("surface.desktop.targets");
+    expect(
+      remoteDesktopFleetSchema.parse({
+        projectId: "project-1",
+        observedAt: "2026-08-12T12:00:00.000Z",
+        partial: true,
+        workers: [
+          {
+            workerId: "worker-1",
+            workerName: "Studio Mac",
+            platform: "darwin",
+            architecture: "arm64",
+            status: "ok",
+            inventory: { monitors: [], windows: [] },
+            desktops: [summary],
+            error: null,
+          },
+          {
+            workerId: "worker-2",
+            workerName: "Offline PC",
+            platform: "win32",
+            architecture: "x64",
+            status: "offline",
+            inventory: { monitors: [], windows: [] },
+            desktops: [],
+            error: {
+              code: "worker-offline",
+              message: "Offline PC is offline.",
+            },
+          },
+        ],
+      }).workers[1]?.status,
+    ).toBe("offline");
     expect(
       desktopStreamSettingsSchema.parse({ targetFps: 60, quality: "sharp" }),
     ).toEqual({ targetFps: 60, quality: "sharp" });
@@ -3539,6 +3584,7 @@ describe("Cantrip protocol", () => {
     expect(bootstrap.capabilities.worktrees).toBe(true);
     expect(bootstrap.capabilities.projectReplicas).toBe(false);
     expect(bootstrap.capabilities.browserFleetDiscovery).toBe(false);
+    expect(bootstrap.capabilities.remoteDesktopFleet).toBe(false);
   });
 
   it("round-trips versioned binary Remote Surface frames", () => {

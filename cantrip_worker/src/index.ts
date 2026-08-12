@@ -920,6 +920,8 @@ async function start(): Promise<void> {
         return { accepted: true };
       case "surface.desktop.probe":
         return desktopAdapter.probe();
+      case "surface.desktop.targets":
+        return desktopAdapter.targets();
       case "chat.turn": {
         if (command.automationPaused) pausedChats.add(command.chatId);
         const runtime = runtimeFor(command);

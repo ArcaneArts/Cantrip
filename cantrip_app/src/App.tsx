@@ -22,6 +22,7 @@ import type {
   ProjectViewKind,
   ProjectViewSummary,
   QueuedPrompt,
+  RemoteDesktopTarget,
   SettingsBundle,
   SkillSummary,
   TerminalSummary,
@@ -3049,11 +3050,13 @@ export function App() {
       projectId,
       tabGroupId,
       target,
+      desktopTarget,
     }: {
       projectId: string;
       tabGroupId?: string;
       target?: ExecutionTarget;
-    }) => createRemoteDesktop(projectId, tabGroupId, target),
+      desktopTarget?: RemoteDesktopTarget;
+    }) => createRemoteDesktop(projectId, tabGroupId, target, desktopTarget),
     onSuccess: (desktop) => {
       queryClient.setQueryData<ProjectViewSummary[]>(
         ["project-views", desktop.projectId],
@@ -3073,6 +3076,9 @@ export function App() {
           ].sort((left, right) => left.position - right.position),
       );
       queryClient.setQueryData(["remote-desktop", desktop.id], desktop);
+      void queryClient.invalidateQueries({
+        queryKey: ["remote-desktop-fleet", desktop.projectId],
+      });
       openCreatedTab(desktop.projectId, "view", desktop.id);
       void queryClient.invalidateQueries({
         queryKey: ["project-views", desktop.projectId],
@@ -5152,7 +5158,28 @@ export function App() {
                 </div>
               }
             >
-              <RemoteDesktopView desktop={remoteDesktop.data} />
+              <RemoteDesktopView
+                desktop={remoteDesktop.data}
+                fleetDiscovery={
+                  bootstrap.data?.capabilities.remoteDesktopFleet ?? false
+                }
+                workerName={selectedWorker?.name}
+                onOpenFleetTarget={(
+                  workerId: string,
+                  desktopTarget: RemoteDesktopTarget,
+                ) =>
+                  newRemoteDesktop.mutate({
+                    projectId: remoteDesktop.data.projectId,
+                    tabGroupId: selectedTabGroup?.id,
+                    target: {
+                      kind: "worker",
+                      projectId: remoteDesktop.data.projectId,
+                      workerId,
+                    },
+                    desktopTarget,
+                  })
+                }
+              />
             </Suspense>
           ) : remoteDesktop.isError ? (
             <div className="grid flex-1 place-items-center p-6 text-center text-sm text-destructive">
