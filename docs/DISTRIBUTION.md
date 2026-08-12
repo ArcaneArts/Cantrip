@@ -167,6 +167,16 @@ attachments; it does not expose application APIs or accept Cantrip cookies.
 
 ## Standalone worker
 
+When the Worker will run on the same desktop as the Cantrip app, select the
+hosted server in that app and use Settings → Workers → **Add this machine**.
+The signed-in app creates and consumes the one-time enrollment internally,
+persists only the resulting worker credential in the worker's protected data
+directory, and can enable launch-at-login. The app starts hidden in the system
+tray after login; closing the main window does not stop its linked workers.
+
+For headless hosts or machines without the desktop app, the manual flow remains
+available:
+
 The worker makes an outbound connection to `CANTRIP_SERVER_URL`. Generate a
 short-lived link code from Settings → Workers as a signed-in user, copy the
 generated POSIX or PowerShell pairing command, and set the code once as
@@ -206,8 +216,10 @@ Release builds reserve a free loopback port, start the bundled Server, wait for
 it to accept connections, then start the bundled Worker. Both inherit the
 user's environment so worker-local Git, Ollama, and browser discovery continue
 to work. Codex comes from the bundled Worker rather than the user's `PATH`.
-Logs and data are written below Tauri's application data directory. Both child
-processes are terminated when the desktop app exits.
+Logs and data are written below Tauri's application data directory. The app
+keeps its services alive when the main window is hidden and terminates them
+only when Cantrip actually quits. A single-instance guard reopens the existing
+background process instead of starting a duplicate stack.
 `CANTRIP_DESKTOP_DATA_DIR` can override that root for portable installations or
 packaging smoke tests.
 

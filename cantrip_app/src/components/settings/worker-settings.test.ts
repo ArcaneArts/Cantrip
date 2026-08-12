@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { formatWorkerLastSeen, workerPairingCommands } from "./worker-settings";
+import {
+  canAddThisMachine,
+  formatWorkerLastSeen,
+  workerPairingCommands,
+} from "./worker-settings";
 
 describe("worker settings helpers", () => {
   it("formats recent and stale presence concisely", () => {
@@ -29,5 +33,35 @@ describe("worker settings helpers", () => {
       '$env:CANTRIP_SERVER_URL="https://relay.cantrip.art"',
     );
     expect(commands.powershell).toContain(".\\bin\\cantrip-worker.exe");
+  });
+
+  it("offers one-click enrollment only for an unlinked remote desktop", () => {
+    expect(
+      canAddThisMachine({
+        desktopApp: true,
+        hasInternalWorker: false,
+        linkedWorkerId: null,
+        serverIsRemote: true,
+        serverWorkerIds: [],
+      }),
+    ).toBe(true);
+    expect(
+      canAddThisMachine({
+        desktopApp: true,
+        hasInternalWorker: false,
+        linkedWorkerId: "desktop-1",
+        serverIsRemote: true,
+        serverWorkerIds: ["desktop-1"],
+      }),
+    ).toBe(false);
+    expect(
+      canAddThisMachine({
+        desktopApp: true,
+        hasInternalWorker: true,
+        linkedWorkerId: null,
+        serverIsRemote: false,
+        serverWorkerIds: ["local-worker"],
+      }),
+    ).toBe(false);
   });
 });
