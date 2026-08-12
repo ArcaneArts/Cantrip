@@ -2399,6 +2399,9 @@ export function App() {
     terminalCommandPaletteTerminalId,
     setTerminalCommandPaletteTerminalId,
   ] = useState<string | null>(null);
+  const [terminalServiceTerminalId, setTerminalServiceTerminalId] = useState<
+    string | null
+  >(null);
   const [detachedGroupId, setDetachedGroupId] = useState<string | null>(null);
   const [worktreeCreateTarget, setWorktreeCreateTarget] =
     useState<WorktreeBindingTarget | null>(null);
@@ -3008,6 +3011,9 @@ export function App() {
   const deleteTerminalMutation = useMutation({
     mutationFn: deleteTerminal,
     onSuccess: async (_value, deletedId) => {
+      if (terminalServiceTerminalId === deletedId) {
+        setTerminalServiceTerminalId(null);
+      }
       await queryClient.invalidateQueries({
         queryKey: ["terminals", selectedProjectId],
       });
@@ -3937,6 +3943,21 @@ export function App() {
         : null,
     explorer: selectedExplorer ? explorerHeader : null,
     code: selectedCodeTab ? { header: codeHeader } : null,
+    terminalService:
+      !showImporter &&
+      !showSettings &&
+      !showProjectSettings &&
+      selectedStandaloneTerminal
+        ? {
+            active: terminalServiceTerminalId === selectedStandaloneTerminal.id,
+            open: () =>
+              setTerminalServiceTerminalId((current) =>
+                current === selectedStandaloneTerminal.id
+                  ? null
+                  : selectedStandaloneTerminal.id,
+              ),
+          }
+        : null,
     terminalCommandPalette:
       !showImporter &&
       !showSettings &&
@@ -4806,6 +4827,14 @@ export function App() {
                 }
                 onCommandPaletteOpenChange={(open) =>
                   setTerminalCommandPaletteTerminalId(
+                    open ? selectedTerminal.id : null,
+                  )
+                }
+                servicePanelOpen={
+                  terminalServiceTerminalId === selectedTerminal.id
+                }
+                onServicePanelOpenChange={(open) =>
+                  setTerminalServiceTerminalId(
                     open ? selectedTerminal.id : null,
                   )
                 }

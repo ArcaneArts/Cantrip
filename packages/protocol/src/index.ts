@@ -1488,6 +1488,33 @@ export const terminalUpdateSchema = z.object({
   title: z.string().trim().min(1).max(200),
 });
 
+export const terminalServiceConfigurationSchema = z
+  .object({
+    enabled: z.boolean(),
+    command: z.string().max(100_000),
+  })
+  .superRefine((configuration, context) => {
+    if (configuration.enabled && configuration.command.trim().length === 0) {
+      context.addIssue({
+        code: "custom",
+        message: "A command is required when terminal service mode is enabled.",
+        path: ["command"],
+      });
+    }
+  });
+
+export const terminalServiceRuntimeConfigurationSchema = z.object({
+  terminalId: z.string().min(1),
+  cwd: z.string().min(1).max(8_192),
+  command: z
+    .string()
+    .min(1)
+    .max(100_000)
+    .refine((command) => command.trim().length > 0, {
+      message: "Terminal service command is required.",
+    }),
+});
+
 export const terminalSummarySchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
@@ -1497,6 +1524,10 @@ export const terminalSummarySchema = z.object({
   activeWorkerId: z.string().min(1),
   worktreeId: z.string().min(1),
   linkedChatId: z.string().min(1).nullable(),
+  service: terminalServiceConfigurationSchema.default({
+    enabled: false,
+    command: "",
+  }),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -5960,6 +5991,14 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     terminalId: z.string().min(1),
   }),
   z.object({
+    type: z.literal("terminal.services.reconcile"),
+    services: z.array(terminalServiceRuntimeConfigurationSchema).max(1_000),
+  }),
+  z.object({
+    type: z.literal("terminal.service.restart"),
+    terminalId: z.string().min(1),
+  }),
+  z.object({
     type: z.literal("surface.attach"),
     surfaceId: z.string().min(1),
     attachmentId: z.string().min(1),
@@ -6682,6 +6721,12 @@ export type ChatPermissionProfileUpdate = z.infer<
 >;
 export type TerminalCreate = z.infer<typeof terminalCreateSchema>;
 export type TerminalUpdate = z.infer<typeof terminalUpdateSchema>;
+export type TerminalServiceConfiguration = z.infer<
+  typeof terminalServiceConfigurationSchema
+>;
+export type TerminalServiceRuntimeConfiguration = z.infer<
+  typeof terminalServiceRuntimeConfigurationSchema
+>;
 export type TerminalSummary = z.infer<typeof terminalSummarySchema>;
 export type ScriptCommandKind = z.infer<typeof scriptCommandKindSchema>;
 export type ScriptCommand = z.infer<typeof scriptCommandSchema>;

@@ -103,6 +103,8 @@ import {
   serverBootstrapSchema,
   systemHealthSchema,
   terminalClientMessageSchema,
+  terminalServiceConfigurationSchema,
+  terminalSummarySchema,
   terminalServerMessageSchema,
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
@@ -3148,6 +3150,32 @@ describe("Cantrip protocol", () => {
 
   it("validates interactive terminal frames", () => {
     expect(
+      terminalServiceConfigurationSchema.parse({
+        enabled: true,
+        command: "pnpm dev",
+      }),
+    ).toEqual({ enabled: true, command: "pnpm dev" });
+    expect(
+      terminalServiceConfigurationSchema.safeParse({
+        enabled: true,
+        command: "   ",
+      }).success,
+    ).toBe(false);
+    expect(
+      terminalSummarySchema.parse({
+        id: "terminal-1",
+        projectId: "project-1",
+        title: "Terminal",
+        position: 0,
+        status: "idle",
+        activeWorkerId: "worker-1",
+        worktreeId: "worktree-1",
+        linkedChatId: null,
+        createdAt: "2026-08-11T12:00:00.000Z",
+        updatedAt: "2026-08-11T12:00:00.000Z",
+      }).service,
+    ).toEqual({ enabled: false, command: "" });
+    expect(
       terminalClientMessageSchema.parse({
         type: "resize",
         cols: 120,
@@ -3194,6 +3222,18 @@ describe("Cantrip protocol", () => {
         },
       }).launch.type,
     ).toBe("codex");
+    expect(
+      workerCommandSchema.parse({
+        type: "terminal.services.reconcile",
+        services: [
+          {
+            terminalId: "terminal-1",
+            cwd: "/workspace",
+            command: "pnpm dev",
+          },
+        ],
+      }).type,
+    ).toBe("terminal.services.reconcile");
   });
 
   it("validates persisted prompt queues and live steering", () => {

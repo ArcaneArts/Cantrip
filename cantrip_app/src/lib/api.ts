@@ -218,6 +218,7 @@ import type {
   SkillSettingsDeleteRequest,
   SkillSettingsFileRequest,
   SkillSettingsFileUpdate,
+  TerminalServiceConfiguration,
   UserSettingsUpdate,
   ExplorerFileWrite,
   WorktreePolicy,
@@ -1619,6 +1620,25 @@ export async function renameTerminal(terminalId: string, title: string) {
       method: "PATCH",
       body: JSON.stringify({ title }),
     }),
+  );
+}
+
+export async function updateTerminalService(
+  terminalId: string,
+  service: TerminalServiceConfiguration,
+) {
+  return terminalSummarySchema.parse(
+    await request(`/api/terminals/${encodeURIComponent(terminalId)}/service`, {
+      method: "PUT",
+      body: JSON.stringify(service),
+    }),
+  );
+}
+
+export async function restartTerminalService(terminalId: string) {
+  await post(
+    `/api/terminals/${encodeURIComponent(terminalId)}/service/restart`,
+    {},
   );
 }
 

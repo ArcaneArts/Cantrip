@@ -141,6 +141,11 @@ const explorerWrites: Array<{
   path: string;
   version: string;
 }> = [];
+const terminalServiceReconciliations: Array<
+  Extract<WorkerCommand, { type: "terminal.services.reconcile" }>
+> = [];
+const terminalServiceRestarts: string[] = [];
+const closedTerminalIds: string[] = [];
 let codexGoal: ThreadGoal | null = null;
 let codexPlanMode: PlanMode = "default";
 let releasePlanQuestion: (() => void) | null = null;
@@ -1117,7 +1122,15 @@ const workerBridge = {
       case "terminal.detach":
       case "terminal.input":
       case "terminal.resize":
+        return { accepted: true };
       case "terminal.close":
+        closedTerminalIds.push(command.terminalId);
+        return { accepted: true };
+      case "terminal.services.reconcile":
+        terminalServiceReconciliations.push(command);
+        return { accepted: true };
+      case "terminal.service.restart":
+        terminalServiceRestarts.push(command.terminalId);
         return { accepted: true };
       case "surface.attach":
         surfaceAttachCommands.push(command);
@@ -2755,6 +2768,7 @@ describe("local server foundation", () => {
       projectId: project.id,
       title: "Dev shell",
       activeWorkerId: "test-worker",
+      service: { enabled: false, command: "" },
     });
     expect(
       terminalListSchema.parse(
@@ -2777,6 +2791,57 @@ describe("local server foundation", () => {
         ).json(),
       ).title,
     ).toBe("Renamed shell");
+    const enabledService = terminalSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "PUT",
+          url: `/api/terminals/${terminal.id}/service`,
+          payload: { enabled: true, command: "pnpm dev" },
+        })
+      ).json(),
+    );
+    expect(enabledService).toMatchObject({
+      status: "running",
+      service: { enabled: true, command: "pnpm dev" },
+    });
+    expect(terminalServiceReconciliations.at(-1)?.services).toEqual([
+      expect.objectContaining({
+        terminalId: terminal.id,
+        command: "pnpm dev",
+      }),
+    ]);
+    expect(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/terminals/${terminal.id}/service/restart`,
+        })
+      ).statusCode,
+    ).toBe(202);
+    expect(terminalServiceRestarts).toContain(terminal.id);
+    const disabledService = terminalSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "PUT",
+          url: `/api/terminals/${terminal.id}/service`,
+          payload: { enabled: false, command: "pnpm dev" },
+        })
+      ).json(),
+    );
+    expect(disabledService).toMatchObject({
+      status: "idle",
+      service: { enabled: false, command: "pnpm dev" },
+    });
+    expect(terminalServiceReconciliations.at(-1)?.services).toEqual([]);
+    expect(
+      (
+        await firstApp.inject({
+          method: "PUT",
+          url: `/api/terminals/${terminal.id}/service`,
+          payload: { enabled: true, command: "pnpm dev" },
+        })
+      ).statusCode,
+    ).toBe(200);
     expect(
       (
         await firstApp.inject({
@@ -2785,6 +2850,7 @@ describe("local server foundation", () => {
         })
       ).statusCode,
     ).toBe(204);
+    expect(closedTerminalIds).toContain(terminal.id);
 
     const duplicateResponse = await firstApp.inject({
       method: "POST",
