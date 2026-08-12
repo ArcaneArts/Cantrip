@@ -40,6 +40,26 @@ async function connect(port: number): Promise<WebSocket> {
   });
 }
 
+async function rejectedInitialization(
+  port: number,
+  grant: ReturnType<typeof binding>,
+  secret: string,
+): Promise<number> {
+  const socket = await connect(port);
+  const closed = new Promise<number>((resolve) =>
+    socket.once("close", (code) => resolve(code)),
+  );
+  socket.send(
+    JSON.stringify({
+      type: "initialize",
+      binding: grant,
+      secret,
+      challenge: randomBytes(32).toString("base64url"),
+    }),
+  );
+  return closed;
+}
+
 describe("DirectBroker", () => {
   it("binds loopback only and consumes an authenticated capability once", async () => {
     const broker = new DirectBroker();
@@ -117,6 +137,68 @@ describe("DirectBroker", () => {
       }),
     );
     expect(await closed).toBe(1008);
+  });
+
+  it("rejects wrong bindings, expired tickets, and revoked capabilities", async () => {
+    const broker = new DirectBroker();
+    brokers.push(broker);
+    const advertisement = await broker.start();
+    if (!advertisement.available) throw new Error("broker unavailable");
+
+    for (const mutate of [
+      (grant: ReturnType<typeof binding>) => ({
+        ...grant,
+        workerId: "worker-2",
+      }),
+      (grant: ReturnType<typeof binding>) => ({
+        ...grant,
+        resourceId: "another-resource",
+      }),
+    ]) {
+      const grant = binding();
+      const secret = randomBytes(32).toString("base64url");
+      await broker.prepare({
+        type: "direct.capability.prepare",
+        binding: grant,
+        secret,
+      });
+      await expect(
+        rejectedInitialization(
+          advertisement.loopbackPort,
+          mutate(grant),
+          secret,
+        ),
+      ).resolves.toBe(1008);
+      broker.revoke(grant.capabilityId, "test cleanup");
+    }
+
+    const expired = {
+      ...binding(),
+      expiresAt: new Date(Date.now() - 1).toISOString(),
+    };
+    await expect(
+      broker.prepare({
+        type: "direct.capability.prepare",
+        binding: expired,
+        secret: randomBytes(32).toString("base64url"),
+      }),
+    ).rejects.toThrow("expired");
+
+    const revoked = binding();
+    const revokedSecret = randomBytes(32).toString("base64url");
+    await broker.prepare({
+      type: "direct.capability.prepare",
+      binding: revoked,
+      secret: revokedSecret,
+    });
+    broker.revoke(revoked.capabilityId, "Authorization session was revoked");
+    await expect(
+      rejectedInitialization(
+        advertisement.loopbackPort,
+        revoked,
+        revokedSecret,
+      ),
+    ).resolves.toBe(1008);
   });
 
   it("injects the server-authorized target into direct tunnel frames", async () => {

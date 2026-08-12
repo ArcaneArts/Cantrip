@@ -85,4 +85,26 @@ describe("probeDirectWorker", () => {
     );
     expect(mocks.deleteDirectAttachment).toHaveBeenCalledWith(capabilityId);
   });
+
+  it("reports relay fallback when the advertised loopback endpoint is unavailable", async () => {
+    mocks.isTauri.mockReturnValue(true);
+    mocks.createDirectWorkerProbe.mockResolvedValue(ticket());
+    mocks.invoke.mockResolvedValue({
+      state: "relayed",
+      reason: "Local direct broker is unavailable",
+      latencyMs: null,
+      workerId: "worker-1",
+      brokerInstanceId: null,
+    });
+    const states: string[] = [];
+
+    await expect(
+      probeDirectWorker("worker-1", { onState: (state) => states.push(state) }),
+    ).resolves.toMatchObject({
+      state: "relayed",
+      reason: "Local direct broker is unavailable",
+    });
+    expect(states).toEqual(["probing", "relayed"]);
+    expect(mocks.deleteDirectAttachment).toHaveBeenCalledWith(capabilityId);
+  });
 });
