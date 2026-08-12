@@ -46,7 +46,7 @@ export const tunnelDataPlaneTargetSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("adapter"),
-      adapter: z.enum(["code", "project-share"]),
+      adapter: z.enum(["code", "project-share", "terminal"]),
       resourceId: idSchema,
     })
     .strict(),

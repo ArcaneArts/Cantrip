@@ -801,6 +801,18 @@ export async function createDirectProjectNetworkShare(
   );
 }
 
+export async function createDirectTerminalAttachment(
+  terminalId: string,
+  clientId: string,
+) {
+  return directTunnelTicketSchema.parse(
+    await post(
+      `/api/terminals/${encodeURIComponent(terminalId)}/direct`,
+      projectShareDirectCreateSchema.parse({ clientId }),
+    ),
+  );
+}
+
 export async function getProjectWorkspaces() {
   return projectWorkspaceListSchema.parse(await request("/api/workspaces"));
 }

@@ -12883,6 +12883,13 @@ export async function buildApp({
           request.params.terminalId,
           input.data,
         );
+        if (terminal) {
+          await directAttachments.revokeResource(
+            applicationOwnerId(),
+            "terminal",
+            terminal.id,
+          );
+        }
         return terminal
           ? reply.send(terminalSummarySchema.parse(terminal))
           : reply.code(404).send({ error: "Terminal or worktree not found." });
@@ -12895,8 +12902,9 @@ export async function buildApp({
   app.delete<{ Params: { terminalId: string } }>(
     "/api/terminals/:terminalId",
     async (request, reply) => {
+      const ownerId = applicationOwnerId();
       const context = await repository.deleteTerminal(
-        applicationOwnerId(),
+        ownerId,
         request.params.terminalId,
       );
       if (!context) {
@@ -12915,6 +12923,11 @@ export async function buildApp({
             ),
           );
       }
+      await directAttachments.revokeResource(
+        ownerId,
+        "terminal",
+        context.terminalId,
+      );
       return reply.code(204).send();
     },
   );
@@ -14616,6 +14629,160 @@ export async function buildApp({
       } catch (error) {
         const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { terminalId: string } }>(
+    "/api/terminals/:terminalId/direct",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = projectShareDirectCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = authenticatedPrincipal(request);
+      const context = await repository.getTerminalExecutionContext(
+        principal.user.id,
+        request.params.terminalId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Terminal not found." });
+      }
+      const worker = await repository.getWorker(
+        principal.user.id,
+        context.workerId,
+      );
+      if (!worker || !bridge.isConnected(context.workerId)) {
+        return reply.code(409).send({ error: "Project worker is offline." });
+      }
+      const bootstrapAttachmentId = `direct-bootstrap:${randomUUID()}`;
+      try {
+        let launch:
+          | { type: "shell" }
+          | {
+              type: "codex";
+              threadId: string | null;
+              model: ModelRuntime["model"];
+              provider: ModelRuntime["provider"];
+            } = { type: "shell" };
+        if (context.linkedChatId) {
+          const chat = await repository.getChatExecutionContext(
+            principal.user.id,
+            context.linkedChatId,
+          );
+          const runtime = chat ? await runtimeForContext(chat) : null;
+          if (!chat || !runtime) {
+            return reply.code(409).send({
+              error:
+                "Choose a model for this chat before opening its Codex console.",
+            });
+          }
+          launch = {
+            type: "codex",
+            threadId: chat.threadId,
+            model: runtime.model,
+            provider: runtime.provider,
+          };
+        }
+        let markReady: (() => void) | null = null;
+        let markFailed: ((error: Error) => void) | null = null;
+        let startupTimer: ReturnType<typeof setTimeout> | null = null;
+        const ready = new Promise<void>((resolve, reject) => {
+          markReady = resolve;
+          markFailed = reject;
+          startupTimer = setTimeout(
+            () => reject(new Error("Terminal process startup timed out.")),
+            15_000,
+          );
+          startupTimer.unref();
+        });
+        const opened = bridge.request(
+          context.workerId,
+          {
+            type: "terminal.open",
+            terminalId: context.terminalId,
+            attachmentId: bootstrapAttachmentId,
+            cwd: context.cwd,
+            cols: 80,
+            rows: 24,
+            launch,
+          },
+          {
+            timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
+            onEvent: (event) => {
+              if (event.type === "terminal.ready") markReady?.();
+            },
+          },
+        );
+        void opened
+          .then((result) => {
+            const parsed = terminalOpenResultSchema.parse(result);
+            if (parsed.status === "exited") {
+              markFailed?.(
+                new Error("Terminal process exited during startup."),
+              );
+            }
+          })
+          .catch((error: unknown) =>
+            markFailed?.(
+              error instanceof Error
+                ? error
+                : new Error("Terminal process could not start."),
+            ),
+          );
+        await ready.finally(() => {
+          if (startupTimer) clearTimeout(startupTimer);
+        });
+        await bridge.request(context.workerId, {
+          type: "terminal.detach",
+          terminalId: context.terminalId,
+          attachmentId: bootstrapAttachmentId,
+        });
+        await updateTerminalStatus(context.terminalId, "running");
+
+        const attachmentId = randomUUID();
+        const route = {
+          tunnelId: `terminal:${context.terminalId}`,
+          attachmentId,
+          sourceEndpointId: `desktop:${input.data.clientId}:${attachmentId}`,
+          destinationEndpointId: `worker:${context.workerId}`,
+        };
+        const ticket = await directAttachments.prepare({
+          attachmentId,
+          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          channels: ["tunnel-data"],
+          leaseExpiresAt: new Date(Date.now() + 12 * 60 * 60_000),
+          ownerId: principal.user.id,
+          resourceId: context.terminalId,
+          resourceKind: "terminal",
+          tunnelRoute: {
+            ...route,
+            target: {
+              kind: "adapter",
+              adapter: "terminal",
+              resourceId: context.terminalId,
+            },
+          },
+          worker,
+        });
+        return reply
+          .code(201)
+          .send(directTunnelTicketSchema.parse({ ...ticket, route }));
+      } catch (error) {
+        await bridge
+          .request(context.workerId, {
+            type: "terminal.detach",
+            terminalId: context.terminalId,
+            attachmentId: bootstrapAttachmentId,
+          })
+          .catch(() => undefined);
+        if (error instanceof DirectAttachmentUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        return reply
+          .code(workerRequestFailureStatus(error))
+          .send({ error: errorMessage(error) });
       }
     },
   );

@@ -16,6 +16,7 @@ import {
   type DirectBrokerAdvertisement,
   type DirectCapabilityBinding,
   type TunnelDataPlaneFrameHeader,
+  type TunnelDataPlaneTarget,
   type WorkerCommand,
 } from "@cantrip/protocol";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
@@ -50,6 +51,11 @@ type TunnelFrameHandler = (
   header: TunnelDataPlaneFrameHeader,
   payload: Uint8Array,
 ) => void;
+type TunnelTargetResolver = (
+  binding: DirectCapabilityBinding,
+  target: TunnelDataPlaneTarget,
+) => Promise<TunnelDataPlaneTarget>;
+type CapabilityRevoker = (capabilityId: string, reason: string) => void;
 
 function rawText(data: RawData): string {
   if (Array.isArray(data)) return Buffer.concat(data).toString("utf8");
@@ -79,6 +85,9 @@ export class DirectBroker {
   #webSockets: WebSocketServer | null = null;
   #advertisement: DirectBrokerAdvertisement = { available: false };
   #handleTunnelFrame: TunnelFrameHandler = () => undefined;
+  #resolveTunnelTarget: TunnelTargetResolver = async (_binding, target) =>
+    target;
+  #revokeCapability: CapabilityRevoker = () => undefined;
 
   get advertisement(): DirectBrokerAdvertisement {
     return this.#advertisement;
@@ -134,9 +143,11 @@ export class DirectBroker {
     return this.#advertisement;
   }
 
-  prepare(command: PrepareCommand): { accepted: true; capabilityId: string } {
+  async prepare(
+    command: PrepareCommand,
+  ): Promise<{ accepted: true; capabilityId: string }> {
     const now = Date.now();
-    const tunnelRoute = command.tunnelRoute ?? null;
+    let tunnelRoute = command.tunnelRoute ?? null;
     const expiresAt = Date.parse(command.binding.expiresAt);
     const leaseExpiresAt = Date.parse(command.binding.leaseExpiresAt);
     const tunnelResource = new Set([
@@ -166,6 +177,15 @@ export class DirectBroker {
       throw new Error("Direct capability queue is full.");
     }
     this.revoke(command.binding.capabilityId, "Capability rotated");
+    if (tunnelRoute) {
+      tunnelRoute = {
+        ...tunnelRoute,
+        target: await this.#resolveTunnelTarget(
+          command.binding,
+          tunnelRoute.target,
+        ),
+      };
+    }
     const timer = setTimeout(
       () => this.revoke(command.binding.capabilityId, "Capability expired"),
       Math.max(1, expiresAt - now),
@@ -213,6 +233,7 @@ export class DirectBroker {
       active.socket.close(1008, reason.slice(0, 123));
       revoked = true;
     }
+    if (revoked) this.#revokeCapability(capabilityId, reason);
     return revoked;
   }
 
@@ -227,6 +248,14 @@ export class DirectBroker {
 
   setTunnelFrameHandler(handler: TunnelFrameHandler): void {
     this.#handleTunnelFrame = handler;
+  }
+
+  setTunnelTargetResolver(resolver: TunnelTargetResolver): void {
+    this.#resolveTunnelTarget = resolver;
+  }
+
+  setCapabilityRevoker(revoker: CapabilityRevoker): void {
+    this.#revokeCapability = revoker;
   }
 
   routeTunnelFrame(
@@ -361,6 +390,10 @@ export class DirectBroker {
           clearTimeout(current.timer);
           this.#active.delete(capability.binding.capabilityId);
           this.#closeTunnelConnections(current);
+          this.#revokeCapability(
+            capability.binding.capabilityId,
+            "Direct connection closed",
+          );
         });
         socket.on("message", (data, isBinary) => {
           if (!isBinary) {
