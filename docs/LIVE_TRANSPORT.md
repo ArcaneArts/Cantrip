@@ -118,6 +118,10 @@ query bridge also counts received events, directly applied payloads, coalesced
 query keys, invalidation flushes, and invalidated queries for deterministic
 tests and diagnostics.
 
+Tunnel route, stream, traffic, rejection, and termination counters are exposed
+beside these live diagnostics, but tunnel bytes never enter the application
+live channel. Operational details are in [the tunnels guide](TUNNELS.md).
+
 The measured request reduction, real-browser trace, timer inventory, recovery
 matrix, troubleshooting steps, and remaining deployment limits are recorded in
 the [application live transport audit](LIVE_TRANSPORT_AUDIT.md).

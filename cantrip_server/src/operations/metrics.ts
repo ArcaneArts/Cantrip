@@ -230,8 +230,30 @@ export class OperationalMetrics {
       metricLine("cantrip_tunnel_connections", input.tunnels.activeConnections),
       metricLine("cantrip_tunnel_routes", input.tunnels.activeRoutes),
       metricLine(
+        "cantrip_tunnel_connections_opened_total",
+        input.tunnels.openedConnections,
+      ),
+      metricLine(
+        "cantrip_tunnel_connections_closed_total",
+        input.tunnels.closedConnections,
+      ),
+      metricLine(
+        "cantrip_tunnel_connections_rejected_total",
+        input.tunnels.rejectedConnections,
+      ),
+      metricLine(
         "cantrip_tunnel_bytes_total",
         input.tunnels.bytesFromSource + input.tunnels.bytesToSource,
+      ),
+      metricLine("cantrip_tunnel_bytes_total", input.tunnels.bytesFromSource, {
+        direction: "source_to_destination",
+      }),
+      metricLine("cantrip_tunnel_bytes_total", input.tunnels.bytesToSource, {
+        direction: "destination_to_source",
+      }),
+      ...Object.entries(input.tunnels.terminationsByReason).map(
+        ([reason, count]) =>
+          metricLine("cantrip_tunnel_terminations_total", count, { reason }),
       ),
       metricLine(
         "cantrip_relay_bytes_total",

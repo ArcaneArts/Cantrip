@@ -1,6 +1,8 @@
 import {
   TUNNEL_DATA_PLANE_MAX_CREDIT_BYTES,
   TUNNEL_DATA_PLANE_MAX_PAYLOAD_BYTES,
+  tunnelDataPlaneCloseCodeSchema,
+  type TunnelDataPlaneCloseCode,
   type TunnelDataPlaneFrameHeader,
   type TunnelDataPlaneTarget,
 } from "@cantrip/protocol";
@@ -59,6 +61,7 @@ export interface TunnelStreamBrokerStats {
   closedConnections: number;
   openedConnections: number;
   rejectedConnections: number;
+  terminationsByReason: Record<TunnelDataPlaneCloseCode, number>;
 }
 
 interface Route {
@@ -128,6 +131,9 @@ export class TunnelStreamBroker {
   #closedConnections = 0;
   #openedConnections = 0;
   #rejectedConnections = 0;
+  readonly #terminationsByReason = Object.fromEntries(
+    tunnelDataPlaneCloseCodeSchema.options.map((code) => [code, 0]),
+  ) as Record<TunnelDataPlaneCloseCode, number>;
 
   constructor(options: TunnelStreamBrokerOptions = {}) {
     this.#consumeRelayBytes = options.consumeRelayBytes ?? (() => true);
@@ -211,6 +217,7 @@ export class TunnelStreamBroker {
       closedConnections: this.#closedConnections,
       openedConnections: this.#openedConnections,
       rejectedConnections: this.#rejectedConnections,
+      terminationsByReason: { ...this.#terminationsByReason },
     };
   }
 
@@ -495,10 +502,13 @@ export class TunnelStreamBroker {
     );
   }
 
-  #terminate(
-    connection: Connection,
-    code: Extract<TunnelDataPlaneFrameHeader, { kind: "close" }>["code"],
-  ): void {
+  #terminate(connection: Connection, code: TunnelDataPlaneCloseCode): void {
+    if (
+      !this.#connections.has(connectionKey(connection.route, connection.id))
+    ) {
+      return;
+    }
+    this.#terminationsByReason[code] += 1;
     const route = connection.route;
     route.source.send(
       {
@@ -530,10 +540,7 @@ export class TunnelStreamBroker {
     this.#closedConnections += 1;
   }
 
-  #removeRoute(
-    route: Route,
-    code: Extract<TunnelDataPlaneFrameHeader, { kind: "close" }>["code"],
-  ): void {
+  #removeRoute(route: Route, code: TunnelDataPlaneCloseCode): void {
     if (this.#routes.get(route.key) !== route) return;
     this.#routes.delete(route.key);
     for (const connection of [...this.#connections.values()]) {

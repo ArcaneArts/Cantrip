@@ -106,6 +106,12 @@ protocol, and server relay. This ADR does not enable that feature.
   client, expire, and can be revoked independently.
 - Tunnel counters and errors become inspectable without making the data plane a
   durable byte store.
+- Managed Code and project-share adapters share one buffered telemetry helper,
+  which serializes durable counter updates and flushes pending connection/byte
+  deltas before their server-relay attachment is removed.
+- Aggregate health and Prometheus diagnostics include directional bytes,
+  connection lifecycle counts, rejections, and bounded termination reasons;
+  they never use tenant, destination, payload, or credential labels.
 - Supporting a new protocol requires a bounded adapter or raw-TCP compatibility
   decision; the protocol hint alone never grants arbitrary server network
   access.

@@ -24,6 +24,17 @@ export const tunnelDataDirectionSchema = z.enum([
   "destination-to-source",
 ]);
 
+export const tunnelDataPlaneCloseCodeSchema = z.enum([
+  "normal",
+  "revoked",
+  "endpoint-disconnected",
+  "idle-timeout",
+  "lifetime-expired",
+  "congested",
+  "bandwidth-limit",
+  "protocol-error",
+]);
+
 export const tunnelDataPlaneTargetSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -94,16 +105,7 @@ export const tunnelDataPlaneFrameHeaderSchema = z.discriminatedUnion("kind", [
   }),
   frameBaseSchema.extend({
     kind: z.literal("close"),
-    code: z.enum([
-      "normal",
-      "revoked",
-      "endpoint-disconnected",
-      "idle-timeout",
-      "lifetime-expired",
-      "congested",
-      "bandwidth-limit",
-      "protocol-error",
-    ]),
+    code: tunnelDataPlaneCloseCodeSchema,
     message: z.string().trim().min(1).max(1_024).nullable(),
   }),
   frameBaseSchema.extend({
@@ -189,6 +191,9 @@ export function decodeTunnelDataPlaneFrame(frame: Uint8Array): {
 }
 
 export type TunnelDataDirection = z.infer<typeof tunnelDataDirectionSchema>;
+export type TunnelDataPlaneCloseCode = z.infer<
+  typeof tunnelDataPlaneCloseCodeSchema
+>;
 export type TunnelDataPlaneTarget = z.infer<typeof tunnelDataPlaneTargetSchema>;
 export type TunnelDataPlaneFrameHeader = z.infer<
   typeof tunnelDataPlaneFrameHeaderSchema

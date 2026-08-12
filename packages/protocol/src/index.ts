@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { tunnelDataPlaneCloseCodeSchema } from "./tunnel-data-plane.js";
+
 export * from "./tunnel-data-plane.js";
 
 export * from "./live.js";
@@ -871,6 +873,10 @@ export const serverOperationalStatsSchema = z.object({
     closedConnections: operationalCounterSchema,
     openedConnections: operationalCounterSchema,
     rejectedConnections: operationalCounterSchema,
+    terminationsByReason: z.record(
+      tunnelDataPlaneCloseCodeSchema,
+      operationalCounterSchema,
+    ),
   }),
   quotas: z.object({
     activeRemoteSurfaces: operationalCounterSchema,

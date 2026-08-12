@@ -122,17 +122,28 @@ export class TunnelRuntimeManager {
       if (this.#active.get(authorization.attachmentId) !== active) return;
       this.#active.delete(authorization.attachmentId);
       clearTimeout(expires);
+      unsubscribeWorker();
       route.close();
       void this.repository
         .markDesktopTunnelAttachmentOffline(authorization.attachmentId)
         .then(() => this.changed(this.#change(authorization)))
         .catch(() => undefined);
     });
-    const activated = await this.repository.activateDesktopTunnelAttachment(
-      authorization.attachmentId,
-      authorization.clientId,
-      initialize.localPort,
-    );
+    let activated: boolean;
+    try {
+      activated = await this.repository.activateDesktopTunnelAttachment(
+        authorization.attachmentId,
+        authorization.clientId,
+        initialize.localPort,
+      );
+    } catch (error) {
+      this.closeActive(
+        authorization.attachmentId,
+        "Could not activate attachment",
+        1011,
+      );
+      throw error;
+    }
     if (!activated) {
       this.closeActive(authorization.attachmentId, "Attachment is stale", 1008);
       throw new Error("Tunnel attachment is stale or expired.");
@@ -159,13 +170,13 @@ export class TunnelRuntimeManager {
   }
 
   async revoke(ownerId: string, attachmentId: string): Promise<boolean> {
-    this.closeActive(attachmentId, "Attachment revoked", 1008);
-    this.#broker.revokeAttachment(attachmentId);
     const stopped = await this.repository.stopDesktopTunnelAttachment(
       ownerId,
       attachmentId,
     );
     if (!stopped) return false;
+    this.closeActive(attachmentId, "Attachment revoked", 1008);
+    this.#broker.revokeAttachment(attachmentId);
     this.changed({ attachmentId, ownerId, ...stopped });
     return true;
   }

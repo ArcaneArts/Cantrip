@@ -13,6 +13,7 @@ import {
   TunnelStreamBroker,
   type TunnelRouteHandle,
 } from "../tunnels/broker.js";
+import { ManagedServerRelayTelemetry } from "../tunnels/managed-relay-telemetry.js";
 import { WorkerTunnelEndpoint } from "../tunnels/worker-endpoint.js";
 import type { WorkerCommandBus } from "../workers/bridge.js";
 import { ProjectShareHttpEndpoint } from "./http-endpoint.js";
@@ -27,15 +28,10 @@ export interface ProjectShareAttachmentBinding {
   root: string;
   route: TunnelRouteHandle;
   source: ProjectShareHttpEndpoint;
+  telemetry: ManagedServerRelayTelemetry | null;
   token: string;
   tunnelId: string;
   workerId: string;
-  metrics: {
-    bytesFromSource: number;
-    bytesToSource: number;
-    connectionDelta: number;
-    timer: ReturnType<typeof setTimeout> | null;
-  };
 }
 
 export interface OpenProjectShareInput {
@@ -395,17 +391,23 @@ export class ProjectShareTunnelBroker {
         createdAt: now,
         expiresAt,
         lastSeenAt: now,
-        metrics: {
-          bytesFromSource: 0,
-          bytesToSource: 0,
-          connectionDelta: 0,
-          timer: null,
-        },
         ownerId: input.ownerId,
         publicBasePath,
         root: input.root,
         route,
         source,
+        telemetry: this.#repository
+          ? new ManagedServerRelayTelemetry(
+              this.#repository,
+              {
+                attachmentId: shareId,
+                ownerId: input.ownerId,
+                projectId: input.projectId,
+                tunnelId: managedTunnelId,
+              },
+              this.#changed,
+            )
+          : null,
         token,
         tunnelId: managedTunnelId,
         workerId: input.workerId,
@@ -477,17 +479,7 @@ export class ProjectShareTunnelBroker {
       binding.createdAt + this.#maxLifetimeMs,
       now + this.#idleTtlMs,
     );
-    if (this.#repository) {
-      void this.#repository
-        .touchManagedServerRelay(
-          binding.ownerId,
-          binding.attachment.attachmentId,
-          {
-            expiresAt: new Date(binding.expiresAt),
-          },
-        )
-        .catch(() => undefined);
-    }
+    binding.telemetry?.renew(new Date(binding.expiresAt));
   }
 
   #requestMatchesBinding(
@@ -514,9 +506,9 @@ export class ProjectShareTunnelBroker {
     if (this.#attachmentsByProject.get(key) === binding) {
       this.#attachmentsByProject.delete(key);
     }
-    if (binding.metrics.timer) clearTimeout(binding.metrics.timer);
     binding.source.close();
     binding.route.close();
+    await binding.telemetry?.close(new Date(binding.expiresAt));
     if (this.#repository) {
       await this.#repository
         .removeManagedTunnel(binding.ownerId, {
@@ -544,45 +536,14 @@ export class ProjectShareTunnelBroker {
       connectionDelta: number;
     },
   ): void {
-    if (!binding || !this.#repository) return;
+    if (!binding) return;
     const now = Date.now();
     binding.lastSeenAt = now;
     binding.expiresAt = Math.min(
       binding.createdAt + this.#maxLifetimeMs,
       now + this.#idleTtlMs,
     );
-    binding.metrics.bytesFromSource += input.bytesFromSource;
-    binding.metrics.bytesToSource += input.bytesToSource;
-    binding.metrics.connectionDelta += input.connectionDelta;
-    if (binding.metrics.timer) return;
-    binding.metrics.timer = setTimeout(() => {
-      binding.metrics.timer = null;
-      const metrics = {
-        activeConnectionDelta: binding.metrics.connectionDelta,
-        bytesFromSource: binding.metrics.bytesFromSource,
-        bytesToSource: binding.metrics.bytesToSource,
-        expiresAt: new Date(binding.expiresAt),
-      };
-      binding.metrics.connectionDelta = 0;
-      binding.metrics.bytesFromSource = 0;
-      binding.metrics.bytesToSource = 0;
-      void this.#repository
-        ?.touchManagedServerRelay(
-          binding.ownerId,
-          binding.attachment.attachmentId,
-          metrics,
-        )
-        .then(() =>
-          this.#changed?.({
-            attachmentId: binding.attachment.attachmentId,
-            ownerId: binding.ownerId,
-            projectId: binding.attachment.projectId,
-            tunnelId: binding.tunnelId,
-          }),
-        )
-        .catch(() => undefined);
-    }, 250);
-    binding.metrics.timer.unref();
+    binding.telemetry?.record(input, new Date(binding.expiresAt));
   }
 
   async #closeWorkerShare(
