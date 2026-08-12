@@ -176,7 +176,7 @@ export const DEFAULT_OLLAMA_PROVIDER_ID =
 export const DEFAULT_MODEL_ID = "00000000-0000-0000-0000-000000000020";
 export const DEFAULT_MODEL_ROUTE_ID = "00000000-0000-0000-0000-000000000021";
 const SERVER_ID_STATE_KEY = "server-id";
-export const WORKER_ONLINE_WINDOW_MS = 15_000;
+export const WORKER_ONLINE_WINDOW_MS = 30_000;
 
 type RepositoryDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type ProjectRow = typeof schema.projects.$inferSelect;

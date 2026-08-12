@@ -31,6 +31,100 @@ const frame: TunnelDataPlaneFrameHeader = {
 };
 
 describe("worker generic tunnel data transport", () => {
+  it("keeps the channel active and returns a command after reconnecting", async () => {
+    const server = createServer();
+    const webSockets = new WebSocketServer({ noServer: true });
+    const sockets: WebSocket[] = [];
+    let resolveFirst: ((socket: WebSocket) => void) | undefined;
+    let resolveSecond: ((socket: WebSocket) => void) | undefined;
+    const firstConnected = new Promise<WebSocket>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondConnected = new Promise<WebSocket>((resolve) => {
+      resolveSecond = resolve;
+    });
+    webSockets.on("connection", (socket) => {
+      sockets.push(socket);
+      if (sockets.length === 1) resolveFirst?.(socket);
+      if (sockets.length === 2) resolveSecond?.(socket);
+    });
+    server.on("upgrade", (request, socket, head) => {
+      webSockets.handleUpgrade(request, socket, head, (client) => {
+        webSockets.emit("connection", client, request);
+      });
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    closers.push(async () => {
+      for (const client of webSockets.clients) client.terminate();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await new Promise<void>((resolve) => webSockets.close(() => resolve()));
+    });
+    const { port } = server.address() as AddressInfo;
+    let releaseCommand: (() => void) | undefined;
+    let markCommandStarted: (() => void) | undefined;
+    const commandStarted = new Promise<void>((resolve) => {
+      markCommandStarted = resolve;
+    });
+    const commandGate = new Promise<void>((resolve) => {
+      releaseCommand = resolve;
+    });
+    const connection = new WorkerConnection(
+      {
+        codeIdleTimeoutMs: 1_000,
+        codexBinary: "/tmp/codex",
+        codexInstallation: {
+          binary: "/tmp/codex",
+          manifestPath: null,
+          source: "override",
+        },
+        dataDirectory: "/tmp/cantrip-worker",
+        name: "Test Worker",
+        serverUrl: `http://127.0.0.1:${port}`,
+        token: "worker-secret",
+        workerId: "worker-1",
+      } satisfies WorkerConfig,
+      async () => {
+        markCommandStarted?.();
+        await commandGate;
+        return { recovered: true };
+      },
+      () => undefined,
+      () => undefined,
+      () => undefined,
+      10,
+    );
+    connection.start();
+    closers.push(() => connection.close());
+
+    const firstSocket = await firstConnected;
+    await new Promise<void>((resolve) => firstSocket.once("ping", resolve));
+    firstSocket.send(
+      JSON.stringify({
+        kind: "request",
+        requestId: "request-1",
+        command: { type: "code.probe" },
+      }),
+    );
+    await commandStarted;
+    firstSocket.terminate();
+
+    const secondSocket = await secondConnected;
+    const response = new Promise<unknown>((resolve) =>
+      secondSocket.once("message", (data) =>
+        resolve(JSON.parse(data.toString())),
+      ),
+    );
+    releaseCommand?.();
+    await expect(response).resolves.toMatchObject({
+      kind: "response",
+      requestId: "request-1",
+      ok: true,
+      result: { recovered: true },
+    });
+  });
+
   it("multiplexes generic frames and reports transport disconnect", async () => {
     const server = createServer();
     const webSockets = new WebSocketServer({ noServer: true });

@@ -145,7 +145,7 @@ export class RemoteSurfaceManager {
                 new TextEncoder().encode(JSON.stringify(signal)),
               ),
             onFrame: (header, payload) =>
-              void this.acceptFrame(header, payload),
+              void this.acceptWebRtcFrame(header, payload),
             surfaceId: command.surfaceId,
           });
         }
@@ -321,6 +321,19 @@ export class RemoteSurfaceManager {
       header.channel,
       payload,
     );
+  }
+
+  private async acceptWebRtcFrame(
+    header: RemoteSurfaceFrameHeader,
+    payload: Uint8Array,
+  ): Promise<void> {
+    try {
+      await this.acceptFrame(header, payload);
+    } catch (error) {
+      console.warn(
+        `[cantrip_worker] Rejected Remote Surface WebRTC frame: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   private emitWebSocket(

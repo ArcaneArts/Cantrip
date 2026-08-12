@@ -12,6 +12,8 @@ import {
 
 import type { WorkerConfig } from "./config.js";
 
+const HEARTBEAT_TIMEOUT_MS = 15_000;
+
 export function createHeartbeat(
   config: WorkerConfig,
   codexRuntime: CodexRuntimeReport,
@@ -60,7 +62,7 @@ export async function sendHeartbeat(
         "content-type": "application/json",
       },
       method: "POST",
-      signal: AbortSignal.timeout(4_000),
+      signal: AbortSignal.timeout(HEARTBEAT_TIMEOUT_MS),
     },
   );
 

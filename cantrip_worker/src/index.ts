@@ -197,6 +197,7 @@ async function start(): Promise<void> {
   await enrollWorker(config, heartbeat);
   let connected = false;
   let commandChannelStarted = false;
+  let heartbeatInFlight: Promise<void> | null = null;
   let lastConnectionError: string | null = null;
   let stopping = false;
   const attachments = new AttachmentStore(config.dataDirectory);
@@ -1379,7 +1380,7 @@ async function start(): Promise<void> {
     `[cantrip_worker] Starting ${heartbeat.name} (${heartbeat.workerId}); Codex: ${codexRuntime.version?.raw ?? "not found"} (${codexRuntime.compatibility}, ${config.codexInstallation.source}); Code: ${codeDiscovery.capabilities.available ? `${codeDiscovery.capabilities.version} (${codeDiscovery.installation?.source ?? "unknown"})` : `unavailable (${codeDiscovery.capabilities.reason ?? "unknown error"})`}; Browser: ${browserAdapter.executable ?? "Chromium not found"}; Desktop: ${desktopAdapter.available ? `${desktopAdapter.frameBackend} capture ready` : `unavailable (${desktopAdapter.initializationError ?? "unknown error"})`}`,
   );
 
-  const publish = async () => {
+  const publishHeartbeat = async () => {
     try {
       await sendHeartbeat(config, heartbeat);
       if (!connected) {
@@ -1399,6 +1400,14 @@ async function start(): Promise<void> {
       connected = false;
       lastConnectionError = message;
     }
+  };
+
+  const publish = (): Promise<void> => {
+    if (heartbeatInFlight) return heartbeatInFlight;
+    heartbeatInFlight = publishHeartbeat().finally(() => {
+      heartbeatInFlight = null;
+    });
+    return heartbeatInFlight;
   };
 
   await publish();
