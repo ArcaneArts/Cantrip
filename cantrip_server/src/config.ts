@@ -26,8 +26,10 @@ function readPort(
 }
 
 export interface ServerConfig {
+  adminBootstrapToken?: string;
   allowInsecureRemote: boolean;
   appOrigins: string[];
+  authRateLimit?: number;
   authMode: AuthMode;
   bootstrapMode: BootstrapMode;
   dataDirectory: string;
@@ -37,7 +39,12 @@ export interface ServerConfig {
   agentModelProvider: string;
   ollamaBaseUrl: string;
   host: string;
+  cookieSameSite?: "lax" | "none" | "strict";
+  cookieSecure?: boolean;
+  passwordHash?: string;
   port: number;
+  publicRegistration?: boolean;
+  sessionTtlSeconds?: number;
   codeSurfaceHost?: string;
   codeSurfaceOrigin?: string;
   codeSurfacePort?: number;
@@ -160,15 +167,34 @@ export function readServerConfig(): ServerConfig {
     "CANTRIP_ALLOW_INSECURE_REMOTE",
     process.env.CANTRIP_ALLOW_INSECURE_REMOTE,
   );
-
-  if (authMode !== "none") {
+  const passwordHash = process.env.CANTRIP_PASSWORD_HASH?.trim();
+  if (authMode === "password" && !passwordHash?.startsWith("$argon2id$")) {
     throw new Error(
-      `CANTRIP_AUTH_MODE=${authMode} is planned but not implemented. Use none for the local foundation.`,
+      "CANTRIP_AUTH_MODE=password requires CANTRIP_PASSWORD_HASH to contain an Argon2id encoded hash.",
+    );
+  }
+  const adminBootstrapToken = process.env.CANTRIP_ADMIN_BOOTSTRAP_TOKEN?.trim();
+  if (adminBootstrapToken && adminBootstrapToken.length < 32) {
+    throw new Error(
+      "CANTRIP_ADMIN_BOOTSTRAP_TOKEN must contain at least 32 characters.",
+    );
+  }
+  const cookieSameSiteInput = process.env.CANTRIP_COOKIE_SAME_SITE;
+  if (
+    cookieSameSiteInput !== undefined &&
+    !["lax", "none", "strict"].includes(cookieSameSiteInput)
+  ) {
+    throw new Error(
+      "Invalid CANTRIP_COOKIE_SAME_SITE: expected lax, none, or strict.",
     );
   }
 
   const loopback = ["127.0.0.1", "localhost", "::1"].includes(host);
-  if ((!loopback || deploymentMode === "hosted") && !allowInsecureRemote) {
+  if (
+    authMode === "none" &&
+    (!loopback || deploymentMode === "hosted") &&
+    !allowInsecureRemote
+  ) {
     throw new Error(
       "Unauthenticated remote access is disabled. Set CANTRIP_ALLOW_INSECURE_REMOTE=true only behind a trusted network or authenticating reverse proxy.",
     );
@@ -194,6 +220,7 @@ export function readServerConfig(): ServerConfig {
     `http://${codeSurfaceHost.includes(":") ? `[${codeSurfaceHost}]` : codeSurfaceHost}:${codeSurfacePort}`;
 
   const config: ServerConfig = {
+    adminBootstrapToken,
     allowInsecureRemote,
     appOrigins: (
       process.env.CANTRIP_APP_ORIGINS ??
@@ -204,6 +231,13 @@ export function readServerConfig(): ServerConfig {
       .map((origin) => origin.trim())
       .filter(Boolean),
     authMode,
+    authRateLimit: readBoundedInteger(
+      "CANTRIP_AUTH_RATE_LIMIT",
+      process.env.CANTRIP_AUTH_RATE_LIMIT,
+      10,
+      1,
+      1_000,
+    ),
     bootstrapMode,
     dataDirectory: path.resolve(
       process.cwd(),
@@ -216,13 +250,43 @@ export function readServerConfig(): ServerConfig {
     ollamaBaseUrl:
       process.env.CANTRIP_OLLAMA_BASE_URL ?? "http://127.0.0.1:11434/v1",
     host,
+    cookieSameSite:
+      cookieSameSiteInput === "strict"
+        ? "strict"
+        : cookieSameSiteInput === "none"
+          ? "none"
+          : "lax",
+    cookieSecure:
+      process.env.CANTRIP_COOKIE_SECURE === undefined
+        ? deploymentMode === "hosted"
+        : readBoolean(
+            "CANTRIP_COOKIE_SECURE",
+            process.env.CANTRIP_COOKIE_SECURE,
+          ),
+    passwordHash,
     port,
+    publicRegistration: readBoolean(
+      "CANTRIP_PUBLIC_REGISTRATION",
+      process.env.CANTRIP_PUBLIC_REGISTRATION,
+    ),
+    sessionTtlSeconds: readBoundedInteger(
+      "CANTRIP_SESSION_TTL_SECONDS",
+      process.env.CANTRIP_SESSION_TTL_SECONDS,
+      30 * 24 * 60 * 60,
+      300,
+      365 * 24 * 60 * 60,
+    ),
     codeSurfaceHost,
     codeSurfaceOrigin,
     codeSurfacePort,
     workerToken,
     remoteSurfaceWebRtc: readRemoteSurfaceWebRtcConfig(),
   };
+  if (config.cookieSameSite === "none" && !config.cookieSecure) {
+    throw new Error(
+      "CANTRIP_COOKIE_SAME_SITE=none requires CANTRIP_COOKIE_SECURE=true.",
+    );
+  }
   resolveCodeSurfaceConfig(config);
   return config;
 }

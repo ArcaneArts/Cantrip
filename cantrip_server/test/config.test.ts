@@ -69,15 +69,43 @@ describe("server configuration safety", () => {
     expect(() => readServerConfig()).toThrow(/unique CANTRIP_WORKER_TOKEN/);
   });
 
-  it.each(["password", "accounts"])(
-    "recognizes but fails closed for unimplemented %s mode",
-    (authMode) => {
-      vi.stubEnv("CANTRIP_AUTH_MODE", authMode);
-      expect(() => readServerConfig()).toThrow(
-        new RegExp(`CANTRIP_AUTH_MODE=${authMode}.*not implemented`),
-      );
-    },
-  );
+  it("requires an Argon2id hash for single-user password mode", () => {
+    vi.stubEnv("CANTRIP_AUTH_MODE", "password");
+    expect(() => readServerConfig()).toThrow(/CANTRIP_PASSWORD_HASH/);
+
+    vi.stubEnv(
+      "CANTRIP_PASSWORD_HASH",
+      "$argon2id$v=19$m=65536,t=3,p=1$c2FsdA$ZGlnaWVzdA",
+    );
+    expect(readServerConfig()).toMatchObject({
+      authMode: "password",
+      publicRegistration: false,
+      sessionTtlSeconds: 2_592_000,
+    });
+  });
+
+  it("accepts accounts mode and validates first-admin secrets", () => {
+    vi.stubEnv("CANTRIP_AUTH_MODE", "accounts");
+    vi.stubEnv("CANTRIP_ADMIN_BOOTSTRAP_TOKEN", "too-short");
+    expect(() => readServerConfig()).toThrow(/at least 32/);
+
+    vi.stubEnv("CANTRIP_ADMIN_BOOTSTRAP_TOKEN", "a".repeat(32));
+    vi.stubEnv("CANTRIP_PUBLIC_REGISTRATION", "true");
+    expect(readServerConfig()).toMatchObject({
+      adminBootstrapToken: "a".repeat(32),
+      authMode: "accounts",
+      publicRegistration: true,
+    });
+  });
+
+  it("requires Secure cookies when SameSite is none", () => {
+    vi.stubEnv("CANTRIP_COOKIE_SAME_SITE", "none");
+    vi.stubEnv("CANTRIP_COOKIE_SECURE", "false");
+    expect(() => readServerConfig()).toThrow(/requires.*secure/i);
+
+    vi.stubEnv("CANTRIP_COOKIE_SAME_SITE", "sometimes");
+    expect(() => readServerConfig()).toThrow(/expected lax, none, or strict/i);
+  });
 
   it("accepts complete TURN configuration and rejects partial or direct URLs", () => {
     vi.stubEnv(

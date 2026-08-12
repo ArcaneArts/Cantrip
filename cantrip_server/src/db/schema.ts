@@ -112,6 +112,7 @@ export const userSessions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     tokenHash: text("token_hash").notNull(),
+    csrfTokenHash: text("csrf_token_hash").notNull(),
     authMethod: text("auth_method").notNull(),
     label: text("label"),
     userAgentHash: text("user_agent_hash"),

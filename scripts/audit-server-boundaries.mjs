@@ -25,12 +25,22 @@ function routeBoundary(path) {
   if (path === "/api" || path === "/api/bootstrap") {
     return "public-bootstrap";
   }
+  if (
+    path === "/api/auth/login" ||
+    path === "/api/auth/register" ||
+    path === "/api/auth/session"
+  ) {
+    return "public-authentication";
+  }
+  if (path.startsWith("/api/workflow-hooks/")) return "external-credential";
   if (path.startsWith("/api/internal/")) return "worker-control";
   return "application-principal";
 }
 
 function ownerEvidence(path, text) {
   if (path === "/api" || path === "/api/bootstrap") return "public";
+  if (path.startsWith("/api/auth/")) return "session-boundary";
+  if (path.startsWith("/api/workflow-hooks/")) return "webhook-credential";
   if (path.startsWith("/api/internal/")) return "legacy-worker-token";
   if (
     text.includes("principalOwnerId(") ||
@@ -237,12 +247,16 @@ async function buildInventory() {
   }
 
   const counts = Object.fromEntries(
-    ["application-principal", "public-bootstrap", "worker-control"].map(
-      (boundary) => [
-        boundary,
-        routes.filter((route) => route.boundary === boundary).length,
-      ],
-    ),
+    [
+      "application-principal",
+      "external-credential",
+      "public-authentication",
+      "public-bootstrap",
+      "worker-control",
+    ].map((boundary) => [
+      boundary,
+      routes.filter((route) => route.boundary === boundary).length,
+    ]),
   );
   const repositoryOwnerEvidence = Object.fromEntries(
     [

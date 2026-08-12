@@ -95,11 +95,20 @@ Copy the packaged `.env.example` to `.env`. The startup scripts use Node's
 - `CANTRIP_APP_ORIGINS`: comma-separated browser/Tauri origins allowed by CORS.
 - `CANTRIP_DEPLOYMENT_MODE` and `CANTRIP_BOOTSTRAP_MODE`: values announced by
   `/api/bootstrap`.
+- `CANTRIP_AUTH_MODE`: `none` for loopback, `password` for one protected owner,
+  or `accounts` for account sessions.
+- `CANTRIP_PASSWORD_HASH`: required Argon2id encoded hash for `password` mode.
+- `CANTRIP_ADMIN_BOOTSTRAP_TOKEN`: optional 32+ character secret required to
+  create the first account when public registration is disabled.
+- `CANTRIP_PUBLIC_REGISTRATION`, `CANTRIP_SESSION_TTL_SECONDS`, and
+  `CANTRIP_AUTH_RATE_LIMIT`: account/session policy.
+- `CANTRIP_COOKIE_SECURE` and `CANTRIP_COOKIE_SAME_SITE`: hosted cookie policy;
+  `SameSite=None` is accepted only with Secure cookies.
 
-Account authentication is not implemented. A hosted mode or non-loopback bind
-therefore requires `CANTRIP_ALLOW_INSECURE_REMOTE=true`, which only disables a
-safety check. It does not authenticate requests. Keep the server on a trusted
-network or put an authenticating TLS reverse proxy in front of it.
+Anonymous hosted mode still requires `CANTRIP_ALLOW_INSECURE_REMOTE=true`, which
+only disables a safety check. Password and account modes use revocable
+server-side sessions, but public hosting remains gated on the subsequent
+tenant-ownership and worker-enrollment milestones.
 The Code surface exposes only a health endpoint and capability-scoped bearer
 attachments; it does not expose application APIs or accept Cantrip cookies.
 

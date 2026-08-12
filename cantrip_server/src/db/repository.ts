@@ -98,6 +98,7 @@ import {
   asc,
   desc,
   eq,
+  gt,
   inArray,
   isNull,
   lte,
@@ -136,6 +137,21 @@ type ProjectWorktreeRow = typeof schema.projectWorktrees.$inferSelect;
 type McpServerRow = typeof schema.mcpServers.$inferSelect;
 type GitOperationRow = typeof schema.gitOperations.$inferSelect;
 type ProjectWorkspaceRow = typeof schema.projectWorkspaces.$inferSelect;
+type UserRow = typeof schema.users.$inferSelect;
+type UserSessionRow = typeof schema.userSessions.$inferSelect;
+
+export interface AccountCredentialRecord {
+  passwordHash: string;
+  user: UserSummary;
+}
+
+export interface ActiveUserSession {
+  authMethod: "password" | "account-password";
+  csrfTokenHash: string;
+  expiresAt: Date;
+  id: string;
+  user: UserSummary;
+}
 
 export interface ChatExecutionContext {
   automationPaused: boolean;
@@ -303,6 +319,16 @@ function firstOrThrow<T>(rows: T[], operation: string): T {
     throw new Error(`Database returned no row after ${operation}.`);
   }
   return row;
+}
+
+function toUserSummary(user: UserRow): UserSummary {
+  return {
+    id: user.id,
+    kind: user.kind as UserSummary["kind"],
+    displayName: user.displayName,
+    email: user.email,
+    role: user.role as UserSummary["role"],
+  };
 }
 
 function toProjectSummary(
@@ -998,6 +1024,152 @@ export class ServerRepository {
     };
   }
 
+  async countAccountUsers(): Promise<number> {
+    const rows = await this.database
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.users)
+      .where(eq(schema.users.kind, "account"));
+    return rows[0]?.count ?? 0;
+  }
+
+  async createAccount(input: {
+    displayName: string;
+    email: string;
+    normalizedEmail: string;
+    passwordHash: string;
+    role: UserSummary["role"];
+  }): Promise<UserSummary> {
+    const now = new Date();
+    const rows = await this.database
+      .insert(schema.users)
+      .values({
+        id: randomUUID(),
+        kind: "account",
+        role: input.role,
+        status: "active",
+        displayName: input.displayName,
+        email: input.email,
+        normalizedEmail: input.normalizedEmail,
+        passwordHash: input.passwordHash,
+        passwordChangedAt: now,
+        updatedAt: now,
+      })
+      .returning();
+    const user = firstOrThrow(rows, "creating an account");
+    await this.ensureDefaultProjectWorkspace(user.id);
+    return toUserSummary(user);
+  }
+
+  async findAccountCredential(
+    normalizedEmail: string,
+  ): Promise<AccountCredentialRecord | null> {
+    const rows = await this.database
+      .select()
+      .from(schema.users)
+      .where(
+        and(
+          eq(schema.users.kind, "account"),
+          eq(schema.users.normalizedEmail, normalizedEmail),
+          eq(schema.users.status, "active"),
+        ),
+      )
+      .limit(1);
+    const user = rows[0];
+    if (!user?.passwordHash) return null;
+    return { passwordHash: user.passwordHash, user: toUserSummary(user) };
+  }
+
+  async createUserSession(input: {
+    authMethod: ActiveUserSession["authMethod"];
+    csrfTokenHash: string;
+    expiresAt: Date;
+    ipAddressHash: string | null;
+    label: string | null;
+    tokenHash: string;
+    userAgentHash: string | null;
+    userId: string;
+  }): Promise<UserSessionRow> {
+    const rows = await this.database
+      .insert(schema.userSessions)
+      .values({ id: randomUUID(), ...input })
+      .returning();
+    return firstOrThrow(rows, "creating a user session");
+  }
+
+  async getActiveUserSession(
+    tokenHash: string,
+  ): Promise<ActiveUserSession | null> {
+    const rows = await this.database
+      .select({ session: schema.userSessions, user: schema.users })
+      .from(schema.userSessions)
+      .innerJoin(schema.users, eq(schema.users.id, schema.userSessions.userId))
+      .where(
+        and(
+          eq(schema.userSessions.tokenHash, tokenHash),
+          isNull(schema.userSessions.revokedAt),
+          gt(schema.userSessions.expiresAt, new Date()),
+          eq(schema.users.status, "active"),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      authMethod: row.session.authMethod as ActiveUserSession["authMethod"],
+      csrfTokenHash: row.session.csrfTokenHash,
+      expiresAt: row.session.expiresAt,
+      id: row.session.id,
+      user: toUserSummary(row.user),
+    };
+  }
+
+  async rotateSessionCsrfToken(
+    sessionId: string,
+    csrfTokenHash: string,
+  ): Promise<boolean> {
+    const rows = await this.database
+      .update(schema.userSessions)
+      .set({ csrfTokenHash, lastSeenAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.userSessions.id, sessionId),
+          isNull(schema.userSessions.revokedAt),
+        ),
+      )
+      .returning({ id: schema.userSessions.id });
+    return rows.length > 0;
+  }
+
+  async revokeUserSession(sessionId: string, reason: string): Promise<boolean> {
+    const now = new Date();
+    const rows = await this.database
+      .update(schema.userSessions)
+      .set({ revokedAt: now, revokedReason: reason, updatedAt: now })
+      .where(
+        and(
+          eq(schema.userSessions.id, sessionId),
+          isNull(schema.userSessions.revokedAt),
+        ),
+      )
+      .returning({ id: schema.userSessions.id });
+    return rows.length > 0;
+  }
+
+  async revokeAllUserSessions(userId: string, reason: string): Promise<number> {
+    const now = new Date();
+    const rows = await this.database
+      .update(schema.userSessions)
+      .set({ revokedAt: now, revokedReason: reason, updatedAt: now })
+      .where(
+        and(
+          eq(schema.userSessions.userId, userId),
+          isNull(schema.userSessions.revokedAt),
+        ),
+      )
+      .returning({ id: schema.userSessions.id });
+    return rows.length;
+  }
+
   async ensureDefaultModelConfiguration(
     ownerId: string,
     modelName: string,
@@ -1055,6 +1227,52 @@ export class ServerRepository {
             and ${schema.chatMessages.role} = 'user'
         )
     `);
+  }
+
+  async ensureAccountConfiguration(
+    ownerId: string,
+    modelName: string,
+    ollamaBaseUrl: string,
+  ): Promise<void> {
+    const existing = await this.database
+      .select({ userId: schema.userSettings.userId })
+      .from(schema.userSettings)
+      .where(eq(schema.userSettings.userId, ownerId))
+      .limit(1);
+    if (existing.length > 0) return;
+
+    const providerId = randomUUID();
+    const modelId = randomUUID();
+    await this.database.insert(schema.modelProviders).values({
+      id: providerId,
+      ownerId,
+      name: "Ollama",
+      kind: "ollama",
+      baseUrl: ollamaBaseUrl,
+    });
+    await this.database.insert(schema.modelProfiles).values({
+      id: modelId,
+      ownerId,
+      name: modelName,
+    });
+    await this.database.insert(schema.modelRoutes).values({
+      id: randomUUID(),
+      modelId,
+      providerId,
+      modelName,
+      position: 0,
+    });
+    await this.database.insert(schema.userSettings).values({
+      userId: ownerId,
+      theme: "system",
+      highContrast: false,
+      proMode: false,
+      proModeOpacity: 80,
+      sidebarWidth: 288,
+      desktopFrameRate: 30,
+      desktopStreamQuality: "adaptive",
+      defaultModelId: modelId,
+    });
   }
 
   async getSettings(ownerId: string): Promise<SettingsBundle> {
