@@ -33,6 +33,7 @@ export const userRoleSchema = z.enum(["owner", "admin", "member"]);
 export const remoteSurfaceProtocolVersionSchema = z.literal(1);
 export const remoteSurfaceKindSchema = z.enum(["browser", "desktop"]);
 export const remoteSurfaceTransportSchema = z.enum(["websocket", "webrtc"]);
+export const remoteSurfaceIceTransportPolicySchema = z.enum(["all", "relay"]);
 export const remoteSurfaceStatusSchema = z.enum([
   "idle",
   "connecting",
@@ -53,6 +54,10 @@ export const remoteSurfaceCapabilitiesSchema = z.object({
   browser: z.boolean().default(false),
   desktop: z.boolean().default(false),
   transports: z.array(remoteSurfaceTransportSchema).min(1),
+  iceTransportPolicies: z
+    .array(remoteSurfaceIceTransportPolicySchema)
+    .min(1)
+    .default(["relay"]),
   maxSessions: z.number().int().positive(),
 });
 
@@ -87,8 +92,8 @@ export const remoteSurfaceIceServerSchema = z.object({
 });
 
 export const remoteSurfaceWebRtcConfigurationSchema = z.object({
-  iceServers: z.array(remoteSurfaceIceServerSchema).min(1),
-  iceTransportPolicy: z.literal("relay"),
+  iceServers: z.array(remoteSurfaceIceServerSchema).max(16),
+  iceTransportPolicy: remoteSurfaceIceTransportPolicySchema,
   negotiationTimeoutMs: z.number().int().min(1_000).max(30_000),
 });
 
@@ -120,6 +125,7 @@ function defaultRemoteSurfaceCapabilities(): z.infer<
     browser: false,
     desktop: false,
     transports: ["websocket"],
+    iceTransportPolicies: ["relay"],
     maxSessions: 4,
   };
 }
@@ -306,7 +312,7 @@ export const serverBootstrapSchema = z.object({
     remoteSurfaces: z.object({
       enabled: z.boolean(),
       transports: z.array(remoteSurfaceTransportSchema).min(1),
-      relayOnly: z.literal(true),
+      relayOnly: z.boolean(),
     }),
     code: z.object({
       enabled: z.boolean(),

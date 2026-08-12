@@ -42,7 +42,7 @@ describe("worker Remote Surface WebRTC transport", () => {
         iceServers: [],
         iceTransportPolicy: "all",
         negotiationTimeoutMs: 8_000,
-      } as unknown as RemoteSurfaceWebRtcConfiguration,
+      },
       emitSignal(signal) {
         workerSignalChain = workerSignalChain.then(async () => {
           if (signal.type === "answer") {

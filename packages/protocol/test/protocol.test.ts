@@ -3637,7 +3637,7 @@ describe("Cantrip protocol", () => {
     expect([...decoded.payload]).toEqual([0, 1, 127, 255]);
   });
 
-  it("accepts relay-only WebRTC signaling and rejects direct ICE policy", () => {
+  it("accepts direct, host-only, and relay WebRTC configurations", () => {
     const configuration = remoteSurfaceWebRtcConfigurationSchema.parse({
       iceServers: [
         {
@@ -3651,11 +3651,16 @@ describe("Cantrip protocol", () => {
     });
     expect(configuration.iceTransportPolicy).toBe("relay");
     expect(
-      remoteSurfaceWebRtcConfigurationSchema.safeParse({
-        ...configuration,
+      remoteSurfaceWebRtcConfigurationSchema.parse({
+        iceServers: [],
         iceTransportPolicy: "all",
-      }).success,
-    ).toBe(false);
+        negotiationTimeoutMs: 8_000,
+      }),
+    ).toEqual({
+      iceServers: [],
+      iceTransportPolicy: "all",
+      negotiationTimeoutMs: 8_000,
+    });
     expect(
       remoteSurfaceConnectionMessageSchema.parse({
         type: "ready",

@@ -5,7 +5,10 @@ import {
 } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { RemoteSurfaceWebRtcClient } from "./remote-surface-webrtc";
+import {
+  classifyWebRtcTransport,
+  RemoteSurfaceWebRtcClient,
+} from "./remote-surface-webrtc";
 
 class FakeDataChannel {
   binaryType: BinaryType = "blob";
@@ -39,6 +42,7 @@ class FakePeerConnection {
   readonly channels = new Map<string, FakeDataChannel>();
   readonly addIceCandidate = vi.fn(async () => undefined);
   readonly setRemoteDescription = vi.fn(async () => undefined);
+  readonly getStats = vi.fn(async () => new Map());
 
   createDataChannel(label: string): RTCDataChannel {
     const channel = new FakeDataChannel(label);
@@ -78,6 +82,46 @@ afterEach(() => {
 });
 
 describe("RemoteSurfaceWebRtcClient", () => {
+  it("classifies direct and TURN-selected candidate pairs", () => {
+    const report = (candidateType: "host" | "relay") =>
+      new Map([
+        [
+          "transport",
+          {
+            id: "transport",
+            type: "transport",
+            selectedCandidatePairId: "pair",
+          },
+        ],
+        [
+          "pair",
+          {
+            id: "pair",
+            type: "candidate-pair",
+            state: "succeeded",
+            nominated: true,
+            localCandidateId: "local",
+            remoteCandidateId: "remote",
+          },
+        ],
+        ["local", { id: "local", type: "local-candidate", candidateType }],
+        [
+          "remote",
+          { id: "remote", type: "remote-candidate", candidateType: "host" },
+        ],
+      ]);
+    expect(
+      classifyWebRtcTransport(
+        report("host") as unknown as Pick<RTCStatsReport, "forEach">,
+      ),
+    ).toBe("webrtc-direct");
+    expect(
+      classifyWebRtcTransport(
+        report("relay") as unknown as Pick<RTCStatsReport, "forEach">,
+      ),
+    ).toBe("webrtc-relay");
+  });
+
   it("negotiates and routes full binary envelopes over two data channels", async () => {
     const peer = new FakePeerConnection();
     const onFrame = vi.fn();
