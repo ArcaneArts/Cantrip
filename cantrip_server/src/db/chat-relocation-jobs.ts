@@ -14,7 +14,18 @@ import {
   type ChatSummary,
   type ExecutionPlacement,
 } from "@cantrip/protocol";
-import { and, asc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  lte,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -48,6 +59,7 @@ const RUNNING_STATES = [
   "ready-to-commit",
 ] as const;
 export const CHAT_RELOCATION_JOB_LEASE_MS = 2 * 60_000;
+export const CHAT_RELOCATION_JOB_HISTORY_LIMIT = 1_000;
 
 export class ChatRelocationJobConflictError extends Error {}
 export class ChatRelocationJobNotFoundError extends Error {}
@@ -605,8 +617,14 @@ export class ChatRelocationJobRepository {
         ),
       )
       .where(eq(schema.chatRelocationJobs.chatId, chatId))
-      .orderBy(asc(schema.chatRelocationJobs.createdAt));
-    return chatRelocationJobListSchema.parse(rows.map(({ job }) => toJob(job)));
+      .orderBy(
+        desc(schema.chatRelocationJobs.createdAt),
+        desc(schema.chatRelocationJobs.id),
+      )
+      .limit(CHAT_RELOCATION_JOB_HISTORY_LIMIT);
+    return chatRelocationJobListSchema.parse(
+      rows.reverse().map(({ job }) => toJob(job)),
+    );
   }
 
   async getSnapshot(
