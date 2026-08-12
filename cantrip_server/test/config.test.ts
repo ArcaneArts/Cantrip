@@ -100,12 +100,18 @@ describe("server configuration safety", () => {
 
   it("requires explicit secure origins, PostgreSQL, and trusted proxies in hosted mode", () => {
     stubHostedInfrastructure();
+    vi.stubEnv("REDIS_URL", "rediss://redis.cantrip.test:6380");
+    vi.stubEnv("CANTRIP_SERVER_INSTANCE_ID", "relay-us-central-1");
+    vi.stubEnv("CANTRIP_COORDINATION_PRESENCE_TTL_MS", "45000");
     expect(readServerConfig()).toMatchObject({
       appOrigins: ["https://app.cantrip.test"],
       databaseUrl: "postgres://cantrip:test@db/cantrip",
       publicOrigin: "https://api.cantrip.test",
       codeSurfaceOrigin: "https://code.cantrip.test",
       requireHttps: true,
+      redisUrl: "rediss://redis.cantrip.test:6380",
+      serverInstanceId: "relay-us-central-1",
+      coordinationPresenceTtlMs: 45_000,
       trustedProxies: ["loopback", "10.0.0.0/8"],
     });
 
@@ -122,6 +128,37 @@ describe("server configuration safety", () => {
     vi.stubEnv("CANTRIP_BOOTSTRAP_MODE", "hosted");
     vi.stubEnv("CANTRIP_ALLOW_INSECURE_REMOTE", "true");
     expect(() => readServerConfig()).toThrow(/not permitted/i);
+  });
+
+  it("validates optional shared relay coordination configuration", () => {
+    vi.stubEnv("REDIS_URL", "https://not-redis.test");
+    expect(() => readServerConfig()).toThrow(/REDIS_URL.*redis/i);
+    vi.stubEnv("REDIS_URL", "redis://127.0.0.1:6379");
+    vi.stubEnv("CANTRIP_SERVER_INSTANCE_ID", "invalid\ninstance");
+    expect(() => readServerConfig()).toThrow(/SERVER_INSTANCE_ID/i);
+    vi.stubEnv("CANTRIP_SERVER_INSTANCE_ID", "relay-1");
+    vi.stubEnv("CANTRIP_COORDINATION_PRESENCE_TTL_MS", "1000");
+    expect(() => readServerConfig()).toThrow(/PRESENCE_TTL/i);
+  });
+
+  it("partitions global quotas safely across the configured replica ceiling", () => {
+    vi.stubEnv("REDIS_URL", "redis://127.0.0.1:6379");
+    vi.stubEnv("CANTRIP_COORDINATION_MAX_INSTANCES", "4");
+    expect(readServerConfig()).toMatchObject({
+      coordinationMaxInstances: 4,
+      accountCommandConcurrency: 32,
+      accountRelayBytesPerMinute: 134_217_728,
+      accountRemoteSurfaceLimit: 4,
+      accountUploadConcurrency: 1,
+      workerCommandConcurrency: 16,
+      workerRelayBytesPerMinute: 67_108_864,
+      workerRemoteSurfaceLimit: 2,
+    });
+
+    vi.stubEnv("CANTRIP_COORDINATION_MAX_INSTANCES", "5");
+    expect(() => readServerConfig()).toThrow(
+      /ACCOUNT_UPLOAD_CONCURRENCY.*MAX_INSTANCES/i,
+    );
   });
 
   it("bounds public payload, rate, connection, and command limits", () => {

@@ -497,6 +497,7 @@ import {
   requiredToolString,
 } from "./http/request-helpers.js";
 import { AppLiveHub } from "./live/hub.js";
+import type { RelayCoordinator } from "./coordination/relay-coordinator.js";
 import { OperationalMetrics } from "./operations/metrics.js";
 import { RelayQuotaManager } from "./operations/relay-quotas.js";
 import {
@@ -514,6 +515,7 @@ export interface BuildAppOptions {
   projectShareTunnel?: ProjectShareTunnelBroker;
   workerBridge?: WorkerCommandBus;
   relayQuotas?: RelayQuotaManager;
+  coordinator?: RelayCoordinator;
 }
 
 class SkillSettingsRequestError extends Error {
@@ -764,6 +766,7 @@ export async function buildApp({
   logger = true,
   projectShareTunnel: providedProjectShareTunnel,
   relayQuotas: providedRelayQuotas,
+  coordinator,
   workerBridge,
 }: BuildAppOptions) {
   const apiBodyLimitBytes =
@@ -833,6 +836,16 @@ export async function buildApp({
   });
   const relayQuotas = providedRelayQuotas ?? new RelayQuotaManager(config);
   const rawBridge = workerBridge ?? new WorkerBridge();
+  const coordinationStats = () =>
+    coordinator?.stats() ?? {
+      cachedWorkers: rawBridge.stats?.().connectedWorkers ?? 0,
+      instanceCount: 1,
+      maximumInstances: 1,
+      receivedMessages: 0,
+      rejectedMessages: 0,
+      sentMessages: 0,
+      shared: false,
+    };
   const bridge = new LimitedWorkerCommandBus(rawBridge, {
     accountConcurrency: config.accountCommandConcurrency ?? 128,
     accountRatePerMinute: config.accountCommandRatePerMinute ?? 2_400,
@@ -875,7 +888,24 @@ export async function buildApp({
     ownerContext.run(ownerId, operation);
   const workerOwnerId = (workerId: string): Promise<string | null> =>
     repository.getWorkerOwnerId(workerId);
-  const liveHub = new AppLiveHub();
+  const liveHub = new AppLiveHub({
+    publishExternal: coordinator
+      ? (publication) =>
+          coordinator.publish({ kind: "live-publication", publication })
+      : undefined,
+  });
+  const unsubscribeLiveCoordination = coordinator?.subscribe((message) => {
+    if (message.kind === "live-publication") {
+      liveHub.receiveExternal(message.publication);
+    }
+  });
+  app.log.info(
+    {
+      instanceId: config.serverInstanceId ?? "local-single-instance",
+      sharedCoordination: Boolean(coordinator),
+    },
+    "Server relay instance initialized",
+  );
   let livePublishingEnabled = true;
   const customizationStatusObservers = new Map<
     string,
@@ -4401,6 +4431,8 @@ export async function buildApp({
         live: liveHub.stats(),
         operations: {
           ...operationalMetrics.snapshot(),
+          instanceId: config.serverInstanceId ?? "local-single-instance",
+          coordination: coordinationStats(),
           quotas: relayQuotas.stats(),
           tunnels: tunnelRuntime.stats(),
           workerCommands: bridge.stats(),
@@ -4422,8 +4454,15 @@ export async function buildApp({
 
   app.get("/readyz", { logLevel: "warn" }, async (_request, reply) => {
     const startedAt = performance.now();
+    let databaseReady = false;
+    let coordinationReady = !coordinator;
     try {
       await database.ping();
+      databaseReady = true;
+      coordinationReady = (await coordinator?.health()) ?? true;
+      if (!coordinationReady) {
+        throw new Error("Shared coordination is unavailable.");
+      }
       const latencyMs = performance.now() - startedAt;
       operationalMetrics.recordDatabaseProbe(true, latencyMs);
       return reply.send(
@@ -4431,20 +4470,28 @@ export async function buildApp({
           status: "ready",
           service: "cantrip_server",
           database: { engine: database.engine, status: "ready", latencyMs },
+          coordination: {
+            shared: Boolean(coordinator),
+            status: "ready",
+          },
           timestamp: new Date().toISOString(),
         }),
       );
     } catch {
       const latencyMs = performance.now() - startedAt;
-      operationalMetrics.recordDatabaseProbe(false, latencyMs);
+      operationalMetrics.recordDatabaseProbe(databaseReady, latencyMs);
       return reply.code(503).send(
         operationalProbeSchema.parse({
           status: "not-ready",
           service: "cantrip_server",
           database: {
             engine: database.engine,
-            status: "unavailable",
+            status: databaseReady ? "ready" : "unavailable",
             latencyMs,
+          },
+          coordination: {
+            shared: Boolean(coordinator),
+            status: coordinationReady ? "ready" : "unavailable",
           },
           timestamp: new Date().toISOString(),
         }),
@@ -4471,6 +4518,7 @@ export async function buildApp({
     }
     return reply.type("text/plain; version=0.0.4; charset=utf-8").send(
       operationalMetrics.renderPrometheus({
+        coordination: coordinationStats(),
         live: liveHub.stats(),
         quotas: relayQuotas.stats(),
         tunnels: tunnelRuntime.stats(),
@@ -15789,7 +15837,16 @@ export async function buildApp({
         socket.close(1008, "Worker identity mismatch");
         return;
       }
-      bridge.attach(workerId, socket);
+      try {
+        await bridge.attach(workerId, socket, workerAuth.ownerId);
+      } catch (error) {
+        app.log.error(
+          { err: error, workerId },
+          "Could not claim the worker connection",
+        );
+        socket.close(1013, "Worker relay coordination is unavailable");
+        return;
+      }
       void projectReplicaJobExecutor
         .workerConnected(workerId)
         .catch((error) => {
@@ -15824,6 +15881,7 @@ export async function buildApp({
 
   app.addHook("onClose", async () => {
     livePublishingEnabled = false;
+    unsubscribeLiveCoordination?.();
     clearInterval(sessionSocketValidationTimer);
     clearInterval(tunnelAttachmentExpiryTimer);
     closeSessionSockets(() => true, "Server is shutting down");
@@ -15853,7 +15911,8 @@ export async function buildApp({
     await codeTunnel.close();
     await projectShareTunnel.close();
     tunnelRuntime.close();
-    bridge.close();
+    await bridge.close();
+    await coordinator?.close();
     await activeScheduleTick;
     await projectReplicaJobExecutor.drain();
     await workflowExecutor.drain();

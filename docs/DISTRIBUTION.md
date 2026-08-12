@@ -137,6 +137,13 @@ Copy the packaged `.env.example` to `.env`. The startup scripts use Node's
   shared coordination layer is enabled.
 - `CANTRIP_METRICS_TOKEN`: optional 32+ character operator bearer token for
   aggregate Prometheus metrics. Owner/admin sessions can also read metrics.
+- `REDIS_URL`: optional shared coordination endpoint. When present, server
+  replicas exchange worker presence, commands, binary relay frames,
+  notifications, disconnects, and live invalidations through Redis.
+- `CANTRIP_SERVER_INSTANCE_ID`, `CANTRIP_COORDINATION_PRESENCE_TTL_MS`, and
+  `CANTRIP_COORDINATION_MAX_INSTANCES`: instance identity, lease duration, and
+  hard replica ceiling. Global traffic limits are divided by the ceiling and
+  readiness rejects excess replicas.
 
 Hosted mode never permits anonymous authentication, including when
 `CANTRIP_ALLOW_INSECURE_REMOTE=true`. It also refuses missing encryption keys,
@@ -145,7 +152,8 @@ an absent or invalid trusted-proxy list. Password and account modes use
 revocable server-side sessions, tenant authorization, and per-worker
 enrollment. Account/worker quotas, audit visibility, operational probes,
 Prometheus metrics, and production deployment assets are implemented. Public
-horizontal hosting still requires the shared multi-instance coordination layer.
+horizontal hosting uses the Redis coordination layer. Exactly-once scheduler
+fencing remains required before multiple replicas may run scheduled automation.
 The encryption keyring protects provider API keys plus MCP environment and
 static-header values. MCP configuration responses contain fixed masks rather
 than plaintext; preserve old keyring entries until startup has rewrapped every

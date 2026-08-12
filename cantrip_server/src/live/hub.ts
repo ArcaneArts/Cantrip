@@ -57,6 +57,7 @@ export interface AppLiveHubOptions {
   maxInboundBytes?: number;
   maxReplayEvents?: number;
   now?: () => number;
+  publishExternal?(publication: AppLivePublication): Promise<void> | void;
 }
 
 export interface AppLiveHubStats {
@@ -153,6 +154,7 @@ export class AppLiveHub {
   readonly #maxInboundBytes: number;
   readonly #maxReplayEvents: number;
   readonly #now: () => number;
+  readonly #publishExternal?: AppLiveHubOptions["publishExternal"];
   readonly #ownerCursors = new Map<string, number>();
   readonly #replayEvents: RetainedEvent[] = [];
   readonly #heartbeatTimer: ReturnType<typeof setInterval>;
@@ -184,6 +186,7 @@ export class AppLiveHub {
     this.#maxReplayEvents =
       options.maxReplayEvents ?? DEFAULT_MAX_REPLAY_EVENTS;
     this.#now = options.now ?? Date.now;
+    this.#publishExternal = options.publishExternal;
 
     if (
       this.#heartbeatIntervalMs < 5_000 ||
@@ -246,6 +249,29 @@ export class AppLiveHub {
   }
 
   publish(publication: AppLivePublication): AppLiveEvent {
+    const event = this.#publish(publication);
+    void Promise.resolve(this.#publishExternal?.(publication)).catch(
+      () => undefined,
+    );
+    return event;
+  }
+
+  receiveExternal(publication: unknown): AppLiveEvent | null {
+    if (
+      typeof publication !== "object" ||
+      publication === null ||
+      typeof Reflect.get(publication, "ownerId") !== "string"
+    ) {
+      return null;
+    }
+    try {
+      return this.#publish(publication as AppLivePublication);
+    } catch {
+      return null;
+    }
+  }
+
+  #publish(publication: AppLivePublication): AppLiveEvent {
     if (this.#closed) {
       throw new Error("Cannot publish after the live hub has closed.");
     }

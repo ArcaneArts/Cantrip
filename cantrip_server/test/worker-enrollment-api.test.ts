@@ -291,7 +291,7 @@ describe("per-worker enrollment credentials", () => {
           type: "worker.credential.rotate",
           credential: rotated.credential,
         }),
-        { timeoutMs: 10_000 },
+        expect.objectContaining({ timeoutMs: 10_000 }),
       );
       expect(rotated.credential).toMatch(/^ctwk_/u);
       expect(rotated.credential).not.toBe(enrolled.credential);

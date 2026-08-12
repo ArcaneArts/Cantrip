@@ -60,14 +60,18 @@ export interface ServerConfig {
   port: number;
   publicOrigin?: string;
   publicRegistration?: boolean;
+  redisUrl?: string;
   requireHttps?: boolean;
   sessionTtlSeconds?: number;
   codeSurfaceHost?: string;
   codeSurfaceOrigin?: string;
   codeSurfacePort?: number;
+  coordinationMaxInstances?: number;
+  coordinationPresenceTtlMs?: number;
   workerToken: string;
   remoteSurfaceWebRtc?: RemoteSurfaceTurnConfig;
   secretEncryption?: SecretEncryptionConfig;
+  serverInstanceId?: string;
   trustedProxies?: string[];
   uploadLimitBytes?: number;
   uploadRateLimitPerMinute?: number;
@@ -391,6 +395,27 @@ export function readServerConfig(): ServerConfig {
       "CANTRIP_METRICS_TOKEN must contain at least 32 characters.",
     );
   }
+  const serverInstanceId =
+    process.env.CANTRIP_SERVER_INSTANCE_ID?.trim() || undefined;
+  if (
+    serverInstanceId &&
+    (serverInstanceId.length > 100 ||
+      /[\u0000-\u001f\u007f]/u.test(serverInstanceId))
+  ) {
+    throw new Error("CANTRIP_SERVER_INSTANCE_ID is invalid.");
+  }
+  const redisUrl = process.env.REDIS_URL?.trim() || undefined;
+  if (redisUrl) {
+    let parsedRedisUrl: URL;
+    try {
+      parsedRedisUrl = new URL(redisUrl);
+    } catch {
+      throw new Error("REDIS_URL must be a valid redis:// or rediss:// URL.");
+    }
+    if (!["redis:", "rediss:"].includes(parsedRedisUrl.protocol)) {
+      throw new Error("REDIS_URL must use redis:// or rediss://.");
+    }
+  }
   const cookieSameSiteInput = process.env.CANTRIP_COOKIE_SAME_SITE;
   if (
     cookieSameSiteInput !== undefined &&
@@ -559,6 +584,20 @@ export function readServerConfig(): ServerConfig {
       1_000,
     ),
     bootstrapMode,
+    coordinationMaxInstances: readBoundedInteger(
+      "CANTRIP_COORDINATION_MAX_INSTANCES",
+      process.env.CANTRIP_COORDINATION_MAX_INSTANCES,
+      1,
+      1,
+      32,
+    ),
+    coordinationPresenceTtlMs: readBoundedInteger(
+      "CANTRIP_COORDINATION_PRESENCE_TTL_MS",
+      process.env.CANTRIP_COORDINATION_PRESENCE_TTL_MS,
+      30_000,
+      5_000,
+      300_000,
+    ),
     dataDirectory: path.resolve(
       process.cwd(),
       process.env.CANTRIP_DATA_DIR ?? "../.cantrip/dev",
@@ -600,6 +639,7 @@ export function readServerConfig(): ServerConfig {
       "CANTRIP_PUBLIC_REGISTRATION",
       process.env.CANTRIP_PUBLIC_REGISTRATION,
     ),
+    redisUrl,
     sessionTtlSeconds: readBoundedInteger(
       "CANTRIP_SESSION_TTL_SECONDS",
       process.env.CANTRIP_SESSION_TTL_SECONDS,
@@ -614,6 +654,7 @@ export function readServerConfig(): ServerConfig {
     remoteSurfaceWebRtc: readRemoteSurfaceWebRtcConfig(),
     requireHttps: deploymentMode === "hosted",
     secretEncryption,
+    serverInstanceId,
     trustedProxies,
     uploadLimitBytes: readBoundedInteger(
       "CANTRIP_UPLOAD_LIMIT_BYTES",
@@ -682,6 +723,90 @@ export function readServerConfig(): ServerConfig {
   if (config.cookieSameSite === "none" && !config.cookieSecure) {
     throw new Error(
       "CANTRIP_COOKIE_SAME_SITE=none requires CANTRIP_COOKIE_SECURE=true.",
+    );
+  }
+  const instanceDivisor = config.coordinationMaxInstances ?? 1;
+  if (instanceDivisor > 1 && !config.redisUrl) {
+    throw new Error(
+      "CANTRIP_COORDINATION_MAX_INSTANCES above 1 requires REDIS_URL.",
+    );
+  }
+  const divideLimit = (name: string, value: number | undefined): number => {
+    if (value === undefined || value < instanceDivisor) {
+      throw new Error(
+        `${name} must be at least CANTRIP_COORDINATION_MAX_INSTANCES.`,
+      );
+    }
+    return Math.floor(value / instanceDivisor);
+  };
+  if (instanceDivisor > 1) {
+    config.apiRateLimitPerMinute = divideLimit(
+      "CANTRIP_API_RATE_LIMIT_PER_MINUTE",
+      config.apiRateLimitPerMinute,
+    );
+    config.authRateLimit = divideLimit(
+      "CANTRIP_AUTH_RATE_LIMIT",
+      config.authRateLimit,
+    );
+    config.pairingRateLimitPerMinute = divideLimit(
+      "CANTRIP_PAIRING_RATE_LIMIT_PER_MINUTE",
+      config.pairingRateLimitPerMinute,
+    );
+    config.uploadRateLimitPerMinute = divideLimit(
+      "CANTRIP_UPLOAD_RATE_LIMIT_PER_MINUTE",
+      config.uploadRateLimitPerMinute,
+    );
+    config.websocketHandshakeRatePerMinute = divideLimit(
+      "CANTRIP_WEBSOCKET_HANDSHAKE_RATE_PER_MINUTE",
+      config.websocketHandshakeRatePerMinute,
+    );
+    config.accountCommandConcurrency = divideLimit(
+      "CANTRIP_ACCOUNT_COMMAND_CONCURRENCY",
+      config.accountCommandConcurrency,
+    );
+    config.accountCommandRatePerMinute = divideLimit(
+      "CANTRIP_ACCOUNT_COMMAND_RATE_PER_MINUTE",
+      config.accountCommandRatePerMinute,
+    );
+    config.accountRelayBytesPerMinute = divideLimit(
+      "CANTRIP_ACCOUNT_RELAY_BYTES_PER_MINUTE",
+      config.accountRelayBytesPerMinute,
+    );
+    config.accountRemoteSurfaceLimit = divideLimit(
+      "CANTRIP_ACCOUNT_REMOTE_SURFACE_LIMIT",
+      config.accountRemoteSurfaceLimit,
+    );
+    config.accountUploadBytesPerMinute = divideLimit(
+      "CANTRIP_ACCOUNT_UPLOAD_BYTES_PER_MINUTE",
+      config.accountUploadBytesPerMinute,
+    );
+    config.accountUploadConcurrency = divideLimit(
+      "CANTRIP_ACCOUNT_UPLOAD_CONCURRENCY",
+      config.accountUploadConcurrency,
+    );
+    config.accountWebsocketLimit = divideLimit(
+      "CANTRIP_ACCOUNT_WEBSOCKET_LIMIT",
+      config.accountWebsocketLimit,
+    );
+    config.workerCommandConcurrency = divideLimit(
+      "CANTRIP_WORKER_COMMAND_CONCURRENCY",
+      config.workerCommandConcurrency,
+    );
+    config.workerCommandRatePerMinute = divideLimit(
+      "CANTRIP_WORKER_COMMAND_RATE_PER_MINUTE",
+      config.workerCommandRatePerMinute,
+    );
+    config.workerRelayBytesPerMinute = divideLimit(
+      "CANTRIP_WORKER_RELAY_BYTES_PER_MINUTE",
+      config.workerRelayBytesPerMinute,
+    );
+    config.workerRemoteSurfaceLimit = divideLimit(
+      "CANTRIP_WORKER_REMOTE_SURFACE_LIMIT",
+      config.workerRemoteSurfaceLimit,
+    );
+    config.workerUploadBytesPerMinute = divideLimit(
+      "CANTRIP_WORKER_UPLOAD_BYTES_PER_MINUTE",
+      config.workerUploadBytesPerMinute,
     );
   }
   resolveCodeSurfaceConfig(config);
