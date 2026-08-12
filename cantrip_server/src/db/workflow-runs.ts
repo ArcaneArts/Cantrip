@@ -1150,6 +1150,7 @@ export class WorkflowRunRepository {
               eq(schema.projectSources.id, input.projectSourceId),
               eq(schema.projectSources.projectId, context.run.projectId),
               eq(schema.projectSources.workerId, input.workerId),
+              isNull(schema.projectSources.removedAt),
             ),
           )
           .limit(1);

@@ -3019,6 +3019,7 @@ export class ServerRepository {
               and(
                 eq(schema.projectSources.workerId, worker.id),
                 eq(schema.projects.ownerId, ownerId),
+                isNull(schema.projectSources.removedAt),
               ),
             )
             .orderBy(asc(schema.projects.githubRepositoryFullName)),
@@ -3851,6 +3852,7 @@ export class ServerRepository {
         and(
           eq(schema.projects.ownerId, ownerId),
           inArray(schema.projectSources.projectId, projectIds),
+          isNull(schema.projectSources.removedAt),
         ),
       )
       .orderBy(
@@ -4389,6 +4391,8 @@ export class ServerRepository {
         and(
           eq(schema.projects.id, projectId),
           eq(schema.projects.ownerId, ownerId),
+          isNull(schema.projectSources.removedAt),
+          eq(schema.projectWorktrees.lifecycleState, "ready"),
         ),
       )
       .orderBy(
@@ -4427,6 +4431,8 @@ export class ServerRepository {
         and(
           eq(schema.projects.id, projectId),
           eq(schema.projectWorktrees.id, worktreeId),
+          isNull(schema.projectSources.removedAt),
+          eq(schema.projectWorktrees.lifecycleState, "ready"),
         ),
       )
       .limit(1);
@@ -4463,7 +4469,12 @@ export class ServerRepository {
           eq(schema.projects.ownerId, ownerId),
         ),
       )
-      .where(eq(schema.projects.id, projectId))
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          isNull(schema.projectSources.removedAt),
+        ),
+      )
       .orderBy(
         desc(schema.projectWorktrees.isPrimary),
         asc(schema.projectWorktrees.name),
@@ -4498,7 +4509,12 @@ export class ServerRepository {
           eq(schema.projects.ownerId, ownerId),
         ),
       )
-      .where(eq(schema.projectWorktrees.workerId, workerId))
+      .where(
+        and(
+          eq(schema.projectWorktrees.workerId, workerId),
+          isNull(schema.projectSources.removedAt),
+        ),
+      )
       .orderBy(asc(schema.projectWorktrees.createdAt))
       .limit(Math.min(128, Math.max(1, limit)));
   }
@@ -4534,6 +4550,7 @@ export class ServerRepository {
           eq(schema.projectWorktrees.workerId, workerId),
           eq(schema.projectSources.absolutePath, sourcePath),
           eq(schema.projectWorktrees.absolutePath, worktreePath),
+          isNull(schema.projectSources.removedAt),
         ),
       )
       .limit(1);
@@ -4563,6 +4580,7 @@ export class ServerRepository {
         and(
           eq(schema.projects.id, projectId),
           eq(schema.projectWorktrees.id, worktreeId),
+          isNull(schema.projectSources.removedAt),
         ),
       )
       .limit(1);
@@ -4893,6 +4911,7 @@ export class ServerRepository {
         and(
           eq(schema.projects.id, projectId),
           eq(schema.projectSources.workerId, workerId),
+          isNull(schema.projectSources.removedAt),
         ),
       )
       .limit(1);
@@ -5536,7 +5555,12 @@ export class ServerRepository {
               eq(schema.projectSources.projectId, context.chat.projectId),
             ),
           )
-          .where(eq(schema.projectWorktrees.isPrimary, true))
+          .where(
+            and(
+              eq(schema.projectWorktrees.isPrimary, true),
+              isNull(schema.projectSources.removedAt),
+            ),
+          )
           .limit(1);
         const primary = primaryRows[0]?.worktree;
         if (!primary || primary.lifecycleState !== "ready") {
@@ -6163,7 +6187,12 @@ export class ServerRepository {
         workerId: schema.projectSources.workerId,
       })
       .from(schema.projectSources)
-      .where(eq(schema.projectSources.projectId, projectId))
+      .where(
+        and(
+          eq(schema.projectSources.projectId, projectId),
+          isNull(schema.projectSources.removedAt),
+        ),
+      )
       .orderBy(
         asc(schema.projectSources.createdAt),
         asc(schema.projectSources.id),
@@ -8065,9 +8094,12 @@ export class ServerRepository {
           ),
         )
         .where(
-          eq(
-            schema.projectWorktrees.id,
-            input.worktreeId ?? row.chat.activeWorktreeId,
+          and(
+            eq(
+              schema.projectWorktrees.id,
+              input.worktreeId ?? row.chat.activeWorktreeId,
+            ),
+            isNull(schema.projectSources.removedAt),
           ),
         )
         .limit(1);
@@ -9003,6 +9035,7 @@ export class ServerRepository {
           and(
             eq(schema.projectWorktrees.id, input.worktreeId),
             eq(schema.projectWorktrees.lifecycleState, "ready"),
+            isNull(schema.projectSources.removedAt),
           ),
         )
         .limit(1);

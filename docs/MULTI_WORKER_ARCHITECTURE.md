@@ -19,9 +19,10 @@ are replaceable execution endpoints and never communicate directly with one
 another.
 
 This document defines the contracts later multi-worker changes must preserve.
-The persistence and read contracts for project replicas are implemented;
-provisioning, Git synchronization, placement switching, and chat relocation
-remain disabled until their complete lifecycles are implemented.
+Replica persistence, reads, exact-revision provisioning, guarded
+synchronization, and safe removal are implemented. Placement switching and
+chat relocation remain disabled until their complete lifecycles are
+implemented.
 
 ## Current replica read contract
 
@@ -46,6 +47,8 @@ These routes are owner-scoped. Exact-revision provisioning is exposed through
 durable server jobs when `capabilities.replicaProvisioning` is true:
 
 - `POST /api/projects/:projectId/replicas`
+- `POST /api/projects/:projectId/replicas/:replicaId/synchronize`
+- `POST /api/projects/:projectId/replicas/:replicaId/remove`
 - `GET /api/projects/:projectId/replica-jobs`
 - `GET /api/project-replica-jobs/:jobId`
 - `POST /api/project-replica-jobs/:jobId/retry`
@@ -53,9 +56,10 @@ durable server jobs when `capabilities.replicaProvisioning` is true:
 
 Workers advertise replica operations independently. Older workers default all
 replica-operation capabilities to unavailable, so a rolling server never sends
-them an unsupported command. Provisioning requires both `provision` and
-`exactRevision`; synchronization and removal remain disabled until their safe
-job lifecycles ship.
+them an unsupported command. Provisioning and synchronization require
+`exactRevision` plus their operation-specific capability; removal requires its
+own capability. `capabilities.gitSync` is true only when the server exposes the
+complete guarded synchronization lifecycle.
 
 ## Terms
 
@@ -249,6 +253,11 @@ Synchronization fetches remote references first, computes an expected commit,
 and materializes that exact commit. It never begins with an unconditional
 `git pull`.
 
+The `verify-only` policy observes and blocks on a mismatch without changing
+the checkout. The `fast-forward-primary` policy permits only an attached,
+clean Primary worktree whose current revision is an ancestor of the expected,
+origin-reachable commit. It never resets, rebases, or overwrites local state.
+
 ```mermaid
 stateDiagram-v2
     [*] --> Inspecting
@@ -360,9 +369,9 @@ The singular-source migration must be additive and lossless:
    selected/default replica, falling back deterministically for migrated data.
 6. Older workers continue serving already-routed commands. They are not sent
    replica or relocation commands they did not advertise.
-7. `multipleWorkers` may remain true for enrollment and management, while
-   `workerSwitching` and `gitSync` remain false until their complete operations
-   and recovery paths ship.
+7. `multipleWorkers` may remain true for enrollment and management.
+   `gitSync` becomes true with the durable guarded synchronization lifecycle;
+   `workerSwitching` remains false until placement and recovery paths ship.
 8. A rollback must not require deleting a replica or worktree. If a new server
    observes more than one replica, an older singular-source server must refuse
    ambiguous mutation rather than select one silently.
@@ -391,7 +400,7 @@ the same branch.
 
 Recommended stable error families are `target-not-found`, `target-mismatch`,
 `worker-offline`, `capability-missing`, `replica-not-ready`, `worktree-dirty`,
-`revision-diverged`, `lease-conflict`, `attachment-unavailable`,
+`revision-diverged`, `unpushed-commits`, `replica-in-use`, `lease-conflict`, `attachment-unavailable`,
 `runtime-incompatible`, `stale-attempt`, and `policy-denied`. User-facing text
 may evolve, but API consumers should branch on structured codes.
 

@@ -30,6 +30,8 @@ import {
   githubWorkerRepositoryListSchema,
   projectCloneResultSchema,
   projectReplicaProvisionResultSchema,
+  projectReplicaRemoveResultSchema,
+  projectReplicaSynchronizeResultSchema,
   worktreePolicySchema,
   type GithubAuthStatus,
   type GithubIssueDetail,
@@ -60,6 +62,9 @@ import {
   type ProjectCloneResult,
   type ProjectReplicaJobProgressEvent,
   type ProjectReplicaProvisionResult,
+  type ProjectReplicaRemoveResult,
+  type ProjectReplicaSynchronizationPolicy,
+  type ProjectReplicaSynchronizeResult,
   type WorktreePolicy,
 } from "@cantrip/protocol";
 
@@ -717,7 +722,7 @@ function parseRelease(value: GithubApiRelease): GithubReleaseSummary {
 }
 
 export class GithubClient {
-  private readonly replicaProvisionQueues = new Map<string, Promise<void>>();
+  private readonly replicaOperationQueues = new Map<string, Promise<void>>();
 
   constructor(private readonly dataDirectory: string) {}
 
@@ -1704,20 +1709,20 @@ export class GithubClient {
       repository,
     );
     const previous =
-      this.replicaProvisionQueues.get(target) ?? Promise.resolve();
+      this.replicaOperationQueues.get(target) ?? Promise.resolve();
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
     const queued = previous.catch(() => undefined).then(() => gate);
-    this.replicaProvisionQueues.set(target, queued);
+    this.replicaOperationQueues.set(target, queued);
     await previous.catch(() => undefined);
     try {
       return await this.provisionReplicaUnlocked(input, reportProgress);
     } finally {
       release();
-      if (this.replicaProvisionQueues.get(target) === queued) {
-        this.replicaProvisionQueues.delete(target);
+      if (this.replicaOperationQueues.get(target) === queued) {
+        this.replicaOperationQueues.delete(target);
       }
     }
   }
@@ -1974,5 +1979,556 @@ export class GithubClient {
       reused,
       worktreePolicy: projectPolicy.policy,
     });
+  }
+
+  async synchronizeReplica(
+    input: {
+      jobId: string;
+      attempt: number;
+      nameWithOwner: string;
+      sourcePath: string;
+      expectedRevision: string;
+      policy: ProjectReplicaSynchronizationPolicy;
+    },
+    reportProgress: (progress: ProjectReplicaJobProgressEvent) => void = () =>
+      undefined,
+  ): Promise<ProjectReplicaSynchronizeResult> {
+    return this.withReplicaOperation(input.sourcePath, () =>
+      this.synchronizeReplicaUnlocked(input, reportProgress),
+    );
+  }
+
+  private async synchronizeReplicaUnlocked(
+    input: {
+      jobId: string;
+      attempt: number;
+      nameWithOwner: string;
+      sourcePath: string;
+      expectedRevision: string;
+      policy: ProjectReplicaSynchronizationPolicy;
+    },
+    reportProgress: (progress: ProjectReplicaJobProgressEvent) => void,
+  ): Promise<ProjectReplicaSynchronizeResult> {
+    const blocked = (
+      code:
+        | "target-not-found"
+        | "target-mismatch"
+        | "worktree-dirty"
+        | "revision-diverged"
+        | "unpushed-commits"
+        | "policy-denied"
+        | "remote-unavailable",
+      message: string,
+      retryable: boolean,
+    ): ProjectReplicaSynchronizeResult =>
+      projectReplicaSynchronizeResultSchema.parse({
+        status: "blocked",
+        jobId: input.jobId,
+        attempt: input.attempt,
+        error: { code, message: message.slice(0, 4_000), retryable },
+      });
+
+    reportProgress({
+      stage: "validating",
+      percent: 10,
+      message: "Validating the worker-managed replica.",
+    });
+    const validation = await this.validateManagedReplica(
+      input.sourcePath,
+      input.nameWithOwner,
+    );
+    if (!validation.ok) {
+      return blocked(validation.code, validation.message, false);
+    }
+    const target = validation.path;
+    reportProgress({
+      stage: "fetching",
+      percent: 30,
+      message: "Fetching origin references without changing the checkout.",
+    });
+    try {
+      await execFileAsync("git", ["-C", target, "fetch", "origin", "--prune"], {
+        maxBuffer: 32 * 1024 * 1024,
+      });
+    } catch (error) {
+      return blocked(
+        "remote-unavailable",
+        `Could not fetch the repository origin: ${(error as Error).message}`,
+        true,
+      );
+    }
+    reportProgress({
+      stage: "inspecting",
+      percent: 50,
+      message: "Checking cleanliness, ancestry, and revision availability.",
+    });
+    const status = (
+      await execFileAsync(
+        "git",
+        ["-C", target, "status", "--porcelain=v1", "--untracked-files=normal"],
+        { maxBuffer: 4 * 1024 * 1024 },
+      )
+    ).stdout.trim();
+    if (status) {
+      return blocked(
+        "worktree-dirty",
+        "The replica has tracked or untracked changes and was not modified.",
+        false,
+      );
+    }
+    try {
+      await execFileAsync("git", [
+        "-C",
+        target,
+        "cat-file",
+        "-e",
+        `${input.expectedRevision}^{commit}`,
+      ]);
+    } catch {
+      return blocked(
+        "target-not-found",
+        `Revision ${input.expectedRevision} is not available from the repository origin.`,
+        false,
+      );
+    }
+    const remoteContaining = (
+      await execFileAsync(
+        "git",
+        [
+          "-C",
+          target,
+          "for-each-ref",
+          "--format=%(refname)",
+          "--contains",
+          input.expectedRevision,
+          "refs/remotes/origin",
+        ],
+        { maxBuffer: 4 * 1024 * 1024 },
+      )
+    ).stdout.trim();
+    if (!remoteContaining) {
+      return blocked(
+        "policy-denied",
+        "The expected revision is not reachable from a fetched origin reference.",
+        false,
+      );
+    }
+    const previousRevision = await this.revisionAt(target, "HEAD");
+    const branch = (
+      await execFileAsync("git", ["-C", target, "branch", "--show-current"])
+    ).stdout.trim();
+    if (previousRevision === input.expectedRevision) {
+      return projectReplicaSynchronizeResultSchema.parse({
+        status: "ready",
+        jobId: input.jobId,
+        attempt: input.attempt,
+        path: target,
+        previousRevision,
+        resolvedRevision: previousRevision,
+        branch: branch || null,
+        changed: false,
+      });
+    }
+    if (input.policy === "verify-only") {
+      return blocked(
+        "revision-diverged",
+        `The replica is at ${previousRevision}; verify-only policy did not change it.`,
+        false,
+      );
+    }
+    if (!branch) {
+      return blocked(
+        "policy-denied",
+        "Only an attached Primary branch may be fast-forwarded.",
+        false,
+      );
+    }
+    const canFastForward = await this.isAncestor(
+      target,
+      previousRevision,
+      input.expectedRevision,
+    );
+    if (!canFastForward) {
+      const aheadOfTarget = await this.isAncestor(
+        target,
+        input.expectedRevision,
+        previousRevision,
+      );
+      return blocked(
+        aheadOfTarget ? "unpushed-commits" : "revision-diverged",
+        aheadOfTarget
+          ? "The replica contains commits beyond the expected revision and was not changed."
+          : "The replica and expected revision have diverged and cannot be fast-forwarded.",
+        false,
+      );
+    }
+    reportProgress({
+      stage: "fast-forwarding",
+      percent: 75,
+      message: "Fast-forwarding the clean Primary checkout.",
+    });
+    await execFileAsync(
+      "git",
+      ["-C", target, "merge", "--ff-only", input.expectedRevision],
+      { maxBuffer: 32 * 1024 * 1024 },
+    );
+    const resolvedRevision = await this.revisionAt(target, "HEAD");
+    const verifiedStatus = (
+      await execFileAsync(
+        "git",
+        ["-C", target, "status", "--porcelain=v1", "--untracked-files=normal"],
+        { maxBuffer: 4 * 1024 * 1024 },
+      )
+    ).stdout.trim();
+    if (resolvedRevision !== input.expectedRevision || verifiedStatus) {
+      throw new Error(
+        "Replica verification failed after the fast-forward operation.",
+      );
+    }
+    return projectReplicaSynchronizeResultSchema.parse({
+      status: "ready",
+      jobId: input.jobId,
+      attempt: input.attempt,
+      path: target,
+      previousRevision,
+      resolvedRevision,
+      branch,
+      changed: true,
+    });
+  }
+
+  async removeReplica(
+    input: {
+      jobId: string;
+      attempt: number;
+      nameWithOwner: string;
+      sourcePath: string;
+      deleteLocalFiles: boolean;
+    },
+    reportProgress: (progress: ProjectReplicaJobProgressEvent) => void = () =>
+      undefined,
+  ): Promise<ProjectReplicaRemoveResult> {
+    return this.withReplicaOperation(input.sourcePath, () =>
+      this.removeReplicaUnlocked(input, reportProgress),
+    );
+  }
+
+  private async removeReplicaUnlocked(
+    input: {
+      jobId: string;
+      attempt: number;
+      nameWithOwner: string;
+      sourcePath: string;
+      deleteLocalFiles: boolean;
+    },
+    reportProgress: (progress: ProjectReplicaJobProgressEvent) => void,
+  ): Promise<ProjectReplicaRemoveResult> {
+    const blocked = (
+      code:
+        | "target-not-found"
+        | "target-mismatch"
+        | "worktree-dirty"
+        | "unpushed-commits"
+        | "policy-denied"
+        | "remote-unavailable",
+      message: string,
+      retryable: boolean,
+    ): ProjectReplicaRemoveResult =>
+      projectReplicaRemoveResultSchema.parse({
+        status: "blocked",
+        jobId: input.jobId,
+        attempt: input.attempt,
+        error: { code, message: message.slice(0, 4_000), retryable },
+      });
+    const target = path.resolve(input.sourcePath);
+    const root = this.repositoriesRoot();
+    if (!target.startsWith(`${root}${path.sep}`) || target === root) {
+      return blocked(
+        "target-mismatch",
+        "Cantrip will only remove repositories from worker-managed storage.",
+        false,
+      );
+    }
+    try {
+      await access(target);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return projectReplicaRemoveResultSchema.parse({
+          status: "removed",
+          jobId: input.jobId,
+          attempt: input.attempt,
+          path: target,
+          localFilesDeleted: input.deleteLocalFiles,
+        });
+      }
+      throw error;
+    }
+    const validation = await this.validateManagedReplica(
+      target,
+      input.nameWithOwner,
+    );
+    if (!validation.ok) {
+      return blocked(validation.code, validation.message, false);
+    }
+    if (!input.deleteLocalFiles) {
+      return projectReplicaRemoveResultSchema.parse({
+        status: "removed",
+        jobId: input.jobId,
+        attempt: input.attempt,
+        path: target,
+        localFilesDeleted: false,
+      });
+    }
+    reportProgress({
+      stage: "inspecting",
+      percent: 30,
+      message: "Checking local files, worktrees, and published history.",
+    });
+    const status = (
+      await execFileAsync(
+        "git",
+        ["-C", target, "status", "--porcelain=v1", "--untracked-files=normal"],
+        { maxBuffer: 4 * 1024 * 1024 },
+      )
+    ).stdout.trim();
+    const ignored = (
+      await execFileAsync(
+        "git",
+        [
+          "-C",
+          target,
+          "ls-files",
+          "--others",
+          "--ignored",
+          "--exclude-standard",
+          "--directory",
+        ],
+        { maxBuffer: 4 * 1024 * 1024 },
+      )
+    ).stdout.trim();
+    if (status || ignored) {
+      return blocked(
+        "worktree-dirty",
+        "The replica contains changed, untracked, or ignored files and was not deleted.",
+        false,
+      );
+    }
+    const worktrees = (
+      await execFileAsync(
+        "git",
+        ["-C", target, "worktree", "list", "--porcelain"],
+        {
+          maxBuffer: 4 * 1024 * 1024,
+        },
+      )
+    ).stdout
+      .split("\n")
+      .filter((line) => line.startsWith("worktree "));
+    if (worktrees.length !== 1) {
+      return blocked(
+        "policy-denied",
+        "The replica has additional Git worktrees and was not deleted.",
+        false,
+      );
+    }
+    try {
+      await execFileAsync("git", ["-C", target, "fetch", "origin", "--prune"], {
+        maxBuffer: 32 * 1024 * 1024,
+      });
+    } catch (error) {
+      return blocked(
+        "remote-unavailable",
+        `Could not verify published history: ${(error as Error).message}`,
+        true,
+      );
+    }
+    const head = await this.revisionAt(target, "HEAD");
+    const remoteContaining = (
+      await execFileAsync(
+        "git",
+        [
+          "-C",
+          target,
+          "for-each-ref",
+          "--format=%(refname)",
+          "--contains",
+          head,
+          "refs/remotes/origin",
+        ],
+        { maxBuffer: 4 * 1024 * 1024 },
+      )
+    ).stdout.trim();
+    if (!remoteContaining) {
+      return blocked(
+        "unpushed-commits",
+        "The replica HEAD is not contained in a fetched origin reference and was not deleted.",
+        false,
+      );
+    }
+    reportProgress({
+      stage: "removing",
+      percent: 80,
+      message: "Removing verified worker-local replica files.",
+    });
+    await rm(target, { recursive: true, force: false });
+    return projectReplicaRemoveResultSchema.parse({
+      status: "removed",
+      jobId: input.jobId,
+      attempt: input.attempt,
+      path: target,
+      localFilesDeleted: true,
+    });
+  }
+
+  private async withReplicaOperation<T>(
+    targetPath: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const target = path.resolve(targetPath);
+    const previous =
+      this.replicaOperationQueues.get(target) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const queued = previous.catch(() => undefined).then(() => gate);
+    this.replicaOperationQueues.set(target, queued);
+    await previous.catch(() => undefined);
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.replicaOperationQueues.get(target) === queued) {
+        this.replicaOperationQueues.delete(target);
+      }
+    }
+  }
+
+  private async validateManagedReplica(
+    repositoryPath: string,
+    nameWithOwner: string,
+  ): Promise<
+    | { ok: true; path: string }
+    | {
+        ok: false;
+        code: "target-not-found" | "target-mismatch";
+        message: string;
+      }
+  > {
+    const root = this.repositoriesRoot();
+    const target = path.resolve(repositoryPath);
+    if (!target.startsWith(`${root}${path.sep}`) || target === root) {
+      return {
+        ok: false,
+        code: "target-mismatch",
+        message:
+          "The replica path is outside worker-managed repository storage.",
+      };
+    }
+    try {
+      const entry = await lstat(target);
+      if (!entry.isDirectory() || entry.isSymbolicLink()) {
+        return {
+          ok: false,
+          code: "target-mismatch",
+          message: "The replica path is not a managed directory.",
+        };
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return {
+          ok: false,
+          code: "target-not-found",
+          message: "The worker-local replica path does not exist.",
+        };
+      }
+      throw error;
+    }
+    const [resolvedRoot, resolvedTarget] = await Promise.all([
+      realpath(root),
+      realpath(target),
+    ]);
+    if (
+      !resolvedTarget.startsWith(`${resolvedRoot}${path.sep}`) ||
+      resolvedTarget === resolvedRoot
+    ) {
+      return {
+        ok: false,
+        code: "target-mismatch",
+        message:
+          "The replica resolves outside worker-managed repository storage.",
+      };
+    }
+    let origin: string;
+    try {
+      origin = (
+        await execFileAsync("git", [
+          "-C",
+          target,
+          "remote",
+          "get-url",
+          "origin",
+        ])
+      ).stdout.trim();
+    } catch {
+      return {
+        ok: false,
+        code: "target-mismatch",
+        message: "The replica is not a Git repository with an origin remote.",
+      };
+    }
+    const normalizedOrigin = origin
+      .replace(/\.git$/u, "")
+      .replaceAll("\\", "/")
+      .toLowerCase();
+    const expectedSuffix = nameWithOwner.toLowerCase();
+    if (
+      !normalizedOrigin.endsWith(`/${expectedSuffix}`) &&
+      !normalizedOrigin.endsWith(`:${expectedSuffix}`)
+    ) {
+      return {
+        ok: false,
+        code: "target-mismatch",
+        message: `The replica points at a different origin: ${origin}`,
+      };
+    }
+    return { ok: true, path: target };
+  }
+
+  private async revisionAt(repositoryPath: string, revision: string) {
+    return (
+      await execFileAsync("git", [
+        "-C",
+        repositoryPath,
+        "rev-parse",
+        "--verify",
+        `${revision}^{commit}`,
+      ])
+    ).stdout
+      .trim()
+      .toLowerCase();
+  }
+
+  private async isAncestor(
+    repositoryPath: string,
+    ancestor: string,
+    descendant: string,
+  ): Promise<boolean> {
+    try {
+      await execFileAsync("git", [
+        "-C",
+        repositoryPath,
+        "merge-base",
+        "--is-ancestor",
+        ancestor,
+        descendant,
+      ]);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException & { code?: number }).code === 1) {
+        return false;
+      }
+      throw error;
+    }
   }
 }

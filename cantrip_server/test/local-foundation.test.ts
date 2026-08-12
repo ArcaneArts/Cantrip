@@ -1636,6 +1636,7 @@ describe("local server foundation", () => {
     expect(bootstrap.capabilities.worktrees).toBe(true);
     expect(bootstrap.capabilities.projectReplicas).toBe(true);
     expect(bootstrap.capabilities.replicaProvisioning).toBe(true);
+    expect(bootstrap.capabilities.gitSync).toBe(true);
 
     const initialSettings = settingsBundleSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),

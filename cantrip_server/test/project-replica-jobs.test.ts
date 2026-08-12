@@ -174,6 +174,177 @@ describe("durable project replica jobs", () => {
         ready: true,
       }),
     ]);
+    await expect(
+      second.repository.projectReplicaJobs.createRemove(
+        LOCAL_USER_ID,
+        project.id,
+        completed.projectReplicaId!,
+        {
+          deleteLocalFiles: true,
+          idempotencyKey: "remove:last-replica",
+        },
+      ),
+    ).rejects.toBeInstanceOf(ProjectReplicaJobConflictError);
+
+    await second.repository.recordWorker(LOCAL_USER_ID, {
+      workerId: "replica-worker-two",
+      name: "Replica Worker Two",
+      platform: "linux",
+      architecture: "x64",
+      codexVersion: null,
+      codexRuntime: unprobedCodexRuntimeReport,
+      remoteSurfaces: {
+        browser: false,
+        desktop: false,
+        transports: ["websocket"],
+        maxSessions: 1,
+      },
+      projectReplicas: {
+        provision: true,
+        synchronize: true,
+        remove: true,
+        exactRevision: true,
+      },
+      startedAt: "2026-08-11T12:00:00.000Z",
+    });
+    const secondReplicaJob =
+      await second.repository.projectReplicaJobs.createProvision(
+        LOCAL_USER_ID,
+        project.id,
+        {
+          workerId: "replica-worker-two",
+          expectedRevision: "b".repeat(40),
+          idempotencyKey: "provision:repository-one:replica-worker-two",
+        },
+      );
+    const secondReplicaAttempt =
+      await second.repository.projectReplicaJobs.claimNext();
+    const secondReplica =
+      await second.repository.projectReplicaJobs.completeProvision(
+        secondReplicaJob.id,
+        secondReplicaAttempt!.commandId,
+        {
+          status: "ready",
+          jobId: secondReplicaJob.id,
+          attempt: 1,
+          path: "/worker-two/repositories/ArcaneArts/Cantrip",
+          displayPath: "ArcaneArts/Cantrip",
+          repositoryFingerprint: "e".repeat(64),
+          resolvedRevision: "b".repeat(40),
+          branch: "main",
+          reused: false,
+          worktreePolicy: null,
+        },
+      );
+    const synchronization =
+      await second.repository.projectReplicaJobs.createSynchronize(
+        LOCAL_USER_ID,
+        project.id,
+        secondReplica.projectReplicaId!,
+        {
+          expectedRevision: "c".repeat(40),
+          policy: "fast-forward-primary",
+          idempotencyKey: "sync:repository-one:replica-worker-two:c",
+        },
+      );
+    expect(synchronization).toMatchObject({
+      kind: "synchronize",
+      expectedRevision: "c".repeat(40),
+      synchronizationPolicy: "fast-forward-primary",
+    });
+    const synchronizationAttempt =
+      await second.repository.projectReplicaJobs.claimNext();
+    await second.repository.projectReplicaJobs.completeSynchronize(
+      synchronization.id,
+      synchronizationAttempt!.commandId,
+      {
+        status: "ready",
+        jobId: synchronization.id,
+        attempt: 1,
+        path: "/worker-two/repositories/ArcaneArts/Cantrip",
+        previousRevision: "b".repeat(40),
+        resolvedRevision: "c".repeat(40),
+        branch: "main",
+        changed: true,
+      },
+    );
+    expect(
+      await second.repository.getProjectReplica(
+        LOCAL_USER_ID,
+        project.id,
+        secondReplica.projectReplicaId!,
+      ),
+    ).toMatchObject({ head: "c".repeat(40), branch: "main" });
+    const removal = await second.repository.projectReplicaJobs.createRemove(
+      LOCAL_USER_ID,
+      project.id,
+      secondReplica.projectReplicaId!,
+      {
+        deleteLocalFiles: true,
+        idempotencyKey: "remove:repository-one:replica-worker-two",
+      },
+    );
+    const removalAttempt =
+      await second.repository.projectReplicaJobs.claimNext();
+    expect(
+      await second.repository.projectReplicaJobs.removalBlocker(
+        secondReplica.projectReplicaId!,
+        removal.id,
+      ),
+    ).toBeNull();
+    expect(
+      await second.repository.projectReplicaJobs.markRemovalStarted(
+        secondReplica.projectReplicaId!,
+      ),
+    ).toBe(true);
+    const replicaBeforeRemoval = await second.repository.getProjectReplica(
+      LOCAL_USER_ID,
+      project.id,
+      secondReplica.projectReplicaId!,
+    );
+    expect(
+      await second.repository.getProjectWorktreeContext(
+        LOCAL_USER_ID,
+        project.id,
+        replicaBeforeRemoval!.primaryWorktreeId!,
+      ),
+    ).toBeNull();
+    await second.repository.projectReplicaJobs.completeRemove(
+      removal.id,
+      removalAttempt!.commandId,
+      {
+        status: "removed",
+        jobId: removal.id,
+        attempt: 1,
+        path: "/worker-two/repositories/ArcaneArts/Cantrip",
+        localFilesDeleted: true,
+      },
+    );
+    expect(
+      await second.repository.listProjectReplicas(LOCAL_USER_ID, project.id),
+    ).toEqual([expect.objectContaining({ workerId: "replica-worker" })]);
+    expect(
+      await second.repository.projectReplicaJobs.get(LOCAL_USER_ID, removal.id),
+    ).toMatchObject({
+      state: "succeeded",
+      projectReplicaId: secondReplica.projectReplicaId,
+    });
+    const reprovision =
+      await second.repository.projectReplicaJobs.createProvision(
+        LOCAL_USER_ID,
+        project.id,
+        {
+          workerId: "replica-worker-two",
+          expectedRevision: null,
+          idempotencyKey: "reprovision:repository-one:replica-worker-two",
+        },
+      );
+    expect(reprovision).toMatchObject({ kind: "provision", state: "queued" });
+    await second.repository.projectReplicaJobs.cancel(
+      LOCAL_USER_ID,
+      reprovision.id,
+      reprovision.stateRevision,
+    );
 
     const offlineProject = await second.repository.createGithubProject(
       LOCAL_USER_ID,

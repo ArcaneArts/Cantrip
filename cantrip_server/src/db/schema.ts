@@ -761,6 +761,7 @@ export const projectSources = pgTable(
     absolutePath: text("absolute_path").notNull(),
     displayPath: text("display_path").notNull(),
     repositoryFingerprint: text("repository_fingerprint"),
+    removedAt: timestamp("removed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -769,10 +770,9 @@ export const projectSources = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("project_sources_project_worker_unique").on(
-      table.projectId,
-      table.workerId,
-    ),
+    uniqueIndex("project_sources_project_worker_unique")
+      .on(table.projectId, table.workerId)
+      .where(sql`${table.removedAt} IS NULL`),
   ],
 );
 
@@ -847,6 +847,8 @@ export const projectReplicaJobs = pgTable(
     repository: text("repository").notNull(),
     expectedRevision: text("expected_revision"),
     resolvedRevision: text("resolved_revision"),
+    synchronizationPolicy: text("synchronization_policy"),
+    deleteLocalFiles: boolean("delete_local_files"),
     attempt: integer("attempt").notNull().default(0),
     commandId: text("command_id"),
     progress: jsonb("progress").$type<ProjectReplicaJobProgress>().notNull(),
