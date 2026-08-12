@@ -532,12 +532,16 @@ Updating either pinned upstream is a deliberate maintainer workflow. Follow
 
 ## Mobile and packaged clients
 
-Capacitor is configured with the `art.cantrip` identifier, but native iOS and Android projects are intentionally not checked in yet. They can be generated when mobile work begins:
+Capacitor is configured with the `art.cantrip` identifier. The native iOS and
+Android projects are checked in so their signing, permissions, app icons, and
+store configuration remain reviewable. After changing the web client or
+Capacitor configuration, synchronize the native projects before opening the
+platform IDE:
 
 ```shell
-pnpm --filter @cantrip/app cap:add:ios
-pnpm --filter @cantrip/app cap:add:android
 pnpm --filter @cantrip/app cap:sync
+pnpm --filter @cantrip/app cap:open:ios
+pnpm --filter @cantrip/app cap:open:android
 ```
 
 Browser-only and mobile clients cannot bootstrap a Node server or worker. They use the same server switcher to select a reachable standalone server. Tauri development keeps the root-orchestrated hot-reload stack, while a production desktop bundle supervises its internal server and worker automatically.
