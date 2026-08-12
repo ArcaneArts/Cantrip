@@ -134,7 +134,7 @@ In local development, the server binds to loopback, uses one stable anonymous lo
 
 Server selection is client-bootstrap state because it must exist before a server can be contacted. The main sidebar exposes a built-in Local connection and named remote server origins. Selecting a profile reloads the app against one origin so HTTP and live transports cannot diverge. Profiles contain only a display name and server origin. The application loads bootstrap and session state before mounting account queries or live subscriptions, keeps CSRF material in memory, relies on the server's HttpOnly session cookie, and scopes durable client caches and live resume cursors by server plus account. Anonymous local bootstrap still enters the workspace without showing an authentication screen.
 
-Standalone no-auth servers fail closed when hosted mode or a non-loopback bind is requested. `CANTRIP_ALLOW_INSECURE_REMOTE=true` is a temporary explicit acknowledgement for trusted networks or an authenticating reverse proxy, not a security feature.
+Standalone no-auth servers fail closed when hosted mode is requested. A non-hosted anonymous server may use `CANTRIP_ALLOW_INSECURE_REMOTE=true` only as a temporary explicit acknowledgement for a separately protected trusted network; it can never enable anonymous hosted mode and is not a security feature. Hosted startup additionally requires PostgreSQL, explicit approved app origins, distinct HTTPS API and Code origins, an envelope-encryption keyring, and an explicit trusted-proxy list.
 
 ### 4.4 Technology choices
 

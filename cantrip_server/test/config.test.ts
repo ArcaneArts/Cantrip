@@ -6,6 +6,22 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+function stubHostedInfrastructure(): void {
+  vi.stubEnv("CANTRIP_DEPLOYMENT_MODE", "hosted");
+  vi.stubEnv("CANTRIP_BOOTSTRAP_MODE", "hosted");
+  vi.stubEnv("CANTRIP_AUTH_MODE", "accounts");
+  vi.stubEnv("CANTRIP_SERVER_HOST", "0.0.0.0");
+  vi.stubEnv("DATABASE_URL", "postgres://cantrip:test@db/cantrip");
+  vi.stubEnv("CANTRIP_APP_ORIGINS", "https://app.cantrip.test");
+  vi.stubEnv("CANTRIP_PUBLIC_ORIGIN", "https://api.cantrip.test");
+  vi.stubEnv("CANTRIP_CODE_SURFACE_ORIGIN", "https://code.cantrip.test");
+  vi.stubEnv("CANTRIP_TRUSTED_PROXIES", "loopback,10.0.0.0/8");
+  vi.stubEnv(
+    "CANTRIP_SECRET_ENCRYPTION_KEYS",
+    JSON.stringify({ primary: Buffer.alloc(32, 1).toString("base64") }),
+  );
+}
+
 describe("server configuration safety", () => {
   it("defaults to anonymous loopback development", () => {
     vi.stubEnv("CANTRIP_SERVER_HOST", "127.0.0.1");
@@ -48,28 +64,17 @@ describe("server configuration safety", () => {
     expect(() => readServerConfig()).toThrow(/remote access is disabled/);
   });
 
-  it("requires an explicit unsafe opt-in for hosted mode", () => {
+  it("never permits anonymous hosted mode through the unsafe local opt-in", () => {
     vi.stubEnv("CANTRIP_DEPLOYMENT_MODE", "hosted");
-    expect(() => readServerConfig()).toThrow(/remote access is disabled/);
-
     vi.stubEnv("CANTRIP_SERVER_HOST", "0.0.0.0");
     vi.stubEnv("CANTRIP_ALLOW_INSECURE_REMOTE", "true");
-    vi.stubEnv(
-      "CANTRIP_SECRET_ENCRYPTION_KEYS",
-      JSON.stringify({ primary: Buffer.alloc(32, 1).toString("base64") }),
-    );
-    expect(readServerConfig()).toMatchObject({
-      allowInsecureRemote: true,
-      cookieSameSite: "none",
-      cookieSecure: true,
-      deploymentMode: "hosted",
-      host: "0.0.0.0",
-    });
+    expect(() => readServerConfig()).toThrow(/require.*auth_mode/i);
   });
 
   it("requires a versioned encryption keyring for hosted secrets", () => {
     vi.stubEnv("CANTRIP_DEPLOYMENT_MODE", "hosted");
     vi.stubEnv("CANTRIP_AUTH_MODE", "accounts");
+    vi.stubEnv("CANTRIP_BOOTSTRAP_MODE", "hosted");
     vi.stubEnv("CANTRIP_SERVER_HOST", "0.0.0.0");
     expect(() => readServerConfig()).toThrow(/encryption_keys/i);
 
@@ -82,10 +87,55 @@ describe("server configuration safety", () => {
     expect(() => readServerConfig()).toThrow(/active.*key/i);
 
     vi.stubEnv("CANTRIP_ACTIVE_SECRET_ENCRYPTION_KEY_ID", "current");
+    vi.stubEnv("DATABASE_URL", "postgres://cantrip:test@db/cantrip");
+    vi.stubEnv("CANTRIP_APP_ORIGINS", "https://app.cantrip.test");
+    vi.stubEnv("CANTRIP_PUBLIC_ORIGIN", "https://api.cantrip.test");
+    vi.stubEnv("CANTRIP_CODE_SURFACE_ORIGIN", "https://code.cantrip.test");
+    vi.stubEnv("CANTRIP_TRUSTED_PROXIES", "loopback");
     expect(readServerConfig().secretEncryption).toMatchObject({
       activeKeyId: "current",
       keys: [{ id: "old" }, { id: "current" }],
     });
+  });
+
+  it("requires explicit secure origins, PostgreSQL, and trusted proxies in hosted mode", () => {
+    stubHostedInfrastructure();
+    expect(readServerConfig()).toMatchObject({
+      appOrigins: ["https://app.cantrip.test"],
+      databaseUrl: "postgres://cantrip:test@db/cantrip",
+      publicOrigin: "https://api.cantrip.test",
+      codeSurfaceOrigin: "https://code.cantrip.test",
+      requireHttps: true,
+      trustedProxies: ["loopback", "10.0.0.0/8"],
+    });
+
+    vi.stubEnv("CANTRIP_APP_ORIGINS", "*");
+    expect(() => readServerConfig()).toThrow(/wildcard/i);
+    vi.stubEnv("CANTRIP_APP_ORIGINS", "http://app.cantrip.test");
+    expect(() => readServerConfig()).toThrow(/must use HTTPS/i);
+    vi.stubEnv("CANTRIP_APP_ORIGINS", "https://app.cantrip.test");
+    vi.stubEnv("CANTRIP_TRUSTED_PROXIES", "proxy.example.test");
+    expect(() => readServerConfig()).toThrow(/IP addresses.*CIDR/i);
+    vi.stubEnv("CANTRIP_TRUSTED_PROXIES", "loopback");
+    vi.stubEnv("CANTRIP_BOOTSTRAP_MODE", "standalone");
+    expect(() => readServerConfig()).toThrow(/BOOTSTRAP_MODE=hosted/i);
+    vi.stubEnv("CANTRIP_BOOTSTRAP_MODE", "hosted");
+    vi.stubEnv("CANTRIP_ALLOW_INSECURE_REMOTE", "true");
+    expect(() => readServerConfig()).toThrow(/not permitted/i);
+  });
+
+  it("bounds public request, upload, and WebSocket payload limits", () => {
+    vi.stubEnv("CANTRIP_API_BODY_LIMIT_BYTES", "65536");
+    vi.stubEnv("CANTRIP_UPLOAD_LIMIT_BYTES", "1048576");
+    vi.stubEnv("CANTRIP_WEBSOCKET_MAX_PAYLOAD_BYTES", "131072");
+    expect(readServerConfig()).toMatchObject({
+      apiBodyLimitBytes: 65_536,
+      uploadLimitBytes: 1_048_576,
+      websocketMaxPayloadBytes: 131_072,
+    });
+
+    vi.stubEnv("CANTRIP_API_BODY_LIMIT_BYTES", "100");
+    expect(() => readServerConfig()).toThrow(/API_BODY_LIMIT/i);
   });
 
   it("confines shared worker tokens to explicit loopback dev bootstraps", () => {

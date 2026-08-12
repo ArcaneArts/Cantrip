@@ -1,4 +1,5 @@
 import path from "node:path";
+import { isIP } from "node:net";
 
 import {
   authModeSchema,
@@ -10,6 +11,9 @@ import {
 } from "@cantrip/protocol";
 
 const DEFAULT_WORKER_TOKEN = "cantrip-local-development";
+const DEFAULT_APP_ORIGINS =
+  "http://127.0.0.1:5173,http://127.0.0.1:1420,http://tauri.localhost,https://tauri.localhost,tauri://localhost,capacitor://localhost";
+const TRUST_PROXY_ALIASES = new Set(["linklocal", "loopback", "uniquelocal"]);
 
 function readPort(
   value: string | undefined,
@@ -28,6 +32,7 @@ function readPort(
 export interface ServerConfig {
   adminBootstrapToken?: string;
   allowInsecureRemote: boolean;
+  apiBodyLimitBytes?: number;
   appOrigins: string[];
   authRateLimit?: number;
   authMode: AuthMode;
@@ -43,7 +48,9 @@ export interface ServerConfig {
   cookieSecure?: boolean;
   passwordHash?: string;
   port: number;
+  publicOrigin?: string;
   publicRegistration?: boolean;
+  requireHttps?: boolean;
   sessionTtlSeconds?: number;
   codeSurfaceHost?: string;
   codeSurfaceOrigin?: string;
@@ -51,6 +58,9 @@ export interface ServerConfig {
   workerToken: string;
   remoteSurfaceWebRtc?: RemoteSurfaceTurnConfig;
   secretEncryption?: SecretEncryptionConfig;
+  trustedProxies?: string[];
+  uploadLimitBytes?: number;
+  websocketMaxPayloadBytes?: number;
 }
 
 export interface SecretEncryptionKeyConfig {
@@ -123,6 +133,117 @@ function readBoundedInteger(
     throw new Error(`Invalid ${name}: ${value}`);
   }
   return parsed;
+}
+
+function normalizeHttpOrigin(
+  name: string,
+  value: string,
+  requireHttps: boolean,
+): string {
+  let origin: URL;
+  try {
+    origin = new URL(value);
+  } catch {
+    throw new Error(`${name} must be a valid HTTP(S) origin.`);
+  }
+  if (
+    !["http:", "https:"].includes(origin.protocol) ||
+    origin.pathname !== "/" ||
+    origin.search ||
+    origin.hash ||
+    origin.username ||
+    origin.password
+  ) {
+    throw new Error(
+      `${name} must be an HTTP(S) origin without a path, wildcard, or credentials.`,
+    );
+  }
+  if (requireHttps && origin.protocol !== "https:") {
+    throw new Error(`${name} must use HTTPS in hosted mode.`);
+  }
+  return origin.origin;
+}
+
+function loopbackHostname(hostname: string): boolean {
+  const normalized = hostname.replace(/^\[|\]$/gu, "").toLowerCase();
+  return (
+    normalized === "localhost" ||
+    normalized.endsWith(".localhost") ||
+    normalized === "::1" ||
+    normalized.startsWith("127.")
+  );
+}
+
+function readAppOrigins(deploymentMode: DeploymentMode): string[] {
+  const configured =
+    process.env.CANTRIP_APP_ORIGINS ?? process.env.CANTRIP_APP_ORIGIN;
+  if (deploymentMode === "hosted" && !configured?.trim()) {
+    throw new Error("Hosted deployments require explicit CANTRIP_APP_ORIGINS.");
+  }
+  const values = (configured ?? DEFAULT_APP_ORIGINS)
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  if (values.length === 0 || values.length > 32) {
+    throw new Error(
+      "CANTRIP_APP_ORIGINS must contain between 1 and 32 origins.",
+    );
+  }
+  const origins = values.map((value) => {
+    if (value.includes("*")) {
+      throw new Error("CANTRIP_APP_ORIGINS does not allow wildcard origins.");
+    }
+    if (/^(?:tauri|capacitor):\/\/localhost$/u.test(value)) return value;
+    const normalized = normalizeHttpOrigin("CANTRIP_APP_ORIGINS", value, false);
+    const parsed = new URL(normalized);
+    if (
+      deploymentMode === "hosted" &&
+      parsed.protocol !== "https:" &&
+      !loopbackHostname(parsed.hostname)
+    ) {
+      throw new Error(
+        "Hosted CANTRIP_APP_ORIGINS entries must use HTTPS unless they are loopback origins.",
+      );
+    }
+    return normalized;
+  });
+  return [...new Set(origins)];
+}
+
+function validProxyAddress(value: string): boolean {
+  if (TRUST_PROXY_ALIASES.has(value)) return true;
+  const separator = value.lastIndexOf("/");
+  const address = separator < 0 ? value : value.slice(0, separator);
+  const family = isIP(address);
+  if (!family) return false;
+  if (separator < 0) return true;
+  const prefix = Number(value.slice(separator + 1));
+  return (
+    Number.isInteger(prefix) &&
+    prefix >= 0 &&
+    prefix <= (family === 4 ? 32 : 128)
+  );
+}
+
+function readTrustedProxies(deploymentMode: DeploymentMode): string[] {
+  const proxies = (process.env.CANTRIP_TRUSTED_PROXIES ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  if (
+    proxies.length > 32 ||
+    proxies.some((value) => !validProxyAddress(value))
+  ) {
+    throw new Error(
+      "CANTRIP_TRUSTED_PROXIES accepts at most 32 IP addresses, CIDR ranges, or loopback/linklocal/uniquelocal aliases.",
+    );
+  }
+  if (deploymentMode === "hosted" && proxies.length === 0) {
+    throw new Error(
+      "Hosted deployments require explicit CANTRIP_TRUSTED_PROXIES.",
+    );
+  }
+  return [...new Set(proxies)];
 }
 
 function readRemoteSurfaceWebRtcConfig(): RemoteSurfaceTurnConfig | undefined {
@@ -258,6 +379,21 @@ export function readServerConfig(): ServerConfig {
   }
 
   const loopback = ["127.0.0.1", "localhost", "::1"].includes(host);
+  if (deploymentMode === "hosted" && authMode === "none") {
+    throw new Error(
+      "Hosted deployments require CANTRIP_AUTH_MODE=accounts or password; CANTRIP_ALLOW_INSECURE_REMOTE cannot enable anonymous hosted access.",
+    );
+  }
+  if (deploymentMode === "hosted" && bootstrapMode !== "hosted") {
+    throw new Error(
+      "Hosted deployments require CANTRIP_BOOTSTRAP_MODE=hosted so bootstrap capabilities describe the deployment truthfully.",
+    );
+  }
+  if (deploymentMode === "hosted" && allowInsecureRemote) {
+    throw new Error(
+      "CANTRIP_ALLOW_INSECURE_REMOTE is not permitted in hosted mode.",
+    );
+  }
   if (
     authMode === "none" &&
     (!loopback || deploymentMode === "hosted") &&
@@ -285,6 +421,12 @@ export function readServerConfig(): ServerConfig {
       "Hosted deployments require CANTRIP_SECRET_ENCRYPTION_KEYS so provider secrets can be encrypted at rest.",
     );
   }
+  const databaseUrl = process.env.DATABASE_URL?.trim() || undefined;
+  if (deploymentMode === "hosted" && !databaseUrl) {
+    throw new Error("Hosted deployments require DATABASE_URL for PostgreSQL.");
+  }
+  const appOrigins = readAppOrigins(deploymentMode);
+  const trustedProxies = readTrustedProxies(deploymentMode);
 
   const port = readPort(process.env.CANTRIP_SERVER_PORT);
   const codeSurfacePort = readPort(
@@ -296,18 +438,39 @@ export function readServerConfig(): ServerConfig {
   const codeSurfaceOrigin =
     process.env.CANTRIP_CODE_SURFACE_ORIGIN ??
     `http://${codeSurfaceHost.includes(":") ? `[${codeSurfaceHost}]` : codeSurfaceHost}:${codeSurfacePort}`;
+  const publicOriginInput = process.env.CANTRIP_PUBLIC_ORIGIN?.trim();
+  if (deploymentMode === "hosted" && !publicOriginInput) {
+    throw new Error("Hosted deployments require CANTRIP_PUBLIC_ORIGIN.");
+  }
+  const publicOrigin = publicOriginInput
+    ? normalizeHttpOrigin(
+        "CANTRIP_PUBLIC_ORIGIN",
+        publicOriginInput,
+        deploymentMode === "hosted",
+      )
+    : undefined;
+  const normalizedCodeSurfaceOrigin = normalizeHttpOrigin(
+    "CANTRIP_CODE_SURFACE_ORIGIN",
+    codeSurfaceOrigin,
+    deploymentMode === "hosted",
+  );
+  if (publicOrigin && normalizedCodeSurfaceOrigin === publicOrigin) {
+    throw new Error(
+      "CANTRIP_CODE_SURFACE_ORIGIN must be isolated from CANTRIP_PUBLIC_ORIGIN.",
+    );
+  }
 
   const config: ServerConfig = {
     adminBootstrapToken,
     allowInsecureRemote,
-    appOrigins: (
-      process.env.CANTRIP_APP_ORIGINS ??
-      process.env.CANTRIP_APP_ORIGIN ??
-      "http://127.0.0.1:5173,http://127.0.0.1:1420,http://tauri.localhost,https://tauri.localhost,tauri://localhost,capacitor://localhost"
-    )
-      .split(",")
-      .map((origin) => origin.trim())
-      .filter(Boolean),
+    apiBodyLimitBytes: readBoundedInteger(
+      "CANTRIP_API_BODY_LIMIT_BYTES",
+      process.env.CANTRIP_API_BODY_LIMIT_BYTES,
+      1_024 * 1_024,
+      16 * 1_024,
+      16 * 1_024 * 1_024,
+    ),
+    appOrigins,
     authMode,
     authRateLimit: readBoundedInteger(
       "CANTRIP_AUTH_RATE_LIMIT",
@@ -321,7 +484,7 @@ export function readServerConfig(): ServerConfig {
       process.cwd(),
       process.env.CANTRIP_DATA_DIR ?? "../.cantrip/dev",
     ),
-    databaseUrl: process.env.DATABASE_URL,
+    databaseUrl,
     deploymentMode,
     agentModel: process.env.CANTRIP_AGENT_MODEL ?? "gemma4:26b",
     agentModelProvider: process.env.CANTRIP_AGENT_MODEL_PROVIDER ?? "ollama",
@@ -345,6 +508,7 @@ export function readServerConfig(): ServerConfig {
           ),
     passwordHash,
     port,
+    publicOrigin,
     publicRegistration: readBoolean(
       "CANTRIP_PUBLIC_REGISTRATION",
       process.env.CANTRIP_PUBLIC_REGISTRATION,
@@ -357,11 +521,27 @@ export function readServerConfig(): ServerConfig {
       365 * 24 * 60 * 60,
     ),
     codeSurfaceHost,
-    codeSurfaceOrigin,
+    codeSurfaceOrigin: normalizedCodeSurfaceOrigin,
     codeSurfacePort,
     workerToken,
     remoteSurfaceWebRtc: readRemoteSurfaceWebRtcConfig(),
+    requireHttps: deploymentMode === "hosted",
     secretEncryption,
+    trustedProxies,
+    uploadLimitBytes: readBoundedInteger(
+      "CANTRIP_UPLOAD_LIMIT_BYTES",
+      process.env.CANTRIP_UPLOAD_LIMIT_BYTES,
+      25 * 1_024 * 1_024,
+      1_024 * 1_024,
+      1_024 * 1_024 * 1_024,
+    ),
+    websocketMaxPayloadBytes: readBoundedInteger(
+      "CANTRIP_WEBSOCKET_MAX_PAYLOAD_BYTES",
+      process.env.CANTRIP_WEBSOCKET_MAX_PAYLOAD_BYTES,
+      8 * 1_024 * 1_024,
+      64 * 1_024,
+      64 * 1_024 * 1_024,
+    ),
   };
   if (config.cookieSameSite === "none" && !config.cookieSecure) {
     throw new Error(
