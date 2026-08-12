@@ -12,7 +12,7 @@
     "typecheck": "tsc -b --pretty false",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
+    "tauri:build": "node ../scripts/tauri-build.mjs",
     "cap:sync": "pnpm build && cap sync",
     "cap:add:android": "cap add android",
     "cap:add:ios": "cap add ios",
