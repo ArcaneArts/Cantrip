@@ -19,7 +19,8 @@ The architecture decision is recorded in
 | Browser and Remote Desktop frames/input                           | Dedicated Remote Surface WebSocket or WebRTC |
 | Tunnel control snapshots and mutations                            | HTTP                                         |
 | Tunnel state invalidation                                         | Application live WebSocket                   |
-| Cantrip Code, project-share, and raw tunnel bytes                 | Dedicated tunnel data planes                 |
+| Project-share and raw TCP tunnel bytes                            | Unified binary tunnel data plane             |
+| Cantrip Code bytes (migration pending)                            | Dedicated Code tunnel data plane             |
 | Worker commands and events                                        | Authenticated outbound worker WebSocket      |
 
 ## Version 1 contract
@@ -34,8 +35,8 @@ Every event contains exactly one authorized scope, typed resource and action,
 optional entity ID and revision, committed timestamp, and optional bounded JSON
 payload. Resource types cover settings, workers, projects, worktrees, project
 tabs and tab layouts, chat state, interactions, workflows, customization, and
-tunnels. Tunnel stream bytes and flow control remain on dedicated binary
-transports.
+tunnels. Tunnel stream bytes and flow control remain on bounded binary data
+planes; project-share traffic already uses the unified tunnel stream protocol.
 
 The server may replay retained events after a same-epoch cursor and ends replay
 with `caught-up`. It emits `resync-required` when the server restarted, the

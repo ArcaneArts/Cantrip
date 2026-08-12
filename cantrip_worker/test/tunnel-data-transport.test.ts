@@ -74,7 +74,6 @@ describe("worker generic tunnel data transport", () => {
       async () => undefined,
       () => undefined,
       () => undefined,
-      () => undefined,
       (header, payload) => {
         received.push({ header, payload: Uint8Array.from(payload) });
       },

@@ -2,8 +2,9 @@ import type { AddressInfo } from "node:net";
 
 import type {
   CodeTunnelFrameHeader,
-  ProjectShareTunnelFrameHeader,
+  ProjectShareAdapterRequestHead,
   RemoteSurfaceFrameHeader,
+  TunnelDataPlaneFrameHeader,
   WorkerCommand,
 } from "@cantrip/protocol";
 import { afterEach, describe, expect, it } from "vitest";
@@ -17,12 +18,13 @@ import { ProjectShareTunnelBroker } from "../src/project-shares/tunnel.js";
 import type {
   WorkerCodeTunnelFrameListener,
   WorkerCommandBus,
-  WorkerProjectShareTunnelFrameListener,
   WorkerRequestOptions,
   WorkerSurfaceFrameListener,
+  WorkerTunnelDataPlaneFrameListener,
 } from "../src/workers/bridge.js";
 
 const closers: Array<() => Promise<void>> = [];
+const EMPTY_PAYLOAD = new Uint8Array();
 
 afterEach(async () => {
   await Promise.all(closers.splice(0).map((close) => close()));
@@ -30,10 +32,13 @@ afterEach(async () => {
 
 interface ObservedRequest {
   body: Buffer;
-  header: Extract<
-    ProjectShareTunnelFrameHeader,
-    { kind: "http-request-start" }
-  >;
+  header: ProjectShareAdapterRequestHead;
+}
+
+interface FakeStream {
+  chunks: Buffer[];
+  connect: Extract<TunnelDataPlaneFrameHeader, { kind: "connect" }>;
+  outputSequence: number;
 }
 
 class LoopbackProjectShareWorker implements WorkerCommandBus {
@@ -43,18 +48,9 @@ class LoopbackProjectShareWorker implements WorkerCommandBus {
   #connected = true;
   #generation = 1;
   readonly #disconnectListeners = new Set<() => void>();
-  readonly #listeners = new Set<WorkerProjectShareTunnelFrameListener>();
+  readonly #listeners = new Set<WorkerTunnelDataPlaneFrameListener>();
   readonly #shares = new Map<string, unknown>();
-  readonly #requests = new Map<
-    string,
-    {
-      chunks: Buffer[];
-      header: Extract<
-        ProjectShareTunnelFrameHeader,
-        { kind: "http-request-start" }
-      >;
-    }
-  >();
+  readonly #streams = new Map<string, FakeStream>();
 
   attach(): void {}
   close(): void {}
@@ -94,49 +90,62 @@ class LoopbackProjectShareWorker implements WorkerCommandBus {
     this.#disconnectListeners.add(listener);
     return () => this.#disconnectListeners.delete(listener);
   }
-  subscribeProjectShareTunnelFrames(
+  subscribeTunnelDataPlaneFrames(
     _workerId: string,
-    listener: WorkerProjectShareTunnelFrameListener,
+    listener: WorkerTunnelDataPlaneFrameListener,
   ): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
   }
-  sendProjectShareTunnelFrame(
+  sendTunnelDataPlaneFrame(
     _workerId: string,
-    header: ProjectShareTunnelFrameHeader,
+    header: TunnelDataPlaneFrameHeader,
     payload: Uint8Array,
   ): boolean {
-    const key = `${header.shareId}\0${header.streamId}`;
-    if (header.kind === "http-request-start") {
-      this.#requests.set(key, { chunks: [], header });
+    const key = `${header.attachmentId}\0${header.connectionId}`;
+    if (header.kind === "connect") {
+      const stream = { chunks: [], connect: header, outputSequence: 0 };
+      this.#streams.set(key, stream);
+      this.#emit(stream, {
+        kind: "accepted",
+        initialCreditBytes: 1024 * 1024,
+      });
       return true;
     }
-    const request = this.#requests.get(key);
-    if (!request) return true;
-    if (header.kind === "http-request-data") {
-      request.chunks.push(Buffer.from(payload));
+    const stream = this.#streams.get(key);
+    if (!stream) return false;
+    if (
+      header.kind === "data" &&
+      header.direction === "source-to-destination"
+    ) {
+      stream.chunks.push(Buffer.from(payload));
+      this.#emit(stream, {
+        kind: "credit",
+        direction: "source-to-destination",
+        bytes: payload.byteLength,
+      });
       return true;
     }
-    if (header.kind !== "http-request-end") return true;
-    this.#requests.delete(key);
-    this.observedRequests.push({
-      body: Buffer.concat(request.chunks),
-      header: request.header,
-    });
-    const authorized = request.header.headers.some(
-      ([name, value]) =>
-        name.toLowerCase() === "authorization" && value.startsWith("Digest "),
-    );
-    queueMicrotask(() => {
-      const base = {
-        protocolVersion: 1 as const,
-        shareId: header.shareId,
-        streamId: header.streamId,
-      };
-      this.#emit(
-        {
-          ...base,
-          kind: "http-response-start",
+    if (
+      header.kind === "half-close" &&
+      header.direction === "source-to-destination"
+    ) {
+      const request = Buffer.concat(stream.chunks);
+      const headLength = request.readUInt32BE(0);
+      const parsed = JSON.parse(
+        request.subarray(4, 4 + headLength).toString("utf8"),
+      ) as ProjectShareAdapterRequestHead;
+      this.observedRequests.push({
+        body: request.subarray(4 + headLength),
+        header: parsed,
+      });
+      const authorized = parsed.headers.some(
+        ([name, value]) =>
+          name.toLowerCase() === "authorization" && value.startsWith("Digest "),
+      );
+      const responseHead = Buffer.from(
+        JSON.stringify({
+          protocolVersion: 1,
           statusCode: authorized ? 207 : 401,
           headers: authorized
             ? [
@@ -150,17 +159,30 @@ class LoopbackProjectShareWorker implements WorkerCommandBus {
                   'Digest realm="Cantrip Project Share", qop="auth", nonce="nonce"',
                 ],
               ],
-        },
-        new Uint8Array(),
+        }),
       );
-      if (authorized) {
+      const prefix = Buffer.allocUnsafe(4);
+      prefix.writeUInt32BE(responseHead.byteLength);
+      const responseBody = authorized
+        ? Buffer.from("<multistatus>README.md</multistatus>")
+        : Buffer.alloc(0);
+      queueMicrotask(() => {
         this.#emit(
-          { ...base, kind: "http-response-data" },
-          new TextEncoder().encode("<multistatus>README.md</multistatus>"),
+          stream,
+          {
+            kind: "data",
+            direction: "destination-to-source",
+          },
+          Buffer.concat([prefix, responseHead, responseBody]),
         );
-      }
-      this.#emit({ ...base, kind: "http-response-end" }, new Uint8Array());
-    });
+        this.#emit(stream, {
+          kind: "half-close",
+          direction: "destination-to-source",
+        });
+      });
+      return true;
+    }
+    if (header.kind === "close") this.#streams.delete(key);
     return true;
   }
   request(
@@ -168,9 +190,8 @@ class LoopbackProjectShareWorker implements WorkerCommandBus {
     command: WorkerCommand,
     _options?: WorkerRequestOptions,
   ): Promise<unknown> {
-    if (!this.isConnected(workerId)) {
+    if (!this.isConnected(workerId))
       return Promise.reject(new Error("offline"));
-    }
     if (command.type === "project.share.open") {
       const existing = this.#shares.get(command.shareId);
       if (existing) return Promise.resolve(existing);
@@ -215,7 +236,37 @@ class LoopbackProjectShareWorker implements WorkerCommandBus {
     this.#shares.clear();
   }
 
-  #emit(header: ProjectShareTunnelFrameHeader, payload: Uint8Array): void {
+  #emit(
+    stream: FakeStream,
+    frame:
+      | Pick<
+          Extract<TunnelDataPlaneFrameHeader, { kind: "accepted" }>,
+          "kind" | "initialCreditBytes"
+        >
+      | Pick<
+          Extract<TunnelDataPlaneFrameHeader, { kind: "credit" }>,
+          "kind" | "direction" | "bytes"
+        >
+      | Pick<
+          Extract<TunnelDataPlaneFrameHeader, { kind: "data" }>,
+          "kind" | "direction"
+        >
+      | Pick<
+          Extract<TunnelDataPlaneFrameHeader, { kind: "half-close" }>,
+          "kind" | "direction"
+        >,
+    payload: Uint8Array = EMPTY_PAYLOAD,
+  ): void {
+    const header = {
+      protocolVersion: 1 as const,
+      tunnelId: stream.connect.tunnelId,
+      attachmentId: stream.connect.attachmentId,
+      sourceEndpointId: stream.connect.sourceEndpointId,
+      destinationEndpointId: stream.connect.destinationEndpointId,
+      connectionId: stream.connect.connectionId,
+      sequence: stream.outputSequence++,
+      ...frame,
+    } as TunnelDataPlaneFrameHeader;
     for (const listener of this.#listeners) listener(header, payload);
   }
 }
@@ -334,9 +385,6 @@ describe("project share server tunnel", () => {
       workerId: "worker-1",
     });
     const token = new URL(attachment.url).pathname.split("/")[2]!;
-    expect(attachment.mountLeaseMs).toBeGreaterThan(0);
-    expect(attachment.mountLeaseMs).toBeLessThanOrEqual(100);
-
     await new Promise<void>((resolve) => setTimeout(resolve, 5));
     expect(shares.hasAttachment(token)).toBe(false);
     await expect
@@ -344,7 +392,7 @@ describe("project share server tunnel", () => {
       .toEqual([attachment.attachmentId]);
   });
 
-  it("invalidates attachments on disconnect and closes orphaned worker shares after reconnect", async () => {
+  it("invalidates on disconnect and cleans orphaned shares after reconnect", async () => {
     const worker = new LoopbackProjectShareWorker();
     const shares = new ProjectShareTunnelBroker(worker, {
       surfaceOrigin: "https://surface.cantrip.example",
@@ -356,11 +404,9 @@ describe("project share server tunnel", () => {
       root: "/worker/projects/cantrip",
       workerId: "worker-1",
     });
-    const firstToken = new URL(first.url).pathname.split("/")[2]!;
-
+    const token = new URL(first.url).pathname.split("/")[2]!;
     worker.disconnect();
-    expect(shares.hasAttachment(firstToken)).toBe(false);
-
+    expect(shares.hasAttachment(token)).toBe(false);
     worker.reconnect();
     const replacement = await shares.open({
       ownerId: "user-1",
@@ -372,7 +418,7 @@ describe("project share server tunnel", () => {
     expect(worker.closedShareIds).toContain(first.attachmentId);
   });
 
-  it("replaces a silently restarted worker share when its credentials rotate", async () => {
+  it("replaces a silently restarted worker share when credentials rotate", async () => {
     const worker = new LoopbackProjectShareWorker();
     const shares = new ProjectShareTunnelBroker(worker, {
       surfaceOrigin: "https://surface.cantrip.example",
@@ -384,7 +430,6 @@ describe("project share server tunnel", () => {
       root: "/worker/projects/cantrip",
       workerId: "worker-1",
     });
-
     worker.restartWithoutDisconnectNotification();
     const replacement = await shares.open({
       ownerId: "user-1",

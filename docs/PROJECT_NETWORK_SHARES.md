@@ -10,7 +10,8 @@ worker; it does not reveal the worker's physical checkout directly.
 ```mermaid
 flowchart LR
     APP["Tauri desktop app"]
-    SERVER["Cantrip Server<br/>authorization and tunnel"]
+    SERVER["Cantrip Server<br/>authorization and HTTP adapter"]
+    BROKER["Unified tunnel broker<br/>limits, credits, lifecycle"]
     WORKER["Cantrip Worker<br/>share lifecycle"]
     DAV["Authenticated loopback WebDAV"]
     TREE["Project Primary checkout"]
@@ -20,7 +21,8 @@ flowchart LR
     SERVER -->|"worker command"| WORKER
     WORKER --> DAV
     DAV --> TREE
-    SERVER <-->|"dedicated outbound byte tunnel"| WORKER
+    SERVER <--> BROKER
+    BROKER <-->|"generic tunnel data frames"| WORKER
     APP -->|"native mount command"| NATIVE
     NATIVE <-->|"server share endpoint"| SERVER
 ```
@@ -32,7 +34,10 @@ returns that worker-loopback address as a client endpoint and never attempts an
 inbound connection to the worker.
 
 The server exposes an authorized share attachment on its isolated tunnel
-surface. `POST /api/projects/:projectId/network-shares` resolves the owned
+surface and registers it in the unified tunnel control plane as a
+project-associated, managed-ephemeral `server-relay`. It is therefore visible
+in both global Tunnel settings and the project's Tunnel settings while active.
+`POST /api/projects/:projectId/network-shares` resolves the owned
 project's Primary checkout, asks its assigned worker to open the share, and
 returns the public WebDAV URL plus its in-memory credentials. Repeated requests
 for the same project reuse the live attachment. `DELETE
@@ -43,11 +48,15 @@ physical project at that exact public path so HTTP Digest's signed URI and
 WebDAV `Destination` headers remain unchanged through the proxy. The server
 never substitutes or returns the worker's loopback address.
 
-WebDAV request and response bytes use dedicated bounded binary frames on the
-authenticated outbound worker WebSocket. They do not travel in ordinary JSON
-worker command messages, and the server never makes an inbound connection to a
-worker. Request bodies and file responses stream with explicit congestion and
-client backpressure handling.
+WebDAV uses the same versioned, bounded binary data-plane frames as every other
+Cantrip tunnel on the authenticated outbound worker WebSocket. A small,
+length-prefixed HTTP head precedes each request and response body inside the
+generic byte stream; it is endpoint adaptation, not a second tunnel protocol.
+The shared broker owns connection limits, sequence validation, credits,
+bandwidth limits, idle/max-lifetime enforcement, byte counters, and disconnect
+cleanup. Request bodies and file responses stream with end-to-end backpressure.
+They do not travel in ordinary JSON worker command messages, and the server
+never makes an inbound connection to a worker.
 
 The share stays writable so edits made through Finder or File Explorer update
 the worker-owned checkout. The worker rejects operating-system metadata
@@ -99,13 +108,18 @@ bounded maximum mount lease elapses, or when the desktop runtime shuts down.
   DAV, lock, range, and destination headers remain available to native clients.
 - Local worker and local Tauri deployments still use the authenticated server
   endpoint and worker tunnel.
+- Revocation removes the generic route, its server-relay attachment, and its
+  managed control-plane record before closing the worker-owned share.
+- Server startup deletes stale managed-ephemeral Project Share records because
+  their in-memory URL token and Digest credentials cannot survive a restart.
+- Project Share has no private frame magic, transport queue, or connection
+  broker. Its server HTTP and worker WebDAV adapters are edges on the unified
+  tunnel data plane.
 
-## Delivery milestones
+## Implementation status
 
-1. Completed: worker-owned authenticated loopback WebDAV lifecycle and shared
-   protocol.
-2. Completed: server-authorized project share sessions and multiplexed worker
-   tunnel.
-3. Completed: desktop-only project menu action and native macOS/Windows mount
-   commands.
-4. Expiration, reconnect, unmount cleanup, and end-to-end local/remote QA.
+Worker-owned WebDAV lifecycle, the server-authorized managed tunnel, generic
+stream transport, desktop-only reveal action, native macOS/Windows mounting,
+expiration, reconnect, and unmount cleanup are implemented. The remaining
+release responsibility is platform QA against supported Finder and Explorer
+versions.

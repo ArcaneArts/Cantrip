@@ -3604,6 +3604,137 @@ export class ServerRepository {
     });
   }
 
+  async createManagedServerRelayAttachment(
+    ownerId: string,
+    tunnelId: string,
+    attachmentId: string,
+    expiresAt: Date,
+  ): Promise<boolean> {
+    return this.database.transaction(async (transaction) => {
+      const tunnels = await transaction
+        .select({ id: schema.tunnels.id })
+        .from(schema.tunnels)
+        .where(
+          and(
+            eq(schema.tunnels.id, tunnelId),
+            eq(schema.tunnels.ownerId, ownerId),
+            ne(schema.tunnels.management, "user-managed"),
+            eq(schema.tunnels.sourceEndpoint, {
+              kind: "server-http",
+              adapter: "project-share",
+            }),
+          ),
+        )
+        .limit(1);
+      if (!tunnels[0]) return false;
+      const now = new Date();
+      await transaction
+        .insert(schema.tunnelAttachments)
+        .values({
+          id: attachmentId,
+          tunnelId,
+          kind: "server-relay",
+          clientId: null,
+          localHost: null,
+          localPort: null,
+          status: "active",
+          expiresAt,
+          lastSeenAt: now,
+        })
+        .onConflictDoUpdate({
+          target: schema.tunnelAttachments.id,
+          set: {
+            activeConnectionCount: 0,
+            bytesFromSource: 0,
+            bytesToSource: 0,
+            expiresAt,
+            lastError: null,
+            lastSeenAt: now,
+            status: "active",
+            updatedAt: now,
+          },
+        });
+      await transaction
+        .update(schema.tunnels)
+        .set({
+          activeConnectionCount: 0,
+          desiredState: "started",
+          lastError: null,
+          status: "active",
+          updatedAt: now,
+        })
+        .where(eq(schema.tunnels.id, tunnelId));
+      return true;
+    });
+  }
+
+  async touchManagedServerRelay(
+    ownerId: string,
+    attachmentId: string,
+    input: {
+      activeConnectionDelta?: number;
+      bytesFromSource?: number;
+      bytesToSource?: number;
+      expiresAt?: Date;
+    } = {},
+  ): Promise<void> {
+    await this.database.transaction(async (transaction) => {
+      const now = new Date();
+      const connectionDelta = input.activeConnectionDelta ?? 0;
+      const bytesFromSource = input.bytesFromSource ?? 0;
+      const bytesToSource = input.bytesToSource ?? 0;
+      const owned = await transaction
+        .select({ tunnelId: schema.tunnelAttachments.tunnelId })
+        .from(schema.tunnelAttachments)
+        .innerJoin(
+          schema.tunnels,
+          eq(schema.tunnels.id, schema.tunnelAttachments.tunnelId),
+        )
+        .where(
+          and(
+            eq(schema.tunnelAttachments.id, attachmentId),
+            eq(schema.tunnelAttachments.kind, "server-relay"),
+            eq(schema.tunnelAttachments.status, "active"),
+            eq(schema.tunnels.ownerId, ownerId),
+          ),
+        )
+        .limit(1);
+      if (!owned[0]) return;
+      await transaction
+        .update(schema.tunnelAttachments)
+        .set({
+          activeConnectionCount: sql<number>`greatest(0, ${schema.tunnelAttachments.activeConnectionCount} + ${connectionDelta})`,
+          bytesFromSource: sql<number>`${schema.tunnelAttachments.bytesFromSource} + ${bytesFromSource}`,
+          bytesToSource: sql<number>`${schema.tunnelAttachments.bytesToSource} + ${bytesToSource}`,
+          expiresAt: input.expiresAt,
+          lastSeenAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.tunnelAttachments.id, attachmentId),
+            eq(schema.tunnelAttachments.tunnelId, owned[0].tunnelId),
+            eq(schema.tunnelAttachments.kind, "server-relay"),
+            eq(schema.tunnelAttachments.status, "active"),
+          ),
+        );
+      await transaction
+        .update(schema.tunnels)
+        .set({
+          activeConnectionCount: sql<number>`greatest(0, ${schema.tunnels.activeConnectionCount} + ${connectionDelta})`,
+          bytesFromSource: sql<number>`${schema.tunnels.bytesFromSource} + ${bytesFromSource}`,
+          bytesToSource: sql<number>`${schema.tunnels.bytesToSource} + ${bytesToSource}`,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.tunnels.id, owned[0].tunnelId),
+            eq(schema.tunnels.ownerId, ownerId),
+          ),
+        );
+    });
+  }
+
   async authorizeDesktopTunnelAttachment(
     attachmentId: string,
     secretHash: string,
@@ -3829,6 +3960,14 @@ export class ServerRepository {
           "degraded",
           "stopping",
         ]),
+      );
+    await this.database
+      .delete(schema.tunnels)
+      .where(
+        and(
+          eq(schema.tunnels.origin, "project-share"),
+          eq(schema.tunnels.management, "managed-ephemeral"),
+        ),
       );
   }
 

@@ -367,6 +367,90 @@ describe.sequential("tunnel control plane", () => {
     expect(remove.statusCode).toBe(409);
   });
 
+  it("persists managed project-share server relays in global and project inventory", async () => {
+    const share = await database.repository.registerManagedTunnel(
+      LOCAL_USER_ID,
+      {
+        name: "Project files",
+        description: "Secure WebDAV project access.",
+        projectId,
+        origin: "project-share",
+        management: "managed-ephemeral",
+        protocolHint: "webdav",
+        source: { kind: "server-http", adapter: "project-share" },
+        destination: {
+          kind: "worker-adapter",
+          workerId: "worker-b",
+          adapter: "project-share",
+          resourceId: "share-1",
+        },
+        managedBy: { kind: "project-share", id: "share-1" },
+        desiredState: "started",
+        status: "starting",
+      },
+    );
+    expect(share).not.toBeNull();
+    expect(
+      await database.repository.createManagedServerRelayAttachment(
+        LOCAL_USER_ID,
+        share!.id,
+        "share-1",
+        new Date(Date.now() + 60_000),
+      ),
+    ).toBe(true);
+    await database.repository.touchManagedServerRelay(otherOwnerId, "share-1", {
+      activeConnectionDelta: 99,
+      bytesFromSource: 999,
+    });
+    await database.repository.touchManagedServerRelay(
+      LOCAL_USER_ID,
+      "share-1",
+      {
+        activeConnectionDelta: 1,
+        bytesFromSource: 123,
+        bytesToSource: 456,
+      },
+    );
+    const global = tunnelListSchema.parse(
+      (await app.inject({ method: "GET", url: "/api/tunnels" })).json(),
+    );
+    const project = tunnelListSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/tunnels`,
+        })
+      ).json(),
+    );
+    const persisted = global.find(({ id }) => id === share!.id);
+    expect(persisted).toMatchObject({
+      projectId,
+      origin: "project-share",
+      status: "active",
+      activeConnectionCount: 1,
+      bytesFromSource: 123,
+      bytesToSource: 456,
+      attachments: [
+        {
+          id: "share-1",
+          kind: "server-relay",
+          status: "active",
+          clientId: null,
+          localHost: null,
+          localPort: null,
+        },
+      ],
+    });
+    expect(project.some(({ id }) => id === share!.id)).toBe(true);
+    await database.repository.resetTransientTunnelAttachments();
+    expect(
+      await database.repository.getManagedTunnel(LOCAL_USER_ID, {
+        kind: "project-share",
+        id: "share-1",
+      }),
+    ).toBeNull();
+  });
+
   it("clears organizational project links without deleting tunnels", async () => {
     expect(
       await database.repository.deleteProject(LOCAL_USER_ID, projectId),

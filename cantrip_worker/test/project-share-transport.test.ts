@@ -2,9 +2,9 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
 import {
-  decodeProjectShareTunnelFrame,
-  encodeProjectShareTunnelFrame,
-  type ProjectShareTunnelFrameHeader,
+  decodeTunnelDataPlaneFrame,
+  encodeTunnelDataPlaneFrame,
+  type TunnelDataPlaneFrameHeader,
 } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
@@ -19,7 +19,7 @@ afterEach(async () => {
 });
 
 describe("worker project share transport", () => {
-  it("multiplexes project share frames on the authenticated outbound socket", async () => {
+  it("carries project-share adapter traffic on the generic tunnel channel", async () => {
     let authorization: string | undefined;
     const server = createServer();
     const webSockets = new WebSocketServer({ noServer: true });
@@ -42,7 +42,7 @@ describe("worker project share transport", () => {
     });
     const { port } = server.address() as AddressInfo;
     const received: Array<{
-      header: ProjectShareTunnelFrameHeader;
+      header: TunnelDataPlaneFrameHeader;
       payload: Uint8Array;
     }> = [];
     const connection = new WorkerConnection(
@@ -72,36 +72,47 @@ describe("worker project share transport", () => {
     const workerSocket = await connected;
     expect(authorization).toBe("Bearer worker-secret");
 
-    const inbound: ProjectShareTunnelFrameHeader = {
+    const inbound: TunnelDataPlaneFrameHeader = {
       protocolVersion: 1,
-      shareId: "share-1",
-      streamId: "stream-1",
-      kind: "http-request-data",
+      tunnelId: "tunnel-1",
+      attachmentId: "share-1",
+      sourceEndpointId: "server:project-share:share-1",
+      destinationEndpointId: "worker:share-1",
+      connectionId: "stream-1",
+      sequence: 0,
+      kind: "connect",
+      target: {
+        kind: "adapter",
+        adapter: "project-share",
+        resourceId: "share-1",
+      },
+      initialCreditBytes: 1024,
     };
-    workerSocket.send(
-      encodeProjectShareTunnelFrame(inbound, new Uint8Array([1, 2, 3])),
-      { binary: true },
-    );
-    await vi.waitFor(() => expect(received).toHaveLength(1));
-    expect(received[0]).toEqual({
-      header: inbound,
-      payload: new Uint8Array([1, 2, 3]),
+    workerSocket.send(encodeTunnelDataPlaneFrame(inbound, new Uint8Array()), {
+      binary: true,
     });
+    await vi.waitFor(() => expect(received).toHaveLength(1));
+    expect(received[0]).toEqual({ header: inbound, payload: new Uint8Array() });
 
     const outbound = new Promise<Uint8Array>((resolve) =>
       workerSocket.once("message", (data) =>
         resolve(Uint8Array.from(data as Buffer)),
       ),
     );
-    expect(
-      connection.sendProjectShareTunnelFrame(
-        { ...inbound, kind: "http-response-data" },
-        new Uint8Array([4, 5]),
-      ),
-    ).toBe(true);
-    expect(decodeProjectShareTunnelFrame(await outbound)).toMatchObject({
-      header: { kind: "http-response-data", shareId: "share-1" },
-      payload: new Uint8Array([4, 5]),
-    });
+    const reply: TunnelDataPlaneFrameHeader = {
+      protocolVersion: 1,
+      tunnelId: inbound.tunnelId,
+      attachmentId: inbound.attachmentId,
+      sourceEndpointId: inbound.sourceEndpointId,
+      destinationEndpointId: inbound.destinationEndpointId,
+      connectionId: inbound.connectionId,
+      sequence: 0,
+      kind: "accepted",
+      initialCreditBytes: 2048,
+    };
+    expect(connection.sendTunnelDataPlaneFrame(reply, new Uint8Array())).toBe(
+      true,
+    );
+    expect(decodeTunnelDataPlaneFrame(await outbound).header).toEqual(reply);
   });
 });

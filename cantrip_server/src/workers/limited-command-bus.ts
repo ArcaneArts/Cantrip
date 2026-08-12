@@ -1,6 +1,5 @@
 import type {
   CodeTunnelFrameHeader,
-  ProjectShareTunnelFrameHeader,
   RemoteSurfaceFrameHeader,
   TunnelDataPlaneFrameHeader,
   WorkerCommand,
@@ -15,7 +14,6 @@ import type {
   WorkerCodeTunnelFrameListener,
   WorkerCommandBus,
   WorkerNotificationListener,
-  WorkerProjectShareTunnelFrameListener,
   WorkerRequestOptions,
   WorkerSurfaceFrameListener,
   WorkerTunnelDataPlaneFrameListener,
@@ -85,17 +83,6 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
     );
   }
 
-  sendProjectShareTunnelFrame(
-    workerId: string,
-    header: ProjectShareTunnelFrameHeader,
-    payload: Uint8Array,
-  ): boolean {
-    return (
-      this.delegate.sendProjectShareTunnelFrame?.(workerId, header, payload) ??
-      false
-    );
-  }
-
   sendTunnelDataPlaneFrame(
     workerId: string,
     header: TunnelDataPlaneFrameHeader,
@@ -124,16 +111,6 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
   ) {
     return (
       this.delegate.subscribeCodeTunnelFrames?.(workerId, listener) ??
-      (() => undefined)
-    );
-  }
-
-  subscribeProjectShareTunnelFrames(
-    workerId: string,
-    listener: WorkerProjectShareTunnelFrameListener,
-  ) {
-    return (
-      this.delegate.subscribeProjectShareTunnelFrames?.(workerId, listener) ??
       (() => undefined)
     );
   }

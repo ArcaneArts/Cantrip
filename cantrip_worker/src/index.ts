@@ -87,11 +87,12 @@ import {
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
 import { enrollWorker } from "./enrollment.js";
 import { ProjectShareManager } from "./project-share-manager.js";
-import { ProjectShareTunnelProxy } from "./project-share-tunnel-proxy.js";
+import { ProjectShareTunnelDestinationAdapter } from "./project-share-tunnel-adapter.js";
 import { readProjectRepositoryStats } from "./project-repository-stats.js";
 import { discoverScriptCommands } from "./script-command-discovery.js";
 import { TerminalManager } from "./terminal-manager.js";
 import { TunnelTcpDestinationAdapter } from "./tunnel-tcp-adapter.js";
+import { TunnelDestinationRouter } from "./tunnel-destination-router.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
 import { SkillManager } from "./skill-manager.js";
 import { WorkerConnection } from "./transport.js";
@@ -161,8 +162,14 @@ async function start(): Promise<void> {
   const codexRuntimes = new Map<string, CodexRuntime>();
   const pausedChats = new Set<string>();
   const projectShares = new ProjectShareManager();
-  const projectShareTunnel = new ProjectShareTunnelProxy(projectShares);
+  const projectShareTunnel = new ProjectShareTunnelDestinationAdapter(
+    projectShares,
+  );
   const tunnelTcpDestination = new TunnelTcpDestinationAdapter();
+  const tunnelDestinations = new TunnelDestinationRouter(
+    tunnelTcpDestination,
+    projectShareTunnel,
+  );
   const skillManager = new SkillManager(config.dataDirectory);
   const terminals = new TerminalManager();
   const remoteSurfaces = new RemoteSurfaceManager({
@@ -1215,9 +1222,8 @@ async function start(): Promise<void> {
     handleCommand,
     (header, payload) => remoteSurfaces.handleFrame(header, payload),
     (header, payload) => codeTunnel.handleFrame(header, payload),
-    (header, payload) => projectShareTunnel.handleFrame(header, payload),
-    (header, payload) => tunnelTcpDestination.handleFrame(header, payload),
-    () => tunnelTcpDestination.disconnect(),
+    (header, payload) => tunnelDestinations.handleFrame(header, payload),
+    () => tunnelDestinations.disconnect(),
   );
   worktrees.setObservationEmitter((notification) =>
     commandConnection.sendNotification(notification),
@@ -1229,12 +1235,7 @@ async function start(): Promise<void> {
     (header, payload) => commandConnection.sendCodeTunnelFrame(header, payload),
     () => commandConnection.waitForCodeTunnelCapacity(),
   );
-  projectShareTunnel.setFrameEmitter(
-    (header, payload) =>
-      commandConnection.sendProjectShareTunnelFrame(header, payload),
-    () => commandConnection.waitForProjectShareTunnelCapacity(),
-  );
-  tunnelTcpDestination.setFrameEmitter(
+  tunnelDestinations.setFrameEmitter(
     (header, payload) =>
       commandConnection.sendTunnelDataPlaneFrame(header, payload),
     () => commandConnection.waitForTunnelDataPlaneCapacity(),
@@ -1286,8 +1287,7 @@ async function start(): Promise<void> {
       commandConnection.close();
       for (const client of codexAuthClients.values()) client.close();
       terminals.closeAll();
-      projectShareTunnel.close();
-      tunnelTcpDestination.close();
+      tunnelDestinations.close();
       await projectShares.closeAll();
       codeTunnel.close();
       await code.close();

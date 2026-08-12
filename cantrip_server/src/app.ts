@@ -420,6 +420,7 @@ import {
   type ProjectReplicaJobLiveChange,
 } from "./project-replicas/executor.js";
 import { TunnelRuntimeManager } from "./tunnels/runtime.js";
+import { TunnelStreamBroker } from "./tunnels/broker.js";
 import { browserTunnelTarget } from "./tunnels/browser-target.js";
 import type { DatabaseConnection } from "./db/index.js";
 import {
@@ -821,9 +822,16 @@ export async function buildApp({
       });
     });
   };
+  const tunnelStreamBroker = new TunnelStreamBroker();
   const tunnelRuntime = new TunnelRuntimeManager(
     repository,
     bridge,
+    publishTunnelRuntimeChange,
+    tunnelStreamBroker,
+  );
+  projectShareTunnel.configureControlPlane(
+    repository,
+    tunnelStreamBroker,
     publishTunnelRuntimeChange,
   );
   const tunnelAttachmentExpiryTimer = setInterval(() => {
@@ -15194,9 +15202,9 @@ export async function buildApp({
       "Application live transport stopped",
     );
     liveHub.close();
+    await projectShareTunnel.close();
     tunnelRuntime.close();
     codeTunnel.close();
-    await projectShareTunnel.close();
     bridge.close();
     await activeScheduleTick;
     await projectReplicaJobExecutor.drain();
