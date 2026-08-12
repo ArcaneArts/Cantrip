@@ -124,14 +124,34 @@ describe("server configuration safety", () => {
     expect(() => readServerConfig()).toThrow(/not permitted/i);
   });
 
-  it("bounds public request, upload, and WebSocket payload limits", () => {
+  it("bounds public payload, rate, connection, and command limits", () => {
     vi.stubEnv("CANTRIP_API_BODY_LIMIT_BYTES", "65536");
     vi.stubEnv("CANTRIP_UPLOAD_LIMIT_BYTES", "1048576");
     vi.stubEnv("CANTRIP_WEBSOCKET_MAX_PAYLOAD_BYTES", "131072");
+    vi.stubEnv("CANTRIP_API_RATE_LIMIT_PER_MINUTE", "900");
+    vi.stubEnv("CANTRIP_PAIRING_RATE_LIMIT_PER_MINUTE", "9");
+    vi.stubEnv("CANTRIP_UPLOAD_RATE_LIMIT_PER_MINUTE", "12");
+    vi.stubEnv("CANTRIP_WEBSOCKET_HANDSHAKE_RATE_PER_MINUTE", "90");
+    vi.stubEnv("CANTRIP_ACCOUNT_WEBSOCKET_LIMIT", "20");
+    vi.stubEnv("CANTRIP_ACCOUNT_UPLOAD_CONCURRENCY", "3");
+    vi.stubEnv("CANTRIP_ACCOUNT_COMMAND_CONCURRENCY", "80");
+    vi.stubEnv("CANTRIP_WORKER_COMMAND_CONCURRENCY", "40");
+    vi.stubEnv("CANTRIP_ACCOUNT_COMMAND_RATE_PER_MINUTE", "1800");
+    vi.stubEnv("CANTRIP_WORKER_COMMAND_RATE_PER_MINUTE", "800");
     expect(readServerConfig()).toMatchObject({
       apiBodyLimitBytes: 65_536,
+      apiRateLimitPerMinute: 900,
+      accountCommandConcurrency: 80,
+      accountCommandRatePerMinute: 1_800,
+      accountUploadConcurrency: 3,
+      accountWebsocketLimit: 20,
+      pairingRateLimitPerMinute: 9,
       uploadLimitBytes: 1_048_576,
+      uploadRateLimitPerMinute: 12,
+      websocketHandshakeRatePerMinute: 90,
       websocketMaxPayloadBytes: 131_072,
+      workerCommandConcurrency: 40,
+      workerCommandRatePerMinute: 800,
     });
 
     vi.stubEnv("CANTRIP_API_BODY_LIMIT_BYTES", "100");

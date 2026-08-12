@@ -172,4 +172,47 @@ describe("public HTTP hardening", () => {
       await database.close();
     }
   });
+
+  it("rate limits API, pairing, and upload traffic independently", async () => {
+    const config = await testConfig({
+      apiRateLimitPerMinute: 2,
+      pairingRateLimitPerMinute: 1,
+      uploadRateLimitPerMinute: 1,
+    });
+    const database = await connectDatabase(config);
+    const app = await buildApp({ config, database, logger: false });
+    try {
+      expect(
+        (await app.inject({ method: "GET", url: "/api/bootstrap" })).statusCode,
+      ).toBe(200);
+      expect(
+        (await app.inject({ method: "GET", url: "/api/bootstrap" })).statusCode,
+      ).toBe(200);
+      const apiLimited = await app.inject({
+        method: "GET",
+        url: "/api/bootstrap",
+      });
+      expect(apiLimited.statusCode).toBe(429);
+      expect(apiLimited.headers["retry-after"]).toBeDefined();
+
+      const invalidPairing = {
+        method: "POST" as const,
+        url: "/api/workers/enrollment-codes",
+        payload: {},
+      };
+      expect((await app.inject(invalidPairing)).statusCode).toBe(201);
+      expect((await app.inject(invalidPairing)).statusCode).toBe(429);
+
+      const invalidUpload = {
+        method: "POST" as const,
+        url: "/api/chats/missing/attachments",
+        headers: { "content-type": "application/octet-stream" },
+        payload: Buffer.from("test"),
+      };
+      expect((await app.inject(invalidUpload)).statusCode).toBe(404);
+      expect((await app.inject(invalidUpload)).statusCode).toBe(429);
+    } finally {
+      await app.close();
+    }
+  });
 });

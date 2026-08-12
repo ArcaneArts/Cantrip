@@ -33,6 +33,11 @@ export interface ServerConfig {
   adminBootstrapToken?: string;
   allowInsecureRemote: boolean;
   apiBodyLimitBytes?: number;
+  apiRateLimitPerMinute?: number;
+  accountCommandConcurrency?: number;
+  accountCommandRatePerMinute?: number;
+  accountUploadConcurrency?: number;
+  accountWebsocketLimit?: number;
   appOrigins: string[];
   authRateLimit?: number;
   authMode: AuthMode;
@@ -47,6 +52,7 @@ export interface ServerConfig {
   cookieSameSite?: "lax" | "none" | "strict";
   cookieSecure?: boolean;
   passwordHash?: string;
+  pairingRateLimitPerMinute?: number;
   port: number;
   publicOrigin?: string;
   publicRegistration?: boolean;
@@ -60,7 +66,11 @@ export interface ServerConfig {
   secretEncryption?: SecretEncryptionConfig;
   trustedProxies?: string[];
   uploadLimitBytes?: number;
+  uploadRateLimitPerMinute?: number;
+  websocketHandshakeRatePerMinute?: number;
   websocketMaxPayloadBytes?: number;
+  workerCommandConcurrency?: number;
+  workerCommandRatePerMinute?: number;
 }
 
 export interface SecretEncryptionKeyConfig {
@@ -470,6 +480,41 @@ export function readServerConfig(): ServerConfig {
       16 * 1_024,
       16 * 1_024 * 1_024,
     ),
+    apiRateLimitPerMinute: readBoundedInteger(
+      "CANTRIP_API_RATE_LIMIT_PER_MINUTE",
+      process.env.CANTRIP_API_RATE_LIMIT_PER_MINUTE,
+      1_200,
+      60,
+      100_000,
+    ),
+    accountCommandConcurrency: readBoundedInteger(
+      "CANTRIP_ACCOUNT_COMMAND_CONCURRENCY",
+      process.env.CANTRIP_ACCOUNT_COMMAND_CONCURRENCY,
+      128,
+      1,
+      10_000,
+    ),
+    accountCommandRatePerMinute: readBoundedInteger(
+      "CANTRIP_ACCOUNT_COMMAND_RATE_PER_MINUTE",
+      process.env.CANTRIP_ACCOUNT_COMMAND_RATE_PER_MINUTE,
+      2_400,
+      60,
+      100_000,
+    ),
+    accountUploadConcurrency: readBoundedInteger(
+      "CANTRIP_ACCOUNT_UPLOAD_CONCURRENCY",
+      process.env.CANTRIP_ACCOUNT_UPLOAD_CONCURRENCY,
+      4,
+      1,
+      1_000,
+    ),
+    accountWebsocketLimit: readBoundedInteger(
+      "CANTRIP_ACCOUNT_WEBSOCKET_LIMIT",
+      process.env.CANTRIP_ACCOUNT_WEBSOCKET_LIMIT,
+      32,
+      1,
+      10_000,
+    ),
     appOrigins,
     authMode,
     authRateLimit: readBoundedInteger(
@@ -507,6 +552,13 @@ export function readServerConfig(): ServerConfig {
             process.env.CANTRIP_COOKIE_SECURE,
           ),
     passwordHash,
+    pairingRateLimitPerMinute: readBoundedInteger(
+      "CANTRIP_PAIRING_RATE_LIMIT_PER_MINUTE",
+      process.env.CANTRIP_PAIRING_RATE_LIMIT_PER_MINUTE,
+      20,
+      1,
+      10_000,
+    ),
     port,
     publicOrigin,
     publicRegistration: readBoolean(
@@ -535,12 +587,40 @@ export function readServerConfig(): ServerConfig {
       1_024 * 1_024,
       1_024 * 1_024 * 1_024,
     ),
+    uploadRateLimitPerMinute: readBoundedInteger(
+      "CANTRIP_UPLOAD_RATE_LIMIT_PER_MINUTE",
+      process.env.CANTRIP_UPLOAD_RATE_LIMIT_PER_MINUTE,
+      30,
+      1,
+      10_000,
+    ),
+    websocketHandshakeRatePerMinute: readBoundedInteger(
+      "CANTRIP_WEBSOCKET_HANDSHAKE_RATE_PER_MINUTE",
+      process.env.CANTRIP_WEBSOCKET_HANDSHAKE_RATE_PER_MINUTE,
+      120,
+      1,
+      10_000,
+    ),
     websocketMaxPayloadBytes: readBoundedInteger(
       "CANTRIP_WEBSOCKET_MAX_PAYLOAD_BYTES",
       process.env.CANTRIP_WEBSOCKET_MAX_PAYLOAD_BYTES,
       8 * 1_024 * 1_024,
       64 * 1_024,
       64 * 1_024 * 1_024,
+    ),
+    workerCommandConcurrency: readBoundedInteger(
+      "CANTRIP_WORKER_COMMAND_CONCURRENCY",
+      process.env.CANTRIP_WORKER_COMMAND_CONCURRENCY,
+      64,
+      1,
+      10_000,
+    ),
+    workerCommandRatePerMinute: readBoundedInteger(
+      "CANTRIP_WORKER_COMMAND_RATE_PER_MINUTE",
+      process.env.CANTRIP_WORKER_COMMAND_RATE_PER_MINUTE,
+      1_200,
+      60,
+      100_000,
     ),
   };
   if (config.cookieSameSite === "none" && !config.cookieSecure) {
