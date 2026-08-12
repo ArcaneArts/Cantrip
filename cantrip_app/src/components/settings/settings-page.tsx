@@ -23,6 +23,7 @@ import {
   LogOut,
   Monitor,
   Moon,
+  Network,
   Palette,
   Pencil,
   Plus,
@@ -72,6 +73,7 @@ import {
 import { McpServerSettings } from "./mcp-server-settings";
 import { WorkspaceSettings } from "./workspace-settings";
 import { SkillsSettings } from "./skills-settings";
+import { WorkerSettings } from "./worker-settings";
 
 const reasoningOptions: Array<ReasoningEffort | ""> = [
   "",
@@ -82,10 +84,11 @@ const reasoningOptions: Array<ReasoningEffort | ""> = [
   "xhigh",
 ];
 
-type SettingsSection = "general" | "skills" | "mcp" | "workspaces";
+type SettingsSection = "general" | "workers" | "skills" | "mcp" | "workspaces";
 
 const settingsTabs: readonly SettingsTab<SettingsSection>[] = [
   { id: "general", label: "General", icon: SlidersHorizontal },
+  { id: "workers", label: "Workers", icon: Network },
   { id: "workspaces", label: "Workspaces", icon: Layers3 },
   { id: "skills", label: "Skills", icon: Sparkles },
   { id: "mcp", label: "MCP", icon: Cable },
@@ -926,6 +929,7 @@ export function SettingsPage({
             <WorkspaceSettings />
           </div>
         ) : null}
+        {section === "workers" ? <WorkerSettings /> : null}
         {section === "skills" ? <SkillsSettings /> : null}
         {section === "mcp" ? (
           <div className="mx-auto max-w-6xl">

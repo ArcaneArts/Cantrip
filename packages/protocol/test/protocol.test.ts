@@ -120,7 +120,9 @@ import {
   workerHeartbeatSchema,
   workerCredentialSummarySchema,
   workerEnrollmentCodeResultSchema,
+  workerEnrollmentCodeStatusSchema,
   workerEnrollmentExchangeSchema,
+  workerManagementSummarySchema,
   workerNotificationEnvelopeSchema,
 } from "../src/index.js";
 
@@ -161,6 +163,44 @@ describe("Cantrip protocol", () => {
         active: true,
       }).active,
     ).toBe(true);
+    expect(
+      workerEnrollmentCodeStatusSchema.parse({
+        id: "019fdc2c-e848-7552-b2ea-6fc7ef09e9f2",
+        label: "Desk Mac",
+        expiresAt: "2026-08-11T12:10:00.000Z",
+        status: "pending",
+      }).status,
+    ).toBe("pending");
+    expect(
+      workerManagementSummarySchema.parse({
+        ...heartbeat,
+        name: "Studio Mac",
+        runtimeName: "Desk Mac",
+        code: {
+          available: false,
+          version: null,
+          upstreamRevision: null,
+          patchset: 0,
+          transport: "web-proxy",
+          maxSessions: 1,
+          reason: "Not installed",
+        },
+        online: true,
+        lastSeenAt: "2026-08-11T12:00:05.000Z",
+        internal: false,
+        editable: true,
+        removable: true,
+        credentialCount: 1,
+        activeCredentialCount: 1,
+        sources: [],
+      }).runtimeName,
+    ).toBe("Desk Mac");
+    expect(
+      workerCommandSchema.parse({
+        type: "worker.credential.rotate",
+        credential: `ctwk_${"b".repeat(43)}`,
+      }).type,
+    ).toBe("worker.credential.rotate");
   });
 
   it("validates split project token usage analytics", () => {

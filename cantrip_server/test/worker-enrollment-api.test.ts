@@ -7,7 +7,9 @@ import {
   unprobedCodexRuntimeReport,
   workerCredentialListSchema,
   workerEnrollmentCodeResultSchema,
+  workerEnrollmentCodeStatusSchema,
   workerEnrollmentResultSchema,
+  workerManagementListSchema,
   type WorkerHeartbeat,
 } from "@cantrip/protocol";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -87,6 +89,10 @@ describe("per-worker enrollment credentials", () => {
     const database = await connectDatabase(config);
     const bridge = new WorkerBridge();
     const disconnect = vi.spyOn(bridge, "disconnect");
+    const isConnected = vi.spyOn(bridge, "isConnected").mockReturnValue(false);
+    const commandRequest = vi
+      .spyOn(bridge, "request")
+      .mockResolvedValue({ accepted: true });
     const app = await buildApp({
       config,
       database,
@@ -141,6 +147,17 @@ describe("per-worker enrollment credentials", () => {
       expect(createdCode.statusCode).toBe(201);
       const link = workerEnrollmentCodeResultSchema.parse(createdCode.json());
       expect(link.code).toMatch(/^ctwl_/u);
+      expect(
+        workerEnrollmentCodeStatusSchema.parse(
+          (
+            await app.inject({
+              method: "GET",
+              url: `/api/workers/enrollment-codes/${link.id}`,
+              headers: authHeaders,
+            })
+          ).json(),
+        ).status,
+      ).toBe("pending");
 
       const enrolledResponse = await app.inject({
         method: "POST",
@@ -158,6 +175,17 @@ describe("per-worker enrollment credentials", () => {
         workerId: "worker-one",
       });
       expect(enrolledResponse.body).not.toContain("secretHash");
+      expect(
+        workerEnrollmentCodeStatusSchema.parse(
+          (
+            await app.inject({
+              method: "GET",
+              url: `/api/workers/enrollment-codes/${link.id}`,
+              headers: authHeaders,
+            })
+          ).json(),
+        ).status,
+      ).toBe("paired");
 
       const replay = await app.inject({
         method: "POST",
@@ -181,6 +209,44 @@ describe("per-worker enrollment credentials", () => {
         payload: heartbeat("worker-one"),
       });
       expect(accepted.statusCode).toBe(202);
+      const managed = workerManagementListSchema.parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: "/api/workers/management",
+            headers: authHeaders,
+          })
+        ).json(),
+      );
+      expect(managed).toEqual([
+        expect.objectContaining({
+          workerId: "worker-one",
+          internal: false,
+          editable: true,
+          removable: true,
+          credentialCount: 1,
+          activeCredentialCount: 1,
+          sources: [],
+        }),
+      ]);
+      const renamed = await app.inject({
+        method: "PATCH",
+        url: "/api/workers/worker-one",
+        headers: authHeaders,
+        payload: { name: "Studio Mac" },
+      });
+      expect(renamed.statusCode).toBe(200);
+      expect(renamed.json().name).toBe("Studio Mac");
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/internal/workers/heartbeat",
+            headers: { authorization: `Bearer ${enrolled.credential}` },
+            payload: heartbeat("worker-one"),
+          })
+        ).json().name,
+      ).toBe("Studio Mac");
       const impersonation = await app.inject({
         method: "POST",
         url: "/api/internal/workers/heartbeat",
@@ -201,6 +267,7 @@ describe("per-worker enrollment credentials", () => {
       expect(listed.body).not.toContain(enrolled.credential);
       expect(listed.body).not.toContain("secretHash");
 
+      isConnected.mockReturnValue(true);
       const rotatedResponse = await app.inject({
         method: "POST",
         url: "/api/workers/worker-one/credentials/rotate",
@@ -211,12 +278,23 @@ describe("per-worker enrollment credentials", () => {
       const rotated = rotatedResponse.json() as {
         credential: string;
         credentialSummary: { id: string };
+        delivered: boolean;
       };
+      expect(rotated.delivered).toBe(true);
+      expect(commandRequest).toHaveBeenCalledWith(
+        "worker-one",
+        expect.objectContaining({
+          type: "worker.credential.rotate",
+          credential: rotated.credential,
+        }),
+        { timeoutMs: 10_000 },
+      );
       expect(rotated.credential).toMatch(/^ctwk_/u);
       expect(rotated.credential).not.toBe(enrolled.credential);
       expect(disconnect).toHaveBeenCalledWith(
         "worker-one",
         "Worker credential was rotated",
+        1012,
       );
 
       expect(
@@ -229,6 +307,7 @@ describe("per-worker enrollment credentials", () => {
           })
         ).statusCode,
       ).toBe(401);
+
       expect(
         (
           await app.inject({
@@ -260,8 +339,114 @@ describe("per-worker enrollment credentials", () => {
           })
         ).statusCode,
       ).toBe(401);
+
+      const unlinked = await app.inject({
+        method: "DELETE",
+        url: "/api/workers/worker-one",
+        headers: authHeaders,
+      });
+      expect(unlinked.statusCode).toBe(204);
+      expect(
+        workerManagementListSchema.parse(
+          (
+            await app.inject({
+              method: "GET",
+              url: "/api/workers/management",
+              headers: authHeaders,
+            })
+          ).json(),
+        ),
+      ).toEqual([]);
+
+      const relinkCode = workerEnrollmentCodeResultSchema.parse(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/workers/enrollment-codes",
+            headers: authHeaders,
+            payload: { label: "Studio Mac", expiresInSeconds: 300 },
+          })
+        ).json(),
+      );
+      const relinked = await app.inject({
+        method: "POST",
+        url: "/api/internal/workers/enroll",
+        payload: {
+          code: relinkCode.code,
+          heartbeat: heartbeat("worker-one"),
+        },
+      });
+      expect(relinked.statusCode).toBe(201);
+      expect(
+        workerManagementListSchema.parse(
+          (
+            await app.inject({
+              method: "GET",
+              url: "/api/workers/management",
+              headers: authHeaders,
+            })
+          ).json(),
+        )[0],
+      ).toMatchObject({ name: "Studio Mac", internal: false });
     } finally {
       await app.close();
     }
   }, 30_000);
+
+  it("protects the internal development worker from account management actions", async () => {
+    const hostedConfig = await createConfig();
+    const config: ServerConfig = {
+      ...hostedConfig,
+      adminBootstrapToken: undefined,
+      authMode: "none",
+      bootstrapMode: "pnpm-dev",
+      cookieSameSite: "lax",
+      cookieSecure: false,
+      deploymentMode: "local",
+      host: "127.0.0.1",
+      publicRegistration: false,
+      workerToken: "local-development-token",
+    };
+    const database = await connectDatabase(config);
+    await database.repository.recordWorker(
+      "00000000-0000-0000-0000-000000000001",
+      heartbeat("local-worker"),
+    );
+    const app = await buildApp({ config, database, logger: false });
+    try {
+      const managed = workerManagementListSchema.parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: "/api/workers/management",
+          })
+        ).json(),
+      );
+      expect(managed[0]).toMatchObject({
+        workerId: "local-worker",
+        internal: true,
+        editable: false,
+        removable: false,
+      });
+      expect(
+        (
+          await app.inject({
+            method: "PATCH",
+            url: "/api/workers/local-worker",
+            payload: { name: "Renamed" },
+          })
+        ).statusCode,
+      ).toBe(409);
+      expect(
+        (
+          await app.inject({
+            method: "DELETE",
+            url: "/api/workers/local-worker",
+          })
+        ).statusCode,
+      ).toBe(409);
+    } finally {
+      await app.close();
+    }
+  });
 });

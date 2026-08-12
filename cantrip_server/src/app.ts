@@ -278,12 +278,15 @@ import {
   workerCredentialRotateSchema,
   workerEnrollmentCodeCreateSchema,
   workerEnrollmentCodeResultSchema,
+  workerEnrollmentCodeStatusSchema,
   workerEnrollmentExchangeSchema,
   workerEnrollmentResultSchema,
   workerHeartbeatSchema,
   workerAttachmentReadResultSchema,
   workerAttachmentUploadResultSchema,
   workerListSchema,
+  workerManagementListSchema,
+  workerUpdateSchema,
   worktreeMutationResultSchema,
   worktreePruneResultSchema,
   worktreeRemoveResultSchema,
@@ -429,6 +432,7 @@ import {
   createWorkerCredential,
   createWorkerEnrollmentCode,
   DEFAULT_WORKER_CREDENTIAL_SCOPES,
+  developmentWorkerBootstrapAllowed,
 } from "./workers/credentials.js";
 import { RemoteSurfaceRelay } from "./remote-surfaces/relay.js";
 import { createRemoteSurfaceWebRtcConfiguration } from "./remote-surfaces/webrtc.js";
@@ -517,6 +521,7 @@ type ChatLiveResource = Extract<
 
 function mutationLiveResources(route: string): AppLiveResource[] {
   if (route === "/api/internal/agent-tools/worktree") return ["worktree"];
+  if (route.startsWith("/api/workers/")) return ["worker"];
   if (
     route === "/api/projects/from-github" ||
     route === "/api/projects/order" ||
@@ -1599,6 +1604,7 @@ export async function buildApp({
       params.desktopId,
       params.surfaceId,
       params.viewId,
+      params.workerId,
       params.projectId,
     ].find((value): value is string => typeof value === "string");
     for (const resource of resources) {
@@ -2622,17 +2628,20 @@ export async function buildApp({
   };
 
   const resumePendingWorktreeTransitionsForWorker = async (
+    ownerId: string,
     workerId: string,
   ): Promise<void> => {
     if (!bridge.isConnected(workerId)) return;
     const chatIds = await repository.listPendingWorktreeTransitionChatIds(
-      applicationOwnerId(),
+      ownerId,
       workerId,
     );
     await Promise.allSettled(
       chatIds.map(async (chatId) => {
         try {
-          await continuePendingWorktreeTransition(chatId);
+          await runAsOwner(ownerId, () =>
+            continuePendingWorktreeTransition(chatId),
+          );
         } catch (error) {
           app.log.error(
             { chatId, err: error, workerId },
@@ -3566,8 +3575,8 @@ export async function buildApp({
         capabilities: {
           accounts: config.authMode === "accounts",
           passwordProtection: config.authMode === "password",
-          linkCodes: false,
-          multipleWorkers: false,
+          linkCodes: true,
+          multipleWorkers: true,
           workerSwitching: false,
           gitSync: false,
           worktrees: true,
@@ -3610,6 +3619,101 @@ export async function buildApp({
     return reply.send(workerListSchema.parse(workers));
   });
 
+  app.get(
+    "/api/workers/management",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const ownerId = principalOwnerId(request);
+      const records = await repository.listWorkerManagement(ownerId);
+      const localBootstrap = developmentWorkerBootstrapAllowed(config);
+      return reply.send(
+        workerManagementListSchema.parse(
+          records.map((record) => {
+            const internal = localBootstrap && record.credentialCount === 0;
+            return {
+              ...record.worker,
+              runtimeName: record.runtimeName,
+              internal,
+              editable: !internal,
+              removable: !internal,
+              credentialCount: record.credentialCount,
+              activeCredentialCount: record.activeCredentialCount,
+              sources: record.sources,
+            };
+          }),
+        ),
+      );
+    },
+  );
+
+  app.patch<{ Params: { workerId: string } }>(
+    "/api/workers/:workerId",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = workerUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = principalOwnerId(request);
+      const record = (await repository.listWorkerManagement(ownerId)).find(
+        ({ worker }) => worker.workerId === request.params.workerId,
+      );
+      if (!record) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
+      if (
+        developmentWorkerBootstrapAllowed(config) &&
+        record.credentialCount === 0
+      ) {
+        return reply
+          .code(409)
+          .send({ error: "The internal worker cannot be renamed." });
+      }
+      const worker = await repository.updateWorkerDisplayName(
+        ownerId,
+        request.params.workerId,
+        input.data.name,
+      );
+      return worker
+        ? reply.send(worker)
+        : reply.code(404).send({ error: "Worker not found." });
+    },
+  );
+
+  app.delete<{ Params: { workerId: string } }>(
+    "/api/workers/:workerId",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const ownerId = principalOwnerId(request);
+      const record = (await repository.listWorkerManagement(ownerId)).find(
+        ({ worker }) => worker.workerId === request.params.workerId,
+      );
+      if (!record) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
+      if (
+        developmentWorkerBootstrapAllowed(config) &&
+        record.credentialCount === 0
+      ) {
+        return reply
+          .code(409)
+          .send({ error: "The internal worker cannot be unlinked." });
+      }
+      const credentials = await repository.listWorkerCredentials(
+        ownerId,
+        request.params.workerId,
+      );
+      if (!(await repository.unlinkWorker(ownerId, request.params.workerId))) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
+      for (const credential of credentials ?? []) {
+        if (credential.active) revokedWorkerCredentialIds.add(credential.id);
+      }
+      bridge.disconnect?.(request.params.workerId, "Worker was unlinked");
+      return reply.code(204).send();
+    },
+  );
+
   app.post(
     "/api/workers/enrollment-codes",
     { logLevel: "warn" },
@@ -3625,7 +3729,7 @@ export async function buildApp({
       const expiresAt = new Date(
         Date.now() + input.data.expiresInSeconds * 1_000,
       );
-      await repository.createWorkerEnrollmentCode({
+      const id = await repository.createWorkerEnrollmentCode({
         codeHash: generated.codeHash,
         createdBySessionId: principal.sessionId,
         expiresAt,
@@ -3635,10 +3739,25 @@ export async function buildApp({
       return reply.code(201).send(
         workerEnrollmentCodeResultSchema.parse({
           code: generated.code,
+          id,
           expiresAt: expiresAt.toISOString(),
           label: input.data.label,
         }),
       );
+    },
+  );
+
+  app.get<{ Params: { enrollmentCodeId: string } }>(
+    "/api/workers/enrollment-codes/:enrollmentCodeId",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const status = await repository.getWorkerEnrollmentCodeStatus(
+        principalOwnerId(request),
+        request.params.enrollmentCodeId,
+      );
+      return status
+        ? reply.send(workerEnrollmentCodeStatusSchema.parse(status))
+        : reply.code(404).send({ error: "Worker link code not found." });
     },
   );
 
@@ -3694,14 +3813,32 @@ export async function buildApp({
       for (const previous of previousCredentials ?? []) {
         if (previous.active) revokedWorkerCredentialIds.add(previous.id);
       }
+      let delivered = false;
+      if (bridge.isConnected(request.params.workerId)) {
+        try {
+          await bridge.request(
+            request.params.workerId,
+            {
+              type: "worker.credential.rotate",
+              credential: generated.credential,
+            },
+            { timeoutMs: 10_000 },
+          );
+          delivered = true;
+        } catch {
+          delivered = false;
+        }
+      }
       bridge.disconnect?.(
         request.params.workerId,
         "Worker credential was rotated",
+        1012,
       );
       return reply.send(
         workerCredentialRotateResultSchema.parse({
           credential: generated.credential,
           credentialSummary: credential,
+          delivered,
         }),
       );
     },
@@ -13862,7 +13999,10 @@ export async function buildApp({
       );
       publishWorkerPresence(worker);
       scheduleWorkerOfflineInvalidation(worker.workerId);
-      void resumePendingWorktreeTransitionsForWorker(heartbeat.data.workerId);
+      void resumePendingWorktreeTransitionsForWorker(
+        workerAuth.ownerId,
+        heartbeat.data.workerId,
+      );
       void workflowExecutor
         .recoverWorktreeLeases(heartbeat.data.workerId)
         .catch((error) => {
@@ -13919,7 +14059,10 @@ export async function buildApp({
       });
       ensureWorkerNotificationSubscription(workerId);
       scheduleWorkerWorktreeObservation(workerId);
-      void resumePendingWorktreeTransitionsForWorker(workerId);
+      void resumePendingWorktreeTransitionsForWorker(
+        workerAuth.ownerId,
+        workerId,
+      );
       void workflowExecutor.recoverWorktreeLeases(workerId).catch((error) => {
         app.log.error(
           { err: error, workerId },

@@ -445,6 +445,10 @@ Personal-server protection supports a password, while hosted mode supports email
 
 Workers pair using a high-entropy, short-lived, single-use code generated for a signed-in owner. On success, the worker stores a unique rotatable credential and stable identity locally with owner-only permissions; the server stores only its hash, scopes, owner/worker binding, timestamps, and revocation state. Hosted worker routes reject the legacy shared token and verify the credential's immutable worker ID and route scope. Provider credentials never become worker enrollment credentials.
 
+The account-scoped Workers settings page is the management boundary for this lifecycle. It reports presence, last-seen time, platform/runtime capabilities, project-source associations, and redacted credential metadata. Pairing displays the raw link code only while onboarding is active. Rename uses a durable display alias that heartbeat updates cannot overwrite. Rotation transfers the replacement credential over the already-authenticated worker channel when online and otherwise displays it once for manual secret-manager installation. Unlinking revokes credentials and hides the worker without deleting server-owned projects or conversations; re-enrolling the same immutable identity restores its associations. Embedded and `pnpm dev` workers are visibly internal and cannot be renamed or removed.
+
+Bootstrap advertises `linkCodes` and `multipleWorkers` only now that enrollment and the complete management lifecycle are available. `workerSwitching` and `gitSync` remain false until source-replica routing and synchronization are implemented.
+
 For `pnpm dev` and the embedded Tauri runtime, server and worker may share a development-only token through explicit loopback bootstrap configuration. The server refuses that path in standalone, password, account, non-loopback, and hosted modes. It is bootstrap plumbing, not remote enrollment, and the app never receives it.
 
 ### 9.2 Sign in with ChatGPT
