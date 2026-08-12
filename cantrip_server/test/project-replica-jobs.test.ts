@@ -8,6 +8,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 import {
+  PROJECT_REPLICA_JOB_LEASE_MS,
   ProjectReplicaJobConflictError,
   ProjectReplicaJobStaleAttemptError,
 } from "../src/db/project-replica-jobs.js";
@@ -381,9 +382,30 @@ describe("durable project replica jobs", () => {
         "replica-worker",
       ),
     ).toBe(1);
+    const recoveredOfflineAttempt =
+      await second.repository.projectReplicaJobs.claimNext();
+    expect(recoveredOfflineAttempt).toMatchObject({
+      job: { id: offline.id, attempt: 2, state: "running" },
+    });
     expect(
-      await second.repository.projectReplicaJobs.claimNext(),
-    ).toMatchObject({ job: { id: offline.id, attempt: 2, state: "running" } });
+      await second.repository.projectReplicaJobs.recoverInterrupted(false),
+    ).toBe(0);
+    expect(
+      await second.repository.projectReplicaJobs.renewLease(
+        offline.id,
+        recoveredOfflineAttempt!.commandId,
+        2,
+      ),
+    ).toBe(true);
+    expect(
+      await second.repository.projectReplicaJobs.recoverInterrupted(
+        false,
+        new Date(Date.now() + PROJECT_REPLICA_JOB_LEASE_MS + 1),
+      ),
+    ).toBe(1);
+    expect(
+      await second.repository.projectReplicaJobs.get(LOCAL_USER_ID, offline.id),
+    ).toMatchObject({ state: "queued", attempt: 2 });
     await second.close();
   });
 });

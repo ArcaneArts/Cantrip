@@ -5,7 +5,10 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 
 import type { ServerRepository } from "../src/db/repository.js";
-import { ProjectReplicaJobExecutor } from "../src/project-replicas/executor.js";
+import {
+  PROJECT_REPLICA_COMMAND_TIMEOUT_MS,
+  ProjectReplicaJobExecutor,
+} from "../src/project-replicas/executor.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
 const now = "2026-08-11T12:00:00.000Z";
@@ -133,7 +136,9 @@ describe("project replica job executor", () => {
         expectedRevision: "b".repeat(40),
         policy: "fast-forward-primary",
       }),
-      expect.objectContaining({ timeoutMs: null }),
+      expect.objectContaining({
+        timeoutMs: PROJECT_REPLICA_COMMAND_TIMEOUT_MS,
+      }),
     );
     expect(completeSynchronize).toHaveBeenCalledOnce();
     expect(changes.at(-1)).toMatchObject({ state: "succeeded" });

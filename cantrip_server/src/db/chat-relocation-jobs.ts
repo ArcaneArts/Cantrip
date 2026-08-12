@@ -14,7 +14,7 @@ import {
   type ChatSummary,
   type ExecutionPlacement,
 } from "@cantrip/protocol";
-import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -47,7 +47,7 @@ const RUNNING_STATES = [
   "hydrating-runtime",
   "ready-to-commit",
 ] as const;
-const JOB_LEASE_MS = 15 * 60_000;
+export const CHAT_RELOCATION_JOB_LEASE_MS = 2 * 60_000;
 
 export class ChatRelocationJobConflictError extends Error {}
 export class ChatRelocationJobNotFoundError extends Error {}
@@ -840,8 +840,7 @@ export class ChatRelocationJobRepository {
     return Boolean(rows[0]);
   }
 
-  async recoverInterrupted(): Promise<number> {
-    const now = new Date();
+  async recoverInterrupted(force = true, now = new Date()): Promise<number> {
     await this.database
       .update(schema.chats)
       .set({ status: "idle", updatedAt: now })
@@ -873,9 +872,43 @@ export class ChatRelocationJobRepository {
         ),
         updatedAt: now,
       })
-      .where(inArray(schema.chatRelocationJobs.state, [...RUNNING_STATES]))
+      .where(
+        and(
+          inArray(schema.chatRelocationJobs.state, [...RUNNING_STATES]),
+          force
+            ? sql`TRUE`
+            : or(
+                isNull(schema.chatRelocationJobs.leaseExpiresAt),
+                lte(schema.chatRelocationJobs.leaseExpiresAt, now),
+              ),
+        ),
+      )
       .returning({ id: schema.chatRelocationJobs.id });
     return rows.length;
+  }
+
+  async renewLease(
+    jobId: string,
+    commandId: string,
+    attempt: number,
+  ): Promise<boolean> {
+    const now = new Date();
+    const rows = await this.database
+      .update(schema.chatRelocationJobs)
+      .set({
+        leaseExpiresAt: new Date(now.getTime() + CHAT_RELOCATION_JOB_LEASE_MS),
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.chatRelocationJobs.id, jobId),
+          eq(schema.chatRelocationJobs.commandId, commandId),
+          eq(schema.chatRelocationJobs.attempt, attempt),
+          inArray(schema.chatRelocationJobs.state, [...RUNNING_STATES]),
+        ),
+      )
+      .returning({ id: schema.chatRelocationJobs.id });
+    return rows.length === 1;
   }
 
   async requeueRetryableForWorker(workerId: string): Promise<number> {
@@ -990,7 +1023,9 @@ export class ChatRelocationJobRepository {
           attempt: sql`${schema.chatRelocationJobs.attempt} + 1`,
           commandId,
           startedAt: candidate.job.startedAt ?? now,
-          leaseExpiresAt: new Date(now.getTime() + JOB_LEASE_MS),
+          leaseExpiresAt: new Date(
+            now.getTime() + CHAT_RELOCATION_JOB_LEASE_MS,
+          ),
           progress: progress(
             "validating",
             5,
@@ -1055,6 +1090,7 @@ export class ChatRelocationJobRepository {
       .set({
         state: to,
         stateRevision: sql`${schema.chatRelocationJobs.stateRevision} + 1`,
+        leaseExpiresAt: new Date(now.getTime() + CHAT_RELOCATION_JOB_LEASE_MS),
         progress: { ...nextProgress, updatedAt: toISOString(now) },
         ...(options.cancellationUnsafe ? { cancellationUnsafeAt: now } : {}),
         ...(options.targetRuntimeThreadId

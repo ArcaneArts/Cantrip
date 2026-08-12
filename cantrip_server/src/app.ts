@@ -1823,10 +1823,12 @@ export async function buildApp({
   await repository.resetTransientRemoteSurfaceStatuses();
   await repository.resetTransientTunnelAttachments();
   await repository.resetInterruptedChatExecutions();
-  await projectReplicaJobExecutor.recoverAfterRestart();
+  await projectReplicaJobExecutor.recoverAfterRestart(!coordinator);
   projectReplicaJobExecutor.queueAvailable();
-  await chatRelocationJobExecutor.recoverAfterRestart();
+  projectReplicaJobExecutor.startRecoverySweep();
+  await chatRelocationJobExecutor.recoverAfterRestart(!coordinator);
   chatRelocationJobExecutor.queueAvailable();
+  chatRelocationJobExecutor.startRecoverySweep();
   await workflowExecutor.recoverAfterRestart();
   await workflowExecutor.expireGates();
   void workflowExecutor.queueAvailableRuns().catch((error) => {

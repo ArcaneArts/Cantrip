@@ -10,7 +10,10 @@ import {
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { ChatRelocationJobExecutor } from "../src/chat-relocations/executor.js";
+import {
+  CHAT_RELOCATION_HYDRATION_TIMEOUT_MS,
+  ChatRelocationJobExecutor,
+} from "../src/chat-relocations/executor.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { DEFAULT_MODEL_ROUTE_ID, LOCAL_USER_ID } from "../src/db/repository.js";
@@ -239,9 +242,14 @@ describe.sequential("chat relocation executor", () => {
     const hydrationChunks: Buffer[] = [];
     const attachmentChunks: Buffer[] = [];
     let hydrationDigest = "";
+    let hydrationCompleteTimeout: number | null | undefined;
     const bridge = {
       isConnected: () => true,
-      request: async (_workerId: string, command: WorkerCommand) => {
+      request: async (
+        _workerId: string,
+        command: WorkerCommand,
+        options?: { timeoutMs?: number | null },
+      ) => {
         commands.push(command);
         if (command.type === "worktree.status") {
           return worktreeStatus(command.worktreePath, revision);
@@ -290,6 +298,7 @@ describe.sequential("chat relocation executor", () => {
           return { accepted: true };
         }
         if (command.type === "chat.relocation.hydration.complete") {
+          hydrationCompleteTimeout = options?.timeoutMs;
           return {
             snapshotId: command.snapshotId,
             transcriptSha256: hydrationDigest,
@@ -344,6 +353,7 @@ describe.sequential("chat relocation executor", () => {
     expect(commands.map((command) => command.type)).toContain(
       "chat.relocation.hydration.complete",
     );
+    expect(hydrationCompleteTimeout).toBe(CHAT_RELOCATION_HYDRATION_TIMEOUT_MS);
     expect(commands.at(-1)).toMatchObject({
       type: "chat.relocation.thread.release",
       threadId: "thread-source",
