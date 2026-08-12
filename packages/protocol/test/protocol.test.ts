@@ -3382,7 +3382,26 @@ describe("Cantrip protocol", () => {
       defaultWorkerId: null,
       automaticReplicaProvisioning: false,
       automaticReplicaSynchronization: "off",
+      mobileProjectTabConfigurations: {},
     });
+    expect(
+      userSettingsSchema.safeParse({
+        theme: "system",
+        highContrast: false,
+        proMode: false,
+        proModeOpacity: 80,
+        sidebarWidth: 288,
+        desktopFrameRate: 30,
+        desktopStreamQuality: "adaptive",
+        defaultModelId: null,
+        mobileProjectTabConfigurations: {
+          "project-1": Array.from(
+            { length: 21 },
+            (_, index) => `group-${String(index)}`,
+          ),
+        },
+      }).success,
+    ).toBe(false);
     expect(
       userSettingsSchema.safeParse({
         theme: "system",

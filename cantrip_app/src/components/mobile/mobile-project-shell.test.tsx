@@ -142,7 +142,7 @@ describe("mobile project shell", () => {
     expect(markup).toContain("Remove bottom tab");
   });
 
-  it("renders scrollable project slots with a pinned add action", () => {
+  it("evenly divides up to five actions including Overview and add", () => {
     const markup = renderToStaticMarkup(
       <MobileBottomNavigation
         activeItemId="primary"
@@ -150,6 +150,7 @@ describe("mobile project shell", () => {
         items={[
           { id: "primary", surface: surfaces[1] },
           { id: "mobile-1", surface: surfaces[2] },
+          { id: "mobile-2", surface: surfaces[1] },
         ]}
         onAdd={vi.fn()}
         onOverview={vi.fn()}
@@ -159,7 +160,7 @@ describe("mobile project shell", () => {
       />,
     );
 
-    expect(markup.match(/<button/g)).toHaveLength(4);
+    expect(markup.match(/<button/g)).toHaveLength(5);
     expect(markup).toContain("Overview");
     expect(markup).toContain("Chat One");
     expect(markup).toContain("Terminal One");
@@ -167,9 +168,33 @@ describe("mobile project shell", () => {
     expect(markup).toContain('aria-current="page"');
     expect(markup).toContain('fill="currentColor"');
     expect(markup).toContain('fill="none"');
-    expect(markup).toContain("overflow-x-auto");
-    expect(markup).toContain("flex-[1_0_3.75rem]");
+    expect(markup).toContain('data-layout="equal"');
+    expect(markup.match(/min-w-0 flex-1/g)).toHaveLength(5);
     expect(markup).toContain("Hold to choose another project tab group");
+  });
+
+  it("switches to self-sized scrolling actions above five total items", () => {
+    const markup = renderToStaticMarkup(
+      <MobileBottomNavigation
+        activeItemId="primary"
+        gridOpen={false}
+        items={[
+          { id: "primary", surface: surfaces[1] },
+          { id: "mobile-1", surface: surfaces[2] },
+          { id: "mobile-2", surface: surfaces[1] },
+          { id: "mobile-3", surface: surfaces[2] },
+        ]}
+        onAdd={vi.fn()}
+        onOverview={vi.fn()}
+        onReset={vi.fn()}
+        onSelect={vi.fn()}
+        overviewSelected={false}
+      />,
+    );
+
+    expect(markup).toContain('data-layout="scroll"');
+    expect(markup).toContain("overflow-x-auto");
+    expect(markup.match(/min-w-\[4\.5rem\]/g)).toHaveLength(6);
   });
 
   it("shows Tabs only for the slot whose switcher is active", () => {

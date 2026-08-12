@@ -1156,6 +1156,15 @@ export const mcpServerCopySchema = z.object({
   sourceServerId: z.string().min(1),
 });
 
+export const mobileProjectTabConfigurationsSchema = z
+  .record(
+    z.string().min(1).max(200),
+    z.array(z.string().min(1).max(200).nullable()).min(1).max(20),
+  )
+  .refine((configurations) => Object.keys(configurations).length <= 200, {
+    message: "Mobile tab configurations cannot contain more than 200 projects.",
+  });
+
 export const userSettingsSchema = z.object({
   theme: themePreferenceSchema,
   highContrast: z.boolean(),
@@ -1170,6 +1179,9 @@ export const userSettingsSchema = z.object({
   automaticReplicaSynchronization: z
     .enum(["off", "verify-only", "fast-forward-primary"])
     .default("off"),
+  mobileProjectTabConfigurations: mobileProjectTabConfigurationsSchema.default(
+    {},
+  ),
 });
 
 export const userSettingsUpdateSchema = userSettingsSchema.partial();
@@ -7683,6 +7695,9 @@ export type McpServerConfiguration = z.infer<
 export type McpServerScope = z.infer<typeof mcpServerScopeSchema>;
 export type McpServerSummary = z.infer<typeof mcpServerSummarySchema>;
 export type McpServerCopy = z.infer<typeof mcpServerCopySchema>;
+export type MobileProjectTabConfigurations = z.infer<
+  typeof mobileProjectTabConfigurationsSchema
+>;
 export type UserSettings = z.infer<typeof userSettingsSchema>;
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
 export type SettingsBundle = z.infer<typeof settingsBundleSchema>;

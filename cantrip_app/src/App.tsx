@@ -151,6 +151,8 @@ import { githubRepositoryOnboardingAction } from "@/lib/github-repository-onboar
 import {
   assignMobileBottomTab,
   initialMobileBottomTabs,
+  mobileBottomTabConfiguration,
+  mobileBottomTabsFromConfiguration,
   PRIMARY_MOBILE_BOTTOM_TAB_ID,
   projectSelectionAction,
   reconcileMobileBottomTabs,
@@ -2440,6 +2442,9 @@ export function App() {
   const [mobileBottomTabs, setMobileBottomTabs] = useState(
     initialMobileBottomTabs,
   );
+  const [mobileBottomTabsProjectId, setMobileBottomTabsProjectId] = useState<
+    string | null
+  >(null);
   const [activeMobileBottomTabId, setActiveMobileBottomTabId] = useState(
     PRIMARY_MOBILE_BOTTOM_TAB_ID,
   );
@@ -2474,8 +2479,11 @@ export function App() {
   );
   const [proModeActive, setProModeActive] = useState(false);
   const contentRootRef = useRef<HTMLElement>(null);
-  const mobileProjectIdRef = useRef<string | null>(selectedProjectId);
   const mobileBottomTabSequenceRef = useRef(0);
+  const persistedMobileBottomTabsRef = useRef<{
+    projectId: string;
+    signature: string;
+  } | null>(null);
   const scrolledContentRef = useRef(new Set<EventTarget>());
   const sidebarRef = useRef<HTMLElement>(null);
   const sidebarWidthRef = useRef(DEFAULT_SIDEBAR_WIDTH);
@@ -2489,8 +2497,11 @@ export function App() {
 
   const resetMobileBottomTabs = () => {
     setMobileBottomTabs(initialMobileBottomTabs());
+    setMobileBottomTabsProjectId(null);
     setActiveMobileBottomTabId(PRIMARY_MOBILE_BOTTOM_TAB_ID);
     setMobileTabGridOpen(false);
+    mobileBottomTabSequenceRef.current = 0;
+    persistedMobileBottomTabsRef.current = null;
   };
 
   const openCreatedTab = (
@@ -2551,6 +2562,26 @@ export function App() {
     refetchInterval: projectResourcesLive ? false : 10_000,
   });
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
+  const saveMobileBottomTabs = useMutation({
+    mutationFn: async ({
+      groupIds,
+      projectId,
+    }: {
+      groupIds: (string | null)[];
+      projectId: string;
+    }) =>
+      updateSettings({
+        mobileProjectTabConfigurations: {
+          [projectId]: groupIds,
+        },
+      }),
+    onError: (error) => {
+      console.error("Could not save the mobile project tabs", error);
+    },
+    onSuccess: (bundle) => queryClient.setQueryData(["settings"], bundle),
+    retry: 2,
+    scope: { id: "mobile-project-tab-configurations" },
+  });
   const saveSidebarWidth = useMutation({
     mutationFn: (width: number) => updateSettings({ sidebarWidth: width }),
     onSuccess: (bundle) => queryClient.setQueryData(["settings"], bundle),
@@ -3947,10 +3978,58 @@ export function App() {
   }, [pendingSurfaceSelection, selectedProjectId, tabLayout.data]);
 
   useEffect(() => {
-    if (mobileProjectIdRef.current === selectedProjectId) return;
-    mobileProjectIdRef.current = selectedProjectId;
-    resetMobileBottomTabs();
-  }, [selectedProjectId]);
+    if (!selectedProjectId) {
+      if (mobileBottomTabsProjectId !== null) resetMobileBottomTabs();
+      return;
+    }
+    if (mobileBottomTabsProjectId === selectedProjectId || !settings.data) {
+      return;
+    }
+    const restored = mobileBottomTabsFromConfiguration(
+      settings.data.preferences.mobileProjectTabConfigurations[
+        selectedProjectId
+      ],
+    );
+    mobileBottomTabSequenceRef.current = restored.length - 1;
+    persistedMobileBottomTabsRef.current = {
+      projectId: selectedProjectId,
+      signature: JSON.stringify(mobileBottomTabConfiguration(restored)),
+    };
+    setMobileBottomTabs(restored);
+    setMobileBottomTabsProjectId(selectedProjectId);
+    setActiveMobileBottomTabId(PRIMARY_MOBILE_BOTTOM_TAB_ID);
+    setMobileTabGridOpen(false);
+  }, [mobileBottomTabsProjectId, selectedProjectId, settings.data]);
+
+  useEffect(() => {
+    if (
+      !compactShell ||
+      !selectedProjectId ||
+      mobileBottomTabsProjectId !== selectedProjectId ||
+      !settings.isSuccess
+    ) {
+      return;
+    }
+    const groupIds = mobileBottomTabConfiguration(mobileBottomTabs);
+    const signature = JSON.stringify(groupIds);
+    if (
+      persistedMobileBottomTabsRef.current?.projectId === selectedProjectId &&
+      persistedMobileBottomTabsRef.current.signature === signature
+    ) {
+      return;
+    }
+    persistedMobileBottomTabsRef.current = {
+      projectId: selectedProjectId,
+      signature,
+    };
+    saveMobileBottomTabs.mutate({ groupIds, projectId: selectedProjectId });
+  }, [
+    compactShell,
+    mobileBottomTabs,
+    mobileBottomTabsProjectId,
+    selectedProjectId,
+    settings.isSuccess,
+  ]);
 
   useEffect(() => {
     if (!compactShell) {

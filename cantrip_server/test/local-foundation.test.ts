@@ -1654,6 +1654,7 @@ describe("local server foundation", () => {
       desktopFrameRate: 30,
       desktopStreamQuality: "adaptive",
       defaultModelId: expect.any(String),
+      mobileProjectTabConfigurations: {},
     });
     const providerResponse = await firstApp.inject({
       method: "POST",
@@ -1758,6 +1759,9 @@ describe("local server foundation", () => {
             desktopFrameRate: 60,
             desktopStreamQuality: "balanced",
             defaultModelId: selectedModel.id,
+            mobileProjectTabConfigurations: {
+              "project-1": ["group-1", null],
+            },
           },
         })
       ).json(),
@@ -1774,6 +1778,36 @@ describe("local server foundation", () => {
       defaultWorkerId: null,
       automaticReplicaProvisioning: false,
       automaticReplicaSynchronization: "off",
+      mobileProjectTabConfigurations: {
+        "project-1": ["group-1", null],
+      },
+    });
+    const mergedMobileTabs = settingsBundleSchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: "/api/settings",
+          payload: {
+            mobileProjectTabConfigurations: {
+              "project-2": ["group-2"],
+            },
+          },
+        })
+      ).json(),
+    );
+    expect(mergedMobileTabs.preferences.mobileProjectTabConfigurations).toEqual(
+      {
+        "project-1": ["group-1", null],
+        "project-2": ["group-2"],
+      },
+    );
+    expect(
+      settingsBundleSchema.parse(
+        (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),
+      ).preferences.mobileProjectTabConfigurations,
+    ).toEqual({
+      "project-1": ["group-1", null],
+      "project-2": ["group-2"],
     });
     const chatGptProvider = modelProviderSummarySchema.parse(
       (
@@ -1850,6 +1884,10 @@ describe("local server foundation", () => {
       defaultWorkerId: "test-worker",
       automaticReplicaProvisioning: true,
       automaticReplicaSynchronization: "fast-forward-primary",
+      mobileProjectTabConfigurations: {
+        "project-1": ["group-1", null],
+        "project-2": ["group-2"],
+      },
     });
     expect(
       await firstApp.inject({
@@ -5431,6 +5469,10 @@ describe("local server foundation", () => {
       defaultWorkerId: "test-worker",
       automaticReplicaProvisioning: true,
       automaticReplicaSynchronization: "fast-forward-primary",
+      mobileProjectTabConfigurations: {
+        "project-1": ["group-1", null],
+        "project-2": ["group-2"],
+      },
     });
     expect(
       explorerListSchema.parse(

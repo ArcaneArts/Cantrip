@@ -1,0 +1,1 @@
+ALTER TABLE "user_settings" ADD COLUMN "mobile_project_tab_configurations" jsonb DEFAULT '{}'::jsonb NOT NULL;

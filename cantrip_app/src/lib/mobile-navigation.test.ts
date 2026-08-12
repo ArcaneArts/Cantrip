@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   assignMobileBottomTab,
   initialMobileBottomTabs,
+  mobileBottomTabConfiguration,
+  mobileBottomTabsFromConfiguration,
   PRIMARY_MOBILE_BOTTOM_TAB_ID,
   projectSelectionAction,
   reconcileMobileBottomTabs,
@@ -66,6 +68,24 @@ describe("mobile bottom tabs", () => {
   it("starts with one permanent unassigned project tab", () => {
     expect(initialMobileBottomTabs()).toEqual([
       { groupId: null, id: PRIMARY_MOBILE_BOTTOM_TAB_ID },
+    ]);
+  });
+
+  it("restores and serializes ordered project tab assignments", () => {
+    const restored = mobileBottomTabsFromConfiguration([
+      "group-1",
+      null,
+      "group-3",
+    ]);
+    expect(restored).toEqual([
+      { groupId: "group-1", id: PRIMARY_MOBILE_BOTTOM_TAB_ID },
+      { groupId: null, id: "mobile-1" },
+      { groupId: "group-3", id: "mobile-2" },
+    ]);
+    expect(mobileBottomTabConfiguration(restored)).toEqual([
+      "group-1",
+      null,
+      "group-3",
     ]);
   });
 

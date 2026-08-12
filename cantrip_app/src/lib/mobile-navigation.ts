@@ -12,8 +12,24 @@ export interface MobileBottomTab {
   id: string;
 }
 
+export function mobileBottomTabsFromConfiguration(
+  groupIds?: readonly (string | null)[],
+): MobileBottomTab[] {
+  const restored = groupIds?.length ? groupIds : [null];
+  return restored.map((groupId, index) => ({
+    groupId,
+    id: index === 0 ? PRIMARY_MOBILE_BOTTOM_TAB_ID : `mobile-${String(index)}`,
+  }));
+}
+
+export function mobileBottomTabConfiguration(
+  tabs: readonly MobileBottomTab[],
+): (string | null)[] {
+  return tabs.map(({ groupId }) => groupId);
+}
+
 export function initialMobileBottomTabs(): MobileBottomTab[] {
-  return [{ groupId: null, id: PRIMARY_MOBILE_BOTTOM_TAB_ID }];
+  return mobileBottomTabsFromConfiguration();
 }
 
 export function assignMobileBottomTab(
