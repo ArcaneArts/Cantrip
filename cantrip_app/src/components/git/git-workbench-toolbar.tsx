@@ -1,3 +1,4 @@
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
   Archive,
   FileClock,
@@ -7,10 +8,15 @@ import {
   RotateCcw,
   Search,
   Server,
+  MoreHorizontal,
   type LucideIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  StyledDropdownMenuContent,
+  StyledDropdownMenuItem,
+} from "@/components/ui/styled-menu";
 
 export type GitWorkbenchTool =
   | "operations"
@@ -51,12 +57,64 @@ export const gitWorkbenchTools: readonly GitWorkbenchToolDefinition[] = [
 ];
 
 export function GitWorkbenchToolbar({
+  compact = false,
   disabled,
   tools,
 }: {
+  compact?: boolean;
   disabled: boolean;
   tools: GitWorkbenchToolStates;
 }) {
+  if (compact) {
+    return (
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <Button
+            aria-label="Open Git tools"
+            className="size-6"
+            disabled={disabled}
+            size="icon"
+            variant="ghost"
+          >
+            <MoreHorizontal className="size-3.5" />
+          </Button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <StyledDropdownMenuContent align="end" className="min-w-48">
+            {gitWorkbenchTools.map(({ icon: Icon, id, label }) => {
+              const tool = tools[id];
+              return (
+                <StyledDropdownMenuItem
+                  aria-current={tool.active ? "page" : undefined}
+                  className="justify-between"
+                  key={id}
+                  onSelect={tool.onSelect}
+                >
+                  <span className="flex items-center gap-2">
+                    <Icon className="size-3.5" />
+                    {label}
+                  </span>
+                  {tool.active || tool.attention ? (
+                    <span
+                      aria-label={
+                        tool.attention ? `${label} active` : `${label} open`
+                      }
+                      className={
+                        tool.attention
+                          ? "size-1.5 rounded-full bg-amber-500"
+                          : "size-1.5 rounded-full bg-primary"
+                      }
+                    />
+                  ) : null}
+                </StyledDropdownMenuItem>
+              );
+            })}
+          </StyledDropdownMenuContent>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+    );
+  }
+
   return gitWorkbenchTools.map(({ icon: Icon, id, label }) => {
     const tool = tools[id];
     return (
