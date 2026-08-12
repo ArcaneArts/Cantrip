@@ -23,6 +23,8 @@ import {
   authLogoutAllResultSchema,
   authSessionSchema,
   authSessionStateSchema,
+  mobileSignInGrantCreateResultSchema,
+  mobileSignInGrantExchangeSchema,
   auditEventListSchema,
   auditEventQuerySchema,
   browserCreateSchema,
@@ -420,6 +422,7 @@ import {
 } from "./auth/principal.js";
 import {
   AuthRateLimiter,
+  createMobileSignInCode,
   DUMMY_PASSWORD_HASH,
   hashSecret,
   hashPassword,
@@ -2162,6 +2165,7 @@ export async function buildApp({
     route === "/api/bootstrap" ||
     route === "/api/auth/login" ||
     route === "/api/auth/register" ||
+    route === "/api/auth/mobile-sign-in/exchange" ||
     route === "/api/auth/session" ||
     route.startsWith("/api/internal/") ||
     route.startsWith("/api/workflow-hooks/") ||
@@ -4955,6 +4959,98 @@ export async function buildApp({
       .send(
         authSessionSchema.parse(
           await sessionService.create(request, reply, user, authMethod),
+        ),
+      );
+  });
+
+  app.post("/api/auth/mobile-sign-in/grants", async (request, reply) => {
+    if (config.authMode === "none") {
+      return reply.code(404).send({ error: "Mobile sign-in is unavailable." });
+    }
+    const principal = authenticatedPrincipal(request);
+    if (!principal.sessionId) {
+      return reply.code(401).send({ error: "Authentication is required." });
+    }
+    const generated = createMobileSignInCode();
+    const expiresAt = new Date(Date.now() + 2 * 60 * 1_000);
+    const id = await repository.createMobileSignInGrant({
+      codeHash: generated.codeHash,
+      createdBySessionId: principal.sessionId,
+      expiresAt,
+      ownerId: principal.user.id,
+    });
+    void repository
+      .pruneMobileSignInGrants(new Date(Date.now() - 24 * 60 * 60 * 1_000))
+      .catch((error) =>
+        request.log.warn(
+          { err: error },
+          "Could not prune expired mobile sign-in grants",
+        ),
+      );
+    await appendAudit(request, {
+      action: "auth.mobile-sign-in-grant-created",
+      ownerId: principal.user.id,
+      resourceId: id,
+      resourceType: "session-grant",
+      result: "succeeded",
+    });
+    return reply
+      .header("cache-control", "no-store")
+      .code(201)
+      .send(
+        mobileSignInGrantCreateResultSchema.parse({
+          code: generated.code,
+          expiresAt: expiresAt.toISOString(),
+        }),
+      );
+  });
+
+  app.post("/api/auth/mobile-sign-in/exchange", async (request, reply) => {
+    const originRejection = rejectUnapprovedAuthOrigin(request, reply);
+    if (originRejection) return originRejection;
+    if (config.authMode === "none") {
+      return reply.code(404).send({ error: "Mobile sign-in is unavailable." });
+    }
+    const input = mobileSignInGrantExchangeSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    const codeHash = hashSecret(input.data.code);
+    const limited = consumeAuthAttempt(request, "mobile-qr", "exchange", reply);
+    if (limited) return limited;
+
+    const user = await repository.consumeMobileSignInGrant(codeHash);
+    if (!user) {
+      await appendAudit(request, {
+        action: "auth.mobile-sign-in-failed",
+        metadata: { codeHash },
+        ownerId: null,
+        resourceType: "session-grant",
+        result: "denied",
+      });
+      return reply.code(401).send({
+        error: "This mobile sign-in code is invalid, expired, or already used.",
+      });
+    }
+    await repository.ensureAccountConfiguration(
+      user.id,
+      config.agentModel,
+      config.ollamaBaseUrl,
+    );
+    await appendAudit(request, {
+      action: "auth.mobile-sign-in-succeeded",
+      actorUserId: user.id,
+      metadata: { authMethod: "mobile-qr" },
+      ownerId: user.id,
+      resourceId: user.id,
+      resourceType: "session",
+      result: "succeeded",
+    });
+    return reply
+      .header("cache-control", "no-store")
+      .send(
+        authSessionSchema.parse(
+          await sessionService.create(request, reply, user, "mobile-qr"),
         ),
       );
   });

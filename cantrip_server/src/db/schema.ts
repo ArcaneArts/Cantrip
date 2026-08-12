@@ -160,7 +160,34 @@ export const userSessions = pgTable(
     ),
     check(
       "user_sessions_auth_method_check",
-      sql`${table.authMethod} IN ('password', 'account-password')`,
+      sql`${table.authMethod} IN ('password', 'account-password', 'mobile-qr')`,
+    ),
+  ],
+);
+
+export const mobileSignInGrants = pgTable(
+  "mobile_sign_in_grants",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdBySessionId: text("created_by_session_id").references(
+      () => userSessions.id,
+      { onDelete: "set null" },
+    ),
+    codeHash: text("code_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("mobile_sign_in_grants_hash_unique").on(table.codeHash),
+    index("mobile_sign_in_grants_owner_expiry_index").on(
+      table.ownerId,
+      table.expiresAt,
     ),
   ],
 );

@@ -1,6 +1,8 @@
 import {
   accountRegistrationSchema,
   authLoginSchema,
+  mobileSignInGrantCreateResultSchema,
+  mobileSignInGrantExchangeSchema,
   authLogoutAllResultSchema,
   authSessionSchema,
   authSessionStateSchema,
@@ -201,6 +203,7 @@ import {
 import type {
   AccountRegistration,
   AuthLogin,
+  MobileSignInGrantExchange,
   AgentInteractionRequestStatus,
   AgentInteractionResolutionCreate,
   ChatWorktreeUpdate,
@@ -318,6 +321,24 @@ export async function getAuthSession() {
 export async function login(input: AuthLogin) {
   return authSessionSchema.parse(
     await post("/api/auth/login", authLoginSchema.parse(input)),
+  );
+}
+
+export async function createMobileSignInGrant() {
+  return mobileSignInGrantCreateResultSchema.parse(
+    await post("/api/auth/mobile-sign-in/grants", {}),
+  );
+}
+
+export async function exchangeMobileSignInGrant(
+  serverUrl: string,
+  input: MobileSignInGrantExchange,
+) {
+  return authSessionSchema.parse(
+    await request(`${serverUrl}/api/auth/mobile-sign-in/exchange`, {
+      method: "POST",
+      body: JSON.stringify(mobileSignInGrantExchangeSchema.parse(input)),
+    }),
   );
 }
 

@@ -89,6 +89,9 @@ importers:
       "@xterm/xterm":
         specifier: ^6.0.0
         version: 6.0.0
+      "@zxing/browser":
+        specifier: ^0.1.5
+        version: 0.1.5(@zxing/library@0.21.3)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -104,6 +107,9 @@ importers:
       prism-react-renderer:
         specifier: ^2.4.1
         version: 2.4.1(react@19.2.8)
+      qrcode.react:
+        specifier: ^4.2.0
+        version: 4.2.0(react@19.2.8)
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -3313,6 +3319,27 @@ packages:
     os: [darwin, win32, linux]
     hasBin: true
 
+  "@zxing/browser@0.1.5":
+    resolution:
+      {
+        integrity: sha512-4Lmrn/il4+UNb87Gk8h1iWnhj39TASEHpd91CwwSJtY5u+wa0iH9qS0wNLAWbNVYXR66WmT5uiMhZ7oVTrKfxw==,
+      }
+    peerDependencies:
+      "@zxing/library": ^0.21.0
+
+  "@zxing/library@0.21.3":
+    resolution:
+      {
+        integrity: sha512-hZHqFe2JyH/ZxviJZosZjV+2s6EDSY0O24R+FQmlWZBZXP9IqMo7S3nb3+2LBWxodJQkSurdQGnqE7KXqrYgow==,
+      }
+    engines: { node: ">= 10.4.0" }
+
+  "@zxing/text-encoding@0.9.0":
+    resolution:
+      {
+        integrity: sha512-U/4aVJ2mxI0aDNI8Uq0wEhMgY+u4CNtEb0om3+y3+niDAsoTCOB33UF0sxpzqzdqXLqmvc+vZyAt4O8pPdfkwA==,
+      }
+
   abstract-logging@2.0.1:
     resolution:
       {
@@ -6270,6 +6297,14 @@ packages:
       }
     engines: { node: ">=16.0.0" }
 
+  qrcode.react@4.2.0:
+    resolution:
+      {
+        integrity: sha512-QpgqWi8rD9DsS9EP3z7BT+5lY5SFhsqGjpgW5DY/i3mK4M9DTBNz3ErMi8BWYEfI3L0d8GIbGmcdFAS1uIRGjA==,
+      }
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
   qs@6.15.3:
     resolution:
       {
@@ -7026,6 +7061,13 @@ packages:
       {
         integrity: sha512-tmMpK00BjZiUyVyvrBK7knerNgmgvcV/KLVyuma/SC+TQN167GrMRciANTz09+k3zW8L8t60jWO1GpfkZdjTaw==,
       }
+
+  ts-custom-error@3.3.1:
+    resolution:
+      {
+        integrity: sha512-5OX1tzOjxWEgsr/YEUWSuPrQ00deKLh6D7OTWcvNHm12/7QPyRh8SYpyWvA4IZv8H/+GQWQEh/kwo95Q9OVW1A==,
+      }
+    engines: { node: ">=14.0.0" }
 
   ts-morph@26.0.0:
     resolution:
@@ -9271,6 +9313,21 @@ snapshots:
       - "@cfworker/json-schema"
       - supports-color
 
+  "@zxing/browser@0.1.5(@zxing/library@0.21.3)":
+    dependencies:
+      "@zxing/library": 0.21.3
+    optionalDependencies:
+      "@zxing/text-encoding": 0.9.0
+
+  "@zxing/library@0.21.3":
+    dependencies:
+      ts-custom-error: 3.3.1
+    optionalDependencies:
+      "@zxing/text-encoding": 0.9.0
+
+  "@zxing/text-encoding@0.9.0":
+    optional: true
+
   abstract-logging@2.0.1: {}
 
   accepts@2.0.0:
@@ -11014,6 +11071,10 @@ snapshots:
 
   pvutils@1.2.0: {}
 
+  qrcode.react@4.2.0(react@19.2.8):
+    dependencies:
+      react: 19.2.8
+
   qs@6.15.3:
     dependencies:
       es-define-property: 1.0.1
@@ -11527,6 +11588,8 @@ snapshots:
   trim-lines@3.0.1: {}
 
   trough@2.2.0: {}
+
+  ts-custom-error@3.3.1: {}
 
   ts-morph@26.0.0:
     dependencies:
