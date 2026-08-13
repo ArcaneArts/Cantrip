@@ -64,6 +64,10 @@ describe("CodeDirectEndpointManager", () => {
     );
     expect(observed?.headers.cookie).toBe("vscode-tkn=worker-local-secret");
     expect(observed?.headers.authorization).toBeUndefined();
+    expect(observed?.headers.host).toBe(`127.0.0.1:${port}`);
+    expect(observed?.headers["x-forwarded-host"]).toBe(
+      `${target.host}:${target.port}`,
+    );
     expect(response.headers.get("set-cookie")).toBeNull();
     expect(response.headers.get("x-frame-options")).toBeNull();
     expect(response.headers.get("content-security-policy")).toContain(
