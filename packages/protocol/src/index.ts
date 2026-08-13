@@ -25,6 +25,22 @@ import {
 } from "./workflows.js";
 
 export const protocolVersionSchema = z.literal(1);
+export const cantripVersionSchema = z
+  .object({
+    major: z.number().int().nonnegative(),
+    minor: z.number().int().nonnegative(),
+    patch: z.number().int().nonnegative(),
+    version: z.string().regex(/^\d+\.\d+\.\d+$/u),
+  })
+  .superRefine((value, context) => {
+    if (value.version === `${value.major}.${value.minor}.${value.patch}`)
+      return;
+    context.addIssue({
+      code: "custom",
+      message: "Version string does not match its numeric components.",
+      path: ["version"],
+    });
+  });
 export const databaseEngineSchema = z.enum(["pglite", "postgres"]);
 export const deploymentModeSchema = z.enum(["local", "hosted"]);
 export const bootstrapModeSchema = z.enum([
@@ -275,6 +291,7 @@ export const serverBootstrapSchema = z.object({
   protocolVersion: protocolVersionSchema,
   server: z.object({
     id: z.string().min(1),
+    version: cantripVersionSchema,
     deploymentMode: deploymentModeSchema,
     bootstrapMode: bootstrapModeSchema,
   }),
@@ -6519,6 +6536,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   directCapabilityPrepareCommandSchema,
   directCapabilityRevokeCommandSchema,
   directCapabilityRenewCommandSchema,
+  z.object({ type: z.literal("worker.version") }),
   z.object({
     type: z.literal("worker.credential.rotate"),
     credential: workerCredentialSecretSchema,
@@ -7770,6 +7788,7 @@ export type MobileSignInGrantExchange = z.infer<
 export type MobileSignInQrPayload = z.infer<typeof mobileSignInQrPayloadSchema>;
 export type AuthLogoutAllResult = z.infer<typeof authLogoutAllResultSchema>;
 export type ServerBootstrap = z.infer<typeof serverBootstrapSchema>;
+export type CantripVersion = z.infer<typeof cantripVersionSchema>;
 export type CodexRuntimeMethodState = z.infer<
   typeof codexRuntimeMethodStateSchema
 >;

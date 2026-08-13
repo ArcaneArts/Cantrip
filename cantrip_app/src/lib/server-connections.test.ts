@@ -149,6 +149,12 @@ describe("server connections", () => {
             protocolVersion: 1,
             server: {
               id: "hosted-one",
+              version: {
+                major: 1,
+                minor: 1,
+                patch: 1375,
+                version: "1.1.1375",
+              },
               deploymentMode: "hosted",
               bootstrapMode: "standalone",
             },

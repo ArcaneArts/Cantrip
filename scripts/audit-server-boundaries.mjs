@@ -22,7 +22,7 @@ const inventoryPath = resolve(
   "docs/security/server-route-inventory.json",
 );
 function routeBoundary(path) {
-  if (path === "/api" || path === "/api/bootstrap") {
+  if (path === "/api" || path === "/api/bootstrap" || path === "/version") {
     return "public-bootstrap";
   }
   if (
@@ -44,7 +44,8 @@ function routeBoundary(path) {
 }
 
 function ownerEvidence(path, text) {
-  if (path === "/api" || path === "/api/bootstrap") return "public";
+  if (path === "/api" || path === "/api/bootstrap" || path === "/version")
+    return "public";
   if (path.startsWith("/api/auth/")) return "session-boundary";
   if (path.startsWith("/api/workflow-hooks/")) return "webhook-credential";
   if (

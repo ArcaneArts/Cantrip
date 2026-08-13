@@ -18,6 +18,7 @@ import {
   browserServiceFleetDiscoverySchema,
   cantripCliCommandRequestSchema,
   cantripCliCommandResultSchema,
+  cantripVersionSchema,
   chatAttachmentSummarySchema,
   chatCreateSchema,
   chatExecutionLaneSummarySchema,
@@ -3552,6 +3553,7 @@ describe("Cantrip protocol", () => {
       protocolVersion: 1,
       server: {
         id: "server-id",
+        version: { major: 1, minor: 1, patch: 1375, version: "1.1.1375" },
         deploymentMode: "local",
         bootstrapMode: "pnpm-dev",
       },
@@ -3610,6 +3612,17 @@ describe("Cantrip protocol", () => {
     expect(bootstrap.capabilities.projectReplicas).toBe(false);
     expect(bootstrap.capabilities.browserFleetDiscovery).toBe(false);
     expect(bootstrap.capabilities.remoteDesktopFleet).toBe(false);
+  });
+
+  it("rejects inconsistent Cantrip version fields", () => {
+    expect(() =>
+      cantripVersionSchema.parse({
+        major: 1,
+        minor: 1,
+        patch: 1375,
+        version: "1.1.1374",
+      }),
+    ).toThrow(/does not match/u);
   });
 
   it("round-trips versioned binary Remote Surface frames", () => {

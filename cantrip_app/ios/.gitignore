@@ -9,5 +9,6 @@ xcuserdata
 capacitor-cordova-ios-plugins
 
 # Generated Config files
+App/cantrip-version.generated.xcconfig
 App/App/capacitor.config.json
 App/App/config.xml

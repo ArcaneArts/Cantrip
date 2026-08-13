@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 
 import type { WorkerCommand, WorkerEvent } from "@cantrip/protocol";
+import { cantripVersion } from "@cantrip/version";
 
 import { AttachmentStore } from "./attachment-store.js";
 import { ChatRelocationHydrationStore } from "./chat-relocation-store.js";
@@ -294,6 +295,8 @@ async function start(): Promise<void> {
             command.leaseExpiresAt,
           ),
         };
+      case "worker.version":
+        return cantripVersion;
       case "worker.credential.rotate":
         saveWorkerCredential({
           credential: command.credential,

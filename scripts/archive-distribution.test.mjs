@@ -72,7 +72,8 @@ test("orchestrates server and worker before assembling the client", async () => 
       target: normalizeTarget(),
     });
     const labels = calls.map((call) => call.label);
-    assert.deepEqual(labels.slice(0, 5), [
+    assert.deepEqual(labels.slice(0, 6), [
+      "Version build",
       "Logging build",
       "Protocol build",
       "server package",
