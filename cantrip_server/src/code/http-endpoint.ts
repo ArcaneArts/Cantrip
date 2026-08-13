@@ -18,6 +18,7 @@ import {
 } from "@cantrip/protocol";
 import WebSocket, { type RawData } from "ws";
 
+import { serverLogger } from "../logger.js";
 import type {
   TunnelDataPlaneEndpoint,
   TunnelEndpointFrameListener,
@@ -52,6 +53,7 @@ const BLOCKED_EDITOR_HEADERS = new Set([
 
 interface CodeStream {
   connectionId: string;
+  diagnosticPath: string;
   destinationSequence: number;
   destinationToSourcePendingCredit: number;
   headerBytes: Buffer;
@@ -174,6 +176,7 @@ export class CodeHttpEndpoint implements TunnelDataPlaneEndpoint {
     const stream = this.#createStream(
       { kind: "http", request, response },
       parts(head),
+      this.#diagnosticPath(request),
     );
     request.on("data", (chunk: Buffer) => {
       if (!this.#streams.has(stream.connectionId)) return;
@@ -212,6 +215,7 @@ export class CodeHttpEndpoint implements TunnelDataPlaneEndpoint {
     const stream = this.#createStream(
       { kind: "websocket", socket, queued: [], queuedBytes: 0 },
       parts(head),
+      this.#diagnosticPath(request),
     );
     socket.on("message", (data, binary) => {
       try {
@@ -353,6 +357,7 @@ export class CodeHttpEndpoint implements TunnelDataPlaneEndpoint {
   #createStream(
     transport: CodeStream["transport"],
     requestPending: Buffer[],
+    diagnosticPath: string,
   ): CodeStream {
     const connectionId = randomUUID();
     const timeout = setTimeout(() => {
@@ -362,6 +367,7 @@ export class CodeHttpEndpoint implements TunnelDataPlaneEndpoint {
     timeout.unref();
     const stream: CodeStream = {
       connectionId,
+      diagnosticPath,
       destinationSequence: 0,
       destinationToSourcePendingCredit: 0,
       headerBytes: Buffer.alloc(0),
@@ -381,6 +387,16 @@ export class CodeHttpEndpoint implements TunnelDataPlaneEndpoint {
       transport,
     };
     this.#streams.set(connectionId, stream);
+    if (diagnosticPath === "/" || transport.kind === "websocket") {
+      serverLogger.info("Cantrip Code relay stream opened", {
+        attachmentId: this.attachmentId,
+        connectionId,
+        path: diagnosticPath,
+        sessionId: this.sessionId,
+        transport: transport.kind,
+        tunnelId: this.tunnelId,
+      });
+    }
     this.touch({ bytesFromSource: 0, bytesToSource: 0, connectionDelta: 1 });
     this.#emit(
       {
@@ -477,6 +493,25 @@ export class CodeHttpEndpoint implements TunnelDataPlaneEndpoint {
         this.#writeResponseHeaders(stream.transport.response, head);
       }
       stream.responseStarted = true;
+      if (
+        stream.diagnosticPath === "/" ||
+        stream.transport.kind === "websocket" ||
+        (head.kind === "http" && head.statusCode >= 400)
+      ) {
+        const details = {
+          attachmentId: this.attachmentId,
+          connectionId: stream.connectionId,
+          path: stream.diagnosticPath,
+          sessionId: this.sessionId,
+          statusCode: head.kind === "http" ? head.statusCode : null,
+          transport: head.kind,
+        };
+        if (head.kind === "http" && head.statusCode >= 400) {
+          serverLogger.warn("Cantrip Code relay response started", details);
+        } else {
+          serverLogger.info("Cantrip Code relay response started", details);
+        }
+      }
       if (stream.transport.kind === "websocket") {
         for (const queued of stream.transport.queued)
           this.#queueInput(stream, queued);
@@ -588,6 +623,17 @@ export class CodeHttpEndpoint implements TunnelDataPlaneEndpoint {
 
   #fail(stream: CodeStream, message: string, status = 502): void {
     if (!this.#streams.has(stream.connectionId)) return;
+    serverLogger.warn("Cantrip Code relay stream failed", {
+      attachmentId: this.attachmentId,
+      connectionId: stream.connectionId,
+      message,
+      path: stream.diagnosticPath,
+      responseStarted: stream.responseStarted,
+      sessionId: this.sessionId,
+      status,
+      transport: stream.transport.kind,
+      tunnelId: this.tunnelId,
+    });
     if (stream.transport.kind === "http") {
       const { response } = stream.transport;
       if (!response.headersSent) {
@@ -670,6 +716,24 @@ export class CodeHttpEndpoint implements TunnelDataPlaneEndpoint {
       headers.push(["x-forwarded-port", this.surfaceOrigin.port]);
     }
     return headers;
+  }
+
+  #diagnosticPath(request: IncomingMessage): string {
+    try {
+      const requestUrl = new URL(
+        request.url ?? "/",
+        "http://cantrip-surface.invalid",
+      );
+      if (
+        requestUrl.pathname !== this.basePath &&
+        !requestUrl.pathname.startsWith(`${this.basePath}/`)
+      ) {
+        return "[outside attachment]";
+      }
+      return requestUrl.pathname.slice(this.basePath.length) || "/";
+    } catch {
+      return "[invalid path]";
+    }
   }
 
   #writeResponseHeaders(

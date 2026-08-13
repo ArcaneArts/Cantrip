@@ -87,6 +87,24 @@ function errorText(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function bridgeEndpoint(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return "[invalid bridge URL]";
+  }
+}
+
+function bridgeLog(level, event, details = {}) {
+  const method = console[level] ?? console.log;
+  method.call(
+    console,
+    `[Cantrip Code bridge] ${event}`,
+    JSON.stringify(details),
+  );
+}
+
 async function saveDirtyEditors() {
   const saved = [];
   const failed = [];
@@ -325,13 +343,23 @@ class WorkbenchCoordinator {
     if (this.cancelled) return;
     const { token, url } = bridgeConfiguration();
     if (!url || !token || typeof globalThis.WebSocket !== "function") {
+      bridgeLog("warn", "configuration unavailable", {
+        hasToken: Boolean(token),
+        hasUrl: Boolean(url),
+        hasWebSocket: typeof globalThis.WebSocket === "function",
+        sessionId: identity().sessionId,
+      });
       this.updateStatusItems();
       return;
     }
     let parsed;
     try {
       parsed = new URL(url);
-    } catch {
+    } catch (error) {
+      bridgeLog("warn", "configuration URL invalid", {
+        error: errorText(error),
+        sessionId: identity().sessionId,
+      });
       this.updateStatusItems();
       return;
     }
@@ -339,16 +367,30 @@ class WorkbenchCoordinator {
       !["ws:", "wss:"].includes(parsed.protocol) ||
       parsed.searchParams.get("token") !== token
     ) {
+      bridgeLog("warn", "configuration rejected", {
+        endpoint: bridgeEndpoint(url),
+        hasMatchingToken: parsed.searchParams.get("token") === token,
+        protocol: parsed.protocol,
+        sessionId: identity().sessionId,
+      });
       this.updateStatusItems();
       return;
     }
 
+    bridgeLog("info", "connection opening", {
+      endpoint: bridgeEndpoint(url),
+      sessionId: identity().sessionId,
+    });
     const socket = new globalThis.WebSocket(parsed.toString());
     this.socket = socket;
     this.updateStatusItems();
     socket.addEventListener("open", () => {
       if (this.socket !== socket) return;
       this.reconnectAttempt = 0;
+      bridgeLog("info", "connection opened", {
+        endpoint: bridgeEndpoint(url),
+        sessionId: identity().sessionId,
+      });
       this.updateStatusItems();
       void this.publishState();
     });
@@ -356,15 +398,27 @@ class WorkbenchCoordinator {
       if (this.socket !== socket) return;
       void this.onMessage(event.data);
     });
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
       if (this.socket !== socket) return;
       this.socket = null;
       this.updateStatusItems();
       if (this.cancelled) return;
       const delay = reconnectDelayMs(this.reconnectAttempt++);
+      bridgeLog("warn", "connection closed", {
+        code: event.code,
+        delayMs: delay,
+        endpoint: bridgeEndpoint(url),
+        reason: event.reason?.slice(0, 256) ?? "",
+        sessionId: identity().sessionId,
+      });
       this.reconnectTimer = setTimeout(() => this.reconnect(false), delay);
     });
     socket.addEventListener("error", () => {
+      bridgeLog("warn", "connection error", {
+        endpoint: bridgeEndpoint(url),
+        readyState: socket.readyState,
+        sessionId: identity().sessionId,
+      });
       if (this.socket === socket && socket.readyState < 2) socket.close();
     });
   }
@@ -454,6 +508,11 @@ class WorkbenchCoordinator {
       theme,
       vscode.ConfigurationTarget.Workspace,
     );
+    bridgeLog("info", "theme applied", {
+      appearance,
+      sessionId: identity().sessionId,
+      theme,
+    });
   }
 
   async agentTurnState(params) {

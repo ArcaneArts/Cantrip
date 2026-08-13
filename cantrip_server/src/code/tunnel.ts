@@ -14,6 +14,7 @@ import {
 import WebSocket, { WebSocketServer } from "ws";
 
 import type { ServerRepository } from "../db/repository.js";
+import { serverLogger } from "../logger.js";
 import {
   TunnelStreamBroker,
   type TunnelRouteHandle,
@@ -267,6 +268,14 @@ export class CodeTunnelBroker {
       throw error;
     }
     this.#attachments.set(token, binding);
+    serverLogger.info("Cantrip Code relay attachment created", {
+      attachmentId,
+      codeTabId: input.codeTabId,
+      sessionId: input.sessionId,
+      surfaceOrigin: this.#surfaceOrigin.origin,
+      tunnelId,
+      workerId: input.workerId,
+    });
     this.#trackWorkerDisconnect(input.workerId);
     this.#changed?.({
       attachmentId,
@@ -366,14 +375,33 @@ export class CodeTunnelBroker {
   ): void {
     const binding = this.#resolve(token);
     if (!binding) {
+      serverLogger.warn("Cantrip Code relay HTTP request rejected", {
+        path: attachmentRequestPath(request, token),
+        reason: "attachment-unavailable",
+      });
       this.#writeUnavailable(response);
       return;
     }
     if (!this.bridge.isConnected(binding.workerId)) {
+      serverLogger.warn("Cantrip Code relay HTTP request rejected", {
+        attachmentId: binding.attachmentId,
+        path: attachmentRequestPath(request, token),
+        reason: "worker-offline",
+        sessionId: binding.sessionId,
+        workerId: binding.workerId,
+      });
       response
         .writeHead(503, { "cache-control": "no-store" })
         .end("Worker offline");
       return;
+    }
+    if (attachmentRequestPath(request, token) === "/") {
+      serverLogger.info("Cantrip Code relay root request received", {
+        attachmentId: binding.attachmentId,
+        method: request.method ?? "GET",
+        sessionId: binding.sessionId,
+        workerId: binding.workerId,
+      });
     }
     binding.endpoint.proxyHttp(request, response);
   }
@@ -385,9 +413,22 @@ export class CodeTunnelBroker {
   ): void {
     const binding = this.#resolve(token);
     if (!binding || !this.bridge.isConnected(binding.workerId)) {
+      serverLogger.warn("Cantrip Code relay WebSocket rejected", {
+        attachmentId: binding?.attachmentId ?? null,
+        path: attachmentRequestPath(request, token),
+        reason: binding ? "worker-offline" : "attachment-unavailable",
+        sessionId: binding?.sessionId ?? null,
+        workerId: binding?.workerId ?? null,
+      });
       socket.close(1013, "Cantrip Code worker is unavailable");
       return;
     }
+    serverLogger.info("Cantrip Code relay WebSocket received", {
+      attachmentId: binding.attachmentId,
+      path: attachmentRequestPath(request, token),
+      sessionId: binding.sessionId,
+      workerId: binding.workerId,
+    });
     binding.endpoint.proxyWebSocket(socket, request);
   }
 
@@ -433,6 +474,13 @@ export class CodeTunnelBroker {
   ): Promise<void> {
     if (this.#attachments.get(token) !== binding) return;
     this.#attachments.delete(token);
+    serverLogger.info("Cantrip Code relay attachment removed", {
+      attachmentId: binding.attachmentId,
+      codeTabId: binding.codeTabId,
+      sessionId: binding.sessionId,
+      tunnelId: binding.tunnelId,
+      workerId: binding.workerId,
+    });
     binding.endpoint.close();
     binding.route.close();
     await binding.telemetry?.close(new Date(binding.expiresAt));
@@ -531,6 +579,28 @@ function tokenFromRequest(request: IncomingMessage): string | null {
   );
 }
 
+function attachmentRequestPath(
+  request: IncomingMessage,
+  token: string,
+): string {
+  try {
+    const requestUrl = new URL(
+      request.url ?? "/",
+      "http://cantrip-surface.invalid",
+    );
+    const basePath = `/code/${token}`;
+    if (
+      requestUrl.pathname !== basePath &&
+      !requestUrl.pathname.startsWith(`${basePath}/`)
+    ) {
+      return "[outside attachment]";
+    }
+    return requestUrl.pathname.slice(basePath.length) || "/";
+  } catch {
+    return "[invalid path]";
+  }
+}
+
 export function createCodeSurfaceServer(
   broker: CodeTunnelBroker,
   surfaceOrigin: string,
@@ -565,11 +635,17 @@ export function createCodeSurfaceServer(
   server.on("upgrade", (request, socket, head) => {
     const token = tokenFromRequest(request);
     const origin = request.headers.origin;
-    if (
-      !token ||
-      !broker.hasAttachment(token) ||
-      (origin && origin !== expectedOrigin)
-    ) {
+    const hasAttachment = token ? broker.hasAttachment(token) : false;
+    if (!token || !hasAttachment || (origin && origin !== expectedOrigin)) {
+      serverLogger.warn("Cantrip Code surface WebSocket upgrade rejected", {
+        hasAttachment,
+        hasToken: Boolean(token),
+        origin: origin ?? null,
+        originMatches: !origin || origin === expectedOrigin,
+        path: token
+          ? attachmentRequestPath(request, token)
+          : "[missing attachment]",
+      });
       socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
       socket.destroy();
       return;
