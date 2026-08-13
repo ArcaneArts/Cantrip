@@ -484,6 +484,13 @@
       "when": 1786546859635,
       "tag": "0068_cloudy_wildside",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1786607568561,
+      "tag": "0069_nifty_warpath",
+      "breakpoints": true
     }
   ]
 }

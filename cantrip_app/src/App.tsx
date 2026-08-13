@@ -63,6 +63,7 @@ import {
 import {
   lazy,
   Suspense,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -119,7 +120,15 @@ import {
   GitHistoryView,
   type GitHistoryHeaderState,
 } from "@/components/git/git-history";
-import type { ExplorerHeaderState } from "@/components/explorer/explorer-view";
+import type {
+  ExplorerHeaderState,
+  ExplorerLifecycleActions,
+} from "@/components/explorer/explorer-view";
+import {
+  confirmExplorerDiscard,
+  prepareExplorerPopout as prepareExplorerPopoutLifecycle,
+  prepareExplorerRebind as prepareExplorerRebindLifecycle,
+} from "@/components/explorer/explorer-lifecycle";
 import { ProjectChatList } from "@/components/sidebar/project-chat-list";
 import { ProjectTabBar } from "@/components/workspace/project-tab-bar";
 import type { ProjectSurfaceCreateKind } from "@/components/workspace/project-surface-create-menu";
@@ -343,9 +352,9 @@ const TerminalView = lazy(() =>
     default: module.TerminalView,
   })),
 );
-const ExplorerView = lazy(() =>
-  import("@/components/explorer/explorer-view").then((module) => ({
-    default: module.ExplorerView,
+const PersistentExplorerViews = lazy(() =>
+  import("@/components/explorer/persistent-explorer-views").then((module) => ({
+    default: module.PersistentExplorerViews,
   })),
 );
 const BrowserView = lazy(() =>
@@ -2476,6 +2485,10 @@ export function App() {
     string | null
   >(null);
   const [detachedGroupId, setDetachedGroupId] = useState<string | null>(null);
+  const detachedExplorerIdRef = useRef<string | null>(null);
+  const explorerLifecycleRef = useRef(
+    new Map<string, ExplorerLifecycleActions>(),
+  );
   const [worktreeCreateTarget, setWorktreeCreateTarget] =
     useState<WorktreeBindingTarget | null>(null);
   const [worktreeActionError, setWorktreeActionError] = useState<string | null>(
@@ -2503,6 +2516,27 @@ export function App() {
     cursor: string;
     userSelect: string;
   } | null>(null);
+
+  const handleExplorerLifecycleChange = useCallback(
+    (explorerId: string, actions: ExplorerLifecycleActions | null) => {
+      if (actions) explorerLifecycleRef.current.set(explorerId, actions);
+      else explorerLifecycleRef.current.delete(explorerId);
+    },
+    [],
+  );
+
+  const handleExplorerChanged = useCallback(
+    (updated: ExplorerSummary) => {
+      queryClient.setQueryData<ExplorerSummary[]>(
+        ["explorers", updated.projectId],
+        (current = []) =>
+          current.map((explorer) =>
+            explorer.id === updated.id ? updated : explorer,
+          ),
+      );
+    },
+    [queryClient],
+  );
 
   const resetMobileBottomTabs = () => {
     setMobileBottomTabs(initialMobileBottomTabs());
@@ -3070,6 +3104,34 @@ export function App() {
       setWorktreeActionError(errorText(error));
     },
   });
+  const prepareExplorerRebind = async (target: WorktreeBindingTarget) => {
+    if (target.kind !== "explorer") return true;
+    const lifecycle = explorerLifecycleRef.current.get(target.tabId);
+    const result = await prepareExplorerRebindLifecycle(lifecycle, () =>
+      window.confirm(
+        "Switch this Explorer to another worktree and discard its unsaved changes?",
+      ),
+    );
+    if (result === "state-failed") {
+      setWorktreeActionError(
+        "Explorer view state could not be saved before switching worktrees.",
+      );
+    }
+    return result === "ready";
+  };
+  const requestBindWorktree = async (input: {
+    target: WorktreeBindingTarget;
+    worktreeId: string;
+    mode?: "agent-managed" | "pinned";
+  }) => {
+    if (!(await prepareExplorerRebind(input.target))) return false;
+    try {
+      await bindWorktreeMutation.mutateAsync(input);
+      return true;
+    } catch {
+      return false;
+    }
+  };
   const createWorktreeMutation = useMutation({
     mutationFn: ({
       projectId,
@@ -3210,6 +3272,7 @@ export function App() {
   const deleteExplorerMutation = useMutation({
     mutationFn: deleteExplorer,
     onSuccess: async (_value, deletedId) => {
+      explorerLifecycleRef.current.delete(deletedId);
       await queryClient.invalidateQueries({
         queryKey: ["explorers", selectedProjectId],
       });
@@ -3218,6 +3281,19 @@ export function App() {
       });
     },
   });
+  const requestDeleteExplorer = (explorerId: string) => {
+    const lifecycle = explorerLifecycleRef.current.get(explorerId);
+    if (
+      !confirmExplorerDiscard(lifecycle, () =>
+        window.confirm(
+          "Delete this Explorer and discard its unsaved file changes?",
+        ),
+      )
+    ) {
+      return;
+    }
+    deleteExplorerMutation.mutate(explorerId);
+  };
   const updateBrowserMutation = useMutation({
     mutationFn: ({
       browserId,
@@ -3668,14 +3744,71 @@ export function App() {
           : currentSurface
             ? `${currentSurface.tabKey}:${gitHistoryHeader?.section ?? "content"}`
             : `project:${selectedProjectId ?? "none"}`;
+  const resumeDetachedGroup = useCallback(
+    async (groupId: string) => {
+      const explorerId = detachedExplorerIdRef.current;
+      try {
+        if (explorerId && selectedProjectId) {
+          const refreshed = await getExplorers(selectedProjectId);
+          queryClient.setQueryData(["explorers", selectedProjectId], refreshed);
+          const persisted = refreshed.find(({ id }) => id === explorerId);
+          const lifecycle = explorerLifecycleRef.current.get(explorerId);
+          if (persisted && lifecycle) {
+            await lifecycle.reconcile(persisted);
+          } else {
+            await queryClient.invalidateQueries({
+              queryKey: ["explorer-file", explorerId],
+            });
+          }
+        }
+      } catch (error) {
+        console.error(
+          "Could not refresh the retained Explorer after its pop-out closed",
+          error,
+        );
+      } finally {
+        detachedExplorerIdRef.current = null;
+        setDetachedGroupId((current) => (current === groupId ? null : current));
+      }
+    },
+    [queryClient, selectedProjectId],
+  );
   const popOutActiveView = () => {
     if (!activePopout || popoutPending) return;
-    setPopoutPending(true);
-    setPopoutError(null);
-    void openDesktopPopoutGroup(activePopout.target, activePopout.title)
-      .then(() => setDetachedGroupId(activePopout.target.groupId))
-      .catch((error: unknown) => setPopoutError(errorText(error)))
-      .finally(() => setPopoutPending(false));
+    void (async () => {
+      const explorerLifecycle = selectedExplorer
+        ? explorerLifecycleRef.current.get(selectedExplorer.id)
+        : null;
+      const preparation = await prepareExplorerPopoutLifecycle(
+        explorerLifecycle,
+        () =>
+          window.confirm(
+            "This Explorer has unsaved changes. Save and continue opening it in a new window?\n\nChoose Cancel to keep editing in this window.",
+          ),
+      );
+      if (preparation === "cancelled") return;
+      if (preparation === "save-failed") {
+        setPopoutError("Save the Explorer file before opening a pop-out.");
+        return;
+      }
+      if (preparation === "state-failed") {
+        setPopoutError(
+          "Explorer view state could not be saved before opening the pop-out.",
+        );
+        return;
+      }
+      setPopoutPending(true);
+      setPopoutError(null);
+      try {
+        await openDesktopPopoutGroup(activePopout.target, activePopout.title);
+        detachedExplorerIdRef.current = selectedExplorer?.id ?? null;
+        setDetachedGroupId(activePopout.target.groupId);
+      } catch (error) {
+        setPopoutError(errorText(error));
+      } finally {
+        setPopoutPending(false);
+      }
+    })();
   };
 
   useEffect(() => {
@@ -3699,9 +3832,7 @@ export function App() {
     let stopObserving: (() => void) | null = null;
     const resumeLocally = () => {
       if (!mounted) return;
-      setDetachedGroupId((current) =>
-        current === observedGroupId ? null : current,
-      );
+      void resumeDetachedGroup(observedGroupId);
     };
     void watchDesktopPopoutGroup(observedGroupId, resumeLocally)
       .then((stop) => {
@@ -3717,7 +3848,7 @@ export function App() {
       mounted = false;
       stopObserving?.();
     };
-  }, [desktopRuntime, detachedGroupId, isPopout]);
+  }, [desktopRuntime, detachedGroupId, isPopout, resumeDetachedGroup]);
   useEffect(() => {
     scrolledContentRef.current.clear();
     setContentScrolled(false);
@@ -4368,8 +4499,7 @@ export function App() {
     if (surface.kind === "chat") deleteChatMutation.mutate(surface.tabId);
     else if (surface.kind === "terminal")
       deleteTerminalMutation.mutate(surface.tabId);
-    else if (surface.kind === "explorer")
-      deleteExplorerMutation.mutate(surface.tabId);
+    else if (surface.kind === "explorer") requestDeleteExplorer(surface.tabId);
     else if (surface.kind === "browser")
       deleteBrowserMutation.mutate(surface.tabId);
     else if (surface.kind === "code")
@@ -4516,6 +4646,16 @@ export function App() {
   } satisfies Omit<ContentHeaderActionsProps, "compact">;
   const codeSurfaceVisible = Boolean(
     selectedCodeTab &&
+    !mobileProjectSelectorOpen &&
+    !showImporter &&
+    !showSettings &&
+    !showServerAdmin &&
+    !showProjectSettings &&
+    !(compactShell && mobileTabGridOpen) &&
+    !groupOwnedElsewhere,
+  );
+  const explorerSurfaceVisible = Boolean(
+    selectedExplorer &&
     !mobileProjectSelectorOpen &&
     !showImporter &&
     !showSettings &&
@@ -4691,9 +4831,7 @@ export function App() {
                 onRenameExplorer={(explorerId, title) =>
                   renameExplorerMutation.mutate({ explorerId, title })
                 }
-                onDeleteExplorer={(explorerId) =>
-                  deleteExplorerMutation.mutate(explorerId)
-                }
+                onDeleteExplorer={requestDeleteExplorer}
                 onRenameProjectView={(viewId, title) =>
                   renameProjectViewMutation.mutate({ viewId, title })
                 }
@@ -4948,7 +5086,7 @@ export function App() {
                       onCreate: () =>
                         setWorktreeCreateTarget(activeWorktreeTarget),
                       onSelect: (worktreeId) =>
-                        bindWorktreeMutation.mutate({
+                        void requestBindWorktree({
                           target: activeWorktreeTarget,
                           worktreeId,
                         }),
@@ -5181,6 +5319,26 @@ export function App() {
           />
         </Suspense>
 
+        <Suspense
+          fallback={
+            explorerSurfaceVisible ? (
+              <div className="grid flex-1 place-items-center text-muted-foreground">
+                <Loader2 className="size-5 animate-spin" />
+              </div>
+            ) : null
+          }
+        >
+          <PersistentExplorerViews
+            activeExplorer={
+              explorerSurfaceVisible ? (selectedExplorer ?? null) : null
+            }
+            gitStatuses={worktreeStatuses}
+            onChanged={handleExplorerChanged}
+            onHeaderChange={setExplorerHeader}
+            onLifecycleChange={handleExplorerLifecycleChange}
+          />
+        </Suspense>
+
         {mobileProjectSelectorOpen ? (
           <MobileProjectSelector
             activeWorkspace={activeProjectWorkspace}
@@ -5320,7 +5478,9 @@ export function App() {
                 onClick={() =>
                   void focusDesktopPopoutGroup(selectedTabGroup.id)
                     .then((focused) => {
-                      if (!focused) setDetachedGroupId(null);
+                      if (!focused) {
+                        void resumeDetachedGroup(selectedTabGroup.id);
+                      }
                     })
                     .catch((error: unknown) => setPopoutError(errorText(error)))
                 }
@@ -5482,21 +5642,7 @@ export function App() {
               }}
             />
           </Suspense>
-        ) : selectedExplorer ? (
-          <Suspense
-            fallback={
-              <div className="grid flex-1 place-items-center text-muted-foreground">
-                <Loader2 className="size-5 animate-spin" />
-              </div>
-            }
-          >
-            <ExplorerView
-              explorer={selectedExplorer}
-              gitStatus={worktreeStatuses[selectedExplorer.worktreeId]}
-              onHeaderChange={setExplorerHeader}
-            />
-          </Suspense>
-        ) : selectedTerminal ? (
+        ) : selectedExplorer ? null : selectedTerminal ? (
           <Suspense
             fallback={
               <div className="grid flex-1 place-items-center text-muted-foreground">
@@ -5765,6 +5911,7 @@ export function App() {
         onSubmit={async (input) => {
           const target = worktreeCreateTarget;
           if (!target) return;
+          if (!(await prepareExplorerRebind(target))) return;
           const created = await createWorktreeMutation.mutateAsync({
             projectId: target.projectId,
             input,

@@ -112,6 +112,7 @@ import {
   explorerListSchema,
   explorerSummarySchema,
   explorerUpdateSchema,
+  explorerViewStateUpdateSchema,
   executionPlacementResolveRequestSchema,
   executionPlacementResolutionSchema,
   executionTargetCatalogSchema,
@@ -15351,6 +15352,24 @@ export async function buildApp({
       return explorer
         ? reply.send(explorerSummarySchema.parse(explorer))
         : reply.code(404).send({ error: "Explorer or worktree not found." });
+    },
+  );
+
+  app.patch<{ Params: { explorerId: string } }>(
+    "/api/explorers/:explorerId/view-state",
+    async (request, reply) => {
+      const input = explorerViewStateUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const explorer = await repository.updateExplorerViewState(
+        applicationOwnerId(),
+        request.params.explorerId,
+        input.data,
+      );
+      return explorer
+        ? reply.send(explorerSummarySchema.parse(explorer))
+        : reply.code(404).send({ error: "Explorer not found." });
     },
   );
 

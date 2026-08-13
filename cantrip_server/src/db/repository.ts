@@ -43,6 +43,7 @@ import type {
   CodeTabSummary,
   CodeTabUpdate,
   ExplorerCreate,
+  ExplorerViewStateUpdate,
   ExplorerSummary,
   ExplorerUpdate,
   ExecutionPlacement,
@@ -1072,6 +1073,8 @@ function toExplorerSummary(
     position: explorer.position,
     activeWorkerId: explorer.activeWorkerId,
     worktreeId: explorer.worktreeId,
+    selectedPath: explorer.selectedPath,
+    fileMode: explorer.fileMode as ExplorerSummary["fileMode"],
     createdAt: toISOString(explorer.createdAt),
     updatedAt: toISOString(explorer.updatedAt),
   };
@@ -8138,6 +8141,8 @@ export class ServerRepository {
       .set({
         activeWorkerId: target.workerId,
         worktreeId: target.worktree.id,
+        selectedPath: null,
+        fileMode: "preview",
         updatedAt: new Date(),
       })
       .where(eq(schema.explorers.id, explorerId))
@@ -8190,6 +8195,26 @@ export class ServerRepository {
     const result = await this.database
       .update(schema.explorers)
       .set({ title: input.title, updatedAt: new Date() })
+      .where(eq(schema.explorers.id, explorerId))
+      .returning();
+    return result[0] ? toExplorerSummary(result[0]) : null;
+  }
+
+  async updateExplorerViewState(
+    ownerId: string,
+    explorerId: string,
+    input: ExplorerViewStateUpdate,
+  ): Promise<ExplorerSummary | null> {
+    if (!(await this.getExplorerExecutionContext(ownerId, explorerId))) {
+      return null;
+    }
+    const result = await this.database
+      .update(schema.explorers)
+      .set({
+        selectedPath: input.selectedPath,
+        fileMode: input.fileMode,
+        updatedAt: new Date(),
+      })
       .where(eq(schema.explorers.id, explorerId))
       .returning();
     return result[0] ? toExplorerSummary(result[0]) : null;

@@ -2639,6 +2639,13 @@ export const explorerUpdateSchema = z.object({
   title: z.string().trim().min(1).max(200),
 });
 
+export const explorerFileModeSchema = z.enum(["preview", "edit"]);
+
+export const explorerViewStateUpdateSchema = z.object({
+  selectedPath: z.string().min(1).max(8_192).nullable(),
+  fileMode: explorerFileModeSchema,
+});
+
 export const explorerSummarySchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
@@ -2646,6 +2653,8 @@ export const explorerSummarySchema = z.object({
   position: z.number().int().nonnegative(),
   activeWorkerId: z.string().min(1),
   worktreeId: z.string().min(1),
+  selectedPath: explorerViewStateUpdateSchema.shape.selectedPath,
+  fileMode: explorerFileModeSchema,
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -8352,6 +8361,10 @@ export type ScriptCommandKind = z.infer<typeof scriptCommandKindSchema>;
 export type ScriptCommand = z.infer<typeof scriptCommandSchema>;
 export type ExplorerCreate = z.infer<typeof explorerCreateSchema>;
 export type ExplorerUpdate = z.infer<typeof explorerUpdateSchema>;
+export type ExplorerFileMode = z.infer<typeof explorerFileModeSchema>;
+export type ExplorerViewStateUpdate = z.infer<
+  typeof explorerViewStateUpdateSchema
+>;
 export type ExplorerSummary = z.infer<typeof explorerSummarySchema>;
 export type CodeThemeMode = z.infer<typeof codeThemeModeSchema>;
 export type CodeAppearance = z.infer<typeof codeAppearanceSchema>;

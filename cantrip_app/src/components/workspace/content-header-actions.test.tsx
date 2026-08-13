@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CodeHeaderState } from "@/components/code/code-view";
+import type { ExplorerHeaderState } from "@/components/explorer/explorer-view";
 import type { GitHistoryHeaderState } from "@/components/git/git-history";
 
 import { ContentHeaderActions } from "./content-header-actions";
@@ -63,12 +64,28 @@ function codeHeader(): CodeHeaderState {
   };
 }
 
+function explorerHeader(): ExplorerHeaderState {
+  return {
+    back: vi.fn(),
+    canEdit: true,
+    directoryPath: "src/App.tsx",
+    dirty: true,
+    fileMode: "edit",
+    isFetching: false,
+    isSaving: false,
+    refresh: vi.fn(),
+    save: vi.fn(),
+    selectedPath: "src/App.tsx",
+    setFileMode: vi.fn(),
+  };
+}
+
 describe("ContentHeaderActions", () => {
   it("renders the complete desktop action set with labeled Git actions", () => {
     const markup = renderToStaticMarkup(
       <ContentHeaderActions
         git={gitHeader()}
-        explorer={{ directoryPath: "src", isFetching: false, refresh: vi.fn() }}
+        explorer={explorerHeader()}
         code={{ header: codeHeader() }}
         terminalService={{ active: true, open: vi.fn() }}
         terminalCommandPalette={{ active: true, open: vi.fn() }}
@@ -91,7 +108,12 @@ describe("ContentHeaderActions", () => {
 
     expect(markup).toContain("Pull</button>");
     expect(markup).toContain("Push</button>");
-    expect(markup).toContain('title="Refresh folder"');
+    expect(markup).toContain('title="Back to files"');
+    expect(markup).toContain("Preview</button>");
+    expect(markup).toContain("Edit</button>");
+    expect(markup).toContain("Unsaved");
+    expect(markup).toContain('title="Save file"');
+    expect(markup).toContain('title="Refresh Explorer"');
     expect(markup).toContain('title="Save all editors"');
     expect(markup).toContain('aria-pressed="true"');
     expect(markup).toContain('title="Configure terminal service"');

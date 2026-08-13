@@ -1,8 +1,11 @@
 import {
+  ArrowLeft,
   ArrowRightLeft,
   ArrowDownToLine,
   ArrowUpFromLine,
   CircleAlert,
+  Code2,
+  Eye,
   ExternalLink,
   Loader2,
   Bot,
@@ -139,6 +142,115 @@ function CodeHeaderActions({ header }: { header: CodeHeaderState | null }) {
   );
 }
 
+function ExplorerHeaderActions({
+  compact,
+  header,
+}: {
+  compact: boolean;
+  header: ExplorerHeaderState;
+}) {
+  const alternateMode = header.fileMode === "preview" ? "edit" : "preview";
+  return (
+    <div className="flex items-center gap-1">
+      {header.selectedPath ? (
+        <>
+          <Button
+            className="size-8"
+            onClick={header.back}
+            size="icon"
+            title="Back to files"
+            variant="ghost"
+          >
+            <ArrowLeft className="size-4" />
+            <span className="sr-only">Back to files</span>
+          </Button>
+          {compact ? (
+            <Button
+              aria-pressed={header.fileMode === "edit"}
+              className="size-8"
+              disabled={alternateMode === "edit" && !header.canEdit}
+              onClick={() => header.setFileMode(alternateMode)}
+              size="icon"
+              title={`Show ${alternateMode}`}
+              variant="ghost"
+            >
+              {header.fileMode === "preview" ? (
+                <Code2 className="size-4" />
+              ) : (
+                <Eye className="size-4" />
+              )}
+              <span className="sr-only">Show {alternateMode}</span>
+            </Button>
+          ) : (
+            <div className="flex rounded-md border bg-muted/20 p-0.5">
+              <Button
+                aria-pressed={header.fileMode === "preview"}
+                className="h-6 gap-1 rounded px-2 text-[10px]"
+                onClick={() => header.setFileMode("preview")}
+                size="sm"
+                variant={header.fileMode === "preview" ? "outline" : "ghost"}
+              >
+                <Eye className="size-3" />
+                Preview
+              </Button>
+              <Button
+                aria-pressed={header.fileMode === "edit"}
+                className="h-6 gap-1 rounded px-2 text-[10px]"
+                disabled={!header.canEdit}
+                onClick={() => header.setFileMode("edit")}
+                size="sm"
+                variant={header.fileMode === "edit" ? "outline" : "ghost"}
+              >
+                <Code2 className="size-3" />
+                Edit
+              </Button>
+            </div>
+          )}
+          {!compact && header.dirty ? (
+            <span className="px-1 text-[10px] font-medium text-amber-500">
+              Unsaved
+            </span>
+          ) : null}
+          {header.canEdit ? (
+            <Button
+              aria-keyshortcuts="Meta+S Control+S"
+              className="relative size-8"
+              disabled={!header.dirty || header.isSaving}
+              onClick={() => void header.save()}
+              size="icon"
+              title={header.dirty ? "Save file" : "File is saved"}
+              variant="ghost"
+            >
+              {header.isSaving ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Save className="size-4" />
+              )}
+              {compact && header.dirty ? (
+                <span className="absolute right-1 top-1 size-1.5 rounded-full bg-amber-400" />
+              ) : null}
+              <span className="sr-only">Save file</span>
+            </Button>
+          ) : null}
+        </>
+      ) : null}
+      <Button
+        className="size-8"
+        disabled={header.isFetching}
+        onClick={header.refresh}
+        size="icon"
+        title="Refresh Explorer"
+        variant="ghost"
+      >
+        <RefreshCw
+          className={cn("size-4", header.isFetching && "animate-spin")}
+        />
+        <span className="sr-only">Refresh Explorer</span>
+      </Button>
+    </div>
+  );
+}
+
 export function ContentHeaderActions({
   chat,
   code,
@@ -190,18 +302,7 @@ export function ContentHeaderActions({
         </>
       ) : null}
       {explorer ? (
-        <Button
-          size="icon"
-          variant="ghost"
-          disabled={explorer.isFetching}
-          onClick={explorer.refresh}
-          title="Refresh folder"
-        >
-          <RefreshCw
-            className={cn("size-4", explorer.isFetching && "animate-spin")}
-          />
-          <span className="sr-only">Refresh folder</span>
-        </Button>
+        <ExplorerHeaderActions compact={compact} header={explorer} />
       ) : null}
       {code ? <CodeHeaderActions header={code.header} /> : null}
       {terminalService ? (

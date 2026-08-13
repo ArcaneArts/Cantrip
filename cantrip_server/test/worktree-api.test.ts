@@ -2079,6 +2079,31 @@ describe.sequential("server worktree control plane", () => {
     );
     expect(explorer.worktreeId).toBe(secondId);
     expect(
+      explorerSummarySchema.parse(
+        (
+          await app.inject({
+            method: "PATCH",
+            url: `/api/explorers/${explorer.id}/view-state`,
+            payload: { selectedPath: "README.md", fileMode: "edit" },
+          })
+        ).json(),
+      ),
+    ).toMatchObject({ selectedPath: "README.md", fileMode: "edit" });
+    const retargetedExplorer = explorerSummarySchema.parse(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/explorers/${explorer.id}/worktree`,
+          payload: { worktreeId: firstId },
+        })
+      ).json(),
+    );
+    expect(retargetedExplorer).toMatchObject({
+      worktreeId: firstId,
+      selectedPath: null,
+      fileMode: "preview",
+    });
+    expect(
       (await database.repository.listWorkers(LOCAL_USER_ID))[0]?.code.available,
     ).toBe(true);
     const codeTabResponse = await app.inject({
