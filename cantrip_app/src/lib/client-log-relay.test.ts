@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import clientLogRelaySource from "../../src-tauri/src/client_log_relay.js?raw";
 import { formatClientLogArguments } from "./client-log-relay";
 
 describe("client log relay", () => {
@@ -25,5 +26,103 @@ describe("client log relay", () => {
     const message = formatClientLogArguments(["x".repeat(20_000)]);
     expect(message.length).toBeLessThan(16_500);
     expect(message.endsWith("… [truncated]")).toBe(true);
+  });
+
+  it("captures pre-bootstrap console and fetch failures without URL secrets", async () => {
+    const invocations: Array<{
+      args: { level: string; message: string; source?: string };
+      command: string;
+    }> = [];
+    const listeners = new Map<string, EventListener>();
+    const silentConsole = {
+      debug(..._values: unknown[]) {},
+      error(..._values: unknown[]) {},
+      info(..._values: unknown[]) {},
+      log(..._values: unknown[]) {},
+      trace(..._values: unknown[]) {},
+      warn(..._values: unknown[]) {},
+    };
+    const window = {
+      __TAURI_INTERNALS__: {
+        invoke(command: string, args: (typeof invocations)[number]["args"]) {
+          invocations.push({ args, command });
+          return Promise.resolve();
+        },
+      },
+      addEventListener(type: string, listener: EventListener) {
+        listeners.set(type, listener);
+      },
+      fetch: async (..._args: unknown[]) => ({ ok: false, status: 503 }),
+      location: { href: "http://127.0.0.1:1420/" },
+    };
+    const context = {
+      console: silentConsole,
+      Element: class {},
+      Error,
+      ErrorEvent: class {},
+      JSON,
+      Promise,
+      Request,
+      String,
+      URL,
+      WeakSet,
+      window,
+    };
+    const runRelay = new Function(
+      "globalThis",
+      "window",
+      "console",
+      "Element",
+      "ErrorEvent",
+      "Request",
+      "URL",
+      "WeakSet",
+      "Promise",
+      "JSON",
+      "String",
+      "Error",
+      clientLogRelaySource,
+    );
+
+    runRelay(
+      context,
+      window,
+      silentConsole,
+      context.Element,
+      context.ErrorEvent,
+      context.Request,
+      context.URL,
+      context.WeakSet,
+      context.Promise,
+      context.JSON,
+      context.String,
+      context.Error,
+    );
+    context.console.error("client exploded");
+    await context.window.fetch(
+      "https://user:password@example.test/failure?token=secret#private",
+    );
+    await Promise.resolve();
+
+    expect(listeners.has("error")).toBe(true);
+    expect(invocations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          args: expect.objectContaining({
+            level: "error",
+            message: "client exploded",
+          }),
+          command: "relay_client_log",
+        }),
+        {
+          args: {
+            level: "error",
+            message: "Fetch GET returned 503",
+            source: "https://example.test/failure",
+          },
+          command: "relay_client_log",
+        },
+      ]),
+    );
   });
 });

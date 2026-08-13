@@ -1,6 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
-type ClientLogLevel = "debug" | "error" | "info" | "log" | "warn";
+type ClientLogLevel = "debug" | "error" | "info" | "log" | "trace" | "warn";
 
 const MAX_MESSAGE_LENGTH = 16_384;
 const relayState = globalThis as typeof globalThis & {
@@ -51,6 +51,8 @@ export function formatClientLogArguments(values: readonly unknown[]): string {
 }
 
 export function installDesktopClientLogRelay(): void {
+  // Tauri debug builds install the same relay before any frontend module runs.
+  // This remains the fallback for development shells without that early hook.
   if (
     !import.meta.env.DEV ||
     !isTauri() ||
@@ -68,13 +70,20 @@ export function installDesktopClientLogRelay(): void {
     error: console.error.bind(console),
     info: console.info.bind(console),
     log: console.log.bind(console),
+    trace: console.trace.bind(console),
     warn: console.warn.bind(console),
   };
-  const relay = (level: ClientLogLevel, values: readonly unknown[]) => {
+  const relay = (
+    level: ClientLogLevel,
+    values: readonly unknown[],
+    source?: string,
+  ) => {
     const message = formatClientLogArguments(values);
-    void invoke("relay_client_log", { level, message }).catch((error) => {
-      originalConsole.warn("Could not relay a client log to devtop.", error);
-    });
+    void invoke("relay_client_log", { level, message, source }).catch(
+      (error) => {
+        originalConsole.warn("Could not relay a client log to devtop.", error);
+      },
+    );
   };
 
   for (const level of Object.keys(originalConsole) as ClientLogLevel[]) {
@@ -85,10 +94,14 @@ export function installDesktopClientLogRelay(): void {
   }
 
   window.addEventListener("error", (event) => {
-    relay("error", [
-      `Uncaught client error at ${event.filename || "unknown source"}:${event.lineno}:${event.colno}`,
-      event.error ?? event.message,
-    ]);
+    relay(
+      "error",
+      [
+        `Uncaught client error at ${event.filename || "unknown source"}:${event.lineno}:${event.colno}`,
+        event.error ?? event.message,
+      ],
+      event.filename || undefined,
+    );
   });
   window.addEventListener("unhandledrejection", (event) => {
     relay("error", ["Unhandled client promise rejection", event.reason]);
