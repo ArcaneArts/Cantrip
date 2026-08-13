@@ -26,6 +26,7 @@ import { saveWorkerCredential } from "./credential-store.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
 import { DesktopApplicationIconStore } from "./desktop/desktop-icons.js";
 import {
+  listExplorerDirectoryCommits,
   listExplorerDirectory,
   readExplorerFile,
   writeExplorerFile,
@@ -744,6 +745,8 @@ async function start(): Promise<void> {
         return { accepted: true };
       case "explorer.directory.list":
         return listExplorerDirectory(command.root, command.path);
+      case "explorer.directory.commits":
+        return listExplorerDirectoryCommits(command.root, command.path);
       case "explorer.file.read":
         return readExplorerFile(command.root, command.path);
       case "explorer.file.write":

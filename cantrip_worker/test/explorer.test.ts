@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import {
   mkdtemp,
   mkdir,
@@ -8,16 +9,23 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  listExplorerDirectoryCommits,
   listExplorerDirectory,
   readExplorerFile,
   writeExplorerFile,
 } from "../src/explorer.js";
 
 const directories: string[] = [];
+const execFileAsync = promisify(execFile);
+
+async function git(root: string, args: string[]): Promise<void> {
+  await execFileAsync("git", ["-C", root, ...args], { encoding: "utf8" });
+}
 
 afterEach(async () => {
   await Promise.all(
@@ -99,5 +107,93 @@ describe("project explorer", () => {
     await expect(
       writeExplorerFile(root, "linked.txt", "overwrite\n", "a".repeat(64)),
     ).rejects.toThrow("does not follow symbolic links");
+  });
+
+  it("hydrates immediate entries with one newest-first history scan", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-explorer-test-"));
+    directories.push(root);
+    await git(root, ["init", "--quiet"]);
+    await git(root, ["config", "user.name", "Cantrip Test"]);
+    await git(root, ["config", "user.email", "cantrip@example.com"]);
+    await mkdir(path.join(root, "dir one", "nested"), { recursive: true });
+    await writeFile(path.join(root, "dir one", "original file.txt"), "one\n");
+    await writeFile(
+      path.join(root, "dir one", "nested", "inside.txt"),
+      "one\n",
+    );
+    await git(root, ["add", "."]);
+    await git(root, ["commit", "--quiet", "-m", "initial files"]);
+
+    await writeFile(
+      path.join(root, "dir one", "nested", "inside.txt"),
+      "two\n",
+    );
+    await git(root, ["add", "."]);
+    await git(root, ["commit", "--quiet", "-m", "update nested directory"]);
+    await git(root, [
+      "mv",
+      "dir one/original file.txt",
+      "dir one/renamed file.txt",
+    ]);
+    await git(root, ["commit", "--quiet", "-m", "rename spaced file"]);
+    await writeFile(
+      path.join(root, "dir one", "untracked file.txt"),
+      "local\n",
+    );
+
+    const nested = await listExplorerDirectoryCommits(root, "dir one");
+    expect(nested.available).toBe(true);
+    expect(nested.entries).toHaveLength(3);
+    expect(
+      nested.entries.find(({ path: entryPath }) =>
+        entryPath.endsWith("renamed file.txt"),
+      ),
+    ).toMatchObject({
+      tracked: true,
+      lastCommit: { subject: "rename spaced file" },
+    });
+    expect(
+      nested.entries.find(({ path: entryPath }) =>
+        entryPath.endsWith("nested"),
+      ),
+    ).toMatchObject({
+      tracked: true,
+      lastCommit: { subject: "update nested directory" },
+    });
+    expect(
+      nested.entries.find(({ path: entryPath }) =>
+        entryPath.endsWith("untracked file.txt"),
+      ),
+    ).toMatchObject({ tracked: false, lastCommit: null });
+
+    const topLevel = await listExplorerDirectoryCommits(root, "");
+    expect(topLevel.entries).toEqual([
+      expect.objectContaining({
+        path: "dir one",
+        tracked: true,
+        lastCommit: expect.objectContaining({ subject: "rename spaced file" }),
+      }),
+    ]);
+  });
+
+  it("returns unavailable metadata for non-Git and unborn directories", async () => {
+    const plain = await mkdtemp(path.join(tmpdir(), "cantrip-explorer-test-"));
+    directories.push(plain);
+    await writeFile(path.join(plain, "plain.txt"), "plain\n");
+    await expect(listExplorerDirectoryCommits(plain, "")).resolves.toEqual({
+      path: "",
+      available: false,
+      entries: [],
+    });
+
+    const unborn = await mkdtemp(path.join(tmpdir(), "cantrip-explorer-test-"));
+    directories.push(unborn);
+    await git(unborn, ["init", "--quiet"]);
+    await writeFile(path.join(unborn, "unborn.txt"), "unborn\n");
+    await expect(listExplorerDirectoryCommits(unborn, "")).resolves.toEqual({
+      path: "",
+      available: false,
+      entries: [],
+    });
   });
 });

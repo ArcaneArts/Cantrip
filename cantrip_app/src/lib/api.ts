@@ -64,6 +64,7 @@ import {
   codexSkillConfigUpdateSchema,
   codexSkillRootsResultSchema,
   codexSkillRootsUpdateSchema,
+  explorerDirectoryCommitsSchema,
   explorerDirectorySchema,
   explorerFileSchema,
   explorerFileWriteSchema,
@@ -2532,6 +2533,17 @@ export async function getExplorerDirectory(explorerId: string, path: string) {
   return explorerDirectorySchema.parse(
     await request(
       `/api/explorers/${encodeURIComponent(explorerId)}/directory?path=${encodeURIComponent(path)}`,
+    ),
+  );
+}
+
+export async function getExplorerDirectoryCommits(
+  explorerId: string,
+  path: string,
+) {
+  return explorerDirectoryCommitsSchema.parse(
+    await request(
+      `/api/explorers/${encodeURIComponent(explorerId)}/directory/commits?path=${encodeURIComponent(path)}`,
     ),
   );
 }

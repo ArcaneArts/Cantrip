@@ -3739,6 +3739,27 @@ export const explorerDirectorySchema = z.object({
   truncated: z.boolean(),
 });
 
+export const explorerLastCommitSchema = z.object({
+  hash: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  shortHash: z.string().min(1).max(64),
+  subject: z.string().max(10_000),
+  authorName: z.string().min(1).max(1_000),
+  authorEmail: z.string().max(1_000),
+  authoredAt: z.string().datetime({ offset: true }),
+});
+
+export const explorerDirectoryCommitEntrySchema = z.object({
+  path: explorerEntrySchema.shape.path,
+  tracked: z.boolean(),
+  lastCommit: explorerLastCommitSchema.nullable(),
+});
+
+export const explorerDirectoryCommitsSchema = z.object({
+  path: z.string(),
+  available: z.boolean(),
+  entries: z.array(explorerDirectoryCommitEntrySchema).max(1_000),
+});
+
 export const explorerFileSchema = z.object({
   path: z.string().min(1),
   content: z.string(),
@@ -7031,6 +7052,11 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     path: z.string(),
   }),
   z.object({
+    type: z.literal("explorer.directory.commits"),
+    root: z.string().min(1),
+    path: z.string(),
+  }),
+  z.object({
     type: z.literal("explorer.file.read"),
     root: z.string().min(1),
     path: z.string().min(1),
@@ -8422,6 +8448,13 @@ export type TabGroupMemberOrder = z.infer<typeof tabGroupMemberOrderSchema>;
 export type TabGroupMemberMove = z.infer<typeof tabGroupMemberMoveSchema>;
 export type ExplorerEntry = z.infer<typeof explorerEntrySchema>;
 export type ExplorerDirectory = z.infer<typeof explorerDirectorySchema>;
+export type ExplorerLastCommit = z.infer<typeof explorerLastCommitSchema>;
+export type ExplorerDirectoryCommitEntry = z.infer<
+  typeof explorerDirectoryCommitEntrySchema
+>;
+export type ExplorerDirectoryCommits = z.infer<
+  typeof explorerDirectoryCommitsSchema
+>;
 export type ExplorerFile = z.infer<typeof explorerFileSchema>;
 export type ExplorerFileWrite = z.infer<typeof explorerFileWriteSchema>;
 export type TerminalClientMessage = z.infer<typeof terminalClientMessageSchema>;

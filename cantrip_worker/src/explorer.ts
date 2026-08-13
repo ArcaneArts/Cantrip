@@ -1,17 +1,24 @@
+import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, open, readFile, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import {
+  explorerDirectoryCommitsSchema,
   explorerDirectorySchema,
   explorerFileSchema,
+  type ExplorerDirectoryCommits,
   type ExplorerDirectory,
   type ExplorerFile,
+  type ExplorerLastCommit,
 } from "@cantrip/protocol";
 
 const DIRECTORY_LIMIT = 1_000;
 const FILE_SIZE_LIMIT = 2 * 1024 * 1024;
+const GIT_STDERR_LIMIT = 64 * 1024;
+const execFileAsync = promisify(execFile);
 const MARKDOWN_EXTENSIONS = new Set([".md", ".markdown", ".mdx"]);
 const TEXT_EXTENSIONS = new Set([
   ".c",
@@ -178,6 +185,242 @@ export async function listExplorerDirectory(
     entries: result,
     truncated: entries.length > DIRECTORY_LIMIT,
   });
+}
+
+function immediateEntryPath(
+  directoryPath: string,
+  filePath: string,
+  visiblePaths: ReadonlySet<string>,
+): string | null {
+  const prefix = directoryPath ? `${directoryPath}/` : "";
+  if (prefix && !filePath.startsWith(prefix)) return null;
+  const relative = prefix ? filePath.slice(prefix.length) : filePath;
+  const name = relative.split("/", 1)[0];
+  if (!name) return null;
+  const candidate = prefix ? `${directoryPath}/${name}` : name;
+  return visiblePaths.has(candidate) ? candidate : null;
+}
+
+async function gitHeadAvailable(root: string): Promise<boolean> {
+  try {
+    await execFileAsync(
+      "git",
+      ["-C", root, "rev-parse", "--verify", "--quiet", "HEAD"],
+      { encoding: "utf8" },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function appendStderr(current: string, chunk: string): string {
+  return `${current}${chunk}`.slice(-GIT_STDERR_LIMIT);
+}
+
+async function trackedImmediateEntries(
+  root: string,
+  directoryPath: string,
+  visiblePaths: ReadonlySet<string>,
+): Promise<Set<string>> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      "git",
+      ["-C", root, "ls-files", "--cached", "-z", "--", directoryPath || "."],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    const tracked = new Set<string>();
+    let buffer = "";
+    let stderr = "";
+    let settled = false;
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      buffer += chunk;
+      const paths = buffer.split("\0");
+      buffer = paths.pop() ?? "";
+      for (const filePath of paths) {
+        const entryPath = immediateEntryPath(
+          directoryPath,
+          filePath,
+          visiblePaths,
+        );
+        if (entryPath) tracked.add(entryPath);
+      }
+    });
+    child.stderr.on("data", (chunk: string) => {
+      stderr = appendStderr(stderr, chunk);
+    });
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    });
+    child.once("close", (code) => {
+      if (settled) return;
+      settled = true;
+      if (code === 0) resolve(tracked);
+      else
+        reject(new Error(stderr.trim() || "Git tracked-file lookup failed."));
+    });
+  });
+}
+
+function parseCommitRecord(
+  record: string,
+): { commit: ExplorerLastCommit; paths: string[] } | null {
+  const fields = record.split("\0");
+  const [hash, shortHash, authorName, authorEmail, authoredAt, subject] =
+    fields;
+  if (!hash || !shortHash || !authoredAt) return null;
+  const rawPaths = fields.slice(6).filter(Boolean);
+  const paths = rawPaths.map((filePath, index) =>
+    index === 0 && filePath.startsWith("\n") ? filePath.slice(1) : filePath,
+  );
+  return {
+    commit: {
+      hash,
+      shortHash,
+      subject: (subject ?? "").slice(0, 10_000),
+      authorName: (authorName || "Unknown").slice(0, 1_000),
+      authorEmail: (authorEmail ?? "").slice(0, 1_000),
+      authoredAt,
+    },
+    paths,
+  };
+}
+
+async function lastCommitsForEntries(
+  root: string,
+  directoryPath: string,
+  visiblePaths: ReadonlySet<string>,
+  trackedPaths: ReadonlySet<string>,
+): Promise<Map<string, ExplorerLastCommit>> {
+  if (trackedPaths.size === 0) return new Map();
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      "git",
+      [
+        "-C",
+        root,
+        "log",
+        "--date=iso-strict",
+        "--find-renames",
+        "--format=%x1e%H%x00%h%x00%an%x00%ae%x00%aI%x00%s%x00",
+        "--name-only",
+        "-z",
+        "HEAD",
+        "--",
+        directoryPath || ".",
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    const commits = new Map<string, ExplorerLastCommit>();
+    const unresolved = new Set(trackedPaths);
+    let buffer = "";
+    let stderr = "";
+    let stoppedEarly = false;
+    let settled = false;
+
+    const consumeRecord = (record: string) => {
+      const parsed = parseCommitRecord(record);
+      if (!parsed) return;
+      for (const filePath of parsed.paths) {
+        const entryPath = immediateEntryPath(
+          directoryPath,
+          filePath,
+          visiblePaths,
+        );
+        if (!entryPath || !unresolved.delete(entryPath)) continue;
+        commits.set(entryPath, parsed.commit);
+      }
+      if (unresolved.size === 0 && !stoppedEarly) {
+        stoppedEarly = true;
+        child.kill();
+      }
+    };
+
+    const drain = (final: boolean) => {
+      const firstRecord = buffer.indexOf("\x1e");
+      if (firstRecord < 0) {
+        if (final) buffer = "";
+        return;
+      }
+      if (firstRecord > 0) buffer = buffer.slice(firstRecord);
+      for (;;) {
+        const nextRecord = buffer.indexOf("\x1e", 1);
+        if (nextRecord < 0) break;
+        consumeRecord(buffer.slice(1, nextRecord));
+        buffer = buffer.slice(nextRecord);
+      }
+      if (final && buffer.startsWith("\x1e")) {
+        consumeRecord(buffer.slice(1));
+        buffer = "";
+      }
+    };
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      buffer += chunk;
+      drain(false);
+    });
+    child.stderr.on("data", (chunk: string) => {
+      stderr = appendStderr(stderr, chunk);
+    });
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    });
+    child.once("close", (code) => {
+      if (settled) return;
+      settled = true;
+      drain(true);
+      if (code === 0 || stoppedEarly) resolve(commits);
+      else reject(new Error(stderr.trim() || "Git history lookup failed."));
+    });
+  });
+}
+
+export async function listExplorerDirectoryCommits(
+  root: string,
+  relativePath: string,
+): Promise<ExplorerDirectoryCommits> {
+  const directory = await listExplorerDirectory(root, relativePath);
+  const unavailable = () =>
+    explorerDirectoryCommitsSchema.parse({
+      path: relativePath,
+      available: false,
+      entries: [],
+    });
+  if (!(await gitHeadAvailable(root))) return unavailable();
+
+  const visiblePaths = new Set(directory.entries.map(({ path }) => path));
+  try {
+    const trackedPaths = await trackedImmediateEntries(
+      root,
+      relativePath,
+      visiblePaths,
+    );
+    const commits = await lastCommitsForEntries(
+      root,
+      relativePath,
+      visiblePaths,
+      trackedPaths,
+    );
+    return explorerDirectoryCommitsSchema.parse({
+      path: relativePath,
+      available: true,
+      entries: directory.entries.map((entry) => ({
+        path: entry.path,
+        tracked: trackedPaths.has(entry.path),
+        lastCommit: commits.get(entry.path) ?? null,
+      })),
+    });
+  } catch {
+    return unavailable();
+  }
 }
 
 export async function readExplorerFile(
