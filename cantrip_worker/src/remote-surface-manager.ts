@@ -12,6 +12,7 @@ import {
   WorkerWebRtcAttachment,
   type WorkerWebRtcAttachmentOptions,
 } from "./remote-surfaces/webrtc.js";
+import { workerLogger } from "./logger.js";
 
 type AttachCommand = Extract<WorkerCommand, { type: "surface.attach" }>;
 
@@ -330,9 +331,7 @@ export class RemoteSurfaceManager {
     try {
       await this.acceptFrame(header, payload);
     } catch (error) {
-      console.warn(
-        `[cantrip_worker] Rejected Remote Surface WebRTC frame: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      workerLogger.warn("Rejected Remote Surface WebRTC frame", error);
     }
   }
 

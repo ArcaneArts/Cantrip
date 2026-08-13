@@ -58,6 +58,8 @@ import {
   type WorkerChatAttachment,
   type WorkerCommand,
 } from "@cantrip/protocol";
+
+import { workerLogger } from "../logger.js";
 import {
   workflowJsonValueSchema,
   workflowNodeExecutionResultSchema,
@@ -4712,7 +4714,7 @@ export class CodexAppServer implements CodexRuntime {
       );
     }
     this.onDiagnostic?.(correlated);
-    if (warning) console.warn(`[codex] ${warning}.`);
+    if (warning) workerLogger.warn(warning, { subsystem: "codex" });
     return id;
   }
 

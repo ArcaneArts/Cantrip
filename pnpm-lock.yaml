@@ -162,6 +162,9 @@ importers:
 
   cantrip_server:
     dependencies:
+      "@cantrip/logging":
+        specifier: workspace:*
+        version: link:../packages/logging
       "@cantrip/protocol":
         specifier: workspace:*
         version: link:../packages/protocol
@@ -227,6 +230,9 @@ importers:
 
   cantrip_worker:
     dependencies:
+      "@cantrip/logging":
+        specifier: workspace:*
+        version: link:../packages/logging
       "@cantrip/protocol":
         specifier: workspace:*
         version: link:../packages/protocol
@@ -255,6 +261,8 @@ importers:
       "@types/ws":
         specifier: ^8.18.1
         version: 8.18.1
+
+  packages/logging: {}
 
   packages/protocol:
     dependencies:

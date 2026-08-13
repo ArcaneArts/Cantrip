@@ -31,6 +31,7 @@ import {
   writeExplorerFile,
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
+import { workerLogger } from "./logger.js";
 import {
   buildGitAgentPrompt,
   failedPullRequestChecksEvidence,
@@ -1381,15 +1382,26 @@ async function start(): Promise<void> {
   );
   const cliConnection = await cliBroker.start();
 
-  console.log(
-    `[cantrip_worker] Starting ${heartbeat.name} (${heartbeat.workerId}); Codex: ${codexRuntime.version?.raw ?? "not found"} (${codexRuntime.compatibility}, ${config.codexInstallation.source}); CLI: ${cliBroker.binary} (${cliConnection.endpoint}); Code: ${codeDiscovery.capabilities.available ? `${codeDiscovery.capabilities.version} (${codeDiscovery.installation?.source ?? "unknown"})` : `unavailable (${codeDiscovery.capabilities.reason ?? "unknown error"})`}; Browser: ${browserAdapter.executable ?? "Chromium not found"}; Desktop: ${desktopAdapter.available ? `${desktopAdapter.frameBackend} capture ready` : `unavailable (${desktopAdapter.initializationError ?? "unknown error"})`}`,
-  );
+  workerLogger.info(`Starting ${heartbeat.name}`, {
+    browser: browserAdapter.executable ?? "Chromium not found",
+    cli: `${cliBroker.binary} (${cliConnection.endpoint})`,
+    code: codeDiscovery.capabilities.available
+      ? `${codeDiscovery.capabilities.version} (${codeDiscovery.installation?.source ?? "unknown"})`
+      : `unavailable (${codeDiscovery.capabilities.reason ?? "unknown error"})`,
+    codex: `${codexRuntime.version?.raw ?? "not found"} (${codexRuntime.compatibility}, ${config.codexInstallation.source})`,
+    desktop: desktopAdapter.available
+      ? `${desktopAdapter.frameBackend} capture ready`
+      : `unavailable (${desktopAdapter.initializationError ?? "unknown error"})`,
+    workerId: heartbeat.workerId,
+  });
 
   const publishHeartbeat = async () => {
     try {
       await sendHeartbeat(config, heartbeat);
       if (!connected) {
-        console.log(`[cantrip_worker] Connected to ${config.serverUrl}`);
+        workerLogger.info("Connected to server", {
+          serverUrl: config.serverUrl,
+        });
       }
       connected = true;
       lastConnectionError = null;
@@ -1400,7 +1412,7 @@ async function start(): Promise<void> {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (!stopping && (connected || message !== lastConnectionError)) {
-        console.warn(`[cantrip_worker] Waiting for server: ${message}`);
+        workerLogger.warn("Waiting for server", { error: message });
       }
       connected = false;
       lastConnectionError = message;
@@ -1447,7 +1459,7 @@ async function start(): Promise<void> {
       for (const runtime of codexRuntimes.values()) {
         runtime.close();
       }
-      console.log(`[cantrip_worker] Received ${signal}; stopped.`);
+      workerLogger.info("Worker stopped", { signal });
       resolve();
     };
 
@@ -1457,6 +1469,6 @@ async function start(): Promise<void> {
 }
 
 start().catch((error: unknown) => {
-  console.error("Cantrip Worker failed to start", error);
+  workerLogger.error("Cantrip Worker failed to start", error);
   process.exitCode = 1;
 });

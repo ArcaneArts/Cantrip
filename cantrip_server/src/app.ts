@@ -533,6 +533,7 @@ import {
   requiredToolString,
 } from "./http/request-helpers.js";
 import { AppLiveHub } from "./live/hub.js";
+import { createServerLogStream } from "./logger.js";
 import type { RelayCoordinator } from "./coordination/relay-coordinator.js";
 import { OperationalMetrics } from "./operations/metrics.js";
 import { RelayQuotaManager } from "./operations/relay-quotas.js";
@@ -845,6 +846,7 @@ export async function buildApp({
         : false,
     logger: logger
       ? {
+          stream: createServerLogStream(),
           redact: {
             paths: [
               "req.headers.authorization",

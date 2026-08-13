@@ -17,6 +17,7 @@ import {
 import WebSocket, { type RawData } from "ws";
 
 import type { WorkerConfig } from "./config.js";
+import { workerLogger } from "./logger.js";
 
 type CommandHandler = (
   command: WorkerCommand,
@@ -100,7 +101,7 @@ export class WorkerConnection {
       this.#lastConnectionError = null;
       this.startKeepalive(socket);
       this.flushCommandEnvelopes(socket);
-      console.log("[cantrip_worker] Command channel connected.");
+      workerLogger.info("Command channel connected");
     });
     socket.on("message", (data, isBinary) => {
       void this.onMessage(socket, data, isBinary);
@@ -108,9 +109,9 @@ export class WorkerConnection {
     socket.once("error", (error) => {
       if (!this.#closed && error.message !== this.#lastConnectionError) {
         this.#lastConnectionError = error.message;
-        console.warn(
-          `[cantrip_worker] Command channel unavailable: ${error.message}`,
-        );
+        workerLogger.warn("Command channel unavailable", {
+          error: error.message,
+        });
       }
     });
     socket.once("close", (code, reason) => {
@@ -125,8 +126,9 @@ export class WorkerConnection {
         const message = reason.toString() || "worker authentication rejected";
         if (message !== this.#lastConnectionError) {
           this.#lastConnectionError = message;
-          console.warn(
-            `[cantrip_worker] Command channel authentication rejected: ${message}. Update or re-enroll this worker, then restart it.`,
+          workerLogger.warn(
+            "Command channel authentication rejected; update or re-enroll this worker, then restart it",
+            { error: message },
           );
         }
       }
@@ -289,9 +291,7 @@ export class WorkerConnection {
           await this.handleSurfaceFrame(frame.header, frame.payload);
         }
       } catch (error) {
-        console.warn(
-          `[cantrip_worker] Rejected worker data frame: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        workerLogger.warn("Rejected worker data frame", error);
       }
       return;
     }

@@ -7,6 +7,7 @@ import {
   type WorkerWebRtcAttachmentFactory,
 } from "../src/remote-surface-manager.js";
 import type { WorkerWebRtcAttachment } from "../src/remote-surfaces/webrtc.js";
+import { workerLogger } from "../src/logger.js";
 
 const attachCommand = {
   type: "surface.attach" as const,
@@ -25,9 +26,7 @@ const attachCommand = {
 
 describe("RemoteSurfaceManager", () => {
   it("isolates rejected WebRTC control input from the worker process", async () => {
-    const warning = vi
-      .spyOn(console, "warn")
-      .mockImplementation(() => undefined);
+    const warning = vi.spyOn(workerLogger, "warn").mockImplementation(() => {});
     const handleFrame = vi.fn(async () => {
       throw new Error("Pointer target is outside display bounds.");
     });
@@ -79,7 +78,10 @@ describe("RemoteSurfaceManager", () => {
 
     await vi.waitFor(() => expect(warning).toHaveBeenCalledOnce());
     expect(warning).toHaveBeenCalledWith(
-      expect.stringContaining("Pointer target is outside display bounds"),
+      "Rejected Remote Surface WebRTC frame",
+      expect.objectContaining({
+        message: "Pointer target is outside display bounds.",
+      }),
     );
     warning.mockRestore();
   });

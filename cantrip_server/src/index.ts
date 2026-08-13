@@ -10,6 +10,7 @@ import {
 import { connectDatabase } from "./db/index.js";
 import { RedisRelayCoordinator } from "./coordination/relay-coordinator.js";
 import { RelayQuotaManager } from "./operations/relay-quotas.js";
+import { serverLogger } from "./logger.js";
 import { ProjectShareTunnelBroker } from "./project-shares/tunnel.js";
 import { WorkerBridge } from "./workers/bridge.js";
 import { CoordinatedWorkerBridge } from "./workers/coordinated-bridge.js";
@@ -128,6 +129,6 @@ async function start(): Promise<void> {
 }
 
 start().catch((error: unknown) => {
-  console.error("Cantrip Server failed to start", error);
+  serverLogger.error("Cantrip Server failed to start", error);
   process.exitCode = 1;
 });

@@ -3,6 +3,8 @@ import {
   projectAutomationListSchema,
 } from "@cantrip/protocol/automations";
 
+import { workerLogger } from "./logger.js";
+
 export interface ProjectAutomationSchedulerOptions {
   fetch?: typeof fetch;
   pollIntervalMs?: number;
@@ -110,9 +112,7 @@ export class ProjectAutomationScheduler {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (!this.#closed && message !== this.#lastError) {
-        console.warn(
-          `[cantrip_worker] Automation sync unavailable: ${message}`,
-        );
+        workerLogger.warn("Automation sync unavailable", { error: message });
       }
       this.#lastError = message;
     } finally {

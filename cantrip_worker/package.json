@@ -10,10 +10,11 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
     "start": "node --env-file-if-exists=.env dist/index.js",
-    "test": "pnpm --filter @cantrip/protocol build && vitest run",
+    "test": "pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build && vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@cantrip/logging": "workspace:*",
     "@cantrip/protocol": "workspace:*",
     "@zavora-ai/computer-use-mcp": "7.0.0",
     "node-pty": "^1.1.0",
