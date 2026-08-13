@@ -3,7 +3,6 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 import {
-  normalizeResponsesBaseUrl,
   terminalOpenResultSchema,
   terminalSnapshotResultSchema,
   type TerminalServiceRuntimeConfiguration,
@@ -13,6 +12,8 @@ import {
   type WorkerEvent,
 } from "@cantrip/protocol";
 import * as pty from "node-pty";
+
+import { codexProviderConfiguration } from "./codex/provider-config.js";
 
 const MAX_SCROLLBACK_CHARS = 2_000_000;
 let spawnHelperChecked = false;
@@ -102,26 +103,13 @@ function codexLaunch(
   cwd: string,
   environment: Record<string, string>,
 ): { command: string; args: string[]; env: Record<string, string> } {
-  const providerArguments =
-    launch.provider.kind === "chatgpt"
-      ? ['model_provider="openai"']
-      : [
-          'model_provider="cantrip_runtime"',
-          `model_providers.cantrip_runtime.name=${JSON.stringify(launch.provider.name)}`,
-          `model_providers.cantrip_runtime.base_url=${JSON.stringify(normalizeResponsesBaseUrl(launch.provider.baseUrl))}`,
-          'model_providers.cantrip_runtime.wire_api="responses"',
-          ...(launch.provider.apiKey
-            ? [
-                'model_providers.cantrip_runtime.env_key="CANTRIP_PROVIDER_API_KEY"',
-              ]
-            : []),
-        ];
+  const providerConfiguration = codexProviderConfiguration(launch.provider);
   const args = [
     "--remote",
     launch.remoteUrl,
     "-c",
     'cli_auth_credentials_store="file"',
-    ...providerArguments.flatMap((argument) => ["-c", argument]),
+    ...providerConfiguration.arguments.flatMap((argument) => ["-c", argument]),
     "-c",
     `model=${JSON.stringify(launch.model.name)}`,
     ...(launch.model.reasoningEffort
@@ -144,9 +132,7 @@ function codexLaunch(
     env: {
       ...environment,
       CODEX_HOME: launch.codexHome,
-      ...(launch.provider.apiKey
-        ? { CANTRIP_PROVIDER_API_KEY: launch.provider.apiKey }
-        : {}),
+      ...providerConfiguration.environment,
     },
   };
 }
