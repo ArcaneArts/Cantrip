@@ -92,6 +92,96 @@ describe("verifyCodexInstallation", () => {
     ).resolves.toMatchObject({ version: "0.146.1" });
   });
 
+  it("accepts the patched Codex recipe manifest", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-codex-bundle-"),
+    );
+    temporaryDirectories.push(directory);
+    const binary = path.join(directory, "codex");
+    const manifestPath = path.join(directory, "codex-runtime.json");
+    const contents = Buffer.from("patched pinned codex binary");
+    await writeFile(binary, contents);
+    await writeFile(
+      manifestPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        component: "codex-cli",
+        version: "0.146.1",
+        upstream: {
+          repository: "https://github.com/openai/codex.git",
+          ref: "rust-v0.146.1",
+          commit: "79b4f03d35962b005b007a015113b38930711665",
+        },
+        sourceManifestSha256: "a".repeat(64),
+        patchesSha256: "b".repeat(64),
+        buildRecipeVersion: 2,
+        entrypoint: "codex",
+        artifacts: [
+          {
+            path: "codex",
+            sha256: createHash("sha256").update(contents).digest("hex"),
+          },
+        ],
+        target: "darwin-arm64",
+        profile: "release",
+      }),
+    );
+
+    await expect(
+      verifyCodexInstallation(
+        { binary, manifestPath, source: "bundle" },
+        "darwin",
+        "arm64",
+      ),
+    ).resolves.toMatchObject({
+      buildRecipeVersion: 2,
+      patchesSha256: "b".repeat(64),
+    });
+  });
+
+  it("rejects a patched recipe manifest without its patch-set hash", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-codex-bundle-"),
+    );
+    temporaryDirectories.push(directory);
+    const binary = path.join(directory, "codex");
+    const manifestPath = path.join(directory, "codex-runtime.json");
+    const contents = Buffer.from("patched pinned codex binary");
+    await writeFile(binary, contents);
+    await writeFile(
+      manifestPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        component: "codex-cli",
+        version: "0.146.1",
+        upstream: {
+          repository: "https://github.com/openai/codex.git",
+          ref: "rust-v0.146.1",
+          commit: "79b4f03d35962b005b007a015113b38930711665",
+        },
+        sourceManifestSha256: "a".repeat(64),
+        buildRecipeVersion: 2,
+        entrypoint: "codex",
+        artifacts: [
+          {
+            path: "codex",
+            sha256: createHash("sha256").update(contents).digest("hex"),
+          },
+        ],
+        target: "darwin-arm64",
+        profile: "release",
+      }),
+    );
+
+    await expect(
+      verifyCodexInstallation(
+        { binary, manifestPath, source: "bundle" },
+        "darwin",
+        "arm64",
+      ),
+    ).rejects.toThrow("Bundled Codex manifest is invalid");
+  });
+
   it("rejects a binary that does not match its package manifest", async () => {
     const directory = await mkdtemp(
       path.join(tmpdir(), "cantrip-codex-bundle-"),
