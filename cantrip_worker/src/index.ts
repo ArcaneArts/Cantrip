@@ -13,7 +13,6 @@ import { CodexAuthClient } from "./codex/auth-client.js";
 import { verifyCodexInstallation } from "./codex/bundled-runtime.js";
 import { discoverCodexRuntime } from "./codex/discovery.js";
 import type { CodexRuntime } from "./codex/runtime.js";
-import { invokeCantripExecutionTool } from "./codex/worktree-tool-client.js";
 import { CantripCliBroker } from "./cli-broker.js";
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
 import { discoverBrowserServices } from "./browser/service-discovery.js";
@@ -1032,53 +1031,11 @@ async function start(): Promise<void> {
             emit({ type: "agent.plan.question", question }),
           onPlanQuestionResolved: (questionId) =>
             emit({ type: "agent.plan.question-resolved", questionId }),
-          onExecutionToolCall: async ({
-            arguments: toolArguments,
-            callId,
-            tool,
-          }) => {
-            try {
-              const result = await invokeCantripExecutionTool({
-                arguments: toolArguments,
-                callId,
-                chatId: command.chatId,
-                executionLaneId: command.executionLaneId,
-                serverUrl: config.serverUrl,
-                token: config.token,
-                tool,
-                workerId: config.workerId,
-              });
-              if (tool.startsWith("cantrip_worktree")) {
-                emit({
-                  type: "agent.activity",
-                  activity: {
-                    type: "worktree",
-                    id: `worktree-tool:${callId}`,
-                    operation: tool,
-                    status: "completed",
-                    summary: result.summary,
-                    worktreeId: result.worktreeId,
-                  },
-                });
-              }
-              return result;
-            } catch (error) {
-              if (tool.startsWith("cantrip_worktree")) {
-                emit({
-                  type: "agent.activity",
-                  activity: {
-                    type: "worktree",
-                    id: `worktree-tool:${callId}`,
-                    operation: tool,
-                    status: "failed",
-                    summary:
-                      error instanceof Error ? error.message : String(error),
-                    worktreeId: null,
-                  },
-                });
-              }
-              throw error;
-            }
+          onThreadLoaded: (threadId) => {
+            cliBroker.bindCodexThread(threadId, {
+              chatId: command.chatId,
+              executionLaneId: command.executionLaneId,
+            });
           },
         });
       }

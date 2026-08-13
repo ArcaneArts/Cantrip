@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
-  agentExecutionToolResultSchema,
   browserSummarySchema,
   cantripCliCommandResultSchema,
   explorerSummarySchema,
@@ -668,7 +667,7 @@ describe.sequential("project execution placement API", () => {
     ).toMatchObject({ availability: "capability-unavailable" });
   });
 
-  it("routes lane-authorized read tools to exact cross-worker targets", async () => {
+  it("routes CLI operations to exact cross-worker targets", async () => {
     await database.repository.recordWorker(LOCAL_USER_ID, {
       workerId: "worker-beta",
       name: "Beta",
@@ -745,63 +744,24 @@ describe.sequential("project execution placement API", () => {
       "Read cross-worker targets",
     );
     expect(lane).not.toBeNull();
-    const call = async (
-      tool:
-        | "cantrip_targets_list"
-        | "cantrip_target_inspect"
-        | "cantrip_explorer_list"
-        | "cantrip_explorer_read"
-        | "cantrip_terminal_read"
-        | "cantrip_browser_services"
-        | "cantrip_explorer_write"
-        | "cantrip_terminal_input"
-        | "cantrip_terminal_service_restart"
-        | "cantrip_browser_navigate"
-        | "cantrip_worktree_status",
-      arguments_: Record<string, unknown>,
-      callId: string,
-    ) =>
-      app.inject({
-        method: "POST",
-        url: tool.startsWith("cantrip_worktree")
-          ? "/api/internal/agent-tools/worktree"
-          : "/api/internal/agent-tools/execution",
-        headers: { authorization: `Bearer ${config.workerToken}` },
-        payload: {
-          arguments: arguments_,
-          callId,
-          chatId: chat!.id,
-          executionLaneId: lane!.executionLaneId,
-          tool,
-          workerId: "worker-alpha",
-        },
-      });
-    const explorerTarget = {
-      kind: "surface" as const,
-      projectId,
-      surfaceKind: "explorer" as const,
-      surfaceId: explorer.id,
-    };
-    const terminalTarget = {
-      kind: "surface" as const,
-      projectId,
-      surfaceKind: "terminal" as const,
-      surfaceId: terminal.id,
-    };
-    const browserTarget = {
-      kind: "surface" as const,
-      projectId,
-      surfaceKind: "browser" as const,
-      surfaceId: browser.id,
-    };
     const cli = (
       command:
         | "status"
         | "target.list"
         | "target.show"
+        | "explorer.list"
+        | "explorer.read"
+        | "explorer.write"
         | "terminal.read"
-        | "worktree.create",
+        | "terminal.send"
+        | "terminal.restart"
+        | "browser.services"
+        | "browser.open"
+        | "worktree.create"
+        | "worktree.status"
+        | "worktree.switch",
       arguments_: Record<string, unknown> = {},
+      fromChat = false,
     ) =>
       app.inject({
         method: "POST",
@@ -809,6 +769,12 @@ describe.sequential("project execution placement API", () => {
         headers: { authorization: `Bearer ${config.workerToken}` },
         payload: {
           command,
+          chatContext: fromChat
+            ? {
+                chatId: chat!.id,
+                executionLaneId: lane!.executionLaneId,
+              }
+            : null,
           context: {
             codexThreadId: null,
             terminalId: null,
@@ -854,121 +820,37 @@ describe.sequential("project execution placement API", () => {
       terminalId: terminal.id,
       data: "cross-worker terminal output",
     });
-    const worktreesBeforeRejectedSwitch =
-      await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId);
-    const rejectedTerminalSwitch = await cli("worktree.create", {
-      name: "Must not be created",
-      intent: "newBranch",
-      switch: true,
+    const cliExplorerList = await cli("explorer.list", {
+      target: "Beta Explorer",
+      path: ".",
     });
-    expect(rejectedTerminalSwitch.statusCode).toBe(409);
-    expect(rejectedTerminalSwitch.json()).toMatchObject({ code: "conflict" });
+    expect(cliExplorerList.statusCode).toBe(200);
     expect(
-      await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId),
-    ).toHaveLength(worktreesBeforeRejectedSwitch.length);
-
-    const unauthorizedCli = await app.inject({
-      method: "POST",
-      url: "/api/internal/cli",
-      payload: {
-        command: "status",
-        context: { codexThreadId: null, terminalId: null, cwd: null },
-        arguments: {},
-        requestId: "unauthorized-cli",
-        workerId: "worker-alpha",
-      },
-    });
-    expect(unauthorizedCli.statusCode).toBe(401);
-
-    const listed = await call(
-      "cantrip_targets_list",
-      { limit: 1 },
-      "targets-list",
-    );
-    expect(listed.statusCode).toBe(200);
-    expect(
-      agentExecutionToolResultSchema.parse(listed.json()).data,
-    ).toMatchObject({
-      projectId,
-      targets: [expect.any(Object)],
-      nextCursor: 1,
-      truncated: true,
-    });
-
-    const inspected = await call(
-      "cantrip_target_inspect",
-      { target: terminalTarget },
-      "target-inspect",
-    );
-    expect(inspected.statusCode).toBe(200);
-    expect(
-      agentExecutionToolResultSchema.parse(inspected.json()),
-    ).toMatchObject({
-      target: terminalTarget,
-      worktreeId: betaWorktreeId,
-      data: { placement: { workerId: "worker-beta" } },
-    });
-
-    const directory = await call(
-      "cantrip_explorer_list",
-      { target: explorerTarget, path: "" },
-      "explorer-list",
-    );
-    expect(directory.statusCode).toBe(200);
-    expect(
-      agentExecutionToolResultSchema.parse(directory.json()).data,
+      cantripCliCommandResultSchema.parse(cliExplorerList.json()).data,
     ).toMatchObject({ entries: [{ name: "README.md" }] });
-
-    const file = await call(
-      "cantrip_explorer_read",
-      { target: explorerTarget, path: "README.md", maxChars: 12 },
-      "explorer-read",
-    );
-    expect(file.statusCode).toBe(200);
-    expect(
-      agentExecutionToolResultSchema.parse(file.json()).data,
-    ).toMatchObject({
-      content: "cross-worker",
-      truncated: true,
+    const cliExplorerRead = await cli("explorer.read", {
+      target: "Beta Explorer",
+      path: "README.md",
     });
-
-    const terminalRead = await call(
-      "cantrip_terminal_read",
-      { target: terminalTarget, maxChars: 2_000 },
-      "terminal-read",
-    );
-    expect(terminalRead.statusCode).toBe(200);
+    expect(cliExplorerRead.statusCode).toBe(200);
     expect(
-      agentExecutionToolResultSchema.parse(terminalRead.json()).data,
-    ).toMatchObject({
-      terminalId: terminal.id,
-      data: "cross-worker terminal output",
+      cantripCliCommandResultSchema.parse(cliExplorerRead.json()).data,
+    ).toMatchObject({ content: "cross-worker file content" });
+    const cliBrowserServices = await cli("browser.services", {
+      target: "Beta Browser",
     });
-
-    const services = await call(
-      "cantrip_browser_services",
-      { target: browserTarget },
-      "browser-services",
-    );
-    expect(services.statusCode).toBe(200);
-    expect(agentExecutionToolResultSchema.parse(services.json()).data).toEqual([
+    expect(cliBrowserServices.statusCode).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(cliBrowserServices.json()).data,
+    ).toEqual([
       expect.objectContaining({ workerId: "worker-beta", port: 4_173 }),
     ]);
-
-    const worktreeStatus = await call(
-      "cantrip_worktree_status",
-      {
-        target: {
-          kind: "worktree",
-          projectId,
-          worktreeId: betaWorktreeId,
-        },
-      },
-      "worktree-status",
-    );
-    expect(worktreeStatus.statusCode).toBe(200);
+    const cliWorktreeStatus = await cli("worktree.status", {
+      worktree: betaWorktreeId,
+    });
+    expect(cliWorktreeStatus.statusCode).toBe(200);
     expect(
-      agentExecutionToolResultSchema.parse(worktreeStatus.json()),
+      cantripCliCommandResultSchema.parse(cliWorktreeStatus.json()),
     ).toMatchObject({ worktreeId: betaWorktreeId });
     expect(routedCommands).toEqual(
       expect.arrayContaining([
@@ -988,84 +870,70 @@ describe.sequential("project execution placement API", () => {
         }),
       ]),
     );
+    const worktreesBeforeRejectedSwitch =
+      await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId);
+    const rejectedTerminalSwitch = await cli("worktree.create", {
+      name: "Must not be created",
+      intent: "newBranch",
+      switch: true,
+    });
+    expect(rejectedTerminalSwitch.statusCode).toBe(409);
+    expect(rejectedTerminalSwitch.json()).toMatchObject({ code: "conflict" });
+    expect(
+      await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId),
+    ).toHaveLength(worktreesBeforeRejectedSwitch.length);
 
     await database.repository.updateTerminalService(
       LOCAL_USER_ID,
       terminal.id,
       { enabled: true, command: "pnpm dev" },
     );
-    const write = await call(
-      "cantrip_explorer_write",
-      {
-        target: explorerTarget,
-        path: "README.md",
-        content: "updated cross-worker content",
-        version: "a".repeat(64),
-      },
-      "explorer-write",
-    );
-    expect(write.statusCode).toBe(200);
-    expect(agentExecutionToolResultSchema.parse(write.json())).toMatchObject({
-      target: explorerTarget,
-      mutated: true,
-      data: {
-        path: "README.md",
-        size: 28,
-        version: "b".repeat(64),
-      },
+    const cliWrite = await cli("explorer.write", {
+      target: "Beta Explorer",
+      path: "README.md",
+      content: "updated cross-worker content",
     });
-    expect(JSON.stringify(write.json())).not.toContain(
+    expect(cliWrite.statusCode).toBe(200);
+    expect(cantripCliCommandResultSchema.parse(cliWrite.json())).toMatchObject({
+      target: {
+        kind: "surface",
+        surfaceKind: "explorer",
+        surfaceId: explorer.id,
+      },
+      mutated: true,
+      data: { path: "README.md", size: 28, version: "b".repeat(64) },
+    });
+    expect(JSON.stringify(cliWrite.json())).not.toContain(
       "updated cross-worker content",
     );
-
-    const input = await call(
-      "cantrip_terminal_input",
-      { target: terminalTarget, data: "status\r" },
-      "terminal-input",
-    );
-    expect(input.statusCode).toBe(200);
-    expect(agentExecutionToolResultSchema.parse(input.json()).mutated).toBe(
-      true,
-    );
-
-    const restarted = await call(
-      "cantrip_terminal_service_restart",
-      { target: terminalTarget },
-      "terminal-restart",
-    );
-    expect(restarted.statusCode).toBe(200);
-    expect(agentExecutionToolResultSchema.parse(restarted.json()).mutated).toBe(
-      true,
-    );
-
-    const patchedBrowser = await app.inject({
-      method: "PATCH",
-      url: `/api/browsers/${browser.id}`,
-      payload: { url: "https://example.com/from-app" },
+    const cliInput = await cli("terminal.send", {
+      target: "Beta Terminal",
+      data: "status\r",
     });
-    expect(patchedBrowser.statusCode).toBe(200);
-    expect(browserSummarySchema.parse(patchedBrowser.json()).url).toBe(
-      "https://example.com/from-app",
+    expect(cliInput.statusCode).toBe(200);
+    expect(cantripCliCommandResultSchema.parse(cliInput.json()).mutated).toBe(
+      true,
     );
-
-    const navigated = await call(
-      "cantrip_browser_navigate",
-      { target: browserTarget, url: "https://example.com/from-agent" },
-      "browser-navigate",
-    );
-    expect(navigated.statusCode).toBe(200);
+    const cliRestart = await cli("terminal.restart", {
+      target: "Beta Terminal",
+    });
+    expect(cliRestart.statusCode).toBe(200);
+    const cliNavigate = await cli("browser.open", {
+      target: "Beta Browser",
+      url: "https://example.com/from-cli",
+    });
+    expect(cliNavigate.statusCode).toBe(200);
     expect(
-      agentExecutionToolResultSchema.parse(navigated.json()),
+      cantripCliCommandResultSchema.parse(cliNavigate.json()),
     ).toMatchObject({
-      target: browserTarget,
+      target: {
+        kind: "surface",
+        surfaceKind: "browser",
+        surfaceId: browser.id,
+      },
       mutated: true,
-      data: { url: "https://example.com/from-agent" },
+      data: { url: "https://example.com/from-cli" },
     });
-    expect(
-      (await database.repository.listBrowsers(LOCAL_USER_ID, projectId)).find(
-        ({ id }) => id === browser.id,
-      )?.url,
-    ).toBe("https://example.com/from-agent");
     expect(routedCommands).toEqual(
       expect.arrayContaining([
         {
@@ -1091,150 +959,64 @@ describe.sequential("project execution placement API", () => {
             terminalId: terminal.id,
           }),
         },
-        {
-          workerId: "worker-beta",
-          command: expect.objectContaining({
-            type: "surface.configure",
-            surfaceId: browser.id,
-            configuration: expect.objectContaining({
-              initialUrl: "https://example.com/from-agent",
-            }),
-          }),
-        },
       ]),
     );
     const mutationAudits = await database.repository.listAuditEvents(
       { limit: 100 },
       LOCAL_USER_ID,
     );
-    expect(
-      mutationAudits.items.filter(
-        ({ action, result }) =>
-          action === "agent.execution-target-mutated" && result === "succeeded",
-      ),
-    ).toEqual(
+    expect(mutationAudits.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          actor: { sessionId: null, userId: null },
-          resource: { id: explorer.id, type: "execution-target" },
-          metadata: expect.objectContaining({
-            tool: "cantrip_explorer_write",
-          }),
+          action: "cli.command.mutated",
+          result: "succeeded",
+          metadata: expect.objectContaining({ command: "explorer.write" }),
         }),
         expect.objectContaining({
-          actor: { sessionId: null, userId: null },
-          resource: { id: browser.id, type: "execution-target" },
-          metadata: expect.objectContaining({
-            tool: "cantrip_browser_navigate",
-          }),
+          action: "cli.command.mutated",
+          result: "succeeded",
+          metadata: expect.objectContaining({ command: "browser.open" }),
         }),
       ]),
     );
 
-    const spoofed = await app.inject({
+    const unauthorizedCli = await app.inject({
       method: "POST",
-      url: "/api/internal/agent-tools/execution",
-      headers: { authorization: `Bearer ${config.workerToken}` },
+      url: "/api/internal/cli",
       payload: {
-        arguments: { target: terminalTarget },
-        callId: "spoofed-source",
-        chatId: chat!.id,
-        executionLaneId: lane!.executionLaneId,
-        tool: "cantrip_terminal_read",
-        workerId: "worker-beta",
-      },
-    });
-    expect(spoofed.statusCode).toBe(409);
-    expect(spoofed.json().error).toContain("active chat lane");
-
-    const wrongProject = await call(
-      "cantrip_terminal_read",
-      { target: { ...terminalTarget, projectId: "another-project" } },
-      "wrong-project",
-    );
-    expect(wrongProject.statusCode).toBe(409);
-    expect(wrongProject.json()).toMatchObject({ code: "target-mismatch" });
-
-    const incorrectPlacement = await call(
-      "cantrip_explorer_read",
-      {
-        target: {
-          ...terminalTarget,
-          surfaceKind: "explorer",
-        },
-        path: "README.md",
-      },
-      "incorrect-placement",
-    );
-    expect(incorrectPlacement.statusCode).toBe(404);
-    expect(incorrectPlacement.json()).toMatchObject({
-      code: "target-not-found",
-    });
-
-    const unauthorized = await app.inject({
-      method: "POST",
-      url: "/api/internal/agent-tools/execution",
-      payload: {
-        arguments: { target: terminalTarget },
-        callId: "unauthorized",
-        chatId: chat!.id,
-        executionLaneId: lane!.executionLaneId,
-        tool: "cantrip_terminal_read",
+        command: "status",
+        context: { codexThreadId: null, terminalId: null, cwd: null },
+        arguments: {},
+        requestId: "unauthorized-cli",
         workerId: "worker-alpha",
       },
     });
-    expect(unauthorized.statusCode).toBe(401);
+    expect(unauthorizedCli.statusCode).toBe(401);
 
-    connectedWorkers.delete("worker-beta");
-    const offline = await call(
-      "cantrip_terminal_read",
-      { target: terminalTarget },
-      "offline-target",
-    );
-    expect(offline.statusCode).toBe(409);
-    expect(offline.json()).toMatchObject({ code: "worker-offline" });
-    const offlineMutation = await call(
-      "cantrip_terminal_input",
-      { target: terminalTarget, data: "date\r" },
-      "offline-mutation",
-    );
-    expect(offlineMutation.statusCode).toBe(409);
-    expect(offlineMutation.json()).toMatchObject({ code: "worker-offline" });
-    connectedWorkers.add("worker-beta");
+    for (const obsoletePath of [
+      "/api/internal/agent-tools/worktree",
+      "/api/internal/agent-tools/execution",
+    ]) {
+      const removed = await app.inject({
+        method: "POST",
+        url: obsoletePath,
+        headers: { authorization: `Bearer ${config.workerToken}` },
+        payload: {},
+      });
+      expect(removed.statusCode).toBe(404);
+    }
 
     await database.repository.finishChatExecutionLane(
       chat!.id,
       lane!.executionLaneId,
       "idle",
     );
-    const stale = await call(
-      "cantrip_terminal_input",
-      { target: terminalTarget, data: "pwd\r" },
-      "stale-lane",
+    const stale = await cli(
+      "worktree.switch",
+      { worktree: betaWorktreeId },
+      true,
     );
     expect(stale.statusCode).toBe(409);
     expect(stale.json().error).toContain("active chat lane");
-    const finalMutationAudits = await database.repository.listAuditEvents(
-      { limit: 100 },
-      LOCAL_USER_ID,
-    );
-    expect(finalMutationAudits.items).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          action: "agent.execution-target-mutated",
-          result: "failed",
-          metadata: expect.objectContaining({
-            tool: "cantrip_terminal_input",
-          }),
-        }),
-        expect.objectContaining({
-          action: "agent.execution-target-mutated",
-          result: "denied",
-          metadata: expect.objectContaining({
-            tool: "cantrip_terminal_input",
-          }),
-        }),
-      ]),
-    );
   });
 });

@@ -4518,71 +4518,13 @@ export const agentInteractionRequestQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(100),
 });
 
-export const agentWorktreeToolNameSchema = z.enum([
-  "cantrip_worktrees_list",
-  "cantrip_worktree_acquire",
-  "cantrip_worktree_create",
-  "cantrip_worktree_switch",
-  "cantrip_worktree_status",
-  "cantrip_worktree_release",
-  "cantrip_worktree_remove",
-]);
-
-export const agentExecutionTargetToolNameSchema = z.enum([
-  "cantrip_targets_list",
-  "cantrip_target_inspect",
-  "cantrip_explorer_list",
-  "cantrip_explorer_read",
-  "cantrip_terminal_read",
-  "cantrip_browser_services",
-  "cantrip_explorer_write",
-  "cantrip_terminal_input",
-  "cantrip_terminal_service_restart",
-  "cantrip_browser_navigate",
-]);
-
-export const agentExecutionToolNameSchema = z.union([
-  agentWorktreeToolNameSchema,
-  agentExecutionTargetToolNameSchema,
-]);
-
-const agentExecutionToolArgumentsSchema = z
+const cantripCliArgumentsSchema = z
   .record(z.string().min(1).max(100), z.unknown())
   .refine((arguments_) => Object.keys(arguments_).length <= 20, {
-    message: "Agent execution tools accept at most 20 arguments.",
+    message: "Cantrip CLI commands accept at most 20 arguments.",
   });
 
-export const agentWorktreeToolCallSchema = z.object({
-  callId: z.string().min(1).max(200),
-  chatId: z.string().min(1),
-  executionLaneId: z.string().min(1),
-  workerId: z.string().min(1),
-  tool: agentWorktreeToolNameSchema,
-  arguments: agentExecutionToolArgumentsSchema,
-});
-
-export const agentExecutionToolCallSchema = z.object({
-  callId: z.string().min(1).max(200),
-  chatId: z.string().min(1).max(200),
-  executionLaneId: z.string().min(1).max(200),
-  workerId: z.string().min(1).max(200),
-  tool: agentExecutionToolNameSchema,
-  arguments: agentExecutionToolArgumentsSchema,
-});
-
-export const agentExecutionTargetToolCallSchema =
-  agentExecutionToolCallSchema.extend({
-    tool: agentExecutionTargetToolNameSchema,
-  });
-
-export const agentWorktreeToolResultSchema = z.object({
-  summary: z.string().min(1),
-  worktreeId: z.string().min(1).nullable().default(null),
-  continuationScheduled: z.boolean().default(false),
-  data: z.unknown().optional(),
-});
-
-export const agentExecutionToolResultSchema = z.object({
+export const cantripCliCommandResultSchema = z.object({
   summary: z.string().min(1).max(2_000),
   target: executionTargetSchema.nullable().default(null),
   worktreeId: z.string().min(1).nullable().default(null),
@@ -4623,18 +4565,24 @@ export const cantripCliCommandRequestSchema = z
   .object({
     command: cantripCliCommandNameSchema,
     context: cantripCliContextSchema,
-    arguments: agentExecutionToolArgumentsSchema,
+    arguments: cantripCliArgumentsSchema,
   })
   .strict();
 
 export const workerCliCommandCallSchema = cantripCliCommandRequestSchema
   .extend({
+    chatContext: z
+      .object({
+        chatId: z.string().min(1).max(200),
+        executionLaneId: z.string().min(1).max(200),
+      })
+      .strict()
+      .nullable()
+      .default(null),
     requestId: z.string().min(1).max(200),
     workerId: z.string().min(1).max(200),
   })
   .strict();
-
-export const cantripCliCommandResultSchema = agentExecutionToolResultSchema;
 
 export const chatMessageListSchema = z.array(chatMessageSchema);
 
@@ -8573,26 +8521,6 @@ export type AgentInteractionRequest = z.infer<
 >;
 export type AgentInteractionRequestQuery = z.infer<
   typeof agentInteractionRequestQuerySchema
->;
-export type AgentWorktreeToolName = z.infer<typeof agentWorktreeToolNameSchema>;
-export type AgentWorktreeToolCall = z.infer<typeof agentWorktreeToolCallSchema>;
-export type AgentWorktreeToolResult = z.infer<
-  typeof agentWorktreeToolResultSchema
->;
-export type AgentExecutionTargetToolName = z.infer<
-  typeof agentExecutionTargetToolNameSchema
->;
-export type AgentExecutionToolName = z.infer<
-  typeof agentExecutionToolNameSchema
->;
-export type AgentExecutionToolCall = z.infer<
-  typeof agentExecutionToolCallSchema
->;
-export type AgentExecutionTargetToolCall = z.infer<
-  typeof agentExecutionTargetToolCallSchema
->;
-export type AgentExecutionToolResult = z.infer<
-  typeof agentExecutionToolResultSchema
 >;
 export type CantripCliCommandName = z.infer<typeof cantripCliCommandNameSchema>;
 export type CantripCliContext = z.infer<typeof cantripCliContextSchema>;

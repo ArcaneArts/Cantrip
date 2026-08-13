@@ -190,8 +190,8 @@ describe("Cantrip CLI worker broker", () => {
       },
       {
         binary,
-        execute: async (request, requestId) => {
-          calls.push({ request, requestId });
+        execute: async (request, requestId, chatContext) => {
+          calls.push({ chatContext, request, requestId });
           return {
             summary: "Found the current worktree.",
             target: null,
@@ -202,6 +202,10 @@ describe("Cantrip CLI worker broker", () => {
         },
       },
     );
+    broker.bindCodexThread("thread-one", {
+      chatId: "chat-one",
+      executionLaneId: "lane-one",
+    });
 
     const connection = await broker.start();
     try {
@@ -214,8 +218,8 @@ describe("Cantrip CLI worker broker", () => {
         body: JSON.stringify({
           command: "worktree.status",
           context: {
-            codexThreadId: null,
-            terminalId: "terminal-one",
+            codexThreadId: "thread-one",
+            terminalId: null,
             cwd: "/workspace/project",
           },
           arguments: {},
@@ -228,9 +232,13 @@ describe("Cantrip CLI worker broker", () => {
       });
       expect(calls).toEqual([
         {
+          chatContext: {
+            chatId: "chat-one",
+            executionLaneId: "lane-one",
+          },
           request: expect.objectContaining({
             command: "worktree.status",
-            context: expect.objectContaining({ terminalId: "terminal-one" }),
+            context: expect.objectContaining({ codexThreadId: "thread-one" }),
           }),
           requestId: expect.any(String),
         },

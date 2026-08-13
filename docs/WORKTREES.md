@@ -137,34 +137,27 @@ snapshot and does not poll an unavailable machine.
 
 ## Agent integration
 
-Codex app-server receives these dynamic tools from the worker:
+Codex receives no Cantrip-specific dynamic tools. New chats start with an
+explicit empty tool override, and resumed chats send the same override so old
+persisted tool declarations are removed by the pinned Codex compatibility
+patch. A short developer instruction points agents to `cantrip -h` instead.
 
-- `cantrip_worktrees_list`
-- `cantrip_worktree_create`
-- `cantrip_worktree_acquire`
-- `cantrip_worktree_switch`
-- `cantrip_worktree_status`
-- `cantrip_worktree_release`
-- `cantrip_worktree_remove`
+The worker-managed `cantrip` executable provides layered `worktree`, `target`,
+`explorer`, `terminal`, and `browser` commands. Worktree status can address a
+canonical worktree target on another worker, and surface commands use the same
+canonical target resolver as the application. The source worker never contacts
+the target worker directly.
 
-The status tool also accepts a canonical worktree `ExecutionTarget`, allowing
-a chat to inspect a worktree on another worker through the server. The broader
-read-only target tools (`cantrip_targets_list`, `cantrip_target_inspect`,
-`cantrip_explorer_list`, `cantrip_explorer_read`, `cantrip_terminal_read`, and
-`cantrip_browser_services`) use the same lane authentication and canonical
-target resolver. They never let the source worker contact the target worker
-directly.
-
-Bounded mutation tools (`cantrip_explorer_write`, `cantrip_terminal_input`,
-`cantrip_terminal_service_restart`, and `cantrip_browser_navigate`) share that
-route and exact-target validation. Explorer writes require the version token
-from the corresponding read, terminal service restarts require an enabled
-service, Browser navigation accepts HTTP(S) only, and every mutation attempt is
-audited by the server.
+Bounded mutations retain their existing constraints: Explorer writes require
+the version token from the corresponding read, terminal service restarts
+require an enabled service, Browser navigation accepts HTTP(S) only, and every
+mutation attempt is audited by the server.
 
 The server validates the current chat lane, actor, policy, ownership, and
-removal authority before routing an operation. Runtime identity includes chat,
-worker, and worktree. See
+removal authority before routing an operation. The loopback CLI broker attaches
+the active chat and execution-lane identity to commands originating inside a
+Codex turn, while ordinary terminal commands resolve through terminal ID or
+working directory. Runtime identity includes chat, worker, and worktree. See
 [ADR 0001](adr/0001-agent-managed-worktree-execution.md) for the Codex CWD spike
 and safe continuation decision.
 

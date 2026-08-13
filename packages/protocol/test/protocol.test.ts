@@ -3,13 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   accountSessionListSchema,
   agentActivitySchema,
-  agentExecutionToolCallSchema,
-  agentExecutionToolResultSchema,
   agentInteractionRequestSchema,
   agentInteractionRuntimeRequestSchema,
   agentInteractionResolutionCreateSchema,
-  agentWorktreeToolCallSchema,
-  agentWorktreeToolResultSchema,
   auditEventListSchema,
   auditEventQuerySchema,
   codexAuthStatusSchema,
@@ -168,11 +164,16 @@ describe("Cantrip protocol", () => {
     expect(
       workerCliCommandCallSchema.parse({
         ...request,
+        chatContext: {
+          chatId: "chat-one",
+          executionLaneId: "lane-one",
+        },
         requestId: "request-one",
         workerId: "worker-one",
       }),
     ).toMatchObject({
       command: "explorer.read",
+      chatContext: { chatId: "chat-one", executionLaneId: "lane-one" },
       context: { codexThreadId: "thread-one" },
       workerId: "worker-one",
     });
@@ -2608,29 +2609,12 @@ describe("Cantrip protocol", () => {
     ).toBe("active");
   });
 
-  it("validates lane-scoped agent worktree tool calls and activity", () => {
-    expect(
-      agentWorktreeToolCallSchema.parse({
-        callId: "call-1",
-        chatId: "chat-1",
-        executionLaneId: "lane-1",
-        workerId: "worker-1",
-        tool: "cantrip_worktree_switch",
-        arguments: { worktreeId: "worktree-2", purpose: "Implement safely" },
-      }).tool,
-    ).toBe("cantrip_worktree_switch");
-    expect(
-      agentWorktreeToolResultSchema.parse({
-        summary: "Continuation scheduled.",
-        worktreeId: "worktree-2",
-        continuationScheduled: true,
-      }).continuationScheduled,
-    ).toBe(true);
+  it("retains historical worktree activity without a tool-call protocol", () => {
     expect(
       agentActivitySchema.parse({
         type: "worktree",
         id: "worktree-tool:call-1",
-        operation: "cantrip_worktree_switch",
+        operation: "worktree.switch",
         status: "completed",
         summary: "Continuation scheduled.",
         worktreeId: "worktree-2",
@@ -2638,7 +2622,7 @@ describe("Cantrip protocol", () => {
     ).toBe("worktree");
   });
 
-  it("validates lane-scoped execution-target tools and bounded terminal snapshots", () => {
+  it("validates CLI results and bounded terminal snapshots", () => {
     const target = {
       kind: "surface" as const,
       projectId: "project-1",
@@ -2646,33 +2630,13 @@ describe("Cantrip protocol", () => {
       surfaceId: "terminal-2",
     };
     expect(
-      agentExecutionToolCallSchema.parse({
-        callId: "call-2",
-        chatId: "chat-1",
-        executionLaneId: "lane-1",
-        workerId: "worker-1",
-        tool: "cantrip_terminal_read",
-        arguments: { target, maxChars: 20_000 },
-      }).tool,
-    ).toBe("cantrip_terminal_read");
-    expect(
-      agentExecutionToolResultSchema.parse({
+      cantripCliCommandResultSchema.parse({
         summary: "Terminal is running.",
         target,
         mutated: true,
         data: { status: "running" },
       }),
     ).toMatchObject({ target, mutated: true });
-    expect(
-      agentExecutionToolCallSchema.parse({
-        callId: "call-3",
-        chatId: "chat-1",
-        executionLaneId: "lane-1",
-        workerId: "worker-1",
-        tool: "cantrip_terminal_input",
-        arguments: { target, data: "status\r" },
-      }).tool,
-    ).toBe("cantrip_terminal_input");
     expect(
       terminalSnapshotResultSchema.parse({
         terminalId: "terminal-2",

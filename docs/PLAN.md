@@ -243,12 +243,14 @@ their chat's active lane, History selects a checkout for Git actions, and
 Browser/Issues remain project-level. The detailed runtime decision is recorded
 in [ADR 0001](adr/0001-agent-managed-worktree-execution.md).
 
-Codex receives Cantrip-native dynamic tools for listing, acquiring, creating,
-switching, inspecting, releasing, and removing worktrees. A transition
-scheduled during a turn is checkpointed and applied before the continuation
-turn; Cantrip never represents an in-flight CWD mutation as successful. The
-flat sidebar exposes only compact secondary-worktree state, while History
-renders every known HEAD and dirty WIP lane.
+Codex receives no Cantrip-specific dynamic tools. The worker-bundled `cantrip`
+CLI provides the worktree, target, Explorer, Terminal, and Browser operations
+that need server-owned context or cross-worker routing; normal repository work
+continues to use standard shell and Git commands. A transition scheduled during
+a turn is checkpointed and applied before the continuation turn; Cantrip never
+represents an in-flight CWD mutation as successful. The flat sidebar exposes
+only compact secondary-worktree state, while History renders every known HEAD
+and dirty WIP lane.
 
 ## 5. Monorepo layout
 
@@ -720,7 +722,7 @@ The first meaningful release is complete when all of the following are true:
 - A user can choose an accessible GitHub repository, create a unique single-source project and chat, and run a real Codex turn.
 - The UI accurately streams and restores messages, plans, command output, file changes, diffs, approvals, errors, and completion state.
 - Steering targets the active turn; queued prompts survive restart and run in the chosen order.
-- Every project source has Primary; chats can be Agent managed or Pinned; Codex-native tools can move managed chats through isolated worktree runtimes without changing an in-flight CWD.
+- Every project source has Primary; chats can be Agent managed or Pinned; the Cantrip CLI can move managed chats through isolated worktree runtimes without changing an in-flight CWD.
 - Terminal, Explorer, linked console, and History operations resolve through their explicit worktree, while the flat sidebar and History graph retain offline and historical worktree context.
 - Interrupt and explicit context compaction work and leave the chat resumable.
 - Restarting the browser, server, worker, or Codex runtime does not duplicate completed inputs or lose accepted queued inputs.

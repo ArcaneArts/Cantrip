@@ -9,6 +9,7 @@ export const root = path.resolve(
 );
 export const cantripCodexDirectory = path.join(root, "cantrip_codex");
 export const upstreamDirectory = path.join(cantripCodexDirectory, "upstream");
+export const patchesDirectory = path.join(cantripCodexDirectory, "patches");
 export const metadataPath = path.join(cantripCodexDirectory, "upstream.json");
 export const filesManifestPath = path.join(
   cantripCodexDirectory,
@@ -87,6 +88,36 @@ export function sourceManifest(metadata, files) {
 
 export async function readSourceManifest() {
   return JSON.parse(await readFile(filesManifestPath, "utf8"));
+}
+
+export async function readCodexPatches() {
+  const entries = await readdir(patchesDirectory, { withFileTypes: true });
+  const names = entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".patch"))
+    .map((entry) => entry.name)
+    .sort();
+  if (names.length === 0) {
+    throw new Error("cantrip_codex/patches must contain at least one patch.");
+  }
+  return Promise.all(
+    names.map(async (name) => ({
+      name,
+      path: path.join(patchesDirectory, name),
+      contents: await readFile(path.join(patchesDirectory, name)),
+    })),
+  );
+}
+
+export function patchSetSha256(patches) {
+  return sha256(
+    Buffer.concat(
+      patches.flatMap(({ contents, name }) => [
+        Buffer.from(`${name}\0`),
+        contents,
+        Buffer.from("\0"),
+      ]),
+    ),
+  );
 }
 
 export function prettyJson(value) {

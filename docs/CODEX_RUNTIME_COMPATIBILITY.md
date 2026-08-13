@@ -23,6 +23,15 @@ from the host. Advancing even within the tested range is a Cantrip source and
 worker release. Expanding the range requires regenerating the bindings,
 reviewing schema changes, and updating compatibility tests.
 
+Cantrip keeps the imported snapshot pristine and applies a reviewed patch
+series from `cantrip_codex/patches/` only to the ignored build copy. The current
+compatibility patch adds an explicit `dynamicTools` override to
+`thread/resume`: omission preserves persisted declarations, while `[]` clears
+them. Cantrip sends the empty override and its CLI developer instruction on
+both thread start and resume, migrating pre-cutover chats without discarding
+their conversation history. The ordered patch-set hash is part of the runtime
+manifest and invalidates cached binaries.
+
 ## Startup negotiation
 
 Packaging builds the pinned source with Cargo's locked dependency graph and

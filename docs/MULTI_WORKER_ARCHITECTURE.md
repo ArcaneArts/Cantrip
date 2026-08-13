@@ -403,57 +403,28 @@ paths.
 
 ### Agent operations use the same targets
 
-Interactive Codex turns receive the existing worktree lifecycle tools plus a
-small read-only target toolset:
+Interactive Codex turns use the worker-bundled `cantrip` CLI instead of
+client-hosted dynamic tools. Its layered command tree exposes worktree
+lifecycle, canonical target discovery, bounded Explorer reads/writes, Terminal
+scrollback/input/service restart, and Browser discovery/navigation. Target
+lists are cursor-paginated, file and terminal output are bounded, Explorer
+writes require the current SHA-256 version, and Browser URLs must use HTTP(S).
 
-- `cantrip_targets_list` and `cantrip_target_inspect` discover canonical
-  targets and their availability; target lists are cursor-paginated and return
-  at most 200 entries per call;
-- `cantrip_explorer_list` and `cantrip_explorer_read` address an exact Explorer
-  target, with paginated directory entries and bounded file content before they
-  enter context;
-- `cantrip_terminal_read` returns bounded recent scrollback without attaching
-  to the PTY or sending input;
-- `cantrip_browser_services` discovers services only on the worker hosting the
-  selected Browser target;
-- `cantrip_worktree_status` accepts an exact worktree target while retaining
-  its legacy worktree-id input for older runtimes.
+The CLI talks only to an authenticated loopback broker. For commands launched
+inside Codex, that broker attaches the server-issued chat and execution-lane
+identity associated with `CODEX_THREAD_ID`; terminal and shell use terminal ID
+or the most-specific registered working directory. The worker then calls
+`POST /api/internal/cli` with its worker credential. The server revalidates the
+active lane, account ownership, project, worktree, target kind, capabilities,
+and availability before using the existing server-to-target-worker bridge.
+The source and target workers never exchange addresses or credentials.
 
-Four bounded mutation tools use the same exact target contract:
-
-- `cantrip_explorer_write` requires the current SHA-256 version returned by
-  `cantrip_explorer_read`; stale files fail instead of overwriting concurrent
-  changes, writes are capped at 500,000 characters, and successful results
-  return metadata rather than echoing file content;
-- `cantrip_terminal_input` sends at most 100,000 characters to the selected
-  Terminal without changing its placement;
-- `cantrip_terminal_service_restart` only restarts an already enabled service
-  belonging to the selected Terminal;
-- `cantrip_browser_navigate` accepts HTTP(S) URLs only, persists the Browser's
-  desired URL, and configures its live worker session when connected. The
-  persisted URL remains authoritative for the next attachment if no session is
-  currently attached.
-
-Every attempted target mutation records an
-`agent.execution-target-mutated` audit event with the source worker, tool,
-target resource, and a succeeded, failed, or denied result. Worker credentials
-do not become user identities in these records.
-
-The source worker sends the dynamic-tool call to
-`POST /api/internal/agent-tools/execution` using its worker credential. The
-server proves that the call came from the chat's current executing lane, loads
-the source chat's project under its owner, resolves the supplied target with
-the same canonical resolver used by the app, and only then sends a bounded
-command over the existing server-to-target-worker bridge. The source and
-target workers never exchange addresses, credentials, or commands. Project
-mismatches, stale lanes, incorrect surface kinds, missing capabilities, and
-offline targets fail closed without fallback placement.
-
-Worktree lifecycle tools continue using their compatibility endpoint so older
-workers and existing activity/invalidation behavior remain valid. New
-target tools are advertised to newly created Codex threads when the runtime
-supports dynamic tools; resumed threads retain the tool declarations stored by
-their Codex runtime. Rolling clients must treat a missing
+Every attempted mutation records a `cli.command.mutated` audit event. Project
+mismatches, stale or spoofed lanes, pinned-chat transitions, incorrect surface
+kinds, missing capabilities, and offline targets fail closed without fallback
+placement. New and resumed chat threads explicitly expose no Cantrip dynamic
+tools; the pinned runtime clears declarations persisted by older chats during
+resume. Rolling clients must still treat a missing
 `crossWorkerExecutionTargets` capability as false.
 
 ## Default placement selection
