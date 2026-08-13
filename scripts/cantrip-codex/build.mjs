@@ -42,7 +42,7 @@ const metadata = await readUpstreamMetadata();
 const patches = await readCodexPatches();
 const sourceManifestSha256 = await sha256File(filesManifestPath);
 const patchesSha256 = patchSetSha256(patches);
-const buildRecipeVersion = 2;
+const buildRecipeVersion = 3;
 
 async function reusableBundle() {
   let manifest;
@@ -196,6 +196,7 @@ const releaseDirectory = path.join(cargoTargetDirectory, "release");
 const buildEnvironment = {
   ...process.env,
   CARGO_TARGET_DIR: cargoTargetDirectory,
+  CARGO_PROFILE_RELEASE_STRIP: "symbols",
   ...(process.platform === "win32"
     ? { LIBSQLITE3_FLAGS: "SQLITE_DISABLE_INTRINSIC" }
     : {}),
