@@ -6,7 +6,7 @@ import {
   encodeTunnelDataPlaneFrame,
   type TunnelDataPlaneFrameHeader,
 } from "@cantrip/protocol";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import { DirectBroker } from "../src/direct-broker.js";
@@ -279,6 +279,124 @@ describe("DirectBroker", () => {
     await expect(response).resolves.toMatchObject({
       header: { kind: "accepted", connectionId: open.connectionId },
     });
+    socket.close();
+  });
+
+  it("keeps the direct capability alive while a source acknowledges a destination close", async () => {
+    const broker = new DirectBroker();
+    brokers.push(broker);
+    const advertisement = await broker.start();
+    if (!advertisement.available) throw new Error("broker unavailable");
+    const attachmentId = randomUUID();
+    const tunnelId = randomUUID();
+    const grant = {
+      ...binding(),
+      resourceKind: "code" as const,
+      resourceId: attachmentId,
+      attachmentId,
+      channels: ["tunnel-data"],
+    };
+    const route = {
+      tunnelId,
+      attachmentId,
+      sourceEndpointId: `desktop:client:${attachmentId}`,
+      destinationEndpointId: "worker:worker-1",
+      target: { kind: "tcp" as const, host: "127.0.0.1", port: 4173 },
+    };
+    const secret = randomBytes(32).toString("base64url");
+    await broker.prepare({
+      type: "direct.capability.prepare",
+      binding: grant,
+      secret,
+      tunnelRoute: route,
+    });
+    const routed: TunnelDataPlaneFrameHeader[] = [];
+    broker.setTunnelFrameHandler((header) => routed.push(header));
+    const socket = await connect(advertisement.loopbackPort);
+    const ready = new Promise<void>((resolve) =>
+      socket.once("message", () => resolve()),
+    );
+    socket.send(
+      JSON.stringify({
+        type: "initialize",
+        binding: grant,
+        secret,
+        challenge: randomBytes(32).toString("base64url"),
+      }),
+    );
+    await ready;
+    const { target: _target, ...publicRoute } = route;
+    const firstConnectionId = randomUUID();
+    const firstOpen: TunnelDataPlaneFrameHeader = {
+      protocolVersion: 1,
+      ...publicRoute,
+      connectionId: firstConnectionId,
+      sequence: 0,
+      kind: "open",
+      initialCreditBytes: 1_024,
+    };
+    socket.send(encodeTunnelDataPlaneFrame(firstOpen, new Uint8Array()));
+    await vi.waitFor(() =>
+      expect(routed).toContainEqual(
+        expect.objectContaining({
+          connectionId: firstConnectionId,
+          kind: "connect",
+        }),
+      ),
+    );
+
+    const destinationClose = new Promise<void>((resolve) =>
+      socket.once("message", () => resolve()),
+    );
+    expect(
+      broker.routeTunnelFrame(
+        {
+          protocolVersion: 1,
+          ...publicRoute,
+          connectionId: firstConnectionId,
+          sequence: 0,
+          kind: "close",
+          code: "normal",
+          message: null,
+        },
+        new Uint8Array(),
+      ),
+    ).toBe(true);
+    await destinationClose;
+    socket.send(
+      encodeTunnelDataPlaneFrame(
+        {
+          protocolVersion: 1,
+          ...publicRoute,
+          connectionId: firstConnectionId,
+          sequence: 1,
+          kind: "close",
+          code: "normal",
+          message: null,
+        },
+        new Uint8Array(),
+      ),
+    );
+
+    const secondConnectionId = randomUUID();
+    socket.send(
+      encodeTunnelDataPlaneFrame(
+        {
+          ...firstOpen,
+          connectionId: secondConnectionId,
+        },
+        new Uint8Array(),
+      ),
+    );
+    await vi.waitFor(() =>
+      expect(routed).toContainEqual(
+        expect.objectContaining({
+          connectionId: secondConnectionId,
+          kind: "connect",
+        }),
+      ),
+    );
+    expect(socket.readyState).toBe(WebSocket.OPEN);
     socket.close();
   });
 });

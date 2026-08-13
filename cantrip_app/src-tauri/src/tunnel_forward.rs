@@ -740,7 +740,13 @@ mod desktop {
             retry_delay = Duration::from_millis(250);
             match run_session(&listener, web_socket, identity, counters.clone(), &mut stop).await {
                 Ok(true) => return,
-                Ok(false) | Err(_) => {
+                result => {
+                    let reason = match result {
+                        Ok(false) => "remote tunnel closed".to_string(),
+                        Ok(true) => unreachable!(),
+                        Err(error) => error,
+                    };
+                    eprintln!("[Cantrip tunnel] route disconnected: {reason}");
                     counters.route_state.store(3, Ordering::Relaxed);
                     while let Ok(refresh) = relay_refreshes.try_recv() {
                         if let Ok(route) = relay_route(refresh.relay) {

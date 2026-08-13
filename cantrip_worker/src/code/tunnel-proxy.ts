@@ -7,6 +7,7 @@ import {
 import {
   CODE_ADAPTER_MAX_HEAD_BYTES,
   CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES,
+  CODE_ADAPTER_TUNNEL_INITIAL_CREDIT_BYTES,
   CODE_ADAPTER_WEBSOCKET_BINARY_RECORD,
   CODE_ADAPTER_WEBSOCKET_CLOSE_RECORD,
   CODE_ADAPTER_WEBSOCKET_RECORD_HEADER_BYTES,
@@ -16,6 +17,7 @@ import {
   type CodeAdapterRequestHead,
   codeAdapterRequestHeadSchema,
   codeAdapterWebSocketCloseSchema,
+  isForwardableCodeAdapterWebSocketCloseCode,
   type TunnelDataPlaneFrameHeader,
 } from "@cantrip/protocol";
 import WebSocket, { type RawData } from "ws";
@@ -65,7 +67,7 @@ interface WebSocketStream extends BaseStream {
 type CodeStream = OpeningStream | HttpStream | WebSocketStream;
 
 const EMPTY_PAYLOAD = new Uint8Array();
-const INITIAL_CREDIT_BYTES = 256 * 1_024;
+const INITIAL_CREDIT_BYTES = CODE_ADAPTER_TUNNEL_INITIAL_CREDIT_BYTES;
 const MAX_STREAMS = 256;
 const MAX_LOCAL_BUFFER_BYTES = 8 * 1_024 * 1_024;
 const BLOCKED_REQUEST_HEADERS = new Set([
@@ -355,6 +357,15 @@ export class CodeTunnelProxy {
       header.destinationEndpointId !== stream.header.destinationEndpointId ||
       header.sequence !== stream.inputSequence
     ) {
+      workerLogger.warn("Cantrip Code tunnel input sequence rejected", {
+        actualSequence: header.sequence,
+        connectionId: header.connectionId,
+        expectedSequence: stream.inputSequence,
+        kind: header.kind,
+        path: stream.diagnosticPath,
+        payloadBytes: payload.byteLength,
+        sessionId: stream.sessionId,
+      });
       this.#closeStream(stream, "protocol-error");
       return;
     }
@@ -645,7 +656,9 @@ export class CodeTunnelProxy {
         if (!this.#streams.has(key(stream.header))) return;
         const close = Buffer.from(
           JSON.stringify({
-            code: code >= 1_000 && code <= 4_999 ? code : 1_000,
+            code: isForwardableCodeAdapterWebSocketCloseCode(code)
+              ? code
+              : 1_011,
             reason: reason.toString().slice(0, 1_024),
           }),
         );
@@ -732,6 +745,13 @@ export class CodeTunnelProxy {
       const kind = stream.inputBytes[0]!;
       const length = stream.inputBytes.readUInt32BE(1);
       if (length > CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES) {
+        workerLogger.warn("Cantrip Code WebSocket record length rejected", {
+          connectionId: stream.header.connectionId,
+          kind,
+          length,
+          path: stream.diagnosticPath,
+          sessionId: stream.sessionId,
+        });
         this.#closeStream(stream, "protocol-error");
         return;
       }
@@ -785,12 +805,29 @@ export class CodeTunnelProxy {
           const close = codeAdapterWebSocketCloseSchema.parse(
             JSON.parse(payload.toString("utf8")),
           );
-          stream.socket.close(close.code, close.reason);
-        } catch {
+          stream.socket.close(
+            isForwardableCodeAdapterWebSocketCloseCode(close.code)
+              ? close.code
+              : 1_011,
+            close.reason,
+          );
+        } catch (error) {
+          workerLogger.warn("Cantrip Code WebSocket close record rejected", {
+            connectionId: stream.header.connectionId,
+            error: errorMessage(error),
+            path: stream.diagnosticPath,
+            sessionId: stream.sessionId,
+          });
           this.#closeStream(stream, "protocol-error");
           return;
         }
       } else {
+        workerLogger.warn("Cantrip Code WebSocket record kind rejected", {
+          connectionId: stream.header.connectionId,
+          kind,
+          path: stream.diagnosticPath,
+          sessionId: stream.sessionId,
+        });
         this.#closeStream(stream, "protocol-error");
         return;
       }

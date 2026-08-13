@@ -4,6 +4,7 @@ import { type IncomingMessage, type ServerResponse } from "node:http";
 import {
   CODE_ADAPTER_MAX_HEAD_BYTES,
   CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES,
+  CODE_ADAPTER_TUNNEL_INITIAL_CREDIT_BYTES,
   CODE_ADAPTER_WEBSOCKET_BINARY_RECORD,
   CODE_ADAPTER_WEBSOCKET_CLOSE_RECORD,
   CODE_ADAPTER_WEBSOCKET_RECORD_HEADER_BYTES,
@@ -14,6 +15,7 @@ import {
   type CodeAdapterResponseHead,
   codeAdapterResponseHeadSchema,
   codeAdapterWebSocketCloseSchema,
+  isForwardableCodeAdapterWebSocketCloseCode,
   type TunnelDataPlaneFrameHeader,
 } from "@cantrip/protocol";
 import WebSocket, { type RawData } from "ws";
@@ -25,7 +27,7 @@ import type {
 } from "../tunnels/broker.js";
 
 const EMPTY_PAYLOAD = new Uint8Array();
-const INITIAL_CREDIT_BYTES = 256 * 1_024;
+const INITIAL_CREDIT_BYTES = CODE_ADAPTER_TUNNEL_INITIAL_CREDIT_BYTES;
 const MAX_BUFFERED_BYTES = 8 * 1_024 * 1_024;
 const RESPONSE_START_TIMEOUT_MS = 30_000;
 const BLOCKED_CLIENT_HEADERS = new Set([
@@ -64,6 +66,7 @@ interface CodeStream {
   requestHalfClosed: boolean;
   requestPending: Buffer[];
   requestPendingBytes: number;
+  responseDrainPending: boolean;
   responseStarted: boolean;
   sourceToDestinationCredit: number;
   timeout: ReturnType<typeof setTimeout>;
@@ -253,7 +256,9 @@ export class CodeHttpEndpoint implements TunnelDataPlaneEndpoint {
       try {
         const close = Buffer.from(
           JSON.stringify({
-            code: code >= 1_000 && code <= 4_999 ? code : 1_000,
+            code: isForwardableCodeAdapterWebSocketCloseCode(code)
+              ? code
+              : 1_011,
             reason: reason.toString().slice(0, 1_024),
           }),
         );
@@ -381,6 +386,7 @@ export class CodeHttpEndpoint implements TunnelDataPlaneEndpoint {
         (total, part) => total + part.byteLength,
         0,
       ),
+      responseDrainPending: false,
       responseStarted: false,
       sourceToDestinationCredit: 0,
       timeout,
@@ -529,7 +535,10 @@ export class CodeHttpEndpoint implements TunnelDataPlaneEndpoint {
         this.#grantOutputCredit(stream, body.byteLength);
       } else {
         stream.destinationToSourcePendingCredit += body.byteLength;
+        if (stream.responseDrainPending) return;
+        stream.responseDrainPending = true;
         stream.transport.response.once("drain", () => {
+          stream.responseDrainPending = false;
           const bytes = stream.destinationToSourcePendingCredit;
           stream.destinationToSourcePendingCredit = 0;
           this.#grantOutputCredit(stream, bytes);
@@ -580,7 +589,12 @@ export class CodeHttpEndpoint implements TunnelDataPlaneEndpoint {
           const close = codeAdapterWebSocketCloseSchema.parse(
             JSON.parse(payload.toString("utf8")),
           );
-          stream.transport.socket.close(close.code, close.reason);
+          stream.transport.socket.close(
+            isForwardableCodeAdapterWebSocketCloseCode(close.code)
+              ? close.code
+              : 1_011,
+            close.reason,
+          );
         } catch {
           this.#fail(stream, "Cantrip Code WebSocket close is invalid.");
           return;
