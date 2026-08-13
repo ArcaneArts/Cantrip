@@ -438,6 +438,7 @@ export function TerminalView({
                   ? "translate-x-0 opacity-100"
                   : "pointer-events-none translate-x-2 opacity-0",
               )}
+              data-slot="terminal-service-panel-surface"
               style={{ width: servicePanelWidth }}
             >
               <TerminalServicePanel
