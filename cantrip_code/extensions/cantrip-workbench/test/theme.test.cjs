@@ -3,7 +3,10 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { forceColorTheme } = require("../src/theme.js");
+const {
+  forceColorTheme,
+  syncConfiguredColorTheme,
+} = require("../src/theme.js");
 
 function configuration(workspaceValue) {
   const updates = [];
@@ -38,4 +41,38 @@ test("applies a different theme without an unnecessary reset", async () => {
   assert.deepEqual(workbench.updates, [
     { key: "colorTheme", target: "workspace", value: "Cantrip Dark" },
   ]);
+});
+
+test("converges the workbench on the durable Cantrip appearance", async () => {
+  const workbench = configuration("Cantrip Light");
+  const cantrip = {
+    get(key, fallback) {
+      assert.equal(key, "appearance");
+      assert.equal(fallback, null);
+      return "pro-high-contrast-dark";
+    },
+  };
+
+  assert.equal(
+    await syncConfiguredColorTheme(cantrip, workbench, "workspace"),
+    true,
+  );
+  assert.deepEqual(workbench.updates, [
+    {
+      key: "colorTheme",
+      target: "workspace",
+      value: "Cantrip Pro High Contrast Dark",
+    },
+  ]);
+});
+
+test("ignores an invalid durable Cantrip appearance", async () => {
+  const workbench = configuration("Cantrip Light");
+  const cantrip = { get: () => "unknown" };
+
+  assert.equal(
+    await syncConfiguredColorTheme(cantrip, workbench, "workspace"),
+    false,
+  );
+  assert.deepEqual(workbench.updates, []);
 });

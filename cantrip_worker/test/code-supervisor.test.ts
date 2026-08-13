@@ -206,6 +206,21 @@ describe("Cantrip Code supervisor", () => {
 
   it("shares a persistent profile process and always writes the Cantrip theme", async () => {
     const { dataDirectory, repository, supervisor } = await fixture();
+    const profileDirectory = path.join(
+      dataDirectory,
+      "code",
+      "profiles",
+      createHash("sha256").update("default").digest("hex"),
+    );
+    const staleExtensionCache = path.join(
+      profileDirectory,
+      "user-data",
+      "CachedProfilesData",
+      "__default__profile__",
+      "extensions.builtin.cache",
+    );
+    await mkdir(path.dirname(staleExtensionCache), { recursive: true });
+    await writeFile(staleExtensionCache, "stale");
     const first = await supervisor.open({
       ...openCommand("one", repository, "primary"),
       themeMode: "independent",
@@ -229,6 +244,7 @@ describe("Cantrip Code supervisor", () => {
     };
     expect(workspace.folders[0]?.path).toBe(repository);
     expect(workspace.settings).toMatchObject({
+      "cantrip.appearance": "dark",
       "cantrip.sessionId": "one",
       "cantrip.worktreeId": "primary",
       "security.workspace.trust.enabled": false,
@@ -236,16 +252,13 @@ describe("Cantrip Code supervisor", () => {
       "workbench.secondarySideBar.defaultVisibility": "hidden",
       "workbench.colorTheme": "Cantrip Dark",
     });
+    await expect(readFile(staleExtensionCache, "utf8")).rejects.toThrow();
+    await expect(
+      readFile(path.join(profileDirectory, ".cantrip-code-build"), "utf8"),
+    ).resolves.toBe(`${"a".repeat(64)}\n`);
     const launchArguments = JSON.parse(
       await readFile(
-        path.join(
-          dataDirectory,
-          "code",
-          "profiles",
-          createHash("sha256").update("default").digest("hex"),
-          "user-data",
-          "launch-args.json",
-        ),
+        path.join(profileDirectory, "user-data", "launch-args.json"),
         "utf8",
       ),
     ) as string[];

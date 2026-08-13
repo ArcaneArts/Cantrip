@@ -9,7 +9,6 @@ import { AlertTriangle, Code2, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
 import {
   CantripApiError,
   createCodeAttachment,
@@ -70,10 +69,6 @@ export function isCodeWorkbenchReady(
   return runtime.sessionId === sessionId && runtime.bridgeConnected;
 }
 
-export function isCodeFrameReadyToReveal(frameLoaded: boolean): boolean {
-  return frameLoaded;
-}
-
 function errorText(error: unknown): string {
   return errorMessage(error, "Cantrip Code could not open.");
 }
@@ -101,7 +96,6 @@ export function CodeView({
   const [connectAttempt, setConnectAttempt] = useState(0);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
-  const [frameLoaded, setFrameLoaded] = useState(false);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [retrying, setRetrying] = useState(false);
   const appearanceRef = useRef(appearance);
@@ -134,7 +128,6 @@ export function CodeView({
     setConnectError(null);
     setConnecting(false);
     setRetrying(false);
-    setFrameLoaded(false);
 
     const connect = async (attempt: number) => {
       if (cancelled || stopped.current) return;
@@ -165,7 +158,6 @@ export function CodeView({
         setConnectError(null);
         setConnecting(false);
         setRetrying(false);
-        setFrameLoaded(false);
         onChangedRef.current?.();
         if (preferred.directHealthUrl) {
           let failures = 0;
@@ -185,7 +177,6 @@ export function CodeView({
                 ownedDirectTunnelId = null;
                 void stopDirectCodeAttachment(tunnelId);
                 setAttachment(relayAttachment);
-                setFrameLoaded(false);
                 return;
               }
             }
@@ -270,7 +261,6 @@ export function CodeView({
   useEffect(() => {
     if (
       !attachment ||
-      !frameLoaded ||
       isCodeWorkbenchReady(attachment.runtime, attachment.sessionId)
     )
       return;
@@ -303,7 +293,7 @@ export function CodeView({
       cancelled = true;
       if (pollTimer) clearTimeout(pollTimer);
     };
-  }, [attachment, codeTab.id, frameLoaded]);
+  }, [attachment, codeTab.id]);
 
   const runAction = useCallback(
     async (name: string, action: () => Promise<void>) => {
@@ -351,7 +341,6 @@ export function CodeView({
           if (!isCodeSessionUnavailableError(error)) throw error;
         }
         setAttachment(null);
-        setFrameLoaded(false);
         setConnectError(null);
         setActionMessage("Editor stopped.");
       }),
@@ -423,15 +412,10 @@ export function CodeView({
             key={attachment.attachmentId}
             allow="clipboard-read; clipboard-write"
             className="min-h-0 w-full flex-1 border-0 bg-transparent"
-            onLoad={() => setFrameLoaded(true)}
             referrerPolicy="no-referrer"
             ref={frameRef}
             src={attachment.url}
             title={`${codeTab.title} — Cantrip Code`}
-          />
-          <SurfaceLoadingVeil
-            label="Loading the browser-native workbench…"
-            visible={!isCodeFrameReadyToReveal(frameLoaded)}
           />
         </>
       ) : (

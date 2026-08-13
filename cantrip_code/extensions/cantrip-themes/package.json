@@ -1,0 +1,70 @@
+{
+  "name": "cantrip-themes",
+  "displayName": "Cantrip Themes",
+  "description": "Built-in Cantrip Code themes available before the remote extension host starts.",
+  "version": "0.1.0",
+  "publisher": "cantrip",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.109.0"
+  },
+  "categories": [
+    "Themes"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "Cantrip Light",
+        "label": "Cantrip Light",
+        "uiTheme": "vs",
+        "path": "./themes/cantrip-light.json"
+      },
+      {
+        "id": "Cantrip Dark",
+        "label": "Cantrip Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/cantrip-dark.json"
+      },
+      {
+        "id": "Cantrip High Contrast Light",
+        "label": "Cantrip High Contrast Light",
+        "uiTheme": "hc-light",
+        "path": "./themes/cantrip-hc-light.json"
+      },
+      {
+        "id": "Cantrip High Contrast Dark",
+        "label": "Cantrip High Contrast Dark",
+        "uiTheme": "hc-black",
+        "path": "./themes/cantrip-hc-dark.json"
+      },
+      {
+        "id": "Cantrip Pro Light",
+        "label": "Cantrip Pro Light",
+        "uiTheme": "vs",
+        "path": "./themes/cantrip-pro-light.json"
+      },
+      {
+        "id": "Cantrip Pro Dark",
+        "label": "Cantrip Pro Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/cantrip-pro-dark.json"
+      },
+      {
+        "id": "Cantrip Pro High Contrast Light",
+        "label": "Cantrip Pro High Contrast Light",
+        "uiTheme": "hc-light",
+        "path": "./themes/cantrip-pro-hc-light.json"
+      },
+      {
+        "id": "Cantrip Pro High Contrast Dark",
+        "label": "Cantrip Pro High Contrast Dark",
+        "uiTheme": "hc-black",
+        "path": "./themes/cantrip-pro-hc-dark.json"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ArcaneArts/Cantrip.git"
+  }
+}

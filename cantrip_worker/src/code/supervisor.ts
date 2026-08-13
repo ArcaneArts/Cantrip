@@ -5,6 +5,7 @@ import {
   mkdir,
   readFile,
   rename,
+  rm,
   stat,
   writeFile,
 } from "node:fs/promises";
@@ -99,6 +100,7 @@ const CRASH_WINDOW_MS = 5 * 60_000;
 const PROCESS_STOP_TIMEOUT_MS = 2_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60_000;
 const RUNTIME_STATE_SCHEMA_VERSION = 2;
+const PROFILE_BUILD_FINGERPRINT_FILE = ".cantrip-code-build";
 // Oracle Java eagerly imports every nested Gradle project and provides no
 // configuration switch for disabling that startup behavior.
 const DEFAULT_DISABLED_EXTENSIONS = ["oracle.oracle-java"] as const;
@@ -383,7 +385,7 @@ export class CodeSupervisor {
     session.appearance = appearance;
     session.lastActivityAt = isoNow();
     await this.#writeWorkspace(session);
-    void this.#bridge.setTheme(sessionId, appearance).catch(() => undefined);
+    await this.#bridge.setTheme(sessionId, appearance);
     await this.#persistState();
     return this.#status(session);
   }
@@ -604,6 +606,7 @@ export class CodeSupervisor {
       "profiles",
       profile.profileKey,
     );
+    await this.#prepareProfileForBuild(profileDirectory, installation);
     const port = await reserveLoopbackPort();
     const connectionToken = randomBytes(32).toString("hex");
     const instanceId = randomUUID();
@@ -684,6 +687,30 @@ export class CodeSupervisor {
       profile.logPath,
       `process ${instanceId} ready on loopback port ${port}`,
     );
+  }
+
+  async #prepareProfileForBuild(
+    profileDirectory: string,
+    installation: CantripCodeInstallation,
+  ): Promise<void> {
+    const fingerprintPath = path.join(
+      profileDirectory,
+      PROFILE_BUILD_FINGERPRINT_FILE,
+    );
+    const fingerprint = installation.editorBuild.fingerprint;
+    const previousFingerprint = await readFile(fingerprintPath, "utf8").catch(
+      () => "",
+    );
+    if (previousFingerprint.trim() === fingerprint) return;
+
+    // VS Code persists its built-in extension scan below CachedProfilesData.
+    // Keeping that cache across a Cantrip Code upgrade can hide newly bundled
+    // themes and extensions until the user deletes their profile manually.
+    await rm(path.join(profileDirectory, "user-data", "CachedProfilesData"), {
+      recursive: true,
+      force: true,
+    });
+    await writeFile(fingerprintPath, `${fingerprint}\n`);
   }
 
   async #onProcessExit(
@@ -799,6 +826,7 @@ export class CodeSupervisor {
 
   async #writeWorkspace(session: CodeSession): Promise<void> {
     const settings: Record<string, unknown> = {
+      "cantrip.appearance": session.appearance,
       "cantrip.bridgeToken": session.bridgeToken,
       "cantrip.bridgeUrl": session.bridgeUrl,
       "cantrip.projectId": session.projectId,

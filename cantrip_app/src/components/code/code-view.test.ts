@@ -5,7 +5,6 @@ import { CantripApiError } from "@/lib/api";
 import {
   codeReconnectDelayMs,
   isCodeAttachmentUnavailableMessage,
-  isCodeFrameReadyToReveal,
   isCodeSessionUnavailableError,
   isCodeWorkbenchReady,
 } from "./code-view";
@@ -84,10 +83,5 @@ describe("Cantrip Code reconnect delay", () => {
     expect(
       isCodeWorkbenchReady({ ...runtime, bridgeConnected: false }, "session-1"),
     ).toBe(false);
-  });
-
-  it("reveals a rendered editor without waiting for the worker bridge", () => {
-    expect(isCodeFrameReadyToReveal(false)).toBe(false);
-    expect(isCodeFrameReadyToReveal(true)).toBe(true);
   });
 });
