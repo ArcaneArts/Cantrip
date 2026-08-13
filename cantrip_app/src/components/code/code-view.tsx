@@ -78,11 +78,13 @@ function shouldRetry(error: unknown): boolean {
 }
 
 export function CodeView({
+  active = true,
   appearance,
   codeTab,
   onChanged,
   onHeaderChange,
 }: {
+  active?: boolean;
   appearance: CodeAppearance;
   codeTab: CodeTabSummary;
   onChanged?(): void;
@@ -397,13 +399,19 @@ export function CodeView({
   );
 
   useEffect(() => {
-    onHeaderChange?.(header);
-  }, [header, onHeaderChange]);
-  useEffect(() => () => onHeaderChange?.(null), [onHeaderChange]);
+    if (active) onHeaderChange?.(header);
+  }, [active, header, onHeaderChange]);
+  useEffect(
+    () => () => {
+      if (active) onHeaderChange?.(null);
+    },
+    [active, onHeaderChange],
+  );
 
   return (
     <div
-      className="relative flex min-h-0 flex-1 overflow-hidden bg-background"
+      aria-hidden={!active}
+      className={`relative min-h-0 flex-1 overflow-hidden bg-background ${active ? "flex" : "hidden"}`}
       data-slot="code-view"
     >
       {attachment ? (

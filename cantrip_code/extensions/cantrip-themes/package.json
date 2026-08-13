@@ -11,7 +11,35 @@
   "categories": [
     "Themes"
   ],
+  "activationEvents": [
+    "*"
+  ],
+  "browser": "./src/extension.js",
+  "extensionKind": [
+    "ui"
+  ],
   "contributes": {
+    "configuration": {
+      "title": "Cantrip",
+      "properties": {
+        "cantrip.appearance": {
+          "type": "string",
+          "enum": [
+            "light",
+            "dark",
+            "high-contrast-light",
+            "high-contrast-dark",
+            "pro-light",
+            "pro-dark",
+            "pro-high-contrast-light",
+            "pro-high-contrast-dark"
+          ],
+          "default": "dark",
+          "scope": "window",
+          "description": "The Cantrip-managed appearance for this workbench."
+        }
+      }
+    },
     "themes": [
       {
         "id": "Cantrip Light",

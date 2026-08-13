@@ -18,12 +18,16 @@ async function theme(name) {
   return JSON.parse(await readFile(path.join(themesDirectory, name), "utf8"));
 }
 
-test("ships themes without depending on the remote extension host", async () => {
+test("ships themes in the browser extension host", async () => {
   const manifest = JSON.parse(await readFile(themesManifest, "utf8"));
 
   assert.equal(manifest.main, undefined);
-  assert.equal(manifest.browser, undefined);
-  assert.equal(manifest.activationEvents, undefined);
+  assert.equal(manifest.browser, "./src/extension.js");
+  assert.deepEqual(manifest.extensionKind, ["ui"]);
+  assert.deepEqual(manifest.activationEvents, ["*"]);
+  assert.ok(
+    manifest.contributes.configuration.properties["cantrip.appearance"],
+  );
   assert.deepEqual(
     manifest.contributes.themes.map((item) => item.id),
     [

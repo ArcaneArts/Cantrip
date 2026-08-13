@@ -353,9 +353,9 @@ const BrowserView = lazy(() =>
     default: module.BrowserView,
   })),
 );
-const CodeView = lazy(() =>
-  import("@/components/code/code-view").then((module) => ({
-    default: module.CodeView,
+const PersistentCodeViews = lazy(() =>
+  import("@/components/code/persistent-code-views").then((module) => ({
+    default: module.PersistentCodeViews,
   })),
 );
 const RemoteDesktopView = lazy(() =>
@@ -4514,6 +4514,16 @@ export function App() {
           }
         : null,
   } satisfies Omit<ContentHeaderActionsProps, "compact">;
+  const codeSurfaceVisible = Boolean(
+    selectedCodeTab &&
+    !mobileProjectSelectorOpen &&
+    !showImporter &&
+    !showSettings &&
+    !showServerAdmin &&
+    !showProjectSettings &&
+    !(compactShell && mobileTabGridOpen) &&
+    !groupOwnedElsewhere,
+  );
   return (
     <WorkspaceDndProvider
       className="flex h-svh overflow-hidden bg-background text-foreground"
@@ -5150,6 +5160,27 @@ export function App() {
           />
         ) : null}
 
+        <Suspense
+          fallback={
+            codeSurfaceVisible ? (
+              <div className="grid flex-1 place-items-center text-muted-foreground">
+                <Loader2 className="size-5 animate-spin" />
+              </div>
+            ) : null
+          }
+        >
+          <PersistentCodeViews
+            activeTab={codeSurfaceVisible ? (selectedCodeTab ?? null) : null}
+            appearance={codeAppearance}
+            onChanged={(codeTab) =>
+              void queryClient.invalidateQueries({
+                queryKey: ["code-tabs", codeTab.projectId],
+              })
+            }
+            onHeaderChange={setCodeHeader}
+          />
+        </Suspense>
+
         {mobileProjectSelectorOpen ? (
           <MobileProjectSelector
             activeWorkspace={activeProjectWorkspace}
@@ -5411,26 +5442,7 @@ export function App() {
             }
             onHeaderChange={setGitHistoryHeader}
           />
-        ) : selectedCodeTab ? (
-          <Suspense
-            fallback={
-              <div className="grid flex-1 place-items-center text-muted-foreground">
-                <Loader2 className="size-5 animate-spin" />
-              </div>
-            }
-          >
-            <CodeView
-              appearance={codeAppearance}
-              codeTab={selectedCodeTab}
-              onChanged={() =>
-                void queryClient.invalidateQueries({
-                  queryKey: ["code-tabs", selectedCodeTab.projectId],
-                })
-              }
-              onHeaderChange={setCodeHeader}
-            />
-          </Suspense>
-        ) : selectedBrowser ? (
+        ) : selectedCodeTab ? null : selectedBrowser ? (
           <Suspense
             fallback={
               <div className="grid flex-1 place-items-center text-muted-foreground">
