@@ -10,13 +10,13 @@
     "external-credential": 2,
     "public-authentication": 3,
     "public-bootstrap": 2,
-    "worker-control": 8,
-    "http": 324,
+    "worker-control": 6,
+    "http": 322,
     "legacyLocalOwnerRoutes": 0,
     "requestPrincipalRoutes": 290,
-    "total": 329,
+    "total": 327,
     "websocket": 5,
-    "workerCredentialRoutes": 8,
+    "workerCredentialRoutes": 6,
     "workerCommands": 173,
     "liveResources": 30,
     "repositoryMethods": 286,
@@ -839,22 +839,6 @@
     },
     {
       "boundary": "worker-control",
-      "line": 18468,
-      "method": "POST",
-      "ownerEvidence": "worker-credential",
-      "path": "/api/internal/agent-tools/execution",
-      "transport": "http"
-    },
-    {
-      "boundary": "worker-control",
-      "line": 18360,
-      "method": "POST",
-      "ownerEvidence": "worker-credential",
-      "path": "/api/internal/agent-tools/worktree",
-      "transport": "http"
-    },
-    {
-      "boundary": "worker-control",
       "line": 18230,
       "method": "POST",
       "ownerEvidence": "worker-credential",
@@ -879,7 +863,7 @@
     },
     {
       "boundary": "worker-control",
-      "line": 18621,
+      "line": 18413,
       "method": "GET",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/connect",
@@ -895,7 +879,7 @@
     },
     {
       "boundary": "worker-control",
-      "line": 18568,
+      "line": 18360,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/heartbeat",
@@ -903,7 +887,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 2441,
+      "line": 2427,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/live",

@@ -29,7 +29,7 @@ import type { WorkerConfig } from "./config.js";
 import {
   CantripServerRequestError,
   invokeCantripCliCommand,
-} from "./codex/worktree-tool-client.js";
+} from "./cli-client.js";
 
 export const CANTRIP_CLI_CONNECTION_ENV = "CANTRIP_CLI_CONNECTION";
 export const CANTRIP_CLI_CONNECTION_FILE = "cli-connection.json";
@@ -165,7 +165,13 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
 type CliCommandExecutor = (
   request: CantripCliCommandRequest,
   requestId: string,
+  chatContext: CantripCliChatContext | null,
 ) => Promise<CantripCliCommandResult>;
+
+export interface CantripCliChatContext {
+  chatId: string;
+  executionLaneId: string;
+}
 
 export class CantripCliBroker {
   readonly #binary: string;
@@ -176,6 +182,7 @@ export class CantripCliBroker {
   readonly #connectionPath: string;
   readonly #sessionToken = randomBytes(32).toString("base64url");
   readonly #execute: CliCommandExecutor;
+  readonly #threadContexts = new Map<string, CantripCliChatContext>();
   #server: Server | null = null;
 
   constructor(
@@ -189,8 +196,9 @@ export class CantripCliBroker {
     this.#binary = options.binary ?? resolveCantripCliBinary();
     this.#execute =
       options.execute ??
-      ((request, requestId) =>
+      ((request, requestId, chatContext) =>
         invokeCantripCliCommand({
+          chatContext,
           request,
           requestId,
           serverUrl: this.#config.serverUrl,
@@ -213,6 +221,10 @@ export class CantripCliBroker {
 
   childEnvironment(): Record<string, string> {
     return environmentWithCli(this.#binary, this.#connectionPath);
+  }
+
+  bindCodexThread(threadId: string, context: CantripCliChatContext): void {
+    this.#threadContexts.set(threadId, context);
   }
 
   async start(): Promise<CantripCliConnectionDocument> {
@@ -249,7 +261,15 @@ export class CantripCliBroker {
             return;
           }
           try {
-            const result = await this.#execute(command, randomUUID());
+            const chatContext = command.context.codexThreadId
+              ? (this.#threadContexts.get(command.context.codexThreadId) ??
+                null)
+              : null;
+            const result = await this.#execute(
+              command,
+              randomUUID(),
+              chatContext,
+            );
             sendJson(
               response,
               200,

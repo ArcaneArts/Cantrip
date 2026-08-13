@@ -1,0 +1,96 @@
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
+index 4850e06e..ead01bbf 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
+@@ -177,1 +177,17 @@ fn thread_resume_params_accept_turns_page_bootstrap() {
++#[test]
++fn thread_resume_params_preserve_explicit_empty_dynamic_tools() {
++    let omitted = serde_json::from_value::<ThreadResumeParams>(json!({
++        "threadId": "thr_123",
++    }))
++    .expect("omitted dynamic tools should deserialize");
++    assert_eq!(omitted.dynamic_tools, None);
++
++    let empty = serde_json::from_value::<ThreadResumeParams>(json!({
++        "threadId": "thr_123",
++        "dynamicTools": [],
++    }))
++    .expect("explicit empty dynamic tools should deserialize");
++    assert_eq!(empty.dynamic_tools, Some(Vec::new()));
++}
++
+ #[test]
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+index 966f45aa..fe275320 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+@@ -384,6 +384,15 @@ pub struct ThreadResumeParams {
+     pub developer_instructions: Option<String>,
+     #[ts(optional = nullable)]
+     pub personality: Option<Personality>,
++    /// Override the dynamic tools restored from persisted thread metadata.
++    /// Omission preserves the persisted tools; an explicit empty array removes them.
++    #[experimental("thread/resume.dynamicTools")]
++    #[serde(
++        default,
++        deserialize_with = "codex_protocol::dynamic_tools::deserialize_dynamic_tool_specs"
++    )]
++    #[ts(optional = nullable)]
++    pub dynamic_tools: Option<Vec<DynamicToolSpec>>,
+     /// When true, return only thread metadata and live-resume state without
+     /// populating `thread.turns`. This is useful when the client plans to call
+     /// `thread/turns/list` immediately after resuming.
+diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
+index 85dfb9ec..c622eee1 100644
+--- a/codex-rs/app-server/src/request_processors/thread_processor.rs
++++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
+@@ -3085,6 +3085,7 @@ impl ThreadRequestProcessor {
+             base_instructions,
+             developer_instructions,
+             personality,
++            dynamic_tools,
+             exclude_turns,
+             initial_turns_page,
+         } = params;
+@@ -3114,13 +3115,17 @@ impl ThreadRequestProcessor {
+                 Err(error) => Err(error),
+             }
+         };
+-        let (thread_history, resume_source_thread) = match resume_result {
++        let (mut thread_history, resume_source_thread) = match resume_result {
+             Ok(value) => value,
+             Err(error) => {
+                 self.outgoing.send_error(request_id, error).await;
+                 return Ok(());
+             }
+         };
++        if let Some(dynamic_tools) = dynamic_tools {
++            validate_dynamic_tools(&dynamic_tools).map_err(invalid_request)?;
++            thread_history.override_dynamic_tools(dynamic_tools);
++        }
+         let paginated_thread_id = resume_source_thread.as_ref().and_then(|thread| {
+             matches!(thread.history_mode, ThreadHistoryMode::Paginated).then_some(thread.thread_id)
+         });
+diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
+index c692d040..3d4d01a0 100644
+--- a/codex-rs/protocol/src/protocol.rs
++++ b/codex-rs/protocol/src/protocol.rs
+@@ -2654,1 +2654,18 @@ impl InitialHistory {
++    /// Replaces dynamic tools in persisted session metadata for this resume.
++    /// This preserves the rest of the rollout while allowing callers to
++    /// explicitly migrate a thread away from tools it previously registered.
++    pub fn override_dynamic_tools(&mut self, dynamic_tools: Vec<DynamicToolSpec>) {
++        let items: &mut Vec<RolloutItem> = match self {
++            InitialHistory::New | InitialHistory::Cleared => return,
++            InitialHistory::Resumed(resumed) => Arc::make_mut(&mut resumed.history),
++            InitialHistory::Forked(items) => items,
++        };
++        if let Some(meta) = items.iter_mut().find_map(|item| match item {
++            RolloutItem::SessionMeta(meta_line) => Some(&mut meta_line.meta),
++            _ => None,
++        }) {
++            meta.dynamic_tools = Some(dynamic_tools);
++        }
++    }
++
+     pub fn get_selected_capability_roots(&self) -> Vec<SelectedCapabilityRoot> {

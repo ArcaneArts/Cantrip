@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
-  agentWorktreeToolResultSchema,
+  cantripCliCommandResultSchema,
   chatSummarySchema,
   chatMessageListSchema,
   codeSessionListSchema,
@@ -59,7 +59,6 @@ import {
   worktreeStatusResultSchema,
   type WorkerWorktreeSummary,
   type WorkerCommand,
-  type AgentWorktreeToolName,
   type GitManagedOperationContext,
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -241,9 +240,9 @@ const chatTurnCommands: Array<Extract<WorkerCommand, { type: "chat.turn" }>> =
 const gitAgentCommands: Array<
   Extract<WorkerCommand, { type: "git.agent.generate" }>
 > = [];
-let agentToolInvocation: {
+let cliInvocation: {
   arguments: Record<string, unknown>;
-  tool: AgentWorktreeToolName;
+  command: "worktree.switch";
 } | null = null;
 let workerWorktrees: WorkerWorktreeSummary[] = [
   {
@@ -1321,27 +1320,34 @@ const workerBridge = {
         };
       case "chat.turn":
         chatTurnCommands.push(command);
-        if (agentToolInvocation) {
-          const invocation = agentToolInvocation;
-          agentToolInvocation = null;
+        if (cliInvocation) {
+          const invocation = cliInvocation;
+          cliInvocation = null;
           const callId = `call-${chatTurnCommands.length}`;
           const toolResponse = await app.inject({
             method: "POST",
-            url: "/api/internal/agent-tools/worktree",
+            url: "/api/internal/cli",
             headers: { authorization: `Bearer ${config.workerToken}` },
             payload: {
               arguments: invocation.arguments,
-              callId,
-              chatId: command.chatId,
-              executionLaneId: command.executionLaneId,
-              tool: invocation.tool,
+              chatContext: {
+                chatId: command.chatId,
+                executionLaneId: command.executionLaneId,
+              },
+              command: invocation.command,
+              context: {
+                codexThreadId: command.threadId,
+                cwd: command.cwd,
+                terminalId: null,
+              },
+              requestId: callId,
               workerId: "test-worker",
             },
           });
           if (toolResponse.statusCode !== 200) {
             throw new Error(String(toolResponse.json().error));
           }
-          const toolResult = agentWorktreeToolResultSchema.parse(
+          const toolResult = cantripCliCommandResultSchema.parse(
             toolResponse.json(),
           );
           await options?.onEvent?.({
@@ -1349,7 +1355,7 @@ const workerBridge = {
             activity: {
               type: "worktree",
               id: `worktree-tool:${callId}`,
-              operation: invocation.tool,
+              operation: invocation.command,
               status: "completed",
               summary: toolResult.summary,
               worktreeId: toolResult.worktreeId,
@@ -1719,11 +1725,10 @@ describe.sequential("server worktree control plane", () => {
       ).json(),
     );
     const before = chatTurnCommands.length;
-    agentToolInvocation = {
-      tool: "cantrip_worktree_switch",
+    cliInvocation = {
+      command: "worktree.switch",
       arguments: {
-        worktreeId: targetId,
-        purpose: "Implement the requested change away from Primary",
+        worktree: targetId,
       },
     };
 
@@ -1850,19 +1855,23 @@ describe.sequential("server worktree control plane", () => {
     );
     expect(execution).not.toBeNull();
     const payload = {
-      arguments: {
-        worktreeId: managedIds[0],
-        purpose: "Attempt a forbidden transition",
+      arguments: { worktree: managedIds[0] },
+      chatContext: {
+        chatId: chat.id,
+        executionLaneId: execution!.executionLaneId,
       },
-      callId: "pinned-call",
-      chatId: chat.id,
-      executionLaneId: execution!.executionLaneId,
-      tool: "cantrip_worktree_switch",
+      command: "worktree.switch",
+      context: {
+        codexThreadId: null,
+        cwd: primaryPath,
+        terminalId: null,
+      },
+      requestId: "pinned-call",
       workerId: execution!.workerId,
     };
     const pinned = await app.inject({
       method: "POST",
-      url: "/api/internal/agent-tools/worktree",
+      url: "/api/internal/cli",
       headers: { authorization: `Bearer ${config.workerToken}` },
       payload,
     });
@@ -1871,9 +1880,13 @@ describe.sequential("server worktree control plane", () => {
 
     const spoofed = await app.inject({
       method: "POST",
-      url: "/api/internal/agent-tools/worktree",
+      url: "/api/internal/cli",
       headers: { authorization: `Bearer ${config.workerToken}` },
-      payload: { ...payload, callId: "spoofed-call", workerId: "other-worker" },
+      payload: {
+        ...payload,
+        requestId: "spoofed-call",
+        workerId: "other-worker",
+      },
     });
     expect(spoofed.statusCode).toBe(404);
     expect(spoofed.json().error).toBe("Worker not found.");
@@ -1885,9 +1898,9 @@ describe.sequential("server worktree control plane", () => {
 
     const stale = await app.inject({
       method: "POST",
-      url: "/api/internal/agent-tools/worktree",
+      url: "/api/internal/cli",
       headers: { authorization: `Bearer ${config.workerToken}` },
-      payload: { ...payload, callId: "stale-call" },
+      payload: { ...payload, requestId: "stale-call" },
     });
     expect(stale.statusCode).toBe(409);
     expect(stale.json().error).toContain("active chat lane");

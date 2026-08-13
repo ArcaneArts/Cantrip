@@ -7,9 +7,9 @@ license, notice, and readme. It is not a submodule or a nested Git checkout.
 
 The pinned upstream ref, resolved commit, and CLI version live in
 `upstream.json`. `upstream.files.json` records every imported file and content
-hash. Cantrip does not patch Codex today. If a future worker requires a Codex
-change, add an explicit, reviewable patch mechanism instead of editing the
-imported snapshot in place.
+hash. Cantrip-specific compatibility patches live in `patches/`. The tracked
+upstream snapshot remains pristine and hash-verified; build preparation applies
+every reviewed patch in filename order to an ignored source copy.
 
 ## Build
 
@@ -19,8 +19,9 @@ The repository's normal development preparation and worker packaging invoke:
 pnpm codex:build
 ```
 
-This verifies the snapshot and runs Cargo with the upstream lockfile and pinned
-Rust toolchain. Output is cached below `cantrip_codex/.build/` and is never
+This verifies the snapshot and patch series, then runs Cargo with the upstream
+lockfile and pinned Rust toolchain. Output is cached below
+`cantrip_codex/.build/` and is never
 committed. Worker packages copy the resulting native CLI, code-mode host,
 responses proxy, platform sandbox helpers, and a hash-checked runtime manifest
 into `bin/`. The bundle also carries the upstream Apache-2.0 `LICENSE` and
@@ -33,7 +34,8 @@ The `0.146.1` tag updated its workspace manifests from development version
 directory and normalizes only those workspace-local versions from Cargo
 metadata before invoking `cargo build --locked`. Registry and Git dependency
 versions, checksums, and revisions remain exactly as pinned upstream, and the
-tracked source snapshot is never modified.
+tracked source snapshot is never modified. The runtime manifest fingerprints
+the ordered patch set so changing a patch invalidates cached binaries.
 
 ## Manual upstream update
 

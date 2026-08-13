@@ -8,8 +8,10 @@ import {
   bundleDirectory,
   executableName,
   filesManifestPath,
+  patchSetSha256,
   platformKey,
   prettyJson,
+  readCodexPatches,
   readUpstreamMetadata,
   root,
   sha256File,
@@ -37,8 +39,10 @@ const expectedCompiledArtifacts = [
   ...(process.platform === "linux" ? ["codex-resources/bwrap"] : []),
 ].sort();
 const metadata = await readUpstreamMetadata();
+const patches = await readCodexPatches();
 const sourceManifestSha256 = await sha256File(filesManifestPath);
-const buildRecipeVersion = 1;
+const patchesSha256 = patchSetSha256(patches);
+const buildRecipeVersion = 2;
 
 async function reusableBundle() {
   let manifest;
@@ -73,11 +77,10 @@ async function reusableBundle() {
   ) {
     return null;
   }
-  const legacyRecipe = manifest.buildRecipeVersion === undefined;
   if (
-    !legacyRecipe &&
-    (manifest.buildRecipeVersion !== buildRecipeVersion ||
-      manifest.sourceManifestSha256 !== sourceManifestSha256)
+    manifest.buildRecipeVersion !== buildRecipeVersion ||
+    manifest.sourceManifestSha256 !== sourceManifestSha256 ||
+    manifest.patchesSha256 !== patchesSha256
   ) {
     return null;
   }
@@ -120,6 +123,7 @@ function runtimeManifest(artifacts) {
       commit: metadata.commit,
     },
     sourceManifestSha256,
+    patchesSha256,
     buildRecipeVersion,
     entrypoint: executableName(),
     artifacts,
@@ -143,9 +147,49 @@ await mkdir(outputDirectory, { recursive: true });
 const preparedRoot = path.join(outputDirectory, "source");
 await rm(preparedRoot, { force: true, recursive: true });
 await cp(upstreamDirectory, preparedRoot, {
+  preserveTimestamps: true,
   recursive: true,
   verbatimSymlinks: true,
 });
+const preparedRootFromRepository = path
+  .relative(root, preparedRoot)
+  .split(path.sep)
+  .join(path.posix.sep);
+for (const patch of patches) {
+  const applied = spawnSync(
+    "git",
+    ["apply", `--directory=${preparedRootFromRepository}`, patch.path],
+    {
+      cwd: root,
+      encoding: "utf8",
+    },
+  );
+  if (applied.status !== 0) {
+    process.stderr.write(applied.stderr ?? "");
+    process.exit(applied.status ?? 1);
+  }
+  const reverseCheck = spawnSync(
+    "git",
+    [
+      "apply",
+      "--check",
+      "--reverse",
+      `--directory=${preparedRootFromRepository}`,
+      patch.path,
+    ],
+    { cwd: root, encoding: "utf8" },
+  );
+  if (reverseCheck.status !== 0) {
+    process.stderr.write(reverseCheck.stderr ?? "");
+    console.error(
+      `Codex patch did not modify the prepared source: ${patch.name}`,
+    );
+    process.exit(reverseCheck.status ?? 1);
+  }
+}
+console.log(
+  `Applied ${patches.length} reviewed Cantrip Codex patch${patches.length === 1 ? "" : "es"}.`,
+);
 const cargoDirectory = path.join(preparedRoot, "codex-rs");
 const cargoTargetDirectory = path.join(outputDirectory, "target");
 const releaseDirectory = path.join(cargoTargetDirectory, "release");

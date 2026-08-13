@@ -67,16 +67,28 @@ worktrees cannot be removed through this command.
 
 Each invocation reports three hints to the server, in priority order:
 
-1. `CODEX_THREAD_ID`, for a command run by a Cantrip chat's Codex process.
+1. `CODEX_THREAD_ID`, for a command run by a Cantrip chat's Codex process. The
+   worker broker binds this to the active server-issued chat execution lane,
+   including before a newly created Codex thread has been persisted by the
+   server.
 2. `CANTRIP_TERMINAL_ID`, injected into each Cantrip Terminal process.
 3. The current working directory, matched to the most specific worktree path
    registered on the connected worker.
 
 The server scopes every lookup to the account owning the authenticated worker.
-A stale, missing, or ambiguous hint fails clearly instead of guessing across
-projects. Chat transitions such as `worktree switch` additionally require an
-active chat execution lane; read-only and direct surface commands can run from
-a normal project terminal.
+A stale, missing, spoofed, or ambiguous hint fails clearly instead of guessing
+across projects. Chat transitions such as `worktree switch` additionally
+require the exact active chat execution lane; read-only and direct surface
+commands can run from a normal project terminal.
+
+## Codex integration
+
+Cantrip does not register product-specific functions in Codex's tool list. New
+threads and resumed threads both send `dynamicTools: []`; the pinned runtime's
+resume compatibility patch distinguishes that explicit empty override from an
+omitted field and removes any tool declarations saved by pre-cutover chats.
+Both paths install a small developer instruction directing Codex to
+`cantrip -h` and standard command-line tools.
 
 ## Transport
 

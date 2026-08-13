@@ -1,6 +1,6 @@
 # ADR 0001: Agent-managed worktree execution lanes
 
-- Status: Accepted
+- Status: Accepted; agent-control transport amended 2026-08-13
 - Date: 2026-08-08
 
 ## Context
@@ -54,7 +54,7 @@ This verifies that the running app-server accepts a CWD transition for
 subsequent turns without making a model request. It does not make an in-flight
 turn movable: active command, approval, diff, and activity state remains tied
 to the turn that created it. Cantrip must transition only after that turn and
-all mutating dynamic-tool work have settled.
+all mutating operations have settled.
 
 Cantrip's current app-server client supplies CWD when starting or resuming a
 thread, but not on every `turn/start`. A loaded thread would therefore retain
@@ -96,10 +96,12 @@ cannot silently regress worktree routing.
 
 ### Agent control
 
-Cantrip will use Codex app-server dynamic tools as the primary agent control
-path. This is native to the existing process protocol and avoids managing a
-second MCP process solely for Cantrip-owned operations. The tool namespace will
-provide list, acquire/create, switch, status, release, and remove operations.
+Cantrip uses its worker-bundled CLI as the primary agent control path. Codex is
+given a short instruction to discover it with `cantrip -h`, while normal files
+and Git remain standard shell operations. The CLI's authenticated loopback
+broker carries server-issued execution-lane identity and reuses the same
+authorization, routing, filesystem, and lifecycle implementation established
+by this decision. No Cantrip-specific dynamic tools are registered with Codex.
 
 The agent supplies intent and Git references, never an unrestricted checkout
 path. The server authorizes ownership and lease transitions; the worker chooses
@@ -144,8 +146,8 @@ CWD and workspace roots on the following turn.
 - Existing projects and filesystem-backed tabs require a migration to Primary.
 - Git status and actions become worktree-scoped instead of project-path scoped.
 - Runtime and queue dispatch must resolve the active lease at dispatch time.
-- The Codex app-server client gains dynamic-tool request handling and explicit
-  per-turn CWD/workspace-root overrides.
+- The Codex app-server client sends explicit empty dynamic-tool overrides on
+  thread start/resume and explicit per-turn CWD/workspace-root overrides.
 - Worktree state can be shown while a worker is offline, but the checkout cannot
   execute until that worker reconnects.
 - Future cross-worker handoff must explicitly replicate committed Git state and

@@ -3,8 +3,9 @@ import { describe, expect, it } from "vitest";
 import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
 
 import {
-  CANTRIP_DYNAMIC_TOOLS,
-  CANTRIP_WORKTREE_DYNAMIC_TOOLS,
+  CANTRIP_CLI_DEVELOPER_INSTRUCTIONS,
+  CANTRIP_DYNAMIC_TOOLS_OVERRIDE,
+  cantripChatThreadParams,
   agentInteractionRequestFromServerRequest,
   changedFiles,
   codexResultForAgentInteraction,
@@ -16,7 +17,6 @@ import {
   codexWorkflowTurnPolicy,
   codexWorktreeTurnPolicy,
   codexWorkspaceContext,
-  executeDynamicExecutionTool,
   failClosedAgentInteractionReply,
   GOAL_CONTINUATION_PROMPT,
   goalShouldContinue,
@@ -419,77 +419,20 @@ describe("Codex agent interaction bridge", () => {
   });
 });
 
-describe("Cantrip dynamic execution tools", () => {
-  it("advertises all lifecycle operations with strict object schemas", () => {
-    expect(CANTRIP_WORKTREE_DYNAMIC_TOOLS.map(({ name }) => name)).toEqual([
-      "cantrip_worktrees_list",
-      "cantrip_worktree_create",
-      "cantrip_worktree_acquire",
-      "cantrip_worktree_switch",
-      "cantrip_worktree_status",
-      "cantrip_worktree_release",
-      "cantrip_worktree_remove",
-    ]);
-    expect(
-      CANTRIP_WORKTREE_DYNAMIC_TOOLS.every(
-        ({ inputSchema }) => inputSchema.additionalProperties === false,
-      ),
-    ).toBe(true);
-    expect(CANTRIP_DYNAMIC_TOOLS.map(({ name }) => name)).toEqual([
-      ...CANTRIP_WORKTREE_DYNAMIC_TOOLS.map(({ name }) => name),
-      "cantrip_targets_list",
-      "cantrip_target_inspect",
-      "cantrip_explorer_list",
-      "cantrip_explorer_read",
-      "cantrip_terminal_read",
-      "cantrip_browser_services",
-      "cantrip_explorer_write",
-      "cantrip_terminal_input",
-      "cantrip_terminal_service_restart",
-      "cantrip_browser_navigate",
-    ]);
-    expect(
-      CANTRIP_DYNAMIC_TOOLS.every(
-        ({ inputSchema }) => inputSchema.additionalProperties === false,
-      ),
-    ).toBe(true);
+describe("Cantrip CLI cutover", () => {
+  it("registers no Cantrip dynamic tools for new or resumed threads", () => {
+    expect(CANTRIP_DYNAMIC_TOOLS_OVERRIDE).toEqual({ dynamicTools: [] });
+    const newThreadParams = cantripChatThreadParams();
+    const resumedThreadParams = cantripChatThreadParams();
+    expect(newThreadParams.dynamicTools).toEqual([]);
+    expect(resumedThreadParams.dynamicTools).toEqual([]);
+    expect(JSON.stringify(newThreadParams)).not.toContain("cantrip_");
+    expect(JSON.stringify(resumedThreadParams)).not.toContain("cantrip_");
   });
 
-  it("returns structured dynamic-tool results and isolates handler errors", async () => {
-    const params = {
-      arguments: { worktreeId: "worktree-2" },
-      callId: "call-1",
-      threadId: "thread-1",
-      tool: "cantrip_worktree_switch",
-      turnId: "turn-1",
-    };
-    await expect(
-      executeDynamicExecutionTool(
-        async (input) => ({
-          summary: `Scheduled ${String(input.arguments.worktreeId)}`,
-          target: null,
-          worktreeId: "worktree-2",
-          continuationScheduled: true,
-        }),
-        params,
-      ),
-    ).resolves.toMatchObject({
-      success: true,
-      contentItems: [
-        {
-          type: "inputText",
-          text: expect.stringContaining("worktree-2"),
-        },
-      ],
-    });
-    await expect(
-      executeDynamicExecutionTool(async () => {
-        throw new Error("unsafe transition");
-      }, params),
-    ).resolves.toEqual({
-      success: false,
-      contentItems: [{ type: "inputText", text: "unsafe transition" }],
-    });
+  it("directs Codex to the documented CLI instead of private tools", () => {
+    expect(CANTRIP_CLI_DEVELOPER_INSTRUCTIONS).toContain("`cantrip -h`");
+    expect(CANTRIP_CLI_DEVELOPER_INSTRUCTIONS).not.toContain("cantrip_");
   });
 });
 
