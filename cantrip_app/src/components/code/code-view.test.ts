@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { CantripApiError } from "@/lib/api";
 
 import {
+  codeWorkbenchFrameClassName,
   codeReconnectDelayMs,
   isDarkCodeAppearance,
   isCodeAttachmentUnavailableMessage,
@@ -95,5 +96,16 @@ describe("Cantrip Code reconnect delay", () => {
     expect(isDarkCodeAppearance("high-contrast-light")).toBe(false);
     expect(isDarkCodeAppearance("pro-light")).toBe(false);
     expect(isDarkCodeAppearance("pro-high-contrast-light")).toBe(false);
+  });
+
+  it("keeps the covered workbench render-active while blocking input", () => {
+    const covered = codeWorkbenchFrameClassName(false);
+
+    expect(covered).toContain("pointer-events-none");
+    expect(covered).not.toContain("opacity-0");
+    expect(covered).not.toContain("hidden");
+    expect(codeWorkbenchFrameClassName(true)).not.toContain(
+      "pointer-events-none",
+    );
   });
 });
