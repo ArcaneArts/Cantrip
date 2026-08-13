@@ -11,7 +11,7 @@ use tauri::{App, Manager, State};
 use url::Url;
 use uuid::Uuid;
 
-use crate::{process_environment::configure_desktop_child, terminate_child};
+use crate::{node_service_command, process_environment::configure_desktop_child, terminate_child};
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -137,13 +137,7 @@ impl DesktopWorkers {
                     .current_dir(repository);
                 command
             }
-            WorkerLaunch::Packaged { directory, node } => {
-                let mut command = Command::new(node);
-                command
-                    .arg(directory.join("dist/index.js"))
-                    .current_dir(directory);
-                command
-            }
+            WorkerLaunch::Packaged { directory, node } => node_service_command(node, directory),
         };
         configure_desktop_child(&mut command);
         command

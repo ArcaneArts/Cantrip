@@ -139,6 +139,12 @@ fn open_log(path: &Path) -> Result<File, String> {
         .map_err(|error| format!("Could not open {}: {error}", path.display()))
 }
 
+fn node_service_command(node: &Path, directory: &Path) -> Command {
+    let mut command = Command::new(node);
+    command.arg("dist/index.js").current_dir(directory);
+    command
+}
+
 fn spawn_node_service(
     node: &Path,
     directory: &Path,
@@ -149,11 +155,9 @@ fn spawn_node_service(
     let stderr = stdout
         .try_clone()
         .map_err(|error| format!("Could not clone log handle: {error}"))?;
-    let mut command = Command::new(node);
+    let mut command = node_service_command(node, directory);
     configure_desktop_child(&mut command);
     command
-        .arg(directory.join("dist/index.js"))
-        .current_dir(directory)
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
     for (key, value) in environment {
@@ -593,7 +597,24 @@ pub fn run() {
 
 #[cfg(all(test, desktop))]
 mod tests {
-    use super::exit_request_needs_confirmation;
+    use std::{ffi::OsStr, path::Path};
+
+    use super::{exit_request_needs_confirmation, node_service_command};
+
+    #[test]
+    fn packaged_node_services_use_a_working_directory_relative_entrypoint() {
+        let directory = Path::new(r"C:\Program Files\Cantrip\runtime\server");
+        let command = node_service_command(
+            Path::new(r"C:\Program Files\Cantrip\runtime\node.exe"),
+            directory,
+        );
+
+        assert_eq!(command.get_current_dir(), Some(directory));
+        assert_eq!(
+            command.get_args().collect::<Vec<_>>(),
+            vec![OsStr::new("dist/index.js")]
+        );
+    }
 
     #[test]
     fn unsolicited_exit_requests_require_confirmation() {
