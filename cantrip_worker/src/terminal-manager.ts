@@ -83,12 +83,15 @@ function shellCommand(): string {
   );
 }
 
-function terminalEnvironment(): Record<string, string> {
+function terminalEnvironment(
+  overrides: Record<string, string>,
+): Record<string, string> {
   const environment = Object.fromEntries(
     Object.entries(process.env).filter(
       (entry): entry is [string, string] => typeof entry[1] === "string",
     ),
   );
+  Object.assign(environment, overrides);
   environment.TERM = "xterm-256color";
   environment.COLORTERM = "truecolor";
   return environment;
@@ -97,6 +100,7 @@ function terminalEnvironment(): Record<string, string> {
 function codexLaunch(
   launch: Extract<TerminalLaunch, { type: "codex" }>,
   cwd: string,
+  environment: Record<string, string>,
 ): { command: string; args: string[]; env: Record<string, string> } {
   const providerArguments =
     launch.provider.kind === "chatgpt"
@@ -138,7 +142,7 @@ function codexLaunch(
     command: launch.binary,
     args,
     env: {
-      ...terminalEnvironment(),
+      ...environment,
       CODEX_HOME: launch.codexHome,
       ...(launch.provider.apiKey
         ? { CANTRIP_PROVIDER_API_KEY: launch.provider.apiKey }
@@ -147,7 +151,10 @@ function codexLaunch(
   };
 }
 
-function commandLaunch(command: string): {
+function commandLaunch(
+  command: string,
+  environment: Record<string, string>,
+): {
   command: string;
   args: string[];
   env: Record<string, string>;
@@ -160,27 +167,30 @@ function commandLaunch(command: string): {
       args: isCommandPrompt
         ? ["/d", "/s", "/c", command]
         : ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
-      env: terminalEnvironment(),
+      env: environment,
     };
   }
   return {
     command: shellCommand(),
     args: ["-lc", command],
-    env: terminalEnvironment(),
+    env: environment,
   };
 }
 
 export interface TerminalManagerOptions {
+  environment?: Record<string, string>;
   serviceRestartDelayMs?: number;
 }
 
 export class TerminalManager {
   readonly #sessions = new Map<string, TerminalSession>();
   readonly #services = new Map<string, TerminalServiceRuntimeConfiguration>();
+  readonly #environment: Record<string, string>;
   readonly #serviceRestartDelayMs: number;
   #closing = false;
 
   constructor(options: TerminalManagerOptions = {}) {
+    this.#environment = { ...options.environment };
     this.#serviceRestartDelayMs = options.serviceRestartDelayMs ?? 5_000;
   }
 
@@ -489,15 +499,16 @@ export class TerminalManager {
 
   #spawn(terminalId: string, session: TerminalSession): void {
     ensureSpawnHelperExecutable();
+    const environment = terminalEnvironment(this.#environment);
     const processLaunch =
       session.launch.type === "codex"
-        ? codexLaunch(session.launch, session.cwd)
+        ? codexLaunch(session.launch, session.cwd, environment)
         : session.launch.type === "command"
-          ? commandLaunch(session.launch.command)
+          ? commandLaunch(session.launch.command, environment)
           : {
               command: shellCommand(),
               args: [],
-              env: terminalEnvironment(),
+              env: environment,
             };
     const child = pty.spawn(processLaunch.command, processLaunch.args, {
       cols: session.cols,

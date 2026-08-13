@@ -3,8 +3,12 @@
 Copy `.env.example` to `.env` and export those variables with your process
 supervisor before running `start.sh` (Unix) or `start.cmd` (Windows). The
 package includes its own platform-matched Node.js runtime and the pinned Codex
-CLI built and verified with this worker release. Generate a short-lived worker
-link code while signed into the target server, place it in
+CLI built and verified with this worker release. It also includes the native
+`cantrip` CLI. The worker places that CLI on the `PATH` of its managed Codex
+and terminal processes and gives it a protected connection to a local
+authenticated broker; the worker credential is never copied into the CLI
+connection cache. Generate a short-lived worker link code while signed into
+the target server, place it in
 `CANTRIP_WORKER_ENROLLMENT_CODE`, and start the worker once. The code is
 single-use; the worker stores only its unique resulting credential and stable
 identity in `CANTRIP_WORKER_DATA_DIR/worker-credential.json` with owner-only
