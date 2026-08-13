@@ -9962,6 +9962,44 @@ export class ServerRepository {
     };
   }
 
+  async listChatExecutionContextsByThreadId(
+    ownerId: string,
+    workerId: string,
+    threadId: string,
+  ): Promise<ChatExecutionContext[]> {
+    const rows = await this.database
+      .select({ chatId: schema.chatRuntimeSessions.chatId })
+      .from(schema.chatRuntimeSessions)
+      .innerJoin(
+        schema.chats,
+        eq(schema.chats.id, schema.chatRuntimeSessions.chatId),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.chatRuntimeSessions.workerId, workerId),
+          eq(schema.chatRuntimeSessions.codexThreadId, threadId),
+        ),
+      );
+    const contexts = await Promise.all(
+      [...new Set(rows.map(({ chatId }) => chatId))].map((chatId) =>
+        this.getChatExecutionContext(ownerId, chatId),
+      ),
+    );
+    return contexts.filter(
+      (context): context is ChatExecutionContext =>
+        context !== null &&
+        context.workerId === workerId &&
+        context.threadId === threadId,
+    );
+  }
+
   async updateChatRuntime(
     chatId: string,
     workerId: string,

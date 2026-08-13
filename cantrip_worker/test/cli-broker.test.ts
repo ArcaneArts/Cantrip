@@ -58,7 +58,7 @@ describe("Cantrip CLI worker broker", () => {
         binary,
         [
           "#!/bin/sh",
-          "printf 'CANTRIP_TERMINAL_OK:%s\\n' \"$CANTRIP_CLI_CONNECTION\"",
+          'printf \'CANTRIP_TERMINAL_OK:%s:%s\\n\' "$CANTRIP_CLI_CONNECTION" "$CANTRIP_TERMINAL_ID"',
         ].join("\n"),
       );
       await chmod(binary, 0o755);
@@ -66,6 +66,7 @@ describe("Cantrip CLI worker broker", () => {
         {
           dataDirectory: path.join(directory, "worker-data"),
           serverUrl: "https://cantrip.example",
+          token: "worker-token",
           workerId: "worker-example",
         },
         { binary },
@@ -98,7 +99,9 @@ describe("Cantrip CLI worker broker", () => {
         manager.input("terminal-cli", "cantrip\r");
         await expect
           .poll(() => output, { timeout: 5_000 })
-          .toContain(`CANTRIP_TERMINAL_OK:${broker.connectionPath}`);
+          .toContain(
+            `CANTRIP_TERMINAL_OK:${broker.connectionPath}:terminal-cli`,
+          );
         manager.input("terminal-cli", "exit\r");
         await expect(exited).resolves.toMatchObject({
           status: "exited",
@@ -123,6 +126,7 @@ describe("Cantrip CLI worker broker", () => {
       {
         dataDirectory: path.join(directory, "worker-data"),
         serverUrl: "https://cantrip.example",
+        token: "worker-token",
         workerId: "worker-example",
       },
       { binary },
@@ -166,5 +170,127 @@ describe("Cantrip CLI worker broker", () => {
       await broker.close();
     }
     await expect(access(broker.connectionPath)).rejects.toThrow();
+  });
+
+  it("authenticates and relays structured CLI commands", async () => {
+    const directory = await temporaryDirectory();
+    const binary = path.join(
+      directory,
+      process.platform === "win32" ? "cantrip.exe" : "cantrip",
+    );
+    await writeFile(binary, "stub");
+    if (process.platform !== "win32") await chmod(binary, 0o755);
+    const calls: unknown[] = [];
+    const broker = new CantripCliBroker(
+      {
+        dataDirectory: path.join(directory, "worker-data"),
+        serverUrl: "https://cantrip.example",
+        token: "worker-token",
+        workerId: "worker-example",
+      },
+      {
+        binary,
+        execute: async (request, requestId) => {
+          calls.push({ request, requestId });
+          return {
+            summary: "Found the current worktree.",
+            target: null,
+            worktreeId: "worktree-one",
+            continuationScheduled: false,
+            mutated: false,
+          };
+        },
+      },
+    );
+
+    const connection = await broker.start();
+    try {
+      const response = await fetch(`${connection.endpoint}/v1/execute`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${connection.sessionToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          command: "worktree.status",
+          context: {
+            codexThreadId: null,
+            terminalId: "terminal-one",
+            cwd: "/workspace/project",
+          },
+          arguments: {},
+        }),
+      });
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        summary: "Found the current worktree.",
+        worktreeId: "worktree-one",
+      });
+      expect(calls).toEqual([
+        {
+          request: expect.objectContaining({
+            command: "worktree.status",
+            context: expect.objectContaining({ terminalId: "terminal-one" }),
+          }),
+          requestId: expect.any(String),
+        },
+      ]);
+
+      const unauthorized = await fetch(`${connection.endpoint}/v1/execute`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      expect(unauthorized.status).toBe(401);
+    } finally {
+      await broker.close();
+    }
+  });
+
+  it("reports server transport failures as unavailable", async () => {
+    const directory = await temporaryDirectory();
+    const binary = path.join(
+      directory,
+      process.platform === "win32" ? "cantrip.exe" : "cantrip",
+    );
+    await writeFile(binary, "stub");
+    if (process.platform !== "win32") await chmod(binary, 0o755);
+    const broker = new CantripCliBroker(
+      {
+        dataDirectory: path.join(directory, "worker-data"),
+        serverUrl: "https://cantrip.example",
+        token: "worker-token",
+        workerId: "worker-example",
+      },
+      {
+        binary,
+        execute: async () => {
+          throw new Error("server connection failed");
+        },
+      },
+    );
+
+    const connection = await broker.start();
+    try {
+      const response = await fetch(`${connection.endpoint}/v1/execute`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${connection.sessionToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          command: "status",
+          context: { codexThreadId: null, terminalId: null, cwd: null },
+          arguments: {},
+        }),
+      });
+      expect(response.status).toBe(502);
+      await expect(response.json()).resolves.toMatchObject({
+        code: "unavailable",
+        error: "server connection failed",
+      });
+    } finally {
+      await broker.close();
+    }
   });
 });

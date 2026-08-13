@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   agentExecutionToolResultSchema,
   browserSummarySchema,
+  cantripCliCommandResultSchema,
   explorerSummarySchema,
   executionPlacementResolutionSchema,
   executionTargetCatalogSchema,
@@ -793,6 +794,91 @@ describe.sequential("project execution placement API", () => {
       surfaceKind: "browser" as const,
       surfaceId: browser.id,
     };
+    const cli = (
+      command:
+        | "status"
+        | "target.list"
+        | "target.show"
+        | "terminal.read"
+        | "worktree.create",
+      arguments_: Record<string, unknown> = {},
+    ) =>
+      app.inject({
+        method: "POST",
+        url: "/api/internal/cli",
+        headers: { authorization: `Bearer ${config.workerToken}` },
+        payload: {
+          command,
+          context: {
+            codexThreadId: null,
+            terminalId: null,
+            cwd: path.join(dataDirectory, "worker-alpha"),
+          },
+          arguments: arguments_,
+          requestId: `cli-${command}`,
+          workerId: "worker-alpha",
+        },
+      });
+
+    const cliStatus = await cli("status");
+    expect(cliStatus.statusCode).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(cliStatus.json()).data,
+    ).toMatchObject({
+      worker: { id: "worker-alpha", online: true },
+      context: { projectId, worktreeId: alphaWorktreeId },
+    });
+    const cliCurrentTarget = await cli("target.show");
+    expect(cliCurrentTarget.statusCode).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(cliCurrentTarget.json()),
+    ).toMatchObject({
+      target: { kind: "worktree", worktreeId: alphaWorktreeId },
+    });
+    const cliTargets = await cli("target.list", { kind: "terminal" });
+    expect(cliTargets.statusCode).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(cliTargets.json()).data,
+    ).toMatchObject({
+      targets: expect.arrayContaining([
+        expect.objectContaining({ title: "Beta Terminal" }),
+      ]),
+    });
+    const cliTerminal = await cli("terminal.read", {
+      target: "Beta Terminal",
+    });
+    expect(cliTerminal.statusCode).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(cliTerminal.json()).data,
+    ).toMatchObject({
+      terminalId: terminal.id,
+      data: "cross-worker terminal output",
+    });
+    const worktreesBeforeRejectedSwitch =
+      await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId);
+    const rejectedTerminalSwitch = await cli("worktree.create", {
+      name: "Must not be created",
+      intent: "newBranch",
+      switch: true,
+    });
+    expect(rejectedTerminalSwitch.statusCode).toBe(409);
+    expect(rejectedTerminalSwitch.json()).toMatchObject({ code: "conflict" });
+    expect(
+      await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId),
+    ).toHaveLength(worktreesBeforeRejectedSwitch.length);
+
+    const unauthorizedCli = await app.inject({
+      method: "POST",
+      url: "/api/internal/cli",
+      payload: {
+        command: "status",
+        context: { codexThreadId: null, terminalId: null, cwd: null },
+        arguments: {},
+        requestId: "unauthorized-cli",
+        workerId: "worker-alpha",
+      },
+    });
+    expect(unauthorizedCli.statusCode).toBe(401);
 
     const listed = await call(
       "cantrip_targets_list",

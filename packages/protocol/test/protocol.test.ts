@@ -20,6 +20,8 @@ import {
   browserCreateSchema,
   browserUpdateSchema,
   browserServiceFleetDiscoverySchema,
+  cantripCliCommandRequestSchema,
+  cantripCliCommandResultSchema,
   chatAttachmentSummarySchema,
   chatCreateSchema,
   chatExecutionLaneSummarySchema,
@@ -149,9 +151,41 @@ import {
   workerEnrollmentExchangeSchema,
   workerManagementSummarySchema,
   workerNotificationEnvelopeSchema,
+  workerCliCommandCallSchema,
 } from "../src/index.js";
 
 describe("Cantrip protocol", () => {
+  it("validates CLI commands across the local broker and server boundary", () => {
+    const request = cantripCliCommandRequestSchema.parse({
+      command: "explorer.read",
+      context: {
+        codexThreadId: "thread-one",
+        terminalId: null,
+        cwd: "/workspace/project",
+      },
+      arguments: { path: "README.md", target: "Docs" },
+    });
+    expect(
+      workerCliCommandCallSchema.parse({
+        ...request,
+        requestId: "request-one",
+        workerId: "worker-one",
+      }),
+    ).toMatchObject({
+      command: "explorer.read",
+      context: { codexThreadId: "thread-one" },
+      workerId: "worker-one",
+    });
+    expect(
+      cantripCliCommandResultSchema.parse({ summary: "Read README.md." }),
+    ).toMatchObject({
+      continuationScheduled: false,
+      mutated: false,
+      target: null,
+      worktreeId: null,
+    });
+  });
+
   it("keeps project replica contracts compatible across rolling clients", () => {
     const legacy = {
       id: "project-one",

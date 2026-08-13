@@ -4582,6 +4582,51 @@ export const agentExecutionToolResultSchema = z.object({
   data: z.unknown().optional(),
 });
 
+export const cantripCliCommandNameSchema = z.enum([
+  "status",
+  "worktree.list",
+  "worktree.create",
+  "worktree.switch",
+  "worktree.status",
+  "worktree.release",
+  "worktree.remove",
+  "target.list",
+  "target.show",
+  "explorer.list",
+  "explorer.read",
+  "explorer.write",
+  "terminal.read",
+  "terminal.send",
+  "terminal.restart",
+  "browser.services",
+  "browser.open",
+]);
+
+export const cantripCliContextSchema = z
+  .object({
+    codexThreadId: z.string().min(1).max(200).nullable().default(null),
+    terminalId: z.string().min(1).max(200).nullable().default(null),
+    cwd: z.string().min(1).max(8_192).nullable().default(null),
+  })
+  .strict();
+
+export const cantripCliCommandRequestSchema = z
+  .object({
+    command: cantripCliCommandNameSchema,
+    context: cantripCliContextSchema,
+    arguments: agentExecutionToolArgumentsSchema,
+  })
+  .strict();
+
+export const workerCliCommandCallSchema = cantripCliCommandRequestSchema
+  .extend({
+    requestId: z.string().min(1).max(200),
+    workerId: z.string().min(1).max(200),
+  })
+  .strict();
+
+export const cantripCliCommandResultSchema = agentExecutionToolResultSchema;
+
 export const chatMessageListSchema = z.array(chatMessageSchema);
 
 export const chatTurnCreateSchema = z
@@ -8535,6 +8580,15 @@ export type AgentExecutionTargetToolCall = z.infer<
 >;
 export type AgentExecutionToolResult = z.infer<
   typeof agentExecutionToolResultSchema
+>;
+export type CantripCliCommandName = z.infer<typeof cantripCliCommandNameSchema>;
+export type CantripCliContext = z.infer<typeof cantripCliContextSchema>;
+export type CantripCliCommandRequest = z.infer<
+  typeof cantripCliCommandRequestSchema
+>;
+export type WorkerCliCommandCall = z.infer<typeof workerCliCommandCallSchema>;
+export type CantripCliCommandResult = z.infer<
+  typeof cantripCliCommandResultSchema
 >;
 export type ChatTurnCreate = z.infer<typeof chatTurnCreateSchema>;
 export type ChatTurnMode = z.infer<typeof chatTurnModeSchema>;

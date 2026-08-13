@@ -162,6 +162,13 @@ See the [orchestration contract](docs/WORKFLOW_ORCHESTRATION.md),
 [implementation audit](docs/WORKFLOW_IMPLEMENTATION_AUDIT.md), and
 [architecture decision](docs/adr/0004-codex-native-workflow-control-plane.md).
 
+Cantrip-specific agent operations are also available through the
+worker-authenticated Rust CLI. Its layered `cantrip -h` command tree covers
+worktrees, execution targets, Explorer, Terminal, and Browser surfaces while
+ordinary file and Git work continues to use ordinary shell commands. See the
+[CLI guide](docs/CLI.md) for examples, context resolution, and the transport
+security boundary.
+
 ## Agent-managed worktrees
 
 Every GitHub-backed project has a non-removable **Primary** worktree at the

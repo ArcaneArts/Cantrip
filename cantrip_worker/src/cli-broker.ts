@@ -1,4 +1,4 @@
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   accessSync,
   chmodSync,
@@ -9,11 +9,27 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { createServer, type Server, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 
+import {
+  cantripCliCommandRequestSchema,
+  cantripCliCommandResultSchema,
+  type CantripCliCommandRequest,
+  type CantripCliCommandResult,
+} from "@cantrip/protocol";
+
 import type { WorkerConfig } from "./config.js";
+import {
+  CantripServerRequestError,
+  invokeCantripCliCommand,
+} from "./codex/worktree-tool-client.js";
 
 export const CANTRIP_CLI_CONNECTION_ENV = "CANTRIP_CLI_CONNECTION";
 export const CANTRIP_CLI_CONNECTION_FILE = "cli-connection.json";
@@ -132,22 +148,55 @@ function sendJson(
   response.end(body);
 }
 
+async function readJsonBody(request: IncomingMessage): Promise<unknown> {
+  const maximum = 600_000;
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > maximum) throw new Error("CLI request body is too large.");
+    chunks.push(buffer);
+  }
+  if (chunks.length === 0) throw new Error("CLI request body is required.");
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+}
+
+type CliCommandExecutor = (
+  request: CantripCliCommandRequest,
+  requestId: string,
+) => Promise<CantripCliCommandResult>;
+
 export class CantripCliBroker {
   readonly #binary: string;
   readonly #config: Pick<
     WorkerConfig,
-    "dataDirectory" | "serverUrl" | "workerId"
+    "dataDirectory" | "serverUrl" | "token" | "workerId"
   >;
   readonly #connectionPath: string;
   readonly #sessionToken = randomBytes(32).toString("base64url");
+  readonly #execute: CliCommandExecutor;
   #server: Server | null = null;
 
   constructor(
-    config: Pick<WorkerConfig, "dataDirectory" | "serverUrl" | "workerId">,
-    options: { binary?: string } = {},
+    config: Pick<
+      WorkerConfig,
+      "dataDirectory" | "serverUrl" | "token" | "workerId"
+    >,
+    options: { binary?: string; execute?: CliCommandExecutor } = {},
   ) {
     this.#config = config;
     this.#binary = options.binary ?? resolveCantripCliBinary();
+    this.#execute =
+      options.execute ??
+      ((request, requestId) =>
+        invokeCantripCliCommand({
+          request,
+          requestId,
+          serverUrl: this.#config.serverUrl,
+          token: this.#config.token,
+          workerId: this.#config.workerId,
+        }));
     this.#connectionPath = path.join(
       config.dataDirectory,
       CANTRIP_CLI_CONNECTION_FILE,
@@ -184,6 +233,42 @@ export class CantripCliBroker {
           serverUrl: this.#config.serverUrl,
           workerId: this.#config.workerId,
         });
+        return;
+      }
+      if (request.method === "POST" && requestUrl.pathname === "/v1/execute") {
+        void (async () => {
+          let command: CantripCliCommandRequest;
+          try {
+            const body = await readJsonBody(request);
+            command = await cantripCliCommandRequestSchema.parseAsync(body);
+          } catch (error) {
+            sendJson(response, 400, {
+              code: "invalid",
+              error: error instanceof Error ? error.message : String(error),
+            });
+            return;
+          }
+          try {
+            const result = await this.#execute(command, randomUUID());
+            sendJson(
+              response,
+              200,
+              cantripCliCommandResultSchema.parse(result),
+            );
+          } catch (error) {
+            if (error instanceof CantripServerRequestError) {
+              sendJson(response, error.status, {
+                ...(error.code ? { code: error.code } : {}),
+                error: error.message,
+              });
+              return;
+            }
+            sendJson(response, 502, {
+              code: "unavailable",
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        })();
         return;
       }
       sendJson(response, 404, { error: "Not found" });
