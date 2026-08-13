@@ -2,9 +2,6 @@ name: Native Windows compile
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - .github/workflows/native-windows-compile.yml
 
 permissions:
   contents: read
