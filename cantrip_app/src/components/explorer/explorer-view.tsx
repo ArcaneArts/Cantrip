@@ -3,30 +3,25 @@ import type {
   ExplorerSummary,
   GitStatus,
 } from "@cantrip/protocol";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  File,
-  FileCode2,
-  FileText,
-  Folder,
-  FolderOpen,
-  Loader2,
-  Save,
-} from "lucide-react";
+  useIsFetching,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { FileText, Loader2, Save } from "lucide-react";
 import { Highlight, themes, type Language } from "prism-react-renderer";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 
 import { Markdown } from "@/components/chat/markdown";
+import { ExplorerFileBrowser } from "@/components/explorer/explorer-file-browser";
 import {
   defaultExplorerFileMode,
   monacoLanguageForPath,
   monacoModelPath,
   type ExplorerFileMode,
 } from "@/components/explorer/explorer-file-language";
-import {
-  explorerEntryChange,
-  formatExplorerRelativeDate,
-} from "@/components/explorer/explorer-entry-metadata";
+import { formatExplorerSize } from "@/components/explorer/explorer-entry-metadata";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,22 +30,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  getExplorerDirectory,
-  getExplorerDirectoryCommits,
-  getExplorerFile,
-  saveExplorerFile,
-} from "@/lib/api";
+import { getExplorerFile, saveExplorerFile } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const MonacoFileEditor = lazy(async () => {
   const module = await import("@/components/explorer/monaco-file-editor");
   return { default: module.MonacoFileEditor };
-});
-
-const fullDateFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
 });
 
 const languageByExtension: Record<string, Language> = {
@@ -94,19 +79,6 @@ const languageByExtension: Record<string, Language> = {
 function fileLanguage(path: string): Language {
   const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
   return languageByExtension[extension] ?? "plain";
-}
-
-function entryIcon(entry: ExplorerEntry) {
-  if (entry.kind === "directory") return Folder;
-  if (entry.markdown) return FileText;
-  if (entry.viewable) return FileCode2;
-  return File;
-}
-
-function formatSize(size: number): string {
-  if (size < 1_024) return `${size} B`;
-  if (size < 1_048_576) return `${(size / 1_024).toFixed(1)} KB`;
-  return `${(size / 1_048_576).toFixed(1)} MB`;
 }
 
 function SourceView({ code, path }: { code: string; path: string }) {
@@ -168,27 +140,17 @@ export function ExplorerView({
   gitStatus?: GitStatus;
   onHeaderChange(state: ExplorerHeaderState | null): void;
 }) {
-  const [directoryPath, setDirectoryPath] = useState("");
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileMode, setFileMode] = useState<ExplorerFileMode>("preview");
   const [draft, setDraft] = useState("");
   const [baselineContent, setBaselineContent] = useState("");
   const [draftVersion, setDraftVersion] = useState<string | null>(null);
   const queryClient = useQueryClient();
-  const directory = useQuery({
-    queryFn: () => getExplorerDirectory(explorer.id, directoryPath),
-    queryKey: ["explorer-directory", explorer.id, directoryPath],
+  const directoryFetches = useIsFetching({
+    queryKey: ["explorer-directory", explorer.id],
   });
-  const directoryCommits = useQuery({
-    enabled: directory.isSuccess && gitStatus !== undefined,
-    queryFn: () => getExplorerDirectoryCommits(explorer.id, directoryPath),
-    queryKey: [
-      "explorer-directory-commits",
-      explorer.id,
-      directoryPath,
-      gitStatus?.head,
-    ],
-    retry: false,
+  const commitFetches = useIsFetching({
+    queryKey: ["explorer-directory-commits", explorer.id],
   });
   const file = useQuery({
     enabled: Boolean(selectedFile),
@@ -221,7 +183,9 @@ export function ExplorerView({
       setDraft(savedFile.content);
       setBaselineContent(savedFile.content);
       setDraftVersion(savedFile.version);
-      void directory.refetch();
+      void queryClient.invalidateQueries({
+        queryKey: ["explorer-directory", explorer.id],
+      });
       void queryClient.invalidateQueries({
         queryKey: ["worktree-status", explorer.projectId, explorer.worktreeId],
       });
@@ -231,19 +195,21 @@ export function ExplorerView({
     ? monacoLanguageForPath(selectedFile)
     : null;
   const dirty = draftVersion !== null && draft !== baselineContent;
-  const commitByPath = useMemo(
-    () =>
-      new Map(
-        (directoryCommits.data?.entries ?? []).map((entry) => [
-          entry.path,
-          entry.lastCommit,
-        ]),
-      ),
-    [directoryCommits.data?.entries],
-  );
+  const refreshExplorer = useCallback(() => {
+    void Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["explorer-directory", explorer.id],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["explorer-directory-commits", explorer.id],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["worktree-status", explorer.projectId, explorer.worktreeId],
+      }),
+    ]);
+  }, [explorer.id, explorer.projectId, explorer.worktreeId, queryClient]);
 
   useEffect(() => {
-    setDirectoryPath("");
     setSelectedFile(null);
     setFileMode("preview");
     setDraft("");
@@ -260,32 +226,18 @@ export function ExplorerView({
 
   useEffect(() => {
     onHeaderChange({
-      directoryPath,
-      isFetching: directory.isFetching || directoryCommits.isFetching,
-      refresh: () => {
-        void directory.refetch();
-        void directoryCommits.refetch();
-      },
+      directoryPath: "",
+      isFetching: directoryFetches + commitFetches > 0,
+      refresh: refreshExplorer,
     });
-  }, [
-    directory.isFetching,
-    directory.refetch,
-    directoryCommits.isFetching,
-    directoryCommits.refetch,
-    directoryPath,
-    onHeaderChange,
-  ]);
+  }, [commitFetches, directoryFetches, onHeaderChange, refreshExplorer]);
 
   useEffect(() => {
     return () => onHeaderChange(null);
   }, [explorer.id, onHeaderChange]);
 
   const openEntry = (entry: ExplorerEntry) => {
-    if (entry.kind === "directory") {
-      setDirectoryPath(entry.path);
-      return;
-    }
-    if (!entry.viewable) return;
+    if (entry.kind !== "file" || !entry.viewable) return;
     setDraft("");
     setBaselineContent("");
     setDraftVersion(null);
@@ -314,121 +266,12 @@ export function ExplorerView({
   };
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto p-2 sm:p-3">
-      {directory.isLoading ? (
-        <div className="grid h-32 place-items-center text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" />
-        </div>
-      ) : directory.isError ? (
-        <p className="p-3 text-xs leading-5 text-destructive">
-          {directory.error instanceof Error
-            ? directory.error.message
-            : "Folder could not be loaded."}
-        </p>
-      ) : (
-        <>
-          <div className="flex h-7 items-center border-b px-3 text-[9px] font-medium uppercase tracking-wide text-muted-foreground/70">
-            <span className="min-w-0 flex-1">Name</span>
-            <span className="hidden w-[40%] min-w-0 md:block">Last change</span>
-            <span className="w-16 shrink-0 text-right">Size</span>
-          </div>
-          {directoryPath ? (
-            <button
-              type="button"
-              className="flex h-9 w-full items-center gap-2 rounded-md px-3 text-left text-sm text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-              onClick={() =>
-                setDirectoryPath(
-                  directoryPath.split("/").slice(0, -1).join("/"),
-                )
-              }
-            >
-              <FolderOpen className="size-4 shrink-0" />
-              <span>..</span>
-            </button>
-          ) : null}
-          {directory.data?.entries.map((entry) => {
-            const Icon = entryIcon(entry);
-            const change = explorerEntryChange(entry, gitStatus);
-            const commit = commitByPath.get(entry.path) ?? null;
-            return (
-              <button
-                key={entry.path}
-                type="button"
-                className={cn(
-                  "flex h-9 w-full items-center gap-2 rounded-md px-3 text-left text-sm text-muted-foreground hover:bg-muted/70 hover:text-foreground",
-                  entry.kind === "file" &&
-                    !entry.viewable &&
-                    "cursor-default opacity-45 hover:bg-transparent hover:text-muted-foreground",
-                )}
-                onClick={() => openEntry(entry)}
-                title={
-                  entry.viewable || entry.kind === "directory"
-                    ? [
-                        entry.path,
-                        change?.label,
-                        commit
-                          ? `${commit.subject}\n${commit.hash}\n${commit.authorName}${commit.authorEmail ? ` <${commit.authorEmail}>` : ""}\n${fullDateFormatter.format(new Date(commit.authoredAt))}`
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join("\n")
-                    : `${entry.path} · Preview unavailable`
-                }
-              >
-                <Icon className="size-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-                {change ? (
-                  <span
-                    className={cn(
-                      "inline-flex min-w-4 shrink-0 items-center justify-center rounded px-1 font-mono text-[9px] font-semibold",
-                      change.kind === "added" &&
-                        "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
-                      change.kind === "conflict" &&
-                        "bg-destructive/15 text-destructive",
-                      change.kind === "untracked" &&
-                        "bg-amber-500/15 text-amber-600 dark:text-amber-300",
-                      ["modified", "renamed"].includes(change.kind) &&
-                        "bg-blue-500/15 text-blue-600 dark:text-blue-300",
-                      change.kind === "deleted" &&
-                        "bg-destructive/15 text-destructive",
-                    )}
-                    title={change.label}
-                  >
-                    {change.code}
-                  </span>
-                ) : null}
-                <span className="hidden w-[40%] min-w-0 items-center gap-2 text-[10px] text-muted-foreground/70 md:flex">
-                  {commit ? (
-                    <>
-                      <span className="min-w-0 flex-1 truncate">
-                        {commit.subject || commit.shortHash}
-                      </span>
-                      <span className="shrink-0">
-                        {formatExplorerRelativeDate(commit.authoredAt)}
-                      </span>
-                    </>
-                  ) : (
-                    <span aria-hidden="true">—</span>
-                  )}
-                </span>
-                <span className="w-16 shrink-0 text-right text-[10px] text-muted-foreground/60">
-                  {entry.size !== null ? formatSize(entry.size) : "—"}
-                </span>
-              </button>
-            );
-          })}
-          {directory.data?.entries.length === 0 ? (
-            <div className="grid h-32 place-items-center text-sm text-muted-foreground">
-              This folder is empty.
-            </div>
-          ) : null}
-          {directory.data?.truncated ? (
-            <p className="px-3 py-2 text-[10px] text-muted-foreground">
-              Showing the first 1,000 entries.
-            </p>
-          ) : null}
-        </>
-      )}
+    <div className="flex min-h-0 flex-1 overflow-hidden">
+      <ExplorerFileBrowser
+        explorer={explorer}
+        gitStatus={gitStatus}
+        onOpenFile={openEntry}
+      />
 
       <Dialog
         open={Boolean(selectedFile)}
@@ -455,7 +298,7 @@ export function ExplorerView({
                 </DialogTitle>
                 {file.data ? (
                   <span className="shrink-0 text-[10px] text-muted-foreground">
-                    {formatSize(file.data.size)}
+                    {formatExplorerSize(file.data.size)}
                   </span>
                 ) : null}
               </div>
