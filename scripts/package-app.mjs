@@ -6,6 +6,7 @@ import {
   assertHostTarget,
   normalizeTarget,
 } from "./cantrip-code/build-lib.mjs";
+import { pnpmCommand } from "./pnpm-command.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 let requestedTarget;
@@ -29,7 +30,6 @@ for (let index = 2; index < process.argv.length; index += 1) {
 
 const target = normalizeTarget(requestedTarget);
 assertHostTarget(target);
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
 function run(command, arguments_) {
   const result = spawnSync(command, arguments_, {
@@ -67,7 +67,8 @@ if (target.platform === "darwin") {
     ]);
   }
 }
-run(pnpm, ["--filter", "@cantrip/app", "tauri:build"]);
+const appBuild = pnpmCommand(["--filter", "@cantrip/app", "tauri:build"]);
+run(appBuild.command, appBuild.arguments);
 if (
   target.platform === "darwin" &&
   process.env.CANTRIP_REQUIRE_MACOS_SIGNING === "1"

@@ -6,5 +6,8 @@ cantrip_code/upstream/** -text -whitespace
 # Preserve the pinned Codex snapshot while keeping it identifiable as vendored.
 cantrip_codex/upstream/** -text -whitespace linguist-vendored
 
-# Patch files intentionally preserve upstream whitespace in context lines.
-cantrip_code/patches/*.patch -whitespace
+# Patch files must keep their committed LF bytes. Windows Git checkouts often
+# enable core.autocrlf; converting only the patches to CRLF makes them
+# impossible to apply to the byte-preserved upstream snapshots above.
+cantrip_code/patches/*.patch -text -whitespace
+cantrip_codex/patches/*.patch -text -whitespace

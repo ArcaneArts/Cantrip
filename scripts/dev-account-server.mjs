@@ -4,6 +4,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { createServiceLogger } from "../packages/logging/dist/index.js";
+import { pnpmCommand } from "./pnpm-command.mjs";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -90,8 +91,10 @@ serverLogger.info(
   { serverUrl },
 );
 
-const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-const server = spawn(pnpmCommand, ["--filter", "@cantrip/server", "dev"], {
+const serverCommand = pnpmCommand(["--filter", "@cantrip/server", "dev"], {
+  environment,
+});
+const server = spawn(serverCommand.command, serverCommand.arguments, {
   cwd: repositoryRoot,
   env: environment,
   stdio: "inherit",

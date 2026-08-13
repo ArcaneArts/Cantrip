@@ -231,7 +231,7 @@ For browser development:
   using another installation or a managed Chromium build.
 - Ollama when testing a local Ollama model.
 
-Desktop development additionally requires the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) for your operating system, including a Rust toolchain and the required macOS, Windows, or Linux system packages.
+Desktop development additionally requires the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) for your operating system, including a Rust toolchain and the required macOS, Windows, or Linux system packages. See [COMPILING.md](COMPILING.md) for Cantrip's complete clean-machine setup, native packaging, and Capacitor Android/iOS instructions.
 
 ## Install
 

@@ -48,7 +48,13 @@ const upstreamFromRepository = path
 for (const patch of patches) {
   const check = spawnSync(
     "git",
-    ["apply", "--check", `--directory=${upstreamFromRepository}`, patch.path],
+    [
+      "apply",
+      "--check",
+      "--ignore-space-change",
+      `--directory=${upstreamFromRepository}`,
+      patch.path,
+    ],
     { cwd: root, encoding: "utf8" },
   );
   if (check.status !== 0) {

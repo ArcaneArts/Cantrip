@@ -20,6 +20,7 @@ for (const item of series) {
     "apply",
     "--no-index",
     "--unsafe-paths",
+    "--ignore-space-change",
     "--check",
     item.patchPath,
   ];
@@ -27,7 +28,13 @@ for (const item of series) {
   if (!check) {
     await run(
       "git",
-      ["apply", "--no-index", "--unsafe-paths", item.patchPath],
+      [
+        "apply",
+        "--no-index",
+        "--unsafe-paths",
+        "--ignore-space-change",
+        item.patchPath,
+      ],
       applyOptions,
     );
   }

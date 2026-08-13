@@ -8,6 +8,7 @@ import {
   assertHostTarget,
   normalizeTarget,
 } from "./cantrip-code/build-lib.mjs";
+import { pnpmCommand } from "./pnpm-command.mjs";
 
 const scriptRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -44,7 +45,6 @@ export async function bundleNativeArtifacts({
     typeof targetInput === "string"
       ? normalizeTarget(targetInput)
       : targetInput;
-  const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
   const distributionScript = path.join(
     root,
     "scripts",
@@ -55,11 +55,13 @@ export async function bundleNativeArtifacts({
   const output = path.join(root, "artifacts", "bundles", target.id);
   await rm(output, { force: true, recursive: true });
 
-  await run(pnpm, ["--filter", "@cantrip/logging", "build"], {
+  const loggingBuild = pnpmCommand(["--filter", "@cantrip/logging", "build"]);
+  await run(loggingBuild.command, loggingBuild.arguments, {
     cwd: root,
     label: "Logging build",
   });
-  await run(pnpm, ["--filter", "@cantrip/protocol", "build"], {
+  const protocolBuild = pnpmCommand(["--filter", "@cantrip/protocol", "build"]);
+  await run(protocolBuild.command, protocolBuild.arguments, {
     cwd: root,
     label: "Protocol build",
   });

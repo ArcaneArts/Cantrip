@@ -3,6 +3,8 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { pnpmCommand } from "./pnpm-command.mjs";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function validateMacBundleVersion(value, source) {
@@ -75,16 +77,14 @@ const isMain =
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
-  const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-  const result = spawnSync(
-    pnpm,
+  const invocation = pnpmCommand(
     tauriBuildArguments({ extraArguments: process.argv.slice(2) }),
-    {
-      cwd: path.join(root, "cantrip_app"),
-      env: process.env,
-      stdio: "inherit",
-    },
   );
+  const result = spawnSync(invocation.command, invocation.arguments, {
+    cwd: path.join(root, "cantrip_app"),
+    env: process.env,
+    stdio: "inherit",
+  });
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;
 }
