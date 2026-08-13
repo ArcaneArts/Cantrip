@@ -60,7 +60,7 @@ describe("CodeDirectEndpointManager", () => {
     });
     expect(await response.text()).toBe("editor-ready");
     expect(observed?.url).toBe(
-      "/?workspace=file%3A%2F%2F%2Fworker%2Fproject.code-workspace",
+      "/?workspace=%2Fworker%2Fproject.code-workspace",
     );
     expect(observed?.headers.cookie).toBe("vscode-tkn=worker-local-secret");
     expect(observed?.headers.authorization).toBeUndefined();
