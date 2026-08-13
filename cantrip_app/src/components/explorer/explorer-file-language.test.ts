@@ -14,10 +14,8 @@ describe("explorer file editing", () => {
     expect(monacoLanguageForPath("assets/photo.png")).toBeNull();
   });
 
-  it("opens markdown in preview and source files in edit mode", () => {
-    expect(defaultExplorerFileMode("README.md", true)).toBe("preview");
-    expect(defaultExplorerFileMode("src/index.ts", false)).toBe("edit");
-    expect(defaultExplorerFileMode("unknown.bin", false)).toBe("preview");
+  it("opens every supported file in preview mode", () => {
+    expect(defaultExplorerFileMode()).toBe("preview");
   });
 
   it("uses collision-safe Monaco model paths", () => {

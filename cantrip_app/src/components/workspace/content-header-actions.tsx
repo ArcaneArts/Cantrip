@@ -1,15 +1,16 @@
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import {
-  ArrowLeft,
-  ArrowRightLeft,
   ArrowDownToLine,
+  ArrowRightLeft,
   ArrowUpFromLine,
+  Check,
   CircleAlert,
-  Code2,
   Eye,
   ExternalLink,
   Loader2,
   Bot,
   Palette,
+  Pencil,
   Power,
   RefreshCw,
   RotateCcw,
@@ -17,12 +18,17 @@ import {
   ServerCog,
   SquareTerminal,
   WandSparkles,
+  X,
 } from "lucide-react";
 
 import type { CodeHeaderState } from "@/components/code/code-view";
 import type { ExplorerHeaderState } from "@/components/explorer/explorer-view";
 import type { GitHistoryHeaderState } from "@/components/git/git-history";
 import { Button } from "@/components/ui/button";
+import {
+  StyledDropdownMenuContent,
+  StyledDropdownMenuItem,
+} from "@/components/ui/styled-menu";
 import { cn } from "@/lib/utils";
 
 interface TerminalCommandPaletteAction {
@@ -149,63 +155,53 @@ function ExplorerHeaderActions({
   compact: boolean;
   header: ExplorerHeaderState;
 }) {
-  const alternateMode = header.fileMode === "preview" ? "edit" : "preview";
+  const ModeIcon = header.fileMode === "preview" ? Eye : Pencil;
   return (
     <div className="flex items-center gap-1">
       {header.selectedPath ? (
         <>
-          <Button
-            className="size-8"
-            onClick={header.back}
-            size="icon"
-            title="Back to files"
-            variant="ghost"
-          >
-            <ArrowLeft className="size-4" />
-            <span className="sr-only">Back to files</span>
-          </Button>
-          {compact ? (
-            <Button
-              aria-pressed={header.fileMode === "edit"}
-              className="size-8"
-              disabled={alternateMode === "edit" && !header.canEdit}
-              onClick={() => header.setFileMode(alternateMode)}
-              size="icon"
-              title={`Show ${alternateMode}`}
-              variant="ghost"
-            >
-              {header.fileMode === "preview" ? (
-                <Code2 className="size-4" />
-              ) : (
-                <Eye className="size-4" />
-              )}
-              <span className="sr-only">Show {alternateMode}</span>
-            </Button>
-          ) : (
-            <div className="flex rounded-md border bg-muted/20 p-0.5">
+          <DropdownMenuPrimitive.Root>
+            <DropdownMenuPrimitive.Trigger asChild>
               <Button
-                aria-pressed={header.fileMode === "preview"}
-                className="h-6 gap-1 rounded px-2 text-[10px]"
-                onClick={() => header.setFileMode("preview")}
-                size="sm"
-                variant={header.fileMode === "preview" ? "outline" : "ghost"}
+                aria-label={`${header.fileMode === "preview" ? "Preview" : "Edit"} mode`}
+                className="size-8"
+                size="icon"
+                title={`${header.fileMode === "preview" ? "Preview" : "Edit"} mode`}
+                variant="ghost"
               >
-                <Eye className="size-3" />
-                Preview
+                <ModeIcon className="size-4" />
               </Button>
-              <Button
-                aria-pressed={header.fileMode === "edit"}
-                className="h-6 gap-1 rounded px-2 text-[10px]"
-                disabled={!header.canEdit}
-                onClick={() => header.setFileMode("edit")}
-                size="sm"
-                variant={header.fileMode === "edit" ? "outline" : "ghost"}
-              >
-                <Code2 className="size-3" />
-                Edit
-              </Button>
-            </div>
-          )}
+            </DropdownMenuPrimitive.Trigger>
+            <DropdownMenuPrimitive.Portal>
+              <StyledDropdownMenuContent align="end" className="min-w-36">
+                <StyledDropdownMenuItem
+                  className="justify-between"
+                  onSelect={() => header.setFileMode("preview")}
+                >
+                  <span className="flex items-center gap-2">
+                    <Eye className="size-3.5" />
+                    Preview
+                  </span>
+                  {header.fileMode === "preview" ? (
+                    <Check className="size-3.5" />
+                  ) : null}
+                </StyledDropdownMenuItem>
+                <StyledDropdownMenuItem
+                  className="justify-between"
+                  disabled={!header.canEdit}
+                  onSelect={() => header.setFileMode("edit")}
+                >
+                  <span className="flex items-center gap-2">
+                    <Pencil className="size-3.5" />
+                    Edit
+                  </span>
+                  {header.fileMode === "edit" ? (
+                    <Check className="size-3.5" />
+                  ) : null}
+                </StyledDropdownMenuItem>
+              </StyledDropdownMenuContent>
+            </DropdownMenuPrimitive.Portal>
+          </DropdownMenuPrimitive.Root>
           {!compact && header.dirty ? (
             <span className="px-1 text-[10px] font-medium text-amber-500">
               Unsaved
@@ -248,6 +244,28 @@ function ExplorerHeaderActions({
         <span className="sr-only">Refresh Explorer</span>
       </Button>
     </div>
+  );
+}
+
+export function ExplorerFileCloseButton({
+  compact = false,
+  header,
+}: {
+  compact?: boolean;
+  header: ExplorerHeaderState | null;
+}) {
+  if (!header?.selectedPath) return null;
+  return (
+    <Button
+      className={compact ? "size-6 shrink-0" : "size-8 shrink-0"}
+      onClick={header.back}
+      size="icon"
+      title="Close file"
+      variant="ghost"
+    >
+      <X className={compact ? "size-3" : "size-4"} />
+      <span className="sr-only">Close file</span>
+    </Button>
   );
 }
 
