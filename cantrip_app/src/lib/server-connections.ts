@@ -1,6 +1,11 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { serverBootstrapSchema, type ServerBootstrap } from "@cantrip/protocol";
 
+import {
+  readServerConnectionPayloads,
+  writeServerConnectionPayload,
+} from "@/lib/server-connection-storage";
+
 export type ServerConnection = {
   id: string;
   kind: "local" | "remote";
@@ -23,14 +28,15 @@ export class ServerConnectionError extends Error {
 type StoredServerConnections = {
   activeId: string;
   connections: ServerConnection[];
+  updatedAt: number;
   version: 1;
 };
 
-const storageKey = "cantrip.server-connections.v1";
 const localId = "local";
 let state: StoredServerConnections = {
   activeId: localId,
   connections: [{ id: localId, kind: "local", name: "Local", url: "" }],
+  updatedAt: 0,
   version: 1,
 };
 
@@ -53,11 +59,11 @@ export function normalizeServerUrl(input: string): string {
 }
 
 function readStoredConnections(
-  storage: Storage,
+  payload: string,
 ): StoredServerConnections | null {
   try {
     const parsed = JSON.parse(
-      storage.getItem(storageKey) ?? "null",
+      payload,
     ) as Partial<StoredServerConnections> | null;
     if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.connections))
       return null;
@@ -90,6 +96,12 @@ function readStoredConnections(
           ? (parsed.activeId ?? localId)
           : localId,
       connections: remotes,
+      updatedAt:
+        typeof parsed.updatedAt === "number" &&
+        Number.isFinite(parsed.updatedAt) &&
+        parsed.updatedAt >= 0
+          ? parsed.updatedAt
+          : 0,
       version: 1,
     };
   } catch {
@@ -97,18 +109,51 @@ function readStoredConnections(
   }
 }
 
-function persist(): void {
+function newestStoredConnections(
+  payloads: readonly string[],
+): StoredServerConnections | null {
+  return (
+    payloads
+      .map(readStoredConnections)
+      .filter((stored): stored is StoredServerConnections => stored !== null)
+      .sort((left, right) => right.updatedAt - left.updatedAt)[0] ?? null
+  );
+}
+
+function nextUpdatedAt(): number {
+  return Math.max(Date.now(), state.updatedAt + 1);
+}
+
+async function refreshServerConnections(): Promise<void> {
+  const stored = newestStoredConnections(await readServerConnectionPayloads());
+  if (!stored || stored.updatedAt <= state.updatedAt) return;
+  const local = state.connections.find(
+    (connection) => connection.kind === "local",
+  )!;
+  const connections = [local, ...stored.connections];
+  state = {
+    ...stored,
+    activeId: connections.some(
+      (connection) => connection.id === stored.activeId,
+    )
+      ? stored.activeId
+      : localId,
+    connections,
+  };
+}
+
+async function persist(): Promise<void> {
   const remoteOnly: StoredServerConnections = {
     ...state,
     connections: state.connections.filter(
       (connection) => connection.kind === "remote",
     ),
   };
-  window.localStorage.setItem(storageKey, JSON.stringify(remoteOnly));
+  await writeServerConnectionPayload(JSON.stringify(remoteOnly));
 }
 
 export async function initializeServerConnections(): Promise<void> {
-  const stored = readStoredConnections(window.localStorage);
+  const stored = newestStoredConnections(await readServerConnectionPayloads());
   let localUrl = (import.meta.env.VITE_CANTRIP_SERVER_URL ?? "").replace(
     /\/$/,
     "",
@@ -134,6 +179,7 @@ export async function initializeServerConnections(): Promise<void> {
         ? stored.activeId
         : localId,
     connections,
+    updatedAt: stored?.updatedAt ?? 0,
     version: 1,
   };
 }
@@ -153,19 +199,21 @@ export function getActiveServerUrl(): string {
   return getActiveServerConnection().url;
 }
 
-export function saveServerConnection(input: {
+export async function saveServerConnection(input: {
   name: string;
   url: string;
-}): ServerConnection {
+}): Promise<ServerConnection> {
   const name = input.name.trim();
   if (!name) throw new Error("Enter a server name.");
   const url = normalizeServerUrl(input.url);
+  await refreshServerConnections();
   const existing = state.connections.find(
     (connection) => connection.kind === "remote" && connection.url === url,
   );
   const connection: ServerConnection = existing
     ? { ...existing, name }
     : { id: crypto.randomUUID(), kind: "remote", name, url };
+  const previousState = state;
   state = {
     ...state,
     connections: existing
@@ -173,28 +221,49 @@ export function saveServerConnection(input: {
           item.id === existing.id ? connection : item,
         )
       : [...state.connections, connection],
+    updatedAt: nextUpdatedAt(),
   };
-  persist();
+  try {
+    await persist();
+  } catch (error) {
+    state = previousState;
+    throw error;
+  }
   return connection;
 }
 
-export function selectServerConnection(id: string): void {
+export async function selectServerConnection(id: string): Promise<void> {
+  await refreshServerConnections();
   if (!state.connections.some((connection) => connection.id === id)) {
     throw new Error("That server connection no longer exists.");
   }
-  state = { ...state, activeId: id };
-  persist();
+  const previousState = state;
+  state = { ...state, activeId: id, updatedAt: nextUpdatedAt() };
+  try {
+    await persist();
+  } catch (error) {
+    state = previousState;
+    throw error;
+  }
 }
 
-export function removeServerConnection(id: string): void {
+export async function removeServerConnection(id: string): Promise<void> {
   if (id === localId)
     throw new Error("The bundled local server cannot be removed.");
+  await refreshServerConnections();
+  const previousState = state;
   state = {
     ...state,
     activeId: state.activeId === id ? localId : state.activeId,
     connections: state.connections.filter((connection) => connection.id !== id),
+    updatedAt: nextUpdatedAt(),
   };
-  persist();
+  try {
+    await persist();
+  } catch (error) {
+    state = previousState;
+    throw error;
+  }
 }
 
 export async function testServerConnection(

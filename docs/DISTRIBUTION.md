@@ -284,6 +284,8 @@ Switching reloads the frontend so queries, terminal sockets, Browser/Remote
 Desktop streams, and subsequent mutations all use the same server.
 
 Profiles are stored locally by the client because the active server must be
-known before server-owned settings can load. They currently store only names
-and origins. Per-server account credentials and multi-account behavior are a
-separate follow-up milestone.
+known before server-owned settings can load. The browser keeps redundant
+local-storage and IndexedDB copies, requests persistent site storage after an
+explicit profile change, and reconciles newer changes made by another tab.
+Profiles contain only names and origins. Per-server account credentials and
+multi-account behavior are a separate follow-up milestone.

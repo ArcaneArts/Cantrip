@@ -54,17 +54,27 @@ export function ServerSwitcher({
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [mobileQrOpen, setMobileQrOpen] = useState(false);
   const clientSession = getClientSession();
 
-  const switchTo = (id: string) => {
+  const switchTo = async (id: string) => {
     if (id === active.id) return;
-    clearClientSession();
-    selectServerConnection(id);
-    window.location.reload();
+    setError(null);
+    try {
+      await selectServerConnection(id);
+      clearClientSession();
+      window.location.reload();
+    } catch (switchError) {
+      setError(
+        switchError instanceof Error
+          ? switchError.message
+          : "Could not switch servers.",
+      );
+    }
   };
 
   const test = async () => {
@@ -112,13 +122,14 @@ export function ServerSwitcher({
     }
   };
 
-  const save = (event: FormEvent) => {
+  const save = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
+    setSaving(true);
     try {
-      const connection = saveServerConnection({ name, url });
+      const connection = await saveServerConnection({ name, url });
+      await selectServerConnection(connection.id);
       clearClientSession();
-      selectServerConnection(connection.id);
       window.location.reload();
     } catch (saveError) {
       setError(
@@ -126,6 +137,7 @@ export function ServerSwitcher({
           ? saveError.message
           : "Could not save server.",
       );
+      setSaving(false);
     }
   };
 
@@ -161,7 +173,7 @@ export function ServerSwitcher({
               <DropdownMenuPrimitive.Item
                 className={itemClass}
                 key={connection.id}
-                onSelect={() => switchTo(connection.id)}
+                onSelect={() => void switchTo(connection.id)}
               >
                 <Server className="size-4 text-muted-foreground" />
                 <span className="min-w-0 flex-1">
@@ -179,9 +191,18 @@ export function ServerSwitcher({
                     className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
                     onClick={(event) => {
                       event.stopPropagation();
-                      clearClientSession();
-                      removeServerConnection(connection.id);
-                      window.location.reload();
+                      void removeServerConnection(connection.id)
+                        .then(() => {
+                          clearClientSession();
+                          window.location.reload();
+                        })
+                        .catch((removeError) =>
+                          setError(
+                            removeError instanceof Error
+                              ? removeError.message
+                              : "Could not remove server.",
+                          ),
+                        );
                     }}
                     type="button"
                   >
@@ -292,7 +313,10 @@ export function ServerSwitcher({
                 {testing ? <Loader2 className="size-4 animate-spin" /> : null}
                 Test connection
               </Button>
-              <Button type="submit">Save and switch</Button>
+              <Button disabled={saving} type="submit">
+                {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+                Save and switch
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
