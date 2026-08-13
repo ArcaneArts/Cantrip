@@ -49,4 +49,30 @@ const runtimeArguments = [
 ];
 if (fromArtifacts) runtimeArguments.push("--from-artifacts");
 run(process.execPath, runtimeArguments);
+if (target.platform === "darwin") {
+  const identity = process.env.APPLE_SIGNING_IDENTITY?.trim();
+  const signingRequired = process.env.CANTRIP_REQUIRE_MACOS_SIGNING === "1";
+  if (signingRequired && !identity) {
+    throw new Error(
+      "CANTRIP_REQUIRE_MACOS_SIGNING=1 requires APPLE_SIGNING_IDENTITY.",
+    );
+  }
+  if (identity) {
+    run(process.execPath, [
+      path.join(root, "scripts", "sign-macos-runtime.mjs"),
+      "--directory",
+      path.join(root, "cantrip_app", "src-tauri", "resources", "runtime"),
+      "--identity",
+      identity,
+    ]);
+  }
+}
 run(pnpm, ["--filter", "@cantrip/app", "tauri:build"]);
+if (
+  target.platform === "darwin" &&
+  process.env.CANTRIP_REQUIRE_MACOS_SIGNING === "1"
+) {
+  run(process.execPath, [
+    path.join(root, "scripts", "verify-macos-distribution.mjs"),
+  ]);
+}

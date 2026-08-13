@@ -23,9 +23,11 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 mod desktop_worker;
 mod direct_probe;
+mod process_environment;
 mod project_share;
 mod tunnel_forward;
 
+use process_environment::configure_desktop_child;
 use project_share::ProjectShareMounts;
 use tunnel_forward::TunnelForwards;
 
@@ -148,6 +150,7 @@ fn spawn_node_service(
         .try_clone()
         .map_err(|error| format!("Could not clone log handle: {error}"))?;
     let mut command = Command::new(node);
+    configure_desktop_child(&mut command);
     command
         .arg(directory.join("dist/index.js"))
         .current_dir(directory)

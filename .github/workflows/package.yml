@@ -114,7 +114,54 @@ jobs:
           tar -xzf "artifacts/incoming/server/cantrip-server-${{ matrix.target }}.tar.gz" -C artifacts
           tar -xzf "artifacts/incoming/worker/cantrip-worker-${{ matrix.target }}.tar.gz" -C artifacts
       - run: pnpm install --frozen-lockfile
-      - run: pnpm package:app --target ${{ matrix.target }} --from-artifacts
+      - name: Import macOS Developer ID certificate
+        if: matrix.target == 'darwin-arm64'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_CERTIFICATE:?Configure the APPLE_CERTIFICATE Actions secret.}"
+          : "${APPLE_CERTIFICATE_PASSWORD:?Configure the APPLE_CERTIFICATE_PASSWORD Actions secret.}"
+          : "${KEYCHAIN_PASSWORD:?Configure the KEYCHAIN_PASSWORD Actions secret.}"
+          certificate="$RUNNER_TEMP/cantrip-developer-id.p12"
+          keychain="$RUNNER_TEMP/cantrip-signing.keychain-db"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$certificate"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security default-keychain -s "$keychain"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -t 3600 -u "$keychain"
+          security import "$certificate" \
+            -k "$keychain" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$keychain"
+          identity="$(security find-identity -v -p codesigning "$keychain" | awk -F'"' '/Developer ID Application/{print $2; exit}')"
+          if [ -z "$identity" ]; then
+            echo "The imported certificate does not contain a Developer ID Application identity." >&2
+            exit 1
+          fi
+          rm -f "$certificate"
+          echo "APPLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+          echo "CANTRIP_SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+      - name: Package signed macOS client
+        if: matrix.target == 'darwin-arm64'
+        shell: bash
+        env:
+          CANTRIP_REQUIRE_MACOS_SIGNING: "1"
+        run: |
+          unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+          unset APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_PATH
+          pnpm package:app --target ${{ matrix.target }} --from-artifacts
+      - name: Package Windows client
+        if: matrix.target == 'win32-x64'
+        run: pnpm package:app --target ${{ matrix.target }} --from-artifacts
       - run: node scripts/archive-distribution.mjs client --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
@@ -122,6 +169,13 @@ jobs:
           path: artifacts/bundles/${{ matrix.target }}/*
           if-no-files-found: error
           retention-days: 14
+      - name: Remove temporary signing keychain
+        if: always() && matrix.target == 'darwin-arm64'
+        shell: bash
+        run: |
+          if [ -n "${CANTRIP_SIGNING_KEYCHAIN:-}" ]; then
+            security delete-keychain "$CANTRIP_SIGNING_KEYCHAIN" || true
+          fi
 
   release:
     name: Publish GitHub release

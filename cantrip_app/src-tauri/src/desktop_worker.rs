@@ -11,7 +11,7 @@ use tauri::{App, Manager, State};
 use url::Url;
 use uuid::Uuid;
 
-use crate::terminate_child;
+use crate::{process_environment::configure_desktop_child, terminate_child};
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -145,6 +145,7 @@ impl DesktopWorkers {
                 command
             }
         };
+        configure_desktop_child(&mut command);
         command
             .env("CANTRIP_SERVER_URL", &profile.server_url)
             .env("CANTRIP_WORKER_ID", &profile.worker_id)
