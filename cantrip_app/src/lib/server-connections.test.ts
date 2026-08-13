@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { serverConnectionStorageKey } from "./server-connection-storage";
+
 import {
   getActiveServerConnection,
   getServerConnections,
@@ -53,11 +55,11 @@ describe("server connections", () => {
 
   it("persists remote profiles and falls back to local after deletion", async () => {
     await initializeServerConnections();
-    const remote = saveServerConnection({
+    const remote = await saveServerConnection({
       name: "Desk server",
       url: "https://desk.example/",
     });
-    selectServerConnection(remote.id);
+    await selectServerConnection(remote.id);
     expect(getActiveServerConnection()).toMatchObject({
       name: "Desk server",
       url: "https://desk.example",
@@ -67,8 +69,52 @@ describe("server connections", () => {
     expect(getServerConnections()).toHaveLength(2);
     expect(getActiveServerConnection().id).toBe(remote.id);
 
-    removeServerConnection(remote.id);
+    await removeServerConnection(remote.id);
     expect(getActiveServerConnection().kind).toBe("local");
+  });
+
+  it("preserves profiles saved by another browser tab", async () => {
+    await initializeServerConnections();
+    localStorage.setItem(
+      serverConnectionStorageKey,
+      JSON.stringify({
+        activeId: "first-remote",
+        connections: [
+          {
+            id: "first-remote",
+            kind: "remote",
+            name: "First remote",
+            url: "https://first.example",
+          },
+        ],
+        updatedAt: Date.now() + 1_000,
+        version: 1,
+      }),
+    );
+
+    await saveServerConnection({
+      name: "Second remote",
+      url: "https://second.example",
+    });
+
+    expect(getServerConnections().map((connection) => connection.name)).toEqual(
+      ["Local", "First remote", "Second remote"],
+    );
+  });
+
+  it("does not retain an in-memory profile when browser storage is blocked", async () => {
+    await initializeServerConnections();
+    vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError");
+    });
+
+    await expect(
+      saveServerConnection({
+        name: "Unsaved remote",
+        url: "https://unsaved.example",
+      }),
+    ).rejects.toThrow(/could not save/i);
+    expect(getServerConnections()).toHaveLength(1);
   });
 
   it("distinguishes unreachable and incompatible servers", async () => {

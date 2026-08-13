@@ -14,6 +14,11 @@ import {
 import { exchangeMobileSignInGrant } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
 import {
+  cameraRequestErrorMessage,
+  requestQrCamera,
+  stopCameraStream,
+} from "@/lib/mobile-sign-in-camera";
+import {
   getServerConnections,
   normalizeServerUrl,
   saveServerConnection,
@@ -29,10 +34,32 @@ export function MobileSignInScanner({ className }: MobileSignInScannerProps) {
   const [open, setOpen] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [scanAttempt, setScanAttempt] = useState(0);
+  const [cameraAttempt, setCameraAttempt] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
+  const cameraRequestRef = useRef<Promise<MediaStream> | null>(null);
   const acceptingRef = useRef(false);
+
+  const startCamera = useCallback(() => {
+    controlsRef.current?.stop();
+    controlsRef.current = null;
+    acceptingRef.current = false;
+    setCameraError(null);
+    setStatus("Requesting camera access…");
+    setOpen(true);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      cameraRequestRef.current = null;
+      setStatus(null);
+      setCameraError("Camera scanning is unavailable in this app environment.");
+      return;
+    }
+    // Start getUserMedia in the click handler so mobile browsers retain the
+    // user gesture while deciding whether to show their permission prompt.
+    const cameraRequest = requestQrCamera(navigator.mediaDevices);
+    void cameraRequest.catch(() => undefined);
+    cameraRequestRef.current = cameraRequest;
+    setCameraAttempt((attempt) => attempt + 1);
+  }, []);
 
   const acceptPayload = useCallback(async (raw: string) => {
     if (acceptingRef.current) return;
@@ -57,14 +84,16 @@ export function MobileSignInScanner({ className }: MobileSignInScannerProps) {
       );
       const connection =
         existing ??
-        saveServerConnection({ name: payload.serverName, url: serverUrl });
-      selectServerConnection(connection.id);
+        (await saveServerConnection({
+          name: payload.serverName,
+          url: serverUrl,
+        }));
+      await selectServerConnection(connection.id);
       window.location.reload();
     } catch (scanError) {
       setStatus(null);
       setCameraError(errorMessage(scanError));
       acceptingRef.current = false;
-      setScanAttempt((attempt) => attempt + 1);
     }
   }, []);
 
@@ -77,42 +106,59 @@ export function MobileSignInScanner({ className }: MobileSignInScannerProps) {
       setStatus(null);
       return;
     }
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError("Camera scanning is unavailable in this app environment.");
-      return;
-    }
     const video = videoRef.current;
-    if (!video) return;
+    const cameraRequest = cameraRequestRef.current;
+    if (!video || !cameraRequest) return;
     const reader = new BrowserQRCodeReader();
     let cancelled = false;
-    void reader
-      .decodeFromConstraints(
-        { audio: false, video: { facingMode: { ideal: "environment" } } },
-        video,
-        (result, _error, controls) => {
-          controlsRef.current = controls;
-          if (result) void acceptPayload(result.getText());
-        },
-      )
-      .then((controls) => {
-        if (cancelled) controls.stop();
-        else controlsRef.current = controls;
+    let stream: MediaStream | null = null;
+    let controls: IScannerControls | null = null;
+    void cameraRequest
+      .then(async (cameraStream) => {
+        stream = cameraStream;
+        if (cancelled) {
+          stopCameraStream(cameraStream);
+          return null;
+        }
+        setStatus("Starting camera…");
+        return reader.decodeFromStream(
+          cameraStream,
+          video,
+          (result, _error, scannerControls) => {
+            controls = scannerControls;
+            controlsRef.current = scannerControls;
+            if (result) void acceptPayload(result.getText());
+          },
+        );
+      })
+      .then((scannerControls) => {
+        if (!scannerControls) return;
+        controls = scannerControls;
+        if (cancelled) scannerControls.stop();
+        else {
+          controlsRef.current = scannerControls;
+          setStatus(null);
+        }
       })
       .catch((error) => {
-        if (!cancelled) setCameraError(errorMessage(error));
+        if (!cancelled) {
+          setStatus(null);
+          setCameraError(cameraRequestErrorMessage(error));
+        }
       });
     return () => {
       cancelled = true;
-      controlsRef.current?.stop();
-      controlsRef.current = null;
+      controls?.stop();
+      if (!controls && stream) stopCameraStream(stream);
+      if (controlsRef.current === controls) controlsRef.current = null;
     };
-  }, [acceptPayload, open, scanAttempt]);
+  }, [acceptPayload, cameraAttempt, open]);
 
   return (
     <>
       <Button
         className={className}
-        onClick={() => setOpen(true)}
+        onClick={startCamera}
         type="button"
         variant="outline"
       >
@@ -130,6 +176,7 @@ export function MobileSignInScanner({ className }: MobileSignInScannerProps) {
           <div className="relative aspect-square overflow-hidden rounded-xl bg-black">
             <video
               className="size-full object-cover"
+              autoPlay
               muted
               playsInline
               ref={videoRef}
@@ -144,7 +191,20 @@ export function MobileSignInScanner({ className }: MobileSignInScannerProps) {
             ) : null}
           </div>
           {cameraError ? (
-            <p className="text-sm leading-5 text-destructive">{cameraError}</p>
+            <div className="grid gap-3">
+              <p className="text-sm leading-5 text-destructive">
+                {cameraError}
+              </p>
+              <Button onClick={startCamera} type="button" variant="outline">
+                <Camera className="size-4" /> Try camera again
+              </Button>
+            </div>
+          ) : status?.startsWith("Requesting") ? (
+            <p className="text-xs leading-5 text-muted-foreground">
+              Approve the browser camera prompt. If no prompt appears, allow
+              Camera for this site in the browser settings, then reopen the
+              scanner.
+            </p>
           ) : (
             <p className="flex items-center gap-2 text-xs text-muted-foreground">
               <Camera className="size-3.5" /> Point the camera at the QR code.
