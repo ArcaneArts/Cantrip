@@ -246,7 +246,23 @@ export function codeEditorTargetUrl(
     !target.searchParams.has("workspace") &&
     !target.searchParams.has("folder")
   ) {
-    target.searchParams.set("workspace", workspaceUri);
+    const workspace = new URL(workspaceUri);
+    if (
+      workspace.protocol !== "file:" ||
+      workspace.host !== "" ||
+      workspace.search !== "" ||
+      workspace.hash !== ""
+    ) {
+      throw new Error("Cantrip Code supplied an invalid workspace URI.");
+    }
+    // The web workbench interprets an absolute path as a resource on its
+    // remote authority. Passing the worker's file:// URI instead makes the
+    // browser try to open a local workspace, which disconnects the folder,
+    // its settings, Git, and all workspace extensions from the worker.
+    target.searchParams.set(
+      "workspace",
+      decodeURIComponent(workspace.pathname),
+    );
   }
   return target;
 }

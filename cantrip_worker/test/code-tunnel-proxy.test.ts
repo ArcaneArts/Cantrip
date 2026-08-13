@@ -14,7 +14,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocketServer } from "ws";
 
 import type { CodeSupervisor } from "../src/code/supervisor.js";
-import { CodeTunnelProxy } from "../src/code/tunnel-proxy.js";
+import {
+  codeEditorTargetUrl,
+  CodeTunnelProxy,
+} from "../src/code/tunnel-proxy.js";
 
 const closers: Array<() => Promise<void> | void> = [];
 const EMPTY_PAYLOAD = new Uint8Array();
@@ -166,6 +169,19 @@ function decodedOutput(
 }
 
 describe("Cantrip Code worker tunnel proxy", () => {
+  it("opens direct attachments as remote workspace paths", () => {
+    expect(
+      codeEditorTargetUrl(
+        "http://127.0.0.1:4311",
+        "/code/",
+        "/code",
+        "file:///worker/My%20Project/project.code-workspace",
+      ).toString(),
+    ).toBe(
+      "http://127.0.0.1:4311/?workspace=%2Fworker%2FMy+Project%2Fproject.code-workspace",
+    );
+  });
+
   it("rejects a session that does not belong to the tunnel's Code tab", async () => {
     const { beginTunnelStream, frames, proxy } = await fixture();
     const mismatched = {
@@ -243,7 +259,7 @@ describe("Cantrip Code worker tunnel proxy", () => {
     );
     const request = observedRequest();
     expect(request?.url).toContain(
-      "/?workspace=file%3A%2F%2F%2Fworker%2Fstate%2Fproject.code-workspace",
+      "/?workspace=%2Fworker%2Fstate%2Fproject.code-workspace",
     );
     expect(request?.headers["x-forwarded-prefix"]).toBe("/code/public-token");
     expect(request?.headers["x-forwarded-host"]).toBe("code.cantrip.art");
