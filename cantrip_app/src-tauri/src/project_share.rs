@@ -11,12 +11,14 @@ use std::path::PathBuf;
 use tauri::Manager;
 use tauri::{AppHandle, State};
 use url::Url;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RevealProjectShareRequest {
     attachment_id: String,
+    direct_tunnel_id: Option<String>,
+    fallback_url: Option<String>,
     mount_lease_ms: u64,
     password: String,
     project_id: String,
@@ -28,7 +30,18 @@ pub struct RevealProjectShareRequest {
 struct MountedProjectShare {
     attachment_id: String,
     expires_at: Instant,
+    fallback: Option<ProjectShareFallback>,
     location: NativeMount,
+    url: String,
+}
+
+struct ProjectShareFallback {
+    direct_tunnel_id: String,
+    password: Zeroizing<String>,
+    project_id: String,
+    project_name: String,
+    url: String,
+    username: String,
 }
 
 enum NativeMount {
@@ -71,6 +84,41 @@ pub async fn reveal_project_share(
     .map_err(|error| format!("Could not join the native project reveal task: {error}"))?
 }
 
+#[tauri::command]
+pub fn list_direct_project_share_tunnels(
+    state: State<'_, ProjectShareMounts>,
+) -> Result<Vec<String>, String> {
+    let mounts = state
+        .mounts
+        .lock()
+        .map_err(|_| "The native project mount registry is unavailable.".to_string())?;
+    let mut tunnel_ids = mounts
+        .values()
+        .filter_map(|mount| {
+            mount
+                .fallback
+                .as_ref()
+                .map(|fallback| fallback.direct_tunnel_id.clone())
+        })
+        .collect::<Vec<_>>();
+    tunnel_ids.sort();
+    Ok(tunnel_ids)
+}
+
+#[tauri::command]
+pub async fn fallback_project_share(
+    app: AppHandle,
+    state: State<'_, ProjectShareMounts>,
+    tunnel_id: String,
+) -> Result<bool, String> {
+    let mounts = Arc::clone(&state.mounts);
+    tauri::async_runtime::spawn_blocking(move || {
+        fallback_project_share_blocking(&app, mounts, &tunnel_id)
+    })
+    .await
+    .map_err(|error| format!("Could not join the project share fallback task: {error}"))?
+}
+
 fn reveal_project_share_blocking(
     app: &AppHandle,
     mount_registry: Arc<Mutex<HashMap<String, MountedProjectShare>>>,
@@ -85,6 +133,7 @@ fn reveal_project_share_blocking(
 
         if let Some(existing) = mounts.get_mut(&request.project_id) {
             if existing.attachment_id == request.attachment_id
+                && existing.url == request.url
                 && native_mount_is_active(&existing.location)
             {
                 let reschedule = expires_at < existing.expires_at;
@@ -114,12 +163,15 @@ fn reveal_project_share_blocking(
             let _ = release_native_mount(&location);
             return Err(error);
         }
+        let fallback = project_share_fallback(&request);
         mounts.insert(
             request.project_id.clone(),
             MountedProjectShare {
                 attachment_id: request.attachment_id.clone(),
                 expires_at,
+                fallback,
                 location,
+                url: request.url.clone(),
             },
         );
         drop(mounts);
@@ -133,6 +185,121 @@ fn reveal_project_share_blocking(
     })();
     request.password.zeroize();
     result
+}
+
+fn project_share_fallback(request: &RevealProjectShareRequest) -> Option<ProjectShareFallback> {
+    Some(ProjectShareFallback {
+        direct_tunnel_id: request.direct_tunnel_id.clone()?,
+        password: Zeroizing::new(request.password.clone()),
+        project_id: request.project_id.clone(),
+        project_name: request.project_name.clone(),
+        url: request.fallback_url.clone()?,
+        username: request.username.clone(),
+    })
+}
+
+fn fallback_project_share_blocking(
+    app: &AppHandle,
+    mounts: Arc<Mutex<HashMap<String, MountedProjectShare>>>,
+    tunnel_id: &str,
+) -> Result<bool, String> {
+    let entry = {
+        let mut registry = mounts
+            .lock()
+            .map_err(|_| "The native project mount registry is unavailable.".to_string())?;
+        let project_id = registry.iter().find_map(|(project_id, mount)| {
+            (mount
+                .fallback
+                .as_ref()
+                .is_some_and(|fallback| fallback.direct_tunnel_id == tunnel_id))
+            .then(|| project_id.clone())
+        });
+        project_id.and_then(|project_id| registry.remove(&project_id))
+    };
+    let Some(mut mounted) = entry else {
+        return Ok(false);
+    };
+    let Some(fallback) = mounted.fallback.take() else {
+        return Ok(false);
+    };
+    let mut request = RevealProjectShareRequest {
+        attachment_id: mounted.attachment_id.clone(),
+        direct_tunnel_id: None,
+        fallback_url: None,
+        mount_lease_ms: mounted
+            .expires_at
+            .saturating_duration_since(Instant::now())
+            .as_millis()
+            .try_into()
+            .unwrap_or(1),
+        password: fallback.password.as_str().to_owned(),
+        project_id: fallback.project_id.clone(),
+        project_name: fallback.project_name.clone(),
+        url: fallback.url.clone(),
+        username: fallback.username.clone(),
+    };
+
+    if native_mount_is_active(&mounted.location) {
+        if let Err(error) = release_native_mount(&mounted.location) {
+            mounted.fallback = Some(fallback);
+            let project_id = request.project_id.clone();
+            let attachment_id = mounted.attachment_id.clone();
+            let expires_at = mounted.expires_at;
+            mounts
+                .lock()
+                .map_err(|_| "The native project mount registry is unavailable.".to_string())?
+                .insert(project_id.clone(), mounted);
+            schedule_native_mount_expiration(
+                Arc::clone(&mounts),
+                project_id,
+                attachment_id,
+                expires_at,
+            );
+            request.password.zeroize();
+            return Err(error);
+        }
+    }
+    let result =
+        validate_request(&request).and_then(|url| create_native_mount(app, &request, &url));
+    request.password.zeroize();
+    match result {
+        Ok(location) => {
+            mounted.location = location;
+            mounted.url = fallback.url.clone();
+            mounted.fallback = None;
+            let project_id = fallback.project_id;
+            let attachment_id = mounted.attachment_id.clone();
+            let expires_at = mounted.expires_at;
+            mounts
+                .lock()
+                .map_err(|_| "The native project mount registry is unavailable.".to_string())?
+                .insert(project_id.clone(), mounted);
+            schedule_native_mount_expiration(
+                Arc::clone(&mounts),
+                project_id,
+                attachment_id,
+                expires_at,
+            );
+            Ok(true)
+        }
+        Err(error) => {
+            mounted.fallback = Some(fallback);
+            let project_id = request.project_id;
+            let attachment_id = mounted.attachment_id.clone();
+            let expires_at = mounted.expires_at;
+            mounts
+                .lock()
+                .map_err(|_| "The native project mount registry is unavailable.".to_string())?
+                .insert(project_id.clone(), mounted);
+            schedule_native_mount_expiration(
+                Arc::clone(&mounts),
+                project_id,
+                attachment_id,
+                expires_at,
+            );
+            Err(error)
+        }
+    }
 }
 
 fn mount_expiration_deadline(mount_lease_ms: u64) -> Result<Instant, String> {
@@ -190,7 +357,30 @@ fn validate_request(request: &RevealProjectShareRequest) -> Result<Url, String> 
         return Err("The project name is too long to reveal.".into());
     }
 
-    let url = Url::parse(&request.url)
+    if request.direct_tunnel_id.as_ref().is_some_and(|tunnel_id| {
+        tunnel_id.is_empty() || tunnel_id.len() > 200 || tunnel_id.chars().any(char::is_control)
+    }) {
+        return Err("The direct project share tunnel identifier is invalid.".into());
+    }
+
+    let url = validate_share_url(&request.url)?;
+    if let Some(fallback_url) = &request.fallback_url {
+        let fallback = validate_share_url(fallback_url)?;
+        if url.scheme() != "http"
+            || url.host_str() != Some("127.0.0.1")
+            || fallback.path() != url.path()
+            || request.direct_tunnel_id.is_none()
+        {
+            return Err("The project share fallback does not match its direct route.".into());
+        }
+    } else if request.direct_tunnel_id.is_some() {
+        return Err("The direct project share omitted its server fallback.".into());
+    }
+    Ok(url)
+}
+
+fn validate_share_url(value: &str) -> Result<Url, String> {
+    let url = Url::parse(value)
         .map_err(|_| "The server returned an invalid project share URL.".to_string())?;
     if !matches!(url.scheme(), "http" | "https")
         || url.host().is_none()
@@ -604,6 +794,8 @@ mod tests {
     fn request(url: &str) -> RevealProjectShareRequest {
         RevealProjectShareRequest {
             attachment_id: "ad6b8438-6418-4cdb-bf74-c7bd0f35035b".into(),
+            direct_tunnel_id: None,
+            fallback_url: None,
             mount_lease_ms: 60_000,
             password: "p".repeat(32),
             project_id: "project-1".into(),
@@ -626,6 +818,30 @@ mod tests {
         assert!(
             validate_request(&request("https://cantrip.example/project-shares/short/")).is_err()
         );
+    }
+
+    #[test]
+    fn requires_a_matching_server_fallback_for_direct_mounts() {
+        let direct =
+            "http://127.0.0.1:43123/project-shares/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/";
+        let fallback =
+            "https://cantrip.example/project-shares/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/";
+        let mut direct_request = request(direct);
+        direct_request.direct_tunnel_id = Some("share-tunnel-1".into());
+        direct_request.fallback_url = Some(fallback.into());
+        assert!(validate_request(&direct_request).is_ok());
+
+        direct_request.fallback_url = Some(
+            "https://cantrip.example/project-shares/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/"
+                .into(),
+        );
+        assert!(validate_request(&direct_request).is_err());
+        direct_request.fallback_url = None;
+        assert!(validate_request(&direct_request).is_err());
+
+        direct_request.fallback_url = Some(fallback.into());
+        direct_request.url = fallback.into();
+        assert!(validate_request(&direct_request).is_err());
     }
 
     #[test]
@@ -672,7 +888,9 @@ mod tests {
             MountedProjectShare {
                 attachment_id: "attachment-1".into(),
                 expires_at,
+                fallback: None,
                 location: NativeMount::MacOs(path.clone()),
+                url: "https://cantrip.example/project-shares/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/".into(),
             },
         )])));
         schedule_native_mount_expiration(

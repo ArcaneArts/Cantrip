@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { DesktopTunnelForwardSummary } from "@/lib/desktop-tunnel";
 import {
   TunnelSettings,
+  summarizeDesktopTransports,
   tunnelLocalUrl,
   tunnelMatchesSearch,
 } from "./tunnel-settings";
@@ -83,7 +84,14 @@ describe("tunnel settings", () => {
       expiresAt: now,
       localHost: "127.0.0.1",
       localPort: 41_234,
+      routeState: "relayed",
+      directCapabilityId: null,
+      directFallbackReason: null,
       tunnelId: "tunnel-1",
+      bytesFromLocal: 0,
+      bytesToLocal: 0,
+      connectionsClosed: 0,
+      connectionsOpened: 0,
     };
 
     expect(tunnelLocalUrl(tunnel("http"), attachment)).toBe(
@@ -99,6 +107,46 @@ describe("tunnel settings", () => {
       tunnelLocalUrl(tunnel("tcp", { protocolHint: "tcp" }), attachment),
     ).toBeNull();
     expect(tunnelLocalUrl(tunnel("missing"), undefined)).toBeNull();
+  });
+
+  it("summarizes direct and relayed desktop traffic", () => {
+    const base: DesktopTunnelForwardSummary = {
+      attachmentId: "attachment-1",
+      expiresAt: now,
+      localHost: "127.0.0.1",
+      localPort: 41_234,
+      routeState: "local-direct",
+      relayFallbackAvailable: true,
+      directCapabilityId: "capability-1",
+      directFallbackReason: null,
+      tunnelId: "tunnel-1",
+      bytesFromLocal: 100,
+      bytesToLocal: 50,
+      connectionsClosed: 1,
+      connectionsOpened: 2,
+    };
+    expect(
+      summarizeDesktopTransports([
+        base,
+        {
+          ...base,
+          attachmentId: "attachment-2",
+          tunnelId: "tunnel-2",
+          routeState: "relayed",
+          relayFallbackAvailable: true,
+          directCapabilityId: null,
+          bytesFromLocal: 25,
+          bytesToLocal: 25,
+          connectionsOpened: 1,
+        },
+      ]),
+    ).toEqual({
+      bytes: 200,
+      connections: 3,
+      degraded: 0,
+      direct: 1,
+      relayed: 1,
+    });
   });
 
   it("searches organizational, worker, endpoint, and ownership fields", () => {

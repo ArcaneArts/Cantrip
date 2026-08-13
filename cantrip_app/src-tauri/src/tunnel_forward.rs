@@ -3,18 +3,45 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::State;
 
-#[derive(Debug, Deserialize)]
+use crate::direct_probe::{DirectBrokerAdvertisement, DirectCapabilityBinding};
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectTunnelRequest {
+    pub broker: DirectBrokerAdvertisement,
+    pub binding: DirectCapabilityBinding,
+    pub secret: String,
+    pub route: DirectTunnelRoute,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectTunnelRoute {
+    pub tunnel_id: String,
+    pub attachment_id: String,
+    pub source_endpoint_id: String,
+    pub destination_endpoint_id: String,
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartTunnelForwardRequest {
     pub attachment_id: String,
     pub client_id: String,
-    pub connect_path: String,
+    pub direct: Option<DirectTunnelRequest>,
     pub expires_at: String,
     pub preferred_local_port: Option<u16>,
+    pub relay: Option<RelayTunnelRequest>,
+    pub tunnel_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayTunnelRequest {
+    pub connect_path: String,
     pub secret: String,
     pub secret_expires_at_epoch_ms: u64,
     pub server_url: String,
-    pub tunnel_id: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -24,7 +51,15 @@ pub struct TunnelForwardSummary {
     pub expires_at: String,
     pub local_host: &'static str,
     pub local_port: u16,
+    pub route_state: &'static str,
+    pub relay_fallback_available: bool,
+    pub direct_capability_id: Option<String>,
+    pub direct_fallback_reason: Option<String>,
     pub tunnel_id: String,
+    pub bytes_from_local: u64,
+    pub bytes_to_local: u64,
+    pub connections_closed: u64,
+    pub connections_opened: u64,
 }
 
 pub struct TunnelForwards {
@@ -100,15 +135,35 @@ pub fn list_tunnel_forwards(
     }
 }
 
+#[tauri::command]
+pub fn refresh_tunnel_forward_relay(
+    state: State<'_, TunnelForwards>,
+    tunnel_id: String,
+    expires_at: String,
+    relay: RelayTunnelRequest,
+) -> Result<bool, String> {
+    #[cfg(desktop)]
+    return desktop::refresh_relay(&state, &tunnel_id, expires_at, relay);
+    #[cfg(mobile)]
+    {
+        let _ = (state, tunnel_id, expires_at, relay);
+        Err("Local tunnel attachments are only available in the desktop app.".into())
+    }
+}
+
 #[cfg(desktop)]
 mod desktop {
-    use super::{StartTunnelForwardRequest, TunnelForwardSummary, TunnelForwards};
+    use super::{
+        RelayTunnelRequest, StartTunnelForwardRequest, TunnelForwardSummary, TunnelForwards,
+    };
     use futures_util::{SinkExt, StreamExt};
     use serde::{Deserialize, Serialize};
     use std::cmp::min;
     use std::collections::HashMap;
     use std::convert::TryFrom;
     use std::net::{Ipv4Addr, SocketAddr};
+    use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
+    use std::sync::Arc;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tauri::async_runtime::JoinHandle as TauriJoinHandle;
     use tauri::State;
@@ -125,6 +180,8 @@ mod desktop {
     use uuid::Uuid;
     use zeroize::Zeroizing;
 
+    use crate::direct_probe::{connect_verified, DirectProbeRequest};
+
     const MAGIC: [u8; 4] = [0x43, 0x54, 0x54, 0x4e];
     const MAX_HEADER_BYTES: usize = 8 * 1024;
     const MAX_PAYLOAD_BYTES: usize = 64 * 1024;
@@ -134,9 +191,49 @@ mod desktop {
     const CONNECTION_QUEUE: usize = 64;
 
     pub struct ForwardHandle {
+        counters: Arc<ForwardCounters>,
+        relay_refresh: mpsc::Sender<RelayRefresh>,
         pub stop: Option<oneshot::Sender<()>>,
         summary: TunnelForwardSummary,
         pub task: TauriJoinHandle<()>,
+    }
+
+    #[derive(Default)]
+    struct ForwardCounters {
+        bytes_from_local: AtomicU64,
+        bytes_to_local: AtomicU64,
+        connections_closed: AtomicU64,
+        connections_opened: AtomicU64,
+        route_state: AtomicU8,
+    }
+
+    impl ForwardCounters {
+        fn add(counter: &AtomicU64, value: u64) {
+            let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                Some(current.saturating_add(value))
+            });
+        }
+
+        fn apply(&self, summary: &mut TunnelForwardSummary) {
+            summary.bytes_from_local = self.bytes_from_local.load(Ordering::Relaxed);
+            summary.bytes_to_local = self.bytes_to_local.load(Ordering::Relaxed);
+            summary.connections_closed = self.connections_closed.load(Ordering::Relaxed);
+            summary.connections_opened = self.connections_opened.load(Ordering::Relaxed);
+            summary.route_state = match self.route_state.load(Ordering::Relaxed) {
+                1 => "local-direct",
+                2 => "relayed",
+                3 => "degraded",
+                _ => summary.route_state,
+            };
+        }
+    }
+
+    struct OpenConnection(Arc<ForwardCounters>);
+
+    impl Drop for OpenConnection {
+        fn drop(&mut self) {
+            ForwardCounters::add(&self.0.connections_closed, 1);
+        }
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -275,6 +372,22 @@ mod desktop {
         }
     }
 
+    struct StartupRoute {
+        direct_capability_id: Option<String>,
+        direct_fallback_reason: Option<String>,
+        state: &'static str,
+    }
+
+    struct RelayRoute {
+        expires_at_epoch_ms: u64,
+        secret: Zeroizing<String>,
+        url: Url,
+    }
+
+    struct RelayRefresh {
+        relay: RelayTunnelRequest,
+    }
+
     type OutboundFrame = (FrameHeader, Vec<u8>);
     type InboundFrame = (FrameHeader, Vec<u8>);
 
@@ -283,33 +396,34 @@ mod desktop {
         request: StartTunnelForwardRequest,
     ) -> Result<TunnelForwardSummary, String> {
         validate_identifiers(&request)?;
-        let web_socket_url = web_socket_url(&request.server_url, &request.connect_path)?;
+        let relay_fallback_available = request.relay.is_some();
         stop(state, &request.tunnel_id)?;
         let listener = bind_listener(request.preferred_local_port).await?;
         let local_port = listener
             .local_addr()
             .map_err(|error| format!("Could not inspect the local tunnel listener: {error}"))?
             .port();
-        let summary = TunnelForwardSummary {
-            attachment_id: request.attachment_id.clone(),
-            expires_at: request.expires_at.clone(),
-            local_host: "127.0.0.1",
-            local_port,
-            tunnel_id: request.tunnel_id.clone(),
-        };
+        let summary_identity = (
+            request.attachment_id.clone(),
+            request.expires_at.clone(),
+            request.tunnel_id.clone(),
+        );
         let tunnel_id = request.tunnel_id.clone();
+        let counters = Arc::new(ForwardCounters::default());
         let (stop_sender, stop_receiver) = oneshot::channel();
         let (ready_sender, ready_receiver) = oneshot::channel();
+        let (relay_refresh_sender, relay_refresh_receiver) = mpsc::channel(1);
         let task = tauri::async_runtime::spawn(run_forward(
             listener,
             local_port,
             request,
-            web_socket_url,
+            counters.clone(),
             stop_receiver,
             ready_sender,
+            relay_refresh_receiver,
         ));
-        match timeout(Duration::from_secs(15), ready_receiver).await {
-            Ok(Ok(Ok(()))) => {}
+        let startup = match timeout(Duration::from_secs(15), ready_receiver).await {
+            Ok(Ok(Ok(startup))) => startup,
             Ok(Ok(Err(error))) => {
                 task.abort();
                 return Err(error);
@@ -322,7 +436,22 @@ mod desktop {
                 task.abort();
                 return Err("The local tunnel did not become ready in time.".into());
             }
-        }
+        };
+        let summary = TunnelForwardSummary {
+            attachment_id: summary_identity.0,
+            expires_at: summary_identity.1,
+            local_host: "127.0.0.1",
+            local_port,
+            route_state: startup.state,
+            relay_fallback_available,
+            direct_capability_id: startup.direct_capability_id,
+            direct_fallback_reason: startup.direct_fallback_reason,
+            tunnel_id: summary_identity.2,
+            bytes_from_local: 0,
+            bytes_to_local: 0,
+            connections_closed: 0,
+            connections_opened: 0,
+        };
         let mut forwards = state
             .forwards
             .lock()
@@ -330,12 +459,36 @@ mod desktop {
         forwards.insert(
             tunnel_id,
             ForwardHandle {
+                counters,
+                relay_refresh: relay_refresh_sender,
                 stop: Some(stop_sender),
                 summary: summary.clone(),
                 task,
             },
         );
         Ok(summary)
+    }
+
+    pub fn refresh_relay(
+        state: &State<'_, TunnelForwards>,
+        tunnel_id: &str,
+        expires_at: String,
+        relay: RelayTunnelRequest,
+    ) -> Result<bool, String> {
+        validate_relay(&relay)?;
+        let mut forwards = state
+            .forwards
+            .lock()
+            .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
+        let Some(forward) = forwards.get_mut(tunnel_id) else {
+            return Ok(false);
+        };
+        forward
+            .relay_refresh
+            .try_send(RelayRefresh { relay })
+            .map_err(|_| "The local tunnel relay refresh is already pending.".to_string())?;
+        forward.summary.expires_at = expires_at;
+        Ok(true)
     }
 
     pub fn stop(state: &State<'_, TunnelForwards>, tunnel_id: &str) -> Result<bool, String> {
@@ -361,7 +514,11 @@ mod desktop {
         forwards.retain(|_, forward| !forward.task.inner().is_finished());
         let mut summaries = forwards
             .values()
-            .map(|forward| forward.summary.clone())
+            .map(|forward| {
+                let mut summary = forward.summary.clone();
+                forward.counters.apply(&mut summary);
+                summary
+            })
             .collect::<Vec<_>>();
         summaries.sort_by(|left, right| left.tunnel_id.cmp(&right.tunnel_id));
         Ok(summaries)
@@ -377,10 +534,48 @@ mod desktop {
                 return Err(format!("The {label} identity is invalid."));
             }
         }
-        if request.secret.len() < 32 || request.secret.len() > 512 {
-            return Err("The tunnel attachment credential is invalid.".into());
+        if let Some(relay) = &request.relay {
+            validate_relay(relay)?;
+        } else if request.direct.is_none() {
+            return Err("The tunnel has no authorized data route.".into());
+        }
+        if let Some(direct) = &request.direct {
+            if direct.route.tunnel_id != request.tunnel_id
+                || direct.route.attachment_id != request.attachment_id
+                || !matches!(
+                    direct.binding.resource_kind.as_str(),
+                    "tunnel" | "project-share" | "terminal" | "code"
+                )
+                || (direct.binding.resource_kind == "tunnel"
+                    && direct.binding.resource_id != request.tunnel_id)
+                || direct.binding.attachment_id != request.attachment_id
+                || !direct
+                    .binding
+                    .channels
+                    .iter()
+                    .any(|channel| channel == "tunnel-data")
+            {
+                return Err("The direct tunnel capability identity is invalid.".into());
+            }
         }
         Ok(())
+    }
+
+    fn validate_relay(relay: &RelayTunnelRequest) -> Result<(), String> {
+        if relay.secret.len() < 32 || relay.secret.len() > 512 {
+            return Err("The tunnel attachment credential is invalid.".into());
+        }
+        let _ = web_socket_url(&relay.server_url, &relay.connect_path)?;
+        Ok(())
+    }
+
+    fn relay_route(mut relay: RelayTunnelRequest) -> Result<RelayRoute, String> {
+        validate_relay(&relay)?;
+        Ok(RelayRoute {
+            expires_at_epoch_ms: relay.secret_expires_at_epoch_ms,
+            secret: Zeroizing::new(std::mem::take(&mut relay.secret)),
+            url: web_socket_url(&relay.server_url, &relay.connect_path)?,
+        })
     }
 
     fn web_socket_url(server_url: &str, connect_path: &str) -> Result<Url, String> {
@@ -434,46 +629,145 @@ mod desktop {
         listener: TcpListener,
         local_port: u16,
         mut request: StartTunnelForwardRequest,
-        web_socket_url: Url,
+        counters: Arc<ForwardCounters>,
         mut stop: oneshot::Receiver<()>,
-        ready: oneshot::Sender<Result<(), String>>,
+        ready: oneshot::Sender<Result<StartupRoute, String>>,
+        mut relay_refreshes: mpsc::Receiver<RelayRefresh>,
     ) {
-        let secret = Zeroizing::new(std::mem::take(&mut request.secret));
+        let mut relay = request
+            .relay
+            .take()
+            .and_then(|relay| relay_route(relay).ok());
         let mut ready = Some(ready);
         let mut retry_delay = Duration::from_millis(250);
+        let mut direct = request.direct.take();
+        let mut direct_fallback_reason = None;
         loop {
-            if unix_epoch_ms() >= request.secret_expires_at_epoch_ms {
-                if let Some(ready) = ready.take() {
-                    let _ = ready.send(Err("The tunnel attachment credential expired.".into()));
+            let direct_capability_id = direct
+                .as_ref()
+                .map(|candidate| candidate.binding.capability_id.clone());
+            let connected = if let Some(candidate) = direct.take() {
+                let identity = RouteIdentity {
+                    attachment_id: candidate.route.attachment_id,
+                    destination_endpoint_id: candidate.route.destination_endpoint_id,
+                    source_endpoint_id: candidate.route.source_endpoint_id,
+                    tunnel_id: candidate.route.tunnel_id,
+                };
+                match connect_verified(DirectProbeRequest {
+                    broker: candidate.broker,
+                    binding: candidate.binding,
+                    secret: candidate.secret,
+                })
+                .await
+                {
+                    Ok(connection) => Ok((
+                        connection.socket,
+                        identity,
+                        StartupRoute {
+                            direct_capability_id,
+                            direct_fallback_reason: None,
+                            state: "local-direct",
+                        },
+                    )),
+                    Err(reason) => {
+                        direct_fallback_reason = Some(reason);
+                        connect_relay(relay.as_ref(), &request, local_port)
+                            .await
+                            .map(|(socket, identity)| {
+                                (
+                                    socket,
+                                    identity,
+                                    StartupRoute {
+                                        direct_capability_id: None,
+                                        direct_fallback_reason: direct_fallback_reason.clone(),
+                                        state: "relayed",
+                                    },
+                                )
+                            })
+                    }
                 }
-                return;
-            }
-            let connected =
-                connect_attachment(&web_socket_url, &secret, &request, local_port).await;
-            let (web_socket, identity) = match connected {
+            } else {
+                connect_relay(relay.as_ref(), &request, local_port)
+                    .await
+                    .map(|(socket, identity)| {
+                        (
+                            socket,
+                            identity,
+                            StartupRoute {
+                                direct_capability_id: None,
+                                direct_fallback_reason: direct_fallback_reason.clone(),
+                                state: "relayed",
+                            },
+                        )
+                    })
+            };
+            let (web_socket, identity, startup) = match connected {
                 Ok(connected) => connected,
                 Err(error) => {
                     if let Some(ready) = ready.take() {
                         let _ = ready.send(Err(error));
                         return;
                     }
+                    if relay.is_none() {
+                        return;
+                    }
+                    counters.route_state.store(3, Ordering::Relaxed);
                     tokio::select! {
                         _ = &mut stop => return,
+                        refresh = relay_refreshes.recv() => {
+                            let Some(refresh) = refresh else { return };
+                            if let Ok(route) = relay_route(refresh.relay) {
+                                relay = Some(route);
+                            }
+                        }
                         _ = sleep(retry_delay) => {}
                     }
                     retry_delay = min(retry_delay * 2, Duration::from_secs(5));
                     continue;
                 }
             };
+            counters.route_state.store(
+                if startup.state == "local-direct" {
+                    1
+                } else {
+                    2
+                },
+                Ordering::Relaxed,
+            );
             if let Some(ready) = ready.take() {
-                let _ = ready.send(Ok(()));
+                let _ = ready.send(Ok(startup));
             }
             retry_delay = Duration::from_millis(250);
-            match run_session(&listener, web_socket, identity, &mut stop).await {
+            match run_session(&listener, web_socket, identity, counters.clone(), &mut stop).await {
                 Ok(true) => return,
-                Ok(false) | Err(_) => {}
+                Ok(false) | Err(_) => {
+                    counters.route_state.store(3, Ordering::Relaxed);
+                    while let Ok(refresh) = relay_refreshes.try_recv() {
+                        if let Ok(route) = relay_route(refresh.relay) {
+                            relay = Some(route);
+                        }
+                    }
+                }
             }
         }
+    }
+
+    async fn connect_relay(
+        relay: Option<&RelayRoute>,
+        request: &StartTunnelForwardRequest,
+        local_port: u16,
+    ) -> Result<
+        (
+            tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>,
+            RouteIdentity,
+        ),
+        String,
+    > {
+        let relay = relay.ok_or_else(|| "The local direct tunnel disconnected.".to_string())?;
+        if unix_epoch_ms() >= relay.expires_at_epoch_ms {
+            return Err("The tunnel attachment credential expired.".into());
+        }
+        connect_attachment(&relay.url, &relay.secret, request, local_port).await
     }
 
     async fn connect_attachment(
@@ -547,6 +841,7 @@ mod desktop {
             tokio_tungstenite::MaybeTlsStream<TcpStream>,
         >,
         identity: RouteIdentity,
+        counters: Arc<ForwardCounters>,
         stop: &mut oneshot::Receiver<()>,
     ) -> Result<bool, String> {
         let (outbound_sender, mut outbound_receiver) =
@@ -560,6 +855,8 @@ mod desktop {
                 _ = &mut *stop => break Ok(true),
                 accepted = listener.accept() => {
                     let (stream, _) = accepted.map_err(|error| format!("The local tunnel listener failed: {error}"))?;
+                    ForwardCounters::add(&counters.connections_opened, 1);
+                    let open_connection = OpenConnection(counters.clone());
                     let connection_id = Uuid::new_v4().to_string();
                     let (sender, receiver) = mpsc::channel(CONNECTION_QUEUE);
                     let task = tokio::spawn(run_connection(
@@ -569,6 +866,7 @@ mod desktop {
                         outbound_sender.clone(),
                         receiver,
                         completed_sender.clone(),
+                        open_connection,
                     ));
                     connections.insert(connection_id, (sender, task));
                 }
@@ -624,7 +922,9 @@ mod desktop {
         outbound: mpsc::Sender<OutboundFrame>,
         mut inbound: mpsc::Receiver<InboundFrame>,
         completed: mpsc::Sender<String>,
+        open_connection: OpenConnection,
     ) {
+        let counters = &open_connection.0;
         let (mut reader, mut writer) = stream.into_split();
         let mut source_sequence = 1_u64;
         let mut destination_sequence = 0_u64;
@@ -675,6 +975,7 @@ mod desktop {
                     source_sequence += 1;
                 }
                 ConnectionEvent::Local(Ok(size)) => {
+                    ForwardCounters::add(&counters.bytes_from_local, size as u64);
                     source_credit = source_credit.saturating_sub(size as u64);
                     if send_source(
                         &outbound,
@@ -717,6 +1018,7 @@ mod desktop {
                             if writer.write_all(&payload).await.is_err() {
                                 break;
                             }
+                            ForwardCounters::add(&counters.bytes_to_local, payload.len() as u64);
                             if send_source(
                                 &outbound,
                                 FrameHeader::Credit {
@@ -990,21 +1292,34 @@ mod desktop {
             let request = StartTunnelForwardRequest {
                 attachment_id: "attachment".into(),
                 client_id: "client".into(),
-                connect_path: "/api/tunnel-attachments/attachment/connect".into(),
+                direct: None,
                 expires_at: "2099-01-01T00:00:00.000Z".into(),
                 preferred_local_port: None,
-                secret: secret.into(),
-                secret_expires_at_epoch_ms: u64::MAX,
-                server_url: format!("http://127.0.0.1:{server_port}"),
+                relay: Some(crate::tunnel_forward::RelayTunnelRequest {
+                    connect_path: "/api/tunnel-attachments/attachment/connect".into(),
+                    secret: secret.into(),
+                    secret_expires_at_epoch_ms: u64::MAX,
+                    server_url: format!("http://127.0.0.1:{server_port}"),
+                }),
                 tunnel_id: "tunnel".into(),
             };
-            let url = web_socket_url(&request.server_url, &request.connect_path).unwrap();
+            let relay = request.relay.as_ref().unwrap();
+            let url = web_socket_url(&relay.server_url, &relay.connect_path).unwrap();
             let (web_socket, identity) = connect_attachment(&url, secret, &request, local_port)
                 .await
                 .unwrap();
             let (stop_sender, mut stop_receiver) = oneshot::channel();
+            let counters = Arc::new(ForwardCounters::default());
+            let session_counters = counters.clone();
             let session = tokio::spawn(async move {
-                run_session(&listener, web_socket, identity, &mut stop_receiver).await
+                run_session(
+                    &listener,
+                    web_socket,
+                    identity,
+                    session_counters,
+                    &mut stop_receiver,
+                )
+                .await
             });
 
             let mut local = TcpStream::connect((Ipv4Addr::LOCALHOST, local_port))
@@ -1024,6 +1339,16 @@ mod desktop {
             let _ = stop_sender.send(());
             let _ = session.await.unwrap();
             server.await.unwrap();
+            assert_eq!(counters.connections_opened.load(Ordering::Relaxed), 1);
+            assert_eq!(counters.connections_closed.load(Ordering::Relaxed), 1);
+            assert_eq!(
+                counters.bytes_from_local.load(Ordering::Relaxed),
+                request_bytes.len() as u64,
+            );
+            assert_eq!(
+                counters.bytes_to_local.load(Ordering::Relaxed),
+                request_bytes.len() as u64,
+            );
         }
     }
 }

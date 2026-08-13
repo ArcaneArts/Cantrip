@@ -13,6 +13,8 @@ const MAX_BUFFERED_BYTES = 4 * 1_024 * 1_024;
 
 export type RemoteSurfaceWebRtcState =
   "negotiating" | "connected" | "fallback" | "closed";
+export type RemoteSurfaceWebRtcTransport =
+  "webrtc-direct" | "webrtc-relay" | "webrtc-unknown";
 
 export interface RemoteSurfaceWebRtcClientOptions {
   configuration: RemoteSurfaceWebRtcConfiguration;
@@ -20,6 +22,41 @@ export interface RemoteSurfaceWebRtcClientOptions {
   onFrame(bytes: Uint8Array): void;
   onSignal(signal: RemoteSurfaceWebRtcSignal): void;
   onState(state: RemoteSurfaceWebRtcState): void;
+  onTransport?(transport: RemoteSurfaceWebRtcTransport): void;
+}
+
+type StatsRecord = RTCStats & Record<string, unknown>;
+
+export function classifyWebRtcTransport(
+  report: Pick<RTCStatsReport, "forEach">,
+): RemoteSurfaceWebRtcTransport {
+  const stats = new Map<string, StatsRecord>();
+  report.forEach((value) => stats.set(value.id, value as StatsRecord));
+  const selectedPairId = [...stats.values()].find(
+    (entry) => entry.type === "transport",
+  )?.selectedCandidatePairId;
+  const pair =
+    (typeof selectedPairId === "string" ? stats.get(selectedPairId) : null) ??
+    [...stats.values()].find(
+      (entry) =>
+        entry.type === "candidate-pair" &&
+        entry.state === "succeeded" &&
+        (entry.nominated === true || entry.selected === true),
+    );
+  if (!pair) return "webrtc-unknown";
+  const local =
+    typeof pair.localCandidateId === "string"
+      ? stats.get(pair.localCandidateId)
+      : null;
+  const remote =
+    typeof pair.remoteCandidateId === "string"
+      ? stats.get(pair.remoteCandidateId)
+      : null;
+  const candidateTypes = [local?.candidateType, remote?.candidateType].filter(
+    (value): value is string => typeof value === "string",
+  );
+  if (candidateTypes.includes("relay")) return "webrtc-relay";
+  return candidateTypes.length > 0 ? "webrtc-direct" : "webrtc-unknown";
 }
 
 export class RemoteSurfaceWebRtcClient {
@@ -28,6 +65,7 @@ export class RemoteSurfaceWebRtcClient {
   readonly #onFrame: (bytes: Uint8Array) => void;
   readonly #onSignal: (signal: RemoteSurfaceWebRtcSignal) => void;
   readonly #onState: (state: RemoteSurfaceWebRtcState) => void;
+  readonly #onTransport?: (transport: RemoteSurfaceWebRtcTransport) => void;
   readonly #peer: RTCPeerConnection;
   readonly #visual: RTCDataChannel;
   #closed = false;
@@ -41,6 +79,7 @@ export class RemoteSurfaceWebRtcClient {
     this.#onFrame = options.onFrame;
     this.#onSignal = options.onSignal;
     this.#onState = options.onState;
+    this.#onTransport = options.onTransport;
     const createPeerConnection =
       options.createPeerConnection ??
       ((configuration: RTCConfiguration) =>
@@ -216,6 +255,19 @@ export class RemoteSurfaceWebRtcClient {
     if (this.#timeout) clearTimeout(this.#timeout);
     this.#timeout = null;
     this.setState("connected");
+    this.#onTransport?.("webrtc-unknown");
+    void this.reportSelectedTransport();
+  }
+
+  private async reportSelectedTransport(): Promise<void> {
+    try {
+      const transport = classifyWebRtcTransport(await this.#peer.getStats());
+      if (!this.#closed && this.#state === "connected") {
+        this.#onTransport?.(transport);
+      }
+    } catch {
+      // Connected WebRTC remains usable when a platform cannot expose ICE stats.
+    }
   }
 
   private fallback(message: string): void {

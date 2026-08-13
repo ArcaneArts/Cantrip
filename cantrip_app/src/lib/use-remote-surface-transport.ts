@@ -18,6 +18,7 @@ import {
   RemoteSurfaceWebRtcClient,
   type RemoteSurfaceWebRtcClientOptions,
   type RemoteSurfaceWebRtcState,
+  type RemoteSurfaceWebRtcTransport as SelectedWebRtcTransport,
 } from "./remote-surface-webrtc";
 
 const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
@@ -25,6 +26,8 @@ const encoder = new TextEncoder();
 
 export type RemoteSurfaceConnectionState =
   "connecting" | "ready" | "reconnecting";
+export type RemoteSurfaceActiveTransport =
+  SelectedWebRtcTransport | "websocket-relay";
 
 export interface RemoteSurfaceTransportMessages {
   closeReason: string;
@@ -57,6 +60,7 @@ export interface RemoteSurfaceTransportClientOptions {
   onError(message: string | null): void;
   onFrame(frame: RemoteSurfaceInboundFrame): void;
   onReady?(): void;
+  onActiveTransport?(transport: RemoteSurfaceActiveTransport): void;
   onTransportState?(state: RemoteSurfaceWebRtcState): void;
   surfaceId: string;
   webSocketUrl(): string;
@@ -210,6 +214,8 @@ export class RemoteSurfaceTransportClient {
         const client = createWebRtcClient({
           configuration: message.webrtc,
           onFrame: (bytes) => this.handleFrameBytes(bytes),
+          onTransport: (transport) =>
+            this.#options.onActiveTransport?.(transport),
           onSignal: (signal) => {
             this.send(
               "webrtc-signal",
@@ -217,12 +223,19 @@ export class RemoteSurfaceTransportClient {
               true,
             );
           },
-          onState: (state) => this.#options.onTransportState?.(state),
+          onState: (state) => {
+            this.#options.onTransportState?.(state);
+            if (state === "fallback") {
+              this.#options.onActiveTransport?.("websocket-relay");
+            }
+          },
         });
         this.#webRtc = client;
+        this.#options.onActiveTransport?.("webrtc-unknown");
         void client.start();
       } else {
         this.#options.onTransportState?.("fallback");
+        this.#options.onActiveTransport?.("websocket-relay");
       }
       this.#options.onReady?.();
     } catch {
@@ -299,6 +312,7 @@ export interface UseRemoteSurfaceTransportOptions {
 }
 
 export interface UseRemoteSurfaceTransportResult {
+  activeTransport: RemoteSurfaceActiveTransport | null;
   connectionState: RemoteSurfaceConnectionState;
   error: string | null;
   retry(): void;
@@ -320,6 +334,8 @@ export function useRemoteSurfaceTransport(
   const [connectionState, setConnectionState] =
     useState<RemoteSurfaceConnectionState>("connecting");
   const [error, setError] = useState<string | null>(null);
+  const [activeTransport, setActiveTransport] =
+    useState<RemoteSurfaceActiveTransport | null>(null);
   const [transportState, setTransportState] =
     useState<RemoteSurfaceWebRtcState | null>(null);
 
@@ -330,6 +346,7 @@ export function useRemoteSurfaceTransport(
       webSocketUrl: () => optionsRef.current.webSocketUrl(),
       messages: options.messages,
       onConnecting: () => {
+        setActiveTransport(null);
         setTransportState(null);
         optionsRef.current.onConnecting?.();
       },
@@ -341,6 +358,9 @@ export function useRemoteSurfaceTransport(
           reportError: setError,
         }),
       onReady: () => optionsRef.current.onReady?.(),
+      onActiveTransport: (transport) => {
+        if (clientRef.current === client) setActiveTransport(transport);
+      },
       onTransportState: (state) => {
         if (clientRef.current === client) setTransportState(state);
       },
@@ -364,6 +384,7 @@ export function useRemoteSurfaceTransport(
   );
 
   return {
+    activeTransport,
     connectionState,
     error,
     retry,

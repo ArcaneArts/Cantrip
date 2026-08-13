@@ -20,6 +20,7 @@ import { discoverBrowserServices } from "./browser/service-discovery.js";
 import { discoverCantripCode } from "./code/installation.js";
 import { CodeSupervisor } from "./code/supervisor.js";
 import { CodeTunnelProxy } from "./code/tunnel-proxy.js";
+import { CodeDirectEndpointManager } from "./code/direct-endpoint.js";
 import { readWorkerConfig } from "./config.js";
 import { saveWorkerCredential } from "./credential-store.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
@@ -87,12 +88,14 @@ import {
   startGitManagedOperation,
 } from "./git.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
+import { DirectBroker } from "./direct-broker.js";
 import { enrollWorker } from "./enrollment.js";
 import { ProjectShareManager } from "./project-share-manager.js";
 import { ProjectShareTunnelDestinationAdapter } from "./project-share-tunnel-adapter.js";
 import { readProjectRepositoryStats } from "./project-repository-stats.js";
 import { discoverScriptCommands } from "./script-command-discovery.js";
 import { TerminalManager } from "./terminal-manager.js";
+import { TerminalDirectEndpointManager } from "./terminal-direct-endpoint.js";
 import { TunnelTcpDestinationAdapter } from "./tunnel-tcp-adapter.js";
 import { TunnelDestinationRouter } from "./tunnel-destination-router.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
@@ -141,6 +144,46 @@ async function start(): Promise<void> {
   });
   await code.start();
   const codeTunnel = new CodeTunnelProxy(code);
+  const codeDirectEndpoints = new CodeDirectEndpointManager(code);
+  const cliBroker = new CantripCliBroker(config);
+  const terminals = new TerminalManager({
+    environment: cliBroker.childEnvironment(),
+  });
+  const terminalDirectEndpoints = new TerminalDirectEndpointManager(terminals);
+  const directBroker = new DirectBroker();
+  directBroker.setTunnelTargetResolver(async (binding, target) => {
+    if (target.kind !== "adapter") {
+      return target;
+    }
+    if (target.adapter === "code") {
+      if (
+        binding.resourceKind !== "code" ||
+        binding.resourceId !== target.resourceId
+      ) {
+        throw new Error("Direct Code target escaped its capability binding.");
+      }
+      return codeDirectEndpoints.prepare(
+        binding.capabilityId,
+        target.resourceId,
+      );
+    }
+    if (target.adapter !== "terminal") return target;
+    if (
+      binding.resourceKind !== "terminal" ||
+      binding.resourceId !== target.resourceId
+    ) {
+      throw new Error("Direct terminal target escaped its capability binding.");
+    }
+    return terminalDirectEndpoints.prepare(
+      binding.capabilityId,
+      target.resourceId,
+    );
+  });
+  directBroker.setCapabilityRevoker((capabilityId, reason) => {
+    terminalDirectEndpoints.revoke(capabilityId, reason);
+    codeDirectEndpoints.revoke(capabilityId, reason);
+  });
+  await directBroker.start();
   const heartbeat = createHeartbeat(
     config,
     codexRuntime,
@@ -149,13 +192,16 @@ async function start(): Promise<void> {
       browser: browserAdapter.available,
       desktop: desktopAdapter.available,
       transports: ["websocket", "webrtc"],
+      iceTransportPolicies: ["all", "relay"],
       maxSessions: 4,
     },
     codeDiscovery.capabilities,
+    directBroker.advertisement,
   );
   await enrollWorker(config, heartbeat);
   let connected = false;
   let commandChannelStarted = false;
+  let heartbeatInFlight: Promise<void> | null = null;
   let lastConnectionError: string | null = null;
   let stopping = false;
   const attachments = new AttachmentStore(config.dataDirectory);
@@ -170,7 +216,6 @@ async function start(): Promise<void> {
   const projectShareTunnel = new ProjectShareTunnelDestinationAdapter(
     projectShares,
   );
-  const cliBroker = new CantripCliBroker(config);
   const tunnelTcpDestination = new TunnelTcpDestinationAdapter();
   const tunnelDestinations = new TunnelDestinationRouter(
     tunnelTcpDestination,
@@ -178,9 +223,6 @@ async function start(): Promise<void> {
     codeTunnel,
   );
   const skillManager = new SkillManager(config.dataDirectory);
-  const terminals = new TerminalManager({
-    environment: cliBroker.childEnvironment(),
-  });
   const remoteSurfaces = new RemoteSurfaceManager({
     browser: browserAdapter,
     desktop: desktopAdapter,
@@ -235,6 +277,22 @@ async function start(): Promise<void> {
     emit: (event: WorkerEvent) => void,
   ): Promise<unknown> => {
     switch (command.type) {
+      case "direct.capability.prepare":
+        if (command.binding.workerId !== config.workerId) {
+          throw new Error("Direct capability targets another worker.");
+        }
+        return directBroker.prepare(command);
+      case "direct.capability.revoke":
+        return {
+          revoked: directBroker.revoke(command.capabilityId, command.reason),
+        };
+      case "direct.capability.renew":
+        return {
+          renewed: directBroker.renew(
+            command.capabilityId,
+            command.leaseExpiresAt,
+          ),
+        };
       case "worker.credential.rotate":
         saveWorkerCredential({
           credential: command.credential,
@@ -1296,7 +1354,13 @@ async function start(): Promise<void> {
     handleCommand,
     (header, payload) => remoteSurfaces.handleFrame(header, payload),
     (header, payload) => tunnelDestinations.handleFrame(header, payload),
-    () => tunnelDestinations.disconnect(),
+    () => {
+      tunnelDestinations.disconnect();
+      directBroker.revokeAll();
+    },
+  );
+  directBroker.setTunnelFrameHandler((header, payload) =>
+    tunnelDestinations.handleFrame(header, payload),
   );
   worktrees.setObservationEmitter((notification) =>
     commandConnection.sendNotification(notification),
@@ -1305,9 +1369,15 @@ async function start(): Promise<void> {
     commandConnection.sendSurfaceFrame(header, payload),
   );
   tunnelDestinations.setFrameEmitter(
-    (header, payload) =>
-      commandConnection.sendTunnelDataPlaneFrame(header, payload),
-    () => commandConnection.waitForTunnelDataPlaneCapacity(),
+    (header, payload) => {
+      const direct = directBroker.routeTunnelFrame(header, payload);
+      return (
+        direct ?? commandConnection.sendTunnelDataPlaneFrame(header, payload)
+      );
+    },
+    async (attachmentId) =>
+      (await directBroker.waitForTunnelCapacity(attachmentId)) ??
+      commandConnection.waitForTunnelDataPlaneCapacity(),
   );
   const cliConnection = await cliBroker.start();
 
@@ -1315,7 +1385,7 @@ async function start(): Promise<void> {
     `[cantrip_worker] Starting ${heartbeat.name} (${heartbeat.workerId}); Codex: ${codexRuntime.version?.raw ?? "not found"} (${codexRuntime.compatibility}, ${config.codexInstallation.source}); CLI: ${cliBroker.binary} (${cliConnection.endpoint}); Code: ${codeDiscovery.capabilities.available ? `${codeDiscovery.capabilities.version} (${codeDiscovery.installation?.source ?? "unknown"})` : `unavailable (${codeDiscovery.capabilities.reason ?? "unknown error"})`}; Browser: ${browserAdapter.executable ?? "Chromium not found"}; Desktop: ${desktopAdapter.available ? `${desktopAdapter.frameBackend} capture ready` : `unavailable (${desktopAdapter.initializationError ?? "unknown error"})`}`,
   );
 
-  const publish = async () => {
+  const publishHeartbeat = async () => {
     try {
       await sendHeartbeat(config, heartbeat);
       if (!connected) {
@@ -1337,6 +1407,14 @@ async function start(): Promise<void> {
     }
   };
 
+  const publish = (): Promise<void> => {
+    if (heartbeatInFlight) return heartbeatInFlight;
+    heartbeatInFlight = publishHeartbeat().finally(() => {
+      heartbeatInFlight = null;
+    });
+    return heartbeatInFlight;
+  };
+
   await publish();
   automationScheduler.start();
   const heartbeatTimer = setInterval(
@@ -1355,6 +1433,9 @@ async function start(): Promise<void> {
       automationScheduler.close();
       worktrees.close();
       commandConnection.close();
+      await directBroker.close();
+      terminalDirectEndpoints.close();
+      codeDirectEndpoints.close();
       for (const client of codexAuthClients.values()) client.close();
       terminals.closeAll();
       tunnelDestinations.close();

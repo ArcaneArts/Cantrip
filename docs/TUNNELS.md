@@ -3,7 +3,10 @@
 Cantrip tunnels let a local desktop application reach a TCP service owned by a
 worker without exposing the worker to inbound network connections. The server
 owns authorization and routing; workers and desktop clients keep their
-listeners on loopback.
+listeners on loopback. When the Tauri app and worker are on the same machine,
+the server can authorize a verified loopback data path so bulk bytes avoid the
+relay. The server remains the rendezvous point and automatic relay fallback is
+always available.
 
 ## Using a saved tunnel
 
@@ -48,6 +51,17 @@ retargeted or deleted independently of their owner. **Open owner** returns to
 the owning surface when it still exists. An eligible Browser tunnel can be
 copied into a user-managed definition with **Save as custom tunnel**.
 
+Finder and File Explorer project shares also use the local-direct path when the
+Tauri app can verify the selected worker on the same device. The server opens
+and authorizes the worker's loopback-only WebDAV service, but keeps its host and
+port out of the client ticket. Tauri mounts a local forwarded URL that preserves
+the server-issued capability path and WebDAV credentials. If the direct broker
+cannot be reached or verified, the app mounts the existing authenticated server
+URL instead; remote and mobile clients therefore retain the same relay behavior.
+If an established local-direct share later disconnects, the native mount
+manager remounts the same server-authorized share URL through the relay. The
+share credential and hard mount lease do not change during that cutover.
+
 In a Browser tab, **Open locally** creates or reuses a managed desktop tunnel,
 preserves the page path and query, and opens its loopback URL in the system
 browser. The tunnel carries ordinary HTTP streaming and WebSocket/HMR traffic.
@@ -59,6 +73,7 @@ from the desktop without worker-local forwarding.
 ```mermaid
 flowchart LR
     LOCAL["Desktop loopback listener"]
+    DIRECT["Verified worker loopback broker"]
     HTTP["Server HTTP adapters<br/>Code / WebDAV"]
     CONTROL["Server tunnel control plane<br/>ownership, definitions, leases"]
     BROKER["Bounded stream broker<br/>identity, credit, limits, counters"]
@@ -66,7 +81,10 @@ flowchart LR
     TCP["Worker loopback TCP service"]
     ADAPTER["Worker adapter<br/>Code / WebDAV"]
 
-    LOCAL --> BROKER
+    LOCAL -. "preferred when authorized" .-> DIRECT
+    DIRECT --> TCP
+    DIRECT --> ADAPTER
+    LOCAL -->|"relay fallback"| BROKER
     HTTP --> BROKER
     CONTROL --- BROKER
     BROKER <--> WORKER
@@ -97,6 +115,23 @@ server, and held in memory by the desktop. They are not placed in opened URLs,
 process arguments, metrics labels, or payload logs. User destinations are
 restricted to validated worker-loopback TCP targets.
 
+For a local-direct attachment, the server mints a short-lived, one-use
+capability bound to the account session, worker, tunnel, attachment, endpoint
+identities, channel, and lease. Tauri accepts the route only after verifying the
+worker broker's ephemeral Ed25519 identity against the server advertisement.
+The TCP target is installed on the worker over its authenticated control channel
+and is never disclosed in the client ticket. The app does not infer locality
+from hostnames or addresses: it tries only the advertised loopback broker and
+uses the ordinary server WebSocket relay if the proof, connection, or capability
+cannot be used. Attachment, session, account, worker-control, and server
+lifecycle revocation all tear down the direct lease.
+
+The native forwarder keeps relay credentials short-lived. If a long-running
+direct connection drops after its original relay credential expires, Tauri
+marks the listener degraded and asks the server to rotate that attachment's
+credential before reconnecting through the relay. The local listener and its
+port stay stable during this recovery.
+
 ## Status and observability
 
 Tunnel rows distinguish desired state from observed `starting`, `active`,
@@ -115,7 +150,16 @@ exports:
   `cantrip_tunnel_connections_rejected_total`;
 - `cantrip_tunnel_bytes_total`, including directional series; and
 - `cantrip_tunnel_terminations_total{reason=...}` for bounded broker failures
-  and lifecycle termination.
+  and lifecycle termination; and
+- `cantrip_data_plane_bytes_total` and
+  `cantrip_data_plane_connections_total`, split by `local-direct` versus
+  `server-relay` and bounded resource/direction/event labels.
+
+Global or Project **Settings → Tunnels** also shows a zero-configuration
+desktop data-plane summary. It counts every active native forwarder—including
+PTY, Code, and project-share managed routes—not only user-created tunnel rows.
+The summary refreshes while open and identifies each attached tunnel as
+**Local direct** or **Server relayed**.
 
 Metrics contain no user, project, destination, credential, cookie, or payload
 labels. See [the hosted deployment guide](HOSTED_DEPLOYMENT.md) for protecting
@@ -150,3 +194,5 @@ part of a tunnel. Those belong to the separate multi-worker project model.
 
 The architectural decision and rejected alternatives are recorded in
 [ADR 0007](adr/0007-unified-tunnel-framework.md).
+The locality proof and fallback decision are recorded in
+[ADR 0008](adr/0008-server-authorized-local-direct-data-plane.md).

@@ -289,6 +289,17 @@ describe("project share server tunnel", () => {
     });
     expect(revealedAgain.attachmentId).toBe(attachment.attachmentId);
     expect(revealedAgain.mountLeaseMs).toBeLessThan(attachment.mountLeaseMs);
+    expect(
+      shares.prepareDirectAttachment(attachment.attachmentId, "user-1"),
+    ).toMatchObject({
+      attachmentId: attachment.attachmentId,
+      loopbackHost: "127.0.0.1",
+      loopbackPort: 43_210,
+      workerId: "worker-1",
+    });
+    expect(
+      shares.prepareDirectAttachment(attachment.attachmentId, "user-2"),
+    ).toBeNull();
 
     const surface = createCodeSurfaceServer(code, surfaceOrigin, shares);
     await new Promise<void>((resolve) =>

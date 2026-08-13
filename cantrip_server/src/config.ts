@@ -73,7 +73,7 @@ export interface ServerConfig {
   coordinationMaxInstances?: number;
   coordinationPresenceTtlMs?: number;
   workerToken: string;
-  remoteSurfaceWebRtc?: RemoteSurfaceTurnConfig;
+  remoteSurfaceWebRtc?: RemoteSurfaceWebRtcConfig;
   secretEncryption?: SecretEncryptionConfig;
   serverInstanceId?: string;
   trustedProxies?: string[];
@@ -105,10 +105,16 @@ function readBoolean(name: string, value: string | undefined): boolean {
 }
 
 export interface RemoteSurfaceTurnConfig {
-  negotiationTimeoutMs: number;
   sharedSecret: string;
   ttlSeconds: number;
   urls: string[];
+}
+
+export interface RemoteSurfaceWebRtcConfig {
+  iceTransportPolicy: "all" | "relay";
+  negotiationTimeoutMs: number;
+  stunUrls: string[];
+  turn?: RemoteSurfaceTurnConfig;
 }
 
 export interface CodeSurfaceConfig {
@@ -271,33 +277,52 @@ function readTrustedProxies(deploymentMode: DeploymentMode): string[] {
   return [...new Set(proxies)];
 }
 
-function readRemoteSurfaceWebRtcConfig(): RemoteSurfaceTurnConfig | undefined {
-  const urls = (process.env.CANTRIP_TURN_URLS ?? "")
+function readRemoteSurfaceWebRtcConfig(): RemoteSurfaceWebRtcConfig {
+  const turnUrls = (process.env.CANTRIP_TURN_URLS ?? "")
+    .split(",")
+    .map((url) => url.trim())
+    .filter(Boolean);
+  const stunUrls = (process.env.CANTRIP_STUN_URLS ?? "")
     .split(",")
     .map((url) => url.trim())
     .filter(Boolean);
   const sharedSecret = process.env.CANTRIP_TURN_SHARED_SECRET?.trim();
-  if (urls.length === 0 && !sharedSecret) return undefined;
-  if (urls.length === 0 || !sharedSecret) {
+  const hasTurnUrls = turnUrls.length > 0;
+  const hasTurnSecret = Boolean(sharedSecret);
+  if (hasTurnUrls !== hasTurnSecret) {
     throw new Error(
       "CANTRIP_TURN_URLS and CANTRIP_TURN_SHARED_SECRET must be configured together.",
     );
   }
   if (
-    urls.some((url) => !url.startsWith("turn:") && !url.startsWith("turns:"))
+    turnUrls.some(
+      (url) => !url.startsWith("turn:") && !url.startsWith("turns:"),
+    )
   ) {
     throw new Error("CANTRIP_TURN_URLS only accepts turn: or turns: URLs.");
   }
+  if (
+    stunUrls.some(
+      (url) => !url.startsWith("stun:") && !url.startsWith("stuns:"),
+    )
+  ) {
+    throw new Error("CANTRIP_STUN_URLS only accepts stun: or stuns: URLs.");
+  }
+  const policy = (
+    process.env.CANTRIP_WEBRTC_ICE_TRANSPORT_POLICY ?? "all"
+  ).trim();
+  if (policy !== "all" && policy !== "relay") {
+    throw new Error(
+      "CANTRIP_WEBRTC_ICE_TRANSPORT_POLICY must be all or relay.",
+    );
+  }
+  if (policy === "relay" && turnUrls.length === 0) {
+    throw new Error(
+      "CANTRIP_WEBRTC_ICE_TRANSPORT_POLICY=relay requires TURN configuration.",
+    );
+  }
   return {
-    urls,
-    sharedSecret,
-    ttlSeconds: readBoundedInteger(
-      "CANTRIP_TURN_TTL_SECONDS",
-      process.env.CANTRIP_TURN_TTL_SECONDS,
-      600,
-      60,
-      3_600,
-    ),
+    iceTransportPolicy: policy,
     negotiationTimeoutMs: readBoundedInteger(
       "CANTRIP_WEBRTC_NEGOTIATION_TIMEOUT_MS",
       process.env.CANTRIP_WEBRTC_NEGOTIATION_TIMEOUT_MS,
@@ -305,6 +330,21 @@ function readRemoteSurfaceWebRtcConfig(): RemoteSurfaceTurnConfig | undefined {
       1_000,
       30_000,
     ),
+    stunUrls,
+    turn:
+      turnUrls.length > 0 && sharedSecret
+        ? {
+            urls: turnUrls,
+            sharedSecret,
+            ttlSeconds: readBoundedInteger(
+              "CANTRIP_TURN_TTL_SECONDS",
+              process.env.CANTRIP_TURN_TTL_SECONDS,
+              600,
+              60,
+              3_600,
+            ),
+          }
+        : undefined,
   };
 }
 

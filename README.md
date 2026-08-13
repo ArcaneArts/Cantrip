@@ -408,6 +408,8 @@ pnpm devtop
 
 `devtop` runs the same protocol, server, and worker development stack, but launches the frontend inside the Tauri desktop window instead of asking you to open the standalone browser app. Tauri starts its Vite hot-reload server on <http://127.0.0.1:1420>, separately from the browser-development port.
 
+In development builds, webview `console.*` output, failed HTTP requests, uncaught errors, unhandled promise rejections, failed resource loads, and Content Security Policy violations are forwarded to the `desktop` lane in the `devtop` terminal. Entries use a `[client:<window>:<level>]` prefix and include source context when the webview provides it, so failures in the main window and pop-outs can be distinguished without opening Web Inspector. Request query strings and embedded URL credentials are removed before logging.
+
 Do not run the complete `pnpm dev` and `pnpm devtop` stacks simultaneously with the default configuration because they still share the Cantrip server and worker. A separately running browser Vite process on port 5173 no longer prevents `devtop` from starting. Press `Ctrl+C` in the `devtop` terminal to stop the Tauri app and all processes it started.
 
 ## Build
@@ -436,6 +438,11 @@ pnpm package:app             # native Tauri installer/bundle for this platform
 pnpm bundle                  # native service/client archives for this platform
 pnpm package:all             # alias for pnpm bundle
 ```
+
+macOS packages set `CFBundleVersion` from `GITHUB_RUN_NUMBER` in CI and the
+current Git commit count locally so Launch Services can distinguish successive
+builds. Set `CANTRIP_APP_BUILD_VERSION` to a positive numeric build version when
+packaging needs an explicit reproducible override.
 
 Standalone service directories include a platform-matched Node.js runtime, compiled JavaScript, production dependencies, startup scripts, and a focused `.env.example`. Worker packages also include the native `cantrip` CLI. They do not require Node.js to be installed on the host. Copy `.env.example` to `.env`, create a short-lived worker link code while signed into the server, put it in the worker environment for its first start, then remove it after enrollment. The worker persists its unique credential in its data directory and initiates every connection through `CANTRIP_SERVER_URL`; no inbound worker port is exposed. The shared `CANTRIP_WORKER_TOKEN` path is limited to explicit loopback `pnpm dev` and embedded Tauri bootstraps.
 

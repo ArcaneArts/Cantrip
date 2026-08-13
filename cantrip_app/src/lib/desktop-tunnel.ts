@@ -1,7 +1,16 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import type { TunnelAttachmentCreateResult } from "@cantrip/protocol";
+import type {
+  DirectTunnelTicket,
+  TunnelAttachmentCreateResult,
+} from "@cantrip/protocol";
 
-import { createTunnelAttachment, deleteTunnelAttachment } from "@/lib/api";
+import {
+  activateDirectTunnelAttachment,
+  createDirectTunnelAttachment,
+  createTunnelAttachment,
+  deleteDirectAttachment,
+  deleteTunnelAttachment,
+} from "@/lib/api";
 import { getActiveServerUrl } from "@/lib/server-connections";
 
 const clientIdStorageKey = "cantrip.desktop-tunnel-client.v1";
@@ -11,7 +20,15 @@ export interface DesktopTunnelForwardSummary {
   expiresAt: string;
   localHost: "127.0.0.1";
   localPort: number;
+  routeState: "local-direct" | "relayed" | "degraded";
+  relayFallbackAvailable?: boolean;
+  directCapabilityId: string | null;
+  directFallbackReason: string | null;
   tunnelId: string;
+  bytesFromLocal?: number;
+  bytesToLocal?: number;
+  connectionsClosed?: number;
+  connectionsOpened?: number;
 }
 
 export interface StartDesktopTunnelOptions {
@@ -33,17 +50,21 @@ export function desktopTunnelClientId(storage: Storage): string {
 function nativeStartRequest(
   attachment: TunnelAttachmentCreateResult,
   clientId: string,
+  direct: Awaited<ReturnType<typeof createDirectTunnelAttachment>> | null,
   preferredLocalPort?: number,
 ) {
   return {
     attachmentId: attachment.attachmentId,
     clientId,
-    connectPath: attachment.connectPath,
+    direct,
     expiresAt: attachment.expiresAt,
     preferredLocalPort: preferredLocalPort ?? null,
-    secret: attachment.secret,
-    secretExpiresAtEpochMs: new Date(attachment.secretExpiresAt).getTime(),
-    serverUrl: getActiveServerUrl(),
+    relay: {
+      connectPath: attachment.connectPath,
+      secret: attachment.secret,
+      secretExpiresAtEpochMs: new Date(attachment.secretExpiresAt).getTime(),
+      serverUrl: getActiveServerUrl(),
+    },
     tunnelId: attachment.tunnelId,
   };
 }
@@ -59,9 +80,13 @@ export async function startDesktopTunnel(
   }
   const clientId = desktopTunnelClientId(window.localStorage);
   const attachment = await createTunnelAttachment(tunnelId, { clientId });
+  const direct = await createDirectTunnelAttachment(
+    attachment.attachmentId,
+  ).catch(() => null);
   const request = nativeStartRequest(
     attachment,
     clientId,
+    direct,
     options.preferredLocalPort,
   );
   try {
@@ -69,16 +94,69 @@ export async function startDesktopTunnel(
       "start_tunnel_forward",
       { request },
     );
-    request.secret = "";
+    request.relay.secret = "";
+    if (request.direct) request.direct.secret = "";
     attachment.secret = "";
+    if (started.routeState === "local-direct") {
+      if (!started.directCapabilityId) {
+        throw new Error(
+          "The local direct tunnel omitted its capability identity.",
+        );
+      }
+      await activateDirectTunnelAttachment(attachment.attachmentId, {
+        capabilityId: started.directCapabilityId,
+        localPort: started.localPort,
+      });
+    } else if (direct) {
+      await deleteDirectAttachment(direct.binding.capabilityId).catch(() => {
+        // The relayed tunnel remains usable if best-effort capability cleanup fails.
+      });
+    }
     return started;
   } catch (error) {
-    request.secret = "";
+    request.relay.secret = "";
+    if (request.direct) request.direct.secret = "";
     attachment.secret = "";
+    await invoke("stop_tunnel_forward", { tunnelId }).catch(() => {
+      // Server revocation below remains authoritative.
+    });
     await deleteTunnelAttachment(attachment.attachmentId).catch(() => {
       // Preserve the native bind/connection error if best-effort cleanup fails.
     });
     throw error;
+  }
+}
+
+export async function startDirectDesktopTunnel(
+  ticket: DirectTunnelTicket,
+  expiresAt: string,
+): Promise<DesktopTunnelForwardSummary> {
+  if (!isTauri()) {
+    throw new Error(
+      "Local direct tunnel attachments are only available in the desktop app.",
+    );
+  }
+  const request = {
+    attachmentId: ticket.route.attachmentId,
+    clientId: desktopTunnelClientId(window.localStorage),
+    direct: ticket,
+    expiresAt,
+    preferredLocalPort: null,
+    relay: null,
+    tunnelId: ticket.route.tunnelId,
+  };
+  try {
+    const started = await invoke<DesktopTunnelForwardSummary>(
+      "start_tunnel_forward",
+      { request },
+    );
+    if (started.routeState !== "local-direct") {
+      throw new Error("The worker is not available on this device.");
+    }
+    return started;
+  } finally {
+    request.direct.secret = "";
+    ticket.secret = "";
   }
 }
 
@@ -100,4 +178,39 @@ export async function listDesktopTunnels(): Promise<
   return isTauri()
     ? invoke<DesktopTunnelForwardSummary[]>("list_tunnel_forwards")
     : [];
+}
+
+export async function refreshDesktopTunnelRelay(
+  forward: DesktopTunnelForwardSummary,
+): Promise<boolean> {
+  if (!isTauri() || !forward.relayFallbackAvailable) return false;
+  const attachment = await createTunnelAttachment(forward.tunnelId, {
+    clientId: desktopTunnelClientId(window.localStorage),
+  });
+  if (attachment.attachmentId !== forward.attachmentId) {
+    attachment.secret = "";
+    throw new Error("The refreshed tunnel attachment identity did not match.");
+  }
+  const relay = {
+    connectPath: attachment.connectPath,
+    secret: attachment.secret,
+    secretExpiresAtEpochMs: new Date(attachment.secretExpiresAt).getTime(),
+    serverUrl: getActiveServerUrl(),
+  };
+  try {
+    const accepted = await invoke<boolean>("refresh_tunnel_forward_relay", {
+      expiresAt: attachment.expiresAt,
+      relay,
+      tunnelId: forward.tunnelId,
+    });
+    if (!accepted) {
+      await deleteTunnelAttachment(attachment.attachmentId).catch(() => {
+        // The forward disappeared while its relay credential was rotating.
+      });
+    }
+    return accepted;
+  } finally {
+    relay.secret = "";
+    attachment.secret = "";
+  }
 }

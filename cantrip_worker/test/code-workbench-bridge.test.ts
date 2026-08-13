@@ -66,6 +66,26 @@ function respond(socket: WebSocket, request: WorkbenchRequest, result = {}) {
 }
 
 describe("Cantrip workbench bridge", () => {
+  it("does not block agent turns for a disconnected clean editor", async () => {
+    const bridge = new CodeWorkbenchBridge();
+    bridges.push(bridge);
+    await bridge.start();
+    bridge.register("disconnected-session", "disconnected-secret");
+
+    await expect(
+      bridge.prepareAgentTurn("disconnected-session"),
+    ).resolves.toEqual({
+      sessionId: "disconnected-session",
+      bridgeConnected: false,
+      allowed: true,
+      policy: null,
+      dirtyEditors: [],
+      saved: [],
+      failed: [],
+      reason: null,
+    });
+  });
+
   it("retires an unresponsive surface and replays its theme on reconnect", async () => {
     const bridge = new CodeWorkbenchBridge({ requestTimeoutMs: 25 });
     bridges.push(bridge);

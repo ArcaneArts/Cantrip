@@ -13,6 +13,11 @@ import {
 
 import { terminalWebSocketUrl } from "@/lib/api";
 import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
+import {
+  startDirectDesktopTerminal,
+  stopDirectDesktopTerminal,
+  type DesktopTerminalConnection,
+} from "@/lib/desktop-terminal";
 import { cn } from "@/lib/utils";
 
 import { terminalCommandInput } from "./terminal-command-palette";
@@ -137,7 +142,9 @@ export function TerminalView({
     xterm.open(container);
     xtermRef.current = xterm;
 
-    const socket = new WebSocket(terminalWebSocketUrl(terminal.id));
+    let socket: WebSocket | null = null;
+    let directConnection: DesktopTerminalConnection | null = null;
+    let directFallbackStarted = false;
     let ready = false;
     let disposed = false;
     let exited = false;
@@ -153,7 +160,7 @@ export function TerminalView({
       );
     };
     const sendSize = () => {
-      if (!ready || socket.readyState !== WebSocket.OPEN) return;
+      if (!ready || socket?.readyState !== WebSocket.OPEN) return;
       socket.send(
         JSON.stringify({ type: "resize", cols: xterm.cols, rows: xterm.rows }),
       );
@@ -185,7 +192,7 @@ export function TerminalView({
       attributes: true,
     });
     const sendInput = (data: string) => {
-      if (ready && socket.readyState === WebSocket.OPEN) {
+      if (ready && socket?.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: "input", data }));
         return true;
       }
@@ -193,56 +200,86 @@ export function TerminalView({
     };
     inputSenderRef.current = sendInput;
     const input = xterm.onData(sendInput);
-
-    socket.addEventListener("message", (event) => {
-      let message: TerminalServerMessage;
-      try {
-        message = terminalServerMessageSchema.parse(JSON.parse(event.data));
-      } catch {
-        setError("The server sent an invalid terminal frame.");
-        return;
-      }
-      if (message.type === "ready") {
-        ready = true;
-        reconnectAttemptRef.current = 0;
-        loadedTerminalIds.add(terminal.id);
-        setLoadedTerminalId(terminal.id);
-        setState("ready");
-        requestAnimationFrame(() => {
-          resize();
-          xterm.focus();
-        });
-      } else if (message.type === "output") {
-        xterm.write(message.data);
-      } else if (message.type === "exit") {
-        ready = false;
-        exited = true;
-        if (onExitRef.current) {
-          onExitRef.current();
-          socket.close(1000, "Terminal process exited");
+    const releaseDirect = () => {
+      const connection = directConnection;
+      directConnection = null;
+      if (connection) void stopDirectDesktopTerminal(connection);
+    };
+    const connectSocket = (url: string, direct: boolean) => {
+      if (disposed) return;
+      const nextSocket = new WebSocket(url);
+      socket = nextSocket;
+      nextSocket.addEventListener("message", (event) => {
+        let message: TerminalServerMessage;
+        try {
+          message = terminalServerMessageSchema.parse(JSON.parse(event.data));
+        } catch {
+          setError("The server sent an invalid terminal frame.");
           return;
         }
-        xterm.write(
-          `\r\n\x1b[90m[Process exited ${message.exitCode}]\x1b[0m\r\n`,
-        );
-        scheduleReconnect();
-        socket.close(1000, "Terminal process exited");
-      } else {
+        if (message.type === "ready") {
+          ready = true;
+          reconnectAttemptRef.current = 0;
+          loadedTerminalIds.add(terminal.id);
+          setLoadedTerminalId(terminal.id);
+          setState("ready");
+          requestAnimationFrame(() => {
+            resize();
+            xterm.focus();
+          });
+        } else if (message.type === "output") {
+          xterm.write(message.data);
+        } else if (message.type === "exit") {
+          ready = false;
+          exited = true;
+          if (onExitRef.current) {
+            onExitRef.current();
+            nextSocket.close(1000, "Terminal process exited");
+            return;
+          }
+          xterm.write(
+            `\r\n\x1b[90m[Process exited ${message.exitCode}]\x1b[0m\r\n`,
+          );
+          scheduleReconnect();
+          nextSocket.close(1000, "Terminal process exited");
+        } else {
+          ready = false;
+          setError(message.message);
+          scheduleReconnect();
+        }
+      });
+      const fail = () => {
+        if (disposed || exited || socket !== nextSocket) return;
+        const wasReady = ready;
         ready = false;
-        setError(message.message);
+        if (direct && !directFallbackStarted) {
+          directFallbackStarted = true;
+          releaseDirect();
+          if (wasReady) scheduleReconnect();
+          else connectSocket(terminalWebSocketUrl(terminal.id), false);
+          return;
+        }
+        setError("Could not connect to the terminal session.");
         scheduleReconnect();
-      }
-    });
-    socket.addEventListener("close", () => {
-      ready = false;
-      if (disposed || exited) return;
-      scheduleReconnect();
-    });
-    socket.addEventListener("error", () => {
-      if (disposed) return;
-      setError("Could not connect to the terminal session.");
-      scheduleReconnect();
-    });
+      };
+      nextSocket.addEventListener("close", fail);
+      nextSocket.addEventListener("error", fail);
+    };
+    void startDirectDesktopTerminal(terminal.id)
+      .then((connection) => {
+        if (disposed) {
+          if (connection) void stopDirectDesktopTerminal(connection);
+          return;
+        }
+        directConnection = connection;
+        connectSocket(
+          connection?.url ?? terminalWebSocketUrl(terminal.id),
+          Boolean(connection),
+        );
+      })
+      .catch(() => {
+        if (!disposed) connectSocket(terminalWebSocketUrl(terminal.id), false);
+      });
 
     return () => {
       ready = false;
@@ -253,7 +290,8 @@ export function TerminalView({
       if (xtermRef.current === xterm) xtermRef.current = null;
       resizeObserver.disconnect();
       themeObserver.disconnect();
-      socket.close(1000, "Terminal view closed");
+      socket?.close(1000, "Terminal view closed");
+      releaseDirect();
       xterm.dispose();
     };
   }, [connectionKey, terminal.id]);
@@ -400,6 +438,7 @@ export function TerminalView({
                   ? "translate-x-0 opacity-100"
                   : "pointer-events-none translate-x-2 opacity-0",
               )}
+              data-slot="terminal-service-panel-surface"
               style={{ width: servicePanelWidth }}
             >
               <TerminalServicePanel

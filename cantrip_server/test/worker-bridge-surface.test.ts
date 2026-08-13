@@ -4,6 +4,7 @@ import {
   encodeRemoteSurfaceFrame,
   encodeTunnelDataPlaneFrame,
   workerNotificationEnvelopeSchema,
+  workerResponseEnvelopeSchema,
   type RemoteSurfaceFrameHeader,
   type TunnelDataPlaneFrameHeader,
 } from "@cantrip/protocol";
@@ -50,6 +51,48 @@ const header: RemoteSurfaceFrameHeader = {
 };
 
 describe("WorkerBridge Remote Surface transport", () => {
+  it("keeps an in-flight command alive across a short worker reconnect", async () => {
+    const bridge = new WorkerBridge(1_000);
+    const firstSocket = new TestWorkerSocket();
+    bridge.attach("worker-1", firstSocket);
+
+    const response = bridge.request("worker-1", { type: "code.probe" });
+    const request = JSON.parse(String(firstSocket.sent.at(-1))) as {
+      requestId: string;
+    };
+    firstSocket.close(1006, "transient network loss");
+
+    const replacementSocket = new TestWorkerSocket();
+    bridge.attach("worker-1", replacementSocket);
+    replacementSocket.emit(
+      "message",
+      JSON.stringify(
+        workerResponseEnvelopeSchema.parse({
+          kind: "response",
+          requestId: request.requestId,
+          ok: true,
+          result: { recovered: true },
+        }),
+      ),
+      false,
+    );
+
+    await expect(response).resolves.toEqual({ recovered: true });
+    bridge.close();
+  });
+
+  it("rejects in-flight commands after the reconnect grace expires", async () => {
+    const bridge = new WorkerBridge(10);
+    const socket = new TestWorkerSocket();
+    bridge.attach("worker-1", socket);
+
+    const response = bridge.request("worker-1", { type: "code.probe" });
+    socket.close(1006, "network loss");
+
+    await expect(response).rejects.toThrow(/disconnected/i);
+    bridge.close();
+  });
+
   it("multiplexes binary frames over the authenticated worker channel", () => {
     const bridge = new WorkerBridge();
     const socket = new TestWorkerSocket();

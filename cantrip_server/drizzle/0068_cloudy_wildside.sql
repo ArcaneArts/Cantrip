@@ -1,0 +1,2 @@
+ALTER TABLE "workers" ALTER COLUMN "remote_surface_capabilities" SET DEFAULT '{"browser":false,"desktop":false,"transports":["websocket"],"iceTransportPolicies":["relay"],"maxSessions":4}'::jsonb;--> statement-breakpoint
+ALTER TABLE "workers" ADD COLUMN "direct_broker_advertisement" jsonb DEFAULT '{"available":false}'::jsonb NOT NULL;

@@ -28,6 +28,7 @@ describe("TerminalServicePanel", () => {
     );
 
     expect(markup).toContain('aria-label="Terminal service"');
+    expect(markup).toContain('data-slot="terminal-service-panel"');
     expect(markup).toContain('aria-checked="true"');
     expect(markup).toContain("redis-server");
     expect(markup).toContain("five-second cooldown");

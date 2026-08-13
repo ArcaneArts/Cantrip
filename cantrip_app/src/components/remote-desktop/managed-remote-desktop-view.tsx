@@ -279,21 +279,27 @@ export function ManagedRemoteDesktopView({
     }
   }
 
-  const { connectionState, error, retry, sendFrame, setError, transportState } =
-    useRemoteSurfaceTransport({
-      surfaceId: desktop.id,
-      webSocketUrl: () =>
-        remoteSurfaceWebSocketUrl(desktop.id, viewportRef.current),
-      messages: desktopTransportMessages,
-      onConnecting: () => {
-        remoteCanvasRef.current?.reset();
-        setStreamStatus(null);
-        setLaunchingApplication(null);
-        setTargetMessage(null);
-        requestedIconKeysRef.current.clear();
-      },
-      onFrame: handleFrame,
-    });
+  const {
+    activeTransport,
+    connectionState,
+    error,
+    retry,
+    sendFrame,
+    setError,
+  } = useRemoteSurfaceTransport({
+    surfaceId: desktop.id,
+    webSocketUrl: () =>
+      remoteSurfaceWebSocketUrl(desktop.id, viewportRef.current),
+    messages: desktopTransportMessages,
+    onConnecting: () => {
+      remoteCanvasRef.current?.reset();
+      setStreamStatus(null);
+      setLaunchingApplication(null);
+      setTargetMessage(null);
+      requestedIconKeysRef.current.clear();
+    },
+    onFrame: handleFrame,
+  });
 
   const send = useCallback(
     (message: RemoteDesktopClientMessage) =>
@@ -749,9 +755,15 @@ export function ManagedRemoteDesktopView({
               {notice}
             </div>
           ) : null}
-          {connectionState === "ready" && transportState === "fallback" ? (
+          {connectionState === "ready" && activeTransport ? (
             <div className="pointer-events-none absolute left-4 top-3 rounded-md bg-background/80 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur-xl">
-              Server-relayed WebSocket stream
+              {activeTransport === "webrtc-direct"
+                ? "Direct WebRTC stream"
+                : activeTransport === "webrtc-relay"
+                  ? "TURN-relayed WebRTC stream"
+                  : activeTransport === "webrtc-unknown"
+                    ? "WebRTC stream"
+                    : "Server-relayed WebSocket stream"}
             </div>
           ) : null}
         </div>

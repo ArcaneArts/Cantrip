@@ -10,7 +10,7 @@ type FrameEmitter = (
   header: TunnelDataPlaneFrameHeader,
   payload: Uint8Array,
 ) => boolean;
-type CapacityWaiter = () => Promise<boolean>;
+type CapacityWaiter = (attachmentId: string) => Promise<boolean>;
 
 interface TcpStream {
   destinationToSourceCredit: number;
@@ -300,7 +300,7 @@ export class TunnelTcpDestinationAdapter {
             },
             payload,
           ) ||
-          !(await this.#waitForCapacity())
+          !(await this.#waitForCapacity(stream.header.attachmentId))
         ) {
           this.#close(stream, "congested");
           return;

@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+import {
+  directBrokerAdvertisementSchema,
+  directCapabilityPrepareCommandSchema,
+  directCapabilityRenewCommandSchema,
+  directCapabilityRevokeCommandSchema,
+  unavailableDirectBroker,
+} from "./direct-data-plane.js";
+
+export * from "./direct-data-plane.js";
+
 import { tunnelDataPlaneCloseCodeSchema } from "./tunnel-data-plane.js";
 
 export * from "./tunnel-data-plane.js";
@@ -33,6 +43,7 @@ export const userRoleSchema = z.enum(["owner", "admin", "member"]);
 export const remoteSurfaceProtocolVersionSchema = z.literal(1);
 export const remoteSurfaceKindSchema = z.enum(["browser", "desktop"]);
 export const remoteSurfaceTransportSchema = z.enum(["websocket", "webrtc"]);
+export const remoteSurfaceIceTransportPolicySchema = z.enum(["all", "relay"]);
 export const remoteSurfaceStatusSchema = z.enum([
   "idle",
   "connecting",
@@ -53,6 +64,10 @@ export const remoteSurfaceCapabilitiesSchema = z.object({
   browser: z.boolean().default(false),
   desktop: z.boolean().default(false),
   transports: z.array(remoteSurfaceTransportSchema).min(1),
+  iceTransportPolicies: z
+    .array(remoteSurfaceIceTransportPolicySchema)
+    .min(1)
+    .default(["relay"]),
   maxSessions: z.number().int().positive(),
 });
 
@@ -87,8 +102,8 @@ export const remoteSurfaceIceServerSchema = z.object({
 });
 
 export const remoteSurfaceWebRtcConfigurationSchema = z.object({
-  iceServers: z.array(remoteSurfaceIceServerSchema).min(1),
-  iceTransportPolicy: z.literal("relay"),
+  iceServers: z.array(remoteSurfaceIceServerSchema).max(16),
+  iceTransportPolicy: remoteSurfaceIceTransportPolicySchema,
   negotiationTimeoutMs: z.number().int().min(1_000).max(30_000),
 });
 
@@ -120,6 +135,7 @@ function defaultRemoteSurfaceCapabilities(): z.infer<
     browser: false,
     desktop: false,
     transports: ["websocket"],
+    iceTransportPolicies: ["relay"],
     maxSessions: 4,
   };
 }
@@ -306,7 +322,7 @@ export const serverBootstrapSchema = z.object({
     remoteSurfaces: z.object({
       enabled: z.boolean(),
       transports: z.array(remoteSurfaceTransportSchema).min(1),
-      relayOnly: z.literal(true),
+      relayOnly: z.boolean(),
     }),
     code: z.object({
       enabled: z.boolean(),
@@ -395,6 +411,9 @@ export const workerHeartbeatSchema = z.object({
   codexRuntime: codexRuntimeReportSchema.default(unprobedCodexRuntimeReport),
   remoteSurfaces: remoteSurfaceCapabilitiesSchema.default(
     defaultRemoteSurfaceCapabilities,
+  ),
+  directBroker: directBrokerAdvertisementSchema.default(
+    unavailableDirectBroker,
   ),
   code: codeCapabilitiesSchema.optional(),
   projectReplicas: projectReplicaCapabilitiesSchema.default(
@@ -2326,6 +2345,13 @@ export const tunnelAttachmentCreateResultSchema = z
   })
   .strict();
 
+export const tunnelDirectActivationSchema = z
+  .object({
+    capabilityId: z.string().uuid(),
+    localPort: z.number().int().min(1).max(65_535),
+  })
+  .strict();
+
 export const tunnelAttachmentInitializeSchema = z
   .object({
     type: z.literal("initialize"),
@@ -2844,6 +2870,12 @@ export const projectShareAttachmentSchema = z.object({
     .positive()
     .max(24 * 60 * 60_000),
 });
+
+export const projectShareDirectCreateSchema = z
+  .object({
+    clientId: tunnelResourceIdSchema,
+  })
+  .strict();
 
 const projectShareAdapterHeaderListSchema = z
   .array(z.tuple([z.string().min(1).max(256), z.string().max(16 * 1_024)]))
@@ -6442,6 +6474,9 @@ export const workerProjectShareOpenResultSchema = z.object({
 });
 
 export const workerCommandSchema = z.discriminatedUnion("type", [
+  directCapabilityPrepareCommandSchema,
+  directCapabilityRevokeCommandSchema,
+  directCapabilityRenewCommandSchema,
   z.object({
     type: z.literal("worker.credential.rotate"),
     credential: workerCredentialSecretSchema,

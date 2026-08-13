@@ -129,6 +129,7 @@ function workerFrameBytes(data: unknown): Uint8Array {
 }
 
 export class WorkerBridge implements WorkerCommandBus {
+  readonly #disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
   readonly #pending = new Map<string, PendingRequest>();
   readonly #sockets = new Map<string, WorkerSocket>();
   readonly #surfaceListeners = new Map<
@@ -145,12 +146,15 @@ export class WorkerBridge implements WorkerCommandBus {
   >();
   readonly #workerDisconnectListeners = new Map<string, Set<() => void>>();
 
+  constructor(private readonly reconnectGraceMs = 15_000) {}
+
   attach(workerId: string, socket: WorkerSocket): void {
     const existing = this.#sockets.get(workerId);
     if (existing && existing !== socket) {
       existing.close(1012, "Worker reconnected");
     }
     this.#sockets.set(workerId, socket);
+    this.clearDisconnectTimer(workerId);
 
     socket.on("message", (data, isBinary) => {
       if (isBinary) {
@@ -237,10 +241,7 @@ export class WorkerBridge implements WorkerCommandBus {
         []) {
         listener();
       }
-      this.rejectWorkerRequests(
-        workerId,
-        new WorkerUnavailableError(`Worker ${workerId} disconnected.`),
-      );
+      this.scheduleDisconnectedRequestRejection(workerId);
     };
     socket.on("close", disconnect);
     socket.on("error", disconnect);
@@ -251,7 +252,13 @@ export class WorkerBridge implements WorkerCommandBus {
     reason = "Worker credential was revoked",
     code = 1008,
   ): void {
+    this.clearDisconnectTimer(workerId);
+    this.rejectWorkerRequests(
+      workerId,
+      new WorkerUnavailableError(`Worker ${workerId} disconnected.`),
+    );
     this.#sockets.get(workerId)?.close(code, reason);
+    this.clearDisconnectTimer(workerId);
   }
 
   isConnected(workerId: string): boolean {
@@ -431,6 +438,8 @@ export class WorkerBridge implements WorkerCommandBus {
       socket.close(1001, "Server shutting down");
     }
     this.#sockets.clear();
+    for (const timer of this.#disconnectTimers.values()) clearTimeout(timer);
+    this.#disconnectTimers.clear();
     this.#surfaceListeners.clear();
     this.#tunnelDataPlaneListeners.clear();
     this.#notificationListeners.clear();
@@ -454,5 +463,33 @@ export class WorkerBridge implements WorkerCommandBus {
       pending.reject(error);
       this.#pending.delete(requestId);
     }
+  }
+
+  private scheduleDisconnectedRequestRejection(workerId: string): void {
+    this.clearDisconnectTimer(workerId);
+    if (this.reconnectGraceMs <= 0) {
+      this.rejectWorkerRequests(
+        workerId,
+        new WorkerUnavailableError(`Worker ${workerId} disconnected.`),
+      );
+      return;
+    }
+    const timer = setTimeout(() => {
+      this.#disconnectTimers.delete(workerId);
+      if (this.#sockets.has(workerId)) return;
+      this.rejectWorkerRequests(
+        workerId,
+        new WorkerUnavailableError(`Worker ${workerId} disconnected.`),
+      );
+    }, this.reconnectGraceMs);
+    timer.unref();
+    this.#disconnectTimers.set(workerId, timer);
+  }
+
+  private clearDisconnectTimer(workerId: string): void {
+    const timer = this.#disconnectTimers.get(workerId);
+    if (!timer) return;
+    clearTimeout(timer);
+    this.#disconnectTimers.delete(workerId);
   }
 }

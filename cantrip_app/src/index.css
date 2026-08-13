@@ -259,6 +259,8 @@
    above that single base layer. */
 .pro-mode [data-slot="app-sidebar"],
 .pro-mode [data-slot="terminal-view"],
+.pro-mode [data-slot="terminal-service-panel-surface"],
+.pro-mode [data-slot="terminal-service-panel"],
 .pro-mode [data-slot="code-view"],
 .pro-mode [data-slot="app-shell"] > section > [class~="bg-background"] {
   background-color: transparent;

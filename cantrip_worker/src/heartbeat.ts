@@ -3,6 +3,7 @@ import os from "node:os";
 import {
   type CodeCapabilities,
   type CodexRuntimeReport,
+  type DirectBrokerAdvertisement,
   type RemoteSurfaceCapabilities,
   type WorkerHeartbeat,
   unavailableCodeCapabilities,
@@ -10,6 +11,8 @@ import {
 } from "@cantrip/protocol";
 
 import type { WorkerConfig } from "./config.js";
+
+const HEARTBEAT_TIMEOUT_MS = 15_000;
 
 export function createHeartbeat(
   config: WorkerConfig,
@@ -19,9 +22,11 @@ export function createHeartbeat(
     browser: false,
     desktop: false,
     transports: ["websocket"],
+    iceTransportPolicies: ["relay"],
     maxSessions: 4,
   },
   code: CodeCapabilities = unavailableCodeCapabilities,
+  directBroker: DirectBrokerAdvertisement = { available: false },
 ): WorkerHeartbeat {
   return workerHeartbeatSchema.parse({
     workerId: config.workerId,
@@ -32,6 +37,7 @@ export function createHeartbeat(
     codexRuntime,
     remoteSurfaces,
     code,
+    directBroker,
     projectReplicas: {
       provision: true,
       synchronize: true,
@@ -56,7 +62,7 @@ export async function sendHeartbeat(
         "content-type": "application/json",
       },
       method: "POST",
-      signal: AbortSignal.timeout(4_000),
+      signal: AbortSignal.timeout(HEARTBEAT_TIMEOUT_MS),
     },
   );
 

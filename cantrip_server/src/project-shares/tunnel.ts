@@ -23,6 +23,8 @@ export interface ProjectShareAttachmentBinding {
   createdAt: number;
   expiresAt: number;
   lastSeenAt: number;
+  loopbackHost: "127.0.0.1";
+  loopbackPort: number;
   ownerId: string;
   publicBasePath: string;
   root: string;
@@ -182,6 +184,26 @@ export class ProjectShareTunnelBroker {
     return true;
   }
 
+  prepareDirectAttachment(attachmentId: string, ownerId: string) {
+    const binding = [...this.#attachments.values()].find(
+      (candidate) =>
+        candidate.attachment.attachmentId === attachmentId &&
+        candidate.ownerId === ownerId,
+    );
+    if (!binding || !this.bridge.isConnected(binding.workerId)) return null;
+    binding.lastSeenAt = Date.now();
+    binding.expiresAt = binding.createdAt + this.#maxLifetimeMs;
+    binding.telemetry?.renew(new Date(binding.expiresAt));
+    return {
+      attachmentId,
+      expiresAt: new Date(binding.expiresAt),
+      loopbackHost: binding.loopbackHost,
+      loopbackPort: binding.loopbackPort,
+      tunnelId: binding.tunnelId,
+      workerId: binding.workerId,
+    };
+  }
+
   async close(): Promise<void> {
     clearInterval(this.#sweepTimer);
     await Promise.allSettled(this.#opening.values());
@@ -247,6 +269,8 @@ export class ProjectShareTunnelBroker {
         descriptor.realm === existing.attachment.realm
       ) {
         const now = Date.now();
+        existing.loopbackHost = descriptor.loopbackHost;
+        existing.loopbackPort = descriptor.loopbackPort;
         this.#touch(existing, now);
         return projectShareAttachmentSchema.parse({
           ...existing.attachment,
@@ -391,6 +415,8 @@ export class ProjectShareTunnelBroker {
         createdAt: now,
         expiresAt,
         lastSeenAt: now,
+        loopbackHost: descriptor.loopbackHost,
+        loopbackPort: descriptor.loopbackPort,
         ownerId: input.ownerId,
         publicBasePath,
         root: input.root,

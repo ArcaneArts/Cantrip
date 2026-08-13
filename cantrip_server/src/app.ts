@@ -247,6 +247,7 @@ import {
   projectReplicaSynchronizeCreateSchema,
   projectReplicaSummarySchema,
   projectShareAttachmentSchema,
+  projectShareDirectCreateSchema,
   projectSummarySchema,
   projectPreferredWorkerUpdateSchema,
   projectWorkspaceCreateSchema,
@@ -272,6 +273,9 @@ import {
   queuedPromptSchema,
   queuedPromptUpdateSchema,
   remoteDesktopCreateSchema,
+  directAttachmentTicketSchema,
+  directTransportTelemetrySchema,
+  directTunnelTicketSchema,
   remoteDesktopFleetSchema,
   remoteDesktopProbeResultSchema,
   remoteDesktopListSchema,
@@ -314,6 +318,7 @@ import {
   tunnelAttachmentCreateResultSchema,
   tunnelAttachmentCreateSchema,
   tunnelAttachmentInitializeSchema,
+  tunnelDirectActivationSchema,
   tunnelAttachmentReadySchema,
   tunnelUserCreateSchema,
   tunnelUserUpdateSchema,
@@ -537,6 +542,10 @@ import {
   SlidingWindowRateLimiter,
 } from "./security/abuse-limits.js";
 import { LimitedWorkerCommandBus } from "./workers/limited-command-bus.js";
+import {
+  DirectAttachmentCoordinator,
+  DirectAttachmentUnavailableError,
+} from "./direct-attachments/coordinator.js";
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -912,6 +921,7 @@ export async function buildApp({
     workerConcurrency: config.workerCommandConcurrency ?? 64,
     workerRatePerMinute: config.workerCommandRatePerMinute ?? 1_200,
   });
+  const directAttachments = new DirectAttachmentCoordinator(bridge);
   const revokedWorkerCredentialIds = new Set<string>();
   const codeSurface = resolveCodeSurfaceConfig(config);
   const codeTunnel =
@@ -5150,6 +5160,7 @@ export async function buildApp({
     await repository.revokeUserSession(principal.sessionId!, "signed-out");
     liveHub.revokeSession(principal.sessionId!);
     await codeTunnel.revokeAuthSession(principal.sessionId!);
+    await directAttachments.revokeSession(principal.sessionId!);
     closeSessionSockets(
       (sessionId) => sessionId === principal.sessionId,
       "Session was revoked",
@@ -5172,6 +5183,7 @@ export async function buildApp({
     );
     liveHub.revokeOwner(principal.user.id);
     await codeTunnel.revokeOwner(principal.user.id);
+    await directAttachments.revokeOwner(principal.user.id);
     closeSessionSockets(
       (_sessionId, ownerId) => ownerId === principal.user.id,
       "Account sessions were revoked",
@@ -5346,7 +5358,8 @@ export async function buildApp({
             transports: config.remoteSurfaceWebRtc
               ? ["websocket", "webrtc"]
               : ["websocket"],
-            relayOnly: true,
+            relayOnly:
+              config.remoteSurfaceWebRtc?.iceTransportPolicy === "relay",
           },
           code: {
             enabled: true,
@@ -5478,6 +5491,81 @@ export async function buildApp({
     return reply.send(workerListSchema.parse(workers));
   });
 
+  app.post<{ Params: { workerId: string } }>(
+    "/api/workers/:workerId/direct-probe",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const principal = authenticatedPrincipal(request);
+      const worker = await repository.getWorker(
+        principal.user.id,
+        request.params.workerId,
+      );
+      if (!worker) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
+      try {
+        return reply.code(201).send(
+          directAttachmentTicketSchema.parse(
+            await directAttachments.prepare({
+              authSessionId:
+                principal.sessionId ?? `local:${principal.user.id}`,
+              channels: ["probe"],
+              ownerId: principal.user.id,
+              resourceId: request.params.workerId,
+              resourceKind: "probe",
+              worker,
+            }),
+          ),
+        );
+      } catch (error) {
+        if (error instanceof DirectAttachmentUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.delete<{ Params: { capabilityId: string } }>(
+    "/api/direct-attachments/:capabilityId",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const principal = authenticatedPrincipal(request);
+      return (await directAttachments.revoke(
+        request.params.capabilityId,
+        "Client released direct attachment",
+        {
+          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          ownerId: principal.user.id,
+        },
+      ))
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "Direct attachment not found." });
+    },
+  );
+
+  app.post<{ Params: { capabilityId: string } }>(
+    "/api/direct-attachments/:capabilityId/telemetry",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const principal = authenticatedPrincipal(request);
+      const telemetry = directTransportTelemetrySchema.parse(request.body);
+      const delta = directAttachments.recordTelemetry(
+        request.params.capabilityId,
+        {
+          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          ownerId: principal.user.id,
+        },
+        telemetry,
+      );
+      if (!delta) {
+        return reply.code(404).send({ error: "Direct attachment not found." });
+      }
+      operationalMetrics.recordDirectTransport(delta.resourceKind, delta);
+      return reply.code(204).send();
+    },
+  );
+
   app.get("/api/tunnels", { logLevel: "warn" }, async (request, reply) => {
     const tunnels = await repository.listTunnels(principalOwnerId(request));
     return reply.send(tunnelListSchema.parse(tunnels));
@@ -5584,13 +5672,121 @@ export async function buildApp({
 
   app.delete<{ Params: { attachmentId: string } }>(
     "/api/tunnel-attachments/:attachmentId",
-    async (request, reply) =>
-      (await tunnelRuntime.revoke(
-        principalOwnerId(request),
+    async (request, reply) => {
+      const ownerId = principalOwnerId(request);
+      const revoked = await tunnelRuntime.revoke(
+        ownerId,
         request.params.attachmentId,
-      ))
-        ? reply.code(204).send()
-        : reply.code(404).send({ error: "Tunnel attachment not found." }),
+      );
+      if (!revoked) {
+        return reply.code(404).send({ error: "Tunnel attachment not found." });
+      }
+      await directAttachments.revokeAttachment(request.params.attachmentId);
+      return reply.code(204).send();
+    },
+  );
+
+  app.post<{ Params: { attachmentId: string } }>(
+    "/api/tunnel-attachments/:attachmentId/direct",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const principal = authenticatedPrincipal(request);
+      const authorization = await repository.getDesktopTunnelAttachment(
+        principal.user.id,
+        request.params.attachmentId,
+      );
+      if (!authorization) {
+        return reply.code(404).send({ error: "Tunnel attachment not found." });
+      }
+      const worker = await repository.getWorker(
+        principal.user.id,
+        authorization.destination.workerId,
+      );
+      if (!worker) {
+        return reply
+          .code(409)
+          .send({ error: "Destination worker is offline." });
+      }
+      const route = {
+        tunnelId: authorization.tunnelId,
+        attachmentId: authorization.attachmentId,
+        sourceEndpointId: `desktop:${authorization.clientId}:${authorization.attachmentId}`,
+        destinationEndpointId: `worker:${authorization.destination.workerId}`,
+      };
+      try {
+        const ticket = await directAttachments.prepare({
+          attachmentId: authorization.attachmentId,
+          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          channels: ["tunnel-data"],
+          leaseExpiresAt: authorization.expiresAt,
+          ownerId: principal.user.id,
+          resourceId: authorization.tunnelId,
+          resourceKind: "tunnel",
+          tunnelRoute: {
+            ...route,
+            target: {
+              kind: "tcp",
+              host: authorization.destination.host,
+              port: authorization.destination.port,
+            },
+          },
+          worker,
+        });
+        return reply
+          .code(201)
+          .send(directTunnelTicketSchema.parse({ ...ticket, route }));
+      } catch (error) {
+        if (error instanceof DirectAttachmentUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: { attachmentId: string } }>(
+    "/api/tunnel-attachments/:attachmentId/direct-activate",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = tunnelDirectActivationSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = authenticatedPrincipal(request);
+      const authSessionId = principal.sessionId ?? `local:${principal.user.id}`;
+      if (
+        !directAttachments.matches(input.data.capabilityId, {
+          attachmentId: request.params.attachmentId,
+          authSessionId,
+          ownerId: principal.user.id,
+        })
+      ) {
+        return reply.code(404).send({ error: "Direct attachment not found." });
+      }
+      const authorization = await repository.getDesktopTunnelAttachment(
+        principal.user.id,
+        request.params.attachmentId,
+      );
+      if (!authorization) {
+        return reply.code(404).send({ error: "Tunnel attachment not found." });
+      }
+      if (
+        !(await repository.activateDesktopTunnelAttachment(
+          authorization.attachmentId,
+          authorization.clientId,
+          input.data.localPort,
+        ))
+      ) {
+        return reply.code(409).send({ error: "Tunnel attachment is stale." });
+      }
+      publishTunnelRuntimeChange({
+        attachmentId: authorization.attachmentId,
+        ownerId: authorization.ownerId,
+        projectId: authorization.projectId,
+        tunnelId: authorization.tunnelId,
+      });
+      return reply.code(204).send();
+    },
   );
 
   app.get<{ Params: { attachmentId: string } }>(
@@ -9474,13 +9670,77 @@ export async function buildApp({
 
   app.delete<{ Params: { attachmentId: string } }>(
     "/api/project-shares/:attachmentId",
-    async (request, reply) =>
-      (await projectShareTunnel.revokeAttachment(
+    async (request, reply) => {
+      const revoked = await projectShareTunnel.revokeAttachment(
         request.params.attachmentId,
         applicationOwnerId(),
-      ))
-        ? reply.code(204).send()
-        : reply.code(404).send({ error: "Project share not found." }),
+      );
+      if (!revoked) {
+        return reply.code(404).send({ error: "Project share not found." });
+      }
+      await directAttachments.revokeAttachment(request.params.attachmentId);
+      return reply.code(204).send();
+    },
+  );
+
+  app.post<{ Params: { attachmentId: string } }>(
+    "/api/project-shares/:attachmentId/direct",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = projectShareDirectCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = authenticatedPrincipal(request);
+      const share = projectShareTunnel.prepareDirectAttachment(
+        request.params.attachmentId,
+        principal.user.id,
+      );
+      if (!share) {
+        return reply.code(404).send({ error: "Project share not found." });
+      }
+      const worker = await repository.getWorker(
+        principal.user.id,
+        share.workerId,
+      );
+      if (!worker) {
+        return reply.code(409).send({ error: "Project worker is offline." });
+      }
+      const route = {
+        tunnelId: share.tunnelId,
+        attachmentId: share.attachmentId,
+        sourceEndpointId: `desktop:${input.data.clientId}:${share.attachmentId}`,
+        destinationEndpointId: `worker:${share.workerId}`,
+      };
+      try {
+        const ticket = await directAttachments.prepare({
+          attachmentId: share.attachmentId,
+          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          channels: ["tunnel-data"],
+          leaseExpiresAt: share.expiresAt,
+          ownerId: principal.user.id,
+          resourceId: share.attachmentId,
+          resourceKind: "project-share",
+          tunnelRoute: {
+            ...route,
+            target: {
+              kind: "tcp",
+              host: share.loopbackHost,
+              port: share.loopbackPort,
+            },
+          },
+          worker,
+        });
+        return reply
+          .code(201)
+          .send(directTunnelTicketSchema.parse({ ...ticket, route }));
+      } catch (error) {
+        if (error instanceof DirectAttachmentUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
   );
 
   app.patch<{ Params: { projectId: string } }>(
@@ -12646,6 +12906,13 @@ export async function buildApp({
           request.params.terminalId,
           input.data,
         );
+        if (terminal) {
+          await directAttachments.revokeResource(
+            applicationOwnerId(),
+            "terminal",
+            terminal.id,
+          );
+        }
         return terminal
           ? reply.send(terminalSummarySchema.parse(terminal))
           : reply.code(404).send({ error: "Terminal or worktree not found." });
@@ -12658,8 +12925,9 @@ export async function buildApp({
   app.delete<{ Params: { terminalId: string } }>(
     "/api/terminals/:terminalId",
     async (request, reply) => {
+      const ownerId = applicationOwnerId();
       const context = await repository.deleteTerminal(
-        applicationOwnerId(),
+        ownerId,
         request.params.terminalId,
       );
       if (!context) {
@@ -12678,6 +12946,11 @@ export async function buildApp({
             ),
           );
       }
+      await directAttachments.revokeResource(
+        ownerId,
+        "terminal",
+        context.terminalId,
+      );
       return reply.code(204).send();
     },
   );
@@ -12765,11 +13038,27 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       try {
+        const previousSessions =
+          (await repository.listCodeSessions(
+            applicationOwnerId(),
+            request.params.codeTabId,
+          )) ?? [];
         const codeTab = await repository.updateCodeTabWorktree(
           applicationOwnerId(),
           request.params.codeTabId,
           input.data,
         );
+        if (codeTab) {
+          await Promise.all(
+            previousSessions.map((session) =>
+              directAttachments.revokeResource(
+                applicationOwnerId(),
+                "code",
+                session.id,
+              ),
+            ),
+          );
+        }
         return codeTab
           ? reply.send(codeTabSummarySchema.parse(codeTab))
           : reply.code(404).send({ error: "Code tab or worktree not found." });
@@ -12991,7 +13280,68 @@ export async function buildApp({
         request.params.attachmentId,
         applicationOwnerId(),
       );
+      await directAttachments.revokeAttachment(request.params.attachmentId);
       return reply.code(204).send();
+    },
+  );
+
+  app.post<{ Params: { attachmentId: string } }>(
+    "/api/code-attachments/:attachmentId/direct",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = projectShareDirectCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = authenticatedPrincipal(request);
+      const context = codeTunnel.prepareDirectAttachment(
+        request.params.attachmentId,
+        principal.user.id,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Code attachment not found." });
+      }
+      const worker = await repository.getWorker(
+        principal.user.id,
+        context.workerId,
+      );
+      if (!worker || !bridge.isConnected(context.workerId)) {
+        return reply.code(409).send({ error: "Code worker is offline." });
+      }
+      const route = {
+        tunnelId: `direct-code:${context.sessionId}`,
+        attachmentId: request.params.attachmentId,
+        sourceEndpointId: `desktop:${input.data.clientId}:${request.params.attachmentId}`,
+        destinationEndpointId: `worker:${context.workerId}`,
+      };
+      try {
+        const ticket = await directAttachments.prepare({
+          attachmentId: request.params.attachmentId,
+          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          channels: ["tunnel-data"],
+          leaseExpiresAt: context.expiresAt,
+          ownerId: principal.user.id,
+          resourceId: context.sessionId,
+          resourceKind: "code",
+          tunnelRoute: {
+            ...route,
+            target: {
+              kind: "adapter",
+              adapter: "code",
+              resourceId: context.sessionId,
+            },
+          },
+          worker,
+        });
+        return reply
+          .code(201)
+          .send(directTunnelTicketSchema.parse({ ...ticket, route }));
+      } catch (error) {
+        if (error instanceof DirectAttachmentUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
     },
   );
 
@@ -13064,6 +13414,11 @@ export async function buildApp({
           }),
         );
         await codeTunnel.revokeSession(session.id);
+        await directAttachments.revokeResource(
+          applicationOwnerId(),
+          "code",
+          session.id,
+        );
         await updateCodeSessionRuntime(
           applicationOwnerId(),
           context.codeTab.id,
@@ -13144,6 +13499,15 @@ export async function buildApp({
       }
       await Promise.all(
         sessions.map((session) => codeTunnel.revokeSession(session.id)),
+      );
+      await Promise.all(
+        sessions.map((session) =>
+          directAttachments.revokeResource(
+            applicationOwnerId(),
+            "code",
+            session.id,
+          ),
+        ),
       );
       if (bridge.isConnected(context.workerId)) {
         await Promise.allSettled(
@@ -14055,7 +14419,10 @@ export async function buildApp({
         const webRtcConfiguration =
           context.surface.preferredTransport === "webrtc" &&
           context.remoteSurfaceCapabilities.transports.includes("webrtc") &&
-          config.remoteSurfaceWebRtc
+          config.remoteSurfaceWebRtc &&
+          context.remoteSurfaceCapabilities.iceTransportPolicies.includes(
+            config.remoteSurfaceWebRtc.iceTransportPolicy,
+          )
             ? createRemoteSurfaceWebRtcConfiguration(
                 config.remoteSurfaceWebRtc,
                 applicationOwnerId(),
@@ -14376,6 +14743,160 @@ export async function buildApp({
       } catch (error) {
         const status = workerRequestFailureStatus(error);
         return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { terminalId: string } }>(
+    "/api/terminals/:terminalId/direct",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = projectShareDirectCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = authenticatedPrincipal(request);
+      const context = await repository.getTerminalExecutionContext(
+        principal.user.id,
+        request.params.terminalId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Terminal not found." });
+      }
+      const worker = await repository.getWorker(
+        principal.user.id,
+        context.workerId,
+      );
+      if (!worker || !bridge.isConnected(context.workerId)) {
+        return reply.code(409).send({ error: "Project worker is offline." });
+      }
+      const bootstrapAttachmentId = `direct-bootstrap:${randomUUID()}`;
+      try {
+        let launch:
+          | { type: "shell" }
+          | {
+              type: "codex";
+              threadId: string | null;
+              model: ModelRuntime["model"];
+              provider: ModelRuntime["provider"];
+            } = { type: "shell" };
+        if (context.linkedChatId) {
+          const chat = await repository.getChatExecutionContext(
+            principal.user.id,
+            context.linkedChatId,
+          );
+          const runtime = chat ? await runtimeForContext(chat) : null;
+          if (!chat || !runtime) {
+            return reply.code(409).send({
+              error:
+                "Choose a model for this chat before opening its Codex console.",
+            });
+          }
+          launch = {
+            type: "codex",
+            threadId: chat.threadId,
+            model: runtime.model,
+            provider: runtime.provider,
+          };
+        }
+        let markReady: (() => void) | null = null;
+        let markFailed: ((error: Error) => void) | null = null;
+        let startupTimer: ReturnType<typeof setTimeout> | null = null;
+        const ready = new Promise<void>((resolve, reject) => {
+          markReady = resolve;
+          markFailed = reject;
+          startupTimer = setTimeout(
+            () => reject(new Error("Terminal process startup timed out.")),
+            15_000,
+          );
+          startupTimer.unref();
+        });
+        const opened = bridge.request(
+          context.workerId,
+          {
+            type: "terminal.open",
+            terminalId: context.terminalId,
+            attachmentId: bootstrapAttachmentId,
+            cwd: context.cwd,
+            cols: 80,
+            rows: 24,
+            launch,
+          },
+          {
+            timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
+            onEvent: (event) => {
+              if (event.type === "terminal.ready") markReady?.();
+            },
+          },
+        );
+        void opened
+          .then((result) => {
+            const parsed = terminalOpenResultSchema.parse(result);
+            if (parsed.status === "exited") {
+              markFailed?.(
+                new Error("Terminal process exited during startup."),
+              );
+            }
+          })
+          .catch((error: unknown) =>
+            markFailed?.(
+              error instanceof Error
+                ? error
+                : new Error("Terminal process could not start."),
+            ),
+          );
+        await ready.finally(() => {
+          if (startupTimer) clearTimeout(startupTimer);
+        });
+        await bridge.request(context.workerId, {
+          type: "terminal.detach",
+          terminalId: context.terminalId,
+          attachmentId: bootstrapAttachmentId,
+        });
+        await updateTerminalStatus(context.terminalId, "running");
+
+        const attachmentId = randomUUID();
+        const route = {
+          tunnelId: `terminal:${context.terminalId}`,
+          attachmentId,
+          sourceEndpointId: `desktop:${input.data.clientId}:${attachmentId}`,
+          destinationEndpointId: `worker:${context.workerId}`,
+        };
+        const ticket = await directAttachments.prepare({
+          attachmentId,
+          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          channels: ["tunnel-data"],
+          leaseExpiresAt: new Date(Date.now() + 12 * 60 * 60_000),
+          ownerId: principal.user.id,
+          resourceId: context.terminalId,
+          resourceKind: "terminal",
+          tunnelRoute: {
+            ...route,
+            target: {
+              kind: "adapter",
+              adapter: "terminal",
+              resourceId: context.terminalId,
+            },
+          },
+          worker,
+        });
+        return reply
+          .code(201)
+          .send(directTunnelTicketSchema.parse({ ...ticket, route }));
+      } catch (error) {
+        await bridge
+          .request(context.workerId, {
+            type: "terminal.detach",
+            terminalId: context.terminalId,
+            attachmentId: bootstrapAttachmentId,
+          })
+          .catch(() => undefined);
+        if (error instanceof DirectAttachmentUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        return reply
+          .code(workerRequestFailureStatus(error))
+          .send({ error: errorMessage(error) });
       }
     },
   );
@@ -17348,6 +17869,7 @@ export async function buildApp({
     await codeTunnel.close();
     await projectShareTunnel.close();
     tunnelRuntime.close();
+    await directAttachments.close();
     await bridge.close();
     await coordinator?.close();
     await activeScheduleTick;

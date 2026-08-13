@@ -195,6 +195,52 @@ describe("shared relay coordination", () => {
     await Promise.all([coordinatorA.close(), coordinatorB.close()]);
   });
 
+  it("preserves a relayed command while the same worker reconnects", async () => {
+    const backend = createInMemoryRelayCoordinatorBackend();
+    const coordinatorA = new InMemoryRelayCoordinator("instance-a", backend);
+    const coordinatorB = new InMemoryRelayCoordinator("instance-b", backend);
+    await Promise.all([coordinatorA.start(), coordinatorB.start()]);
+    const resolveOwnerId = async () => "owner-1";
+    const bridgeA = new CoordinatedWorkerBridge({
+      coordinator: coordinatorA,
+      resolveOwnerId,
+    });
+    const bridgeB = new CoordinatedWorkerBridge({
+      coordinator: coordinatorB,
+      resolveOwnerId,
+    });
+    const firstSocket = new TestWorkerSocket();
+    await bridgeB.attach("worker-1", firstSocket, "owner-1");
+
+    const response = bridgeA.request(
+      "worker-1",
+      { type: "code.probe" },
+      { ownerId: "owner-1" },
+    );
+    await vi.waitFor(() => expect(firstSocket.sent).toHaveLength(1));
+    const workerRequest = workerRequestEnvelopeSchema.parse(
+      JSON.parse(String(firstSocket.sent[0])),
+    );
+    firstSocket.close(1006, "transient network loss");
+    const replacementSocket = new TestWorkerSocket();
+    await bridgeB.attach("worker-1", replacementSocket, "owner-1");
+    replacementSocket.emit(
+      "message",
+      JSON.stringify({
+        kind: "response",
+        requestId: workerRequest.requestId,
+        ok: true,
+        result: { recovered: true },
+      }),
+      false,
+    );
+
+    await expect(response).resolves.toEqual({ recovered: true });
+    await bridgeA.close();
+    await bridgeB.close();
+    await Promise.all([coordinatorA.close(), coordinatorB.close()]);
+  });
+
   it("fans live invalidations out to clients on another instance", async () => {
     const backend = createInMemoryRelayCoordinatorBackend();
     const coordinatorA = new InMemoryRelayCoordinator("instance-a", backend);

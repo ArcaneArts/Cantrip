@@ -20,10 +20,14 @@ import {
   stopCodeTab,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+import {
+  preferDirectCodeAttachment,
+  stopDirectCodeAttachment,
+} from "@/lib/desktop-code";
 
 const MAX_RECONNECT_DELAY_MS = 15_000;
 const CODE_RUNTIME_POLL_DELAY_MS = 500;
-const CODE_FRAME_REVEAL_FALLBACK_MS = 30_000;
+const CODE_RUNTIME_POLL_WINDOW_MS = 30_000;
 const ATTACHMENT_UNAVAILABLE_MESSAGE = "cantrip-code-attachment-unavailable-v1";
 
 export interface CodeHeaderState {
@@ -66,6 +70,10 @@ export function isCodeWorkbenchReady(
   return runtime.sessionId === sessionId && runtime.bridgeConnected;
 }
 
+export function isCodeFrameReadyToReveal(frameLoaded: boolean): boolean {
+  return frameLoaded;
+}
+
 function errorText(error: unknown): string {
   return errorMessage(error, "Cantrip Code could not open.");
 }
@@ -94,7 +102,6 @@ export function CodeView({
   const [connectError, setConnectError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [frameLoaded, setFrameLoaded] = useState(false);
-  const [frameReadyToReveal, setFrameReadyToReveal] = useState(false);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [retrying, setRetrying] = useState(false);
   const appearanceRef = useRef(appearance);
@@ -114,8 +121,10 @@ export function CodeView({
   useEffect(() => {
     const generation = ++connectionGeneration.current;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let directHealthTimer: ReturnType<typeof setTimeout> | undefined;
     let cancelled = false;
     let ownedAttachmentId: string | null = null;
+    let ownedDirectTunnelId: string | null = null;
     stopped.current = false;
     setAttachment(null);
     setActionError(null);
@@ -126,30 +135,64 @@ export function CodeView({
     setConnecting(false);
     setRetrying(false);
     setFrameLoaded(false);
-    setFrameReadyToReveal(false);
 
     const connect = async (attempt: number) => {
       if (cancelled || stopped.current) return;
       setConnecting(true);
       setConnectAttempt(attempt);
       try {
-        const next = await createCodeAttachment(
+        const relayAttachment = await createCodeAttachment(
           codeTab.id,
           appearanceRef.current,
         );
+        ownedAttachmentId = relayAttachment.attachmentId;
+        const preferred = await preferDirectCodeAttachment(
+          relayAttachment,
+        ).catch(() => ({
+          attachment: relayAttachment,
+          directHealthUrl: null,
+          directTunnelId: null,
+        }));
+        const next = preferred.attachment;
+        ownedDirectTunnelId = preferred.directTunnelId;
         if (cancelled || generation !== connectionGeneration.current) {
+          void stopDirectCodeAttachment(ownedDirectTunnelId);
           void releaseCodeAttachment(next.attachmentId).catch(() => undefined);
           return;
         }
-        ownedAttachmentId = next.attachmentId;
         setAttachment(next);
         setBackgroundError(null);
         setConnectError(null);
         setConnecting(false);
         setRetrying(false);
         setFrameLoaded(false);
-        setFrameReadyToReveal(false);
         onChangedRef.current?.();
+        if (preferred.directHealthUrl) {
+          let failures = 0;
+          const checkDirectRoute = async () => {
+            if (cancelled || !ownedDirectTunnelId) return;
+            try {
+              const response = await fetch(preferred.directHealthUrl!, {
+                cache: "no-store",
+              });
+              if (!response.ok)
+                throw new Error("Direct Code route is unavailable.");
+              failures = 0;
+            } catch {
+              failures += 1;
+              if (failures >= 2 && !cancelled) {
+                const tunnelId = ownedDirectTunnelId;
+                ownedDirectTunnelId = null;
+                void stopDirectCodeAttachment(tunnelId);
+                setAttachment(relayAttachment);
+                setFrameLoaded(false);
+                return;
+              }
+            }
+            directHealthTimer = setTimeout(checkDirectRoute, 5_000);
+          };
+          directHealthTimer = setTimeout(checkDirectRoute, 5_000);
+        }
       } catch (error) {
         if (cancelled || generation !== connectionGeneration.current) return;
         setConnectError(errorText(error));
@@ -169,6 +212,8 @@ export function CodeView({
     return () => {
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
+      if (directHealthTimer) clearTimeout(directHealthTimer);
+      void stopDirectCodeAttachment(ownedDirectTunnelId);
       if (ownedAttachmentId) {
         void releaseCodeAttachment(ownedAttachmentId).catch(() => undefined);
       }
@@ -223,13 +268,15 @@ export function CodeView({
   }, [actionMessage]);
 
   useEffect(() => {
-    if (!attachment || !frameLoaded || frameReadyToReveal) return;
+    if (
+      !attachment ||
+      !frameLoaded ||
+      isCodeWorkbenchReady(attachment.runtime, attachment.sessionId)
+    )
+      return;
     let cancelled = false;
     let pollTimer: ReturnType<typeof setTimeout> | undefined;
-    const revealFallback = setTimeout(
-      () => setFrameReadyToReveal(true),
-      CODE_FRAME_REVEAL_FALLBACK_MS,
-    );
+    const pollDeadline = Date.now() + CODE_RUNTIME_POLL_WINDOW_MS;
 
     const pollRuntime = async () => {
       try {
@@ -241,22 +288,22 @@ export function CodeView({
               ? { ...current, runtime }
               : current,
           );
-          setFrameReadyToReveal(true);
           return;
         }
       } catch {
         if (cancelled) return;
       }
-      pollTimer = setTimeout(pollRuntime, CODE_RUNTIME_POLL_DELAY_MS);
+      if (Date.now() < pollDeadline) {
+        pollTimer = setTimeout(pollRuntime, CODE_RUNTIME_POLL_DELAY_MS);
+      }
     };
 
     void pollRuntime();
     return () => {
       cancelled = true;
-      clearTimeout(revealFallback);
       if (pollTimer) clearTimeout(pollTimer);
     };
-  }, [attachment, codeTab.id, frameLoaded, frameReadyToReveal]);
+  }, [attachment, codeTab.id, frameLoaded]);
 
   const runAction = useCallback(
     async (name: string, action: () => Promise<void>) => {
@@ -305,7 +352,6 @@ export function CodeView({
         }
         setAttachment(null);
         setFrameLoaded(false);
-        setFrameReadyToReveal(false);
         setConnectError(null);
         setActionMessage("Editor stopped.");
       }),
@@ -385,7 +431,7 @@ export function CodeView({
           />
           <SurfaceLoadingVeil
             label="Loading the browser-native workbench…"
-            visible={!frameReadyToReveal}
+            visible={!isCodeFrameReadyToReveal(frameLoaded)}
           />
         </>
       ) : (

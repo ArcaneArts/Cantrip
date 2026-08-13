@@ -1,8 +1,13 @@
+import type {
+  DirectResourceKind,
+  DirectTransportTelemetry,
+} from "@cantrip/protocol";
+
+import type { RelayCoordinatorStats } from "../coordination/relay-coordinator.js";
 import type { AppLiveHubStats } from "../live/hub.js";
-import type { RelayQuotaStats } from "./relay-quotas.js";
 import type { TunnelStreamBrokerStats } from "../tunnels/broker.js";
 import type { WorkerCommandBusStats } from "../workers/bridge.js";
-import type { RelayCoordinatorStats } from "../coordination/relay-coordinator.js";
+import type { RelayQuotaStats } from "./relay-quotas.js";
 
 interface HttpMetric {
   durationSeconds: number;
@@ -57,6 +62,8 @@ function metricLine(
 }
 
 export class OperationalMetrics {
+  readonly #directBytes = new Map<string, number>();
+  readonly #directConnections = new Map<string, number>();
   readonly #http = new Map<string, HttpMetric>();
   readonly #startedAt = Date.now();
   #activeRequests = 0;
@@ -110,6 +117,29 @@ export class OperationalMetrics {
     this.#database.ready = ready;
     this.#database.latencySeconds = Math.max(0, durationMs) / 1_000;
     if (!ready) this.#database.probeFailures += 1;
+  }
+
+  recordDirectTransport(
+    resourceKind: DirectResourceKind,
+    delta: DirectTransportTelemetry,
+  ): void {
+    for (const [direction, value] of [
+      ["source_to_destination", delta.bytesFromLocal],
+      ["destination_to_source", delta.bytesToLocal],
+    ] as const) {
+      const key = `${resourceKind}\0${direction}`;
+      this.#directBytes.set(key, (this.#directBytes.get(key) ?? 0) + value);
+    }
+    for (const [event, value] of [
+      ["opened", delta.connectionsOpened],
+      ["closed", delta.connectionsClosed],
+    ] as const) {
+      const key = `${resourceKind}\0${event}`;
+      this.#directConnections.set(
+        key,
+        (this.#directConnections.get(key) ?? 0) + value,
+      );
+    }
   }
 
   recordSchedulerScan(input: {
@@ -177,6 +207,68 @@ export class OperationalMetrics {
           metric.durationSeconds,
           labels,
         ),
+      );
+    }
+    lines.push(
+      "# HELP cantrip_data_plane_bytes_total Bytes carried by direct or server-relayed tunnel data planes.",
+      "# TYPE cantrip_data_plane_bytes_total counter",
+      metricLine(
+        "cantrip_data_plane_bytes_total",
+        input.tunnels.bytesFromSource,
+        {
+          direction: "source_to_destination",
+          resource_kind: "tunnel",
+          transport: "server-relay",
+        },
+      ),
+      metricLine(
+        "cantrip_data_plane_bytes_total",
+        input.tunnels.bytesToSource,
+        {
+          direction: "destination_to_source",
+          resource_kind: "tunnel",
+          transport: "server-relay",
+        },
+      ),
+      "# HELP cantrip_data_plane_connections_total Connections opened or closed by direct or server-relayed tunnel data planes.",
+      "# TYPE cantrip_data_plane_connections_total counter",
+      metricLine(
+        "cantrip_data_plane_connections_total",
+        input.tunnels.openedConnections,
+        {
+          event: "opened",
+          resource_kind: "tunnel",
+          transport: "server-relay",
+        },
+      ),
+      metricLine(
+        "cantrip_data_plane_connections_total",
+        input.tunnels.closedConnections,
+        {
+          event: "closed",
+          resource_kind: "tunnel",
+          transport: "server-relay",
+        },
+      ),
+    );
+    for (const [key, value] of this.#directBytes) {
+      const [resourceKind, direction] = key.split("\0");
+      lines.push(
+        metricLine("cantrip_data_plane_bytes_total", value, {
+          direction: direction!,
+          resource_kind: resourceKind!,
+          transport: "local-direct",
+        }),
+      );
+    }
+    for (const [key, value] of this.#directConnections) {
+      const [resourceKind, event] = key.split("\0");
+      lines.push(
+        metricLine("cantrip_data_plane_connections_total", value, {
+          event: event!,
+          resource_kind: resourceKind!,
+          transport: "local-direct",
+        }),
       );
     }
     lines.push(

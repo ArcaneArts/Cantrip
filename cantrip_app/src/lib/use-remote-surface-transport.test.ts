@@ -100,6 +100,7 @@ function encodedFrame(
 function harness(overrides: Partial<RemoteSurfaceTransportClientOptions> = {}) {
   const sockets: FakeWebSocket[] = [];
   const onConnectionState = vi.fn();
+  const onActiveTransport = vi.fn();
   const onError = vi.fn();
   const onFrame = vi.fn();
   const onReady = vi.fn();
@@ -114,6 +115,7 @@ function harness(overrides: Partial<RemoteSurfaceTransportClientOptions> = {}) {
       return socket as unknown as WebSocket;
     },
     onConnectionState,
+    onActiveTransport,
     onError,
     onFrame,
     onReady,
@@ -123,6 +125,7 @@ function harness(overrides: Partial<RemoteSurfaceTransportClientOptions> = {}) {
   client.start();
   return {
     client,
+    onActiveTransport,
     onConnectionState,
     onError,
     onFrame,
@@ -168,6 +171,7 @@ describe("RemoteSurfaceTransportClient", () => {
     ready(run.sockets[0]!, "websocket");
     expect(run.onConnectionState).toHaveBeenLastCalledWith("ready");
     expect(run.onTransportState).toHaveBeenLastCalledWith("fallback");
+    expect(run.onActiveTransport).toHaveBeenLastCalledWith("websocket-relay");
     expect(run.onReady).toHaveBeenCalledOnce();
 
     expect(run.client.send("control", new Uint8Array([1, 2]))).toBe(true);
@@ -204,6 +208,9 @@ describe("RemoteSurfaceTransportClient", () => {
     });
     ready(run.sockets[0]!, "webrtc");
     expect(webRtc.start).toHaveBeenCalledOnce();
+    expect(run.onActiveTransport).toHaveBeenLastCalledWith("webrtc-unknown");
+    webRtcOptions!.onTransport?.("webrtc-direct");
+    expect(run.onActiveTransport).toHaveBeenLastCalledWith("webrtc-direct");
 
     expect(run.client.send("control", new Uint8Array([7]))).toBe(true);
     expect(webRtc.send).toHaveBeenCalledOnce();

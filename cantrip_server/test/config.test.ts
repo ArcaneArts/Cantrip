@@ -292,7 +292,14 @@ describe("server configuration safety", () => {
     expect(() => readServerConfig()).toThrow(/expected lax, none, or strict/i);
   });
 
-  it("accepts complete TURN configuration and rejects partial or direct URLs", () => {
+  it("defaults to direct host ICE and accepts optional STUN and TURN", () => {
+    expect(readServerConfig().remoteSurfaceWebRtc).toEqual({
+      iceTransportPolicy: "all",
+      negotiationTimeoutMs: 8_000,
+      stunUrls: [],
+      turn: undefined,
+    });
+    vi.stubEnv("CANTRIP_STUN_URLS", "stun:stun.cantrip.art:3478");
     vi.stubEnv(
       "CANTRIP_TURN_URLS",
       "turn:relay.cantrip.art:3478?transport=udp,turns:relay.cantrip.art:5349",
@@ -300,13 +307,17 @@ describe("server configuration safety", () => {
     vi.stubEnv("CANTRIP_TURN_SHARED_SECRET", "server-only-secret");
     vi.stubEnv("CANTRIP_TURN_TTL_SECONDS", "900");
     expect(readServerConfig().remoteSurfaceWebRtc).toEqual({
-      urls: [
-        "turn:relay.cantrip.art:3478?transport=udp",
-        "turns:relay.cantrip.art:5349",
-      ],
-      sharedSecret: "server-only-secret",
-      ttlSeconds: 900,
+      iceTransportPolicy: "all",
       negotiationTimeoutMs: 8_000,
+      stunUrls: ["stun:stun.cantrip.art:3478"],
+      turn: {
+        urls: [
+          "turn:relay.cantrip.art:3478?transport=udp",
+          "turns:relay.cantrip.art:5349",
+        ],
+        sharedSecret: "server-only-secret",
+        ttlSeconds: 900,
+      },
     });
 
     vi.stubEnv("CANTRIP_TURN_URLS", "https://relay.cantrip.art");
@@ -314,5 +325,13 @@ describe("server configuration safety", () => {
 
     vi.stubEnv("CANTRIP_TURN_URLS", "");
     expect(() => readServerConfig()).toThrow(/configured together/i);
+
+    vi.stubEnv("CANTRIP_TURN_SHARED_SECRET", "");
+    vi.stubEnv("CANTRIP_STUN_URLS", "https://stun.cantrip.art");
+    expect(() => readServerConfig()).toThrow(/stun: or stuns:/i);
+
+    vi.stubEnv("CANTRIP_STUN_URLS", "");
+    vi.stubEnv("CANTRIP_WEBRTC_ICE_TRANSPORT_POLICY", "relay");
+    expect(() => readServerConfig()).toThrow(/requires TURN/i);
   });
 });

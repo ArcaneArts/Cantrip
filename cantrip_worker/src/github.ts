@@ -71,6 +71,73 @@ import {
 const execFileAsync = promisify(execFile);
 const SAFE_REPOSITORY_SEGMENT = /^[A-Za-z0-9_.-]+$/;
 const MAX_PROJECT_POLICY_BYTES = 64 * 1024;
+const EMPTY_REPOSITORY_MESSAGE =
+  "The repository origin does not have an initial commit yet. Create the first commit on GitHub, then retry setup.";
+
+async function resolveGitCommit(
+  cwd: string,
+  revision: string,
+): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["-C", cwd, "rev-parse", "--verify", `${revision}^{commit}`],
+      { maxBuffer: 1024 * 1024 },
+    );
+    return stdout.trim().toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+async function attachUnbornHeadToOrigin(cwd: string): Promise<string | null> {
+  let remoteHead: string;
+  try {
+    await execFileAsync(
+      "git",
+      ["-C", cwd, "remote", "set-head", "origin", "--auto"],
+      { maxBuffer: 1024 * 1024 },
+    );
+    remoteHead = (
+      await execFileAsync(
+        "git",
+        [
+          "-C",
+          cwd,
+          "symbolic-ref",
+          "--quiet",
+          "--short",
+          "refs/remotes/origin/HEAD",
+        ],
+        { maxBuffer: 1024 * 1024 },
+      )
+    ).stdout.trim();
+  } catch {
+    return null;
+  }
+  if (
+    !remoteHead.startsWith("origin/") ||
+    remoteHead.length <= "origin/".length
+  ) {
+    return null;
+  }
+  const revision = await resolveGitCommit(cwd, remoteHead);
+  if (!revision) return null;
+  const branch = remoteHead.slice("origin/".length);
+  await execFileAsync(
+    "git",
+    ["-C", cwd, "checkout", "-B", branch, remoteHead],
+    {
+      maxBuffer: 32 * 1024 * 1024,
+    },
+  );
+  await execFileAsync(
+    "git",
+    ["-C", cwd, "branch", "--set-upstream-to", remoteHead, branch],
+    { maxBuffer: 1024 * 1024 },
+  );
+  return revision;
+}
 
 export async function readProjectWorktreePolicy(
   repositoryPath: string,
@@ -903,7 +970,13 @@ export class GithubClient {
     const request = githubRepositoryCreateSchema.parse(input);
     const nameWithOwner = `${request.owner}/${request.name}`;
     repositorySegments(nameWithOwner);
-    const args = ["repo", "create", nameWithOwner, `--${request.visibility}`];
+    const args = [
+      "repo",
+      "create",
+      nameWithOwner,
+      `--${request.visibility}`,
+      "--add-readme",
+    ];
     if (request.description) {
       args.push("--description", request.description);
     }
@@ -1845,15 +1918,32 @@ export class GithubClient {
           false,
         );
       }
-      const currentRevision = (
-        await execFileAsync(
-          "git",
-          ["-C", target, "rev-parse", "--verify", "HEAD^{commit}"],
-          { maxBuffer: 1024 * 1024 },
-        )
-      ).stdout
-        .trim()
-        .toLowerCase();
+      let currentRevision = await resolveGitCommit(target, "HEAD");
+      if (!currentRevision) {
+        if (input.expectedRevision) {
+          currentRevision = await resolveGitCommit(
+            target,
+            input.expectedRevision,
+          );
+          if (!currentRevision) {
+            return blocked(
+              "target-not-found",
+              `Revision ${input.expectedRevision} is not available from the repository origin.`,
+              false,
+            );
+          }
+          await execFileAsync(
+            "git",
+            ["-C", target, "checkout", "--detach", currentRevision],
+            { maxBuffer: 32 * 1024 * 1024 },
+          );
+        } else {
+          currentRevision = await attachUnbornHeadToOrigin(target);
+          if (!currentRevision) {
+            return blocked("target-not-found", EMPTY_REPOSITORY_MESSAGE, true);
+          }
+        }
+      }
       if (
         input.expectedRevision &&
         currentRevision !== input.expectedRevision.toLowerCase()
@@ -1917,6 +2007,11 @@ export class GithubClient {
             ["-C", staging, "checkout", "--detach", input.expectedRevision],
             { maxBuffer: 32 * 1024 * 1024 },
           );
+        } else if (!(await resolveGitCommit(staging, "HEAD"))) {
+          if (!(await attachUnbornHeadToOrigin(staging))) {
+            await rm(staging, { recursive: true, force: true });
+            return blocked("target-not-found", EMPTY_REPOSITORY_MESSAGE, true);
+          }
         }
         await rename(staging, target);
       } catch (error) {

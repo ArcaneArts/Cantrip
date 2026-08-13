@@ -22,6 +22,7 @@ use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 mod desktop_worker;
+mod direct_probe;
 mod project_share;
 mod tunnel_forward;
 
@@ -64,26 +65,39 @@ fn sanitize_client_log(message: &str) -> String {
 }
 
 #[tauri::command]
-fn relay_client_log(level: String, message: String) {
+fn relay_client_log(
+    window: tauri::WebviewWindow,
+    level: String,
+    message: String,
+    source: Option<String>,
+) {
     #[cfg(debug_assertions)]
     {
         let level = match level.as_str() {
             "debug" => "debug",
             "error" => "error",
             "info" => "info",
+            "trace" => "trace",
             "warn" => "warn",
             _ => "log",
         };
-        let prefix = format!("[client:{level}]");
+        let prefix = format!("[client:{}:{level}]", window.label());
         let message = sanitize_client_log(&message).replace('\n', &format!("\n{prefix} "));
+        let source = source
+            .as_deref()
+            .map(sanitize_client_log)
+            .map(|source| source.replace(['\n', '\t'], " "))
+            .filter(|source| !source.is_empty())
+            .map(|source| format!(" {source}"))
+            .unwrap_or_default();
         if matches!(level, "error" | "warn") {
-            eprintln!("{prefix} {message}");
+            eprintln!("{prefix}{source} {message}");
         } else {
-            println!("{prefix} {message}");
+            println!("{prefix}{source} {message}");
         }
     }
     #[cfg(not(debug_assertions))]
-    let _ = (level, message);
+    let _ = (window, level, message, source);
 }
 
 #[tauri::command]
@@ -470,11 +484,15 @@ pub fn run() {
             desktop_worker::list_desktop_workers,
             desktop_worker::pair_desktop_worker,
             desktop_worker::forget_desktop_worker,
+            direct_probe::probe_direct_worker,
             local_server_url,
             relay_client_log,
             set_macos_pro_mode,
+            project_share::fallback_project_share,
+            project_share::list_direct_project_share_tunnels,
             project_share::reveal_project_share,
             tunnel_forward::start_tunnel_forward,
+            tunnel_forward::refresh_tunnel_forward_relay,
             tunnel_forward::stop_tunnel_forward,
             tunnel_forward::list_tunnel_forwards,
         ])
@@ -509,6 +527,8 @@ pub fn run() {
             }
             Ok(())
         });
+    #[cfg(debug_assertions)]
+    let builder = builder.append_invoke_initialization_script(include_str!("client_log_relay.js"));
     let app = builder
         .build(tauri::generate_context!())
         .expect("error while building Cantrip");

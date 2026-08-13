@@ -259,12 +259,20 @@ mod tests {
         let port = listener.local_addr().expect("listener address").port();
         let worker = thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("broker connection");
-            let mut request = [0_u8; 4096];
-            let length = stream.read(&mut request).expect("handshake request");
-            let request = std::str::from_utf8(&request[..length]).expect("HTTP request");
+            let mut request = Vec::new();
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let mut chunk = [0_u8; 1024];
+                let length = stream.read(&mut chunk).expect("handshake request");
+                assert!(length > 0, "broker request ended before its headers");
+                request.extend_from_slice(&chunk[..length]);
+                assert!(request.len() <= 16 * 1024, "broker request was too large");
+            }
+            let request = std::str::from_utf8(&request).expect("HTTP request");
             assert!(request.contains("GET /v1/handshake HTTP/1.1"));
             assert!(
-                request.contains("Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123456789_-")
+                request
+                    .to_ascii_lowercase()
+                    .contains("authorization: bearer abcdefghijklmnopqrstuvwxyz0123456789_-")
             );
             let body = r#"{"protocolVersion":1,"serverUrl":"https://cantrip.example","workerId":"worker-example"}"#;
             write!(

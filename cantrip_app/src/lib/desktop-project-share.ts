@@ -1,9 +1,16 @@
 import type { ProjectShareAttachment, ProjectSummary } from "@cantrip/protocol";
 
 import {
+  createDirectProjectNetworkShare,
   createProjectNetworkShare,
+  deleteDirectAttachment,
   deleteProjectNetworkShare,
 } from "@/lib/api";
+import {
+  desktopTunnelAvailable,
+  desktopTunnelClientId,
+  startDirectDesktopTunnel,
+} from "@/lib/desktop-tunnel";
 
 export type DesktopProjectRevealLabel =
   "Reveal in File Explorer" | "Reveal in Finder";
@@ -30,9 +37,12 @@ export function desktopProjectRevealLabel(
 export function nativeProjectShareRequest(
   attachment: ProjectShareAttachment,
   project: ProjectSummary,
+  direct?: { fallbackUrl: string; tunnelId: string },
 ) {
   return {
     attachmentId: attachment.attachmentId,
+    directTunnelId: direct?.tunnelId ?? null,
+    fallbackUrl: direct?.fallbackUrl ?? null,
     mountLeaseMs: attachment.mountLeaseMs,
     password: attachment.password,
     projectId: attachment.projectId,
@@ -40,6 +50,17 @@ export function nativeProjectShareRequest(
     url: attachment.url,
     username: attachment.username,
   };
+}
+
+export function directProjectShareUrl(
+  attachment: ProjectShareAttachment,
+  localPort: number,
+): string {
+  const url = new URL(attachment.url);
+  url.protocol = "http:";
+  url.hostname = "127.0.0.1";
+  url.port = String(localPort);
+  return url.toString();
 }
 
 export async function coordinateDesktopProjectReveal(
@@ -64,10 +85,57 @@ export async function revealProjectInNativeFileManager(
     createAttachment: createProjectNetworkShare,
     invokeNative: async (attachment, target) => {
       const { invoke } = await import("@tauri-apps/api/core");
+      const clientId = desktopTunnelClientId(window.localStorage);
+      const direct = await createDirectProjectNetworkShare(
+        attachment.attachmentId,
+        clientId,
+      ).catch(() => null);
+      if (direct) {
+        try {
+          const forward = await startDirectDesktopTunnel(
+            direct,
+            attachment.expiresAt,
+          );
+          await invoke("reveal_project_share", {
+            request: nativeProjectShareRequest(
+              {
+                ...attachment,
+                url: directProjectShareUrl(attachment, forward.localPort),
+              },
+              target,
+              {
+                fallbackUrl: attachment.url,
+                tunnelId: direct.route.tunnelId,
+              },
+            ),
+          });
+          return;
+        } catch {
+          await deleteDirectAttachment(direct.binding.capabilityId).catch(
+            () => {
+              // The server URL remains the authoritative relay fallback.
+            },
+          );
+        }
+      }
       await invoke("reveal_project_share", {
         request: nativeProjectShareRequest(attachment, target),
       });
     },
     revokeAttachment: deleteProjectNetworkShare,
   });
+}
+
+export async function listDirectDesktopProjectShares(): Promise<string[]> {
+  if (!desktopTunnelAvailable()) return [];
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string[]>("list_direct_project_share_tunnels");
+}
+
+export async function fallbackDirectDesktopProjectShare(
+  tunnelId: string,
+): Promise<boolean> {
+  if (!desktopTunnelAvailable()) return false;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<boolean>("fallback_project_share", { tunnelId });
 }

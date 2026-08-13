@@ -164,6 +164,7 @@ import {
 } from "@/lib/mobile-navigation";
 import { useCompactLayout } from "@/lib/use-compact-layout";
 import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
+import { chatResourceRefreshIntervalMs } from "@/lib/chat-resource-refresh";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -278,6 +279,7 @@ import {
 } from "@/lib/desktop-project-share";
 import { browserUpdateForPageState } from "@/lib/browser-page-state";
 import { scopedClientStorageKey } from "@/lib/client-session";
+import { useDesktopDirectTransportTelemetry } from "@/lib/direct-transport-telemetry";
 import {
   buildProjectSurfaceIndex,
   type ProjectSurface,
@@ -900,12 +902,13 @@ function ChatTranscript({
   const queryClient = useQueryClient();
   const liveStatus = useAppLiveStatus();
   const chatResourcesLive = liveStatus === "live";
-  const chatExecuting =
-    chat.status === "running" || chat.status === "waiting-for-approval";
   const relocationActive = isChatRelocationActive(relocationJob);
   const relocationNeedsAttention =
     relocationJob?.state === "blocked" || relocationJob?.state === "failed";
-  const chatFallbackInterval = chatExecuting ? 3_000 : 10_000;
+  const chatRefreshInterval = chatResourceRefreshIntervalMs(
+    chat.status,
+    chatResourcesLive,
+  );
   const [draft, setDraft] = useState("");
   const [composerMode, setComposerMode] = useState<ChatTurnMode>("default");
   const [editingPrompt, setEditingPrompt] = useState<{
@@ -948,7 +951,7 @@ function ChatTranscript({
   const messages = useQuery({
     queryFn: () => getMessages(chat.id),
     queryKey: ["messages", chat.id],
-    refetchInterval: chatResourcesLive ? false : chatFallbackInterval,
+    refetchInterval: chatRefreshInterval,
   });
   useQuery({
     enabled: syncEnabled,
@@ -965,31 +968,31 @@ function ChatTranscript({
       return result;
     },
     queryKey: ["chat-sync", chat.id],
-    refetchInterval: chatResourcesLive ? false : chatFallbackInterval,
+    refetchInterval: chatRefreshInterval,
     retry: false,
   });
   const queuedPrompts = useQuery({
     queryFn: () => getQueuedPrompts(chat.id),
     queryKey: ["prompt-queue", chat.id],
-    refetchInterval: chatResourcesLive ? false : chatFallbackInterval,
+    refetchInterval: chatRefreshInterval,
   });
   const goalState = useQuery({
     queryFn: () => getChatGoal(chat.id),
     queryKey: ["goal", chat.id],
-    refetchInterval: chatResourcesLive ? false : chatFallbackInterval,
+    refetchInterval: chatRefreshInterval,
     retry: false,
   });
   const planState = useQuery({
     queryFn: () => getChatPlan(chat.id),
     queryKey: ["plan", chat.id],
-    refetchInterval: chatResourcesLive ? false : chatFallbackInterval,
+    refetchInterval: chatRefreshInterval,
     retry: false,
   });
   const interactionRequests = useQuery({
     queryFn: () =>
       getAgentInteractionRequests({ chatId: chat.id, status: "pending" }),
     queryKey: ["agent-requests", chat.id, "pending"],
-    refetchInterval: chatResourcesLive ? false : chatFallbackInterval,
+    refetchInterval: chatRefreshInterval,
     retry: false,
   });
   const permissionProfiles = useQuery({
@@ -2353,6 +2356,7 @@ function ChatTranscript({
 }
 
 export function App() {
+  useDesktopDirectTransportTelemetry();
   const queryClient = useQueryClient();
   const activeProjectWorkspaceStorageKey = useMemo(
     () => scopedClientStorageKey("cantrip:active-project-workspace"),
@@ -5519,11 +5523,7 @@ export function App() {
             key={selectedChat.id}
             chat={selectedChat}
             settings={settings.data}
-            syncEnabled={
-              terminals.data?.some(
-                (terminal) => terminal.linkedChatId === selectedChat.id,
-              ) ?? false
-            }
+            syncEnabled
             onCreateChat={() =>
               newChat.mutate({ projectId: selectedChat.projectId })
             }

@@ -38,8 +38,8 @@ worker-owned architecture.
 - Synchronize Cantrip themes, external agent edits, dirty-buffer state, active
   files, selections, Git state, and worktree identity through a bundled
   extension.
-- Route all remote access through `cantrip_server`; the app must never connect
-  directly to a worker.
+- Route all authorization and remote access through `cantrip_server`; a Tauri
+  client may use a server-authorized, verified same-machine data path.
 - Keep upstream merges repeatable and reviewable with pinned revisions,
   scripted imports, a minimal ordered patch set, and compatibility checks.
 - Compile Cantrip Code during Cantrip builds and bundle it into the matching
@@ -256,7 +256,8 @@ flowchart LR
     TREE["Selected project worktree"]
     AGENT["Codex runtime"]
 
-    APP <-->|"isolated HTTPS and WebSocket surface"| SERVER
+    APP <-->|"relay fallback"| SERVER
+    APP -. "verified same-host HTTP/WebSocket" .-> WORKER
     SERVER <-->|"multiplexed outbound tunnel"| WORKER
     WORKER --> CODE
     CODE --> BRIDGE
@@ -273,17 +274,20 @@ When a Code tab opens:
 4. The worker creates or reuses the generated `.code-workspace` file.
 5. Cantrip Code binds to a random worker-loopback port.
 6. The worker creates an authenticated outbound tunnel to the server.
-7. The server issues a short-lived attachment URL on an isolated surface origin.
-8. The app embeds that URL and reconnects through the server after transient
-   disconnects.
+7. The server issues a short-lived attachment and, when eligible, a bound
+   local-direct capability.
+8. Tauri prefers its local forwarded URL after verifying the worker broker;
+   other clients and failed probes embed the isolated server relay URL.
+9. A direct health failure swaps the view back to the relay URL without losing
+   the durable Code tab or editor session.
 
 The attachment URL carries the selected generated workspace path as an encoded
 remote-workspace selector. It is not an editor credential; the browser's first
 editor authentication message is translated to the raw process token only at
 the authorized worker-local tunnel boundary.
 
-The editor port is never exposed directly and the server never assumes it can
-open an inbound connection to a worker. Each Code tab owns one logical,
+The editor port and raw editor token are never exposed directly, and the server
+never assumes it can open an inbound connection to a worker. Each Code tab owns one logical,
 project-associated managed tunnel in the unified tunnel control plane. Each
 renderer view is an independently revocable server-relay attachment on that
 tunnel. HTTP bodies and length-delimited WebSocket messages travel through the
@@ -291,6 +295,11 @@ same bounded generic stream identities, credit flow control, routing,
 disconnect cleanup, counters, and worker transport used by other tunnel
 adapters; Code-specific translation remains only at the two HTTP/WebSocket
 edges.
+
+The worker-local direct adapter performs the same base-path, header, CSP, and
+initial WebSocket-auth translation as the server adapter. Its capability is
+bound to the Code tab/session attachment and is revoked when that tab, session,
+worktree, account session, or worker connection ends.
 
 This extends the worker-owned surface principles in
 [`adr/0002-worker-owned-remote-surfaces.md`](adr/0002-worker-owned-remote-surfaces.md),

@@ -153,6 +153,7 @@ import {
   projectRepositoryStatsSchema,
   projectTokenUsageSchema,
   projectShareAttachmentSchema,
+  projectShareDirectCreateSchema,
   projectSummarySchema,
   projectWorkspaceCreateSchema,
   projectWorkspaceListSchema,
@@ -165,6 +166,9 @@ import {
   projectViewSummarySchema,
   queuedPromptListSchema,
   queuedPromptSchema,
+  directAttachmentTicketSchema,
+  directTransportTelemetrySchema,
+  directTunnelTicketSchema,
   remoteDesktopListSchema,
   remoteDesktopFleetSchema,
   remoteDesktopSummarySchema,
@@ -187,6 +191,7 @@ import {
   terminalSummarySchema,
   tunnelAttachmentCreateResultSchema,
   tunnelAttachmentCreateSchema,
+  tunnelDirectActivationSchema,
   tunnelListSchema,
   tunnelSummarySchema,
   tunnelUserCreateSchema,
@@ -395,6 +400,30 @@ export async function getWorkers() {
   return workerListSchema.parse(await request("/api/workers"));
 }
 
+export async function createDirectWorkerProbe(workerId: string) {
+  return directAttachmentTicketSchema.parse(
+    await post(`/api/workers/${encodeURIComponent(workerId)}/direct-probe`, {}),
+  );
+}
+
+export async function deleteDirectAttachment(
+  capabilityId: string,
+): Promise<void> {
+  await request(`/api/direct-attachments/${encodeURIComponent(capabilityId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function recordDirectAttachmentTelemetry(
+  capabilityId: string,
+  telemetry: Parameters<typeof directTransportTelemetrySchema.parse>[0],
+): Promise<void> {
+  await post(
+    `/api/direct-attachments/${encodeURIComponent(capabilityId)}/telemetry`,
+    directTransportTelemetrySchema.parse(telemetry),
+  );
+}
+
 export async function getTunnels(projectId?: string) {
   return tunnelListSchema.parse(
     await request(
@@ -444,6 +473,25 @@ export async function deleteTunnelAttachment(
   await request(`/api/tunnel-attachments/${encodeURIComponent(attachmentId)}`, {
     method: "DELETE",
   });
+}
+
+export async function createDirectTunnelAttachment(attachmentId: string) {
+  return directTunnelTicketSchema.parse(
+    await post(
+      `/api/tunnel-attachments/${encodeURIComponent(attachmentId)}/direct`,
+      {},
+    ),
+  );
+}
+
+export async function activateDirectTunnelAttachment(
+  attachmentId: string,
+  input: { capabilityId: string; localPort: number },
+): Promise<void> {
+  await post(
+    `/api/tunnel-attachments/${encodeURIComponent(attachmentId)}/direct-activate`,
+    tunnelDirectActivationSchema.parse(input),
+  );
 }
 
 export async function getWorkerManagement() {
@@ -750,6 +798,30 @@ export async function deleteProjectNetworkShare(attachmentId: string) {
   await request(`/api/project-shares/${encodeURIComponent(attachmentId)}`, {
     method: "DELETE",
   });
+}
+
+export async function createDirectProjectNetworkShare(
+  attachmentId: string,
+  clientId: string,
+) {
+  return directTunnelTicketSchema.parse(
+    await post(
+      `/api/project-shares/${encodeURIComponent(attachmentId)}/direct`,
+      projectShareDirectCreateSchema.parse({ clientId }),
+    ),
+  );
+}
+
+export async function createDirectTerminalAttachment(
+  terminalId: string,
+  clientId: string,
+) {
+  return directTunnelTicketSchema.parse(
+    await post(
+      `/api/terminals/${encodeURIComponent(terminalId)}/direct`,
+      projectShareDirectCreateSchema.parse({ clientId }),
+    ),
+  );
 }
 
 export async function getProjectWorkspaces() {
@@ -2371,6 +2443,18 @@ export async function releaseCodeAttachment(attachmentId: string) {
     keepalive: true,
     method: "DELETE",
   });
+}
+
+export async function createDirectCodeAttachment(
+  attachmentId: string,
+  clientId: string,
+) {
+  return directTunnelTicketSchema.parse(
+    await post(
+      `/api/code-attachments/${encodeURIComponent(attachmentId)}/direct`,
+      projectShareDirectCreateSchema.parse({ clientId }),
+    ),
+  );
 }
 
 export async function saveAllCodeTab(codeTabId: string) {

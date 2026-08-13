@@ -2,8 +2,10 @@
 
 Project network shares let a desktop Cantrip client reveal a worker-owned
 project in Finder or Explorer without assuming the project exists on the client
-machine. Local desktop mode follows the same server-routed path as a remote
-worker; it does not reveal the worker's physical checkout directly.
+machine. The server always authorizes the share. When Tauri and the selected
+worker share a machine, WebDAV bytes use the verified local-direct broker;
+otherwise they use the authenticated server relay. Neither path reveals the
+worker's physical checkout directly.
 
 ## Architecture
 
@@ -24,7 +26,8 @@ flowchart LR
     SERVER <--> BROKER
     BROKER <-->|"generic tunnel data frames"| WORKER
     APP -->|"native mount command"| NATIVE
-    NATIVE <-->|"server share endpoint"| SERVER
+    NATIVE <-->|"local forward or server share endpoint"| APP
+    APP -. "verified same-host data" .-> WORKER
 ```
 
 The worker owns the checkout and the WebDAV server. The WebDAV listener binds
@@ -80,6 +83,11 @@ travel through the inherited URLMount credential descriptor, not process
 arguments, and the resulting volume opens in Finder. Native mounts are reused
 for repeated reveals and released when they are replaced, when the server's
 bounded maximum mount lease elapses, or when the desktop runtime shuts down.
+While a direct mount is active, Tauri retains the already issued server share
+endpoint and random WebDAV credential in native memory. If its local direct
+forward disappears, the desktop remounts that same attachment through the
+server relay and preserves the original lease rather than asking the user to
+reveal the project again.
 
 ## Security and lifecycle invariants
 
@@ -106,8 +114,9 @@ bounded maximum mount lease elapses, or when the desktop runtime shuts down.
 - Hop-by-hop headers, cookies, proxy credentials, and worker-local absolute
   response locations are stripped before crossing trust boundaries. Digest,
   DAV, lock, range, and destination headers remain available to native clients.
-- Local worker and local Tauri deployments still use the authenticated server
-  endpoint and worker tunnel.
+- Local worker and Tauri deployments still use server authorization, but the
+  mounted endpoint prefers the verified loopback broker and falls back to the
+  authenticated server endpoint automatically.
 - Revocation removes the generic route, its server-relay attachment, and its
   managed control-plane record before closing the worker-owned share.
 - Server startup deletes stale managed-ephemeral Project Share records because

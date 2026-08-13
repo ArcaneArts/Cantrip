@@ -176,7 +176,7 @@ export const DEFAULT_OLLAMA_PROVIDER_ID =
 export const DEFAULT_MODEL_ID = "00000000-0000-0000-0000-000000000020";
 export const DEFAULT_MODEL_ROUTE_ID = "00000000-0000-0000-0000-000000000021";
 const SERVER_ID_STATE_KEY = "server-id";
-export const WORKER_ONLINE_WINDOW_MS = 15_000;
+export const WORKER_ONLINE_WINDOW_MS = 30_000;
 
 type RepositoryDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type ProjectRow = typeof schema.projects.$inferSelect;
@@ -1169,6 +1169,7 @@ function toWorkerSummary(
     codexVersion: worker.codexVersion,
     codexRuntime: worker.codexRuntime,
     remoteSurfaces: worker.remoteSurfaceCapabilities,
+    directBroker: worker.directBrokerAdvertisement,
     code: worker.codeCapabilities,
     projectReplicas: worker.projectReplicaCapabilities,
     chatRelocation: worker.chatRelocationCapability,
@@ -3019,6 +3020,7 @@ export class ServerRepository {
         codexVersion: input.heartbeat.codexVersion,
         codexRuntime: input.heartbeat.codexRuntime,
         remoteSurfaceCapabilities: input.heartbeat.remoteSurfaces,
+        directBrokerAdvertisement: input.heartbeat.directBroker,
         codeCapabilities: input.heartbeat.code ?? unavailableCodeCapabilities,
         startedAt: new Date(input.heartbeat.startedAt),
         lastSeenAt: now,
@@ -3230,6 +3232,7 @@ export class ServerRepository {
       codexVersion: heartbeat.codexVersion,
       codexRuntime: heartbeat.codexRuntime,
       remoteSurfaceCapabilities: heartbeat.remoteSurfaces,
+      directBrokerAdvertisement: heartbeat.directBroker,
       codeCapabilities: heartbeat.code ?? unavailableCodeCapabilities,
       projectReplicaCapabilities:
         heartbeat.projectReplicas ?? unavailableProjectReplicaCapabilities,
@@ -4162,6 +4165,48 @@ export class ServerRepository {
       clientId: row.attachment.clientId,
       destination: row.tunnel.destinationEndpoint,
       expiresAt: row.attachment.expiresAt!,
+      ownerId: row.tunnel.ownerId,
+      projectId: row.tunnel.projectId,
+      tunnelId: row.tunnel.id,
+    };
+  }
+
+  async getDesktopTunnelAttachment(
+    ownerId: string,
+    attachmentId: string,
+  ): Promise<TunnelAttachmentAuthorization | null> {
+    const now = new Date();
+    const rows = await this.database
+      .select({ attachment: schema.tunnelAttachments, tunnel: schema.tunnels })
+      .from(schema.tunnelAttachments)
+      .innerJoin(
+        schema.tunnels,
+        eq(schema.tunnels.id, schema.tunnelAttachments.tunnelId),
+      )
+      .where(
+        and(
+          eq(schema.tunnelAttachments.id, attachmentId),
+          eq(schema.tunnelAttachments.kind, "desktop-loopback"),
+          eq(schema.tunnels.ownerId, ownerId),
+          gt(schema.tunnelAttachments.expiresAt, now),
+          ne(schema.tunnelAttachments.status, "stopped"),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (
+      !row?.attachment.clientId ||
+      !row.attachment.expiresAt ||
+      row.tunnel.sourceEndpoint.kind !== "desktop-loopback" ||
+      row.tunnel.destinationEndpoint.kind !== "worker-tcp"
+    ) {
+      return null;
+    }
+    return {
+      attachmentId,
+      clientId: row.attachment.clientId,
+      destination: row.tunnel.destinationEndpoint,
+      expiresAt: row.attachment.expiresAt,
       ownerId: row.tunnel.ownerId,
       projectId: row.tunnel.projectId,
       tunnelId: row.tunnel.id,
