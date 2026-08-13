@@ -44,6 +44,22 @@ pub struct DesktopWorkers {
     profiles_path: PathBuf,
 }
 
+fn replacement_profile(
+    existing: Option<&DesktopWorkerProfile>,
+    name: &str,
+    server_url: &str,
+) -> (Option<String>, DesktopWorkerProfile) {
+    let replaced_worker_id = existing.map(|profile| profile.worker_id.clone());
+    (
+        replaced_worker_id,
+        DesktopWorkerProfile {
+            name: name.to_string(),
+            server_url: server_url.to_string(),
+            worker_id: format!("desktop-{}", Uuid::new_v4()),
+        },
+    )
+}
+
 fn open_log(path: &Path) -> Result<File, String> {
     OpenOptions::new()
         .create(true)
@@ -309,12 +325,10 @@ pub fn pair_desktop_worker(
         .iter()
         .find(|profile| profile.server_url == server_url)
         .cloned();
-    let profile = existing.unwrap_or_else(|| DesktopWorkerProfile {
-        name: name.to_string(),
-        server_url: server_url.clone(),
-        worker_id: format!("desktop-{}", Uuid::new_v4()),
-    });
-    workers.stop(&profile.worker_id)?;
+    let (replaced_worker_id, profile) = replacement_profile(existing.as_ref(), name, &server_url);
+    if let Some(worker_id) = replaced_worker_id {
+        workers.stop(&worker_id)?;
+    }
     let credential_path = workers
         .profile_directory(&profile.worker_id)
         .join("worker-credential.json");
@@ -357,7 +371,7 @@ pub fn forget_desktop_worker(
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_server_url;
+    use super::{normalize_server_url, replacement_profile, DesktopWorkerProfile};
 
     #[test]
     fn normalizes_server_origins() {
@@ -376,5 +390,26 @@ mod tests {
         assert!(normalize_server_url("file:///tmp/cantrip").is_err());
         assert!(normalize_server_url("https://relay.cantrip.art/api").is_err());
         assert!(normalize_server_url("https://user@example.com").is_err());
+    }
+
+    #[test]
+    fn replaces_a_stale_server_profile_with_a_fresh_worker_identity() {
+        let existing = DesktopWorkerProfile {
+            name: "This machine".into(),
+            server_url: "https://relay.cantrip.art".into(),
+            worker_id: "desktop-owned-by-another-account".into(),
+        };
+
+        let (replaced_worker_id, replacement) =
+            replacement_profile(Some(&existing), "This machine", "https://relay.cantrip.art");
+
+        assert_eq!(
+            replaced_worker_id.as_deref(),
+            Some(existing.worker_id.as_str())
+        );
+        assert_ne!(replacement.worker_id, existing.worker_id);
+        assert!(replacement.worker_id.starts_with("desktop-"));
+        assert_eq!(replacement.name, "This machine");
+        assert_eq!(replacement.server_url, existing.server_url);
     }
 }
