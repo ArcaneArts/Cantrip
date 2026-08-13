@@ -73,6 +73,13 @@ export function isDarkCodeAppearance(appearance: CodeAppearance): boolean {
   return appearance === "dark" || appearance.endsWith("-dark");
 }
 
+export function codeWorkbenchFrameClassName(ready: boolean): string {
+  // WebKit may deprioritize a fully transparent child web view. Keep the
+  // workbench rendering beneath the opaque startup cover so its remote
+  // extension host can connect and acknowledge the configured theme.
+  return `min-h-0 w-full flex-1 border-0 ${ready ? "" : "pointer-events-none"}`;
+}
+
 function errorText(error: unknown): string {
   return errorMessage(error, "Cantrip Code could not open.");
 }
@@ -441,7 +448,7 @@ export function CodeView({
             key={attachment.attachmentId}
             allow="clipboard-read; clipboard-write"
             aria-hidden={!workbenchReady}
-            className={`min-h-0 w-full flex-1 border-0 ${workbenchReady ? "opacity-100" : "pointer-events-none opacity-0"}`}
+            className={codeWorkbenchFrameClassName(workbenchReady)}
             referrerPolicy="no-referrer"
             ref={frameRef}
             src={attachment.url}
