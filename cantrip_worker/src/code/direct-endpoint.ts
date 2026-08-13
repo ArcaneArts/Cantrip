@@ -346,8 +346,7 @@ export class CodeDirectEndpointManager {
         if (upstream.readyState === WebSocket.OPEN) {
           const forwarded = forwardableCodeWebSocketClose(code, reason);
           upstream.close(forwarded.code, forwarded.reason);
-        }
-        else upstream.terminate();
+        } else upstream.terminate();
       });
       client.once("error", () => {
         endStream();

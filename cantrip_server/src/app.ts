@@ -37,6 +37,7 @@ import {
   browserSummarySchema,
   browserTunnelRequestSchema,
   browserUpdateSchema,
+  cantripCliCommandResultSchema,
   codeAttachmentCreateSchema,
   codeAttachmentSchema,
   codeAgentTurnNotificationResultSchema,
@@ -114,6 +115,7 @@ import {
   executionPlacementResolveRequestSchema,
   executionPlacementResolutionSchema,
   executionTargetCatalogSchema,
+  executionTargetResourceKindSchema,
   executionTargetResolutionSchema,
   executionTargetResolveRequestSchema,
   executionTargetSchema,
@@ -337,6 +339,7 @@ import {
   workerAttachmentUploadResultSchema,
   workerListSchema,
   workerManagementListSchema,
+  workerCliCommandCallSchema,
   workerUpdateSchema,
   worktreeMutationResultSchema,
   worktreePruneResultSchema,
@@ -367,6 +370,8 @@ import type {
 import type {
   AgentExecutionToolCall,
   AgentExecutionToolResult,
+  CantripCliCommandResult,
+  WorkerCliCommandCall,
 } from "@cantrip/protocol";
 import {
   projectAutomationConditionResultSchema,
@@ -3177,23 +3182,20 @@ export async function buildApp({
     return url.toString();
   };
 
-  const executeAgentExecutionTool = async (
-    call: AgentExecutionToolCall,
+  type ExecutionOperationContext = {
+    chatId: string | null;
+    executionLaneId: string | null;
+    projectId: string;
+    terminalId: string | null;
+    workerId: string;
+    worktreeId: string;
+    worktreeMode: ChatExecutionContext["worktreeMode"] | null;
+  };
+
+  const executeExecutionOperation = async (
+    context: ExecutionOperationContext,
+    call: Pick<AgentExecutionToolCall, "arguments" | "tool">,
   ): Promise<AgentExecutionToolResult> => {
-    const context = await repository.getChatExecutionContext(
-      applicationOwnerId(),
-      call.chatId,
-    );
-    if (!context) throw new Error("Chat execution context not found.");
-    if (
-      context.workerId !== call.workerId ||
-      context.executionLaneId !== call.executionLaneId ||
-      !chatIsExecuting(context.status)
-    ) {
-      throw new ExecutionLaneConflictError(
-        "The execution tool call did not originate from the active chat lane.",
-      );
-    }
     const worktrees = () =>
       repository.listProjectWorktrees(applicationOwnerId(), context.projectId);
     const worktreeContext = async (worktreeId: string) => {
@@ -3221,10 +3223,15 @@ export async function buildApp({
       transitionKind: "switch" | "release",
       purpose: string,
     ) => {
+      if (!context.chatId || !context.executionLaneId) {
+        throw new ExecutionLaneConflictError(
+          "This operation must run inside an active Cantrip chat.",
+        );
+      }
       const pending = await repository.scheduleChatWorktreeTransition(
         applicationOwnerId(),
         context.chatId,
-        call.executionLaneId,
+        context.executionLaneId,
         worktreeId,
         transitionKind,
         purpose,
@@ -3746,6 +3753,689 @@ export async function buildApp({
           summary: `Removed ${target.worktree.name}; its Git branch was retained.`,
           worktreeId,
           data: removed,
+        });
+      }
+    }
+  };
+
+  const executeAgentExecutionTool = async (
+    call: AgentExecutionToolCall,
+  ): Promise<AgentExecutionToolResult> => {
+    const context = await repository.getChatExecutionContext(
+      applicationOwnerId(),
+      call.chatId,
+    );
+    if (!context) throw new Error("Chat execution context not found.");
+    if (
+      context.workerId !== call.workerId ||
+      context.executionLaneId !== call.executionLaneId ||
+      !chatIsExecuting(context.status)
+    ) {
+      throw new ExecutionLaneConflictError(
+        "The execution tool call did not originate from the active chat lane.",
+      );
+    }
+    return executeExecutionOperation(
+      {
+        chatId: context.chatId,
+        executionLaneId: context.executionLaneId,
+        projectId: context.projectId,
+        terminalId: null,
+        workerId: context.workerId,
+        worktreeId: context.worktreeId,
+        worktreeMode: context.worktreeMode,
+      },
+      call,
+    );
+  };
+
+  class CliCommandRequestError extends Error {
+    constructor(
+      readonly code:
+        | "ambiguous"
+        | "conflict"
+        | "context-not-found"
+        | "invalid"
+        | "not-found"
+        | "unavailable",
+      readonly status: number,
+      message: string,
+    ) {
+      super(message);
+    }
+  }
+
+  const chatOperationContext = (
+    context: ChatExecutionContext,
+  ): ExecutionOperationContext => ({
+    chatId: context.chatId,
+    executionLaneId: context.executionLaneId,
+    projectId: context.projectId,
+    terminalId: null,
+    workerId: context.workerId,
+    worktreeId: context.worktreeId,
+    worktreeMode: context.worktreeMode,
+  });
+
+  const normalizedWorkerPath = (value: string) => {
+    const normalized = value.replaceAll("\\", "/").replace(/\/+$/u, "");
+    return /^[A-Za-z]:\//u.test(normalized)
+      ? normalized.toLocaleLowerCase()
+      : normalized || "/";
+  };
+
+  const pathIsInside = (candidate: string, root: string) => {
+    const normalizedCandidate = normalizedWorkerPath(candidate);
+    const normalizedRoot = normalizedWorkerPath(root);
+    return (
+      normalizedCandidate === normalizedRoot ||
+      normalizedCandidate.startsWith(
+        normalizedRoot === "/" ? "/" : `${normalizedRoot}/`,
+      )
+    );
+  };
+
+  const resolveCliExecutionContext = async (
+    call: WorkerCliCommandCall,
+    allowMissing = false,
+  ): Promise<ExecutionOperationContext | null> => {
+    if (call.context.codexThreadId) {
+      const contexts = await repository.listChatExecutionContextsByThreadId(
+        applicationOwnerId(),
+        call.workerId,
+        call.context.codexThreadId,
+      );
+      if (contexts.length > 1) {
+        throw new CliCommandRequestError(
+          "ambiguous",
+          409,
+          "More than one chat uses this Codex thread. Open the intended chat and retry.",
+        );
+      }
+      if (contexts[0]) return chatOperationContext(contexts[0]);
+    }
+
+    if (call.context.terminalId) {
+      const terminal = await repository.getTerminalExecutionContext(
+        applicationOwnerId(),
+        call.context.terminalId,
+      );
+      if (terminal?.workerId === call.workerId) {
+        const chat = terminal.linkedChatId
+          ? await repository.getChatExecutionContext(
+              applicationOwnerId(),
+              terminal.linkedChatId,
+            )
+          : null;
+        return {
+          chatId:
+            chat?.workerId === terminal.workerId &&
+            chat.worktreeId === terminal.worktreeId
+              ? chat.chatId
+              : null,
+          executionLaneId:
+            chat?.workerId === terminal.workerId &&
+            chat.worktreeId === terminal.worktreeId
+              ? chat.executionLaneId
+              : null,
+          projectId: terminal.projectId,
+          terminalId: terminal.terminalId,
+          workerId: terminal.workerId,
+          worktreeId: terminal.worktreeId,
+          worktreeMode: chat?.worktreeMode ?? null,
+        };
+      }
+    }
+
+    if (call.context.cwd) {
+      const candidates = (
+        await repository.listWorkerWorktreeObservationTargets(
+          applicationOwnerId(),
+          call.workerId,
+        )
+      )
+        .filter(({ worktreePath }) =>
+          pathIsInside(call.context.cwd!, worktreePath),
+        )
+        .sort(
+          (left, right) =>
+            normalizedWorkerPath(right.worktreePath).length -
+            normalizedWorkerPath(left.worktreePath).length,
+        );
+      const best = candidates[0];
+      if (best) {
+        const bestLength = normalizedWorkerPath(best.worktreePath).length;
+        if (
+          candidates.some(
+            (candidate, index) =>
+              index > 0 &&
+              normalizedWorkerPath(candidate.worktreePath).length ===
+                bestLength,
+          )
+        ) {
+          throw new CliCommandRequestError(
+            "ambiguous",
+            409,
+            "The current directory belongs to more than one Cantrip worktree.",
+          );
+        }
+        return {
+          chatId: null,
+          executionLaneId: null,
+          projectId: best.projectId,
+          terminalId: null,
+          workerId: best.workerId,
+          worktreeId: best.worktreeId,
+          worktreeMode: null,
+        };
+      }
+    }
+
+    if (allowMissing) return null;
+    throw new CliCommandRequestError(
+      "context-not-found",
+      400,
+      "Cantrip could not infer a project. Run this command inside a Cantrip chat, Terminal tab, or project worktree.",
+    );
+  };
+
+  const executionTargetId = (
+    target: Parameters<typeof repository.resolveExecutionTarget>[2],
+  ) => {
+    switch (target.kind) {
+      case "project":
+        return target.projectId;
+      case "worker":
+        return target.workerId;
+      case "replica":
+        return target.projectReplicaId;
+      case "worktree":
+        return target.worktreeId;
+      case "surface":
+        return target.surfaceId;
+    }
+  };
+
+  const ambiguousSelection = (
+    noun: string,
+    matches: Array<{ id: string; title: string }>,
+  ) =>
+    new CliCommandRequestError(
+      "ambiguous",
+      409,
+      `Multiple ${noun} targets match: ${matches
+        .slice(0, 8)
+        .map(({ id, title }) => `${title} (${id.slice(0, 8)})`)
+        .join(", ")}. Retry with a unique title or full ID.`,
+    );
+
+  const requireCliChatLane = (context: ExecutionOperationContext) => {
+    if (!context.chatId || !context.executionLaneId) {
+      throw new CliCommandRequestError(
+        "conflict",
+        409,
+        "This operation needs an active Cantrip chat. Run it from Codex in that chat.",
+      );
+    }
+  };
+
+  const selectWorktree = async (
+    context: ExecutionOperationContext,
+    selector: string | null,
+  ) => {
+    const worktrees = await repository.listProjectWorktrees(
+      applicationOwnerId(),
+      context.projectId,
+    );
+    if (!selector) {
+      const current = worktrees.find(({ id }) => id === context.worktreeId);
+      if (current) return current;
+      throw new CliCommandRequestError(
+        "not-found",
+        404,
+        "The current worktree is no longer registered.",
+      );
+    }
+    const wanted = selector.toLocaleLowerCase();
+    const exact = worktrees.filter(
+      ({ branch, id, name }) =>
+        id === selector ||
+        name.toLocaleLowerCase() === wanted ||
+        branch?.toLocaleLowerCase() === wanted,
+    );
+    if (exact.length === 1) return exact[0]!;
+    if (exact.length > 1) {
+      throw ambiguousSelection(
+        "worktree",
+        exact.map(({ id, name }) => ({ id, title: name })),
+      );
+    }
+    const prefixes = worktrees.filter(({ id }) => id.startsWith(selector));
+    if (prefixes.length === 1) return prefixes[0]!;
+    if (prefixes.length > 1) {
+      throw ambiguousSelection(
+        "worktree",
+        prefixes.map(({ id, name }) => ({ id, title: name })),
+      );
+    }
+    throw new CliCommandRequestError(
+      "not-found",
+      404,
+      `Worktree ${selector} was not found. Run \`cantrip worktree list\` to see available worktrees.`,
+    );
+  };
+
+  const targetCatalog = async (context: ExecutionOperationContext) => {
+    const catalog = await repository.listProjectExecutionTargets(
+      applicationOwnerId(),
+      context.projectId,
+      (workerId) => bridge.isConnected(workerId),
+    );
+    if (!catalog) {
+      throw new CliCommandRequestError(
+        "not-found",
+        404,
+        "The current project no longer exists.",
+      );
+    }
+    return catalog;
+  };
+
+  const selectTarget = async (
+    context: ExecutionOperationContext,
+    resourceKind: string | null,
+    selector: string | null,
+  ) => {
+    const catalog = await targetCatalog(context);
+    const candidates = catalog.targets.filter(
+      (target) => !resourceKind || target.resourceKind === resourceKind,
+    );
+    if (selector) {
+      const wanted = selector.toLocaleLowerCase();
+      const exact = candidates.filter((candidate) => {
+        const id = executionTargetId(candidate.target);
+        return (
+          id === selector || candidate.title.toLocaleLowerCase() === wanted
+        );
+      });
+      if (exact.length === 1) return exact[0]!;
+      if (exact.length > 1) {
+        throw ambiguousSelection(
+          resourceKind ?? "execution",
+          exact.map((candidate) => ({
+            id: executionTargetId(candidate.target),
+            title: candidate.title,
+          })),
+        );
+      }
+      const partial = candidates.filter((candidate) => {
+        const id = executionTargetId(candidate.target);
+        return (
+          id.startsWith(selector) ||
+          candidate.title.toLocaleLowerCase().includes(wanted)
+        );
+      });
+      if (partial.length === 1) return partial[0]!;
+      if (partial.length > 1) {
+        throw ambiguousSelection(
+          resourceKind ?? "execution",
+          partial.map((candidate) => ({
+            id: executionTargetId(candidate.target),
+            title: candidate.title,
+          })),
+        );
+      }
+      throw new CliCommandRequestError(
+        "not-found",
+        404,
+        `Target ${selector} was not found. Run \`cantrip target list${
+          resourceKind ? ` --kind ${resourceKind}` : ""
+        }\` to see available targets.`,
+      );
+    }
+
+    if (resourceKind === "terminal" && context.terminalId) {
+      const currentTerminal = candidates.find(
+        ({ target }) =>
+          target.kind === "surface" && target.surfaceId === context.terminalId,
+      );
+      if (currentTerminal) return currentTerminal;
+    }
+    if (resourceKind === "worktree") {
+      const currentWorktree = candidates.find(
+        ({ target }) =>
+          target.kind === "worktree" &&
+          target.worktreeId === context.worktreeId,
+      );
+      if (currentWorktree) return currentWorktree;
+    }
+    const available = candidates.filter(
+      ({ availability }) => availability === "available",
+    );
+    const local = available.filter(
+      ({ placement }) =>
+        placement.workerId === context.workerId &&
+        placement.worktreeId === context.worktreeId,
+    );
+    const matches = local.length === 1 ? local : available;
+    if (matches.length === 1) return matches[0]!;
+    if (matches.length > 1) {
+      throw ambiguousSelection(
+        resourceKind ?? "execution",
+        matches.map((candidate) => ({
+          id: executionTargetId(candidate.target),
+          title: candidate.title,
+        })),
+      );
+    }
+    throw new CliCommandRequestError(
+      "unavailable",
+      503,
+      `No available ${resourceKind ?? "execution"} target was found.`,
+    );
+  };
+
+  const derivedWorktreeBranch = async (
+    context: ExecutionOperationContext,
+    name: string,
+  ) => {
+    const slug = name
+      .normalize("NFKD")
+      .toLocaleLowerCase()
+      .replace(/[^a-z0-9]+/gu, "-")
+      .replace(/^-+|-+$/gu, "")
+      .slice(0, 48);
+    const prefix = `cantrip/${slug || "worktree"}`;
+    const branches = new Set(
+      (
+        await repository.listProjectWorktrees(
+          applicationOwnerId(),
+          context.projectId,
+        )
+      )
+        .map(({ branch }) => branch)
+        .filter((branch): branch is string => Boolean(branch)),
+    );
+    if (!branches.has(prefix)) return prefix;
+    for (let suffix = 2; suffix <= 999; suffix += 1) {
+      const candidate = `${prefix}-${suffix}`;
+      if (!branches.has(candidate)) return candidate;
+    }
+    throw new CliCommandRequestError(
+      "conflict",
+      409,
+      "Could not derive a unique worktree branch. Retry with --branch.",
+    );
+  };
+
+  const executeCliCommand = async (
+    call: WorkerCliCommandCall,
+  ): Promise<CantripCliCommandResult> => {
+    const context = await resolveCliExecutionContext(
+      call,
+      call.command === "status",
+    );
+    if (call.command === "status") {
+      const worker = await repository.getWorker(
+        applicationOwnerId(),
+        call.workerId,
+      );
+      if (!worker) {
+        throw new CliCommandRequestError(
+          "not-found",
+          404,
+          "The connected worker is no longer registered.",
+        );
+      }
+      return cantripCliCommandResultSchema.parse({
+        summary: context
+          ? `Connected through ${worker.name}; project context is ready.`
+          : `Connected through ${worker.name}; no project context was inferred.`,
+        data: {
+          worker: {
+            id: worker.workerId,
+            name: worker.name,
+            online: bridge.isConnected(call.workerId),
+          },
+          context,
+        },
+      });
+    }
+    if (!context) {
+      throw new CliCommandRequestError(
+        "context-not-found",
+        400,
+        "Cantrip project context is required.",
+      );
+    }
+
+    const selector = optionalToolString(call.arguments, "target");
+    const mutationResult = async (
+      operation: Promise<AgentExecutionToolResult>,
+    ) => {
+      const result = await operation;
+      return cantripCliCommandResultSchema.parse({ ...result, mutated: true });
+    };
+    switch (call.command) {
+      case "worktree.list":
+        return executeExecutionOperation(context, {
+          tool: "cantrip_worktrees_list",
+          arguments: {},
+        });
+      case "worktree.create": {
+        const name = requiredToolString(call.arguments, "name");
+        const intent = requiredToolString(call.arguments, "intent");
+        const branch =
+          intent === "newBranch"
+            ? (optionalToolString(call.arguments, "branch") ??
+              (await derivedWorktreeBranch(context, name)))
+            : optionalToolString(call.arguments, "branch");
+        const shouldSwitch = call.arguments.switch === true;
+        if (shouldSwitch) requireCliChatLane(context);
+        return mutationResult(
+          executeExecutionOperation(context, {
+            tool: shouldSwitch
+              ? "cantrip_worktree_acquire"
+              : "cantrip_worktree_create",
+            arguments: {
+              name,
+              intent,
+              branch,
+              baseRevision: optionalToolString(call.arguments, "baseRevision"),
+              ...(shouldSwitch
+                ? { purpose: `Continue in ${name} from the Cantrip CLI` }
+                : {}),
+            },
+          }),
+        );
+      }
+      case "worktree.switch": {
+        requireCliChatLane(context);
+        const worktree = await selectWorktree(
+          context,
+          requiredToolString(call.arguments, "worktree"),
+        );
+        return mutationResult(
+          executeExecutionOperation(context, {
+            tool: "cantrip_worktree_switch",
+            arguments: {
+              worktreeId: worktree.id,
+              purpose: `Switch to ${worktree.name} from the Cantrip CLI`,
+            },
+          }),
+        );
+      }
+      case "worktree.status": {
+        const worktree = await selectWorktree(
+          context,
+          optionalToolString(call.arguments, "worktree"),
+        );
+        return executeExecutionOperation(context, {
+          tool: "cantrip_worktree_status",
+          arguments: { worktreeId: worktree.id },
+        });
+      }
+      case "worktree.release":
+        requireCliChatLane(context);
+        return mutationResult(
+          executeExecutionOperation(context, {
+            tool: "cantrip_worktree_release",
+            arguments: { purpose: "Release from the Cantrip CLI" },
+          }),
+        );
+      case "worktree.remove": {
+        const worktree = await selectWorktree(
+          context,
+          requiredToolString(call.arguments, "worktree"),
+        );
+        return mutationResult(
+          executeExecutionOperation(context, {
+            tool: "cantrip_worktree_remove",
+            arguments: { worktreeId: worktree.id },
+          }),
+        );
+      }
+      case "target.list": {
+        const kindValue = optionalToolString(call.arguments, "kind");
+        const kind = kindValue
+          ? executionTargetResourceKindSchema.parse(kindValue)
+          : null;
+        const catalog = await targetCatalog(context);
+        const targets = kind
+          ? catalog.targets.filter(({ resourceKind }) => resourceKind === kind)
+          : catalog.targets;
+        return cantripCliCommandResultSchema.parse({
+          summary: `Found ${targets.length} authorized target${targets.length === 1 ? "" : "s"}.`,
+          worktreeId: context.worktreeId,
+          data: { ...catalog, targets },
+        });
+      }
+      case "target.show": {
+        const target = await selectTarget(
+          context,
+          selector ? null : "worktree",
+          selector,
+        );
+        return executeExecutionOperation(context, {
+          tool: "cantrip_target_inspect",
+          arguments: { target: target.target },
+        });
+      }
+      case "explorer.list": {
+        const target = await selectTarget(context, "explorer", selector);
+        const entries: unknown[] = [];
+        let cursor = 0;
+        let latest: AgentExecutionToolResult | null = null;
+        do {
+          latest = await executeExecutionOperation(context, {
+            tool: "cantrip_explorer_list",
+            arguments: {
+              target: target.target,
+              path: requiredToolString(call.arguments, "path"),
+              cursor,
+              limit: 200,
+            },
+          });
+          const page = latest.data as
+            { entries?: unknown[]; nextCursor?: number | null } | undefined;
+          entries.push(...(page?.entries ?? []));
+          if (page?.nextCursor === null || page?.nextCursor === undefined)
+            break;
+          cursor = page.nextCursor;
+        } while (cursor <= 999);
+        return cantripCliCommandResultSchema.parse({
+          ...latest!,
+          summary: `Found ${entries.length} entr${entries.length === 1 ? "y" : "ies"}.`,
+          data: {
+            ...((latest?.data as Record<string, unknown> | undefined) ?? {}),
+            cursor: 0,
+            entries,
+            nextCursor: null,
+            total: entries.length,
+            truncated: false,
+          },
+        });
+      }
+      case "explorer.read": {
+        const target = await selectTarget(context, "explorer", selector);
+        return executeExecutionOperation(context, {
+          tool: "cantrip_explorer_read",
+          arguments: {
+            target: target.target,
+            path: requiredToolString(call.arguments, "path"),
+            maxChars: 200_000,
+          },
+        });
+      }
+      case "explorer.write": {
+        const target = await selectTarget(context, "explorer", selector);
+        const path = requiredToolString(call.arguments, "path");
+        const current = await executeExecutionOperation(context, {
+          tool: "cantrip_explorer_read",
+          arguments: { target: target.target, path, maxChars: 1 },
+        });
+        const version =
+          current.data &&
+          typeof current.data === "object" &&
+          "version" in current.data
+            ? String(current.data.version)
+            : null;
+        if (!version)
+          throw new Error("Explorer did not return a file version.");
+        return executeExecutionOperation(context, {
+          tool: "cantrip_explorer_write",
+          arguments: {
+            target: target.target,
+            path,
+            content: boundedToolString(
+              call.arguments,
+              "content",
+              500_000,
+              true,
+            ),
+            version,
+          },
+        });
+      }
+      case "terminal.read": {
+        const target = await selectTarget(context, "terminal", selector);
+        return executeExecutionOperation(context, {
+          tool: "cantrip_terminal_read",
+          arguments: { target: target.target, maxChars: 100_000 },
+        });
+      }
+      case "terminal.send": {
+        const target = await selectTarget(context, "terminal", selector);
+        return executeExecutionOperation(context, {
+          tool: "cantrip_terminal_input",
+          arguments: {
+            target: target.target,
+            data: boundedToolString(call.arguments, "data", 100_000),
+          },
+        });
+      }
+      case "terminal.restart": {
+        const target = await selectTarget(context, "terminal", selector);
+        return executeExecutionOperation(context, {
+          tool: "cantrip_terminal_service_restart",
+          arguments: { target: target.target },
+        });
+      }
+      case "browser.services": {
+        const target = await selectTarget(context, "browser", selector);
+        return executeExecutionOperation(context, {
+          tool: "cantrip_browser_services",
+          arguments: { target: target.target },
+        });
+      }
+      case "browser.open": {
+        const target = await selectTarget(context, "browser", selector);
+        return executeExecutionOperation(context, {
+          tool: "cantrip_browser_navigate",
+          arguments: {
+            target: target.target,
+            url: boundedToolString(call.arguments, "url", 4_096),
+          },
         });
       }
     }
@@ -17513,6 +18203,136 @@ export async function buildApp({
             errorMessage(error),
           );
           return reply.code(409).send({ error: errorMessage(error) });
+        }
+      });
+    },
+  );
+
+  app.post(
+    "/api/internal/cli",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = workerCliCommandCallSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send({
+          code: "invalid",
+          ...invalidBody(input.error.issues),
+        });
+      }
+      const workerAuth = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        input.data.workerId,
+        "worker:agent-tools",
+      );
+      if (!workerAuth) {
+        return reply.code(401).send({
+          code: "invalid",
+          error: "Unauthorized",
+        });
+      }
+      if (
+        !(await repository.getWorker(workerAuth.ownerId, input.data.workerId))
+      ) {
+        return reply.code(404).send({
+          code: "not-found",
+          error: "Worker not found.",
+        });
+      }
+      return runAsOwner(workerAuth.ownerId, async () => {
+        const mutation = new Set([
+          "worktree.create",
+          "worktree.switch",
+          "worktree.release",
+          "worktree.remove",
+          "explorer.write",
+          "terminal.send",
+          "terminal.restart",
+          "browser.open",
+        ]).has(input.data.command);
+        try {
+          const result = await executeCliCommand(input.data);
+          if (mutation) {
+            await appendAudit(request, {
+              action: "cli.command.mutated",
+              actorSessionId: null,
+              actorUserId: null,
+              metadata: {
+                command: input.data.command,
+                requestId: input.data.requestId,
+                sourceWorkerId: input.data.workerId,
+              },
+              ownerId: workerAuth.ownerId,
+              resourceId: input.data.requestId,
+              resourceType: "cli-command",
+              result: "succeeded",
+            });
+          }
+          return reply.send(cantripCliCommandResultSchema.parse(result));
+        } catch (error) {
+          const cliError =
+            error instanceof CliCommandRequestError
+              ? error
+              : error instanceof WorkerUnavailableError
+                ? new CliCommandRequestError(
+                    "unavailable",
+                    503,
+                    errorMessage(error),
+                  )
+                : error instanceof ExecutionPlacementUnavailableError
+                  ? new CliCommandRequestError(
+                      error.code === "project-not-found" ||
+                        error.code === "target-not-found"
+                        ? "not-found"
+                        : error.code === "worker-offline" ||
+                            error.code === "capability-unavailable"
+                          ? "unavailable"
+                          : "conflict",
+                      error.code === "project-not-found" ||
+                        error.code === "target-not-found"
+                        ? 404
+                        : error.code === "worker-offline" ||
+                            error.code === "capability-unavailable"
+                          ? 503
+                          : 409,
+                      errorMessage(error),
+                    )
+                  : error instanceof ExecutionLaneConflictError
+                    ? new CliCommandRequestError(
+                        "conflict",
+                        409,
+                        errorMessage(error),
+                      )
+                    : new CliCommandRequestError(
+                        "invalid",
+                        400,
+                        errorMessage(error),
+                      );
+          if (mutation) {
+            await appendAudit(request, {
+              action: "cli.command.mutated",
+              actorSessionId: null,
+              actorUserId: null,
+              metadata: {
+                command: input.data.command,
+                requestId: input.data.requestId,
+                sourceWorkerId: input.data.workerId,
+              },
+              ownerId: workerAuth.ownerId,
+              resourceId: input.data.requestId,
+              resourceType: "cli-command",
+              result:
+                cliError.code === "conflict" ||
+                cliError.code === "context-not-found"
+                  ? "denied"
+                  : "failed",
+            });
+          }
+          return reply.code(cliError.status).send({
+            code: cliError.code,
+            error: cliError.message,
+          });
         }
       });
     },

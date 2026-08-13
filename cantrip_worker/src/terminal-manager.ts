@@ -499,7 +499,10 @@ export class TerminalManager {
 
   #spawn(terminalId: string, session: TerminalSession): void {
     ensureSpawnHelperExecutable();
-    const environment = terminalEnvironment(this.#environment);
+    const environment = {
+      ...terminalEnvironment(this.#environment),
+      CANTRIP_TERMINAL_ID: terminalId,
+    };
     const processLaunch =
       session.launch.type === "codex"
         ? codexLaunch(session.launch, session.cwd, environment)

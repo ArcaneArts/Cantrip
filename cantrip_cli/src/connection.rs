@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::Deserialize;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 use url::Url;
 
 pub const CONNECTION_ENVIRONMENT_VARIABLE: &str = "CANTRIP_CLI_CONNECTION";
@@ -84,6 +86,11 @@ impl CachedConnection {
 #[derive(Debug)]
 pub enum ConnectionError {
     Broker(String),
+    BrokerStatus {
+        code: Option<String>,
+        message: String,
+        status: u16,
+    },
     EnvironmentMissing,
     Invalid(String),
     Read {
@@ -99,6 +106,9 @@ impl std::fmt::Display for ConnectionError {
                 formatter,
                 "Cantrip worker broker rejected the connection: {message}"
             ),
+            Self::BrokerStatus {
+                message, status, ..
+            } => write!(formatter, "{message} (HTTP {status})"),
             Self::EnvironmentMissing => write!(
                 formatter,
                 "Cantrip CLI is not connected to a worker; run it from a Cantrip-managed terminal or agent"
@@ -139,52 +149,8 @@ pub fn load_connection_from(path: &Path) -> Result<CachedConnection, ConnectionE
 }
 
 pub fn handshake(connection: &CachedConnection) -> Result<BrokerHandshake, ConnectionError> {
-    let port = connection
-        .endpoint
-        .port()
-        .ok_or_else(|| ConnectionError::Invalid("the broker port is missing".to_string()))?;
-    let mut stream = TcpStream::connect_timeout(
-        &SocketAddrV4::new(Ipv4Addr::LOCALHOST, port).into(),
-        Duration::from_secs(5),
-    )
-    .map_err(|error| ConnectionError::Broker(error.to_string()))?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .map_err(|error| ConnectionError::Broker(error.to_string()))?;
-    stream
-        .set_write_timeout(Some(Duration::from_secs(5)))
-        .map_err(|error| ConnectionError::Broker(error.to_string()))?;
-    write!(
-        stream,
-        "GET /v1/handshake HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {}\r\nAccept: application/json\r\nConnection: close\r\n\r\n",
-        connection.session_token
-    )
-    .map_err(|error| ConnectionError::Broker(error.to_string()))?;
-    stream
-        .shutdown(Shutdown::Write)
-        .map_err(|error| ConnectionError::Broker(error.to_string()))?;
-    let mut response = Vec::new();
-    stream
-        .take(64 * 1024 + 1)
-        .read_to_end(&mut response)
-        .map_err(|error| ConnectionError::Broker(error.to_string()))?;
-    if response.len() > 64 * 1024 {
-        return Err(ConnectionError::Broker(
-            "handshake response exceeded 64 KiB".to_string(),
-        ));
-    }
-    let header_end = response
-        .windows(4)
-        .position(|window| window == b"\r\n\r\n")
-        .ok_or_else(|| ConnectionError::Broker("malformed HTTP response".to_string()))?;
-    let headers = std::str::from_utf8(&response[..header_end])
-        .map_err(|error| ConnectionError::Broker(error.to_string()))?;
-    let status = headers.lines().next().unwrap_or_default();
-    if !matches!(status, "HTTP/1.1 200 OK" | "HTTP/1.0 200 OK") {
-        return Err(ConnectionError::Broker(status.to_string()));
-    }
-    let result = serde_json::from_slice::<BrokerHandshake>(&response[header_end + 4..])
-        .map_err(|error| ConnectionError::Broker(error.to_string()))?;
+    let result: BrokerHandshake =
+        broker_request::<(), _>(connection, "GET", "/v1/handshake", None, 64 * 1024)?;
     if result.protocol_version != 1
         || result.server_url != connection.server_url
         || result.worker_id != connection.worker_id
@@ -194,6 +160,113 @@ pub fn handshake(connection: &CachedConnection) -> Result<BrokerHandshake, Conne
         ));
     }
     Ok(result)
+}
+
+pub fn broker_post<TRequest: Serialize, TResponse: DeserializeOwned>(
+    connection: &CachedConnection,
+    path: &str,
+    payload: &TRequest,
+) -> Result<TResponse, ConnectionError> {
+    broker_request(connection, "POST", path, Some(payload), 2 * 1024 * 1024)
+}
+
+fn broker_request<TRequest: Serialize, TResponse: DeserializeOwned>(
+    connection: &CachedConnection,
+    method: &str,
+    path: &str,
+    payload: Option<&TRequest>,
+    maximum_response_bytes: usize,
+) -> Result<TResponse, ConnectionError> {
+    let port = connection
+        .endpoint
+        .port()
+        .ok_or_else(|| ConnectionError::Invalid("the broker port is missing".to_string()))?;
+    let mut stream = TcpStream::connect_timeout(
+        &SocketAddrV4::new(Ipv4Addr::LOCALHOST, port).into(),
+        Duration::from_secs(5),
+    )
+    .map_err(|error| ConnectionError::Broker(error.to_string()))?;
+    // Commands such as worktree creation may clone over a slow network. The
+    // local broker owns cancellation and connection lifetime, so do not impose
+    // an arbitrary operation timeout in the CLI transport.
+    stream
+        .set_read_timeout(None)
+        .map_err(|error| ConnectionError::Broker(error.to_string()))?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(5)))
+        .map_err(|error| ConnectionError::Broker(error.to_string()))?;
+    let body = payload
+        .map(serde_json::to_vec)
+        .transpose()
+        .map_err(|error| ConnectionError::Broker(error.to_string()))?
+        .unwrap_or_default();
+    write!(stream, "{method} {path} HTTP/1.1\r\n")
+        .and_then(|_| write!(stream, "Host: 127.0.0.1:{port}\r\n"))
+        .and_then(|_| {
+            write!(
+                stream,
+                "Authorization: Bearer {}\r\n",
+                connection.session_token
+            )
+        })
+        .and_then(|_| write!(stream, "Accept: application/json\r\n"))
+        .and_then(|_| {
+            if body.is_empty() {
+                Ok(())
+            } else {
+                write!(
+                    stream,
+                    "Content-Type: application/json\r\nContent-Length: {}\r\n",
+                    body.len()
+                )
+            }
+        })
+        .and_then(|_| write!(stream, "Connection: close\r\n\r\n"))
+        .and_then(|_| stream.write_all(&body))
+        .map_err(|error| ConnectionError::Broker(error.to_string()))?;
+    stream
+        .shutdown(Shutdown::Write)
+        .map_err(|error| ConnectionError::Broker(error.to_string()))?;
+    let mut response = Vec::new();
+    stream
+        .take((maximum_response_bytes + 16 * 1024 + 1) as u64)
+        .read_to_end(&mut response)
+        .map_err(|error| ConnectionError::Broker(error.to_string()))?;
+    if response.len() > maximum_response_bytes + 16 * 1024 {
+        return Err(ConnectionError::Broker(
+            "broker response exceeded the command limit".to_string(),
+        ));
+    }
+    let header_end = response
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .ok_or_else(|| ConnectionError::Broker("malformed HTTP response".to_string()))?;
+    let headers = std::str::from_utf8(&response[..header_end])
+        .map_err(|error| ConnectionError::Broker(error.to_string()))?;
+    let status_line = headers.lines().next().unwrap_or_default();
+    let status = status_line
+        .split_ascii_whitespace()
+        .nth(1)
+        .and_then(|value| value.parse::<u16>().ok())
+        .ok_or_else(|| ConnectionError::Broker("malformed HTTP status".to_string()))?;
+    let response_body = &response[header_end + 4..];
+    if !(200..300).contains(&status) {
+        #[derive(Deserialize)]
+        struct ErrorBody {
+            code: Option<String>,
+            error: Option<String>,
+        }
+        let error = serde_json::from_slice::<ErrorBody>(response_body).ok();
+        return Err(ConnectionError::BrokerStatus {
+            code: error.as_ref().and_then(|value| value.code.clone()),
+            message: error
+                .and_then(|value| value.error)
+                .unwrap_or_else(|| status_line.to_string()),
+            status,
+        });
+    }
+    serde_json::from_slice::<TResponse>(response_body)
+        .map_err(|error| ConnectionError::Broker(error.to_string()))
 }
 
 #[cfg(test)]
