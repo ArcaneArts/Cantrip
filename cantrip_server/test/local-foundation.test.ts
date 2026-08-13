@@ -4084,6 +4084,10 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
+    expect(explorer).toMatchObject({
+      selectedPath: null,
+      fileMode: "preview",
+    });
     expect(
       explorerListSchema.parse(
         (
@@ -4152,6 +4156,36 @@ describe("local server foundation", () => {
       content: "# Edited in Monaco\n",
       version: explorerWriteVersion,
     });
+    const explorerEditorState = explorerSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/explorers/${explorer.id}/view-state`,
+          payload: { selectedPath: "README.md", fileMode: "edit" },
+        })
+      ).json(),
+    );
+    expect(explorerEditorState).toMatchObject({
+      selectedPath: "README.md",
+      fileMode: "edit",
+    });
+    expect(
+      await firstApp.inject({
+        method: "PATCH",
+        url: `/api/explorers/${explorer.id}/view-state`,
+        payload: { selectedPath: "", fileMode: "source" },
+      }),
+    ).toMatchObject({ statusCode: 400 });
+    expect(
+      explorerListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/explorers`,
+          })
+        ).json(),
+      )[0],
+    ).toMatchObject({ selectedPath: "README.md", fileMode: "edit" });
     expect(
       explorerSummarySchema.parse(
         (

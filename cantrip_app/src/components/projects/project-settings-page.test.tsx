@@ -137,6 +137,8 @@ describe("project settings", () => {
       position: 2,
       activeWorkerId: "worker-1",
       worktreeId: worktree.id,
+      selectedPath: null,
+      fileMode: "preview",
       createdAt: now,
       updatedAt: now,
     } satisfies ExplorerSummary;

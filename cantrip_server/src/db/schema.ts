@@ -1167,6 +1167,8 @@ export const explorers = pgTable("explorers", {
   worktreeId: text("worktree_id")
     .notNull()
     .references(() => projectWorktrees.id, { onDelete: "restrict" }),
+  selectedPath: text("selected_path"),
+  fileMode: text("file_mode").notNull().default("preview"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

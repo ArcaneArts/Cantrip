@@ -80,7 +80,7 @@ export function monacoModelPath(explorerId: string, path: string): string {
   return `cantrip://explorer/${encodeURIComponent(explorerId)}/${encodedPath}`;
 }
 
-export type ExplorerFileMode = "preview" | "edit";
+export type { ExplorerFileMode } from "@cantrip/protocol";
 
 export function defaultExplorerFileMode(
   path: string,
@@ -89,3 +89,4 @@ export function defaultExplorerFileMode(
   if (markdown) return "preview";
   return monacoLanguageForPath(path) ? "edit" : "preview";
 }
+import type { ExplorerFileMode } from "@cantrip/protocol";

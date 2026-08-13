@@ -70,6 +70,7 @@ import {
   explorerFileWriteSchema,
   explorerListSchema,
   explorerSummarySchema,
+  explorerViewStateUpdateSchema,
   executionPlacementResolutionSchema,
   executionPlacementResolveRequestSchema,
   executionTargetCatalogSchema,
@@ -233,6 +234,7 @@ import type {
   CodexMcpResourceReadRequest,
   CodexSkillConfigUpdate,
   CodexSkillRootsUpdate,
+  ExplorerViewStateUpdate,
   GitAction,
   GitAgentDraftCreate,
   GitBranchAction,
@@ -2233,6 +2235,22 @@ export async function renameExplorer(explorerId: string, title: string) {
       method: "PATCH",
       body: JSON.stringify({ title }),
     }),
+  );
+}
+
+export async function updateExplorerViewState(
+  explorerId: string,
+  input: ExplorerViewStateUpdate,
+) {
+  const parsed = explorerViewStateUpdateSchema.parse(input);
+  return explorerSummarySchema.parse(
+    await request(
+      `/api/explorers/${encodeURIComponent(explorerId)}/view-state`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(parsed),
+      },
+    ),
   );
 }
 
