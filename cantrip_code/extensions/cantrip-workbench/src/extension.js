@@ -8,7 +8,7 @@ const {
   safeRelativePaths,
   themeNameForAppearance,
 } = require("./protocol.js");
-const { forceColorTheme } = require("./theme.js");
+const { forceColorTheme, syncConfiguredColorTheme } = require("./theme.js");
 const { hideSecondarySideBar } = require("./layout.js");
 
 function configuration() {
@@ -178,6 +178,9 @@ class WorkbenchCoordinator {
         ) {
           this.reconnect(true);
         }
+        if (event.affectsConfiguration("cantrip.appearance")) {
+          void this.syncConfiguredTheme().catch(() => false);
+        }
         if (
           event.affectsConfiguration("cantrip") ||
           event.affectsConfiguration("workbench.colorTheme")
@@ -187,9 +190,18 @@ class WorkbenchCoordinator {
       }),
     );
     this.registerCommands();
-    await hideSecondarySideBar(vscode.commands);
-    await this.initializeGit();
+    await this.syncConfiguredTheme().catch(() => false);
     this.reconnect(true);
+    void hideSecondarySideBar(vscode.commands);
+    void this.initializeGit();
+  }
+
+  async syncConfiguredTheme() {
+    return syncConfiguredColorTheme(
+      configuration(),
+      vscode.workspace.getConfiguration("workbench"),
+      vscode.ConfigurationTarget.Workspace,
+    );
   }
 
   registerCommands() {
