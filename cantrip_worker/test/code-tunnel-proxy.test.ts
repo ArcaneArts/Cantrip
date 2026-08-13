@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 
 import {
+  CODE_ADAPTER_TUNNEL_INITIAL_CREDIT_BYTES,
   CODE_ADAPTER_WEBSOCKET_BINARY_RECORD,
   CODE_ADAPTER_WEBSOCKET_RECORD_HEADER_BYTES,
   CODE_ADAPTER_WEBSOCKET_TEXT_RECORD,
@@ -170,6 +171,21 @@ function decodedOutput(
 }
 
 describe("Cantrip Code worker tunnel proxy", () => {
+  it("grants enough initial credit for a maximum-size WebSocket record", async () => {
+    const { frames, proxy } = await fixture();
+
+    proxy.handleFrame(connect, EMPTY_PAYLOAD);
+
+    expect(frames).toContainEqual(
+      expect.objectContaining({
+        header: expect.objectContaining({
+          kind: "accepted",
+          initialCreditBytes: CODE_ADAPTER_TUNNEL_INITIAL_CREDIT_BYTES,
+        }),
+      }),
+    );
+  });
+
   it("redacts attachment capabilities from diagnostic paths", () => {
     const basePath = `/code/${"a".repeat(43)}`;
 

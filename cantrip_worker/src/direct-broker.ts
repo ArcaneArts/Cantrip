@@ -21,6 +21,8 @@ import {
 } from "@cantrip/protocol";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 
+import { workerLogger } from "./logger.js";
+
 type PrepareCommand = Extract<
   WorkerCommand,
   { type: "direct.capability.prepare" }
@@ -282,9 +284,12 @@ export class DirectBroker {
       active.socket.send(encodeTunnelDataPlaneFrame(header, payload), {
         binary: true,
       });
-      if (header.kind === "close" || header.kind === "error") {
-        active.connections.delete(header.connectionId);
-      }
+      // Keep the source-side sequence state until the desktop acknowledges the
+      // destination close. The desktop tunnel forwarder always sends its own
+      // terminal close after receiving a destination close/error. Deleting the
+      // entry here made that valid acknowledgement look like an unknown
+      // connection and closed the entire direct capability, including every
+      // unrelated workbench HTTP and WebSocket stream sharing it.
       return true;
     } catch {
       return false;
@@ -395,6 +400,14 @@ export class DirectBroker {
             "Direct connection closed",
           );
         });
+        socket.once("close", (code, reason) => {
+          workerLogger.info("Direct capability connection closed", {
+            capabilityId: capability.binding.capabilityId,
+            code,
+            reason: reason.toString().slice(0, 256),
+            resourceKind: capability.binding.resourceKind,
+          });
+        });
         socket.on("message", (data, isBinary) => {
           if (!isBinary) {
             socket.close(1003, "Direct data frames must be binary");
@@ -449,7 +462,9 @@ export class DirectBroker {
       } else {
         const previous = active.connections.get(header.connectionId);
         if (!previous || header.sequence !== previous.sequence + 1) {
-          throw new Error("Direct tunnel frame sequence is invalid.");
+          throw new Error(
+            `Direct tunnel frame sequence is invalid (connection=${header.connectionId}, kind=${header.kind}, actual=${header.sequence}, previous=${previous?.sequence ?? "missing"}, previousKind=${previous?.kind ?? "missing"}).`,
+          );
         }
         active.connections.set(header.connectionId, header);
         if (header.kind === "close" || header.kind === "error") {
@@ -457,7 +472,12 @@ export class DirectBroker {
         }
       }
       this.#handleTunnelFrame(routed, frame.payload);
-    } catch {
+    } catch (error) {
+      workerLogger.warn("Direct tunnel frame rejected", {
+        capabilityId: active.capabilityId,
+        error: error instanceof Error ? error.message : String(error),
+        resourceKind: active.binding.resourceKind,
+      });
       active.socket.close(1003, "Invalid direct tunnel frame");
     }
   }

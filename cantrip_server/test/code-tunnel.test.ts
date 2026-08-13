@@ -1,6 +1,7 @@
 import type { AddressInfo } from "node:net";
 
 import {
+  CODE_ADAPTER_TUNNEL_INITIAL_CREDIT_BYTES,
   CODE_ADAPTER_WEBSOCKET_RECORD_HEADER_BYTES,
   type CodeAdapterRequestHead,
   type CodeRuntimeStatus,
@@ -77,6 +78,7 @@ function encodedWebSocketResponse(): Buffer {
 
 class LoopbackWorker implements WorkerCommandBus {
   readonly observedHeads: CodeAdapterRequestHead[] = [];
+  readonly observedInitialCredits: number[] = [];
   readonly #listeners = new Set<WorkerTunnelDataPlaneFrameListener>();
   readonly #streams = new Map<string, FakeStream>();
 
@@ -115,6 +117,7 @@ class LoopbackWorker implements WorkerCommandBus {
   ): boolean {
     const streamKey = `${header.attachmentId}\0${header.connectionId}`;
     if (header.kind === "connect") {
+      this.observedInitialCredits.push(header.initialCreditBytes);
       const stream = {
         chunks: [],
         connect: header,
@@ -387,6 +390,9 @@ describe("Cantrip Code isolated editor surface", () => {
       sessionId: "session-1",
       basePath: attachmentPath.replace(/\/$/u, ""),
     });
+    expect(worker.observedInitialCredits[0]).toBe(
+      CODE_ADAPTER_TUNNEL_INITIAL_CREDIT_BYTES,
+    );
     expect(response.headers.get("set-cookie")).toBeNull();
     expect(response.headers.get("x-frame-options")).toBeNull();
     expect(response.headers.get("content-security-policy")).toBe(

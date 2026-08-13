@@ -2999,9 +2999,28 @@ export const codeAdapterWebSocketCloseSchema = z
   })
   .strict();
 
+export function isForwardableCodeAdapterWebSocketCloseCode(
+  code: number,
+): boolean {
+  return (
+    (code >= 1_000 &&
+      code <= 1_014 &&
+      code !== 1_004 &&
+      code !== 1_005 &&
+      code !== 1_006) ||
+    (code >= 3_000 && code <= 4_999)
+  );
+}
+
 export const CODE_ADAPTER_MAX_HEAD_BYTES = 64 * 1_024;
 export const CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES = 4 * 1_024 * 1_024;
 export const CODE_ADAPTER_WEBSOCKET_RECORD_HEADER_BYTES = 5;
+// WebSocket tunnel credit is returned after a complete record is consumed.
+// The initial window must therefore fit the largest legal payload plus its
+// record header or both peers can wait forever on the final header bytes.
+export const CODE_ADAPTER_TUNNEL_INITIAL_CREDIT_BYTES =
+  CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES +
+  CODE_ADAPTER_WEBSOCKET_RECORD_HEADER_BYTES;
 export const CODE_ADAPTER_WEBSOCKET_TEXT_RECORD = 0;
 export const CODE_ADAPTER_WEBSOCKET_BINARY_RECORD = 1;
 export const CODE_ADAPTER_WEBSOCKET_CLOSE_RECORD = 2;

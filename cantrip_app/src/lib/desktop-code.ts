@@ -30,6 +30,11 @@ export async function preferDirectCodeAttachment(
     const url = new URL(
       `http://${forward.localHost}:${forward.localPort}/code/`,
     );
+    // OpenVSCode reads the workspace to open from the browser location. Keep
+    // the relay attachment query when replacing its origin with the local
+    // desktop forward; dropping it launches an empty workbench, so the
+    // workspace-owned Cantrip bridge and appearance settings never load.
+    url.search = new URL(attachment.url).search;
     return {
       attachment: { ...attachment, url: url.toString() },
       directTunnelId: forward.tunnelId,
