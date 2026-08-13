@@ -1,32 +1,44 @@
 import {
+  Activity,
+  AppWindow,
   ArrowRight,
   Bot,
   Box,
   Braces,
+  CalendarClock,
   Check,
-  ChevronRight,
   CirclePause,
   Cloud,
   Code2,
   Columns3,
   Command,
+  Database,
   ExternalLink,
-  FileCode2,
+  FolderTree,
   GitBranch,
   GitPullRequest,
   Globe2,
+  Layers3,
   Laptop,
+  Link2,
   ListTodo,
+  MessageSquare,
+  Monitor,
   Moon,
+  Network,
   PanelLeft,
   Play,
   Route,
+  Server,
   Settings2,
   ShieldCheck,
+  Smartphone,
   Sparkles,
   Sun,
   TerminalSquare,
+  Workflow,
   X,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -35,49 +47,142 @@ type ThemeMode = "system" | "light" | "dark";
 type DemoTab = "chat" | "terminal" | "git";
 
 const GITHUB_URL = "https://github.com/ArcaneArts/Cantrip";
+const APP_URL = "https://app.cantrip.art";
 
 const surfaces: Array<{
   description: string;
   icon: LucideIcon;
+  meta: string;
   title: string;
 }> = [
   {
-    icon: TerminalSquare,
-    title: "Real terminals",
-    description: "Worker-owned PTYs, right beside the agent doing the work.",
+    icon: MessageSquare,
+    title: "Codex chats",
+    meta: "STEER · QUEUE · FORK",
+    description:
+      "Structured Markdown, plans, reasoning, tools, subagents, attachments, and a linked live Codex console.",
   },
   {
-    icon: FileCode2,
-    title: "Files & code",
+    icon: TerminalSquare,
+    title: "Real terminals",
+    meta: "PTY · RECONNECT",
     description:
-      "Explore source, preview Markdown, and open the full Cantrip Code editor.",
+      "Worker-owned shells with real color, resize, reconnect, and the exact project checkout beneath them.",
+  },
+  {
+    icon: Code2,
+    title: "Cantrip Code",
+    meta: "VSCODE · PERSISTENT",
+    description:
+      "A worker-hosted VS Code workbench with persistent settings, extensions, terminals, and project context.",
+  },
+  {
+    icon: FolderTree,
+    title: "Project explorer",
+    meta: "FILES · MARKDOWN",
+    description:
+      "Navigate the worker filesystem and preview source or rendered Markdown without leaving the workspace.",
   },
   {
     icon: Globe2,
     title: "Browser tabs",
+    meta: "CHROMIUM · STREAMED",
     description:
-      "Keep project pages and worker-streamed browser sessions in context.",
+      "Full worker Chromium sessions—not iframes—with navigation, clipboard, and durable reconnect behavior.",
   },
   {
-    icon: Laptop,
+    icon: Monitor,
     title: "Remote desktop",
-    description: "Reach the worker screen when a task needs a human hand.",
+    meta: "DISPLAY · INPUT",
+    description:
+      "Pick a display or application window, then see and control the worker when a task needs a human hand.",
+  },
+  {
+    icon: GitBranch,
+    title: "Git workspace",
+    meta: "HISTORY · PRS · ISSUES",
+    description:
+      "Graph every branch and worktree, inspect diffs, stage, commit, stash, pull, push, and manage GitHub work.",
+  },
+  {
+    icon: Network,
+    title: "Project tunnels",
+    meta: "LOCAL · RELAYED",
+    description:
+      "Expose explicit worker-local services through guarded, server-routed tunnels without opening inbound ports.",
   },
 ];
 
 const agentFeatures = [
-  "Per-message Default, Plan, and Goal modes",
-  "Steer a running turn or line up prompt queues",
-  "Pause automation without losing buffered work",
-  "Structured plans, reasoning, tools, and usage",
-  "Live linked Codex console whenever you want it",
-  "Fork, rename, duplicate, and compact chats",
+  "Choose Default, Plan, Goal, and model per message",
+  "Steer active work or sort, edit, freeze, and send queued prompts",
+  "Pause at a safe boundary without losing buffered work",
+  "Use slash commands, skills, MCP, attachments, and large pastes",
+  "Toggle into the exact linked Codex console whenever you want it",
+  "Fork at any message, rename, duplicate, compact, and pop out chats",
 ];
 
 const routes = [
   { label: "ChatGPT account A", state: "Preferred", tone: "cyan" },
   { label: "ChatGPT account B", state: "Fallback", tone: "violet" },
   { label: "OpenRouter / API", state: "Fallback", tone: "lime" },
+];
+
+const capabilityGroups: Array<{
+  description: string;
+  features: string[];
+  icon: LucideIcon;
+  label: string;
+  title: string;
+}> = [
+  {
+    icon: Layers3,
+    label: "ORGANIZE",
+    title: "A workspace that stays coherent",
+    description:
+      "Mix every project surface in one ordered sidebar, group related tabs, drag to reorganize, and pop complete groups into their own desktop windows.",
+    features: [
+      "Persistent cross-device tab groups",
+      "Chats, terminals, Code, Git, browser, and Explorer together",
+      "Per-window active tabs with server-owned ordering",
+    ],
+  },
+  {
+    icon: GitPullRequest,
+    label: "SHIP",
+    title: "A serious Git client around the agent",
+    description:
+      "Keep Primary calm while agent-managed chats acquire isolated worktrees and ship reviewable pull requests.",
+    features: [
+      "Branch graph, tags, worktree HEADs, and WIP rows",
+      "Staging, commits, stashes, comparisons, recovery, and LFS",
+      "GitHub issues and pull requests without context switching",
+    ],
+  },
+  {
+    icon: Workflow,
+    label: "AUTOMATE",
+    title: "Durable workflows, not fragile macros",
+    description:
+      "Compose agent, verification, approval, condition, map, pipeline, and repeat-until nodes with explicit budgets and recovery.",
+    features: [
+      "Schedules, webhooks, Git events, APIs, and saved commands",
+      "Pause, cancel, retry, approvals, and bounded concurrency",
+      "Trusted unattended revisions with permission manifests",
+    ],
+  },
+  {
+    icon: Server,
+    label: "DEPLOY",
+    title: "Local by default. Distributed when needed.",
+    description:
+      "Run everything on one desktop or connect the same app to a hosted control plane and workers on every machine that owns code.",
+    features: [
+      "Embedded desktop server and worker",
+      "Account-mode PostgreSQL server and enrolled workers",
+      "Desktop, web, and mobile sign-in with QR handoff",
+    ],
+  },
 ];
 
 function resolveTheme(mode: ThemeMode): "light" | "dark" {
@@ -379,6 +484,52 @@ function SectionLabel({ children }: { children: ReactNode }) {
   );
 }
 
+function WorkflowBoard() {
+  return (
+    <div className="workflow-board" aria-label="Cantrip workflow example">
+      <div className="workflow-topline">
+        <span>
+          <Activity size={14} /> Release readiness
+        </span>
+        <span className="workflow-state">
+          <i /> RUNNING
+        </span>
+      </div>
+      <div className="workflow-trigger">
+        <CalendarClock size={17} />
+        <div>
+          <small>TRIGGER</small>
+          <strong>Every weekday · 08:30</strong>
+        </div>
+      </div>
+      <div className="workflow-flow">
+        <div className="workflow-node active">
+          <Bot size={17} />
+          <span>Agent</span>
+          <small>Inspect changes</small>
+        </div>
+        <ArrowRight size={15} />
+        <div className="workflow-node complete">
+          <Check size={17} />
+          <span>Verify</span>
+          <small>Tests + policy</small>
+        </div>
+        <ArrowRight size={15} />
+        <div className="workflow-node waiting">
+          <CirclePause size={17} />
+          <span>Approval</span>
+          <small>Wait for owner</small>
+        </div>
+      </div>
+      <div className="workflow-footer">
+        <span>Budget 38%</span>
+        <span>2 / 4 nodes complete</span>
+        <span>Worktree isolated</span>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const { mode, setMode } = useTheme();
 
@@ -388,8 +539,9 @@ function App() {
         <div className="header-inner">
           <Brand />
           <nav aria-label="Primary navigation">
-            <a href="#workspace">Workspace</a>
+            <a href="#workspace">Product</a>
             <a href="#agents">Agents</a>
+            <a href="#workflows">Workflows</a>
             <a href="#architecture">Architecture</a>
           </nav>
           <div className="header-actions">
@@ -402,6 +554,15 @@ function App() {
             >
               <GitPullRequest size={17} /> <span>GitHub</span>
             </a>
+            <a
+              className="open-app-link"
+              href={APP_URL}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <AppWindow size={16} /> <span>Open app</span>
+              <ArrowRight size={14} />
+            </a>
           </div>
         </div>
       </header>
@@ -410,25 +571,30 @@ function App() {
         <section className="hero section-wrap">
           <div className="hero-copy">
             <div className="status-line">
-              <i /> LOCAL-FIRST · OPEN SOURCE · IN ACTIVE DEVELOPMENT
+              <i /> DESKTOP · WEB · SELF-HOSTED · OPEN SOURCE
             </div>
-            <h1>Run the whole build.</h1>
+            <h1>One workspace for the whole build.</h1>
             <p className="hero-lede">
-              Cantrip puts coding agents, real terminals, project files, Git,
-              and the web in one calm command center.
+              Cantrip brings Codex agents, terminals, VS Code, Git, browsers,
+              remote desktops, and automations into one local-first workspace
+              that follows you between devices.
             </p>
             <div className="hero-actions">
               <a
                 className="button button-primary"
+                href={APP_URL}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <AppWindow size={18} /> Open Cantrip <ArrowRight size={16} />
+              </a>
+              <a
+                className="button button-quiet"
                 href={GITHUB_URL}
                 rel="noreferrer"
                 target="_blank"
               >
-                <GitPullRequest size={18} /> View on GitHub{" "}
-                <ArrowRight size={16} />
-              </a>
-              <a className="button button-quiet" href="#workspace">
-                Explore the workspace <ChevronRight size={16} />
+                <GitPullRequest size={17} /> View source
               </a>
             </div>
             <div className="hero-proof">
@@ -440,15 +606,42 @@ function App() {
                 </span>
               </div>
               <div>
+                <Database size={17} />
+                <span>
+                  <strong>Your workspace follows you.</strong>
+                  <small>History lives on your server.</small>
+                </span>
+              </div>
+              <div>
                 <Braces size={17} />
                 <span>
-                  <strong>Powered by Codex CLI.</strong>
-                  <small>Structured or live.</small>
+                  <strong>Powered by open Codex CLI.</strong>
+                  <small>Structured chat or the live console.</small>
                 </span>
               </div>
             </div>
           </div>
           <ProductDemo />
+        </section>
+
+        <section
+          className="deployment-rail"
+          aria-label="Cantrip deployment modes"
+        >
+          <div className="section-wrap deployment-rail-inner">
+            <span>
+              <Laptop size={16} /> LOCAL DESKTOP
+            </span>
+            <span>
+              <Cloud size={16} /> HOSTED CONTROL PLANE
+            </span>
+            <span>
+              <Server size={16} /> MULTIPLE WORKERS
+            </span>
+            <span>
+              <Smartphone size={16} /> MOBILE HANDOFF
+            </span>
+          </div>
         </section>
 
         <section className="workspace-section section-wrap" id="workspace">
@@ -463,7 +656,7 @@ function App() {
             </p>
           </div>
           <div className="surface-grid">
-            {surfaces.map(({ description, icon: Icon, title }, index) => (
+            {surfaces.map(({ description, icon: Icon, meta, title }, index) => (
               <article
                 className={`surface-card surface-${index + 1}`}
                 key={title}
@@ -473,9 +666,47 @@ function App() {
                 </div>
                 <span className="surface-index">0{index + 1}</span>
                 <h3>{title}</h3>
+                <small className="surface-meta">{meta}</small>
                 <p>{description}</p>
               </article>
             ))}
+          </div>
+        </section>
+
+        <section className="capabilities-section section-wrap">
+          <div className="section-heading split-heading">
+            <div>
+              <SectionLabel>BUILT FOR THE WHOLE LOOP</SectionLabel>
+              <h2>From first prompt to shipped change.</h2>
+            </div>
+            <p>
+              Cantrip is the durable layer around the model: organization,
+              source control, automation, and deployment all use the same
+              project context.
+            </p>
+          </div>
+          <div className="capability-grid">
+            {capabilityGroups.map(
+              ({ description, features, icon: Icon, label, title }) => (
+                <article className="capability-card" key={label}>
+                  <div className="capability-heading">
+                    <span className="capability-icon">
+                      <Icon size={19} />
+                    </span>
+                    <small>{label}</small>
+                  </div>
+                  <h3>{title}</h3>
+                  <p>{description}</p>
+                  <ul>
+                    {features.map((feature) => (
+                      <li key={feature}>
+                        <Check size={13} /> {feature}
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              ),
+            )}
           </div>
         </section>
 
@@ -588,8 +819,9 @@ function App() {
               <h2>Choose the model. Keep an escape route.</h2>
             </div>
             <p>
-              Compose logical model profiles from ChatGPT accounts,
-              OpenAI-compatible APIs, and local Ollama endpoints.
+              Compose one logical model from ChatGPT accounts, OpenAI-compatible
+              APIs, OpenRouter, and local Ollama endpoints. Cantrip moves down
+              the route when quota or availability changes.
             </p>
           </div>
           <div className="routing-board">
@@ -621,6 +853,30 @@ function App() {
           </div>
         </section>
 
+        <section className="workflow-section section-wrap" id="workflows">
+          <div className="workflow-copy">
+            <SectionLabel>WORKFLOWS &amp; AUTOMATIONS</SectionLabel>
+            <h2>Turn repeatable work into durable systems.</h2>
+            <p>
+              Build automations from explicit steps instead of hiding the run in
+              one giant prompt. Schedule them, trigger them from Git or an API,
+              and keep a human approval exactly where it matters.
+            </p>
+            <div className="workflow-points">
+              <span>
+                <Zap size={16} /> Schedules, webhooks, Git events, and APIs
+              </span>
+              <span>
+                <Workflow size={16} /> Agent, verify, condition, map, and repeat
+              </span>
+              <span>
+                <ShieldCheck size={16} /> Budgets, permissions, and approvals
+              </span>
+            </div>
+          </div>
+          <WorkflowBoard />
+        </section>
+
         <section
           className="architecture-section section-wrap"
           id="architecture"
@@ -629,10 +885,23 @@ function App() {
             <SectionLabel>SELF-HOSTABLE BY DESIGN</SectionLabel>
             <h2>One control plane. Workers where the code lives.</h2>
             <p>
-              The React client talks to a Fastify server, which routes work to
-              independent Node workers. Files and runtime state stay with the
+              The client talks to your Cantrip server, which keeps identity,
+              conversation history, configuration, and routing. Workers keep
+              source, processes, terminals, browsers, and Code beside the
               machine that owns them.
             </p>
+            <div className="architecture-points">
+              <span>
+                <Link2 size={15} /> Add this machine in one click
+              </span>
+              <span>
+                <Smartphone size={15} /> Scan a QR code to sign in on mobile
+              </span>
+              <span>
+                <Network size={15} /> Reach every enrolled worker through one
+                server
+              </span>
+            </div>
             <a
               href={`${GITHUB_URL}#architecture`}
               rel="noreferrer"
@@ -645,7 +914,7 @@ function App() {
             <div className="arch-node clients">
               <Columns3 size={20} />
               <span>Clients</span>
-              <small>Web · Desktop · Mobile path</small>
+              <small>Desktop · Web · Mobile</small>
             </div>
             <div className="arch-link">
               <i />
@@ -654,7 +923,7 @@ function App() {
             <div className="arch-node server">
               <Cloud size={20} />
               <span>Server</span>
-              <small>History · Identity · Routing</small>
+              <small>Accounts · History · Config · Routing</small>
             </div>
             <div className="arch-link">
               <i />
@@ -663,13 +932,13 @@ function App() {
             <div className="arch-workers">
               <div className="arch-node worker">
                 <Box size={18} />
-                <span>Worker 01</span>
-                <small>Codex · Git · PTY</small>
+                <span>Mac mini</span>
+                <small>Codex · Code · Git · PTY</small>
               </div>
               <div className="arch-node worker">
                 <Box size={18} />
-                <span>Worker 02</span>
-                <small>Codex · Files · Web</small>
+                <span>Laptop / VPS</span>
+                <small>Files · Browser · Desktop</small>
               </div>
             </div>
           </div>
@@ -685,16 +954,28 @@ function App() {
             <br />
             serious to work.
           </h2>
-          <p>Cantrip is open source and under active development.</p>
-          <a
-            className="button button-primary"
-            href={GITHUB_URL}
-            rel="noreferrer"
-            target="_blank"
-          >
-            <GitPullRequest size={18} /> Explore Cantrip{" "}
-            <ArrowRight size={16} />
-          </a>
+          <p>
+            Open the web app, run the desktop workspace, or host the control
+            plane yourself. Cantrip is open source and under active development.
+          </p>
+          <div className="closing-actions">
+            <a
+              className="button button-primary"
+              href={APP_URL}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <AppWindow size={18} /> Open Cantrip <ArrowRight size={16} />
+            </a>
+            <a
+              className="button button-quiet"
+              href={GITHUB_URL}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <GitPullRequest size={17} /> Explore the source
+            </a>
+          </div>
         </section>
       </main>
 
@@ -703,6 +984,9 @@ function App() {
           <Brand />
           <p>Local-first tools for ambitious builds.</p>
           <div>
+            <a href={APP_URL} rel="noreferrer" target="_blank">
+              App
+            </a>
             <a href={GITHUB_URL} rel="noreferrer" target="_blank">
               GitHub
             </a>
