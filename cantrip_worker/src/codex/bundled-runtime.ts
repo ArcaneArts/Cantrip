@@ -20,7 +20,8 @@ export interface BundledCodexManifest {
     commit: string;
   };
   sourceManifestSha256: string;
-  buildRecipeVersion: 1;
+  patchesSha256?: string;
+  buildRecipeVersion: 1 | 2;
   entrypoint: string;
   artifacts: Array<{ path: string; sha256: string }>;
   target: string;
@@ -125,7 +126,12 @@ function parseManifest(value: unknown): BundledCodexManifest {
         !/^[0-9a-f]{64}$/.test(artifact.sha256 ?? ""),
     ) ||
     !/^[0-9a-f]{64}$/.test(candidate.sourceManifestSha256 ?? "") ||
-    candidate.buildRecipeVersion !== 1 ||
+    (candidate.buildRecipeVersion !== 1 &&
+      candidate.buildRecipeVersion !== 2) ||
+    (candidate.patchesSha256 !== undefined &&
+      !/^[0-9a-f]{64}$/.test(candidate.patchesSha256)) ||
+    (candidate.buildRecipeVersion === 2 &&
+      !/^[0-9a-f]{64}$/.test(candidate.patchesSha256 ?? "")) ||
     typeof candidate.upstream?.repository !== "string" ||
     typeof candidate.upstream.ref !== "string" ||
     !/^[0-9a-f]{40}$/.test(candidate.upstream.commit ?? "")
