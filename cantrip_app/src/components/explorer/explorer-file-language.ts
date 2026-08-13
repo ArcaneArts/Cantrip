@@ -82,11 +82,7 @@ export function monacoModelPath(explorerId: string, path: string): string {
 
 export type { ExplorerFileMode } from "@cantrip/protocol";
 
-export function defaultExplorerFileMode(
-  path: string,
-  markdown: boolean,
-): ExplorerFileMode {
-  if (markdown) return "preview";
-  return monacoLanguageForPath(path) ? "edit" : "preview";
+export function defaultExplorerFileMode(): ExplorerFileMode {
+  return "preview";
 }
 import type { ExplorerFileMode } from "@cantrip/protocol";

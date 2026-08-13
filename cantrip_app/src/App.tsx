@@ -135,6 +135,7 @@ import type { ProjectSurfaceCreateKind } from "@/components/workspace/project-su
 import type { ProjectSurfacePlacementContext } from "@/components/workspace/project-surface-create-menu";
 import {
   ContentHeaderActions,
+  ExplorerFileCloseButton,
   type ContentHeaderActionsProps,
 } from "@/components/workspace/content-header-actions";
 import { WorkspaceDndProvider } from "@/components/workspace/workspace-dnd-provider";
@@ -5026,6 +5027,12 @@ export function App() {
                 )}
                 data-tauri-drag-region={overlayTitlebar ? "" : undefined}
               >
+                {selectedExplorer ? (
+                  <ExplorerFileCloseButton
+                    compact={overlayTitlebar}
+                    header={explorerHeader}
+                  />
+                ) : null}
                 <span
                   className="truncate"
                   data-tauri-drag-region={overlayTitlebar ? "" : undefined}

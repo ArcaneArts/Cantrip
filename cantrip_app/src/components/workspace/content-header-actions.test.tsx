@@ -6,7 +6,10 @@ import type { CodeHeaderState } from "@/components/code/code-view";
 import type { ExplorerHeaderState } from "@/components/explorer/explorer-view";
 import type { GitHistoryHeaderState } from "@/components/git/git-history";
 
-import { ContentHeaderActions } from "./content-header-actions";
+import {
+  ContentHeaderActions,
+  ExplorerFileCloseButton,
+} from "./content-header-actions";
 
 const runtime = {
   sessionId: "session-1",
@@ -108,9 +111,10 @@ describe("ContentHeaderActions", () => {
 
     expect(markup).toContain("Pull</button>");
     expect(markup).toContain("Push</button>");
-    expect(markup).toContain('title="Back to files"');
-    expect(markup).toContain("Preview</button>");
-    expect(markup).toContain("Edit</button>");
+    expect(markup).not.toContain('title="Back to files"');
+    expect(markup).toContain('title="Edit mode"');
+    expect(markup).not.toContain("Preview</button>");
+    expect(markup).not.toContain("Edit</button>");
     expect(markup).toContain("Unsaved");
     expect(markup).toContain('title="Save file"');
     expect(markup).toContain('title="Refresh Explorer"');
@@ -124,6 +128,22 @@ describe("ContentHeaderActions", () => {
     expect(markup).toContain('title="Inspect Codex customizations"');
     expect(markup).toContain('title="View agent move progress"');
     expect(markup).toContain('title="Show Codex console"');
+  });
+
+  it("renders the Explorer file close action independently for the left title cluster", () => {
+    const markup = renderToStaticMarkup(
+      <ExplorerFileCloseButton header={explorerHeader()} />,
+    );
+
+    expect(markup).toContain('title="Close file"');
+    expect(markup).toContain(">Close file</span>");
+    expect(
+      renderToStaticMarkup(
+        <ExplorerFileCloseButton
+          header={{ ...explorerHeader(), selectedPath: null }}
+        />,
+      ),
+    ).toBe("");
   });
 
   it("uses icon-only Git actions in the compact variant", () => {
