@@ -9,7 +9,6 @@ import {
 
 export interface PreferredCodeAttachment {
   attachment: CodeAttachment;
-  directHealthUrl: string | null;
   directTunnelId: string | null;
 }
 
@@ -17,7 +16,7 @@ export async function preferDirectCodeAttachment(
   attachment: CodeAttachment,
 ): Promise<PreferredCodeAttachment> {
   if (!isTauri()) {
-    return { attachment, directHealthUrl: null, directTunnelId: null };
+    return { attachment, directTunnelId: null };
   }
   const ticket = await createDirectCodeAttachment(
     attachment.attachmentId,
@@ -33,7 +32,6 @@ export async function preferDirectCodeAttachment(
     );
     return {
       attachment: { ...attachment, url: url.toString() },
-      directHealthUrl: new URL("_cantrip/health", url).toString(),
       directTunnelId: forward.tunnelId,
     };
   } catch (error) {
@@ -42,6 +40,19 @@ export async function preferDirectCodeAttachment(
     );
     throw error;
   }
+}
+
+export async function directCodeAttachmentHealthy(
+  tunnelId: string,
+): Promise<boolean> {
+  if (!isTauri()) return false;
+  const forwards = await invoke<
+    Array<{ routeState: string; tunnelId: string }>
+  >("list_tunnel_forwards");
+  return forwards.some(
+    (forward) =>
+      forward.tunnelId === tunnelId && forward.routeState === "local-direct",
+  );
 }
 
 export async function stopDirectCodeAttachment(

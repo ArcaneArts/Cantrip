@@ -20,6 +20,7 @@ import {
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
 import {
+  directCodeAttachmentHealthy,
   preferDirectCodeAttachment,
   stopDirectCodeAttachment,
 } from "@/lib/desktop-code";
@@ -204,7 +205,6 @@ export function CodeView({
           });
           return {
             attachment: relayAttachment,
-            directHealthUrl: null,
             directTunnelId: null,
           };
         });
@@ -228,15 +228,12 @@ export function CodeView({
           url: codeAttachmentUrlForLog(next.url),
         });
         onChangedRef.current?.();
-        if (preferred.directHealthUrl) {
+        if (preferred.directTunnelId) {
           let failures = 0;
           const checkDirectRoute = async () => {
             if (cancelled || !ownedDirectTunnelId) return;
             try {
-              const response = await fetch(preferred.directHealthUrl!, {
-                cache: "no-store",
-              });
-              if (!response.ok)
+              if (!(await directCodeAttachmentHealthy(ownedDirectTunnelId)))
                 throw new Error("Direct Code route is unavailable.");
               failures = 0;
             } catch (error) {
