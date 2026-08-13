@@ -10,6 +10,7 @@ const {
 } = require("./protocol.js");
 const { forceColorTheme } = require("./theme.js");
 const { hideSecondarySideBar } = require("./layout.js");
+const { observeSocketErrors } = require("./socket.js");
 
 function configuration() {
   return vscode.workspace.getConfiguration("cantrip");
@@ -413,13 +414,12 @@ class WorkbenchCoordinator {
       });
       this.reconnectTimer = setTimeout(() => this.reconnect(false), delay);
     });
-    socket.addEventListener("error", () => {
+    observeSocketErrors(socket, (readyState) => {
       bridgeLog("warn", "connection error", {
         endpoint: bridgeEndpoint(url),
-        readyState: socket.readyState,
+        readyState,
         sessionId: identity().sessionId,
       });
-      if (this.socket === socket && socket.readyState < 2) socket.close();
     });
   }
 
