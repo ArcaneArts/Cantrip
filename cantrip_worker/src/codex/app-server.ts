@@ -23,7 +23,6 @@ import {
   codexMcpReloadResultSchema,
   pendingPlanQuestionSchema,
   permissionProfileCapabilitySchema,
-  normalizeResponsesBaseUrl,
   normalizedAgentMessageSchema,
   threadGoalSchema,
   type AgentActivity,
@@ -66,6 +65,10 @@ import {
 import WebSocket, { type RawData } from "ws";
 
 import type { CodexRuntime, CodexRuntimeDiagnostic } from "./runtime.js";
+import {
+  codexModelProviderName,
+  codexProviderConfiguration,
+} from "./provider-config.js";
 import {
   customizationInventory,
   parseExternalImportStatus,
@@ -1187,11 +1190,7 @@ export type CompactAgentThreadOptions = Pick<
   threadId: string;
 };
 
-export function codexModelProviderName(
-  provider: RunAgentTurnOptions["provider"],
-): "cantrip_runtime" | "openai" {
-  return provider.kind === "chatgpt" ? "openai" : "cantrip_runtime";
-}
+export { codexModelProviderName } from "./provider-config.js";
 
 export function codexMcpConfigOverride(
   servers: NonNullable<RunAgentTurnOptions["mcpServers"]>,
@@ -3179,20 +3178,7 @@ export class CodexAppServer implements CodexRuntime {
   ): Promise<void> {
     this.#appServerSessionId = randomUUID();
     await mkdir(this.codexHome, { recursive: true });
-    const providerArguments =
-      provider.kind === "chatgpt"
-        ? ['model_provider="openai"']
-        : [
-            'model_provider="cantrip_runtime"',
-            `model_providers.cantrip_runtime.name=${JSON.stringify(provider.name)}`,
-            `model_providers.cantrip_runtime.base_url=${JSON.stringify(normalizeResponsesBaseUrl(provider.baseUrl))}`,
-            'model_providers.cantrip_runtime.wire_api="responses"',
-            ...(provider.apiKey
-              ? [
-                  'model_providers.cantrip_runtime.env_key="CANTRIP_PROVIDER_API_KEY"',
-                ]
-              : []),
-          ];
+    const providerConfiguration = codexProviderConfiguration(provider);
     const child = spawn(
       this.codexBinary,
       [
@@ -3202,7 +3188,10 @@ export class CodexAppServer implements CodexRuntime {
         ...(this.methodAvailable("thread/goal/get")
           ? ["-c", "features.goals=true"]
           : []),
-        ...providerArguments.flatMap((argument) => ["-c", argument]),
+        ...providerConfiguration.arguments.flatMap((argument) => [
+          "-c",
+          argument,
+        ]),
         "-c",
         `model=${JSON.stringify(model.name)}`,
         ...(model.reasoningEffort
@@ -3218,9 +3207,7 @@ export class CodexAppServer implements CodexRuntime {
         env: {
           ...process.env,
           CODEX_HOME: this.codexHome,
-          ...(provider.apiKey
-            ? { CANTRIP_PROVIDER_API_KEY: provider.apiKey }
-            : {}),
+          ...providerConfiguration.environment,
         },
         stdio: ["pipe", "pipe", "pipe"],
       },

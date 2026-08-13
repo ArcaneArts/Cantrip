@@ -686,6 +686,30 @@ describe("codexModelProviderName", () => {
       }),
     ).toBe("openai");
   });
+
+  it("uses Codex's built-in Ollama provider for local models", () => {
+    expect(
+      codexModelProviderName({
+        id: "local-ollama",
+        name: "Ollama",
+        kind: "ollama",
+        baseUrl: "http://127.0.0.1:11434/v1",
+        apiKey: null,
+      }),
+    ).toBe("ollama");
+  });
+
+  it("keeps other compatible APIs on Cantrip's configured provider", () => {
+    expect(
+      codexModelProviderName({
+        id: "open-router",
+        name: "OpenRouter",
+        kind: "openai-compatible",
+        baseUrl: "https://openrouter.ai/api/v1",
+        apiKey: "test-key",
+      }),
+    ).toBe("cantrip_runtime");
+  });
 });
 
 describe("codexEndpointFromLine", () => {

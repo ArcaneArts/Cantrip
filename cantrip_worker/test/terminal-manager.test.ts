@@ -199,6 +199,7 @@ describe("TerminalManager", () => {
           "printf 'ARGS:%s\\n' \"$*\"",
           "printf 'CODEX_HOME:%s\\n' \"$CODEX_HOME\"",
           "printf 'API_KEY:%s\\n' \"$CANTRIP_PROVIDER_API_KEY\"",
+          "printf 'OSS_BASE_URL:%s\\n' \"$CODEX_OSS_BASE_URL\"",
         ].join("\n"),
       );
       await chmod(fakeCodex, 0o755);
@@ -247,6 +248,66 @@ describe("TerminalManager", () => {
       );
       expect(output).toContain(`CODEX_HOME:${codexHome}`);
       expect(output).toContain("API_KEY:test-key");
+      manager.closeAll();
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "launches Ollama consoles through Codex's built-in local provider",
+    async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "cantrip-ollama-"));
+      directories.push(directory);
+      const fakeCodex = path.join(directory, "fake-codex");
+      const codexHome = path.join(directory, "codex-home");
+      await writeFile(
+        fakeCodex,
+        [
+          "#!/bin/sh",
+          "printf 'ARGS:%s\\n' \"$*\"",
+          "printf 'OSS_BASE_URL:%s\\n' \"$CODEX_OSS_BASE_URL\"",
+        ].join("\n"),
+      );
+      await chmod(fakeCodex, 0o755);
+
+      const manager = new TerminalManager();
+      let output = "";
+      const exited = manager.open(
+        "terminal-ollama",
+        "attachment-ollama",
+        directory,
+        120,
+        40,
+        {
+          type: "codex",
+          binary: fakeCodex,
+          codexHome,
+          remoteUrl: "ws://127.0.0.1:4500",
+          threadId: null,
+          model: {
+            id: "model-ollama",
+            name: "gemma4:12b",
+            reasoningEffort: null,
+          },
+          provider: {
+            id: "provider-ollama",
+            name: "Ollama",
+            kind: "ollama",
+            baseUrl: "http://127.0.0.1:11434/v1/responses",
+            apiKey: null,
+          },
+        },
+        (event) => {
+          if (event.type === "terminal.output") output += event.data;
+        },
+      );
+
+      await expect(exited).resolves.toMatchObject({
+        status: "exited",
+        exitCode: 0,
+      });
+      expect(output).toContain('model_provider="ollama"');
+      expect(output).not.toContain("model_providers.cantrip_runtime");
+      expect(output).toContain("OSS_BASE_URL:http://127.0.0.1:11434/v1");
       manager.closeAll();
     },
   );
