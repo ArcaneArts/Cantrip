@@ -19,8 +19,14 @@ use serde_json::{Map, Value, json};
 )]
 struct Cli {
     /// Print version information.
-    #[arg(short = 'v', long = "version", action = clap::ArgAction::Version)]
-    version: bool,
+    #[arg(
+        short = 'v',
+        long = "version",
+        action = clap::ArgAction::Version
+    )]
+    // `Version` exits before constructing `Cli`; `Option` keeps Clap from
+    // inferring that this otherwise-unread field is a required argument.
+    version: Option<bool>,
 
     /// Print stable JSON for scripts and agents.
     #[arg(long, global = true)]
@@ -443,5 +449,26 @@ mod tests {
 
         let uppercase = Cli::try_parse_from(["cantrip", "-V"]).expect_err("reject -V");
         assert_eq!(uppercase.kind(), ErrorKind::UnknownArgument);
+    }
+
+    #[test]
+    fn version_flag_is_not_required_by_real_commands() {
+        let root = Cli::try_parse_from(["cantrip"]).expect("parse root command");
+        assert!(root.command.is_none());
+        assert_eq!(root.version, None);
+
+        for arguments in [
+            &["cantrip", "status"][..],
+            &["cantrip", "status", "--json"][..],
+            &["cantrip", "worktree", "list"][..],
+            &["cantrip", "target", "list"][..],
+            &["cantrip", "explorer", "list"][..],
+            &["cantrip", "terminal", "read"][..],
+            &["cantrip", "browser", "services"][..],
+        ] {
+            Cli::try_parse_from(arguments).unwrap_or_else(|error| {
+                panic!("failed to parse {arguments:?} without -v: {error}")
+            });
+        }
     }
 }
