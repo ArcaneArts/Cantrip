@@ -188,12 +188,21 @@ export function codeEditorRequestHeaders(
   connectionToken: string,
 ): Record<string, string | string[]> {
   const output = new Map<string, string[]>();
+  let publicHost: string | undefined;
   for (const [rawName, value] of headers) {
     const name = rawName.toLowerCase();
+    if (name === "host" && publicHost === undefined) publicHost = value;
     if (BLOCKED_REQUEST_HEADERS.has(name)) continue;
     const values = output.get(name) ?? [];
     values.push(value);
     output.set(name, values);
+  }
+  // OpenVSCode uses the forwarded host as its browser-side remote authority.
+  // Keep the private editor host in `Host`, but make the public Cantrip proxy
+  // address available so file, extension, Git, and bridge WebSockets return
+  // through the authenticated attachment instead of bypassing it.
+  if (!output.has("x-forwarded-host") && publicHost) {
+    output.set("x-forwarded-host", [publicHost]);
   }
   output.set("cookie", [`vscode-tkn=${encodeURIComponent(connectionToken)}`]);
   output.set("host", [target.host]);

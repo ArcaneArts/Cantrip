@@ -69,6 +69,10 @@ export function isCodeWorkbenchReady(
   return runtime.sessionId === sessionId && runtime.bridgeConnected;
 }
 
+export function isDarkCodeAppearance(appearance: CodeAppearance): boolean {
+  return appearance === "dark" || appearance.endsWith("-dark");
+}
+
 function errorText(error: unknown): string {
   return errorMessage(error, "Cantrip Code could not open.");
 }
@@ -100,6 +104,9 @@ export function CodeView({
   const [connecting, setConnecting] = useState(false);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [retrying, setRetrying] = useState(false);
+  const [synchronizedThemeKey, setSynchronizedThemeKey] = useState<
+    string | null
+  >(null);
   const appearanceRef = useRef(appearance);
   const connectionGeneration = useRef(0);
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -130,6 +137,7 @@ export function CodeView({
     setConnectError(null);
     setConnecting(false);
     setRetrying(false);
+    setSynchronizedThemeKey(null);
 
     const connect = async (attempt: number) => {
       if (cancelled || stopped.current) return;
@@ -201,7 +209,9 @@ export function CodeView({
       }
     };
 
-    void connect(0);
+    // Deferring the first request lets React StrictMode discard its probe
+    // effect before any worker attachment is created in development.
+    retryTimer = setTimeout(() => void connect(0), 0);
     return () => {
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
@@ -233,10 +243,12 @@ export function CodeView({
   useEffect(() => {
     if (!attachment) return;
     let cancelled = false;
+    const themeKey = `${attachment.attachmentId}\0${appearance}`;
     void setCodeTabTheme(codeTab.id, "follow-cantrip", appearance)
       .then(() => {
         if (!cancelled) {
           setBackgroundError(null);
+          setSynchronizedThemeKey(themeKey);
           onChangedRef.current?.();
         }
       })
@@ -408,6 +420,15 @@ export function CodeView({
     [active, onHeaderChange],
   );
 
+  const workbenchReady = attachment
+    ? synchronizedThemeKey === `${attachment.attachmentId}\0${appearance}` &&
+      isCodeWorkbenchReady(attachment.runtime, attachment.sessionId)
+    : false;
+  const darkWorkbench = isDarkCodeAppearance(appearance);
+  const workbenchBackdrop = darkWorkbench ? "#000000" : "#ffffff";
+  const workbenchForeground = darkWorkbench ? "#f4f4f5" : "#18181b";
+  const workbenchMuted = darkWorkbench ? "#a1a1aa" : "#71717a";
+
   return (
     <div
       aria-hidden={!active}
@@ -419,12 +440,36 @@ export function CodeView({
           <iframe
             key={attachment.attachmentId}
             allow="clipboard-read; clipboard-write"
-            className="min-h-0 w-full flex-1 border-0 bg-transparent"
+            aria-hidden={!workbenchReady}
+            className={`min-h-0 w-full flex-1 border-0 ${workbenchReady ? "opacity-100" : "pointer-events-none opacity-0"}`}
             referrerPolicy="no-referrer"
             ref={frameRef}
             src={attachment.url}
+            style={{ backgroundColor: workbenchBackdrop }}
             title={`${codeTab.title} — Cantrip Code`}
           />
+          {!workbenchReady ? (
+            <div
+              className="absolute inset-0 z-10 grid place-items-center p-6 text-center"
+              data-slot="code-workbench-startup-cover"
+              style={{
+                backgroundColor: workbenchBackdrop,
+                color: workbenchForeground,
+              }}
+            >
+              <div className="max-w-md">
+                <Loader2 className="mx-auto size-5 animate-spin" />
+                <h2 className="mt-4 font-semibold">Starting Cantrip Code</h2>
+                <p
+                  className="mt-2 text-sm leading-6"
+                  style={{ color: workbenchMuted }}
+                >
+                  Connecting the editor to this worktree and applying your
+                  appearance settings.
+                </p>
+              </div>
+            </div>
+          ) : null}
         </>
       ) : (
         <div className="grid flex-1 place-items-center p-6 text-center">

@@ -4,6 +4,7 @@ import { CantripApiError } from "@/lib/api";
 
 import {
   codeReconnectDelayMs,
+  isDarkCodeAppearance,
   isCodeAttachmentUnavailableMessage,
   isCodeSessionUnavailableError,
   isCodeWorkbenchReady,
@@ -83,5 +84,16 @@ describe("Cantrip Code reconnect delay", () => {
     expect(
       isCodeWorkbenchReady({ ...runtime, bridgeConnected: false }, "session-1"),
     ).toBe(false);
+  });
+
+  it("keeps every dark appearance behind a dark startup surface", () => {
+    expect(isDarkCodeAppearance("dark")).toBe(true);
+    expect(isDarkCodeAppearance("high-contrast-dark")).toBe(true);
+    expect(isDarkCodeAppearance("pro-dark")).toBe(true);
+    expect(isDarkCodeAppearance("pro-high-contrast-dark")).toBe(true);
+    expect(isDarkCodeAppearance("light")).toBe(false);
+    expect(isDarkCodeAppearance("high-contrast-light")).toBe(false);
+    expect(isDarkCodeAppearance("pro-light")).toBe(false);
+    expect(isDarkCodeAppearance("pro-high-contrast-light")).toBe(false);
   });
 });
