@@ -62,6 +62,52 @@ runner's Node.js runtime, builds the Tauri client, and publishes the resulting
 client bundle. A final job creates a GitHub release tagged
 `release-<full-commit-sha>` and uploads every service/client artifact.
 
+### macOS direct-distribution signing
+
+The macOS Client job fails closed unless the repository has these Actions
+secrets:
+
+- `APPLE_CERTIFICATE`: a base64-encoded `.p12` containing a **Developer ID
+  Application** certificate and its private key;
+- `APPLE_CERTIFICATE_PASSWORD`: the password used when exporting that `.p12`;
+  and
+- `KEYCHAIN_PASSWORD`: an arbitrary strong password used only for the
+  job-scoped temporary keychain.
+
+Export the certificate from Keychain Access and encode it with:
+
+```shell
+openssl base64 -A -in DeveloperIDApplication.p12 \
+  -out DeveloperIDApplication.p12.base64
+```
+
+The workflow imports that identity into an ephemeral keychain. Before Tauri
+seals the app, packaging signs every embedded Mach-O executable and native
+module, including the bundled Node and Codex runtimes. Node receives the JIT
+entitlements it needs without the development-only `get-task-allow`
+entitlement. Tauri then signs the Hardened Runtime app and DMG. Packaging
+rejects an ad-hoc signature, the wrong bundle identifier, an enabled App
+Sandbox entitlement, unsigned embedded native code, a missing Node JIT
+entitlement, or an unsigned/corrupt DMG before anything is archived.
+
+For a signed local package, install the Developer ID certificate in the login
+keychain, find its exact identity, and require the same verification:
+
+```shell
+security find-identity -v -p codesigning
+APPLE_SIGNING_IDENTITY='Developer ID Application: Example (TEAMID)' \
+  CANTRIP_REQUIRE_MACOS_SIGNING=1 \
+  pnpm package:app --target darwin-arm64
+```
+
+This milestone intentionally does **not** notarize or staple the build. The
+workflow explicitly removes Apple notarization credentials before invoking
+Tauri. A downloaded build may therefore still require explicit approval in
+System Settings → Privacy & Security. Signing does not enable App Sandbox, and
+the normal installation flow remains dragging Cantrip from the read-only DMG
+into `/Applications`. Notarization is the remaining step for a normal
+first-launch Gatekeeper experience.
+
 From a clean, synchronized `main` checkout, start that workflow with:
 
 ```shell
@@ -255,9 +301,13 @@ cannot leave editor, extension-host, watcher, or terminal processes behind.
 ## Packaged desktop lifecycle
 
 Release builds reserve a free loopback port, start the bundled Server, wait for
-it to accept connections, then start the bundled Worker. Both inherit the
-user's environment so worker-local Git, Ollama, and browser discovery continue
-to work. Codex comes from the bundled Worker rather than the user's `PATH`.
+it to accept connections, then start the bundled Worker. Both preserve the GUI
+launch environment. On macOS, Cantrip also augments `PATH` with standard system,
+Homebrew, MacPorts, and common per-user tool directories because Finder does
+not run interactive shell startup files. This keeps worker-local Git, `gh`,
+Ollama, package managers, and browser discovery available without executing
+`.zshrc` as application startup code. Codex comes from the bundled Worker
+rather than the user's `PATH`.
 Logs and data are written below Tauri's application data directory. The app
 keeps its services alive when the main window is hidden and terminates them
 only when Cantrip actually quits. A single-instance guard reopens the existing
