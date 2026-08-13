@@ -3,6 +3,8 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { createServiceLogger } from "../packages/logging/dist/index.js";
+
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -23,6 +25,7 @@ const composeArguments = [
   "SELECT 1",
 ];
 const serverUrl = "http://127.0.0.1:4320";
+const serverLogger = createServiceLogger("server");
 
 function run(command, arguments_, options = {}) {
   return new Promise((resolve, reject) => {
@@ -81,11 +84,10 @@ delete environment.CANTRIP_SECRET_ENCRYPTION_KEYS;
 delete environment.CANTRIP_ACTIVE_SECRET_ENCRYPTION_KEY_ID;
 delete environment.REDIS_URL;
 
-console.log(
-  `[cantrip_server] Starting account-mode development server at ${serverUrl}`,
-);
-console.log(
-  `[cantrip_server] Add ${serverUrl} through the Cantrip server switcher and create a test account.`,
+serverLogger.info("Starting account-mode development server", { serverUrl });
+serverLogger.info(
+  "Add this server through the Cantrip server switcher and create a test account",
+  { serverUrl },
 );
 
 const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
@@ -100,7 +102,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 }
 
 server.once("error", (error) => {
-  console.error(`[cantrip_server] Could not start: ${error.message}`);
+  serverLogger.error("Could not start account-mode development server", error);
   process.exitCode = 1;
 });
 

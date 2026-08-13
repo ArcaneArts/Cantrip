@@ -12,6 +12,7 @@ import { migrate as migratePostgres } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 
 import type { ServerConfig } from "../config.js";
+import { serverLogger } from "../logger.js";
 import {
   resolveSecretVault,
   type SecretVault,
@@ -50,8 +51,9 @@ async function connectPglite(
       `server-db-corrupt-${new Date().toISOString().replaceAll(":", "-").replaceAll(".", "-")}`,
     );
     await rename(databaseDirectory, backupDirectory);
-    console.warn(
-      `[cantrip_server] PGlite data was unreadable. Preserved it at ${backupDirectory} and created a fresh development database.`,
+    serverLogger.warn(
+      "PGlite data was unreadable; preserved it and created a fresh development database",
+      { backupDirectory },
     );
     return openPglite(databaseDirectory, secretVault);
   }
