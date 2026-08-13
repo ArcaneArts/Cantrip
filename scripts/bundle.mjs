@@ -55,6 +55,11 @@ export async function bundleNativeArtifacts({
   const output = path.join(root, "artifacts", "bundles", target.id);
   await rm(output, { force: true, recursive: true });
 
+  const versionBuild = pnpmCommand(["--filter", "@cantrip/version", "build"]);
+  await run(versionBuild.command, versionBuild.arguments, {
+    cwd: root,
+    label: "Version build",
+  });
   const loggingBuild = pnpmCommand(["--filter", "@cantrip/logging", "build"]);
   await run(loggingBuild.command, loggingBuild.arguments, {
     cwd: root,

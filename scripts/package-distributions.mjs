@@ -156,6 +156,7 @@ async function bundleCantripCode(workerDestination) {
 
 function buildProtocol() {
   if (!skipProtocolBuild) {
+    runPnpm(["--filter", "@cantrip/version", "build"]);
     runPnpm(["--filter", "@cantrip/logging", "build"]);
     runPnpm(["--filter", "@cantrip/protocol", "build"]);
   }

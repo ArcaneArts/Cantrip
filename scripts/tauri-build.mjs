@@ -4,6 +4,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { pnpmCommand } from "./pnpm-command.mjs";
+import { resolveCantripVersion } from "./version.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -16,59 +17,35 @@ function validateMacBundleVersion(value, source) {
   return value;
 }
 
-function gitCommitCount(repositoryRoot) {
-  const result = spawnSync("git", ["rev-list", "--count", "HEAD"], {
-    cwd: repositoryRoot,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  });
-  if (result.error || result.status !== 0) return undefined;
-  return result.stdout.trim() || undefined;
-}
-
 export function resolveMacBundleVersion({
   environment = process.env,
-  repositoryRoot = root,
-  readGitCommitCount = gitCommitCount,
+  version = resolveCantripVersion(),
 } = {}) {
   const override = environment.CANTRIP_APP_BUILD_VERSION?.trim();
   if (override) {
     return validateMacBundleVersion(override, "CANTRIP_APP_BUILD_VERSION");
   }
 
-  const workflowRun = environment.GITHUB_RUN_NUMBER?.trim();
-  if (workflowRun) {
-    return validateMacBundleVersion(workflowRun, "GITHUB_RUN_NUMBER");
-  }
-
-  const commitCount = readGitCommitCount(repositoryRoot);
-  if (commitCount)
-    return validateMacBundleVersion(commitCount, "Git commit count");
-
-  throw new Error(
-    "Unable to determine the macOS bundle version. Set CANTRIP_APP_BUILD_VERSION to a positive integer.",
-  );
+  return validateMacBundleVersion(String(version.patch), "Git commit count");
 }
 
 export function tauriBuildArguments({
   platform = process.platform,
   environment = process.env,
   repositoryRoot = root,
-  readGitCommitCount = gitCommitCount,
+  version = resolveCantripVersion({ root: repositoryRoot }),
   extraArguments = [],
 } = {}) {
   const arguments_ = ["exec", "tauri", "build"];
+  const config = { version: version.version };
   if (platform === "darwin") {
     const bundleVersion = resolveMacBundleVersion({
       environment,
-      repositoryRoot,
-      readGitCommitCount,
+      version,
     });
-    arguments_.push(
-      "--config",
-      JSON.stringify({ bundle: { macOS: { bundleVersion } } }),
-    );
+    config.bundle = { macOS: { bundleVersion } };
   }
+  arguments_.push("--config", JSON.stringify(config));
   arguments_.push(...extraArguments);
   return arguments_;
 }

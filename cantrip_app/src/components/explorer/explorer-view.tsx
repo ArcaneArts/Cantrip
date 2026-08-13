@@ -530,7 +530,7 @@ export function ExplorerView({
     resetSaveFile();
     void persistViewState({
       selectedPath: entry.path,
-      fileMode: defaultExplorerFileMode(entry.path, entry.markdown),
+      fileMode: defaultExplorerFileMode(),
     });
   };
 

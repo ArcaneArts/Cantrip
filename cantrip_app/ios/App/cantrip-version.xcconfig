@@ -1,0 +1,3 @@
+CANTRIP_VERSION = 1.1.0
+CANTRIP_BUILD_NUMBER = 1
+#include? "cantrip-version.generated.xcconfig"
