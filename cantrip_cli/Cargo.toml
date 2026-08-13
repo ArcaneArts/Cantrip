@@ -19,3 +19,6 @@ url = { version = "2.5.7", features = ["serde"] }
 
 [dev-dependencies]
 tempfile = "3.21.0"
+
+[profile.release]
+strip = "symbols"
