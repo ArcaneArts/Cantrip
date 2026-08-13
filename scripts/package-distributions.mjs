@@ -11,6 +11,7 @@ import {
   verifyBuild,
 } from "./cantrip-code/build-lib.mjs";
 import { buildCantripCli, bundleCantripCli } from "./cantrip-cli/build.mjs";
+import { pnpmCommand } from "./pnpm-command.mjs";
 import {
   bundleNodeRuntime,
   writeServiceLaunchers,
@@ -59,7 +60,6 @@ for (let index = 3; index < process.argv.length; index += 1) {
 const packageTarget = normalizeTarget(requestedTarget);
 assertHostTarget(packageTarget);
 
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const platform = packageTarget.id;
 const codexBuild = path.join(root, "cantrip_codex", ".build", platform);
 const artifacts = path.join(root, "artifacts");
@@ -77,7 +77,13 @@ function run(command, args) {
     encoding: "utf8",
     stdio: "inherit",
   });
+  if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
+}
+
+function runPnpm(args) {
+  const invocation = pnpmCommand(args);
+  run(invocation.command, invocation.arguments);
 }
 
 async function requireDirectory(directory, description) {
@@ -94,7 +100,7 @@ async function packageService(name, destination, { standalone = true } = {}) {
   const packageName = `@cantrip/${name}`;
   await rm(destination, { force: true, recursive: true });
   await mkdir(path.dirname(destination), { recursive: true });
-  run(pnpm, [
+  runPnpm([
     "--config.node-linker=hoisted",
     "--filter",
     packageName,
@@ -150,19 +156,19 @@ async function bundleCantripCode(workerDestination) {
 
 function buildProtocol() {
   if (!skipProtocolBuild) {
-    run(pnpm, ["--filter", "@cantrip/version", "build"]);
-    run(pnpm, ["--filter", "@cantrip/logging", "build"]);
-    run(pnpm, ["--filter", "@cantrip/protocol", "build"]);
+    runPnpm(["--filter", "@cantrip/version", "build"]);
+    runPnpm(["--filter", "@cantrip/logging", "build"]);
+    runPnpm(["--filter", "@cantrip/protocol", "build"]);
   }
 }
 
 function buildSelectedServices(selection) {
   buildProtocol();
   if (selection === "server" || selection === "services") {
-    run(pnpm, ["--filter", "@cantrip/server", "build"]);
+    runPnpm(["--filter", "@cantrip/server", "build"]);
   }
   if (selection === "worker" || selection === "services") {
-    run(pnpm, ["--filter", "@cantrip/worker", "build"]);
+    runPnpm(["--filter", "@cantrip/worker", "build"]);
   }
 }
 

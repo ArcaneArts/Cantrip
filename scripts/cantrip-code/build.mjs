@@ -93,7 +93,13 @@ try {
   for (const item of await readPatchSeries()) {
     await run(
       "git",
-      ["apply", "--no-index", "--unsafe-paths", item.patchPath],
+      [
+        "apply",
+        "--no-index",
+        "--unsafe-paths",
+        "--ignore-space-change",
+        item.patchPath,
+      ],
       {
         cwd: source,
         // The prepared source lives below Cantrip's worktree. Stop Git from
@@ -129,7 +135,7 @@ try {
       .join(" ");
   }
   console.log("Installing pinned OpenVSCode build dependencies...");
-  await run(toolchain.npm, ["ci"], {
+  await run(toolchain.node, [toolchain.npmCli, "ci"], {
     cwd: source,
     env: buildEnvironment,
   });
@@ -142,7 +148,7 @@ try {
   ];
   for (const task of tasks) {
     console.log(`Building ${task}...`);
-    await run(toolchain.npm, ["run", "gulp", task], {
+    await run(toolchain.node, [toolchain.npmCli, "run", "gulp", task], {
       cwd: source,
       env: buildEnvironment,
     });

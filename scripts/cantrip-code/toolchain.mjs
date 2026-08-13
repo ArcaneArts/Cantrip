@@ -47,12 +47,15 @@ export async function ensureBuildNode(target) {
     destination,
     target.platform === "win32" ? "node.exe" : "bin/node",
   );
-  const npm = path.join(
+  const npmCli = path.join(
     destination,
-    target.platform === "win32" ? "npm.cmd" : "bin/npm",
+    target.platform === "win32" ? "node_modules" : "lib/node_modules",
+    "npm",
+    "bin",
+    "npm-cli.js",
   );
-  if ((await exists(node)) && (await exists(npm))) {
-    return { version, directory: destination, node, npm };
+  if ((await exists(node)) && (await exists(npmCli))) {
+    return { version, directory: destination, node, npmCli };
   }
 
   const baseUrl = `https://nodejs.org/dist/v${version}`;
@@ -97,7 +100,10 @@ export async function ensureBuildNode(target) {
   } finally {
     await rm(staging, { recursive: true, force: true });
   }
-  return { version, directory: destination, node, npm };
+  if (!(await exists(npmCli))) {
+    throw new Error("Pinned Node archive did not contain the npm CLI");
+  }
+  return { version, directory: destination, node, npmCli };
 }
 
 export function environmentForBuildNode(toolchain, additions = {}) {

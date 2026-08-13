@@ -1,0 +1,45 @@
+name: Native Windows compile
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-windows-compile-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile:
+    name: Windows x64 bundle
+    runs-on: windows-2025
+    timeout-minutes: 300
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v4
+        with:
+          cache: pnpm
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: clippy, rustfmt, rust-src
+      - name: Install native compiler prerequisites
+        shell: pwsh
+        run: |
+          choco install nasm --no-progress --yes
+          nasm -v
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm codex:verify
+      - run: pnpm code:source:verify
+      - run: pnpm bundle
+      - name: List compiled bundles
+        shell: pwsh
+        run: Get-ChildItem -Recurse artifacts/bundles/win32-x64 | Select-Object FullName, Length

@@ -158,7 +158,12 @@ const preparedRootFromRepository = path
 for (const patch of patches) {
   const applied = spawnSync(
     "git",
-    ["apply", `--directory=${preparedRootFromRepository}`, patch.path],
+    [
+      "apply",
+      "--ignore-space-change",
+      `--directory=${preparedRootFromRepository}`,
+      patch.path,
+    ],
     {
       cwd: root,
       encoding: "utf8",
@@ -174,6 +179,7 @@ for (const patch of patches) {
       "apply",
       "--check",
       "--reverse",
+      "--ignore-space-change",
       `--directory=${preparedRootFromRepository}`,
       patch.path,
     ],
