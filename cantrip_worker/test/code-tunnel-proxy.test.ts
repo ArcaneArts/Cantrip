@@ -15,6 +15,7 @@ import { WebSocketServer } from "ws";
 
 import type { CodeSupervisor } from "../src/code/supervisor.js";
 import {
+  codeDiagnosticPath,
   codeEditorTargetUrl,
   CodeTunnelProxy,
 } from "../src/code/tunnel-proxy.js";
@@ -169,6 +170,20 @@ function decodedOutput(
 }
 
 describe("Cantrip Code worker tunnel proxy", () => {
+  it("redacts attachment capabilities from diagnostic paths", () => {
+    const basePath = `/code/${"a".repeat(43)}`;
+
+    expect(
+      codeDiagnosticPath(`${basePath}/?workspace=/private/repo`, basePath),
+    ).toBe("/");
+    expect(
+      codeDiagnosticPath(`${basePath}/stable/workbench.js`, basePath),
+    ).toBe("/stable/workbench.js");
+    expect(codeDiagnosticPath("/code/unrelated/private", basePath)).toBe(
+      "[outside attachment]",
+    );
+  });
+
   it("opens direct attachments as remote workspace paths", () => {
     expect(
       codeEditorTargetUrl(

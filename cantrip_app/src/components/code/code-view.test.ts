@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { CantripApiError } from "@/lib/api";
 
 import {
+  codeAttachmentUrlForLog,
   codeWorkbenchFrameClassName,
   codeReconnectDelayMs,
   isDarkCodeAppearance,
@@ -106,6 +107,20 @@ describe("Cantrip Code reconnect delay", () => {
     expect(covered).not.toContain("hidden");
     expect(codeWorkbenchFrameClassName(true)).not.toContain(
       "pointer-events-none",
+    );
+  });
+
+  it("redacts attachment capabilities from diagnostic URLs", () => {
+    expect(
+      codeAttachmentUrlForLog(
+        "http://127.0.0.1:4311/code/secret-capability/workbench.css?workspace=/private/repo",
+      ),
+    ).toBe("http://127.0.0.1:4311/code/[attachment]/workbench.css");
+    expect(codeAttachmentUrlForLog("http://127.0.0.1:60123/code/")).toBe(
+      "http://127.0.0.1:60123/code/",
+    );
+    expect(codeAttachmentUrlForLog("not a url")).toBe(
+      "[invalid Code attachment URL]",
     );
   });
 });

@@ -20,6 +20,7 @@ import {
 } from "@cantrip/protocol";
 import WebSocket, { type RawData } from "ws";
 
+import { workerLogger } from "../logger.js";
 import type { CodeSupervisor } from "./supervisor.js";
 
 type FrameEmitter = (
@@ -29,6 +30,7 @@ type FrameEmitter = (
 type CapacityWaiter = (attachmentId: string) => Promise<boolean>;
 
 interface BaseStream {
+  diagnosticPath: string;
   destinationToSourceCredit: number;
   flushing: boolean;
   headBytes: Buffer;
@@ -276,6 +278,25 @@ export function codeEditorTargetUrl(
   return target;
 }
 
+export function codeDiagnosticPath(rawPath: string, basePath: string): string {
+  try {
+    const requestUrl = new URL(rawPath, "http://cantrip-surface.invalid");
+    if (
+      requestUrl.pathname !== basePath &&
+      !requestUrl.pathname.startsWith(`${basePath}/`)
+    ) {
+      return "[outside attachment]";
+    }
+    return requestUrl.pathname.slice(basePath.length) || "/";
+  } catch {
+    return "[invalid path]";
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export function codeHeaderValue(
   headers: Array<[string, string]>,
   targetName: string,
@@ -408,6 +429,7 @@ export class CodeTunnelProxy {
       return;
     }
     const stream: OpeningStream = {
+      diagnosticPath: "[pending request head]",
       destinationToSourceCredit: header.initialCreditBytes,
       flushing: false,
       headBytes: Buffer.alloc(0),
@@ -511,6 +533,14 @@ export class CodeTunnelProxy {
         head.basePath,
         proxy.workspaceUri,
       );
+      opening.diagnosticPath = codeDiagnosticPath(head.path, head.basePath);
+      const streamDetails = {
+        codeTabId: proxy.codeTabId,
+        connectionId: opening.header.connectionId,
+        path: opening.diagnosticPath,
+        sessionId: head.sessionId,
+        transport: head.kind,
+      };
       if (head.kind === "http") {
         let stream!: HttpStream;
         const request = requestHttp(
@@ -535,9 +565,19 @@ export class CodeTunnelProxy {
         };
         this.#replace(opening, stream);
         this.supervisor.beginTunnelStream(head.sessionId, key(opening.header));
-        request.once("error", () =>
-          this.#closeStream(stream, "protocol-error"),
-        );
+        if (opening.diagnosticPath === "/") {
+          workerLogger.info("Cantrip Code editor root request opened", {
+            ...streamDetails,
+            method: head.method,
+          });
+        }
+        request.once("error", (error) => {
+          workerLogger.warn("Cantrip Code editor HTTP request failed", {
+            ...streamDetails,
+            error: error.message,
+          });
+          this.#closeStream(stream, "protocol-error");
+        });
         return stream;
       }
       target.protocol = "ws:";
@@ -570,6 +610,10 @@ export class CodeTunnelProxy {
       this.#replace(opening, stream);
       this.supervisor.beginTunnelStream(head.sessionId, key(opening.header));
       socket.once("open", () => {
+        workerLogger.info(
+          "Cantrip Code editor WebSocket opened",
+          streamDetails,
+        );
         this.#queueOutput(
           stream,
           encodeHead({ protocolVersion: 1, kind: "websocket", headers: [] }),
@@ -593,6 +637,11 @@ export class CodeTunnelProxy {
         }
       });
       socket.once("close", (code, reason) => {
+        workerLogger.info("Cantrip Code editor WebSocket closed", {
+          ...streamDetails,
+          code,
+          reason: reason.toString().slice(0, 256),
+        });
         if (!this.#streams.has(key(stream.header))) return;
         const close = Buffer.from(
           JSON.stringify({
@@ -608,9 +657,20 @@ export class CodeTunnelProxy {
           this.#halfCloseOutput(stream),
         );
       });
-      socket.once("error", () => this.#closeStream(stream, "protocol-error"));
+      socket.once("error", (error) => {
+        workerLogger.warn("Cantrip Code editor WebSocket failed", {
+          ...streamDetails,
+          error: error.message,
+        });
+        this.#closeStream(stream, "protocol-error");
+      });
       return stream;
-    } catch {
+    } catch (error) {
+      workerLogger.warn("Cantrip Code tunnel target could not be opened", {
+        connectionId: opening.header.connectionId,
+        error: errorMessage(error),
+        path: opening.diagnosticPath,
+      });
       this.#closeStream(opening, "protocol-error");
       return null;
     }
@@ -625,6 +685,15 @@ export class CodeTunnelProxy {
       return;
     }
     stream.response = response;
+    if (stream.diagnosticPath === "/" || (response.statusCode ?? 500) >= 400) {
+      const log = (response.statusCode ?? 500) >= 400 ? "warn" : "info";
+      workerLogger[log]("Cantrip Code editor HTTP response started", {
+        connectionId: stream.header.connectionId,
+        path: stream.diagnosticPath,
+        sessionId: stream.sessionId,
+        statusCode: response.statusCode ?? 502,
+      });
+    }
     try {
       this.#queueOutput(
         stream,
@@ -645,7 +714,13 @@ export class CodeTunnelProxy {
         if (!this.#streams.has(key(stream.header))) return;
       }
       this.#halfCloseOutput(stream);
-    } catch {
+    } catch (error) {
+      workerLogger.warn("Cantrip Code editor HTTP response failed", {
+        connectionId: stream.header.connectionId,
+        error: errorMessage(error),
+        path: stream.diagnosticPath,
+        sessionId: stream.sessionId,
+      });
       this.#closeStream(stream, "congested");
     }
   }
@@ -680,7 +755,16 @@ export class CodeTunnelProxy {
               ),
             );
             stream.authenticationForwarded = true;
-          } catch {
+          } catch (error) {
+            workerLogger.warn(
+              "Cantrip Code editor WebSocket authentication failed",
+              {
+                connectionId: stream.header.connectionId,
+                error: errorMessage(error),
+                path: stream.diagnosticPath,
+                sessionId: stream.sessionId,
+              },
+            );
             this.#closeStream(stream, "protocol-error");
             return;
           }
@@ -844,6 +928,15 @@ export class CodeTunnelProxy {
     code: Extract<TunnelDataPlaneFrameHeader, { kind: "close" }>["code"],
   ): void {
     if (!this.#remove(stream)) return;
+    if (code !== "normal") {
+      workerLogger.warn("Cantrip Code tunnel stream closed", {
+        code,
+        connectionId: stream.header.connectionId,
+        path: stream.diagnosticPath,
+        sessionId: stream.sessionId,
+        transport: stream.kind,
+      });
+    }
     this.#emit(
       { ...responseBase(stream), kind: "close", code, message: null },
       EMPTY_PAYLOAD,

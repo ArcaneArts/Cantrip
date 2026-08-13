@@ -80,6 +80,27 @@ export function codeWorkbenchFrameClassName(ready: boolean): string {
   return `min-h-0 w-full flex-1 border-0 ${ready ? "" : "pointer-events-none"}`;
 }
 
+export function codeAttachmentUrlForLog(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl);
+    const path = url.pathname.replace(
+      /^\/code\/[A-Za-z0-9_-]+(?=\/|$)/u,
+      "/code/[attachment]",
+    );
+    return `${url.origin}${path}`;
+  } catch {
+    return "[invalid Code attachment URL]";
+  }
+}
+
+function logCodeEvent(
+  level: "error" | "info" | "warn",
+  event: string,
+  details: Record<string, unknown>,
+): void {
+  console[level](`[Cantrip Code] ${event}`, details);
+}
+
 function errorText(error: unknown): string {
   return errorMessage(error, "Cantrip Code could not open.");
 }
@@ -150,19 +171,43 @@ export function CodeView({
       if (cancelled || stopped.current) return;
       setConnecting(true);
       setConnectAttempt(attempt);
+      const startedAt = performance.now();
+      logCodeEvent("info", "attachment request started", {
+        appearance: appearanceRef.current,
+        attempt: attempt + 1,
+        codeTabId: codeTab.id,
+        generation,
+        workerId: codeTab.activeWorkerId,
+        worktreeId: codeTab.worktreeId,
+      });
       try {
         const relayAttachment = await createCodeAttachment(
           codeTab.id,
           appearanceRef.current,
         );
         ownedAttachmentId = relayAttachment.attachmentId;
+        logCodeEvent("info", "relay attachment created", {
+          attachmentId: relayAttachment.attachmentId,
+          bridgeConnected: relayAttachment.runtime.bridgeConnected,
+          elapsedMs: Math.round(performance.now() - startedAt),
+          sessionId: relayAttachment.sessionId,
+          status: relayAttachment.runtime.status,
+          url: codeAttachmentUrlForLog(relayAttachment.url),
+        });
         const preferred = await preferDirectCodeAttachment(
           relayAttachment,
-        ).catch(() => ({
-          attachment: relayAttachment,
-          directHealthUrl: null,
-          directTunnelId: null,
-        }));
+        ).catch((error: unknown) => {
+          logCodeEvent("warn", "direct attachment unavailable; using relay", {
+            attachmentId: relayAttachment.attachmentId,
+            error: errorText(error),
+            sessionId: relayAttachment.sessionId,
+          });
+          return {
+            attachment: relayAttachment,
+            directHealthUrl: null,
+            directTunnelId: null,
+          };
+        });
         const next = preferred.attachment;
         ownedDirectTunnelId = preferred.directTunnelId;
         if (cancelled || generation !== connectionGeneration.current) {
@@ -175,6 +220,13 @@ export function CodeView({
         setConnectError(null);
         setConnecting(false);
         setRetrying(false);
+        logCodeEvent("info", "attachment selected", {
+          attachmentId: next.attachmentId,
+          elapsedMs: Math.round(performance.now() - startedAt),
+          sessionId: next.sessionId,
+          transport: preferred.directTunnelId ? "direct" : "relay",
+          url: codeAttachmentUrlForLog(next.url),
+        });
         onChangedRef.current?.();
         if (preferred.directHealthUrl) {
           let failures = 0;
@@ -187,13 +239,24 @@ export function CodeView({
               if (!response.ok)
                 throw new Error("Direct Code route is unavailable.");
               failures = 0;
-            } catch {
+            } catch (error) {
               failures += 1;
+              logCodeEvent("warn", "direct attachment health check failed", {
+                attachmentId: next.attachmentId,
+                error: errorText(error),
+                failures,
+                sessionId: next.sessionId,
+              });
               if (failures >= 2 && !cancelled) {
                 const tunnelId = ownedDirectTunnelId;
                 ownedDirectTunnelId = null;
                 void stopDirectCodeAttachment(tunnelId);
                 setAttachment(relayAttachment);
+                logCodeEvent("warn", "direct attachment fell back to relay", {
+                  attachmentId: next.attachmentId,
+                  sessionId: next.sessionId,
+                  url: codeAttachmentUrlForLog(relayAttachment.url),
+                });
                 return;
               }
             }
@@ -207,6 +270,13 @@ export function CodeView({
         setConnecting(false);
         const retryable = shouldRetry(error);
         setRetrying(retryable);
+        logCodeEvent("error", "attachment request failed", {
+          attempt: attempt + 1,
+          codeTabId: codeTab.id,
+          elapsedMs: Math.round(performance.now() - startedAt),
+          error: errorText(error),
+          retryable,
+        });
         if (retryable) {
           retryTimer = setTimeout(
             () => void connect(attempt + 1),
@@ -223,6 +293,14 @@ export function CodeView({
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
       if (directHealthTimer) clearTimeout(directHealthTimer);
+      if (ownedAttachmentId) {
+        logCodeEvent("info", "attachment released", {
+          attachmentId: ownedAttachmentId,
+          codeTabId: codeTab.id,
+          directTunnelId: ownedDirectTunnelId,
+          generation,
+        });
+      }
       void stopDirectCodeAttachment(ownedDirectTunnelId);
       if (ownedAttachmentId) {
         void releaseCodeAttachment(ownedAttachmentId).catch(() => undefined);
@@ -251,21 +329,47 @@ export function CodeView({
     if (!attachment) return;
     let cancelled = false;
     const themeKey = `${attachment.attachmentId}\0${appearance}`;
+    const startedAt = performance.now();
+    logCodeEvent("info", "theme synchronization started", {
+      appearance,
+      attachmentId: attachment.attachmentId,
+      codeTabId: codeTab.id,
+      sessionId: attachment.sessionId,
+    });
     void setCodeTabTheme(codeTab.id, "follow-cantrip", appearance)
       .then(() => {
         if (!cancelled) {
           setBackgroundError(null);
           setSynchronizedThemeKey(themeKey);
+          logCodeEvent("info", "theme synchronization completed", {
+            appearance,
+            attachmentId: attachment.attachmentId,
+            elapsedMs: Math.round(performance.now() - startedAt),
+            sessionId: attachment.sessionId,
+          });
           onChangedRef.current?.();
         }
       })
       .catch((error: unknown) => {
         if (cancelled) return;
         if (isCodeSessionUnavailableError(error)) {
+          logCodeEvent("warn", "theme synchronization lost its session", {
+            attachmentId: attachment.attachmentId,
+            elapsedMs: Math.round(performance.now() - startedAt),
+            error: errorText(error),
+            sessionId: attachment.sessionId,
+          });
           setBackgroundError(null);
           reload();
           return;
         }
+        logCodeEvent("error", "theme synchronization failed", {
+          appearance,
+          attachmentId: attachment.attachmentId,
+          elapsedMs: Math.round(performance.now() - startedAt),
+          error: errorText(error),
+          sessionId: attachment.sessionId,
+        });
         setBackgroundError(errorText(error));
       });
     return () => {
@@ -288,24 +392,77 @@ export function CodeView({
     let cancelled = false;
     let pollTimer: ReturnType<typeof setTimeout> | undefined;
     const pollDeadline = Date.now() + CODE_RUNTIME_POLL_WINDOW_MS;
+    let pollCount = 0;
+    let latestRuntime = attachment.runtime;
+    let previousSignature = "";
+    let previousPollError = "";
 
     const pollRuntime = async () => {
+      pollCount += 1;
       try {
         const runtime = await getCodeRuntime(codeTab.id, attachment.sessionId);
         if (cancelled) return;
+        latestRuntime = runtime;
+        const signature = JSON.stringify({
+          bridgeConnected: runtime.bridgeConnected,
+          lastError: runtime.lastError,
+          processInstanceId: runtime.processInstanceId,
+          sessionId: runtime.sessionId,
+          status: runtime.status,
+        });
+        if (signature !== previousSignature) {
+          previousSignature = signature;
+          logCodeEvent("info", "runtime readiness changed", {
+            attachmentId: attachment.attachmentId,
+            bridgeConnected: runtime.bridgeConnected,
+            lastError: runtime.lastError,
+            pollCount,
+            processInstanceId: runtime.processInstanceId,
+            requestedSessionId: attachment.sessionId,
+            runtimeSessionId: runtime.sessionId,
+            status: runtime.status,
+          });
+        }
         if (isCodeWorkbenchReady(runtime, attachment.sessionId)) {
           setAttachment((current) =>
             current?.attachmentId === attachment.attachmentId
               ? { ...current, runtime }
               : current,
           );
+          logCodeEvent("info", "workbench bridge confirmed", {
+            attachmentId: attachment.attachmentId,
+            pollCount,
+            processInstanceId: runtime.processInstanceId,
+            sessionId: attachment.sessionId,
+          });
           return;
         }
-      } catch {
+      } catch (error) {
         if (cancelled) return;
+        const message = errorText(error);
+        if (message !== previousPollError) {
+          previousPollError = message;
+          logCodeEvent("warn", "runtime readiness poll failed", {
+            attachmentId: attachment.attachmentId,
+            error: message,
+            pollCount,
+            sessionId: attachment.sessionId,
+          });
+        }
       }
       if (Date.now() < pollDeadline) {
         pollTimer = setTimeout(pollRuntime, CODE_RUNTIME_POLL_DELAY_MS);
+      } else {
+        logCodeEvent("warn", "workbench readiness deadline expired", {
+          attachmentId: attachment.attachmentId,
+          bridgeConnected: latestRuntime.bridgeConnected,
+          lastError: latestRuntime.lastError,
+          pollCount,
+          processInstanceId: latestRuntime.processInstanceId,
+          requestedSessionId: attachment.sessionId,
+          runtimeSessionId: latestRuntime.sessionId,
+          status: latestRuntime.status,
+        });
       }
     };
 
@@ -454,6 +611,21 @@ export function CodeView({
             src={attachment.url}
             style={{ backgroundColor: workbenchBackdrop }}
             title={`${codeTab.title} — Cantrip Code`}
+            onError={() =>
+              logCodeEvent("error", "workbench frame failed to load", {
+                attachmentId: attachment.attachmentId,
+                sessionId: attachment.sessionId,
+                url: codeAttachmentUrlForLog(attachment.url),
+              })
+            }
+            onLoad={() =>
+              logCodeEvent("info", "workbench frame load event", {
+                attachmentId: attachment.attachmentId,
+                bridgeConnected: attachment.runtime.bridgeConnected,
+                sessionId: attachment.sessionId,
+                url: codeAttachmentUrlForLog(attachment.url),
+              })
+            }
           />
           {!workbenchReady ? (
             <div

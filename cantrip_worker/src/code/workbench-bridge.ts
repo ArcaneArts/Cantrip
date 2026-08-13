@@ -16,6 +16,8 @@ import {
 } from "@cantrip/protocol";
 import WebSocket, { WebSocketServer } from "ws";
 
+import { workerLogger } from "../logger.js";
+
 interface BridgeSession {
   appearance: CodeAppearance;
   dirtyEditors: CodeDirtyEditor[];
@@ -121,7 +123,10 @@ export class CodeWorkbenchBridge {
       let url: URL;
       try {
         url = new URL(request.url ?? "/", "http://127.0.0.1");
-      } catch {
+      } catch (error) {
+        workerLogger.warn("Cantrip Code bridge rejected an invalid upgrade", {
+          error,
+        });
         socket.destroy();
         return;
       }
@@ -130,6 +135,17 @@ export class CodeWorkbenchBridge {
       const session = sessionId ? this.#sessions.get(sessionId) : null;
       const token = url.searchParams.get("token") ?? "";
       if (!sessionId || !session || !secureTokenEqual(session.token, token)) {
+        workerLogger.warn("Cantrip Code bridge rejected an upgrade", {
+          hasSessionId: Boolean(sessionId),
+          hasToken: Boolean(token),
+          path: url.pathname,
+          reason: !sessionId
+            ? "invalid-session-path"
+            : !session
+              ? "unknown-session"
+              : "invalid-token",
+          sessionId,
+        });
         socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
         socket.destroy();
         return;
@@ -153,6 +169,9 @@ export class CodeWorkbenchBridge {
     this.#http = server;
     this.#webSockets = webSockets;
     this.#origin = `ws://127.0.0.1:${address.port}`;
+    workerLogger.info("Cantrip Code workbench bridge is listening", {
+      origin: this.#origin,
+    });
   }
 
   register(
@@ -181,6 +200,11 @@ export class CodeWorkbenchBridge {
       this.#origin,
     );
     url.searchParams.set("token", token);
+    workerLogger.info("Cantrip Code bridge session registered", {
+      appearance,
+      replaced: Boolean(current),
+      sessionId,
+    });
     return url.toString();
   }
 
@@ -193,6 +217,9 @@ export class CodeWorkbenchBridge {
     }
     session.sockets.clear();
     this.#sessions.delete(sessionId);
+    workerLogger.info("Cantrip Code bridge session unregistered", {
+      sessionId,
+    });
   }
 
   connected(sessionId: string): boolean {
@@ -326,12 +353,25 @@ export class CodeWorkbenchBridge {
       .map((socket) =>
         this.#requestOnSocket(session, socket, "setTheme", { appearance }),
       );
-    if (requests.length === 0) return;
+    if (requests.length === 0) {
+      workerLogger.info("Cantrip Code theme saved pending bridge connection", {
+        appearance,
+        sessionId,
+      });
+      return;
+    }
     // The workspace file is the durable theme source. A workbench socket can
     // remain OPEN after its extension host has stopped responding, so theme
     // delivery must converge when a healthy surface reconnects rather than
     // making Code availability depend on an acknowledgement from every view.
-    await Promise.allSettled(requests);
+    const results = await Promise.allSettled(requests);
+    const rejected = results.filter((result) => result.status === "rejected");
+    workerLogger.info("Cantrip Code theme delivered to workbench bridge", {
+      appearance,
+      failedSockets: rejected.length,
+      sessionId,
+      sockets: results.length,
+    });
   }
 
   async notifyExternalFiles(
@@ -400,11 +440,21 @@ export class CodeWorkbenchBridge {
       return;
     }
     session.sockets.add(socket);
+    workerLogger.info("Cantrip Code workbench bridge connected", {
+      sessionId,
+      sockets: session.sockets.size,
+    });
     socket.on("message", (data, isBinary) => {
       if (!isBinary) this.#onMessage(session, socket, data.toString());
     });
-    socket.once("close", () => {
+    socket.once("close", (code, reason) => {
       session.sockets.delete(socket);
+      workerLogger.warn("Cantrip Code workbench bridge disconnected", {
+        code,
+        reason: reason.toString().slice(0, 256),
+        sessionId,
+        sockets: session.sockets.size,
+      });
       this.#rejectPending(
         session,
         "Cantrip workbench bridge disconnected.",
@@ -413,14 +463,23 @@ export class CodeWorkbenchBridge {
     });
     void this.#requestOnSocket(session, socket, "setTheme", {
       appearance: session.appearance,
-    }).catch(() => undefined);
+    }).catch((error) => {
+      workerLogger.warn("Cantrip Code initial bridge theme request failed", {
+        appearance: session.appearance,
+        error,
+        sessionId,
+      });
+    });
   }
 
   #onMessage(session: BridgeSession, socket: WebSocket, raw: string): void {
     let message: BridgeResponse | BridgeState;
     try {
       message = JSON.parse(raw) as BridgeResponse | BridgeState;
-    } catch {
+    } catch (error) {
+      workerLogger.warn("Cantrip Code bridge received invalid JSON", {
+        error,
+      });
       return;
     }
     if (message.type === "state") {
@@ -480,6 +539,10 @@ export class CodeWorkbenchBridge {
         const error = new Error(
           `Cantrip workbench ${method} request timed out.`,
         );
+        workerLogger.warn("Cantrip Code bridge request timed out", {
+          method,
+          sessionId: this.#sessionId(session),
+        });
         reject(error);
         this.#retireSocket(session, socket, error.message);
       }, this.#requestTimeoutMs);
@@ -488,6 +551,11 @@ export class CodeWorkbenchBridge {
         if (!error) return;
         clearTimeout(timer);
         session.pending.delete(id);
+        workerLogger.warn("Cantrip Code bridge request send failed", {
+          error,
+          method,
+          sessionId: this.#sessionId(session),
+        });
         reject(error);
         this.#retireSocket(
           session,
@@ -519,5 +587,12 @@ export class CodeWorkbenchBridge {
       pending.reject(new Error(message));
       session.pending.delete(id);
     }
+  }
+
+  #sessionId(target: BridgeSession): string | null {
+    for (const [sessionId, session] of this.#sessions) {
+      if (session === target) return sessionId;
+    }
+    return null;
   }
 }
