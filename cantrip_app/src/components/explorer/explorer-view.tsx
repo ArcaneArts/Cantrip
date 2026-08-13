@@ -1,4 +1,8 @@
-import type { ExplorerEntry, ExplorerSummary } from "@cantrip/protocol";
+import type {
+  ExplorerEntry,
+  ExplorerSummary,
+  GitStatus,
+} from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   File,
@@ -10,7 +14,7 @@ import {
   Save,
 } from "lucide-react";
 import { Highlight, themes, type Language } from "prism-react-renderer";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 
 import { Markdown } from "@/components/chat/markdown";
 import {
@@ -19,6 +23,10 @@ import {
   monacoModelPath,
   type ExplorerFileMode,
 } from "@/components/explorer/explorer-file-language";
+import {
+  explorerEntryChange,
+  formatExplorerRelativeDate,
+} from "@/components/explorer/explorer-entry-metadata";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -29,6 +37,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   getExplorerDirectory,
+  getExplorerDirectoryCommits,
   getExplorerFile,
   saveExplorerFile,
 } from "@/lib/api";
@@ -37,6 +46,11 @@ import { cn } from "@/lib/utils";
 const MonacoFileEditor = lazy(async () => {
   const module = await import("@/components/explorer/monaco-file-editor");
   return { default: module.MonacoFileEditor };
+});
+
+const fullDateFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
 });
 
 const languageByExtension: Record<string, Language> = {
@@ -147,9 +161,11 @@ export interface ExplorerHeaderState {
 
 export function ExplorerView({
   explorer,
+  gitStatus,
   onHeaderChange,
 }: {
   explorer: ExplorerSummary;
+  gitStatus?: GitStatus;
   onHeaderChange(state: ExplorerHeaderState | null): void;
 }) {
   const [directoryPath, setDirectoryPath] = useState("");
@@ -162,6 +178,17 @@ export function ExplorerView({
   const directory = useQuery({
     queryFn: () => getExplorerDirectory(explorer.id, directoryPath),
     queryKey: ["explorer-directory", explorer.id, directoryPath],
+  });
+  const directoryCommits = useQuery({
+    enabled: directory.isSuccess && gitStatus !== undefined,
+    queryFn: () => getExplorerDirectoryCommits(explorer.id, directoryPath),
+    queryKey: [
+      "explorer-directory-commits",
+      explorer.id,
+      directoryPath,
+      gitStatus?.head,
+    ],
+    retry: false,
   });
   const file = useQuery({
     enabled: Boolean(selectedFile),
@@ -195,12 +222,25 @@ export function ExplorerView({
       setBaselineContent(savedFile.content);
       setDraftVersion(savedFile.version);
       void directory.refetch();
+      void queryClient.invalidateQueries({
+        queryKey: ["worktree-status", explorer.projectId, explorer.worktreeId],
+      });
     },
   });
   const editableLanguage = selectedFile
     ? monacoLanguageForPath(selectedFile)
     : null;
   const dirty = draftVersion !== null && draft !== baselineContent;
+  const commitByPath = useMemo(
+    () =>
+      new Map(
+        (directoryCommits.data?.entries ?? []).map((entry) => [
+          entry.path,
+          entry.lastCommit,
+        ]),
+      ),
+    [directoryCommits.data?.entries],
+  );
 
   useEffect(() => {
     setDirectoryPath("");
@@ -221,12 +261,20 @@ export function ExplorerView({
   useEffect(() => {
     onHeaderChange({
       directoryPath,
-      isFetching: directory.isFetching,
+      isFetching: directory.isFetching || directoryCommits.isFetching,
       refresh: () => {
         void directory.refetch();
+        void directoryCommits.refetch();
       },
     });
-  }, [directory.isFetching, directory.refetch, directoryPath, onHeaderChange]);
+  }, [
+    directory.isFetching,
+    directory.refetch,
+    directoryCommits.isFetching,
+    directoryCommits.refetch,
+    directoryPath,
+    onHeaderChange,
+  ]);
 
   useEffect(() => {
     return () => onHeaderChange(null);
@@ -279,6 +327,11 @@ export function ExplorerView({
         </p>
       ) : (
         <>
+          <div className="flex h-7 items-center border-b px-3 text-[9px] font-medium uppercase tracking-wide text-muted-foreground/70">
+            <span className="min-w-0 flex-1">Name</span>
+            <span className="hidden w-[40%] min-w-0 md:block">Last change</span>
+            <span className="w-16 shrink-0 text-right">Size</span>
+          </div>
           {directoryPath ? (
             <button
               type="button"
@@ -295,6 +348,8 @@ export function ExplorerView({
           ) : null}
           {directory.data?.entries.map((entry) => {
             const Icon = entryIcon(entry);
+            const change = explorerEntryChange(entry, gitStatus);
+            const commit = commitByPath.get(entry.path) ?? null;
             return (
               <button
                 key={entry.path}
@@ -308,17 +363,57 @@ export function ExplorerView({
                 onClick={() => openEntry(entry)}
                 title={
                   entry.viewable || entry.kind === "directory"
-                    ? entry.path
+                    ? [
+                        entry.path,
+                        change?.label,
+                        commit
+                          ? `${commit.subject}\n${commit.hash}\n${commit.authorName}${commit.authorEmail ? ` <${commit.authorEmail}>` : ""}\n${fullDateFormatter.format(new Date(commit.authoredAt))}`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join("\n")
                     : `${entry.path} · Preview unavailable`
                 }
               >
                 <Icon className="size-4 shrink-0" />
                 <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-                {entry.size !== null ? (
-                  <span className="shrink-0 text-[10px] text-muted-foreground/60">
-                    {formatSize(entry.size)}
+                {change ? (
+                  <span
+                    className={cn(
+                      "inline-flex min-w-4 shrink-0 items-center justify-center rounded px-1 font-mono text-[9px] font-semibold",
+                      change.kind === "added" &&
+                        "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
+                      change.kind === "conflict" &&
+                        "bg-destructive/15 text-destructive",
+                      change.kind === "untracked" &&
+                        "bg-amber-500/15 text-amber-600 dark:text-amber-300",
+                      ["modified", "renamed"].includes(change.kind) &&
+                        "bg-blue-500/15 text-blue-600 dark:text-blue-300",
+                      change.kind === "deleted" &&
+                        "bg-destructive/15 text-destructive",
+                    )}
+                    title={change.label}
+                  >
+                    {change.code}
                   </span>
                 ) : null}
+                <span className="hidden w-[40%] min-w-0 items-center gap-2 text-[10px] text-muted-foreground/70 md:flex">
+                  {commit ? (
+                    <>
+                      <span className="min-w-0 flex-1 truncate">
+                        {commit.subject || commit.shortHash}
+                      </span>
+                      <span className="shrink-0">
+                        {formatExplorerRelativeDate(commit.authoredAt)}
+                      </span>
+                    </>
+                  ) : (
+                    <span aria-hidden="true">—</span>
+                  )}
+                </span>
+                <span className="w-16 shrink-0 text-right text-[10px] text-muted-foreground/60">
+                  {entry.size !== null ? formatSize(entry.size) : "—"}
+                </span>
               </button>
             );
           })}

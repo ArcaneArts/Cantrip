@@ -104,6 +104,7 @@ import {
   chatUpdateSchema,
   chatWorktreeUpdateSchema,
   explorerCreateSchema,
+  explorerDirectoryCommitsSchema,
   explorerDirectorySchema,
   explorerFileSchema,
   explorerFileWriteSchema,
@@ -14690,6 +14691,28 @@ export async function buildApp({
         path: request.query.path ?? "",
       });
       return reply.send(explorerDirectorySchema.parse(directory));
+    } catch (error) {
+      const status = workerRequestFailureStatus(error);
+      return reply.code(status).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.get<{
+    Params: { explorerId: string };
+    Querystring: { path?: string };
+  }>("/api/explorers/:explorerId/directory/commits", async (request, reply) => {
+    const context = await repository.getExplorerExecutionContext(
+      applicationOwnerId(),
+      request.params.explorerId,
+    );
+    if (!context) return reply.code(404).send({ error: "Explorer not found." });
+    try {
+      const commits = await bridge.request(context.workerId, {
+        type: "explorer.directory.commits",
+        root: context.root,
+        path: request.query.path ?? "",
+      });
+      return reply.send(explorerDirectoryCommitsSchema.parse(commits));
     } catch (error) {
       const status = workerRequestFailureStatus(error);
       return reply.code(status).send({ error: errorMessage(error) });

@@ -34,6 +34,7 @@ import {
   codeSaveAllResultSchema,
   codeTabSummarySchema,
   explorerDirectorySchema,
+  explorerDirectoryCommitsSchema,
   explorerFileSchema,
   explorerListSchema,
   explorerSummarySchema,
@@ -879,6 +880,25 @@ const workerBridge = {
             },
           ],
           truncated: false,
+        };
+      case "explorer.directory.commits":
+        return {
+          path: command.path,
+          available: true,
+          entries: [
+            {
+              path: "README.md",
+              tracked: true,
+              lastCommit: {
+                hash: "a".repeat(40),
+                shortHash: "aaaaaaa",
+                subject: "Document Explorer",
+                authorName: "Cantrip Test",
+                authorEmail: "cantrip@example.com",
+                authoredAt: "2026-08-07T12:00:00.000Z",
+              },
+            },
+          ],
         };
       case "explorer.file.read":
         return {
@@ -4084,6 +4104,20 @@ describe("local server foundation", () => {
         ).json(),
       ).entries[0],
     ).toMatchObject({ name: "README.md", markdown: true });
+    expect(
+      explorerDirectoryCommitsSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/explorers/${explorer.id}/directory/commits?path=`,
+          })
+        ).json(),
+      ).entries[0],
+    ).toMatchObject({
+      path: "README.md",
+      tracked: true,
+      lastCommit: { subject: "Document Explorer" },
+    });
     expect(
       explorerFileSchema.parse(
         (

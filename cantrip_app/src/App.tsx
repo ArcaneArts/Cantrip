@@ -5492,6 +5492,7 @@ export function App() {
           >
             <ExplorerView
               explorer={selectedExplorer}
+              gitStatus={worktreeStatuses[selectedExplorer.worktreeId]}
               onHeaderChange={setExplorerHeader}
             />
           </Suspense>
