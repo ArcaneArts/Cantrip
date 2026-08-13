@@ -263,7 +263,7 @@ describe("Cantrip Code supervisor", () => {
       ),
     ) as string[];
     expect(launchArguments).toContain("--disable-workspace-trust");
-    expect(launchArguments).toContain("oracle.oracle-java");
+    expect(launchArguments).not.toContain("--disable-extension");
     expect(firstTarget.workspaceUri).toContain(
       path.basename(path.join(dataDirectory, "code")),
     );
