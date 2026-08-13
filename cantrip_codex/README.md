@@ -28,14 +28,22 @@ into `bin/`. The bundle also carries the upstream Apache-2.0 `LICENSE` and
 `NOTICE`, and the Worker verifies every listed executable and notice before it
 starts Codex.
 
-The `0.146.1` tag updated its workspace manifests from development version
-`0.0.0` without updating those same local-package version fields in
-`Cargo.lock`. The build script copies the verified source into its ignored build
-directory and normalizes only those workspace-local versions from Cargo
+Upstream release tags update their workspace manifests from development
+version `0.0.0` without updating those same local-package version fields in
+`Cargo.lock`. The build script copies the verified source into its ignored
+build directory and normalizes only those workspace-local versions from Cargo
 metadata before invoking `cargo build --locked`. Registry and Git dependency
 versions, checksums, and revisions remain exactly as pinned upstream, and the
 tracked source snapshot is never modified. The runtime manifest fingerprints
 the ordered patch set so changing a patch invalidates cached binaries.
+
+Codex 0.147.0 enables Rusty V8's heap sandbox for the code-mode host. Those
+artifacts are published on a separate official OpenAI Codex release rather than
+the upstream Rusty V8 release. The build resolves the pinned `v8` crate version
+and native Rust host target, downloads the same archive and generated binding
+used by Codex's release workflow, verifies both against OpenAI's two-entry
+SHA-256 manifest, and supplies them to Cargo. This preserves the upstream V8
+sandbox without compiling V8 from source on every Cantrip target.
 
 ## Manual upstream update
 

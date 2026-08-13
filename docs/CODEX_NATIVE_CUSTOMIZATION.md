@@ -130,20 +130,20 @@ binary content, and files larger than 1 MB are rejected. `SKILL.md` edits must
 retain non-empty `name` and `description` frontmatter.
 
 External plugin candidates are rejected even when selected. This preserves the
-production plugin stability policy instead of reaching the same unstable
-surface indirectly through import.
+current product boundary instead of reaching plugin operations indirectly
+through import before Cantrip implements and validates them.
 
 ## Deliberate degradation
 
 - Native multi-agent activity uses Codex's `multi_agent` feature and App Server
   events. Cantrip does not synthesize custom subagent semantics.
-- Codex 0.146.1 does not expose a project/personal custom-agent discovery
+- Codex 0.147.0 does not expose a project/personal custom-agent discovery
   method. Cantrip reports that control as unsupported while keeping native
   subagents available.
-- Although 0.146.1 advertises plugin methods, the official App Server contract
-  marks plugin list/read/install/uninstall as under development and says
-  production clients must not call them. Cantrip therefore reports every
-  plugin operation as unavailable instead of invoking an unstable surface.
+- Codex 0.147.0 stabilizes its core plugin list/read/install/uninstall methods,
+  but Cantrip has not yet implemented or payload-validated those product
+  operations. Cantrip therefore continues to report them as unavailable until
+  plugin adoption is completed as a separate feature.
 - Read and mutation methods are gated separately. For example, skills can
   remain inspectable when `skills/config/write` is unavailable. Validated skill
   writes require both list and write methods, while reviewed imports require

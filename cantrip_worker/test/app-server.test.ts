@@ -848,7 +848,7 @@ describe("Codex runtime compatibility enforcement", () => {
         worktreeMode: "agent-managed",
         worktreePolicy: "required-for-writes",
       }),
-    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.146\.0/u);
+    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.147\.0/u);
   });
 
   it("uses the dedicated workflow entry point for unavailable runtimes", async () => {
@@ -891,7 +891,7 @@ describe("Codex runtime compatibility enforcement", () => {
           apiKey: null,
         },
       }),
-    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.146\.0/u);
+    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.147\.0/u);
   });
 });
 
