@@ -1,0 +1,66 @@
+diff --git a/src/vs/workbench/common/notifications.ts b/src/vs/workbench/common/notifications.ts
+--- a/src/vs/workbench/common/notifications.ts
++++ b/src/vs/workbench/common/notifications.ts
+@@ -491,11 +491,13 @@ export class NotificationViewItem extends Disposable implements INotificationVie
+ 		}
+ 
+ 		let priority = notification.priority ?? NotificationPriority.DEFAULT;
+-		if ((priority === NotificationPriority.DEFAULT || priority === NotificationPriority.OPTIONAL) && severity !== Severity.Error) {
+-			if (filter.global === NotificationsFilter.ERROR) {
+-				priority = NotificationPriority.SILENT; // filtered globally
+-			} else if (isNotificationSource(notification.source) && filter.sources.get(notification.source.id) === NotificationsFilter.ERROR) {
+-				priority = NotificationPriority.SILENT; // filtered by source
++		if (priority === NotificationPriority.DEFAULT || priority === NotificationPriority.OPTIONAL) {
++			if (isNotificationSource(notification.source) && filter.sources.get(notification.source.id) === NotificationsFilter.ERROR) {
++				priority = NotificationPriority.SILENT; // explicitly filtered by source, including errors
++			} else if (severity !== Severity.Error && filter.global === NotificationsFilter.ERROR) {
++				// Global do not disturb continues to surface errors. Unlike the global
++				// filter, muting one source is an explicit request to silence it.
++				priority = NotificationPriority.SILENT;
+ 			}
+ 		}
+ 
+diff --git a/src/vs/workbench/services/notification/common/notificationService.ts b/src/vs/workbench/services/notification/common/notificationService.ts
+--- a/src/vs/workbench/services/notification/common/notificationService.ts
++++ b/src/vs/workbench/services/notification/common/notificationService.ts
+@@ -18,6 +18,11 @@ export class NotificationService extends Disposable implements INotificationServ
+ 
+ 	readonly model = this._register(new NotificationsModel());
+ 
++	private static readonly DEFAULT_SOURCE_FILTERS: readonly INotificationSourceFilter[] = [
++		{ id: 'Oracle.oracle-java', label: 'Java', filter: NotificationsFilter.ERROR },
++		{ id: 'vscjava.vscode-gradle', label: 'Gradle for Java', filter: NotificationsFilter.ERROR }
++	];
++
+ 	constructor(
+ 		@IStorageService private readonly storageService: IStorageService
+ 	) {
+@@ -29,6 +34,12 @@ export class NotificationService extends Disposable implements INotificationServ
+ 				map.set(sourceFilter.id, sourceFilter);
+ 			}
+ 
++			for (const sourceFilter of NotificationService.DEFAULT_SOURCE_FILTERS) {
++				if (!map.has(sourceFilter.id)) {
++					map.set(sourceFilter.id, sourceFilter);
++				}
++			}
++
+ 			return map;
+ 		})();
+ 
+diff --git a/src/vs/workbench/test/common/notifications.test.ts b/src/vs/workbench/test/common/notifications.test.ts
+--- a/src/vs/workbench/test/common/notifications.test.ts
++++ b/src/vs/workbench/test/common/notifications.test.ts
+@@ -154,9 +154,11 @@ suite('Notifications', () => {
+ 		const item12 = NotificationViewItem.create({ severity: Severity.Warning, message: 'Error Message', source: { id: 'test.source', label: 'foo' } }, { global: NotificationsFilter.OFF, sources })!;
+ 		assert.strictEqual(item12.priority, NotificationPriority.SILENT);
+ 		const item13 = NotificationViewItem.create({ severity: Severity.Warning, message: 'Error Message', source: { id: 'test.source2', label: 'foo' } }, { global: NotificationsFilter.OFF, sources })!;
+ 		assert.strictEqual(item13.priority, NotificationPriority.DEFAULT);
++		const item14 = NotificationViewItem.create({ severity: Severity.Error, message: 'Error Message', source: { id: 'test.source', label: 'foo' } }, { global: NotificationsFilter.OFF, sources })!;
++		assert.strictEqual(item14.priority, NotificationPriority.SILENT);
+ 
+-		for (const item of [item1, item2, item3, item4, item5, item6, itemId1, itemId2, item7, item8, item9, item10, item11, item12, item13]) {
++		for (const item of [item1, item2, item3, item4, item5, item6, itemId1, itemId2, item7, item8, item9, item10, item11, item12, item13, item14]) {
+ 			item.close();
+ 		}
+ 	});

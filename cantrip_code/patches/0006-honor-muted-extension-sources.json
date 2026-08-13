@@ -1,0 +1,17 @@
+{
+  "id": "0006-honor-muted-extension-sources",
+  "title": "Honor muted Java and Gradle notification sources",
+  "reason": "Cantrip Code runs marketplace Java tooling inside a web workbench where server-side --disable-extension flags are not propagated to the browser environment. Oracle Java and Gradle can emit repeated nested-project import errors, and upstream source filters still surface error-severity notifications. Extensions cannot change the workbench notification model or establish a source filter before their first notification. This patch gives Cantrip's bundled Java sources quiet defaults and makes an explicit per-source mute suppress error popups while retaining them in the notification center.",
+  "upstreamCommit": "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+  "files": [
+    "src/vs/workbench/common/notifications.ts",
+    "src/vs/workbench/services/notification/common/notificationService.ts",
+    "src/vs/workbench/test/common/notifications.test.ts"
+  ],
+  "validation": [
+    "pnpm code:patch -- --source cantrip_code/upstream --check",
+    "pnpm code:build",
+    "Open a Code workspace containing a broken nested Android Gradle project and confirm Java/Gradle errors remain in the notification center without opening popup toasts"
+  ],
+  "removal": "Remove if upstream supports true per-source notification suppression and a product-level default source filter, or if the Java tooling stops importing unrelated nested Android projects."
+}

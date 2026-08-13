@@ -102,9 +102,6 @@ const PROCESS_STOP_TIMEOUT_MS = 2_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60_000;
 const RUNTIME_STATE_SCHEMA_VERSION = 2;
 const PROFILE_BUILD_FINGERPRINT_FILE = ".cantrip-code-build";
-// Oracle Java eagerly imports every nested Gradle project and provides no
-// configuration switch for disabling that startup behavior.
-const DEFAULT_DISABLED_EXTENSIONS = ["oracle.oracle-java"] as const;
 
 const THEME_NAMES: Record<CodeAppearance, string> = {
   light: "Cantrip Light",
@@ -689,9 +686,6 @@ export class CodeSupervisor {
       "--log",
       "warn",
     ];
-    for (const extensionId of DEFAULT_DISABLED_EXTENSIONS) {
-      args.push("--disable-extension", extensionId);
-    }
     const child = spawnGuardedProcess(installation.entrypoint, args, {
       cwd: installation.root,
       env: {
