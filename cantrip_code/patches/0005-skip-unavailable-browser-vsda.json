@@ -1,0 +1,13 @@
+{
+  "id": "0005-skip-unavailable-browser-vsda",
+  "title": "Skip proprietary browser signing assets in OSS builds",
+  "reason": "The pinned OSS workbench does not ship Microsoft's vsda browser module or a server license, but its browser sign service still requests the missing JavaScript and WASM on every workbench bootstrap. Extensions cannot replace this platform sign service. Returning immediately to the existing identity-signing fallback removes repeated 404s and loader stalls without changing licensed builds.",
+  "upstreamCommit": "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+  "files": ["src/vs/platform/sign/browser/signService.ts"],
+  "validation": [
+    "pnpm code:patch -- --source cantrip_code/upstream --check",
+    "pnpm code:build",
+    "Open a packaged Code tab and confirm it makes no requests for vsda.js or vsda_bg.wasm"
+  ],
+  "removal": "Remove if upstream avoids loading vsda without a server license or the Cantrip distribution begins shipping licensed vsda browser assets."
+}

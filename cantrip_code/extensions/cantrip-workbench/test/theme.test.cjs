@@ -3,10 +3,10 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+const { forceColorTheme } = require("../src/theme.js");
 const {
-  forceColorTheme,
   syncConfiguredColorTheme,
-} = require("../src/theme.js");
+} = require("../../cantrip-themes/src/theme.js");
 
 function configuration(workspaceValue) {
   const updates = [];

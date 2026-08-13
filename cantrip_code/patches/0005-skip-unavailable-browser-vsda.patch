@@ -1,0 +1,14 @@
+diff --git a/src/vs/platform/sign/browser/signService.ts b/src/vs/platform/sign/browser/signService.ts
+--- a/src/vs/platform/sign/browser/signService.ts
++++ b/src/vs/platform/sign/browser/signService.ts
+@@ -58,6 +58,10 @@ export class SignService extends AbstractSignService implements ISignService {
+ 
+ 	@memoize
+ 	private async vsda(): Promise<typeof vsda_web> {
++		if (!this.productService.serverLicense?.length) {
++			throw new Error('VSDA is unavailable in this OSS build');
++		}
++
+ 		const checkInterval = new WindowIntervalTimer();
+ 		let [wasm] = await Promise.all([
+ 			this.getWasmBytes(),
