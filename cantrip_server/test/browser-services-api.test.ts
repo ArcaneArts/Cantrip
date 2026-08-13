@@ -6,11 +6,13 @@ import {
   browserServiceFleetDiscoverySchema,
   browserServiceListSchema,
   browserSummarySchema,
+  cantripVersionSchema,
   tunnelAttachmentCreateResultSchema,
   tunnelSummarySchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
 } from "@cantrip/protocol";
+import { cantripVersion } from "@cantrip/version";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "../src/app.js";
@@ -89,6 +91,7 @@ const workerBridge: WorkerCommandBus = {
         workerId: "untrusted-worker-claim",
       }));
     }
+    if (command.type === "worker.version") return cantripVersion;
     throw new Error(`Unexpected worker command ${command.type}.`);
   },
 };
@@ -191,6 +194,29 @@ afterAll(async () => {
 });
 
 describe.sequential("browser service discovery API", () => {
+  it("reports the embedded server and worker versions", async () => {
+    const serverResponse = await app.inject({ method: "GET", url: "/version" });
+    const workerResponse = await app.inject({
+      method: "GET",
+      url: "/api/workers/test-worker/version",
+    });
+    const bootstrapResponse = await app.inject({
+      method: "GET",
+      url: "/api/bootstrap",
+    });
+
+    expect(serverResponse.statusCode).toBe(200);
+    expect(cantripVersionSchema.parse(serverResponse.json())).toEqual(
+      cantripVersion,
+    );
+    expect(workerResponse.statusCode).toBe(200);
+    expect(cantripVersionSchema.parse(workerResponse.json())).toEqual(
+      cantripVersion,
+    );
+    expect(commands.at(-1)).toEqual({ type: "worker.version" });
+    expect(bootstrapResponse.json().server.version).toEqual(cantripVersion);
+  });
+
   it("routes discovery through the browser's owning worker", async () => {
     const response = await app.inject({
       method: "GET",

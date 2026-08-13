@@ -1,5 +1,13 @@
 apply plugin: 'com.android.application'
 
+def cantripVersionProperties = new Properties()
+def cantripVersionFile = rootProject.file('cantrip-version.properties')
+if (cantripVersionFile.exists()) {
+    cantripVersionFile.withInputStream { cantripVersionProperties.load(it) }
+}
+def cantripVersionName = cantripVersionProperties.getProperty('CANTRIP_VERSION_NAME', '1.1.0')
+def cantripVersionCode = cantripVersionProperties.getProperty('CANTRIP_VERSION_CODE', '1').toInteger()
+
 android {
     namespace = "art.cantrip"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +15,8 @@ android {
         applicationId "art.cantrip"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode cantripVersionCode
+        versionName cantripVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

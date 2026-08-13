@@ -1,0 +1,2 @@
+#include? "../debug.xcconfig"
+#include "cantrip-version.xcconfig"

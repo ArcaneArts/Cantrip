@@ -14,19 +14,17 @@ const rootDir = path.resolve(
   "..",
 );
 
-test("prefers explicit and CI macOS build versions", () => {
+const version = { major: 1, minor: 1, patch: 314, version: "1.1.314" };
+
+test("prefers an explicit macOS build number", () => {
   assert.equal(
     resolveMacBundleVersion({
       environment: {
         CANTRIP_APP_BUILD_VERSION: "42.3",
-        GITHUB_RUN_NUMBER: "17",
       },
+      version,
     }),
     "42.3",
-  );
-  assert.equal(
-    resolveMacBundleVersion({ environment: { GITHUB_RUN_NUMBER: "17" } }),
-    "17",
   );
 });
 
@@ -34,7 +32,7 @@ test("uses the Git commit count for local macOS builds", () => {
   assert.equal(
     resolveMacBundleVersion({
       environment: {},
-      readGitCommitCount: () => "314",
+      version,
     }),
     "314",
   );
@@ -45,16 +43,18 @@ test("rejects invalid macOS bundle versions", () => {
     () =>
       resolveMacBundleVersion({
         environment: { CANTRIP_APP_BUILD_VERSION: "0.0.0-dev" },
+        version,
       }),
     /one to three period-separated integers/,
   );
 });
 
-test("adds the macOS bundle version without changing other platforms", () => {
+test("embeds the official version in every Tauri build", () => {
   assert.deepEqual(
     tauriBuildArguments({
       platform: "darwin",
-      environment: { GITHUB_RUN_NUMBER: "29" },
+      environment: {},
+      version,
       extraArguments: ["--debug"],
     }),
     [
@@ -62,14 +62,19 @@ test("adds the macOS bundle version without changing other platforms", () => {
       "tauri",
       "build",
       "--config",
-      JSON.stringify({ bundle: { macOS: { bundleVersion: "29" } } }),
+      JSON.stringify({
+        version: "1.1.314",
+        bundle: { macOS: { bundleVersion: "314" } },
+      }),
       "--debug",
     ],
   );
-  assert.deepEqual(tauriBuildArguments({ platform: "linux" }), [
+  assert.deepEqual(tauriBuildArguments({ platform: "linux", version }), [
     "exec",
     "tauri",
     "build",
+    "--config",
+    JSON.stringify({ version: "1.1.314" }),
   ]);
 });
 

@@ -13,11 +13,13 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "node ../scripts/tauri-build.mjs",
-    "cap:sync": "pnpm build && cap sync",
+    "cap:sync": "node ../scripts/capacitor-sync.mjs",
+    "cap:build:android": "pnpm cap:sync android && cap build android",
+    "cap:build:ios": "pnpm cap:sync ios && cap build ios",
     "cap:add:android": "cap add android",
     "cap:add:ios": "cap add ios",
-    "cap:open:android": "cap open android",
-    "cap:open:ios": "cap open ios"
+    "cap:open:android": "pnpm cap:sync android && cap open android",
+    "cap:open:ios": "pnpm cap:sync ios && cap open ios"
   },
   "dependencies": {
     "@cantrip/protocol": "workspace:*",

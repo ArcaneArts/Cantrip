@@ -34,6 +34,7 @@ import {
   browserTunnelRequestSchema,
   browserUpdateSchema,
   cantripCliCommandResultSchema,
+  cantripVersionSchema,
   codeAttachmentCreateSchema,
   codeAttachmentSchema,
   codeAgentTurnNotificationResultSchema,
@@ -420,6 +421,7 @@ import {
   workflowRepositoryWriteResultSchema,
   workflowWorktreeOutcomeRequestSchema,
 } from "@cantrip/protocol/workflows";
+import { cantripVersion } from "@cantrip/version";
 
 import { resolveCodeSurfaceConfig, type ServerConfig } from "./config.js";
 import {
@@ -2189,6 +2191,7 @@ export async function buildApp({
 
   const publicRoute = (route: string): boolean =>
     route === "/api" ||
+    route === "/version" ||
     route === "/healthz" ||
     route === "/readyz" ||
     route === "/metrics" ||
@@ -5993,6 +5996,12 @@ export async function buildApp({
     },
   );
 
+  app.get("/version", (_request, reply) =>
+    reply
+      .header("cache-control", "public, max-age=300")
+      .send(cantripVersionSchema.parse(cantripVersion)),
+  );
+
   app.get("/api/bootstrap", async (request, reply) => {
     const accountCount =
       config.authMode === "accounts" ? await repository.countAccountUsers() : 0;
@@ -6002,6 +6011,7 @@ export async function buildApp({
         protocolVersion: 1,
         server: {
           id: serverId,
+          version: cantripVersion,
           deploymentMode: config.deploymentMode,
           bootstrapMode: config.bootstrapMode,
         },
@@ -6184,6 +6194,34 @@ export async function buildApp({
     const workers = await repository.listWorkers(principalOwnerId(request));
     return reply.send(workerListSchema.parse(workers));
   });
+
+  app.get<{ Params: { workerId: string } }>(
+    "/api/workers/:workerId/version",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const ownerId = principalOwnerId(request);
+      const worker = await repository.getWorker(
+        ownerId,
+        request.params.workerId,
+      );
+      if (!worker) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
+      if (!bridge.isConnected(request.params.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+      try {
+        const version = await bridge.request(request.params.workerId, {
+          type: "worker.version",
+        });
+        return reply.send(cantripVersionSchema.parse(version));
+      } catch (error) {
+        return reply
+          .code(workerRequestFailureStatus(error))
+          .send({ error: errorMessage(error) });
+      }
+    },
+  );
 
   app.post<{ Params: { workerId: string } }>(
     "/api/workers/:workerId/direct-probe",

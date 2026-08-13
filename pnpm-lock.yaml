@@ -168,6 +168,9 @@ importers:
       "@cantrip/protocol":
         specifier: workspace:*
         version: link:../packages/protocol
+      "@cantrip/version":
+        specifier: workspace:*
+        version: link:../packages/version
       "@electric-sql/pglite":
         specifier: ^0.5.4
         version: 0.5.4
@@ -236,6 +239,9 @@ importers:
       "@cantrip/protocol":
         specifier: workspace:*
         version: link:../packages/protocol
+      "@cantrip/version":
+        specifier: workspace:*
+        version: link:../packages/version
       "@zavora-ai/computer-use-mcp":
         specifier: 7.0.0
         version: 7.0.0(supports-color@10.2.2)
@@ -272,6 +278,8 @@ importers:
       zod:
         specifier: ^4.4.3
         version: 4.4.3
+
+  packages/version: {}
 
 packages:
   "@babel/code-frame@7.29.7":
@@ -3305,7 +3313,6 @@ packages:
         integrity: sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==,
       }
     engines: { node: ">=14.6" }
-
   "@xterm/addon-fit@0.11.0":
     resolution:
       {
