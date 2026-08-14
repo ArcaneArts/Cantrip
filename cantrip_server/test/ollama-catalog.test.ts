@@ -141,6 +141,36 @@ describe("Ollama catalog", () => {
         }),
         expect.objectContaining({ name: "qwen3:8b", discovery_managed: true }),
       ]);
+      const gemmaProfile = profiles.rows.find(
+        ({ name }) => name === "gemma4:12b",
+      );
+      expect(
+        await repository.getModelRuntime(LOCAL_USER_ID, gemmaProfile!.id),
+      ).toMatchObject({
+        model: {
+          providerModelId: expect.any(String),
+          catalog: {
+            nativeModelId: "gemma4:12b",
+            contextWindow: 131_072,
+            supportsTools: true,
+            supportsVision: true,
+          },
+        },
+      });
+      await client.exec(`
+        UPDATE model_routes SET provider_model_id = NULL
+        WHERE model_id = '${gemmaProfile!.id}'
+      `);
+      await service.getProviderCatalog(
+        LOCAL_USER_ID,
+        provider.id,
+        "worker-1",
+        true,
+      );
+      expect(
+        (await repository.getModelRuntime(LOCAL_USER_ID, gemmaProfile!.id))
+          ?.model.providerModelId,
+      ).toEqual(expect.any(String));
 
       inventory = [gemma];
       catalog = await service.getProviderCatalog(
@@ -154,9 +184,6 @@ describe("Ollama catalog", () => {
         catalog?.availability.filter(({ state }) => state === "unavailable"),
       ).toHaveLength(1);
 
-      const gemmaProfile = profiles.rows.find(
-        ({ name }) => name === "gemma4:12b",
-      );
       expect(
         await repository.deleteModelProfile(LOCAL_USER_ID, gemmaProfile!.id),
       ).toBe(true);
@@ -176,7 +203,7 @@ describe("Ollama catalog", () => {
         ORDER BY name
       `);
       expect(profiles.rows.map(({ name }) => name)).toEqual(["qwen3:8b"]);
-      expect(commands).toHaveLength(3);
+      expect(commands).toHaveLength(4);
       expect(commands[0]).toMatchObject({
         type: "model.ollama.catalog",
         baseUrl: "http://127.0.0.1:11434/v1",

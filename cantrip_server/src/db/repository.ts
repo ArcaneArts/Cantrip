@@ -467,6 +467,7 @@ export interface ModelRuntime {
     name: string;
     reasoningEffort: ModelProfileSummary["reasoningEffort"];
     providerModelId: string | null;
+    catalog: ProviderModelCatalogEntry | null;
   };
   provider: {
     id: string;
@@ -3295,6 +3296,20 @@ export class ServerRepository {
         .where(eq(schema.providerModels.providerId, providerId));
       if (providerModelRows.length === 0) return;
 
+      for (const model of providerModelRows) {
+        if (!input.availableNativeModelIds.has(model.nativeModelId)) continue;
+        await transaction
+          .update(schema.modelRoutes)
+          .set({ providerModelId: model.id, updatedAt: now })
+          .where(
+            and(
+              eq(schema.modelRoutes.providerId, providerId),
+              eq(schema.modelRoutes.modelName, model.nativeModelId),
+              isNull(schema.modelRoutes.providerModelId),
+            ),
+          );
+      }
+
       await transaction
         .insert(schema.providerModelAvailability)
         .values(
@@ -3714,6 +3729,7 @@ export class ServerRepository {
         model: schema.modelProfiles,
         route: schema.modelRoutes,
         provider: schema.modelProviders,
+        providerModel: schema.providerModels,
       })
       .from(schema.modelProfiles)
       .innerJoin(
@@ -3725,6 +3741,22 @@ export class ServerRepository {
         and(
           eq(schema.modelProviders.id, schema.modelRoutes.providerId),
           eq(schema.modelProviders.ownerId, ownerId),
+        ),
+      )
+      .leftJoin(
+        schema.providerModels,
+        and(
+          eq(schema.providerModels.providerId, schema.modelRoutes.providerId),
+          or(
+            eq(schema.providerModels.id, schema.modelRoutes.providerModelId),
+            and(
+              isNull(schema.modelRoutes.providerModelId),
+              eq(
+                schema.providerModels.nativeModelId,
+                schema.modelRoutes.modelName,
+              ),
+            ),
+          ),
         ),
       )
       .where(
@@ -3745,7 +3777,11 @@ export class ServerRepository {
         name: row.route.modelName,
         reasoningEffort: (row.route.reasoningEffort ??
           row.model.reasoningEffort) as ModelProfileSummary["reasoningEffort"],
-        providerModelId: row.route.providerModelId,
+        providerModelId:
+          row.route.providerModelId ?? row.providerModel?.id ?? null,
+        catalog: row.providerModel
+          ? toProviderModelCatalogEntry(row.providerModel)
+          : null,
       },
       provider: {
         id: row.provider.id,
