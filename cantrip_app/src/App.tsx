@@ -22,6 +22,7 @@ import type {
   ProjectViewKind,
   ProjectViewSummary,
   QueuedPrompt,
+  ReasoningEffort,
   RemoteDesktopTarget,
   SettingsBundle,
   SkillSummary,
@@ -213,6 +214,7 @@ import {
   getChatGoal,
   getChatPlan,
   getChatPermissionProfiles,
+  getChatReasoning,
   getChatRelocations,
   getBrowsers,
   getCodeTabs,
@@ -258,6 +260,7 @@ import {
   updateChatModel,
   updateChatGoal,
   updateChatPermissionProfile,
+  updateChatReasoning,
   updateChatWorktree,
   updateBrowser,
   updateCodeTab,
@@ -921,6 +924,8 @@ function ChatTranscript({
   );
   const [draft, setDraft] = useState("");
   const [composerMode, setComposerMode] = useState<ChatTurnMode>("default");
+  const [composerReasoningEffort, setComposerReasoningEffort] =
+    useState<ReasoningEffort | null>(chat.reasoningEffort);
   const [editingPrompt, setEditingPrompt] = useState<{
     id: string;
     frozen: boolean;
@@ -1008,6 +1013,13 @@ function ChatTranscript({
   const permissionProfiles = useQuery({
     queryFn: () => getChatPermissionProfiles(chat.id),
     queryKey: ["permission-profiles", chat.id, selectedModelId],
+    retry: false,
+    staleTime: 30_000,
+  });
+  const reasoningState = useQuery({
+    enabled: Boolean(selectedModelId),
+    queryFn: () => getChatReasoning(chat.id),
+    queryKey: ["chat-reasoning", chat.id, selectedModelId],
     retry: false,
     staleTime: 30_000,
   });
@@ -1201,12 +1213,22 @@ function ChatTranscript({
     mutationFn: ({
       attachmentIds,
       mode,
+      reasoningEffort,
       text,
     }: {
       attachmentIds: string[];
       mode: ChatTurnMode;
+      reasoningEffort: ReasoningEffort | null;
       text: string;
-    }) => startTurn(chat.id, text, selectedModelId, attachmentIds, mode),
+    }) =>
+      startTurn(
+        chat.id,
+        text,
+        selectedModelId,
+        attachmentIds,
+        mode,
+        reasoningEffort,
+      ),
     onSuccess: async () => {
       setDraft("");
       setComposerMode("default");
@@ -1230,6 +1252,7 @@ function ChatTranscript({
         attachmentIds?: string[];
         text?: string;
         mode?: ChatTurnMode;
+        reasoningEffort?: ReasoningEffort | null;
         frozen?: boolean;
       };
     }) => updateQueuedPrompt(id, input),
@@ -1262,10 +1285,32 @@ function ChatTranscript({
   });
   const selectModel = useMutation({
     mutationFn: (modelId: string) => updateChatModel(chat.id, modelId),
-    onSuccess: async () => {
+    onSuccess: async (updated) => {
+      setComposerReasoningEffort(updated.reasoningEffort);
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["chats", chat.projectId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["chat-reasoning", chat.id],
+        }),
+      ]);
+    },
+  });
+  const selectReasoning = useMutation({
+    mutationFn: (reasoningEffort: ReasoningEffort | null) =>
+      updateChatReasoning(chat.id, reasoningEffort),
+    onMutate: (reasoningEffort) => {
+      setComposerReasoningEffort(reasoningEffort);
+    },
+    onSuccess: async (state) => {
+      setComposerReasoningEffort(state.reasoningEffort);
       await queryClient.invalidateQueries({
         queryKey: ["chats", chat.projectId],
       });
+    },
+    onError: () => {
+      setComposerReasoningEffort(chat.reasoningEffort);
     },
   });
   const fork = useMutation({
@@ -1382,6 +1427,18 @@ function ChatTranscript({
   }, [slashQuery]);
 
   useEffect(() => {
+    if (!editingPrompt) {
+      setComposerReasoningEffort(chat.reasoningEffort);
+    }
+  }, [chat.id, chat.reasoningEffort, editingPrompt]);
+
+  useEffect(() => {
+    if (!editingPrompt && reasoningState.data) {
+      setComposerReasoningEffort(reasoningState.data.reasoningEffort);
+    }
+  }, [editingPrompt, reasoningState.data]);
+
+  useEffect(() => {
     setSelectedSkillIndex(0);
   }, [skillMention?.query]);
 
@@ -1413,6 +1470,7 @@ function ChatTranscript({
       !selectedModelId ||
       send.isPending ||
       selectModel.isPending ||
+      selectReasoning.isPending ||
       updatePrompt.isPending ||
       draftAttachments.some(({ error, uploading }) => error || uploading)
     ) {
@@ -1425,6 +1483,7 @@ function ChatTranscript({
           input: {
             text,
             mode: composerMode,
+            reasoningEffort: composerReasoningEffort,
             attachmentIds: readyAttachments.map(
               ({ attachment }) => attachment.id,
             ),
@@ -1436,6 +1495,7 @@ function ChatTranscript({
             setEditingPrompt(null);
             setDraft("");
             setComposerMode("default");
+            setComposerReasoningEffort(chat.reasoningEffort);
             clearDraftAttachments();
           },
         },
@@ -1445,6 +1505,7 @@ function ChatTranscript({
     send.mutate({
       text,
       mode: composerMode,
+      reasoningEffort: composerReasoningEffort,
       attachmentIds: readyAttachments.map(({ attachment }) => attachment.id),
     });
   };
@@ -1496,7 +1557,12 @@ function ChatTranscript({
       };
       const prompt = prompts[name];
       if (prompt) {
-        send.mutate({ text: prompt, attachmentIds: [], mode: composerMode });
+        send.mutate({
+          text: prompt,
+          attachmentIds: [],
+          mode: composerMode,
+          reasoningEffort: composerReasoningEffort,
+        });
       }
     }
   };
@@ -1900,6 +1966,7 @@ function ChatTranscript({
               setEditingPrompt({ id: prompt.id, frozen: prompt.frozen });
               setDraft(prompt.text);
               setComposerMode(prompt.mode);
+              setComposerReasoningEffort(prompt.reasoningEffort);
               clearDraftAttachments();
               setDraftAttachments(
                 prompt.attachments.map((attachment) => ({
@@ -2209,9 +2276,40 @@ function ChatTranscript({
                   {(settings?.models ?? []).map((model) => (
                     <option key={model.id} value={model.id}>
                       {modelDisplayName(model)}
-                      {model.reasoningEffort
-                        ? ` (${model.reasoningEffort})`
-                        : ""}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Reasoning effort"
+                  value={composerReasoningEffort ?? ""}
+                  disabled={
+                    relocationActive ||
+                    reasoningState.isLoading ||
+                    selectReasoning.isPending
+                  }
+                  title={
+                    reasoningState.data?.incompleteMetadata
+                      ? "Some provider routes have incomplete reasoning metadata"
+                      : "Reasoning effort for the next message"
+                  }
+                  onChange={(event) => {
+                    const reasoningEffort = event.target.value || null;
+                    setComposerReasoningEffort(reasoningEffort);
+                    if (!editingPrompt) {
+                      selectReasoning.mutate(reasoningEffort);
+                    }
+                  }}
+                  className="min-w-0 max-w-48 truncate rounded-md bg-transparent px-1 py-1 text-xs font-medium outline-none disabled:cursor-not-allowed"
+                >
+                  <option value="">
+                    Reasoning: Default
+                    {reasoningState.data?.reasoningMandatory
+                      ? " (required)"
+                      : ""}
+                  </option>
+                  {(reasoningState.data?.options ?? []).map((option) => (
+                    <option key={option.effort} value={option.effort}>
+                      Reasoning: {option.effort}
                     </option>
                   ))}
                 </select>
@@ -2291,6 +2389,7 @@ function ChatTranscript({
                 !selectedModelId ||
                 send.isPending ||
                 selectModel.isPending ||
+                selectReasoning.isPending ||
                 updatePrompt.isPending
               }
             >
@@ -2330,6 +2429,7 @@ function ChatTranscript({
           ) : null}
           {send.isError ||
           selectModel.isError ||
+          selectReasoning.isError ||
           compact.isError ||
           updatePrompt.isError ||
           removePrompt.isError ||
@@ -2341,6 +2441,7 @@ function ChatTranscript({
               {errorText(
                 send.error ??
                   selectModel.error ??
+                  selectReasoning.error ??
                   compact.error ??
                   updatePrompt.error ??
                   removePrompt.error ??

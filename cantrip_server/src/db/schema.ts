@@ -1378,6 +1378,7 @@ export const chats = pgTable("chats", {
   modelId: text("model_id").references(() => modelProfiles.id, {
     onDelete: "restrict",
   }),
+  reasoningEffort: text("reasoning_effort"),
   permissionProfileId: text("permission_profile_id"),
   automationPaused: boolean("automation_paused").notNull().default(false),
   planMode: text("plan_mode").notNull().default("default"),
@@ -1768,6 +1769,9 @@ export const chatMessages = pgTable(
     }),
     providerName: text("provider_name"),
     providerModelName: text("provider_model_name"),
+    reasoningEffort: text("reasoning_effort"),
+    appliedReasoningEffort: text("applied_reasoning_effort"),
+    reasoningAdjusted: boolean("reasoning_adjusted").notNull().default(false),
     idempotencyKey: text("idempotency_key"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -2072,6 +2076,7 @@ export const queuedPrompts = pgTable(
     modelId: text("model_id")
       .notNull()
       .references(() => modelProfiles.id, { onDelete: "restrict" }),
+    reasoningEffort: text("reasoning_effort"),
     worktreeId: text("worktree_id").references(() => projectWorktrees.id, {
       onDelete: "restrict",
     }),
@@ -2164,6 +2169,7 @@ export const projectAutomationRuns = pgTable(
       withTimezone: true,
     }).notNull(),
     attemptCount: integer("attempt_count").notNull().default(1),
+    reasoningEffort: text("reasoning_effort"),
     errorMessage: text("error_message"),
     claimedAt: timestamp("claimed_at", { withTimezone: true })
       .notNull()

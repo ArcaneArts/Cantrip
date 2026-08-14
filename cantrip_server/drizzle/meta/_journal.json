@@ -519,6 +519,13 @@
       "when": 1786738549669,
       "tag": "0073_friendly_vin_gonzales",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1786742269713,
+      "tag": "0074_condemned_grandmaster",
+      "breakpoints": true
     }
   ]
 }

@@ -112,6 +112,7 @@ function chatSurface(status: ChatSummary["status"]): ProjectSurface {
     placementRevision: 1,
     worktreeMode: "pinned",
     modelId: null,
+    reasoningEffort: null,
     permissionProfileId: null,
     planMode: "default",
     hasPendingPlanQuestion: false,

@@ -4,7 +4,6 @@ import type {
   ModelProviderKind,
   ModelProviderSummary,
   ModelRouteInput,
-  ReasoningEffort,
   ThemePreference,
   UserSettings,
   TunnelSummary,
@@ -76,15 +75,6 @@ import { WorkspaceSettings } from "./workspace-settings";
 import { SkillsSettings } from "./skills-settings";
 import { WorkerSettings } from "./worker-settings";
 import { TunnelSettings } from "./tunnel-settings";
-
-const reasoningOptions: Array<ReasoningEffort | ""> = [
-  "",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-];
 
 export type SettingsSection =
   | "general"
@@ -162,7 +152,6 @@ function newEditableRoute(providerId: string, modelName = ""): EditableRoute {
     key: crypto.randomUUID(),
     providerId,
     modelName,
-    reasoningEffort: null,
     enabled: true,
   };
 }
@@ -311,9 +300,6 @@ export function SettingsPage({
     null,
   );
   const [modelName, setModelName] = useState("");
-  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | "">(
-    "",
-  );
   const [modelRoutes, setModelRoutes] = useState<EditableRoute[]>([]);
   const chatGptProvider =
     editingProvider?.kind === "chatgpt" ? editingProvider : null;
@@ -386,8 +372,9 @@ export function SettingsPage({
     mutationFn: async () => {
       const input = {
         name: modelName,
-        reasoningEffort: reasoningEffort || null,
-        routes: modelRoutes.map(({ key: _key, ...route }) => route),
+        routes: modelRoutes.map(
+          ({ key: _key, reasoningEffort: _legacyReasoning, ...route }) => route,
+        ),
       };
       return editingModel
         ? updateModelProfile(editingModel.id, input)
@@ -445,7 +432,6 @@ export function SettingsPage({
     saveModel.reset();
     setEditingModel(model);
     setModelName(model?.name ?? "");
-    setReasoningEffort(model?.reasoningEffort ?? "");
     setModelRoutes(
       model
         ? model.routes.map((route) => ({ ...route, key: route.id }))
@@ -505,7 +491,7 @@ export function SettingsPage({
     !modelSearch ||
     matchesSearch(
       modelSearch,
-      "models model default reasoning effort provider routes priority failover new agents",
+      "models model default provider routes priority failover new agents",
     );
   const visibleModels = modelSectionMatches
     ? models
@@ -513,7 +499,6 @@ export function SettingsPage({
         matchesSearch(
           modelSearch,
           model.name,
-          model.reasoningEffort,
           ...model.routes.flatMap((route) => [
             route.providerName,
             route.modelName,
@@ -1370,23 +1355,6 @@ export function SettingsPage({
                   placeholder="GPT-5.6 Sol"
                 />
               </Field>
-              <Field label="Default reasoning effort">
-                <select
-                  value={reasoningEffort}
-                  onChange={(event) =>
-                    setReasoningEffort(
-                      event.target.value as ReasoningEffort | "",
-                    )
-                  }
-                  className={inputClass}
-                >
-                  {reasoningOptions.map((effort) => (
-                    <option key={effort || "default"} value={effort}>
-                      {effort || "Provider default"}
-                    </option>
-                  ))}
-                </select>
-              </Field>
               <div className="grid gap-2">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -1415,18 +1383,17 @@ export function SettingsPage({
                   </Button>
                 </div>
                 <div className="divide-y overflow-hidden border-y">
-                  <div className="hidden grid-cols-[5rem_minmax(0,0.9fr)_minmax(0,1.15fr)_minmax(0,1fr)_auto] items-center gap-2 px-2 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
+                  <div className="hidden grid-cols-[5rem_minmax(0,0.9fr)_minmax(0,1.4fr)_auto] items-center gap-2 px-2 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
                     <span>Priority</span>
                     <span>Provider</span>
                     <span>Provider model</span>
-                    <span>Reasoning</span>
                     <span className="pr-1 text-right">Status &amp; order</span>
                   </div>
                   {modelRoutes.map((route, index) => (
                     <div
                       key={route.key}
                       data-high-contrast-row
-                      className="grid min-w-0 gap-2 px-2 py-2 even:bg-muted/20 sm:grid-cols-[5rem_minmax(0,0.9fr)_minmax(0,1.15fr)_minmax(0,1fr)_auto] sm:items-center"
+                      className="grid min-w-0 gap-2 px-2 py-2 even:bg-muted/20 sm:grid-cols-[5rem_minmax(0,0.9fr)_minmax(0,1.4fr)_auto] sm:items-center"
                     >
                       <div className="flex min-w-0 items-center gap-1.5">
                         <Route className="size-3.5 shrink-0 text-muted-foreground" />
@@ -1484,35 +1451,6 @@ export function SettingsPage({
                           className="h-8 min-w-0 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2"
                           placeholder="openai/gpt-5.6-sol"
                         />
-                      </label>
-                      <label className="grid min-w-0 gap-1 text-xs">
-                        <span className="font-medium text-muted-foreground sm:sr-only">
-                          Reasoning override
-                        </span>
-                        <select
-                          value={route.reasoningEffort ?? ""}
-                          onChange={(event) =>
-                            setModelRoutes((routes) =>
-                              routes.map((candidate) =>
-                                candidate.key === route.key
-                                  ? {
-                                      ...candidate,
-                                      reasoningEffort:
-                                        (event.target
-                                          .value as ReasoningEffort) || null,
-                                    }
-                                  : candidate,
-                              ),
-                            )
-                          }
-                          className="h-8 min-w-0 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2"
-                        >
-                          {reasoningOptions.map((effort) => (
-                            <option key={effort || "inherit"} value={effort}>
-                              {effort || "Use model default"}
-                            </option>
-                          ))}
-                        </select>
                       </label>
                       <div className="flex items-center justify-end gap-0.5">
                         <label className="mr-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">

@@ -2650,6 +2650,7 @@ export const chatSummarySchema = z.object({
   placementRevision: z.number().int().positive().default(1),
   worktreeMode: z.enum(["agent-managed", "pinned"]),
   modelId: z.string().min(1).nullable(),
+  reasoningEffort: reasoningEffortSchema.nullable().default(null),
   permissionProfileId: z.string().min(1).max(200).nullable(),
   planMode: z.enum(["default", "plan"]),
   hasPendingPlanQuestion: z.boolean(),
@@ -4216,6 +4217,7 @@ export const chatMessageCreateSchema = z.object({
   role: chatMessageRoleSchema,
   content: chatMessageContentSchema.min(1),
   mode: chatTurnModeSchema.optional(),
+  reasoningEffort: reasoningEffortSchema.nullable().optional(),
   idempotencyKey: z.string().min(1).max(200).optional(),
 });
 
@@ -4228,11 +4230,14 @@ export const chatMessageSchema = chatMessageCreateSchema
     executionLaneId: z.string().min(1).nullable(),
     sequence: z.number().int().positive(),
     mode: chatTurnModeSchema.default("default"),
+    reasoningEffort: reasoningEffortSchema.nullable().default(null),
     modelId: z.string().min(1).nullable(),
     modelRouteId: z.string().min(1).nullable(),
     providerId: z.string().min(1).nullable(),
     providerName: z.string().min(1).nullable(),
     providerModelName: z.string().min(1).nullable(),
+    appliedReasoningEffort: reasoningEffortSchema.nullable().default(null),
+    reasoningAdjusted: z.boolean().default(false),
     createdAt: z.string().datetime(),
   });
 
@@ -4282,6 +4287,7 @@ export const chatRelocationContextMessageSchema = z.object({
   sequence: z.number().int().positive(),
   role: chatMessageRoleSchema,
   mode: chatTurnModeSchema,
+  reasoningEffort: reasoningEffortSchema.nullable().default(null),
   content: chatMessageContentSchema,
   createdAt: z.string().datetime(),
 });
@@ -4762,6 +4768,7 @@ export const chatTurnCreateSchema = z
     mode: chatTurnModeSchema.default("default"),
     idempotencyKey: z.string().min(1).max(200),
     modelId: z.string().min(1).optional(),
+    reasoningEffort: reasoningEffortSchema.nullable().optional(),
   })
   .refine(
     ({ attachmentIds, text }) => text.length > 0 || attachmentIds.length > 0,
@@ -4778,6 +4785,7 @@ export const queuedPromptSchema = z.object({
   attachments: chatAttachmentListSchema.default([]),
   mode: chatTurnModeSchema.default("default"),
   modelId: z.string().min(1),
+  reasoningEffort: reasoningEffortSchema.nullable().default(null),
   worktreeId: z.string().min(1).nullable(),
   position: z.number().int().nonnegative(),
   frozen: z.boolean(),
@@ -4797,6 +4805,7 @@ export const queuedPromptUpdateSchema = z
     text: z.string().trim().max(100_000).optional(),
     attachmentIds: z.array(z.string().min(1)).max(20).optional(),
     mode: chatTurnModeSchema.optional(),
+    reasoningEffort: reasoningEffortSchema.nullable().optional(),
     frozen: z.boolean().optional(),
   })
   .refine(
@@ -4804,6 +4813,7 @@ export const queuedPromptUpdateSchema = z
       value.text !== undefined ||
       value.attachmentIds !== undefined ||
       value.mode !== undefined ||
+      value.reasoningEffort !== undefined ||
       value.frozen !== undefined,
     { message: "At least one queued prompt field is required." },
   );
@@ -4814,6 +4824,20 @@ export const queuedPromptOrderSchema = z.object({
 
 export const chatModelUpdateSchema = z.object({
   modelId: z.string().min(1),
+});
+
+export const chatReasoningOptionSchema = modelReasoningEffortOptionSchema;
+
+export const chatReasoningStateSchema = z.object({
+  modelId: z.string().min(1),
+  reasoningEffort: reasoningEffortSchema.nullable(),
+  options: z.array(chatReasoningOptionSchema).max(32),
+  reasoningMandatory: z.boolean(),
+  incompleteMetadata: z.boolean(),
+});
+
+export const chatReasoningUpdateSchema = z.object({
+  reasoningEffort: reasoningEffortSchema.nullable(),
 });
 
 export const chatTurnAcceptedSchema = z.object({
@@ -8847,6 +8871,9 @@ export type QueuedPromptCreate = z.infer<typeof queuedPromptCreateSchema>;
 export type QueuedPromptUpdate = z.infer<typeof queuedPromptUpdateSchema>;
 export type QueuedPromptOrder = z.infer<typeof queuedPromptOrderSchema>;
 export type ChatModelUpdate = z.infer<typeof chatModelUpdateSchema>;
+export type ChatReasoningOption = z.infer<typeof chatReasoningOptionSchema>;
+export type ChatReasoningState = z.infer<typeof chatReasoningStateSchema>;
+export type ChatReasoningUpdate = z.infer<typeof chatReasoningUpdateSchema>;
 export type ChatCompactAccepted = z.infer<typeof chatCompactAcceptedSchema>;
 export type ChatInterruptAccepted = z.infer<typeof chatInterruptAcceptedSchema>;
 export type ChatPauseUpdate = z.infer<typeof chatPauseUpdateSchema>;

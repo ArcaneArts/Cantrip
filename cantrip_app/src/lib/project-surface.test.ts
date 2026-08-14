@@ -64,6 +64,7 @@ describe("project surfaces", () => {
           placementRevision: 1,
           worktreeMode: "agent-managed",
           modelId: null,
+          reasoningEffort: null,
           permissionProfileId: null,
           planMode: "default",
           hasPendingPlanQuestion: false,

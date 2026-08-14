@@ -80,6 +80,7 @@ import type {
   QueuedPromptCreate,
   QueuedPromptOrder,
   QueuedPromptUpdate,
+  ReasoningEffort,
   RemoteDesktopSummary,
   RemoteDesktopTarget,
   RemoteSurfaceCapabilities,
@@ -295,6 +296,7 @@ export interface ChatExecutionContext {
   isPrimary: boolean;
   status: ChatSummary["status"];
   modelId: string | null;
+  reasoningEffort: ReasoningEffort | null;
   modelRouteId: string | null;
   providerAccountId: string | null;
   permissionProfileId: string | null;
@@ -1093,6 +1095,7 @@ function toChatSummary(chat: typeof schema.chats.$inferSelect): ChatSummary {
     placementRevision: chat.placementRevision,
     worktreeMode: chat.worktreeMode as ChatSummary["worktreeMode"],
     modelId: chat.modelId,
+    reasoningEffort: chat.reasoningEffort,
     permissionProfileId: chat.permissionProfileId,
     planMode: chat.planMode as ChatSummary["planMode"],
     hasPendingPlanQuestion: chat.pendingPlanQuestion !== null,
@@ -1619,6 +1622,9 @@ function toChatMessage(
     providerId: message.providerId,
     providerName: message.providerName,
     providerModelName: message.providerModelName,
+    reasoningEffort: message.reasoningEffort,
+    appliedReasoningEffort: message.appliedReasoningEffort,
+    reasoningAdjusted: message.reasoningAdjusted,
     createdAt: toISOString(message.createdAt),
   };
 }
@@ -1652,6 +1658,7 @@ function toQueuedPrompt(
     mode: prompt.mode,
     attachments: prompt.attachments,
     modelId: prompt.modelId,
+    reasoningEffort: prompt.reasoningEffort,
     worktreeId: prompt.worktreeId,
     position: prompt.position,
     frozen: prompt.frozen,
@@ -7763,6 +7770,7 @@ export class ServerRepository {
           isPrimary: row.worktree.isPrimary,
           status: "running",
           modelId: row.chat.modelId,
+          reasoningEffort: row.chat.reasoningEffort,
           modelRouteId: runtime.modelRouteId,
           providerAccountId: runtime.providerAccountId,
           permissionProfileId: row.chat.permissionProfileId,
@@ -10727,6 +10735,7 @@ export class ServerRepository {
           activeWorktreeId: target.id,
           worktreeMode: input.worktreeMode ?? row.chat.worktreeMode,
           modelId: row.chat.modelId,
+          reasoningEffort: row.chat.reasoningEffort,
           permissionProfileId: row.chat.permissionProfileId,
         })
         .returning();
@@ -10765,6 +10774,14 @@ export class ServerRepository {
             role: message.role,
             mode: message.mode,
             content: message.content,
+            modelId: message.modelId,
+            modelRouteId: message.modelRouteId,
+            providerId: message.providerId,
+            providerName: message.providerName,
+            providerModelName: message.providerModelName,
+            reasoningEffort: message.reasoningEffort,
+            appliedReasoningEffort: message.appliedReasoningEffort,
+            reasoningAdjusted: message.reasoningAdjusted,
             createdAt: message.createdAt,
           })),
         );
@@ -10825,6 +10842,30 @@ export class ServerRepository {
       .where(eq(schema.chats.id, chatId))
       .returning();
     return toChatSummary(firstOrThrow(result, "selecting a chat model"));
+  }
+
+  async setChatReasoningEffort(
+    ownerId: string,
+    chatId: string,
+    reasoningEffort: ReasoningEffort | null,
+  ): Promise<ChatSummary | null> {
+    const result = await this.database
+      .update(schema.chats)
+      .set({ reasoningEffort, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          inArray(
+            schema.chats.projectId,
+            this.database
+              .select({ id: schema.projects.id })
+              .from(schema.projects)
+              .where(eq(schema.projects.ownerId, ownerId)),
+          ),
+        ),
+      )
+      .returning();
+    return result[0] ? toChatSummary(result[0]) : null;
   }
 
   async setChatPermissionProfile(
@@ -10985,6 +11026,7 @@ export class ServerRepository {
       executionLaneId: row.lane?.id ?? null,
       isPrimary: row.worktree.isPrimary,
       modelId: row.chat.modelId,
+      reasoningEffort: row.chat.reasoningEffort,
       modelRouteId: row.runtime?.modelRouteId ?? null,
       providerAccountId: row.runtime?.providerAccountId ?? null,
       permissionProfileId: row.chat.permissionProfileId,
@@ -11649,6 +11691,7 @@ export class ServerRepository {
         mode: input.mode,
         attachments,
         modelId,
+        reasoningEffort: input.reasoningEffort ?? null,
         worktreeId: input.worktreeId,
         position: (last[0]?.position ?? -1) + 1,
         frozen: input.frozen,
@@ -11683,6 +11726,9 @@ export class ServerRepository {
       .set({
         ...(input.text !== undefined ? { text: input.text } : {}),
         ...(input.mode !== undefined ? { mode: input.mode } : {}),
+        ...(input.reasoningEffort !== undefined
+          ? { reasoningEffort: input.reasoningEffort }
+          : {}),
         ...(input.frozen !== undefined ? { frozen: input.frozen } : {}),
         ...(attachments !== undefined ? { attachments } : {}),
         updatedAt: new Date(),
@@ -11847,6 +11893,7 @@ export class ServerRepository {
         role: input.role,
         mode: input.mode ?? "default",
         content: input.content,
+        reasoningEffort: input.reasoningEffort ?? null,
         idempotencyKey: input.idempotencyKey ?? null,
       })
       .returning();
@@ -11863,6 +11910,10 @@ export class ServerRepository {
     messageId: string,
     modelId: string,
     runtime: ModelRuntime,
+    reasoning: {
+      appliedReasoningEffort: ReasoningEffort | null;
+      reasoningAdjusted: boolean;
+    } = { appliedReasoningEffort: null, reasoningAdjusted: false },
   ): Promise<ChatMessage | null> {
     const rows = await this.database
       .update(schema.chatMessages)
@@ -11872,6 +11923,8 @@ export class ServerRepository {
         providerId: runtime.provider.id,
         providerName: runtime.provider.name,
         providerModelName: runtime.model.name,
+        appliedReasoningEffort: reasoning.appliedReasoningEffort,
+        reasoningAdjusted: reasoning.reasoningAdjusted,
       })
       .where(
         and(
@@ -11916,6 +11969,10 @@ export class ServerRepository {
         role: input.role,
         mode: input.mode ?? existing.mode,
         content: input.content,
+        reasoningEffort:
+          input.reasoningEffort !== undefined
+            ? input.reasoningEffort
+            : existing.reasoningEffort,
       })
       .where(eq(schema.chatMessages.id, existing.id))
       .returning();
