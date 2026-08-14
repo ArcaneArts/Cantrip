@@ -575,7 +575,6 @@ export const modelProfiles = pgTable("model_profiles", {
   name: text("name").notNull(),
   canonicalModelId: text("canonical_model_id"),
   discoveryManaged: boolean("discovery_managed").notNull().default(false),
-  reasoningEffort: text("reasoning_effort"),
   routingPolicy: text("routing_policy").notNull().default("priority"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
@@ -603,7 +602,6 @@ export const modelRoutes = pgTable(
     position: integer("position").notNull().default(0),
     enabled: boolean("enabled").notNull().default(true),
     discoveryManaged: boolean("discovery_managed").notNull().default(false),
-    reasoningEffort: text("reasoning_effort"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

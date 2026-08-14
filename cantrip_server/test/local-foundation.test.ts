@@ -1734,7 +1734,6 @@ describe("local server foundation", () => {
           url: "/api/settings/models",
           payload: {
             name: "Test model",
-            reasoningEffort: "high",
             routes: [
               {
                 providerId: provider.id,
@@ -1753,7 +1752,6 @@ describe("local server foundation", () => {
           url: `/api/settings/models/${selectedModel.id}`,
           payload: {
             name: "Edited test model",
-            reasoningEffort: "medium",
             routes: [
               {
                 id: selectedModel.routes[0]?.id,
@@ -1768,7 +1766,6 @@ describe("local server foundation", () => {
     );
     expect(editedModel).toMatchObject({
       name: "Edited test model",
-      reasoningEffort: "medium",
       routingPolicy: "priority",
       routes: [
         expect.objectContaining({
@@ -4922,7 +4919,6 @@ describe("local server foundation", () => {
           url: "/api/settings/models",
           payload: {
             name: "Priority model",
-            reasoningEffort: "high",
             routes: [
               {
                 providerId: chatGptProvider.id,
@@ -4932,7 +4928,6 @@ describe("local server foundation", () => {
               {
                 providerId: provider.id,
                 modelName: "gpt-fallback",
-                reasoningEffort: "medium",
                 enabled: true,
               },
             ],
