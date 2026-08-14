@@ -498,6 +498,13 @@
       "when": 1786649442013,
       "tag": "0070_perfect_jane_foster",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1786734277631,
+      "tag": "0071_needy_pyro",
+      "breakpoints": true
     }
   ]
 }

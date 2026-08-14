@@ -45,6 +45,9 @@ import {
   executionTargetResolutionSchema,
   executionTargetResolveRequestSchema,
   executionTargetSchema,
+  modelProviderAccountSummarySchema,
+  providerModelCatalogEntrySchema,
+  reasoningEffortSchema,
   explorerFileWriteSchema,
   remoteBrowserClipboardMessageSchema,
   remoteBrowserClientMessageSchema,
@@ -150,6 +153,74 @@ import {
   workerNotificationEnvelopeSchema,
   workerCliCommandCallSchema,
 } from "../src/index.js";
+
+describe("model catalog protocol", () => {
+  it("preserves provider-advertised reasoning efforts", () => {
+    expect(reasoningEffortSchema.parse("ultra")).toBe("ultra");
+    expect(reasoningEffortSchema.parse("provider-future-effort")).toBe(
+      "provider-future-effort",
+    );
+    expect(reasoningEffortSchema.safeParse("").success).toBe(false);
+  });
+
+  it("accepts normalized catalog and pooled-account records", () => {
+    expect(
+      providerModelCatalogEntrySchema.parse({
+        id: "provider-model-1",
+        providerId: "provider-1",
+        nativeModelId: "gemma4:12b",
+        canonicalModelId: null,
+        displayName: "gemma4:12b",
+        description: null,
+        contextWindow: 131_072,
+        maxOutputTokens: null,
+        inputModalities: ["text"],
+        outputModalities: ["text"],
+        supportsTools: true,
+        supportsParallelTools: null,
+        supportsStructuredOutput: null,
+        supportsVision: false,
+        supportsReasoning: true,
+        supportedReasoningEfforts: [],
+        defaultReasoningEffort: null,
+        reasoningMandatory: null,
+        family: "gemma",
+        parameterSize: "12B",
+        quantization: "Q4_K_M",
+        digest: "sha256:test",
+        metadataSource: "ollama",
+        matchConfidence: null,
+        hidden: false,
+        isDefault: false,
+        createdAt: "2026-08-14T00:00:00.000Z",
+        updatedAt: "2026-08-14T00:00:00.000Z",
+        lastSeenAt: "2026-08-14T00:00:00.000Z",
+      }).contextWindow,
+    ).toBe(131_072);
+    expect(
+      modelProviderAccountSummarySchema.parse({
+        id: "account-1",
+        providerId: "provider-1",
+        label: "Personal",
+        email: "user@example.com",
+        planType: "pro",
+        position: 0,
+        enabled: true,
+        workerBindings: [
+          {
+            workerId: "worker-1",
+            authState: "signed-in",
+            weeklyUsageUsedPercent: 42.5,
+            weeklyUsageResetsAt: "2026-08-21T00:00:00.000Z",
+            lastSyncedAt: "2026-08-14T00:00:00.000Z",
+          },
+        ],
+        createdAt: "2026-08-14T00:00:00.000Z",
+        updatedAt: "2026-08-14T00:00:00.000Z",
+      }).workerBindings[0]?.weeklyUsageUsedPercent,
+    ).toBe(42.5);
+  });
+});
 
 describe("Cantrip protocol", () => {
   it("validates CLI commands across the local broker and server boundary", () => {

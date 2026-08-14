@@ -1384,6 +1384,7 @@ function toProviderSummary(
     kind: provider.kind as ModelProviderSummary["kind"],
     baseUrl: provider.baseUrl,
     hasApiKey: provider.apiKeyEnvelope !== null || provider.apiKey !== null,
+    weeklyUsageReservePercent: provider.weeklyUsageReservePercent,
     tokenUsage,
     createdAt: toISOString(provider.createdAt),
     updatedAt: toISOString(provider.updatedAt),
@@ -1398,9 +1399,11 @@ function toModelRouteSummary(
     id: route.id,
     providerId: route.providerId,
     providerName,
+    providerModelId: route.providerModelId,
     modelName: route.modelName,
     position: route.position,
     enabled: route.enabled,
+    discoveryManaged: route.discoveryManaged,
     reasoningEffort:
       route.reasoningEffort as ModelRouteSummary["reasoningEffort"],
   };
@@ -1414,6 +1417,8 @@ function toModelSummary(
   return {
     id: model.id,
     name: model.name,
+    canonicalModelId: model.canonicalModelId,
+    discoveryManaged: model.discoveryManaged,
     reasoningEffort:
       model.reasoningEffort as ModelProfileSummary["reasoningEffort"],
     routingPolicy: "priority",
@@ -2522,6 +2527,7 @@ export class ServerRepository {
         name: input.name,
         kind: input.kind,
         baseUrl: normalizeResponsesBaseUrl(input.baseUrl),
+        weeklyUsageReservePercent: input.weeklyUsageReservePercent ?? 3,
         apiKey: null,
         apiKeyEnvelope: input.apiKey
           ? this.secretVault.encrypt(
@@ -2575,6 +2581,11 @@ export class ServerRepository {
         name: input.name,
         kind: input.kind,
         baseUrl: normalizeResponsesBaseUrl(input.baseUrl),
+        ...(input.weeklyUsageReservePercent === undefined
+          ? {}
+          : {
+              weeklyUsageReservePercent: input.weeklyUsageReservePercent,
+            }),
         ...(input.apiKey === undefined
           ? {}
           : input.apiKey === null
